@@ -2,9 +2,10 @@
 from pathlib import Path
 
 from soulstruct.base.models.flver import FLVER, Version
+from soulstruct.utilities.inspection import profile_function
 
 
-VANILLA_CHR_PATH = Path("C:/Steam/steamapps/common/DARK SOULS REMASTERED (Vanilla Backup)/chr")
+TEST_PATH = Path(__file__).parent / "tests"
 
 
 class BlenderFLVERHeader:
@@ -65,9 +66,10 @@ class BLenderFLVERMesh:
     # vertices: list[Vertex]
 
 
+@profile_function(20)
 def test():
-    c1200 = FLVER.from_chrbnd(VANILLA_CHR_PATH / "c1200.chrbnd.dcx")  # Large Rat
-    print(c1200.bones)
+    c1200 = FLVER.from_chrbnd(TEST_PATH / "c5280.chrbnd.dcx")  # Quelaag
+    # print(c1200.bones)
 
 
 if __name__ == '__main__':

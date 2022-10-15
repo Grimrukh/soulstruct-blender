@@ -6,7 +6,6 @@ re-import it.
 """
 import shutil
 import sys
-import time
 from pathlib import Path
 
 from soulstruct.utilities.files import PACKAGE_PATH
@@ -42,7 +41,7 @@ def install(blender_scripts_dir: str | Path, update_soulstruct_module=False):
     for addon_module_name in ADDON_MODULES:
         blender_module_dir = blender_addons_dir / addon_module_name
         blender_module_dir.mkdir(exist_ok=True, parents=True)
-        shutil.rmtree(blender_module_dir    , ignore_errors=True)
+        shutil.rmtree(blender_module_dir, ignore_errors=True)
         shutil.copytree(this_dir / addon_module_name, blender_module_dir)
         print(f"# Blender addon `{addon_module_name}` installed to '{blender_addons_dir}'.")
 
