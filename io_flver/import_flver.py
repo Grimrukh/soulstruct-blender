@@ -1,11 +1,11 @@
 """
-Import FLVER files (with/without DCX) into Blender 2.9+.
+Import FLVER files (with/without DCX) into Blender 3.3+ (Python 3.10+ scripting required).
 
 The FLVER is imported as an Armature object with all FLVER sub-meshes as Mesh children. Critical FLVER information is
 stored with custom properties as necessary.
 
 Currently only thoroughly tested for DS1/DSR map pieces, including map pieces with multiple root bones. Models with real
-bone hierarchies (i.e. basically everything except map pieces) will likely not be set up correctly. Non-map materials
+bone hierarchies (i.e., basically everything except map pieces) will likely not be set up correctly. Non-map materials
 that use non-[M] MTD shaders will likely also not appear correctly.
 """
 from __future__ import annotations
@@ -50,7 +50,7 @@ class FLVERImporter:
         context,
         tpf_sources: dict[str, TPF] = None,
         dds_dump_path: tp.Optional[Path] = None,
-        enable_alpha_blend=False,
+        enable_alpha_hashed=True,
     ):
         self.operator = operator
         self.context = context
@@ -61,7 +61,7 @@ class FLVERImporter:
         # These TPF sources and images are shared between all FLVER files imported with this `FLVERImporter` instance.
         self.tpf_sources = tpf_sources
         self.tpf_images = {}
-        self.enable_alpha_blend = enable_alpha_blend
+        self.enable_alpha_hashed = enable_alpha_hashed
 
         self.flver = None
         self.name = ""
@@ -108,7 +108,7 @@ class FLVERImporter:
                 else:
                     self.warning(f"Could not find DDS for texture '{texture_path}' in FLVER {self.name}.")
 
-        if self.operator.read_tpfs:
+        if self.operator.load_map_piece_tpfs:
             temp_dir = Path(bpy.utils.resource_path("USER"))
             for texture_path in self.flver.get_all_texture_paths():
                 if str(texture_path) in self.tpf_images:
@@ -127,6 +127,10 @@ class FLVERImporter:
                 dds_path = temp_dir / f"{texture_path.stem}.dds"
                 try:
                     tpf.textures[0].write_dds(dds_path)
+                    print(
+                        f"Attempting to load texture {tpf.textures[0].name} "
+                        f"with format {tpf.textures[0].get_dds_format()}..."
+                    )
                     self.tpf_images[str(texture_path)] = image = bpy.data.images.load(str(dds_path))
                     image.pack()  # embed DDS in `.blend` file so temporary DDS file can be deleted
                     # Note that the full interroot path is stored in the texture node name.
@@ -170,6 +174,8 @@ class FLVERImporter:
                 return existing_material
             # TODO: Should append '<i>' to duplicated name of new material...
 
+        # TODO: Finesse node coordinates.
+
         bl_material = bpy.data.materials.new(name=material_name)
         bl_material.use_nodes = True
         nt = bl_material.node_tree
@@ -183,24 +189,29 @@ class FLVERImporter:
         vertex_colors_node.location = (-200, 430)
         vertex_colors_node.name = vertex_colors_node.attribute_name = "VertexColors"
 
+        mix_shader = nt.nodes.new("ShaderNodeMixShader")
+        mix_shader.location[1] += 300  # leaves room for possible displacement map node
+
         if any(texture.texture_type.endswith("_2") for texture in flver_material.textures):
             bsdf_2 = self.create_bsdf_node(flver_material, nt, is_second_slot=True)
-            mix_shader = nt.nodes.new("ShaderNodeMixShader")
-            mix_shader.location[1] += 375  # leaves room for possible displacement map node
             # Vertex colors are weights for blending between the two textures.
             nt.links.new(vertex_colors_node.outputs["Alpha"], mix_shader.inputs["Fac"])
             nt.links.new(bsdf_1.outputs["BSDF"], mix_shader.inputs[1])
             nt.links.new(bsdf_2.outputs["BSDF"], mix_shader.inputs[2])
             nt.links.new(mix_shader.outputs["Shader"], output_node.inputs["Surface"])
         else:
-            # Plug vertex colors into BSDF alpha (i.e. mix with "null texture").
-            # TODO: Might be more consistent to mix with a pass-through shader here.
-            nt.links.new(vertex_colors_node.outputs["Alpha"], bsdf_1.inputs["Alpha"])
-            nt.links.new(bsdf_1.outputs["BSDF"], output_node.inputs["Surface"])
-            if self.enable_alpha_blend:
-                # TODO: Eevee viewport blend isn't perfect, as it uses object position for rendering depth, but all
-                #  FLVER submesh objects will have the same position.
-                bl_material.blend_method = "BLEND"  # show alpha in viewport
+            holdout = nt.nodes.new("ShaderNodeHoldout")
+            holdout.location = (-200, 150)
+            # Vertex colors are weights for blending between Holdout and single texture.
+            nt.links.new(vertex_colors_node.outputs["Alpha"], mix_shader.inputs["Fac"])
+            nt.links.new(holdout.outputs["Holdout"], mix_shader.inputs[1])  # NOTE: zero `Fac` -> fully holdout
+            nt.links.new(bsdf_1.outputs["BSDF"], mix_shader.inputs[2])
+            nt.links.new(mix_shader.outputs["Shader"], output_node.inputs["Surface"])
+
+            if self.enable_alpha_hashed:
+                # TODO: Eevee viewport 'BLEND' isn't perfect, as it uses object position for rendering depth, but all
+                #  FLVER submesh objects will have the same position. 'HASHED' is better, apparently.
+                bl_material.blend_method = "HASHED"  # show alpha in viewport
 
         try:
             height_texture = next(texture for texture in flver_material.textures if texture.texture_type == "g_Height")
@@ -252,6 +263,7 @@ class FLVERImporter:
 
             node_tree.links.new(uv_attr.outputs["Vector"], node.inputs["Vector"])
             node_tree.links.new(node.outputs["Color"], bsdf.inputs["Base Color"])
+            node_tree.links.new(node.outputs["Alpha"], bsdf.inputs["Alpha"])
 
         if "g_Specular" + slot in textures:
             texture = textures["g_Specular" + slot]
@@ -406,7 +418,7 @@ class FLVERImporter:
         # TODO: I *believe* that vertex bone indices are global if and only if `mesh.bone_indices` is empty. (In DSR,
         #  it's never empty.)
         if flver_mesh.bone_indices:
-            print(f"Bone indices: {flver_mesh.bone_indices}")
+            # print(f"Bone indices: {flver_mesh.bone_indices}")
             for mesh_bone_index in flver_mesh.bone_indices:
                 group = bl_mesh_obj.vertex_groups.new(name=self.armature.pose.bones[mesh_bone_index].name)
                 bone_vertex_groups.append(group)
@@ -475,14 +487,19 @@ class FLVERImporter:
         if bpy.ops.object.mode_set.poll():
             bpy.ops.object.mode_set(mode="EDIT", toggle=False)
 
+        def get_bone_name(index_: int, flver_bone_name_: str):
+            return f"{self.name} Bone {index_} {flver_bone_name_}"
+
         edit_bones = []  # all bones
         for i, flver_bone in enumerate(self.flver.bones):
             edit_bone = bl_armature_obj.data.edit_bones.new(f"{self.name} Bone {flver_bone.name}")
             edit_bone: bpy_types.EditBone
             if flver_bone.next_sibling_index != -1:
-                edit_bone["Next Sibling Bone"] = self.flver.bones[flver_bone.next_sibling_index].name
+                next_b = self.flver.bones[flver_bone.next_sibling_index]
+                edit_bone["Next Sibling Bone"] = get_bone_name(flver_bone.next_sibling_index, next_b.name)
             if flver_bone.previous_sibling_index != -1:
-                edit_bone["Previous Sibling Bone"] = self.flver.bones[flver_bone.previous_sibling_index].name
+                previous_b = self.flver.bones[flver_bone.previous_sibling_index]
+                edit_bone["Previous Sibling Bone"] = get_bone_name(flver_bone.previous_sibling_index, previous_b.name)
             edit_bones.append(edit_bone)
 
         # Assign parent bones in Blender and create head/tail.
@@ -494,11 +511,19 @@ class FLVERImporter:
                 flver_tail = flver_bone.get_absolute_translate(self.flver.bones)
                 edit_bone.tail = (-flver_tail[0], -flver_tail[2], flver_tail[1])
             if flver_bone.parent_index >= 0:
+                # Bone does not need a head; will be set to parent's tail.
                 parent_edit_bone = edit_bones[flver_bone.parent_index]
                 edit_bone.parent = parent_edit_bone
                 edit_bone.use_connect = True
+            else:
+                # All bones without a parent OR children need a head.
+                edit_bone.head = (edit_bone.tail[0], edit_bone.tail[1], edit_bone.tail[2] + 1)
 
+            # print(f"{edit_bone.name}:\n  Head: {edit_bone.head}\n  Tail: {edit_bone.tail}\n  Parent: }")
+
+        # TODO: may want to test removing this
         del edit_bones  # clear references to edit bones as we exit EDIT mode
+
         if bpy.ops.object.mode_set.poll():
             bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
 

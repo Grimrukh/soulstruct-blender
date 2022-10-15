@@ -1,9 +1,12 @@
-from pathlib import Path
+from __future__ import annotations
+
+__all__ = ["FLVERImportError", "FLVERExportError", "Transform", "get_msb_transforms"]
 
 import math
+from pathlib import Path
 
-from soulstruct.darksouls1r.maps import MSB
 from soulstruct.utilities.maths import Vector3
+from soulstruct.darksouls1r.maps import MSB, get_map
 
 
 class FLVERImportError(Exception):
@@ -49,10 +52,13 @@ class Transform:
         return self.scale.x, self.scale.z, self.scale.y
 
 
-def get_msb_transforms(file_path: Path) -> list[tuple[str, Transform]]:
-    """Look for MSB JSON file (created by `MSB` manually in Soulstruct) and get transforms of entries using the
-    given FLVER model."""
-    msb_path = file_path.parent.parent / f"MapStudio/{file_path.parent.name}.msb"
+def get_msb_transforms(flver_path: Path, msb_path: Path = None) -> list[tuple[str, Transform]]:
+    """Search MSB at `msb_path` (autodetected from `flver_path.parent` by default) and return
+    `(map_piece_name, Transform)` pairs for all Map Piece entries using the `flver_path` model."""
+    if msb_path is None:
+        flver_parent_dir = flver_path.parent
+        flver_map = get_map(flver_parent_dir.name)
+        msb_path = flver_parent_dir.parent / f"MapStudio/{flver_map.msb_file_stem}.msb"
     if not msb_path.is_file():
         raise FileNotFoundError(f"Cannot find MSB file '{msb_path}'.")
     try:
@@ -64,9 +70,9 @@ def get_msb_transforms(file_path: Path) -> list[tuple[str, Transform]]:
         )
     matches = []
     for map_piece in msb.parts.MapPieces:
-        if file_path.name.startswith(map_piece.model_name):
+        if flver_path.name.startswith(map_piece.model_name):
             matches.append(map_piece)
     if not matches:
-        raise ValueError(f"Cannot find any MSB Map Piece entries using model '{file_path.name}'.")
+        raise ValueError(f"Cannot find any MSB Map Piece entries using model '{flver_path.name}'.")
     transforms = [(m.name, Transform.from_msb_part(m)) for m in matches]
     return transforms
