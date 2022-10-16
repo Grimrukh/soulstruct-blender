@@ -1,11 +1,17 @@
 from __future__ import annotations
 
-__all__ = ["FLVERImportError", "FLVERExportError", "Transform", "get_msb_transforms"]
+__all__ = [
+    "FLVERImportError",
+    "FLVERExportError",
+    "Transform",
+    "get_msb_transforms",
+    "fl_forward_up_vectors_to_bl_euler_angles",
+]
 
 import math
 from pathlib import Path
 
-from soulstruct.utilities.maths import Vector3
+from soulstruct.utilities.maths import Vector3, Matrix3
 from soulstruct.darksouls1r.maps import MSB, get_map
 
 
@@ -76,3 +82,18 @@ def get_msb_transforms(flver_path: Path, msb_path: Path = None) -> list[tuple[st
         raise ValueError(f"Cannot find any MSB Map Piece entries using model '{flver_path.name}'.")
     transforms = [(m.name, Transform.from_msb_part(m)) for m in matches]
     return transforms
+
+
+def fl_forward_up_vectors_to_bl_euler_angles(forward: Vector3, up: Vector3) -> (float, float, float):
+    """Convert `forward` and `up` vectors to Euler angles `(x, y, z)` (in Blender coordinates).
+
+    Mainly used for representing FLVER dummies in Blender.
+    """
+    right = up.cross(forward)
+    rotation_matrix = Matrix3(
+        right.x, up.x, forward.x,
+        right.y, up.y, forward.y,
+        right.z, up.z, forward.z,
+    )
+    euler_angles = rotation_matrix.to_euler_angles(radians=True, order="xzy")
+    return euler_angles.x, euler_angles.z, -euler_angles.y

@@ -6,6 +6,7 @@ from soulstruct.base.models.flver import FLVER, Version
 from soulstruct.utilities.inspection import profile_function
 
 
+VANILLA_CHR_PATH = Path("C:/Steam/steamapps/common/DARK SOULS REMASTERED (Vanilla Backup)/chr")
 TEST_PATH = Path(__file__).parent / "tests"
 
 
@@ -67,12 +68,15 @@ class BLenderFLVERMesh:
     # vertices: list[Vertex]
 
 
-@profile_function(20)
+# @profile_function(20)
 def test():
-    chrbnd = Binder(TEST_PATH / "c5280.chrbnd.dcx")  # Quelaag
-    c5280 = FLVER(chrbnd[200])
-    chrbnd[200].set_uncompressed_data(c5280.pack_dcx())
-    chrbnd.write("c5280_write.chrbnd.dcx")
+    chrbnd = Binder(VANILLA_CHR_PATH / "c1200.chrbnd.dcx")
+    flver = FLVER(chrbnd[200])
+    for bone in flver.bones:
+        print(bone.name, bone.parent_index)
+
+    # chrbnd[200].set_uncompressed_data(flver.pack_dcx())
+    # chrbnd.write("c5280_write.chrbnd.dcx")
 
 
 if __name__ == '__main__':

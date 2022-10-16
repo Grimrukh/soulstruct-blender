@@ -22,7 +22,9 @@ import bpy_types
 import bmesh
 from mathutils import Vector
 
-from .core import Transform, FLVERImportError
+from soulstruct.utilities.maths import Vector3
+
+from .core import Transform, FLVERImportError, fl_forward_up_vectors_to_bl_euler_angles
 
 if tp.TYPE_CHECKING:
     from io_flver import ImportFLVER
@@ -55,10 +57,8 @@ class FLVERImporter:
         self.operator = operator
         self.context = context
 
-        if texture_sources and dds_dump_path:
-            self.warning("TPF sources *and* a DDS dump path were given. DDS dump path will be preferred.")
         self.dds_dump_path = dds_dump_path
-        # These TPF sources and images are shared between all FLVER files imported with this `FLVERImporter` instance.
+        # These DDS sources/images are shared between all FLVER files imported with this `FLVERImporter` instance.
         self.texture_sources = texture_sources
         self.dds_images = {}
         self.enable_alpha_hashed = enable_alpha_hashed
@@ -71,7 +71,11 @@ class FLVERImporter:
     def import_flver(self, flver: FLVER, file_path: Path, transform: tp.Optional[Transform] = None):
         """Read a FLVER into a collection of Blender mesh objects (and one Armature).
 
-        TODO: Currently designed only with map pieces in mind, not characters/objects.
+        TODO:
+            - Bones for characters/objects not being set up correctly (head/tail placement wrong).
+            - Not fully happy with how duplicate materials are handled.
+                - If an existing material is found, but has no texture images, maybe just load those into it.
+            - Mesh injection export for characters/objects still buggy.
         """
         self.flver = flver
         self.name = file_path.name.split(".")[0]  # drop all extensions
@@ -85,6 +89,17 @@ class FLVERImporter:
         if bpy.ops.object.mode_set.poll():  # just to be safe
             bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
 
+        # Assign basic FLVER header information as custom props.
+        # TODO: Configure a full-exporter dropdown/choice of game version that defaults as many of these as possible.
+        bl_armature["endian"] = self.flver.header.endian  # bytes
+        bl_armature["version"] = self.flver.header.version.name  # str
+        bl_armature["unicode"] = self.flver.header.unicode  # bool
+        bl_armature["unk_x4a"] = self.flver.header.unk_x4a  # bool
+        bl_armature["unk_x4c"] = self.flver.header.unk_x4c  # int
+        bl_armature["unk_x5c"] = self.flver.header.unk_x5c  # int
+        bl_armature["unk_x5d"] = self.flver.header.unk_x5d  # int
+        bl_armature["unk_x68"] = self.flver.header.unk_x68  # int
+
         if transform is not None:
             bl_armature.location = transform.bl_translate
             bl_armature.rotation_euler = transform.bl_rotate
@@ -93,43 +108,16 @@ class FLVERImporter:
         self.all_bl_objs = [bl_armature]
         self.materials = {}
 
-        # TODO: Would be better to do some other basic FLVER validation here before loading the TPFs.
         if self.flver.gx_lists:
             self.warning(
                 f"FLVER {self.name} has GX lists, which are not yet supported by the importer. They will be lost."
             )
 
-        if self.dds_dump_path:
-            for texture_path in self.flver.get_all_texture_paths():
-                dds_path = self.dds_dump_path / f"{texture_path.stem}.dds"
-                if dds_path.is_file():
-                    # print(f"Loading dumped DDS: {dds_path}")
-                    self.dds_images[str(texture_path)] = bpy.data.images.load(str(dds_path))
-                else:
-                    self.warning(f"Could not find DDS for texture '{texture_path}' in FLVER {self.name}.")
-
-        if self.operator.load_map_piece_tpfs:
-            temp_dir = Path(bpy.utils.resource_path("USER"))
-            for texture_path in self.flver.get_all_texture_paths():
-                if str(texture_path) in self.dds_images:
-                    continue  # already loaded (or dumped DDS file found)
-                try:
-                    texture = self.texture_sources[texture_path.stem]  # without `tga` extension
-                except KeyError:
-                    self.warning(f"Could not find TPF with texture '{texture_path}' in FLVER {self.name}.")
-                    continue
-                dds_path = temp_dir / f"{texture_path.stem}.dds"
-                try:
-                    texture.write_dds(dds_path)
-                    print(
-                        f"Attempting to load texture {texture.name} with format {texture.get_dds_format()}..."
-                    )
-                    self.dds_images[str(texture_path)] = image = bpy.data.images.load(str(dds_path))
-                    image.pack()  # embed DDS in `.blend` file so temporary DDS file can be deleted
-                    # Note that the full interroot path is stored in the texture node name.
-                finally:
-                    if dds_path.exists():
-                        os.remove(str(dds_path))
+        # TODO: Would be better to do some other basic FLVER validation here before loading the TPFs.
+        if self.texture_sources or self.dds_dump_path:
+            self.load_texture_images()
+        else:
+            self.warning("No TPF files or DDS dump folder given. No textures loaded for FLVER.")
 
         # Note that materials with two sets of textures receive two BSDF nodes mixed 50/50.
         self.materials = {
@@ -141,6 +129,37 @@ class FLVERImporter:
             mesh_name = f"{self.name} Mesh {i}"
             bl_obj = self.create_mesh_obj(flver_mesh, mesh_name)
             bl_obj["Face Set Count"] = len(flver_mesh.face_sets)  # custom property
+
+        self.create_dummies()
+
+    def load_texture_images(self):
+        """Load texture images from either `dds_dump` folder or TPFs found with the FLVER."""
+
+        temp_dir = Path(bpy.utils.resource_path("USER"))
+        for texture_path in self.flver.get_all_texture_paths():
+            if str(texture_path) in self.dds_images:
+                continue  # already loaded (or dumped DDS file found)
+
+            if texture_path.stem in self.texture_sources:
+                temp_dds_path = temp_dir / f"{texture_path.stem}.dds"
+                texture = self.texture_sources[texture_path.stem]
+                try:
+                    # NOTE: DDS format should have already been converted from DX10 to DXT1 by operator.
+                    self.texture_sources[texture_path.stem].write_dds(temp_dds_path)
+                    print(f"Loading TPF texture {texture.name} with format {texture.get_dds_format()}")
+                    self.dds_images[str(texture_path)] = image = bpy.data.images.load(str(temp_dds_path))
+                    image.pack()  # embed DDS in `.blend` file so temporary DDS file can be deleted
+                    # Note that the full interroot path is stored in the texture node name.
+                finally:
+                    if temp_dds_path.is_file():
+                        os.remove(str(temp_dds_path))
+            elif self.dds_dump_path:
+                dds_path = self.dds_dump_path / f"{texture_path.stem}.dds"
+                if dds_path.is_file():
+                    print(f"Loading dumped DDS texture: {texture_path.stem}.dds")
+                    self.dds_images[str(texture_path)] = bpy.data.images.load(str(dds_path))
+                else:
+                    self.warning(f"Could not find TPF or dumped texture '{texture_path.stem}' for FLVER {self.name}.")
 
     def create_material(self, flver_material, use_existing=True):
         """Create a Blender material that represents a single FLVER materials.
@@ -496,29 +515,39 @@ class FLVERImporter:
             edit_bone: bpy_types.EditBone
             if flver_bone.next_sibling_index != -1:
                 next_b = self.flver.bones[flver_bone.next_sibling_index]
-                edit_bone["Next Sibling Bone"] = get_bone_name(flver_bone.next_sibling_index, next_b.name)
+                edit_bone["next_sibling_name"] = get_bone_name(flver_bone.next_sibling_index, next_b.name)
             if flver_bone.previous_sibling_index != -1:
                 previous_b = self.flver.bones[flver_bone.previous_sibling_index]
-                edit_bone["Previous Sibling Bone"] = get_bone_name(flver_bone.previous_sibling_index, previous_b.name)
+                edit_bone["previous_sibling_name"] = get_bone_name(flver_bone.previous_sibling_index, previous_b.name)
             edit_bones.append(edit_bone)
 
-        # Assign parent bones in Blender and create head/tail.
-        for flver_bone, edit_bone in zip(self.flver.bones, edit_bones):
-            flver_tail = flver_bone.get_absolute_translate(self.flver.bones)
-            edit_bone.tail = (-flver_tail[0], -flver_tail[2], flver_tail[1])
+        # TODO: The FLVER bone hierarchy is weirdly incomplete (Pelvis is not a child of master, 'Nub' bones have no
+        #  parents in at least some cases). Doesn't really matter for modelling but if animations in Blender are ever
+        #  supported, I'll need to read the HKX skeleton (would need `soulstruct-havok` for such a library anyway).
 
-            if flver_bone.parent_index != -1:
-                # Bone does not need a head; will be set to parent's tail.
+        for flver_bone, edit_bone in zip(self.flver.bones, edit_bones):
+            edit_bone.use_local_location = False  # TODO: seems to do nothing
+            if flver_bone.parent_index == -1:
+                # Root bone. Use default head.
+                edit_bone.head = (0.0, 0.0, 0.0)
+            else:
+                # Head is at this bone's absolute translate.
+                flver_head = flver_bone.get_absolute_translate(self.flver.bones)
                 parent_edit_bone = edit_bones[flver_bone.parent_index]
                 edit_bone.parent = parent_edit_bone
-                edit_bone.use_connect = True
+                edit_bone.head = (-flver_head[0], -flver_head[2], flver_head[1])
+                # edit_bone.use_connect = True
+
+            if flver_bone.child_index == -1:
+                # No unique child bone. Use default tail 'stub' in X direction from bone rotation.
+                fl_x_vector = flver_bone.get_unit_x_vector(self.flver.bones, length=0.1)
+                head = edit_bone.head
+                edit_bone.tail = (head[0] - fl_x_vector[0], head[1] - fl_x_vector[2], head[2] + fl_x_vector[1])
             else:
-                # Head of root bone placed at origin.
-                edit_bone.head = (0.0, 0.0, 0.0)
+                # Set tail to absolute translate of child bone.
+                flver_tail = self.flver.bones[flver_bone.child_index].get_absolute_translate(self.flver.bones)
+                edit_bone.tail = (-flver_tail[0], -flver_tail[2], flver_tail[1])
 
-            # print(f"{edit_bone.name}:\n  Head: {edit_bone.head}\n  Tail: {edit_bone.tail}\n  Parent: }")
-
-        # TODO: may want to test removing this
         del edit_bones  # clear references to edit bones as we exit EDIT mode
 
         if bpy.ops.object.mode_set.poll():
@@ -538,16 +567,50 @@ class FLVERImporter:
 
         return bl_armature_obj
 
-    def create_obj(self, name: str, data=None, parent_to_armature=True):
-        """Create a new Blender object as a child to the FLVER's parent empty.
+    def create_dummies(self):
+        """Create empty objects that represent dummies. All dummies are parented to a root empty object."""
 
-        I don't know how `new()` handles defaults, so the `data` argument isn't used if `data=None`.
-        """
-        obj = bpy.data.objects.new(name, data) if data is not None else bpy.data.objects.new(name)
+        bl_dummy_parent = self.create_obj(f"{self.name} Dummies")
+
+        for dummy in self.flver.dummies:
+            # We keep the default Empty display type (axis arrows).
+            bl_dummy = self.create_obj(f"{self.name} Dummy {dummy.reference_id}", parent_to_armature=False)
+            self.context.view_layer.objects.active = bl_dummy  # select object
+            bl_dummy.parent = bl_dummy_parent
+
+            # TODO: are FLVER dummy coordinates in 'parent_bone_name' space?
+            bl_dummy.location = (-dummy.position.x, -dummy.position.z, dummy.position.y)
+            if dummy.use_upward_vector:
+                bl_dummy.rotation_euler = fl_forward_up_vectors_to_bl_euler_angles(dummy.forward, dummy.upward)
+            else:  # TODO: I assume this is right (dummies only rotate around vertical axis)
+                bl_dummy.rotation_euler = fl_forward_up_vectors_to_bl_euler_angles(dummy.forward, Vector3(0, 0, 1))
+
+            # TODO: Parent bone index is used to "place" the dummy. These are usually dedicated bones at the origin,
+            #  e.g. 'Model_Dmy', and so won't matter for placement in most cases. I assume they can be used to offset
+            #  the dummy while still having its movement attached to the attach bone.
+
+            if dummy.attach_bone_index:
+                dummy_constraint = bl_dummy.constraints.new(type="CHILD_OF")
+                dummy_constraint.target = self.armature
+                dummy_constraint.subtarget = f"{self.name} Bone {self.flver.bones[dummy.attach_bone_index].name}"
+
+            # NOTE: This property is the canonical dummy ID. You are free to rename the dummy without affecting it.
+            bl_dummy["reference_id"] = dummy.reference_id  # int
+            bl_dummy["parent_bone_name"] = self.flver.bones[dummy.parent_bone_index].name  # str
+            bl_dummy["attach_bone_name"] = self.flver.bones[dummy.attach_bone_index].name  # str
+            bl_dummy["flag_1"] = dummy.flag_1  # bool
+            bl_dummy["use_upward_vector"] = dummy.use_upward_vector  # bool
+            # NOTE: These two properties are only non-zero in Sekiro (and probably Elden Ring).
+            bl_dummy["unk_x30"] = dummy.unk_x30  # int
+            bl_dummy["unk_x34"] = dummy.unk_x34  # int
+
+    def create_obj(self, name: str, data=None, parent_to_armature=True):
+        """Create a new Blender object. By default, will be parented to the FLVER's armature object."""
+        obj = bpy.data.objects.new(name, data)
         self.context.scene.collection.objects.link(obj)
         self.all_bl_objs.append(obj)
         if parent_to_armature:
-            obj.parent = self.all_bl_objs[0]
+            obj.parent = self.armature
 
         return obj
 
@@ -557,4 +620,5 @@ class FLVERImporter:
 
     @property
     def armature(self):
+        """Always the first object created."""
         return self.all_bl_objs[0]
