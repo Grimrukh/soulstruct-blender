@@ -27,7 +27,7 @@ from .core import Transform, FLVERImportError
 if tp.TYPE_CHECKING:
     from io_flver import ImportFLVER
     from soulstruct.base.models.flver import FLVER
-    from soulstruct.containers.tpf import TPF
+    from soulstruct.containers.tpf import TPFTexture
 
 
 # TODO: Turn into import settings.
@@ -42,25 +42,25 @@ class FLVERImporter:
 
     flver: tp.Optional[FLVER]
     name: str
-    tpf_images: dict[str, tp.Any]  # values can be string DDS paths or loaded Blender images
+    dds_images: dict[str, tp.Any]  # values can be string DDS paths or loaded Blender images
 
     def __init__(
         self,
         operator: ImportFLVER,
         context,
-        tpf_sources: dict[str, TPF] = None,
+        texture_sources: dict[str, TPFTexture] = None,
         dds_dump_path: tp.Optional[Path] = None,
         enable_alpha_hashed=True,
     ):
         self.operator = operator
         self.context = context
 
-        if tpf_sources and dds_dump_path:
+        if texture_sources and dds_dump_path:
             self.warning("TPF sources *and* a DDS dump path were given. DDS dump path will be preferred.")
         self.dds_dump_path = dds_dump_path
         # These TPF sources and images are shared between all FLVER files imported with this `FLVERImporter` instance.
-        self.tpf_sources = tpf_sources
-        self.tpf_images = {}
+        self.texture_sources = texture_sources
+        self.dds_images = {}
         self.enable_alpha_hashed = enable_alpha_hashed
 
         self.flver = None
@@ -104,34 +104,27 @@ class FLVERImporter:
                 dds_path = self.dds_dump_path / f"{texture_path.stem}.dds"
                 if dds_path.is_file():
                     # print(f"Loading dumped DDS: {dds_path}")
-                    self.tpf_images[str(texture_path)] = bpy.data.images.load(str(dds_path))
+                    self.dds_images[str(texture_path)] = bpy.data.images.load(str(dds_path))
                 else:
                     self.warning(f"Could not find DDS for texture '{texture_path}' in FLVER {self.name}.")
 
         if self.operator.load_map_piece_tpfs:
             temp_dir = Path(bpy.utils.resource_path("USER"))
             for texture_path in self.flver.get_all_texture_paths():
-                if str(texture_path) in self.tpf_images:
+                if str(texture_path) in self.dds_images:
                     continue  # already loaded (or dumped DDS file found)
                 try:
-                    tpf = self.tpf_sources[texture_path.name]
+                    texture = self.texture_sources[texture_path.stem]  # without `tga` extension
                 except KeyError:
-                    self.warning(f"Could not find TPF for texture '{texture_path}' in FLVER {self.name}.")
-                    continue
-                if len(tpf.textures) != 1:
-                    self.warning(
-                        f"Could not load TPF for {texture_path}. It has {len(tpf.textures)} textures when only one was "
-                        f"expected."
-                    )
+                    self.warning(f"Could not find TPF with texture '{texture_path}' in FLVER {self.name}.")
                     continue
                 dds_path = temp_dir / f"{texture_path.stem}.dds"
                 try:
-                    tpf.textures[0].write_dds(dds_path)
+                    texture.write_dds(dds_path)
                     print(
-                        f"Attempting to load texture {tpf.textures[0].name} "
-                        f"with format {tpf.textures[0].get_dds_format()}..."
+                        f"Attempting to load texture {texture.name} with format {texture.get_dds_format()}..."
                     )
-                    self.tpf_images[str(texture_path)] = image = bpy.data.images.load(str(dds_path))
+                    self.dds_images[str(texture_path)] = image = bpy.data.images.load(str(dds_path))
                     image.pack()  # embed DDS in `.blend` file so temporary DDS file can be deleted
                     # Note that the full interroot path is stored in the texture node name.
                 finally:
@@ -221,9 +214,9 @@ class FLVERImporter:
             height_node = nt.nodes.new("ShaderNodeTexImage")
             height_node.location = (-550, 345)
             height_node.name = f"{height_texture.texture_type} | {height_texture.path}"
-            if self.tpf_images:
+            if self.dds_images:
                 try:
-                    height_node.image = self.tpf_images[height_texture.path]
+                    height_node.image = self.dds_images[height_texture.path]
                 except KeyError:
                     self.warning(f"Could not find TPF texture: {height_texture.path}")
             displace_node = nt.nodes.new("ShaderNodeDisplacement")
@@ -255,9 +248,9 @@ class FLVERImporter:
             node = node_tree.nodes.new("ShaderNodeTexImage")
             node.location = (-550, 330 + slot_y_offset)
             node.name = f"g_Diffuse{slot} | {texture.path}"
-            if self.tpf_images:
+            if self.dds_images:
                 try:
-                    node.image = self.tpf_images[texture.path]
+                    node.image = self.dds_images[texture.path]
                 except KeyError:
                     self.warning(f"Could not find TPF texture: {texture.path}")
 
@@ -270,9 +263,9 @@ class FLVERImporter:
             node = node_tree.nodes.new("ShaderNodeTexImage")
             node.location = (-550, 0 + slot_y_offset)
             node.name = f"g_Specular{slot} | {texture.path}"
-            if self.tpf_images:
+            if self.dds_images:
                 try:
-                    node.image = self.tpf_images[texture.path]
+                    node.image = self.dds_images[texture.path]
                 except KeyError:
                     self.warning(f"Could not find TPF texture: {texture.path}")
 
@@ -285,9 +278,9 @@ class FLVERImporter:
             node = node_tree.nodes.new("ShaderNodeTexImage")
             node.location = (-550, -330 + slot_y_offset)
             node.name = f"g_Bumpmap{slot} | {texture.path}"
-            if self.tpf_images:
+            if self.dds_images:
                 try:
-                    node.image = self.tpf_images[texture.path]
+                    node.image = self.dds_images[texture.path]
                 except KeyError:
                     self.warning(f"Could not find TPF texture: {texture.path}")
 
@@ -329,7 +322,7 @@ class FLVERImporter:
 
         uv_count = max(len(vertex.uvs) for vertex in flver_mesh.vertices)
 
-        vertices = [(-v.position.x, -v.position.z, v.position.y) for v in flver_mesh.vertices]
+        vertices = [(-v.position[0], -v.position[2], v.position[1]) for v in flver_mesh.vertices]
         edges = []  # no edges in FLVER
         faces = flver_mesh.face_sets[0].get_triangles(allow_primitive_restarts=False)
 
@@ -348,7 +341,7 @@ class FLVERImporter:
         bl_mesh.create_normals_split()
         # NOTE: X is negated, but Y and Z are not swapped here, as the global mesh transformation below will do that.
         # (Unfortunately I only discovered this bug on 2021-08-08.)
-        bl_vertex_normals = [(-v.normal.x, -v.normal.z, v.normal.y) for v in flver_mesh.vertices]
+        bl_vertex_normals = [(-v.normal[0], -v.normal[2], v.normal[1]) for v in flver_mesh.vertices]
         for loop in bl_mesh.loops:
             # I think vertex normals need to be copied to loop (vertex-per-face) normals.
             loop.normal[:] = bl_vertex_normals[loop.vertex_index]
@@ -379,7 +372,7 @@ class FLVERImporter:
             loop: bpy.types.MeshLoop
             vertex = flver_mesh.vertices[loop.vertex_index]
             for uv_index, uv in enumerate(vertex.uvs):
-                uv_layers[uv_index].data[j].uv[:] = [uv.x, -uv.y]  # Z axis discarded, Y axis inverted
+                uv_layers[uv_index].data[j].uv[:] = [uv[0], -uv[1]]  # Z axis discarded, Y axis inverted
             if len(vertex.colors) != 1:
                 raise FLVERImportError(
                     f"Vertex {loop.vertex_index} in FLVER mesh {mesh_name} has {len(vertex.colors)} vertex colors. "
@@ -414,6 +407,7 @@ class FLVERImporter:
         self.context.view_layer.objects.active = bl_mesh_obj
 
         bone_vertex_groups = []  # type: list[bpy.types.VertexGroup]
+        bone_vertex_group_indices = {}
 
         # TODO: I *believe* that vertex bone indices are global if and only if `mesh.bone_indices` is empty. (In DSR,
         #  it's never empty.)
@@ -422,27 +416,33 @@ class FLVERImporter:
             for mesh_bone_index in flver_mesh.bone_indices:
                 group = bl_mesh_obj.vertex_groups.new(name=self.armature.pose.bones[mesh_bone_index].name)
                 bone_vertex_groups.append(group)
-            bone_vertex_group_indices = {}
             for i, fl_vert in enumerate(flver_mesh.vertices):
-                v_bone_index = fl_vert.bone_indices[0]  # TODO: Use all four bone indices, and weights.
-                bone_vertex_group_indices.setdefault(v_bone_index, []).append(i)
-            for bone_index, bone_vertices in bone_vertex_group_indices.items():
-                bone_vertex_groups[bone_index].add(bone_vertices, 1.0, "ADD")  # TODO: use real weight
+                # TODO: May be able to assert that this is ALWAYS true for ALL vertices in map pieces.
+                if all(weight == 0.0 for weight in fl_vert.bone_weights) and len(set(fl_vert.bone_indices)) == 1:
+                    # Map Piece FLVERs use a single duplicated index and no weights.
+                    v_bone_index = fl_vert.bone_indices[0]
+                    bone_vertex_group_indices.setdefault((v_bone_index, 1.0), []).append(i)
+                else:
+                    # Standard multi-bone weighting.
+                    for v_bone_index, v_bone_weight in zip(fl_vert.bone_indices, fl_vert.bone_weights):
+                        if v_bone_weight == 0.0:
+                            continue
+                        bone_vertex_group_indices.setdefault((v_bone_index, v_bone_weight), []).append(i)
         else:  # vertex bone indices are global...?
             for bone_index in range(len(self.armature.pose.bones)):
                 group = bl_mesh_obj.vertex_groups.new(name=self.armature.pose.bones[bone_index].name)
                 bone_vertex_groups.append(group)
-            bone_vertex_group_indices = {}
-            # Awkwardly, we need a separate call to `VertexGroups[bone_index].add(indices, weight)` for each combination
-            # of `bone_index` and `weight`, so the dictionary keys constructed below are a tuple of those two to
-            # minimize the number of `add()` calls needed.
             for i, fl_vert in enumerate(flver_mesh.vertices):
                 for v_bone_index, v_bone_weight in zip(fl_vert.bone_indices, fl_vert.bone_weights):
                     if v_bone_weight == 0.0:
                         continue
                     bone_vertex_group_indices.setdefault((v_bone_index, v_bone_weight), []).append(i)
-            for (bone_index, bone_weight), bone_vertices in bone_vertex_group_indices.items():
-                bone_vertex_groups[bone_index].add(bone_vertices, bone_weight, "ADD")  # TODO: use real weight
+
+        # Awkwardly, we need a separate call to `VertexGroups[bone_index].add(indices, weight)` for each combination
+        # of `bone_index` and `weight`, so the dictionary keys constructed below are a tuple of those two to
+        # minimize the number of `add()` calls needed below.
+        for (bone_index, bone_weight), bone_vertices in bone_vertex_group_indices.items():
+            bone_vertex_groups[bone_index].add(bone_vertices, bone_weight, "ADD")
 
         bpy.ops.object.modifier_add(type="ARMATURE")
         armature_mod = bl_mesh_obj.modifiers["Armature"]
@@ -504,20 +504,17 @@ class FLVERImporter:
 
         # Assign parent bones in Blender and create head/tail.
         for flver_bone, edit_bone in zip(self.flver.bones, edit_bones):
-            if use_pose_transforms:
-                edit_bone.head = (0, 0, 0)
-                edit_bone.tail = (0, 0, 1)
-            else:
-                flver_tail = flver_bone.get_absolute_translate(self.flver.bones)
-                edit_bone.tail = (-flver_tail[0], -flver_tail[2], flver_tail[1])
-            if flver_bone.parent_index >= 0:
+            flver_tail = flver_bone.get_absolute_translate(self.flver.bones)
+            edit_bone.tail = (-flver_tail[0], -flver_tail[2], flver_tail[1])
+
+            if flver_bone.parent_index != -1:
                 # Bone does not need a head; will be set to parent's tail.
                 parent_edit_bone = edit_bones[flver_bone.parent_index]
                 edit_bone.parent = parent_edit_bone
                 edit_bone.use_connect = True
             else:
-                # All bones without a parent OR children need a head.
-                edit_bone.head = (edit_bone.tail[0], edit_bone.tail[1], edit_bone.tail[2] + 1)
+                # Head of root bone placed at origin.
+                edit_bone.head = (0.0, 0.0, 0.0)
 
             # print(f"{edit_bone.name}:\n  Head: {edit_bone.head}\n  Tail: {edit_bone.tail}\n  Parent: }")
 
@@ -528,6 +525,7 @@ class FLVERImporter:
             bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
 
         if use_pose_transforms:
+            #
             for pose_bone, flver_bone in zip(bl_armature_obj.pose.bones, self.flver.bones):
                 t = flver_bone.translate
                 pose_bone.location = Vector((-t.x, t.y, t.z))  # CORRECT
@@ -554,6 +552,7 @@ class FLVERImporter:
         return obj
 
     def warning(self, warning: str):
+        print(f"# WARNING: {warning}")
         self.operator.report({"WARNING"}, warning)
 
     @property

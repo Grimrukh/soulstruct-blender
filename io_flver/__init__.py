@@ -107,7 +107,7 @@ class ImportFLVER(Operator, ImportHelper):
 
         file_paths = [Path(self.directory, file.name) for file in self.files]
         flvers = []
-        tpf_sources = {}
+        texture_sources = {}
 
         for file_path in file_paths:
 
@@ -124,11 +124,12 @@ class ImportFLVER(Operator, ImportHelper):
                 flvers.append(flver)
 
                 # Find TPFs or CHRTPFBHDs inside binder, potentially using `chrtpfbdt` file if it exists.
+                # TODO: `.tpf` in CHRBND contains multiple textures; need to load them as separate keys (DDS -> TGA).
                 for tpf_entry in binder.find_entries_matching_name(TPF_RE):  # generally only one
-                    match = TPF_RE.match(tpf_entry.name)
                     tpf = TPF(tpf_entry.data)
                     tpf.convert_dds_formats("DX10", "DXT1")
-                    tpf_sources[f"{match.group(1)}.tga"] = tpf
+                    for texture in tpf.textures:
+                        texture_sources[texture.name] = texture
                 try:
                     tpfbhd_entry = binder.find_entry_matching_name(r".*\.chrtpfbhd")
                 except (binder.BinderEntryMissing, ValueError):
@@ -143,7 +144,8 @@ class ImportFLVER(Operator, ImportHelper):
                             if match:
                                 tpf = TPF(tpf_entry.data)
                                 tpf.convert_dds_formats("DX10", "DXT1")
-                                tpf_sources[f"{match.group(1)}.tga"] = tpf
+                                for texture in tpf.textures:
+                                    texture_sources[texture.name] = texture
                     else:
                         self.report({"WARNING"}, f"Could not find adjacent CHRTPFBDT for TPFs in file {file_path}.")
             else:
@@ -163,11 +165,11 @@ class ImportFLVER(Operator, ImportHelper):
                         self.report({"ERROR"}, f"`mXX` TPF folder does not exist: {tpf_directory}. Cannot load TPFs.")
                         return {"CANCELLED"}
 
-                    tpf_sources |= TPF.collect_tpfs(tpf_directory, convert_formats=("DX10", "DXT1"))
+                    texture_sources |= TPF.collect_tpfs(tpf_directory, convert_formats=("DX10", "DXT1"))
 
         dds_dump_path = Path(self.dds_path) if self.dds_path else None
 
-        importer = FLVERImporter(self, context, tpf_sources, dds_dump_path, self.enable_alpha_hashed)
+        importer = FLVERImporter(self, context, texture_sources, dds_dump_path, self.enable_alpha_hashed)
 
         for file_path, flver in zip(file_paths, flvers, strict=True):
 

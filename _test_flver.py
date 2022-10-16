@@ -1,6 +1,7 @@
 """Inspecting various FLVER properties for testing full export."""
 from pathlib import Path
 
+from soulstruct.containers import Binder
 from soulstruct.base.models.flver import FLVER, Version
 from soulstruct.utilities.inspection import profile_function
 
@@ -68,8 +69,10 @@ class BLenderFLVERMesh:
 
 @profile_function(20)
 def test():
-    c1200 = FLVER.from_chrbnd(TEST_PATH / "c5280.chrbnd.dcx")  # Quelaag
-    # print(c1200.bones)
+    chrbnd = Binder(TEST_PATH / "c5280.chrbnd.dcx")  # Quelaag
+    c5280 = FLVER(chrbnd[200])
+    chrbnd[200].set_uncompressed_data(c5280.pack_dcx())
+    chrbnd.write("c5280_write.chrbnd.dcx")
 
 
 if __name__ == '__main__':
