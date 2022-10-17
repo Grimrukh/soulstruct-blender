@@ -65,6 +65,7 @@ class FLVERImporter:
 
         self.flver = None
         self.name = ""
+        self.bl_bone_names = {}  # type: dict[int, str]
         self.all_bl_objs = []
         self.materials = {}
 
@@ -79,6 +80,11 @@ class FLVERImporter:
         """
         self.flver = flver
         self.name = file_path.name.split(".")[0]  # drop all extensions
+
+        # Create FLVER bone index -> Blender bone name dictionary. (Blender names are UTF-8.)
+        self.bl_bone_names.clear()
+        for bone_index, bone in enumerate(self.flver.bones):
+            self.bl_bone_names[bone_index] = f"{self.name} Bone({bone_index}) {bone.name}"
 
         # Set mode to OBJECT and deselect all objects.
         if bpy.ops.object.mode_set.poll():
@@ -162,94 +168,148 @@ class FLVERImporter:
                     self.warning(f"Could not find TPF or dumped texture '{texture_path.stem}' for FLVER {self.name}.")
 
     def create_material(self, flver_material, use_existing=True):
-        """Create a Blender material that represents a single FLVER materials.
+        """Create a Blender material that represents a single `FLVER.Material`.
 
-        FLVER materials with multiple texture slots are represented in Blender by a single Material, using vertex colors
-        to drive a Mix Shader (appears as in-game). Currently, only two slots are supported; I don't thnk more are ever
-        used in DS1.
-
-        If only one material is present, its alpha will be set using vertex colors.
-
-        Some FLVER materials also have a "g_Height" texture. This is represented by a material displacement map (rather
-        than a bump map for one BDSF).
+        NOTE: Actual information contained in the FLVER and used for export is stored in custom properties of the
+        Blender material. The node graph generated here is simply for (very helpful) visualization in Blender, and is
+        NOT synchronized at all with the custom properties.
 
         If `use_existing=False`, a new material will be created with the FLVER's values even if a material with that
         name already exists in the Blender environment. Be wary of texture RAM usage in this case! Make sure you delete
         unneeded materials from Blender as you go.
         """
-        # Material name (not important) and MTD path (important) are combined in Blender material name.
-        material_name = f"{flver_material.name} | {flver_material.mtd_path}"
 
-        existing_material = bpy.data.materials.get(material_name)
+        bl_material_name = f"{flver_material.name} <{Path(flver_material.mtd_path).stem}>"
+
+        existing_material = bpy.data.materials.get(bl_material_name)
         if existing_material is not None:
             if use_existing:
                 return existing_material
             # TODO: Should append '<i>' to duplicated name of new material...
 
-        # TODO: Finesse node coordinates.
+        bl_material = bpy.data.materials.new(name=bl_material_name)
+        if self.enable_alpha_hashed:
+            bl_material.blend_method = "HASHED"  # show alpha in viewport
 
-        bl_material = bpy.data.materials.new(name=material_name)
+        # Critical `Material` information stored in custom properties.
+        bl_material["mtd_path"] = flver_material.mtd_path  # str
+        bl_material["flags"] = flver_material.flags  # int
+        bl_material["gx_index"] = flver_material.gx_index  # int
+        bl_material["unk_x18"] = flver_material.unk_x18  # int
+
+        # Texture information is also stored here.
+        for i, fl_tex in enumerate(flver_material.textures):
+            bl_material[f"texture[{i}]_path"] = fl_tex.path  # str
+            bl_material[f"texture[{i}]_texture_type"] = fl_tex.texture_type  # str
+            bl_material[f"texture[{i}]_scale"] = repr(tuple(fl_tex.scale))  # str (tuple)
+            bl_material[f"texture[{i}]_unk_x10"] = fl_tex.unk_x10  # int
+            bl_material[f"texture[{i}]_unk_x11"] = fl_tex.unk_x11  # bool
+            bl_material[f"texture[{i}]_unk_x14"] = fl_tex.unk_x14  # float
+            bl_material[f"texture[{i}]_unk_x18"] = fl_tex.unk_x18  # float
+            bl_material[f"texture[{i}]_unk_x1C"] = fl_tex.unk_x1C  # float
+
+        mtd_bools = flver_material.get_mtd_bools()
+
         bl_material.use_nodes = True
         nt = bl_material.node_tree
         nt.nodes.remove(nt.nodes["Principled BSDF"])
-        bl_material["flags"] = str(flver_material.flags)  # custom property
         output_node = nt.nodes["Material Output"]
 
-        bsdf_1 = self.create_bsdf_node(flver_material, nt, is_second_slot=False)
+        # TODO: Finesse node coordinates.
+
+        bsdf_1, diffuse_node_1 = self.create_bsdf_node(flver_material, mtd_bools, nt, is_second_slot=False)
+        bsdf_2 = diffuse_node_2 = None
 
         vertex_colors_node = nt.nodes.new("ShaderNodeAttribute")
         vertex_colors_node.location = (-200, 430)
         vertex_colors_node.name = vertex_colors_node.attribute_name = "VertexColors"
 
-        mix_shader = nt.nodes.new("ShaderNodeMixShader")
-        mix_shader.location[1] += 300  # leaves room for possible displacement map node
-
-        if any(texture.texture_type.endswith("_2") for texture in flver_material.textures):
-            bsdf_2 = self.create_bsdf_node(flver_material, nt, is_second_slot=True)
-            # Vertex colors are weights for blending between the two textures.
-            nt.links.new(vertex_colors_node.outputs["Alpha"], mix_shader.inputs["Fac"])
-            nt.links.new(bsdf_1.outputs["BSDF"], mix_shader.inputs[1])
-            nt.links.new(bsdf_2.outputs["BSDF"], mix_shader.inputs[2])
-            nt.links.new(mix_shader.outputs["Shader"], output_node.inputs["Surface"])
+        if mtd_bools["multiple"] or mtd_bools["alpha"]:
+            # Use a mix shader weighted by vertex alpha.
+            slot_mix_shader = nt.nodes.new("ShaderNodeMixShader")
+            slot_mix_shader.location = (50, 300)
+            nt.links.new(vertex_colors_node.outputs["Alpha"], slot_mix_shader.inputs["Fac"])
+            nt.links.new(slot_mix_shader.outputs["Shader"], output_node.inputs["Surface"])
         else:
-            holdout = nt.nodes.new("ShaderNodeHoldout")
-            holdout.location = (-200, 150)
-            # Vertex colors are weights for blending between Holdout and single texture.
-            nt.links.new(vertex_colors_node.outputs["Alpha"], mix_shader.inputs["Fac"])
-            nt.links.new(holdout.outputs["Holdout"], mix_shader.inputs[1])  # NOTE: zero `Fac` -> fully holdout
-            nt.links.new(bsdf_1.outputs["BSDF"], mix_shader.inputs[2])
-            nt.links.new(mix_shader.outputs["Shader"], output_node.inputs["Surface"])
+            slot_mix_shader = None
+            nt.links.new(bsdf_1.outputs["BSDF"], output_node.inputs["Surface"])
 
-            if self.enable_alpha_hashed:
-                # TODO: Eevee viewport 'BLEND' isn't perfect, as it uses object position for rendering depth, but all
-                #  FLVER submesh objects will have the same position. 'HASHED' is better, apparently.
-                bl_material.blend_method = "HASHED"  # show alpha in viewport
-
-        try:
-            height_texture = next(texture for texture in flver_material.textures if texture.texture_type == "g_Height")
-        except StopIteration:
-            pass  # no height map
+        if mtd_bools["multiple"]:
+            # Multi-textures shader (two slots).
+            bsdf_2, diffuse_node_2 = self.create_bsdf_node(flver_material, mtd_bools, nt, is_second_slot=True)
+            nt.links.new(bsdf_1.outputs["BSDF"], slot_mix_shader.inputs[1])
+            nt.links.new(bsdf_2.outputs["BSDF"], slot_mix_shader.inputs[2])
+        elif mtd_bools["alpha"]:
+            # Single-texture shader (one slot). We mix with Transparent BSDF to render vertex alpha.
+            # TODO: Could I not just multiply texture alpha and vertex alpha?
+            transparent = nt.nodes.new("ShaderNodeBsdfTransparent")
+            transparent.location = (-200, 230)
+            nt.links.new(transparent.outputs["BSDF"], slot_mix_shader.inputs[1])
+            nt.links.new(bsdf_1.outputs["BSDF"], slot_mix_shader.inputs[2])
+        # TODO: Not sure if I can easily support 'edge' shader alpha.
         else:
+            # Single texture, no alpha. Wait to see if lightmap used below.
+            pass
+
+        if mtd_bools["height"]:
+            height_texture = flver_material.find_texture_type("g_Height")
+            if height_texture is None:
+                raise ValueError(
+                    f"Material {flver_material.name} has MTD {flver_material.mtd_name} but no 'g_Height' texture."
+                )
             height_node = nt.nodes.new("ShaderNodeTexImage")
             height_node.location = (-550, 345)
             height_node.name = f"{height_texture.texture_type} | {height_texture.path}"
-            if self.dds_images:
-                try:
-                    height_node.image = self.dds_images[height_texture.path]
-                except KeyError:
-                    self.warning(f"Could not find TPF texture: {height_texture.path}")
+            height_node.image = self.get_dds_image(height_texture.path)
             displace_node = nt.nodes.new("ShaderNodeDisplacement")
-            displace_node.location[1] += 170
+            displace_node.location = (-250, 170)
             nt.links.new(nt.nodes["UVMap1"].outputs["Vector"], height_node.inputs["Vector"])
             nt.links.new(height_node.outputs["Color"], displace_node.inputs["Normal"])
             nt.links.new(displace_node.outputs["Displacement"], output_node.inputs["Displacement"])
 
-        # TODO: Should check for unexpected texture names, like "g_Height_2".
-        # TODO: Should also confirm "g_DetailBumpmap" has no content.
+        if mtd_bools["lightmap"]:
+            lightmap_texture = flver_material.find_texture_type("g_Lightmap")
+            if lightmap_texture is None:
+                raise ValueError(
+                    f"Material {flver_material.name} has MTD {flver_material.mtd_name} but no 'g_Lightmap' texture."
+                )
+            lightmap_node = nt.nodes.new("ShaderNodeTexImage")
+            lightmap_node.location = (-550, 0)
+            lightmap_node.name = f"{lightmap_texture.texture_type} | {lightmap_texture.path}"
+            lightmap_node.image = self.get_dds_image(lightmap_texture.path)
+
+            light_uv_attr = nt.nodes.new("ShaderNodeAttribute")
+            light_uv_name = "UVMap3" if mtd_bools["multiple"] else "UVMap2"
+            light_uv_attr.name = light_uv_attr.attribute_name = light_uv_name
+            light_uv_attr.location = (-750, 0)
+            nt.links.new(light_uv_attr.outputs["Vector"], lightmap_node.inputs["Vector"])
+
+            if diffuse_node_1:
+                light_overlay_node = nt.nodes.new("ShaderNodeMixRGB")
+                light_overlay_node.blend_type = "OVERLAY"
+                light_overlay_node.location = (-200, 1200)
+                nt.links.new(diffuse_node_1.outputs["Color"], light_overlay_node.inputs[1])
+                nt.links.new(lightmap_node.outputs["Color"], light_overlay_node.inputs[2])
+                nt.links.new(light_overlay_node.outputs["Color"], bsdf_1.inputs["Base Color"])
+            if diffuse_node_2:
+                light_overlay_node = nt.nodes.new("ShaderNodeMixRGB")
+                light_overlay_node.blend_type = "OVERLAY"
+                light_overlay_node.location = (-200, 600)
+                nt.links.new(diffuse_node_2.outputs["Color"], light_overlay_node.inputs[1])
+                nt.links.new(lightmap_node.outputs["Color"], light_overlay_node.inputs[2])
+                nt.links.new(light_overlay_node.outputs["Color"], bsdf_2.inputs["Base Color"])
+
+        # TODO: Confirm "g_DetailBumpmap" has no content.
 
         return bl_material
 
-    def create_bsdf_node(self, flver_material, node_tree, is_second_slot: bool):
+    def get_dds_image(self, texture_path: str):
+        if self.dds_images and texture_path in self.dds_images:
+            return self.dds_images[texture_path]
+        self.warning(f"Could not find DDS image: {texture_path}")
+        return None
+
+    def create_bsdf_node(self, flver_material, mtd_bools, node_tree, is_second_slot: bool):
         bsdf = node_tree.nodes.new("ShaderNodeBsdfPrincipled")
         bsdf.location[1] = 0 if is_second_slot else 1000
         bsdf.inputs["Roughness"].default_value = ROUGHNESS
@@ -262,47 +322,36 @@ class FLVERImporter:
         uv_attr.name = uv_attr.attribute_name = "UVMap2" if is_second_slot else "UVMap1"
         uv_attr.location = (-750, 0 + slot_y_offset)
 
-        if "g_Diffuse" + slot in textures:
+        if mtd_bools["diffuse"]:
             texture = textures["g_Diffuse" + slot]
-            node = node_tree.nodes.new("ShaderNodeTexImage")
-            node.location = (-550, 330 + slot_y_offset)
-            node.name = f"g_Diffuse{slot} | {texture.path}"
-            if self.dds_images:
-                try:
-                    node.image = self.dds_images[texture.path]
-                except KeyError:
-                    self.warning(f"Could not find TPF texture: {texture.path}")
+            diffuse_node = node_tree.nodes.new("ShaderNodeTexImage")
+            diffuse_node.location = (-550, 330 + slot_y_offset)
+            diffuse_node.image = self.get_dds_image(texture.path)
+            diffuse_node.name = f"g_Diffuse{slot}"
+            node_tree.links.new(uv_attr.outputs["Vector"], diffuse_node.inputs["Vector"])
+            if not mtd_bools["lightmap"]:  # otherwise, MixRGB node will mediate
+                node_tree.links.new(diffuse_node.outputs["Color"], bsdf.inputs["Base Color"])
+            node_tree.links.new(diffuse_node.outputs["Alpha"], bsdf.inputs["Alpha"])
+        else:
+            diffuse_node = None
 
-            node_tree.links.new(uv_attr.outputs["Vector"], node.inputs["Vector"])
-            node_tree.links.new(node.outputs["Color"], bsdf.inputs["Base Color"])
-            node_tree.links.new(node.outputs["Alpha"], bsdf.inputs["Alpha"])
-
-        if "g_Specular" + slot in textures:
+        if mtd_bools["specular"]:
             texture = textures["g_Specular" + slot]
             node = node_tree.nodes.new("ShaderNodeTexImage")
             node.location = (-550, 0 + slot_y_offset)
-            node.name = f"g_Specular{slot} | {texture.path}"
-            if self.dds_images:
-                try:
-                    node.image = self.dds_images[texture.path]
-                except KeyError:
-                    self.warning(f"Could not find TPF texture: {texture.path}")
-
+            node.image = self.get_dds_image(texture.path)
+            node.name = f"g_Specular{slot}"
             node_tree.links.new(uv_attr.outputs["Vector"], node.inputs["Vector"])
             node_tree.links.new(node.outputs["Color"], bsdf.inputs["Specular"])
+        else:
+            bsdf.inputs["Specular"].default_value = 0.0  # no default specularity
 
-        if "g_Bumpmap" + slot in textures:
+        if mtd_bools["bumpmap"]:
             texture = textures["g_Bumpmap" + slot]
-
             node = node_tree.nodes.new("ShaderNodeTexImage")
             node.location = (-550, -330 + slot_y_offset)
-            node.name = f"g_Bumpmap{slot} | {texture.path}"
-            if self.dds_images:
-                try:
-                    node.image = self.dds_images[texture.path]
-                except KeyError:
-                    self.warning(f"Could not find TPF texture: {texture.path}")
-
+            node.image = self.get_dds_image(texture.path)
+            node.name = f"g_Bumpmap{slot}"
             normal_map_node = node_tree.nodes.new("ShaderNodeNormalMap")
             normal_map_node.name = "NormalMap2" if is_second_slot else "NormalMap"
             normal_map_node.space = "TANGENT"
@@ -314,7 +363,9 @@ class FLVERImporter:
             node_tree.links.new(node.outputs["Color"], normal_map_node.inputs["Color"])
             node_tree.links.new(normal_map_node.outputs["Normal"], bsdf.inputs["Normal"])
 
-        return bsdf
+        # NOTE: [M] multi-texture still only uses one `g_Height` map if present.
+
+        return bsdf, diffuse_node
 
     def create_mesh_obj(
         self,
@@ -426,7 +477,7 @@ class FLVERImporter:
         self.context.view_layer.objects.active = bl_mesh_obj
 
         bone_vertex_groups = []  # type: list[bpy.types.VertexGroup]
-        bone_vertex_group_indices = {}
+        bone_vertex_group_indices = {}  # type: dict[(int, float), list[int]]
 
         # TODO: I *believe* that vertex bone indices are global if and only if `mesh.bone_indices` is empty. (In DSR,
         #  it's never empty.)
@@ -468,57 +519,81 @@ class FLVERImporter:
         armature_mod.object = self.armature
         armature_mod.show_in_editmode = True
         armature_mod.show_on_cage = True
+
+        # Custom properties with mesh data.
+        bl_mesh_obj["is_bind_pose"] = flver_mesh.is_bind_pose
+        # NOTE: This index is sometimes invalid for vanilla map FLVERs.
+        bl_mesh_obj["default_bone_index"] = flver_mesh.default_bone_index
+
         return bl_mesh_obj
 
     def create_bones(self):
         """Create FLVER bones in Blender.
 
-        Bones are a little confusing in Blender. See:
+        Bones can be a little confusing in Blender. See:
             https://docs.blender.org/api/blender_python_api_2_71_release/info_gotcha.html#editbones-posebones-bone-bones
 
         The short story is that the "resting state" of each bone, including its head and tail position, is created in
-        EDIT mode (as `EditBone` instances). This data will typically not be edited again when posing/animating a mesh
-        that is rigged to those bones' Armature. Instead, the bones are accessed as `PoseBone` instances in POSE mode,
-        where they are treated like objects with transform data.
+        EDIT mode (as `EditBone` instances). This data defines the "zero deformation" state of the mesh with regard to
+        bone weights, and will typically not be edited again when posing/animating a mesh that is rigged to this
+        Armature. Instead, the bones are accessed as `PoseBone` instances in POSE mode, where they are treated like
+        objects with transform data.
 
         If a FLVER bone has a parent bone, its FLVER transform is given relative to its parent's frame of reference.
         Determining the final position of any given bone in world space therefore requires all of its parents'
-        transforms to be accumulated from the root down.
+        transforms to be accumulated up to the root.
 
-        Note that while bones are typically used for characters, objects, and parts (e.g. armor/weapons), they are also
-        occasionally used by map pieces to position elements (sometimes animated) like foliage, and even walls. When
-        this happens, so far, the bones have always been root bones, and basically function as anchors for particular
-        meshes of that FLVER, or even potentially just a subset of its vertices.
-
-        NOTE: Because we want to see character models "unposed" (with EDIT BONE transforms set by the FLVER bone data),
-        but we want to see map piece models "posed" (with POSE BONE transforms set by the FLVER bone data), bones are
-        treated differently for the two model types. This is detected by checking vertex bone weights, which are always
-        zero for map pieces (-> pose bones) and always have at least one non-zero value for characters (-> edit bones).
+        Note that while bones are typically used for obvious animation cases in characters, objects, and parts (e.g.
+        armor/weapons), they are also occasionally used in a fairly basic way by map pieces to position certain vertices
+        in certain meshes. When this happens, so far, the bones have always been root bones, and basically function as
+        anchors for certain vertices. I strongly suspect, but have not absolutely confirmed, that the `is_bind_pose`
+        attribute of each mesh indicates whether FLVER bone data should be written to the EditBone (`is_bind_pose=True`)
+        or PoseBone (`is_bind_pose=False`). Of course, we have to decide for each BONE, not each mesh, so currently I am
+        enforcing that `is_bind_post=False` for ALL meshes in order to write the bone transforms to PoseBone rather than
+        EditBone. A warning will be logged if only some of them are False.
 
         The AABB of each bone is presumably generated to include all vertices that use that bone as a weight.
         """
         bl_armature = bpy.data.armatures.new(f"{self.name} Armature")
         bl_armature_obj = self.create_obj(f"FLVER {self.name}", bl_armature, parent_to_armature=False)
 
-        use_pose_transforms = self.flver.check_if_all_zero_bone_weights()
+        write_bone_type = ""
+        warn_partial_bind_pose = False
+        for mesh in self.flver.meshes:
+            if mesh.is_bind_pose:  # characters, objects, parts
+                if not write_bone_type:
+                    write_bone_type = "EDIT"  # write bone transforms to EditBones
+                elif write_bone_type == "POSE":
+                    warn_partial_bind_pose = True
+                    write_bone_type = "EDIT"
+                    break
+            else:  # map pieces
+                if not write_bone_type:
+                    write_bone_type = "POSE"  # write bone transforms to PoseBones
+                elif write_bone_type == "EDIT":
+                    warn_partial_bind_pose = True
+                    break  # keep EDIT default
+        if warn_partial_bind_pose:
+            self.warning(
+                f"Some meshes in FLVER {self.name} use `is_bind_pose` (bone data written to EditBones) and some do not "
+                f"(bone data written to PoseBones). Writing all bone data to EditBones."
+            )
 
         self.context.view_layer.objects.active = bl_armature_obj
         if bpy.ops.object.mode_set.poll():
             bpy.ops.object.mode_set(mode="EDIT", toggle=False)
 
-        def get_bone_name(index_: int, flver_bone_name_: str):
-            return f"{self.name} Bone {index_} {flver_bone_name_}"
-
         edit_bones = []  # all bones
         for i, flver_bone in enumerate(self.flver.bones):
-            edit_bone = bl_armature_obj.data.edit_bones.new(f"{self.name} Bone {flver_bone.name}")
+            edit_bone = bl_armature_obj.data.edit_bones.new(self.bl_bone_names[i])
             edit_bone: bpy_types.EditBone
+            if flver_bone.child_index != -1:
+                # TODO: Check if this is set IFF bone has exactly one child, which can be auto-detected.
+                edit_bone["child_name"] = self.bl_bone_names[flver_bone.child_index]
             if flver_bone.next_sibling_index != -1:
-                next_b = self.flver.bones[flver_bone.next_sibling_index]
-                edit_bone["next_sibling_name"] = get_bone_name(flver_bone.next_sibling_index, next_b.name)
+                edit_bone["next_sibling_name"] = self.bl_bone_names[flver_bone.next_sibling_index]
             if flver_bone.previous_sibling_index != -1:
-                previous_b = self.flver.bones[flver_bone.previous_sibling_index]
-                edit_bone["previous_sibling_name"] = get_bone_name(flver_bone.previous_sibling_index, previous_b.name)
+                edit_bone["previous_sibling_name"] = self.bl_bone_names[flver_bone.previous_sibling_index]
             edit_bones.append(edit_bone)
 
         # TODO: The FLVER bone hierarchy is weirdly incomplete (Pelvis is not a child of master, 'Nub' bones have no
@@ -526,7 +601,6 @@ class FLVERImporter:
         #  supported, I'll need to read the HKX skeleton (would need `soulstruct-havok` for such a library anyway).
 
         for flver_bone, edit_bone in zip(self.flver.bones, edit_bones):
-            edit_bone.use_local_location = False  # TODO: seems to do nothing
             if flver_bone.parent_index == -1:
                 # Root bone. Use default head.
                 edit_bone.head = (0.0, 0.0, 0.0)
@@ -539,10 +613,10 @@ class FLVERImporter:
                 # edit_bone.use_connect = True
 
             if flver_bone.child_index == -1:
-                # No unique child bone. Use default tail 'stub' in X direction from bone rotation.
-                fl_x_vector = flver_bone.get_unit_x_vector(self.flver.bones, length=0.1)
+                # No unique child bone. Use default tail 'stub' in Y direction (vertical) from bone rotation.
+                tail_stub = flver_bone.get_vector_in_world_space(self.flver.bones, Vector3(0, 0.1, 0))
                 head = edit_bone.head
-                edit_bone.tail = (head[0] - fl_x_vector[0], head[1] - fl_x_vector[2], head[2] + fl_x_vector[1])
+                edit_bone.tail = (head[0] - tail_stub[0], head[1] - tail_stub[2], head[2] + tail_stub[1])
             else:
                 # Set tail to absolute translate of child bone.
                 flver_tail = self.flver.bones[flver_bone.child_index].get_absolute_translate(self.flver.bones)
@@ -553,8 +627,8 @@ class FLVERImporter:
         if bpy.ops.object.mode_set.poll():
             bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
 
-        if use_pose_transforms:
-            #
+        if write_bone_type == "POSE":
+            # We use local space coordinates for each bone.
             for pose_bone, flver_bone in zip(bl_armature_obj.pose.bones, self.flver.bones):
                 t = flver_bone.translate
                 pose_bone.location = Vector((-t.x, t.y, t.z))  # CORRECT
@@ -572,32 +646,39 @@ class FLVERImporter:
 
         bl_dummy_parent = self.create_obj(f"{self.name} Dummies")
 
-        for dummy in self.flver.dummies:
-            # We keep the default Empty display type (axis arrows).
-            bl_dummy = self.create_obj(f"{self.name} Dummy {dummy.reference_id}", parent_to_armature=False)
-            self.context.view_layer.objects.active = bl_dummy  # select object
+        for i, dummy in enumerate(self.flver.dummies):
+            bl_dummy = self.create_obj(f"{self.name} Dummy({i}) {dummy.reference_id}", parent_to_armature=False)
             bl_dummy.parent = bl_dummy_parent
+            bl_dummy.empty_display_type = "ARROWS"  # best display type/size I've found (single arrow not sufficient)
+            bl_dummy.empty_display_size = 0.05
 
-            # TODO: are FLVER dummy coordinates in 'parent_bone_name' space?
             bl_dummy.location = (-dummy.position.x, -dummy.position.z, dummy.position.y)
             if dummy.use_upward_vector:
                 bl_dummy.rotation_euler = fl_forward_up_vectors_to_bl_euler_angles(dummy.forward, dummy.upward)
-            else:  # TODO: I assume this is right (dummies only rotate around vertical axis)
+            else:  # TODO: I assume this is right (up-ignoring dummies only rotate around vertical axis)
                 bl_dummy.rotation_euler = fl_forward_up_vectors_to_bl_euler_angles(dummy.forward, Vector3(0, 0, 1))
 
             # TODO: Parent bone index is used to "place" the dummy. These are usually dedicated bones at the origin,
             #  e.g. 'Model_Dmy', and so won't matter for placement in most cases. I assume they can be used to offset
-            #  the dummy while still having its movement attached to the attach bone.
+            #  the dummy while still having its movement attached to the attach bone. In Blender, we just create two
+            #  contraints and leave it to the user to understand the difference in animations.
 
-            if dummy.attach_bone_index:
-                dummy_constraint = bl_dummy.constraints.new(type="CHILD_OF")
-                dummy_constraint.target = self.armature
-                dummy_constraint.subtarget = f"{self.name} Bone {self.flver.bones[dummy.attach_bone_index].name}"
+            # Dummy position coordinates are given in the space of this parent bone.
+            if dummy.parent_bone_index != -1:
+                parent_constraint = bl_dummy.constraints.new(type="CHILD_OF")
+                parent_constraint.name = "Dummy Parent Bone"
+                parent_constraint.target = self.armature
+                parent_constraint.subtarget = self.bl_bone_names[dummy.parent_bone_index]
+
+            # Dummy moves with this bone during animations.
+            if dummy.attach_bone_index != -1:
+                attach_constraint = bl_dummy.constraints.new(type="CHILD_OF")
+                attach_constraint.name = "Dummy Attach Bone"
+                attach_constraint.target = self.armature
+                attach_constraint.subtarget = self.bl_bone_names[dummy.attach_bone_index]
 
             # NOTE: This property is the canonical dummy ID. You are free to rename the dummy without affecting it.
             bl_dummy["reference_id"] = dummy.reference_id  # int
-            bl_dummy["parent_bone_name"] = self.flver.bones[dummy.parent_bone_index].name  # str
-            bl_dummy["attach_bone_name"] = self.flver.bones[dummy.attach_bone_index].name  # str
             bl_dummy["flag_1"] = dummy.flag_1  # bool
             bl_dummy["use_upward_vector"] = dummy.use_upward_vector  # bool
             # NOTE: These two properties are only non-zero in Sekiro (and probably Elden Ring).
@@ -611,7 +692,6 @@ class FLVERImporter:
         self.all_bl_objs.append(obj)
         if parent_to_armature:
             obj.parent = self.armature
-
         return obj
 
     def warning(self, warning: str):
