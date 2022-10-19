@@ -640,11 +640,6 @@ def get_vertices_face_sets_bone_indices(
 
             v_key = (tuple(position), tuple(uvs), tuple(colors))  # hashable
 
-            # TODO: debugging extra verts
-            if "Mesh 0" in bl_mesh_obj.name:
-                if v_key in flver_v_indices:
-                    print("Reusing vertex key:", v_key)
-
             try:
                 fl_v_i = flver_v_indices[v_key]
             except KeyError:
