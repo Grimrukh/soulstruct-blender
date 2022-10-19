@@ -12,6 +12,7 @@ from __future__ import annotations
 
 __all__ = ["FLVERImporter"]
 
+import math
 import os
 import re
 import typing as tp
@@ -20,11 +21,11 @@ from pathlib import Path
 import bpy
 import bpy_types
 import bmesh
-from mathutils import Vector
+from mathutils import Euler, Vector, Matrix
 
 from soulstruct.utilities.maths import Vector3
 
-from .core import Transform, FLVERImportError, fl_forward_up_vectors_to_bl_euler_angles
+from .core import Transform, FLVERImportError, fl_forward_up_vectors_to_bl_euler, is_uniform
 
 if tp.TYPE_CHECKING:
     from io_flver import ImportFLVER
@@ -37,6 +38,19 @@ NORMAL_MAP_STRENGTH = 0.4
 ROUGHNESS = 0.75
 
 ARMATURE_RE = re.compile(r"(.*) Armature Obj")
+
+
+# Blender matrix to convert from FromSoft space to Blender space.
+FL_TO_BL_SPACE_POS = Matrix((
+    (-1.0, 0.0, 0.0),
+    (0.0, 0.0, -1.0),
+    (0.0, 1.0, 0.0),
+))
+FL_TO_BL_SPACE_ROT = Matrix((
+    (1.0, 0.0, 0.0),
+    (0.0, 0.0, 1.0),
+    (0.0, -1.0, 0.0),
+))
 
 
 class FLVERImporter:
@@ -73,10 +87,8 @@ class FLVERImporter:
         """Read a FLVER into a collection of Blender mesh objects (and one Armature).
 
         TODO:
-            - Bones for characters/objects not being set up correctly (head/tail placement wrong).
             - Not fully happy with how duplicate materials are handled.
                 - If an existing material is found, but has no texture images, maybe just load those into it.
-            - Mesh injection export for characters/objects still buggy.
         """
         self.flver = flver
         self.name = file_path.name.split(".")[0]  # drop all extensions
@@ -84,7 +96,9 @@ class FLVERImporter:
         # Create FLVER bone index -> Blender bone name dictionary. (Blender names are UTF-8.)
         self.bl_bone_names.clear()
         for bone_index, bone in enumerate(self.flver.bones):
-            self.bl_bone_names[bone_index] = f"{self.name} Bone({bone_index}) {bone.name}"
+            # TODO: Just using actual bone names to avoid the need for parsing rules on export.
+            # self.bl_bone_names[bone_index] = f"{self.name} Bone({bone_index}) {bone.name}"
+            self.bl_bone_names[bone_index] = bone.name
 
         # Set mode to OBJECT and deselect all objects.
         if bpy.ops.object.mode_set.poll():
@@ -134,7 +148,7 @@ class FLVERImporter:
         for i, flver_mesh in enumerate(self.flver.meshes):
             mesh_name = f"{self.name} Mesh {i}"
             bl_obj = self.create_mesh_obj(flver_mesh, mesh_name)
-            bl_obj["Face Set Count"] = len(flver_mesh.face_sets)  # custom property
+            bl_obj["face_set_count"] = len(flver_mesh.face_sets)  # custom property
 
         self.create_dummies()
 
@@ -162,10 +176,10 @@ class FLVERImporter:
             elif self.dds_dump_path:
                 dds_path = self.dds_dump_path / f"{texture_path.stem}.dds"
                 if dds_path.is_file():
-                    print(f"Loading dumped DDS texture: {texture_path.stem}.dds")
+                    # print(f"Loading dumped DDS texture: {texture_path.stem}.dds")
                     self.dds_images[str(texture_path)] = bpy.data.images.load(str(dds_path))
                 else:
-                    self.warning(f"Could not find TPF or dumped texture '{texture_path.stem}' for FLVER {self.name}.")
+                    self.warning(f"Could not find TPF or dumped texture '{texture_path.stem}' for FLVER '{self.name}'.")
 
     def create_material(self, flver_material, use_existing=True):
         """Create a Blender material that represents a single `FLVER.Material`.
@@ -179,29 +193,28 @@ class FLVERImporter:
         unneeded materials from Blender as you go.
         """
 
-        bl_material_name = f"{flver_material.name} <{Path(flver_material.mtd_path).stem}>"
-
-        existing_material = bpy.data.materials.get(bl_material_name)
+        existing_material = bpy.data.materials.get(flver_material.name)
         if existing_material is not None:
             if use_existing:
                 return existing_material
             # TODO: Should append '<i>' to duplicated name of new material...
 
-        bl_material = bpy.data.materials.new(name=bl_material_name)
+        bl_material = bpy.data.materials.new(name=flver_material.name)
         if self.enable_alpha_hashed:
             bl_material.blend_method = "HASHED"  # show alpha in viewport
 
         # Critical `Material` information stored in custom properties.
-        bl_material["mtd_path"] = flver_material.mtd_path  # str
-        bl_material["flags"] = flver_material.flags  # int
-        bl_material["gx_index"] = flver_material.gx_index  # int
-        bl_material["unk_x18"] = flver_material.unk_x18  # int
+        bl_material["material_mtd_path"] = flver_material.mtd_path  # str
+        bl_material["material_flags"] = flver_material.flags  # int
+        bl_material["material_gx_index"] = flver_material.gx_index  # int
+        bl_material["material_unk_x18"] = flver_material.unk_x18  # int
+        bl_material["material_texture_count"] = len(flver_material.textures)  # int
 
         # Texture information is also stored here.
         for i, fl_tex in enumerate(flver_material.textures):
             bl_material[f"texture[{i}]_path"] = fl_tex.path  # str
             bl_material[f"texture[{i}]_texture_type"] = fl_tex.texture_type  # str
-            bl_material[f"texture[{i}]_scale"] = repr(tuple(fl_tex.scale))  # str (tuple)
+            bl_material[f"texture[{i}]_scale"] = tuple(fl_tex.scale)  # tuple (float)
             bl_material[f"texture[{i}]_unk_x10"] = fl_tex.unk_x10  # int
             bl_material[f"texture[{i}]_unk_x11"] = fl_tex.unk_x11  # bool
             bl_material[f"texture[{i}]_unk_x14"] = fl_tex.unk_x14  # float
@@ -482,7 +495,6 @@ class FLVERImporter:
         # TODO: I *believe* that vertex bone indices are global if and only if `mesh.bone_indices` is empty. (In DSR,
         #  it's never empty.)
         if flver_mesh.bone_indices:
-            # print(f"Bone indices: {flver_mesh.bone_indices}")
             for mesh_bone_index in flver_mesh.bone_indices:
                 group = bl_mesh_obj.vertex_groups.new(name=self.armature.pose.bones[mesh_bone_index].name)
                 bone_vertex_groups.append(group)
@@ -509,8 +521,8 @@ class FLVERImporter:
                     bone_vertex_group_indices.setdefault((v_bone_index, v_bone_weight), []).append(i)
 
         # Awkwardly, we need a separate call to `VertexGroups[bone_index].add(indices, weight)` for each combination
-        # of `bone_index` and `weight`, so the dictionary keys constructed below are a tuple of those two to
-        # minimize the number of `add()` calls needed below.
+        # of `bone_index` and `weight`, so the dictionary keys constructed above are a tuple of those two to minimize
+        # the number of `add()` calls needed below.
         for (bone_index, bone_weight), bone_vertices in bone_vertex_group_indices.items():
             bone_vertex_groups[bone_index].add(bone_vertices, bone_weight, "ADD")
 
@@ -522,7 +534,9 @@ class FLVERImporter:
 
         # Custom properties with mesh data.
         bl_mesh_obj["is_bind_pose"] = flver_mesh.is_bind_pose
-        # NOTE: This index is sometimes invalid for vanilla map FLVERs.
+        # We only store this setting for the first `FaceSet`.
+        bl_mesh_obj["cull_back_faces"] = flver_mesh.face_sets[0].cull_back_faces
+        # NOTE: This index is sometimes invalid for vanilla map FLVERs (e.g., 1 when there is only one bone).
         bl_mesh_obj["default_bone_index"] = flver_mesh.default_bone_index
 
         return bl_mesh_obj
@@ -584,43 +598,62 @@ class FLVERImporter:
             bpy.ops.object.mode_set(mode="EDIT", toggle=False)
 
         edit_bones = []  # all bones
-        for i, flver_bone in enumerate(self.flver.bones):
+        for i, fl_bone in enumerate(self.flver.bones):
             edit_bone = bl_armature_obj.data.edit_bones.new(self.bl_bone_names[i])
+            edit_bone["unk_x3c"] = fl_bone.unk_x3c
             edit_bone: bpy_types.EditBone
-            if flver_bone.child_index != -1:
+            if fl_bone.child_index != -1:
                 # TODO: Check if this is set IFF bone has exactly one child, which can be auto-detected.
-                edit_bone["child_name"] = self.bl_bone_names[flver_bone.child_index]
-            if flver_bone.next_sibling_index != -1:
-                edit_bone["next_sibling_name"] = self.bl_bone_names[flver_bone.next_sibling_index]
-            if flver_bone.previous_sibling_index != -1:
-                edit_bone["previous_sibling_name"] = self.bl_bone_names[flver_bone.previous_sibling_index]
+                edit_bone["child_name"] = self.bl_bone_names[fl_bone.child_index]
+            if fl_bone.next_sibling_index != -1:
+                edit_bone["next_sibling_name"] = self.bl_bone_names[fl_bone.next_sibling_index]
+            if fl_bone.previous_sibling_index != -1:
+                edit_bone["previous_sibling_name"] = self.bl_bone_names[fl_bone.previous_sibling_index]
             edit_bones.append(edit_bone)
 
-        # TODO: The FLVER bone hierarchy is weirdly incomplete (Pelvis is not a child of master, 'Nub' bones have no
-        #  parents in at least some cases). Doesn't really matter for modelling but if animations in Blender are ever
-        #  supported, I'll need to read the HKX skeleton (would need `soulstruct-havok` for such a library anyway).
+        # NOTE: Bones that have no vertices weighted to them are left as 'unused' root bones in the FLVER skeleton.
+        # They may be animated by HKX animations (and will affect their children appropriately) but will not actually
+        # affect any vertices in the mesh.
 
-        for flver_bone, edit_bone in zip(self.flver.bones, edit_bones):
-            if flver_bone.parent_index == -1:
-                # Root bone. Use default head.
-                edit_bone.head = (0.0, 0.0, 0.0)
+        for fl_bone, edit_bone in zip(self.flver.bones, edit_bones):
+
+            if write_bone_type == "POSE":
+                # All edit bones are just Y-direction stubs of length 1 ("forward").
+                # This rotation makes map pieces 'pose' bone data transform as expected.
+                edit_bone.head = Vector((0, 0, 0))
+                edit_bone.tail = Vector((0, 1, 0))
+                continue
+
+            fl_bone_translate, fl_bone_rotate_mat = fl_bone.get_absolute_translate_rotate(self.flver.bones)
+            fl_bone_rotate = fl_bone_rotate_mat.to_euler_angles(radians=True)
+
+            # Check if scale is ALMOST one and correct it.
+            # TODO: Maybe too aggressive?
+            if is_uniform(fl_bone.scale, rel_tol=0.001) and math.isclose(fl_bone.scale.x, 1.0, rel_tol=0.001):
+                fl_bone.scale = Vector3.ones()
+
+            if not is_uniform(fl_bone.scale, rel_tol=0.001):
+                self.warning(f"Bone {fl_bone.name} has non-uniform scale: {fl_bone.scale}. Left as identity.")
+                length = 0.1
+            elif any(c < 0.0 for c in fl_bone.scale):
+                self.warning(f"Bone {fl_bone.name} has negative scale: {fl_bone.scale}. Left as identity.")
+                length = 0.1
             else:
-                # Head is at this bone's absolute translate.
-                flver_head = flver_bone.get_absolute_translate(self.flver.bones)
-                parent_edit_bone = edit_bones[flver_bone.parent_index]
+                length = 0.1 * fl_bone.scale.x
+
+            bl_rotate_euler = Euler((fl_bone.rotate.x, fl_bone_rotate.z, -fl_bone_rotate.y))
+            tail, roll = bl_rotate_euler.to_quaternion().to_axis_angle()
+            edit_bone.tail = length * tail.normalized()
+            edit_bone.roll = roll
+            bl_bone_translate = FL_TO_BL_SPACE_POS @ Vector(fl_bone_translate)
+            # Exact bone absolute position is always at `head`.
+            edit_bone.head = bl_bone_translate
+            edit_bone.tail += bl_bone_translate
+
+            if fl_bone.parent_index != -1:
+                parent_edit_bone = edit_bones[fl_bone.parent_index]
                 edit_bone.parent = parent_edit_bone
-                edit_bone.head = (-flver_head[0], -flver_head[2], flver_head[1])
                 # edit_bone.use_connect = True
-
-            if flver_bone.child_index == -1:
-                # No unique child bone. Use default tail 'stub' in Y direction (vertical) from bone rotation.
-                tail_stub = flver_bone.get_vector_in_world_space(self.flver.bones, Vector3(0, 0.1, 0))
-                head = edit_bone.head
-                edit_bone.tail = (head[0] - tail_stub[0], head[1] - tail_stub[2], head[2] + tail_stub[1])
-            else:
-                # Set tail to absolute translate of child bone.
-                flver_tail = self.flver.bones[flver_bone.child_index].get_absolute_translate(self.flver.bones)
-                edit_bone.tail = (-flver_tail[0], -flver_tail[2], flver_tail[1])
 
         del edit_bones  # clear references to edit bones as we exit EDIT mode
 
@@ -628,16 +661,13 @@ class FLVERImporter:
             bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
 
         if write_bone_type == "POSE":
-            # We use local space coordinates for each bone.
-            for pose_bone, flver_bone in zip(bl_armature_obj.pose.bones, self.flver.bones):
-                t = flver_bone.translate
-                pose_bone.location = Vector((-t.x, t.y, t.z))  # CORRECT
-                r = flver_bone.rotate
-                pose_bone.rotation_mode = "XYZ"  # has to be done before setting `.rotation_euler` (zeroes it)
-                pose_bone.rotation_euler = Vector((r.x, -r.y, r.z))  # TODO: Y correct, but X and Z not confirmed
-                pose_bone.scale = Vector(flver_bone.scale)
-                # TODO: Bounding box? Can it be automatically generated from, say, a mesh's vertices min/max relative to
-                #  the mesh's bone...?
+            for fl_bone, pose_bone in zip(self.flver.bones, bl_armature_obj.pose.bones):
+                fl_bone_translate, fl_bone_rotate = fl_bone.get_absolute_translate_rotate(self.flver.bones)
+                pose_bone.location = FL_TO_BL_SPACE_POS @ Vector(fl_bone_translate)
+                pose_bone.rotation_mode = "XYZ"  # not Quaternion
+                bl_bone_rotate = FL_TO_BL_SPACE_ROT @ Vector(fl_bone_rotate.to_euler_angles(radians=True))
+                pose_bone.rotation_euler = bl_bone_rotate
+                pose_bone.scale = Vector((fl_bone.scale.x, fl_bone.scale.z, fl_bone.scale.y))
 
         return bl_armature_obj
 
@@ -647,16 +677,16 @@ class FLVERImporter:
         bl_dummy_parent = self.create_obj(f"{self.name} Dummies")
 
         for i, dummy in enumerate(self.flver.dummies):
-            bl_dummy = self.create_obj(f"{self.name} Dummy({i}) {dummy.reference_id}", parent_to_armature=False)
+            bl_dummy = self.create_obj(f"Dummy<{i}> [{dummy.reference_id}]", parent_to_armature=False)
             bl_dummy.parent = bl_dummy_parent
             bl_dummy.empty_display_type = "ARROWS"  # best display type/size I've found (single arrow not sufficient)
             bl_dummy.empty_display_size = 0.05
 
             bl_dummy.location = (-dummy.position.x, -dummy.position.z, dummy.position.y)
             if dummy.use_upward_vector:
-                bl_dummy.rotation_euler = fl_forward_up_vectors_to_bl_euler_angles(dummy.forward, dummy.upward)
+                bl_dummy.rotation_euler = fl_forward_up_vectors_to_bl_euler(dummy.forward, dummy.upward)
             else:  # TODO: I assume this is right (up-ignoring dummies only rotate around vertical axis)
-                bl_dummy.rotation_euler = fl_forward_up_vectors_to_bl_euler_angles(dummy.forward, Vector3(0, 0, 1))
+                bl_dummy.rotation_euler = fl_forward_up_vectors_to_bl_euler(dummy.forward, Vector3(0, 0, 1))
 
             # TODO: Parent bone index is used to "place" the dummy. These are usually dedicated bones at the origin,
             #  e.g. 'Model_Dmy', and so won't matter for placement in most cases. I assume they can be used to offset
@@ -679,6 +709,7 @@ class FLVERImporter:
 
             # NOTE: This property is the canonical dummy ID. You are free to rename the dummy without affecting it.
             bl_dummy["reference_id"] = dummy.reference_id  # int
+            bl_dummy["color"] = dummy.color  # RGBA
             bl_dummy["flag_1"] = dummy.flag_1  # bool
             bl_dummy["use_upward_vector"] = dummy.use_upward_vector  # bool
             # NOTE: These two properties are only non-zero in Sekiro (and probably Elden Ring).

@@ -11,7 +11,7 @@ import bpy
 from bpy.props import StringProperty, BoolProperty, CollectionProperty
 # noinspection PyUnresolvedReferences
 from bpy.types import Operator
-from bpy_extras.io_utils import ImportHelper
+from bpy_extras.io_utils import ImportHelper, ExportHelper
 
 modules_path = str(Path(__file__).parent / "modules")
 if modules_path not in sys.path:
@@ -29,7 +29,7 @@ if "FLVERImporter" in locals():
     importlib.reload(sys.modules["io_flver.import_flver"])
 
 from io_flver.core import FLVERImportError, Transform, get_msb_transforms
-from io_flver.export_flver import inject_flver_content
+from io_flver.export_flver import FLVERExporter
 from io_flver.import_flver import FLVERImporter
 
 if tp.TYPE_CHECKING:
@@ -211,7 +211,7 @@ class ImportFLVER(Operator, ImportHelper):
         return {"FINISHED"}
 
 
-class ImportFLVERWithMSBChoice(bpy.types.Operator):
+class ImportFLVERWithMSBChoice(Operator):
     """Presents user with a choice of enums from `CHOICES` global list.
 
     See: https://blender.stackexchange.com/questions/6512/how-to-call-invoke-popup
@@ -279,25 +279,13 @@ class ImportFLVERWithMSBChoice(bpy.types.Operator):
         bpy.ops.wm.msb_choice_operator("INVOKE_DEFAULT")
 
 
-# TODO: Complete self-sufficient FLVER export!
-"""
-- Dummies, bone information, material information, mesh information, buffer layout information all needed.
-    - Can use empties for dummies.
-    - Can use empties with custom properties for buffer layout and header information.
-    - Can validate buffer layout against materials...?
-- Blender function that generates the "Info Empty" just mentioned, with appropriate defaults. 
-- Will NOT support GX Lists (initially).
-- Will NOT support LOD "face set subsets" (too complicated and weird). LOD face sets will be duplicates of main set. 
-"""
-
-
-class ExportFLVERMeshes(Operator, ImportHelper):
+class ExportFLVER(Operator, ExportHelper):
     """Export FLVER meshes only into an existing FLVER file.
 
     Note that this class uses `ImportHelper` still, since we are choosing an existing file with it.
     """
-    bl_idname = "export_scene.flver_meshes"
-    bl_label = "Export FLVER Meshes"
+    bl_idname = "export_scene.flver"
+    bl_label = "Export FLVER"
 
     # ExportHelper mixin class uses this
     filename_ext = ".flver"
@@ -307,6 +295,12 @@ class ExportFLVERMeshes(Operator, ImportHelper):
         options={'HIDDEN'},
         maxlen=255,  # Max internal buffer length, longer would be clamped.
     )
+
+    # TODO: Options to:
+    #   - Export straight into Binders with given ID (e.g., 200).
+    #   - Export DDS textures into BND TPF, CHRTPFBXF, or `mAA` folder BXFs.
+    #       - Probably complex/useful enough to be a separate export function.
+    #   - Detect appropriate MSB and update transform of this model instance (if unique) (low priority).
 
     def execute(self, context):
         selected_objs = [obj for obj in context.selected_objects]
@@ -321,13 +315,44 @@ class ExportFLVERMeshes(Operator, ImportHelper):
             # Must be in OBJECT mode for export, as some data (e.g. UVs) is not accessible in EDIT mode.
             bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
 
+        exporter = FLVERExporter(self, context)
+
         try:
-            inject_flver_content(flver_parent_obj, self.filepath)
+            flver = exporter.export_flver(flver_parent_obj)
         except Exception as ex:
             import traceback
             traceback.print_exc()
-            self.report({"ERROR"}, f"Cannot export mesh to FLVER. Error: {ex}")
+            self.report({"ERROR"}, f"Cannot get exported FLVER. Error: {ex}")
+            print(f"Cannot get exported FLVER. Error: {ex}")
+        else:
+            try:
+                # Will create a `.bak` file automatically if absent.
+                flver.write(Path(self.filepath))
+            except Exception as ex:
+                import traceback
+                traceback.print_exc()
+                self.report({"ERROR"}, f"Cannot write exported FLVER. Error: {ex}")
+                print(f"Cannot write exported FLVER. Error: {ex}")
+
         return {"FINISHED"}
+
+
+class FLVER_PT_main_panel(bpy.types.Panel):
+    bl_label = "Main Panel"
+    bl_idname = "FLVER_PT_main_panel"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "FLVER"
+
+    def draw(self, context):
+        obj = context.object
+        row = self.layout.row()
+        row.label(text="Hello world!", icon="WORLD_DATA")
+
+        row = self.layout.row()
+        row.operator("import_scene.flver")
+        row = self.layout.row()
+        row.operator("export_scene.flver")
 
 
 def menu_func_import(self, context):
@@ -335,13 +360,14 @@ def menu_func_import(self, context):
 
 
 def menu_func_export(self, context):
-    self.layout.operator(ExportFLVERMeshes.bl_idname, text="FLVER Meshes (.flver)")
+    self.layout.operator(ExportFLVER.bl_idname, text="FLVER (.flver)")
 
 
 classes = (
     ImportFLVER,
     ImportFLVERWithMSBChoice,
-    ExportFLVERMeshes,
+    ExportFLVER,
+    FLVER_PT_main_panel,
 )
 
 
@@ -355,7 +381,6 @@ def register():
 def unregister():
     for cls in classes:
         bpy.utils.unregister_class(cls)
-
     bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)
     bpy.types.TOPBAR_MT_file_export.remove(menu_func_export)
 

@@ -1,9 +1,7 @@
 """Inspecting various FLVER properties for testing full export."""
 from pathlib import Path
 
-from soulstruct.containers import Binder
-from soulstruct.base.models.flver import FLVER, Version
-from soulstruct.utilities.inspection import profile_function
+from soulstruct.base.models.flver import FLVER
 
 
 VANILLA_CHR_PATH = Path("C:/Steam/steamapps/common/DARK SOULS REMASTERED (Vanilla Backup)/chr")
@@ -11,50 +9,38 @@ VANILLA_MAP_PATH = Path("C:/Steam/steamapps/common/DARK SOULS REMASTERED (Vanill
 TEST_PATH = Path(__file__).parent / "tests"
 
 
-class BlenderFLVERMaterial:
-    """FLVER Material information."""
-
-    # TODO: Storing most of these already in Blender, I think.
-
-    name: str
-    mtd_path: str
-    flags: int
-    gx_index: int
-    unk_x18: int
+def exported_flver():
+    exported = FLVER("C:/Users/Scott/Documents/untitled.flver")
+    print(exported.meshes)
 
 
-class BLenderFLVERMesh:
-    """FLVER Mesh information."""
+def test_chr():
 
-    # TODO: Should mostly be already set?
+    chr_flver = FLVER.from_chrbnd(VANILLA_CHR_PATH / "c1200.chrbnd.dcx")
+    # exported = FLVER("C:/Users/Scott/Documents/untitled.flver")
 
-    is_bind_pose: bool
-    material_index: int
-    default_bone_index: int
-    # bounding_box: tp.Optional[BoundingBox]
-
-    # bone_indices: list[int]
-    # face_sets: list[FaceSet]
-    # vertex_buffers: list[VertexBuffer]
-    # vertices: list[Vertex]
+    for dummy in chr_flver.dummies:
+        print(dummy)
 
 
-# @profile_function(20)
 def test():
-    # chrbnd = Binder(VANILLA_CHR_PATH / "c1200.chrbnd.dcx")
-    # flver = FLVER(chrbnd[200])
-    # for mesh in flver.meshes:
-    #     print(mesh.is_bind_pose)
-    # for bone in flver.bones:
-    #     print(bone.name)
 
-    outside_parish = FLVER(VANILLA_MAP_PATH / "m10_01_00_00/m3210B1A10.flver.dcx")
-    mesh_11 = outside_parish.meshes[11]  # main ground mesh
-    print(outside_parish.materials[mesh_11.material_index])
+    map_flver = FLVER(VANILLA_MAP_PATH / "m10_01_00_00/m3220B1A10.flver.dcx")
+    exported = FLVER("C:/Users/Scott/Documents/untitled.flver")
 
-    # chrbnd[200].set_uncompressed_data(flver.pack_dcx())
-    # chrbnd.write("c5280_write.chrbnd.dcx")
+    for mesh, exp_mesh in zip(map_flver.meshes, exported.meshes):
+        m = len(mesh.vertices)
+        exp_m = len(exp_mesh.vertices)
+        print(m, exp_m, exp_m / m)
+
+    # for bone in map_flver.bones:
+    #     print(bone.name, bone.translate, bone.rotate, bone.unk_x3c)
+
+    # for material in map_flver.materials:
+    #     print(material.name, material.name.encode("utf-16-le"))
 
 
 if __name__ == '__main__':
+    # test_chr()
     test()
+    # exported_flver()

@@ -4,12 +4,20 @@ __all__ = [
     "FLVERImportError",
     "FLVERExportError",
     "Transform",
+    "flver_vec_to_blender_vec",
+    "blender_vec_to_flver_vec",
+    "is_uniform",
     "get_msb_transforms",
-    "fl_forward_up_vectors_to_bl_euler_angles",
+    "fl_forward_up_vectors_to_bl_euler",
+    "bl_euler_to_fl_forward_up_vectors",
+    "natural_keys",
 ]
 
-import math
+import re
+from math import degrees, radians, isclose
+from dataclasses import dataclass
 from pathlib import Path
+from mathutils import Euler, Vector
 
 from soulstruct.utilities.maths import Vector3, Matrix3
 from soulstruct.darksouls1r.maps import MSB, get_map
@@ -25,37 +33,103 @@ class FLVERExportError(Exception):
     pass
 
 
+@dataclass(slots=True)
 class Transform:
     """Store a FromSoft translate/rotate/scale combo, with property access to Blender conversions for all three."""
 
-    def __init__(
-        self,
-        game_translate: Vector3,
-        game_rotate: Vector3,
-        game_scale: Vector3,
-    ):
-        self.translate = game_translate
-        self.rotate = game_rotate
-        self.scale = game_scale
+    translate: Vector3
+    rotate: Vector3  # Euler angles
+    scale: Vector3
+    radians: bool = False
 
     @classmethod
-    def from_msb_part(cls, part):
+    def from_msb_part(cls, part) -> Transform:
         return cls(part.translate, part.rotate, part.scale)
 
     @property
-    def bl_translate(self):
+    def bl_translate(self) -> Vector:
         """In FromSoft games, -Z is forward and +Y is up. In Blender, +Y is forward and +Z is up."""
-        return -self.translate.x, -self.translate.z, self.translate.y
+        return Vector((-self.translate.x, -self.translate.z, self.translate.y))
 
     @property
-    def bl_rotate(self):
+    def bl_rotate(self) -> Euler:
         """Euler angles in radians. Note that X is not negated, like in the translate, but Y (now Z) is."""
-        return math.radians(self.rotate.x), math.radians(self.rotate.z), -math.radians(self.rotate.y)
+        if not self.radians:
+            return Euler((radians(self.rotate.x), radians(self.rotate.z), -radians(self.rotate.y)))
+        return Euler((self.rotate.x, self.rotate.z, -self.rotate.y))
 
     @property
-    def bl_scale(self):
+    def bl_scale(self) -> Vector:
         """Just swaps Y and Z axes."""
-        return self.scale.x, self.scale.z, self.scale.y
+        return Vector((self.scale.x, self.scale.z, self.scale.y))
+
+
+@dataclass(slots=True)
+class BlenderTransform:
+    """Store a Blender translate/rotate/scale combo."""
+
+    bl_translate: Vector
+    bl_rotate: Euler
+    bl_scale: Vector
+    radians: bool = True
+
+    @property
+    def fl_translate(self) -> Vector3:
+        return Vector3(-self.bl_translate.x, self.bl_translate.z, -self.bl_translate.y)
+
+    @property
+    def fl_rotate_deg(self) -> Vector3:
+        if self.radians:
+            return Vector3(degrees(self.bl_rotate.x), -degrees(self.bl_rotate.z), degrees(self.bl_rotate.y))
+        return Vector3(self.bl_rotate.x, -self.bl_rotate.z, self.bl_rotate.y)
+
+    @property
+    def fl_rotate_rad(self) -> Vector3:
+        if not self.radians:
+            return Vector3(radians(self.bl_rotate.x), -radians(self.bl_rotate.z), radians(self.bl_rotate.y))
+        return Vector3(self.bl_rotate.x, -self.bl_rotate.z, self.bl_rotate.y)
+
+    @property
+    def fl_scale(self) -> Vector3:
+        """Just swaps Y and Z axes."""
+        return Vector3(self.bl_scale.x, self.bl_scale.z, self.bl_scale.y)
+
+    @classmethod
+    def from_bl_obj(cls, bl_obj) -> BlenderTransform:
+        return BlenderTransform(
+            bl_obj.location,
+            bl_obj.rotation_euler,
+            bl_obj.scale,
+        )
+
+    def inverse(self) -> BlenderTransform:
+        inv_rotate_mat = self.bl_rotate.to_matrix().inverted()
+        inv_translate = -(inv_rotate_mat @ self.bl_translate)
+        inv_scale = Vector((1.0 / self.bl_scale.x, 1.0 / self.bl_scale.y, 1.0 / self.bl_scale.z))
+        return BlenderTransform(inv_translate, inv_rotate_mat.to_euler(), inv_scale)
+
+    def compose(self, other: BlenderTransform):
+        """Apply to another transform."""
+        rot_mat = self.bl_rotate.to_matrix()
+        new_translate = self.bl_translate + rot_mat @ other.bl_translate
+        new_rotate = (rot_mat @ other.bl_rotate.to_matrix()).to_euler()
+        new_scale = self.bl_scale * other.bl_scale
+        return BlenderTransform(new_translate, new_rotate, new_scale)
+
+
+def flver_vec_to_blender_vec(fl_vec) -> Vector:
+    return Vector((-fl_vec[0], -fl_vec[2], fl_vec[1]))
+
+
+def blender_vec_to_flver_vec(bl_vec: Vector) -> list[float]:
+    return [-bl_vec.x, bl_vec.z, -bl_vec.y]
+
+
+def is_uniform(vector: Vector3, rel_tol: float):
+    xy_close = isclose(vector.x, vector.y, rel_tol=rel_tol)
+    xz_close = isclose(vector.x, vector.z, rel_tol=rel_tol)
+    yz_close = isclose(vector.y, vector.z, rel_tol=rel_tol)
+    return xy_close and xz_close and yz_close
 
 
 def get_msb_transforms(flver_path: Path, msb_path: Path = None) -> list[tuple[str, Transform]]:
@@ -84,7 +158,7 @@ def get_msb_transforms(flver_path: Path, msb_path: Path = None) -> list[tuple[st
     return transforms
 
 
-def fl_forward_up_vectors_to_bl_euler_angles(forward: Vector3, up: Vector3) -> (float, float, float):
+def fl_forward_up_vectors_to_bl_euler(forward: Vector3, up: Vector3) -> Euler:
     """Convert `forward` and `up` vectors to Euler angles `(x, y, z)` (in Blender coordinates).
 
     Mainly used for representing FLVER dummies in Blender.
@@ -96,4 +170,25 @@ def fl_forward_up_vectors_to_bl_euler_angles(forward: Vector3, up: Vector3) -> (
         right.z, up.z, forward.z,
     )
     euler_angles = rotation_matrix.to_euler_angles(radians=True, order="xzy")
-    return euler_angles.x, euler_angles.z, -euler_angles.y
+    return Euler((euler_angles.x, euler_angles.z, -euler_angles.y))
+
+
+def bl_euler_to_fl_forward_up_vectors(euler: Euler) -> (Vector3, Vector3):
+    fl_euler = Euler((euler.x, -euler.z, euler.y))
+    fl_mat = fl_euler.to_matrix()
+    forward = Vector3(fl_mat.col[2])
+    up = Vector3(fl_mat.col[1])
+    return forward, up
+
+
+def atoi(text):
+    return int(text) if text.isdigit() else text
+
+
+def natural_keys(text):
+    """Key for `list.sort()` to sort in human/natural order (preserve numeric chunks).
+
+    See:
+        http://nedbatchelder.com/blog/200712/human_sorting.html
+    """
+    return [atoi(c) for c in re.split(r"(\d+)", text)]
