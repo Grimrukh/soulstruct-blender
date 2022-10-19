@@ -4,6 +4,7 @@ __all__ = ["FLVERExporter"]
 
 import re
 import typing as tp
+from multiprocessing import Pool, Queue
 
 import bmesh
 import bpy
@@ -18,6 +19,10 @@ from .core import blender_vec_to_flver_vec, BlenderTransform, natural_keys, bl_e
 
 if tp.TYPE_CHECKING:
     from . import ExportFLVER
+
+# TODO: Doesn't work yet, as I can't pickle Blender Objects at least.
+#    - Would need to convert all the triangles/faces/loops/UVs etc. to Python data first.
+USE_MULTIPROCESSING = False
 
 MESH_RE = re.compile(r"(.*) Mesh (\d+) Obj")
 NAME_RE = re.compile(r"FLVER (.*)")
@@ -38,6 +43,24 @@ TEXTURE_TYPES = (
     "g_Lightmap",
     "g_DetailBumpmap",
 )
+
+
+class MeshBuilder(tp.NamedTuple):
+    """Holds data for a potentially multiprocessed mesh-building job."""
+    bl_mesh: tp.Any
+    fl_mesh: FLVER.Mesh
+    layout: BufferLayout
+    buffer: VertexBuffer
+    uv_count: int
+    face_set_count: int
+    cull_back_faces: bool
+
+
+class MeshBuildResult(tp.NamedTuple):
+    """Sent back to main process in a Queue."""
+    fl_vertices: list[FLVER.Mesh.Vertex]
+    fl_face_sets: list[FLVER.Mesh.FaceSet]
+    local_bone_indices: list[int]
 
 
 class BlenderProp(tp.NamedTuple):
@@ -67,6 +90,7 @@ class FLVERExporter:
         },
         "Mesh": {
             "face_set_count": BlenderProp(int, 1, do_not_assign=True),
+            "cull_back_faces": BlenderProp(int, False, bool, do_not_assign=True),
             "default_bone_index": BlenderProp(int, 0),
             "is_bind_pose": BlenderProp(int, False, bool),  # default suitable for Map Pieces
         },
@@ -241,16 +265,54 @@ class FLVERExporter:
             fl_dummy = self.create_dummy(bl_dummy, bone_names)
             flver.dummies.append(fl_dummy)
 
+        # Set up basic Mesh properties.
+        mesh_builders = []
         for bl_mesh in bl_meshes:
-            print(f"Creating mesh: {bl_mesh.name}")
-            fl_mesh, fl_material, fl_layout = self.create_mesh_material_layout(
-                bl_mesh, flver.buffer_layouts, bone_names, use_chr_layout=read_bone_type == "EDIT"
+            fl_mesh, fl_material, fl_layout, mesh_builder = self.create_mesh_material_layout(
+                bl_mesh, flver.buffer_layouts, use_chr_layout=read_bone_type == "EDIT"
             )
             fl_mesh.material_index = len(flver.materials)
             flver.materials.append(fl_material)
             flver.meshes.append(fl_mesh)
             if fl_layout is not None:
                 flver.buffer_layouts.append(fl_layout)
+            mesh_builders.append(mesh_builder)
+
+        # Process mesh vertices, faces, and bones.
+        if USE_MULTIPROCESSING:
+            queue = Queue()  # type: Queue[MeshBuildResult]
+
+            worker_args = [
+                (builder, bone_names, queue)
+                for builder in mesh_builders
+            ]
+
+            with Pool() as pool:
+                pool.starmap(build_fl_mesh_mp, worker_args)  # blocks here until all done
+
+            builder_index = 0
+            while not queue.empty():
+                build_result = queue.get()
+                fl_mesh = mesh_builders[builder_index].fl_mesh
+                fl_mesh.vertices = build_result.fl_vertices
+                fl_mesh.face_sets = build_result.fl_face_sets
+                fl_mesh.bone_indices = build_result.local_bone_indices
+                mesh_builders[builder_index].buffer.vertex_count = len(build_result.fl_vertices)
+        else:
+            for builder in mesh_builders:
+                print(f"Building FLVER mesh: {builder.bl_mesh.name}")
+                fl_vertices, fl_face_sets, mesh_local_bone_indices = build_fl_mesh(
+                    builder, bone_names
+                )
+                print(f"    --> {len(fl_vertices)} vertices")
+                if not fl_vertices or not fl_face_sets:
+                    raise ValueError(
+                        f"Cannot export a FLVER mesh with no vertices and/or faces: {builder.bl_mesh.name}"
+                    )
+                builder.fl_mesh.vertices = fl_vertices
+                builder.fl_mesh.face_sets = fl_face_sets
+                builder.fl_mesh.bone_indices = mesh_local_bone_indices
+                builder.buffer.vertex_count = len(fl_vertices)
 
         # TODO: Set BB properly per bone (need to update bounds for each bone while building vertices).
         recompute_bounding_box(flver, flver.bones)
@@ -381,15 +443,10 @@ class FLVERExporter:
         return fl_dummy
 
     def create_mesh_material_layout(
-        self, bl_mesh, buffer_layouts: list[BufferLayout], bone_names: list[str], use_chr_layout: bool
-    ) -> (FLVER.Mesh, FLVER.Material, tp.Optional[BufferLayout]):
+        self, bl_mesh, buffer_layouts: list[BufferLayout], use_chr_layout: bool
+    ) -> (FLVER.Mesh, FLVER.Material, tp.Optional[BufferLayout], MeshBuilder):
         fl_mesh = FLVER.Mesh()
         extra_mesh_props = self.get_all_props(bl_mesh, fl_mesh, "Mesh")
-        face_set_count = extra_mesh_props.get("face_set_count", 1)
-        try:
-            cull_back_faces = bool(bl_mesh["cull_back_faces"])
-        except KeyError:
-            raise KeyError(f"Property `cull_back_faces` (0 or 1) must be set on mesh {bl_mesh.name}.")
 
         # Process material.
         if len(bl_mesh.material_slots) != 1:
@@ -440,18 +497,17 @@ class FLVERExporter:
             vertex_buffer.layout_index = len(buffer_layouts)
             # Returned `buffer_layout` will be added to FLVER.
 
-        # Process mesh vertices.
-        fl_vertices, fl_face_sets, mesh_local_bone_indices = get_vertices_face_sets_bone_indices(
-            bl_mesh, bone_names, fl_layout, uv_count, face_set_count, cull_back_faces
+        mesh_builder = MeshBuilder(
+            bl_mesh,
+            fl_mesh,
+            fl_layout,
+            vertex_buffer,
+            uv_count,
+            extra_mesh_props.get("face_set_count", 1),
+            extra_mesh_props.get("cull_back_faces", False),
         )
-        if not fl_vertices or not fl_face_sets:
-            raise ValueError(f"Cannot export a FLVER mesh with no vertices and/or faces: {bl_mesh.name}")
-        fl_mesh.vertices = fl_vertices
-        fl_mesh.face_sets = fl_face_sets
-        fl_mesh.bone_indices = mesh_local_bone_indices
-        vertex_buffer.vertex_count = len(fl_vertices)
 
-        return fl_mesh, fl_material, (fl_layout if return_layout else None)
+        return fl_mesh, fl_material, (fl_layout if return_layout else None), mesh_builder
 
     @staticmethod
     def validate_found_textures(mtd_bools: dict[str, bool], found_texture_types: set[str], mtd_name: str):
@@ -503,13 +559,20 @@ class FLVERExporter:
         return BufferLayout(members)
 
 
-def get_vertices_face_sets_bone_indices(
-    bl_mesh_obj, bone_names: list[str], layout: BufferLayout, uv_count: int, face_set_count: int, cull_back_faces: bool
+def build_fl_mesh_mp(builder: MeshBuilder, bone_names: list[str], queue: Queue):
+    fl_vertices, fl_face_sets, local_bone_indices = build_fl_mesh(builder, bone_names)
+    build_result = MeshBuildResult(fl_vertices, fl_face_sets, local_bone_indices)
+    queue.put(build_result)
+
+
+def build_fl_mesh(
+    mesh_builder: MeshBuilder, bone_names: list[str],
 ) -> (list[FLVER.Mesh.Vertex], list[FLVER.Mesh.FaceSet], list[int]):
     """Process Blender vertices, faces, and bone-weighted vertex groups into FLVER equivalents."""
 
-    bl_mesh = bl_mesh_obj.data
-    mesh_vertex_groups = bl_mesh_obj.vertex_groups
+    bl_mesh = mesh_builder.bl_mesh.data
+    mesh_vertex_groups = mesh_builder.bl_mesh.vertex_groups
+    layout = mesh_builder.layout
 
     bl_mesh.calc_normals_split()  # TODO: I think `calc_tangents` calls this automatically.
     try:
@@ -535,10 +598,10 @@ def get_vertices_face_sets_bone_indices(
             flags=i,
             unk_x06=0,  # TODO: define default in dict
             triangle_strip=False,
-            cull_back_faces=cull_back_faces,
+            cull_back_faces=mesh_builder.cull_back_faces,
             vertex_indices=[],
         )
-        for i in range(face_set_count)
+        for i in range(mesh_builder.face_set_count)
     ]
 
     # NOTE: Vertices that do not appear in any Blender faces will NOT be exported.
@@ -612,11 +675,13 @@ def get_vertices_face_sets_bone_indices(
             # to check if this loop has different UVs and create a duplicate vertex if so.
             if layout.has_member_type(MemberType.UV):
                 uvs = []
-                for uv_index in range(1, uv_count + 1):
+                for uv_index in range(1, mesh_builder.uv_count + 1):
                     try:
                         uv_layer = bl_mesh.uv_layers[f"UVMap{uv_index}"]
                     except KeyError:
-                        raise KeyError(f"Expected {uv_count} UVs for mesh, but could not find 'UVMap{uv_index}'.")
+                        raise KeyError(
+                            f"Expected {mesh_builder.uv_count} UVs for mesh, but could not find 'UVMap{uv_index}'."
+                        )
                     bl_uv = uv_layer.data[loop.index].uv
                     uvs.append((bl_uv[0], -bl_uv[1], 0.0))  # FLVER UV always has Z coordinate (usually 0)
             else:
