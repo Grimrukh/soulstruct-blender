@@ -10,10 +10,11 @@ that use non-[M] MTD shaders will likely also not appear correctly.
 """
 from __future__ import annotations
 
-__all__ = ["FLVERImporter"]
+__all__ = ["FLVERImporter", "load_tpf_texture_as_png"]
+
+import os
 
 import math
-import os
 import re
 import typing as tp
 from pathlib import Path
@@ -154,26 +155,17 @@ class FLVERImporter:
 
     def load_texture_images(self):
         """Load texture images from either `dds_dump` folder or TPFs found with the FLVER."""
-
-        temp_dir = Path(bpy.utils.resource_path("USER"))
         for texture_path in self.flver.get_all_texture_paths():
             if str(texture_path) in self.dds_images:
                 continue  # already loaded (or dumped DDS file found)
 
             if texture_path.stem in self.texture_sources:
-                temp_dds_path = temp_dir / f"{texture_path.stem}.dds"
                 texture = self.texture_sources[texture_path.stem]
-                try:
-                    # NOTE: DDS format should have already been converted from DX10 to DXT1 by operator.
-                    self.texture_sources[texture_path.stem].write_dds(temp_dds_path)
-                    print(f"Loading TPF texture {texture.name} with format {texture.get_dds_format()}")
-                    self.dds_images[str(texture_path)] = image = bpy.data.images.load(str(temp_dds_path))
-                    image.pack()  # embed DDS in `.blend` file so temporary DDS file can be deleted
-                    # Note that the full interroot path is stored in the texture node name.
-                finally:
-                    if temp_dds_path.is_file():
-                        os.remove(str(temp_dds_path))
+                bl_image = load_tpf_texture_as_png(texture)
+                self.dds_images[str(texture_path)] = bl_image
+                # Note that the full interroot path is stored in the texture node name.
             elif self.dds_dump_path:
+                # TODO: Convert to PNG?
                 dds_path = self.dds_dump_path / f"{texture_path.stem}.dds"
                 if dds_path.is_file():
                     # print(f"Loading dumped DDS texture: {texture_path.stem}.dds")
@@ -455,7 +447,7 @@ class FLVERImporter:
             loop: bpy.types.MeshLoop
             vertex = flver_mesh.vertices[loop.vertex_index]
             for uv_index, uv in enumerate(vertex.uvs):
-                uv_layers[uv_index].data[j].uv[:] = [uv[0], -uv[1]]  # Z axis discarded, Y axis inverted
+                uv_layers[uv_index].data[j].uv[:] = [uv[0], 1 - uv[1]]  # Z axis discarded, Y axis inverted
             if len(vertex.colors) != 1:
                 raise FLVERImportError(
                     f"Vertex {loop.vertex_index} in FLVER mesh {mesh_name} has {len(vertex.colors)} vertex colors. "
@@ -693,6 +685,9 @@ class FLVERImporter:
             #  the dummy while still having its movement attached to the attach bone. In Blender, we just create two
             #  contraints and leave it to the user to understand the difference in animations.
 
+            # TODO: Moving the model is glitched with the double child constraint. Just place the Dummy according to its
+            #  parent bone (in world space) and record its name on the Dummy.
+
             # Dummy position coordinates are given in the space of this parent bone.
             if dummy.parent_bone_index != -1:
                 parent_constraint = bl_dummy.constraints.new(type="CHILD_OF")
@@ -733,3 +728,14 @@ class FLVERImporter:
     def armature(self):
         """Always the first object created."""
         return self.all_bl_objs[0]
+
+
+def load_tpf_texture_as_png(tpf_texture: TPFTexture):
+    png_data = tpf_texture.get_png_data()
+    temp_png_path = Path(f"~/AppData/Local/Temp/{Path(tpf_texture.name).stem}.png").expanduser()
+    temp_png_path.write_bytes(png_data)
+    bl_image = bpy.data.images.load(str(temp_png_path))
+    bl_image.pack()  # embed PNG in `.blend` file
+    if temp_png_path.is_file():
+        os.remove(temp_png_path)
+    return bl_image

@@ -3,12 +3,13 @@ from __future__ import annotations
 import importlib
 import re
 import sys
+import tempfile
 import traceback
 import typing as tp
 from pathlib import Path
 
 import bpy
-from bpy.props import StringProperty, BoolProperty, CollectionProperty
+from bpy.props import StringProperty, BoolProperty, IntProperty, CollectionProperty
 # noinspection PyUnresolvedReferences
 from bpy.types import Operator
 from bpy_extras.io_utils import ImportHelper, ExportHelper
@@ -19,7 +20,9 @@ if modules_path not in sys.path:
 import soulstruct
 importlib.reload(soulstruct)
 
+from soulstruct.base.binder_entry import BinderEntry
 from soulstruct.base.models.flver import FLVER
+from soulstruct.base.textures.dds import texconv
 from soulstruct.containers import Binder
 from soulstruct.containers.tpf import TPF
 
@@ -30,7 +33,7 @@ if "FLVERImporter" in locals():
 
 from io_flver.core import FLVERImportError, Transform, get_msb_transforms
 from io_flver.export_flver import FLVERExporter
-from io_flver.import_flver import FLVERImporter
+from io_flver.import_flver import FLVERImporter, load_tpf_texture_as_png
 
 if tp.TYPE_CHECKING:
     from .import_flver import FLVERImporter
@@ -57,8 +60,9 @@ TPF_RE = re.compile(rf"(.*)\.tpf(\.dcx)?")
 
 class ImportFLVER(Operator, ImportHelper):
     """This appears in the tooltip of the operator and in the generated docs."""
-    bl_idname = "import_scene.flver"  # important since its how bpy.ops.import_test.some_data is constructed
+    bl_idname = "import_scene.flver"
     bl_label = "Import FLVER"
+    bl_description = "Import a FromSoftware FLVER model file. Can import from BNDs and supports DCX-compressed files."
 
     # ImportHelper mixin class uses this
     filename_ext = ".flver"
@@ -124,10 +128,9 @@ class ImportFLVER(Operator, ImportHelper):
                 flvers.append(flver)
 
                 # Find TPFs or CHRTPFBHDs inside binder, potentially using `chrtpfbdt` file if it exists.
-                # TODO: `.tpf` in CHRBND contains multiple textures; need to load them as separate keys (DDS -> TGA).
                 for tpf_entry in binder.find_entries_matching_name(TPF_RE):  # generally only one
                     tpf = TPF(tpf_entry.data)
-                    tpf.convert_dds_formats("DX10", "DXT1")
+                    # tpf.convert_dds_formats("DX10", "DXT1")  # TODO: outdated
                     for texture in tpf.textures:
                         texture_sources[texture.name] = texture
                 try:
@@ -165,7 +168,7 @@ class ImportFLVER(Operator, ImportHelper):
                         self.report({"ERROR"}, f"`mXX` TPF folder does not exist: {tpf_directory}. Cannot load TPFs.")
                         return {"CANCELLED"}
 
-                    texture_sources |= TPF.collect_tpfs(tpf_directory, convert_formats=("DX10", "DXT1"))
+                    texture_sources |= TPF.collect_tpf_textures(tpf_directory)
 
         dds_dump_path = Path(self.dds_path) if self.dds_path else None
 
@@ -208,11 +211,13 @@ class ImportFLVER(Operator, ImportHelper):
                     bpy.data.objects.remove(obj)
                 traceback.print_exc()  # for inspection in Blender console
                 self.report({"ERROR"}, f"Cannot import FLVER: {file_path.name}. Error: {ex}")
+                return {"CANCELLED"}
+
         return {"FINISHED"}
 
 
 class ImportFLVERWithMSBChoice(Operator):
-    """Presents user with a choice of enums from `CHOICES` global list.
+    """Presents user with a choice of enums from `enum_choices` class variable (set prior).
 
     See: https://blender.stackexchange.com/questions/6512/how-to-call-invoke-popup
     """
@@ -280,12 +285,10 @@ class ImportFLVERWithMSBChoice(Operator):
 
 
 class ExportFLVER(Operator, ExportHelper):
-    """Export FLVER meshes only into an existing FLVER file.
-
-    Note that this class uses `ImportHelper` still, since we are choosing an existing file with it.
-    """
+    """Export FLVER from a Blender Armature parent."""
     bl_idname = "export_scene.flver"
     bl_label = "Export FLVER"
+    bl_description = "Export a prepared Blender object hierarchy to a FromSoftware FLVER model file."
 
     # ExportHelper mixin class uses this
     filename_ext = ".flver"
@@ -297,10 +300,16 @@ class ExportFLVER(Operator, ExportHelper):
     )
 
     # TODO: Options to:
-    #   - Export straight into Binders with given ID (e.g., 200).
     #   - Export DDS textures into BND TPF, CHRTPFBXF, or `mAA` folder BXFs.
     #       - Probably complex/useful enough to be a separate export function.
     #   - Detect appropriate MSB and update transform of this model instance (if unique) (low priority).
+
+    @classmethod
+    def poll(cls, context):
+        try:
+            return context.selected_objects[0].type == "ARMATURE"
+        except IndexError:
+            return False
 
     def execute(self, context):
         selected_objs = [obj for obj in context.selected_objects]
@@ -324,6 +333,7 @@ class ExportFLVER(Operator, ExportHelper):
             traceback.print_exc()
             self.report({"ERROR"}, f"Cannot get exported FLVER. Error: {ex}")
             print(f"Cannot get exported FLVER. Error: {ex}")
+            return {"CANCELLED"}
         else:
             try:
                 # Will create a `.bak` file automatically if absent.
@@ -333,6 +343,355 @@ class ExportFLVER(Operator, ExportHelper):
                 traceback.print_exc()
                 self.report({"ERROR"}, f"Cannot write exported FLVER. Error: {ex}")
                 print(f"Cannot write exported FLVER. Error: {ex}")
+                return {"CANCELLED"}
+
+        return {"FINISHED"}
+
+
+class ExportFLVERIntoBinder(Operator, ImportHelper):
+    """This appears in the tooltip of the operator and in the generated docs."""
+    bl_idname = "export_scene.flver_binder"
+    bl_label = "Export FLVER Into Binder"
+    bl_description = "Export a FLVER model file into a FromSoftware Binder (BND/BHD)"
+
+    # ImportHelper mixin class uses this
+    filename_ext = ".chrbnd"
+
+    filter_glob: StringProperty(
+        default="*.chrbnd;*.chrbnd.dcx;*.objbnd;*.objbnd.dcx;*.partsbnd;*.partsbnd.dcx",
+        options={'HIDDEN'},
+        maxlen=255,
+    )
+
+    overwrite_existing: BoolProperty(
+        name="Overwrite Existing",
+        description="Overwrite first existing '.flver{.dcx}' entry in Binder.",
+        default=True,
+    )
+
+    default_entry_id: IntProperty(
+        name="Default ID",
+        description="Binder entry ID to use if a '.flver{.dcx}' entry does not already exist in Binder. If left as -1, "
+                    "an existing entry MUST be found for export to proceed.",
+        default=-1,
+        min=-1,
+    )
+
+    default_entry_flags: IntProperty(
+        name="Default Flags",
+        description="Flags to set to Binder entry if it needs to be created.",
+        default=0x2,
+    )
+
+    default_entry_path: StringProperty(
+        name="Default Path",
+        description="Path prefix to use for Binder entry if it needs to be created. Use {name} as a format "
+                    "placeholder for the name of this FLVER object. Default is for DS1R `chrbnd.dcx` files.",
+        default="N:\\FRPG\\data\\INTERROOT_x64\\chr\\{name}\\{name}.flver",
+    )
+
+    # TODO: DCX compression option (defaults to None).
+
+    @classmethod
+    def poll(cls, context):
+        try:
+            return context.selected_objects[0].type == "ARMATURE"
+        except IndexError:
+            return False
+
+    def execute(self, context):
+        print("Executing export...")
+
+        selected_objs = [obj for obj in context.selected_objects]
+        if not selected_objs:
+            self.report({"ERROR"}, f"No FLVER parent object selected.")
+            return {"CANCELLED"}
+        elif len(selected_objs) > 1:
+            self.report({"ERROR"}, f"Multiple objects selected. Exactly one FLVER parent object must be selected.")
+            return {"CANCELLED"}
+        flver_parent_obj = selected_objs[0]
+        if bpy.ops.object.mode_set.poll():
+            # Must be in OBJECT mode for export, as some data (e.g. UVs) is not accessible in EDIT mode.
+            bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
+
+        exporter = FLVERExporter(self, context)
+
+        try:
+            flver = exporter.export_flver(flver_parent_obj)
+        except Exception as ex:
+            import traceback
+            traceback.print_exc()
+            self.report({"ERROR"}, f"Cannot get exported FLVER. Error: {ex}")
+            print(f"Cannot get exported FLVER. Error: {ex}")
+            return {"CANCELLED"}
+
+        try:
+            binder = Binder(self.filepath)
+        except Exception as ex:
+            print(f"# ERROR: Could not load Binder file. Error: {ex}")
+            self.report({"ERROR"}, "Could not load Binder file. See console for details.")
+            return {"CANCELLED"}
+
+        flver_entries = binder.find_entries_matching_name(r".*\.flver(\.dcx)?")
+        if not flver_entries:
+            if self.default_entry_id == -1:
+                self.report({"ERROR"}, "No FLVER files found in Binder and default entry ID was left as -1.")
+                return {"CANCELLED"}
+            if self.default_entry_id in binder.entries_by_id:
+                if not self.overwrite_existing:
+                    self.report(
+                        {"ERROR"},
+                        f"Binder entry {self.default_entry_id} already exists in Binder and overwrite is disabled."
+                    )
+                    return {"CANCELLED"}
+                flver_entry = binder.entries_by_id[self.default_entry_id]
+            else:
+                # Create new entry. TODO: Currently no DCX.
+                entry_path = self.default_entry_path.format(name=flver_parent_obj.name)
+                flver_entry = BinderEntry(
+                    b"", entry_id=self.default_entry_id, path=entry_path, flags=self.default_entry_flags
+                )
+        else:
+            if not self.overwrite_existing:
+                self.report({"ERROR"}, "FLVER file already exists in Binder and overwrite is disabled.")
+                return {"CANCELLED"}
+
+            if len(flver_entries) > 1:
+                self.report(
+                    {"WARNING"}, f"Multiple FLVER files found in Binder. Replacing first: {flver_entries[0].name}"
+                )
+            flver_entry = flver_entries[0]
+
+        flver_entry.set_uncompressed_data(flver.pack_dcx())  # DCX will default to None here from exporter function
+
+        try:
+            # Will create a `.bak` file automatically if absent.
+            binder.write()
+        except Exception as ex:
+            import traceback
+            traceback.print_exc()
+            self.report({"ERROR"}, f"Cannot write Binder with new FLVER. Error: {ex}")
+            print(f"Cannot write Binder with new FLVER. Error: {ex}")
+            return {"CANCELLED"}
+
+        return {"FINISHED"}
+
+
+class ImportDDS(Operator, ImportHelper):
+    """Import a DDS file (as a PNG) into a selected `Image` node."""
+    bl_idname = "import_image.dds"
+    bl_label = "Import DDS"
+    bl_description = (
+        "Import a DDS texture or single-DDS TPF binder as a PNG image, and optionally set it to all selected Image "
+        "Texture nodes. (Does not save the PNG.)"
+    )
+
+    filename_ext = ".dds"
+
+    filter_glob: StringProperty(
+        default="*.dds;*.tpf;*.tpf.dcx",
+        options={'HIDDEN'},
+        maxlen=255,
+    )
+
+    set_to_selected_image_nodes: BoolProperty(
+        name="Set to Selected Image Node(s)",
+        description="Set loaded PNG texture to any selected Image nodes.",
+        default=True,
+    )
+
+    files: CollectionProperty(
+        type=bpy.types.OperatorFileListElement,
+        options={'HIDDEN', 'SKIP_SAVE'},
+    )
+
+    directory: StringProperty(
+        options={'HIDDEN'},
+    )
+
+    # TODO: Option to replace Blender Image with same name, if present.
+
+    def execute(self, context):
+        print("Executing DDS import...")
+
+        file_paths = [Path(self.directory, file.name) for file in self.files]
+
+        for file_path in file_paths:
+
+            if TPF_RE.match(file_path.name):
+                tpf = TPF(file_path)
+                if len(tpf.textures) > 0:
+                    # TODO: Could load all and assign to multiple selected Image Texture nodes if names match?
+                    self.report({"ERROR"}, f"Cannot import TPF file containing more than one texture: {file_path}")
+                    return {"CANCELLED"}
+
+                bl_image = load_tpf_texture_as_png(tpf.textures[0])
+                self.report({"INFO"}, f"Loaded DDS file from TPF as PNG: {file_path.name}")
+            else:
+                # Loose DDS file.
+                with tempfile.TemporaryDirectory() as png_dir:
+                    temp_dds_path = Path(png_dir, file_path.name)
+                    temp_dds_path.write_bytes(file_path.read_bytes())  # copy
+                    texconv_result = texconv("-o", png_dir, "-ft", "png", "-f", "RGBA", temp_dds_path)
+                    png_path = Path(png_dir, file_path.with_suffix(".png"))
+                    if png_path.is_file():
+                        bl_image = bpy.data.images.load(str(png_path))
+                        bl_image.pack()  # embed PNG in `.blend` file
+                        self.report({"INFO"}, f"Loaded DDS file as PNG: {file_path.name}")
+                    else:
+                        stdout = "\n    ".join(texconv_result.stdout.decode().split("\r\n")[3:])  # drop copyright lines
+                        print(f"# ERROR: Could not convert texture DDS to PNG:\n    {stdout}")
+                        self.report({"ERROR"}, "Could not convert texture DDS to png. See console for error.")
+                        return {"CANCELLED"}
+
+            # TODO: Option to iterate over ALL materials in .blend and replace a given named image with this new one.
+            if self.set_to_selected_image_nodes:
+                try:
+                    material_nt = context.active_object.active_material.node_tree
+                except AttributeError:
+                    self.report({"WARNING"}, "No active object/material node tree detected to set texture to.")
+                else:
+                    sel = [node for node in material_nt.nodes if node.select and node.bl_idname == "ShaderNodeTexImage"]
+                    if not sel:
+                        self.report({"WARNING"}, "No selected Image Texture nodes to set texture to.")
+                    else:
+                        for image_node in sel:
+                            image_node.image = bl_image
+                            self.report({"INFO"}, "Set imported DDS (PNG) texture to Image Texture node.")
+
+        return {"FINISHED"}
+
+
+class ExportTPFIntoBinder(Operator, ImportHelper):
+    bl_idname = "export_image.tpf_binder"
+    bl_label = "Export TPF (PNG) Into Binder"
+    bl_description = "Export a PNG as a one-DDS TPF into a FromSoftware Binder (BND/BHD)"
+
+    # ImportHelper mixin class uses this
+    filename_ext = ".chrbnd"
+
+    filter_glob: StringProperty(
+        default="*.chrbnd;*.chrbnd.dcx;*.objbnd;*.objbnd.dcx;*.partsbnd;*.partsbnd.dcx",
+        options={'HIDDEN'},
+        maxlen=255,
+    )
+
+    overwrite_existing: BoolProperty(
+        name="Overwrite Existing",
+        description="Overwrite first existing '.flver{.dcx}' entry in Binder.",
+        default=True,
+    )
+
+    default_entry_id: IntProperty(
+        name="Default ID",
+        description="Binder entry ID to use if a '.flver{.dcx}' entry does not already exist in Binder. If left as -1, "
+                    "an existing entry MUST be found for export to proceed.",
+        default=-1,
+        min=-1,
+    )
+
+    default_entry_flags: IntProperty(
+        name="Default Flags",
+        description="Flags to set to Binder entry if it needs to be created.",
+        default=0x2,
+    )
+
+    default_entry_path: StringProperty(
+        name="Default Path",
+        description="Path prefix to use for Binder entry if it needs to be created. Use {name} as a format "
+                    "placeholder for the name of this FLVER object. Default is for DS1R `chrbnd.dcx` files.",
+        default="N:\\FRPG\\data\\INTERROOT_x64\\chr\\{name}\\{name}.flver",
+    )
+
+    # TODO: DCX compression option (defaults to None).
+
+    # TODO: TPF files in CHRBNDs contain multiple DDS textures.
+    # TODO: Detect CHRTPFBDT files, or require selection of that *and* adjacent CHRBND.
+
+    @classmethod
+    def poll(cls, context):
+        try:
+            # TODO: What if you just want to export an image from the Image Viewer? Different operator?
+            return "ShaderNodeTexImage" in [
+                node.bl_idname for node in context.selected_objects[0].active_material.nodes
+            ]
+        except (AttributeError, IndexError):
+            return False
+
+    def execute(self, context):
+        print("Executing export...")
+
+        selected_objs = [obj for obj in context.selected_objects]
+        if not selected_objs:
+            self.report({"ERROR"}, f"No FLVER parent object selected.")
+            return {"CANCELLED"}
+        elif len(selected_objs) > 1:
+            self.report({"ERROR"}, f"Multiple objects selected. Exactly one FLVER parent object must be selected.")
+            return {"CANCELLED"}
+        flver_parent_obj = selected_objs[0]
+        if bpy.ops.object.mode_set.poll():
+            # Must be in OBJECT mode for export, as some data (e.g. UVs) is not accessible in EDIT mode.
+            bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
+
+        exporter = FLVERExporter(self, context)
+
+        try:
+            flver = exporter.export_flver(flver_parent_obj)
+        except Exception as ex:
+            import traceback
+            traceback.print_exc()
+            self.report({"ERROR"}, f"Cannot get exported FLVER. Error: {ex}")
+            print(f"Cannot get exported FLVER. Error: {ex}")
+            return {"CANCELLED"}
+
+        try:
+            binder = Binder(self.filepath)
+        except Exception as ex:
+            print(f"# ERROR: Could not load Binder file. Error: {ex}")
+            self.report({"ERROR"}, "Could not load Binder file. See console for details.")
+            return {"CANCELLED"}
+
+        flver_entries = binder.find_entries_matching_name(r".*\.flver(\.dcx)?")
+        if not flver_entries:
+            if self.default_entry_id == -1:
+                self.report({"ERROR"}, "No FLVER files found in Binder and default entry ID was left as -1.")
+                return {"CANCELLED"}
+            if self.default_entry_id in binder.entries_by_id:
+                if not self.overwrite_existing:
+                    self.report(
+                        {"ERROR"},
+                        f"Binder entry {self.default_entry_id} already exists in Binder and overwrite is disabled."
+                    )
+                    return {"CANCELLED"}
+                flver_entry = binder.entries_by_id[self.default_entry_id]
+            else:
+                # Create new entry. TODO: Currently no DCX.
+                entry_path = self.default_entry_path.format(name=flver_parent_obj.name)
+                flver_entry = BinderEntry(
+                    b"", entry_id=self.default_entry_id, path=entry_path, flags=self.default_entry_flags
+                )
+        else:
+            if not self.overwrite_existing:
+                self.report({"ERROR"}, "FLVER file already exists in Binder and overwrite is disabled.")
+                return {"CANCELLED"}
+
+            if len(flver_entries) > 1:
+                self.report(
+                    {"WARNING"}, f"Multiple FLVER files found in Binder. Replacing first: {flver_entries[0].name}"
+                )
+            flver_entry = flver_entries[0]
+
+        flver_entry.set_uncompressed_data(flver.pack_dcx())  # DCX will default to None here from exporter function
+
+        try:
+            # Will create a `.bak` file automatically if absent.
+            binder.write()
+        except Exception as ex:
+            import traceback
+            traceback.print_exc()
+            self.report({"ERROR"}, f"Cannot write exported FLVER. Error: {ex}")
+            print(f"Cannot write exported FLVER. Error: {ex}")
+            return {"CANCELLED"}
 
         return {"FINISHED"}
 
@@ -345,28 +704,43 @@ class FLVER_PT_main_panel(bpy.types.Panel):
     bl_category = "FLVER"
 
     def draw(self, context):
-        obj = context.object
         row = self.layout.row()
-        row.label(text="Hello world!", icon="WORLD_DATA")
-
+        row.label(text="FLVER importers:")
         row = self.layout.row()
         row.operator("import_scene.flver")
+
+        row = self.layout.row()
+        row.label(text="FLVER exporters:")
         row = self.layout.row()
         row.operator("export_scene.flver")
+        row = self.layout.row()
+        row.operator("export_scene.flver_binder")
+
+        row = self.layout.row()
+        row.label(text="Utilities:")
+        row = self.layout.row()
+        row.operator("import_image.dds")
+        # TODO: Put 'Export to DDS' operator here.
+        # TODO: Put 'Export DDS to TPF/Binder' operator here.
 
 
 def menu_func_import(self, context):
-    self.layout.operator(ImportFLVER.bl_idname, text="FLVER (.flver)")  # TODO: or .chrbnd, etc.
+    self.layout.operator(ImportFLVER.bl_idname, text="FLVER (.flver/.*bnd)")
 
 
 def menu_func_export(self, context):
     self.layout.operator(ExportFLVER.bl_idname, text="FLVER (.flver)")
 
 
+# TODO: Simple 'Export Into BND' operator.
+
+
 classes = (
     ImportFLVER,
     ImportFLVERWithMSBChoice,
     ExportFLVER,
+    ExportFLVERIntoBinder,
+    ImportDDS,
     FLVER_PT_main_panel,
 )
 

@@ -683,7 +683,7 @@ def build_fl_mesh(
                             f"Expected {mesh_builder.uv_count} UVs for mesh, but could not find 'UVMap{uv_index}'."
                         )
                     bl_uv = uv_layer.data[loop.index].uv
-                    uvs.append((bl_uv[0], -bl_uv[1], 0.0))  # FLVER UV always has Z coordinate (usually 0)
+                    uvs.append((bl_uv[0], 1 - bl_uv[1], 0.0))  # FLVER UV always has Z coordinate (usually 0)
             else:
                 uvs = None
 
