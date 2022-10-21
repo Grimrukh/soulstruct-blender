@@ -10,9 +10,7 @@ that use non-[M] MTD shaders will likely also not appear correctly.
 """
 from __future__ import annotations
 
-__all__ = ["FLVERImporter", "load_tpf_texture_as_png"]
-
-import os
+__all__ = ["FLVERImporter"]
 
 import math
 import re
@@ -27,6 +25,7 @@ from mathutils import Euler, Vector, Matrix
 from soulstruct.utilities.maths import Vector3
 
 from .core import Transform, FLVERImportError, fl_forward_up_vectors_to_bl_euler, is_uniform
+from .textures import load_tpf_texture_as_png
 
 if tp.TYPE_CHECKING:
     from io_flver import ImportFLVER
@@ -157,15 +156,13 @@ class FLVERImporter:
         """Load texture images from either `dds_dump` folder or TPFs found with the FLVER."""
         for texture_path in self.flver.get_all_texture_paths():
             if str(texture_path) in self.dds_images:
-                continue  # already loaded (or dumped DDS file found)
-
+                continue  # already loaded
             if texture_path.stem in self.texture_sources:
                 texture = self.texture_sources[texture_path.stem]
                 bl_image = load_tpf_texture_as_png(texture)
                 self.dds_images[str(texture_path)] = bl_image
                 # Note that the full interroot path is stored in the texture node name.
             elif self.dds_dump_path:
-                # TODO: Convert to PNG?
                 dds_path = self.dds_dump_path / f"{texture_path.stem}.dds"
                 if dds_path.is_file():
                     # print(f"Loading dumped DDS texture: {texture_path.stem}.dds")
@@ -728,14 +725,3 @@ class FLVERImporter:
     def armature(self):
         """Always the first object created."""
         return self.all_bl_objs[0]
-
-
-def load_tpf_texture_as_png(tpf_texture: TPFTexture):
-    png_data = tpf_texture.get_png_data()
-    temp_png_path = Path(f"~/AppData/Local/Temp/{Path(tpf_texture.name).stem}.png").expanduser()
-    temp_png_path.write_bytes(png_data)
-    bl_image = bpy.data.images.load(str(temp_png_path))
-    bl_image.pack()  # embed PNG in `.blend` file
-    if temp_png_path.is_file():
-        os.remove(temp_png_path)
-    return bl_image
