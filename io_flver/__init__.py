@@ -9,10 +9,11 @@ import typing as tp
 from pathlib import Path
 
 import bpy
-from bpy.props import StringProperty, BoolProperty, IntProperty, CollectionProperty
+from bpy.props import StringProperty, BoolProperty, IntProperty, EnumProperty, CollectionProperty
 # noinspection PyUnresolvedReferences
 from bpy.types import Operator
 from bpy_extras.io_utils import ImportHelper, ExportHelper
+from soulstruct.containers.dcx import DCXType
 
 modules_path = str(Path(__file__).parent / "modules")
 if modules_path not in sys.path:
@@ -55,7 +56,7 @@ bl_info = {
 }
 
 
-MAP_NAME_RE = re.compile(r"^m\d\d_\d\d_\d\d_\d\d$")
+MAP_NAME_RE = re.compile(r"^(m\d\d)_\d\d_\d\d_\d\d$")
 BINDER_RE = re.compile(r"^.*?\.(chr|obj|parts)bnd(\.dcx)?$")
 TPF_RE = re.compile(rf"^(.*)\.tpf(\.dcx)?$")
 CHRBND_RE = re.compile(rf"^(.*)\.chrbnd(\.dcx)?$")
@@ -271,7 +272,6 @@ class ImportFLVERWithMSBChoice(LoggingOperator):
         except Exception as ex:
             for obj in self.importer.all_bl_objs:
                 bpy.data.objects.remove(obj)
-            import traceback
             traceback.print_exc()
             return self.error(f"Cannot import FLVER: {self.file_path.name}. Error: {ex}")
 
@@ -315,6 +315,19 @@ class ExportFLVER(LoggingOperator, ExportHelper):
         maxlen=255,  # Max internal buffer length, longer would be clamped.
     )
 
+    dcx_type: EnumProperty(
+        name="Compression",
+        items=[
+            ("Null", "None", "Export without any DCX compression"),
+            ("DCX_EDGE", "DES", "Demon's Souls compression"),
+            ("DCX_DFLT_10000_24_9", "DS1/DS2", "Dark Souls 1/2 compression"),
+            ("DCX_DFLT_10000_44_9", "BB/DS3", "Bloodborne/Dark Souls 3 compression"),
+            ("DCX_DFLT_11000_44_9", "Sekiro", "Sekiro compression (requires Oodle DLL)"),
+            ("DCX_KRAK", "Elden Ring", "Elden Ring compression (requires Oodle DLL)"),
+        ],
+        description="Type of DCX compression to apply to exported file"
+    )
+
     # TODO: Options to:
     #   - Export DDS textures into BND TPF, CHRTPFBXF, or `mAA` folder BXFs.
     #       - Probably complex/useful enough to be a separate export function.
@@ -343,15 +356,15 @@ class ExportFLVER(LoggingOperator, ExportHelper):
         try:
             flver = exporter.export_flver(flver_parent_obj)
         except Exception as ex:
-            import traceback
             traceback.print_exc()
             return self.error(f"Cannot get exported FLVER. Error: {ex}")
         else:
+            dcx_type = DCXType[self.dcx_type]
+            flver.dcx_type = dcx_type
             try:
                 # Will create a `.bak` file automatically if absent.
                 flver.write(Path(self.filepath))
             except Exception as ex:
-                import traceback
                 traceback.print_exc()
                 return self.error(f"Cannot write exported FLVER. Error: {ex}")
 
@@ -371,6 +384,19 @@ class ExportFLVERIntoBinder(LoggingOperator, ImportHelper):
         default="*.chrbnd;*.chrbnd.dcx;*.objbnd;*.objbnd.dcx;*.partsbnd;*.partsbnd.dcx",
         options={'HIDDEN'},
         maxlen=255,
+    )
+
+    dcx_type: EnumProperty(
+        name="Compression",
+        items=[
+            ("Null", "None", "Export without any DCX compression"),
+            ("DCX_EDGE", "DES", "Demon's Souls compression"),
+            ("DCX_DFLT_10000_24_9", "DS1/DS2", "Dark Souls 1/2 compression"),
+            ("DCX_DFLT_10000_44_9", "BB/DS3", "Bloodborne/Dark Souls 3 compression"),
+            ("DCX_DFLT_11000_44_9", "Sekiro", "Sekiro compression (requires Oodle DLL)"),
+            ("DCX_KRAK", "Elden Ring", "Elden Ring compression (requires Oodle DLL)"),
+        ],
+        description="Type of DCX compression to apply to exported file"
     )
 
     overwrite_existing: BoolProperty(
@@ -427,7 +453,6 @@ class ExportFLVERIntoBinder(LoggingOperator, ImportHelper):
         try:
             flver = exporter.export_flver(flver_parent_obj)
         except Exception as ex:
-            import traceback
             traceback.print_exc()
             return self.error(f"Cannot get exported FLVER. Error: {ex}")
 
@@ -460,13 +485,19 @@ class ExportFLVERIntoBinder(LoggingOperator, ImportHelper):
                 self.warning(f"Multiple FLVER files found in Binder. Replacing first: {flver_entries[0].name}")
             flver_entry = flver_entries[0]
 
-        flver_entry.set_uncompressed_data(flver.pack_dcx())  # DCX will default to None here from exporter function
+        dcx_type = DCXType[self.dcx_type]
+        flver.dcx_type = dcx_type
+
+        try:
+            flver_entry.set_uncompressed_data(flver.pack_dcx())  # DCX will default to None here from exporter function
+        except Exception as ex:
+            traceback.print_exc()
+            return self.error(f"Cannot write exported FLVER. Error: {ex}")
 
         try:
             # Will create a `.bak` file automatically if absent.
             binder.write()
         except Exception as ex:
-            import traceback
             traceback.print_exc()
             return self.error(f"Cannot write Binder with new FLVER. Error: {ex}")
 
