@@ -262,7 +262,7 @@ class FLVERImporter:
                 )
             height_node = nt.nodes.new("ShaderNodeTexImage")
             height_node.location = (-550, 345)
-            height_node.name = f"{height_texture.texture_type} | {height_texture.path}"
+            height_node.name = f"{height_texture.texture_type} | {Path(height_texture.path).name}"
             height_node.image = self.get_dds_image(height_texture.path)
             displace_node = nt.nodes.new("ShaderNodeDisplacement")
             displace_node.location = (-250, 170)
@@ -278,7 +278,7 @@ class FLVERImporter:
                 )
             lightmap_node = nt.nodes.new("ShaderNodeTexImage")
             lightmap_node.location = (-550, 0)
-            lightmap_node.name = f"{lightmap_texture.texture_type} | {lightmap_texture.path}"
+            lightmap_node.name = f"{lightmap_texture.texture_type} | {Path(lightmap_texture.path).name}"
             lightmap_node.image = self.get_dds_image(lightmap_texture.path)
 
             light_uv_attr = nt.nodes.new("ShaderNodeAttribute")
@@ -332,7 +332,7 @@ class FLVERImporter:
             diffuse_node = node_tree.nodes.new("ShaderNodeTexImage")
             diffuse_node.location = (-550, 330 + slot_y_offset)
             diffuse_node.image = self.get_dds_image(texture.path)
-            diffuse_node.name = f"g_Diffuse{slot}"
+            diffuse_node.name = f"g_Diffuse{slot} | {Path(texture.path).name}"
             node_tree.links.new(uv_attr.outputs["Vector"], diffuse_node.inputs["Vector"])
             if not mtd_bools["lightmap"]:  # otherwise, MixRGB node will mediate
                 node_tree.links.new(diffuse_node.outputs["Color"], bsdf.inputs["Base Color"])
@@ -345,7 +345,7 @@ class FLVERImporter:
             node = node_tree.nodes.new("ShaderNodeTexImage")
             node.location = (-550, 0 + slot_y_offset)
             node.image = self.get_dds_image(texture.path)
-            node.name = f"g_Specular{slot}"
+            node.name = f"g_Specular{slot} | {Path(texture.path).name}"
             node_tree.links.new(uv_attr.outputs["Vector"], node.inputs["Vector"])
             node_tree.links.new(node.outputs["Color"], bsdf.inputs["Specular"])
         else:
@@ -356,7 +356,7 @@ class FLVERImporter:
             node = node_tree.nodes.new("ShaderNodeTexImage")
             node.location = (-550, -330 + slot_y_offset)
             node.image = self.get_dds_image(texture.path)
-            node.name = f"g_Bumpmap{slot}"
+            node.name = f"g_Bumpmap{slot} | {Path(texture.path).name}"
             normal_map_node = node_tree.nodes.new("ShaderNodeNormalMap")
             normal_map_node.name = "NormalMap2" if is_second_slot else "NormalMap"
             normal_map_node.space = "TANGENT"

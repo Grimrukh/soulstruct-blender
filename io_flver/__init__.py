@@ -59,8 +59,9 @@ MAP_NAME_RE = re.compile(r"^(m\d\d)_\d\d_\d\d_\d\d$")
 BINDER_RE = re.compile(r"^.*?\.(chr|obj|parts)bnd(\.dcx)?$")
 
 
-
 class LoggingOperator(Operator):
+
+    cleanup_callback: tp.Callable = None
 
     def info(self, msg: str):
         print(f"# INFO: {msg}")
@@ -72,6 +73,11 @@ class LoggingOperator(Operator):
 
     def error(self, msg: str) -> set[str]:
         print(f"# ERROR: {msg}")
+        if self.cleanup_callback:
+            try:
+                self.cleanup_callback()
+            except Exception as ex:
+                self.report({"ERROR"}, f"Error occurred during cleanup callback: {ex}")
         self.report({"ERROR"}, msg)
         return {"CANCELLED"}
 
@@ -100,7 +106,7 @@ class ImportFLVER(LoggingOperator, ImportHelper):
     load_map_piece_tpfs: BoolProperty(
         name="Load Map Piece TPF Files",
         description="Look for TPF (DDS) textures in adjacent 'mAA' folder for map piece FLVERs.",
-        default=False,
+        default=True,
     )
 
     read_msb_transform: BoolProperty(
@@ -664,21 +670,16 @@ class ExportTexturesIntoBinder(LoggingOperator, ImportHelper):
                 self.warning(f"Could not find any TPF textures to replace with Blender image: '{image_stem}'")
 
         # TPFs have all been updated. Now pack modified ones back to their Binders.
-
-        # TODO: Move into export info methods.
         try:
             write_msg = texture_export_info.write_files()
         except Exception as ex:
             return self.error(str(ex))
-        else:
-            if write_msg:
-                self.info(write_msg)
-                return {"FINISHED"}
 
-        return self.error("No TPFs found or written.")
+        self.info(write_msg)
+        return {"FINISHED"}
 
 
-class BakeLightmapTexturse(LoggingOperator, ImportHelper):
+class BakeLightmapTexturse(LoggingOperator):
 
     bl_idname = "bake.lightmaps"
     bl_label = "Bake Selected Lightmaps"
@@ -687,92 +688,119 @@ class BakeLightmapTexturse(LoggingOperator, ImportHelper):
     @classmethod
     def poll(cls, context):
         """FLVER armature(s) must be selected."""
-        try:
-            return all(obj.type == "ARMATURE" for obj in context.selected_objects)
-        except IndexError:
-            return False
+        return context.selected_objects and all(obj.type == "ARMATURE" for obj in context.selected_objects)
 
     def execute(self, context):
         print("Executing lightmap texture bake...")
 
         # Get active materials of all submeshes of all selected objects.
-        flver_submeshes = {}
+        flver_submeshes = []
         for sel_flver_armature in context.selected_objects:
-            submeshes = [obj for obj in bpy.data.objects if obj.parent is sel_flver_armature]
+            submeshes = [
+                obj for obj in bpy.data.objects
+                if obj.parent is sel_flver_armature
+                and obj.type == "MESH"
+                and not obj.hide_render  # do NOT bake render-hidden objects (eg transparent decals)
+            ]
             if not submeshes:
                 return self.error(f"Selected object '{sel_flver_armature.name}' has no submesh children.")
-            flver_submeshes[sel_flver_armature.name] = submeshes
+            flver_submeshes += submeshes
 
         # Find texture nodes and set them to active, and get UV layer names.
-        original_active_uv_layers = {}  # maps submesh names to UV layers
+        original_active_uv_layers = []  # UVLayer objects
         original_lightmap_strengths = []  # pairs of `(node, value)`
+
+        def restore_originals():
+            # for _layer in original_active_uv_layers:
+            #     _layer.active = True
+            for _node, _strength in original_lightmap_strengths:
+                _node.inputs["Fac"].default_value = _strength
+
+        self.cleanup_callback = restore_originals
+
         texture_names = []
-        for flver_armature, submeshes in flver_submeshes.items():
-            for submesh in submeshes:
-                if not submesh.active_material:
-                    return self.error(f"Submesh '{submesh.name}' has no active material.")
+        submeshes_to_bake = []
+        for submesh in flver_submeshes:
+            if not submesh.active_material:
+                return self.error(f"Submesh '{submesh.name}' has no active material.")
 
-                # Find Image Texture node of lightmap and its UV layer input.
-                for node in submesh.active_material.node_tree.nodes:
-                    if node.bl_idname == "ShaderNodeTexImage" and node.name.startswith("g_Lightmap |"):
-                        # Found Image Texture node.
-                        if node.image.name not in texture_names:
-                            texture_names.append(node.image.name)
-                        try:
-                            uv_name = node.inputs["Vector"].links[0].from_node.attribute_name
-                        except (AttributeError, IndexError):
-                            return self.error(
-                                f"Could not find UVMap attribute for image texture node '{node.name}' in material of "
-                                f"submesh {submesh.name}."
-                            )
-                        node.active = True  # activate texture (for bake target)
-                        original_active_uv_layers[submesh.name] = submesh.data.uv_layers.active
-                        submesh.data.uv_layers[uv_name].active = True  # active UV layer
+            # Find Image Texture node of lightmap and its UV layer input.
+            for node in submesh.active_material.node_tree.nodes:
+                if node.bl_idname == "ShaderNodeTexImage" and node.name.startswith("g_Lightmap |"):
+                    # Found Image Texture node.
+                    if node.image.name not in texture_names:
+                        texture_names.append(node.image.name)
+                    try:
+                        uv_name = node.inputs["Vector"].links[0].from_node.attribute_name
+                    except (AttributeError, IndexError):
+                        return self.error(
+                            f"Could not find UVMap attribute for image texture node '{node.name}' in material of "
+                            f"submesh {submesh.name}."
+                        )
+                    # Activate texture (for bake target).
+                    submesh.active_material.node_tree.nodes.active = node
+                    node.select = True
+                    original_active_uv_layers.append(submesh.data.uv_layers.active)
+                    submesh.data.uv_layers[uv_name].active = True  # active UV layer
 
-                        # Set overlay values to zero while baking.
-                        try:
-                            overlay_node_fac = node.outputs["Color"].links[0].to_node.inputs["Fac"]
-                        except (AttributeError, IndexError):
-                            return self.error(
-                                f"Could not find `MixRGB` node connected to output of image texture node '{node.name}' "
-                                f"in material of submesh {submesh.name}. Aborting for safety; please fix node tree."
-                            )
-                        overlay_node = node.outputs["Color"].links[0].to_node
-                        original_lightmap_strengths.append((overlay_node, overlay_node_fac))
-                        # Detect which mix slot lightmap is using and set factor to disable lightmap while baking.
-                        if overlay_node.inputs[1].links[0].from_node == node:  # input 1
-                            overlay_node_fac.default_value = 1.0
-                        else:  # input 2
-                            overlay_node_fac.default_value = 0.0
-                else:
-                    self.warning(
-                        f"Could not find a `g_Lightmap` texture in active material of mesh '{submesh.name}'. "
-                        f"Ignoring submesh."
-                    )
+                    # Set overlay values to zero while baking.
+                    try:
+                        overlay_node_fac = node.outputs["Color"].links[0].to_node.inputs["Fac"]
+                    except (AttributeError, IndexError):
+                        return self.error(
+                            f"Could not find `MixRGB` node connected to output of image texture node '{node.name}' "
+                            f"in material of submesh {submesh.name}. Aborting for safety; please fix node tree."
+                        )
+                    overlay_node = node.outputs["Color"].links[0].to_node
+                    original_lightmap_strengths.append((overlay_node, overlay_node_fac.default_value))
+                    # Detect which mix slot lightmap is using and set factor to disable lightmap while baking.
+                    if overlay_node.inputs[1].links[0].from_node == node:  # input 1
+                        overlay_node_fac.default_value = 1.0
+                    else:  # input 2
+                        overlay_node_fac.default_value = 0.0
 
-        if not texture_names:
+                    submeshes_to_bake.append(submesh)
+                    break
+            else:
+                self.warning(
+                    f"Could not find a `g_Lightmap` texture in active material of mesh '{submesh.name}'. "
+                    f"Ignoring submesh."
+                )
+
+        if not texture_names or not submeshes_to_bake:
             return self.error("No lightmap textures found to bake into.")
+
+        # Select all submeshes (and only them).
+        bpy.ops.object.select_all(action="DESELECT")
+        bpy.context.view_layer.objects.active = submeshes_to_bake[0]  # just in case
+        for submesh in submeshes_to_bake:
+            submesh.select_set(True)
 
         # Bake with Cycles. TODO: Reset settings afterward?
         bpy.context.scene.render.engine = "CYCLES"
         bpy.context.scene.cycles.device = "GPU"
         bpy.context.scene.cycles.samples = 128
-        bpy.ops.object.bake(type="DIFFUSE", pass_filter={'DIRECT', 'INDIRECT'}, margin=0, use_selected_to_active=False)
+        bpy.ops.object.bake(type="SHADOW", use_selected_to_active=False)
         self.info(f"Baked {len(texture_names)} lightmap textures: {', '.join(texture_names)}")
+        try:
+            self.cleanup_callback()
+        except Exception as ex:
+            self.warning(f"Error during cleanup callback after operation finished: {ex}")
         return {"FINISHED"}
 
 
-class ExportLightmapTextures(LoggingOperator):
+class ExportLightmapTextures(LoggingOperator, ImportHelper):
     bl_idname = "export_image.lightmaps"
     bl_label = "Export Selected Lightmaps"
     bl_description = (
-        "Export lightmap image textures from all materials of all selected FLVERs into a FromSoftware TPFBXF Binder"
+        "Export lightmap image textures from all materials of all selected FLVERs into a FromSoftware TPF/Binder "
+        "(usually a TPFBHD Binder in 'mAA' folder)"
     )
 
     filename_ext = ".tpfbhd"
 
     filter_glob: StringProperty(
-        default="*.tpfbhd",
+        default="*.tpf;*.tpf.dcx;*.tpfbhd;*.chrbnd;*.chrbnd.dcx;*.objbnd;*.objbnd.dcx;*.partsbnd;*.partsbnd.dcx",
         options={'HIDDEN'},
         maxlen=255,
     )
@@ -780,15 +808,77 @@ class ExportLightmapTextures(LoggingOperator):
     @classmethod
     def poll(cls, context):
         """FLVER armature(s) must be selected."""
-        try:
-            return all(obj.type == "ARMATURE" for obj in context.selected_objects)
-        except IndexError:
-            return False
+        return context.selected_objects and all(obj.type == "ARMATURE" for obj in context.selected_objects)
 
     def execute(self, context):
         print("Executing lightmap texture export...")
 
         # TODO: Check all active materials, find 'g_Lightmap' nodes, and export those images into selected TPFBHD.
+
+        # Get active materials of all submeshes of all selected objects.
+        flver_submeshes = []
+        for sel_flver_armature in context.selected_objects:
+            submeshes = [obj for obj in bpy.data.objects if obj.parent is sel_flver_armature and obj.type == "MESH"]
+            if not submeshes:
+                return self.error(f"Selected object '{sel_flver_armature.name}' has no submesh children.")
+            flver_submeshes += submeshes
+
+        bl_images = []
+
+        for submesh in flver_submeshes:
+            if not submesh.active_material:
+                return self.error(f"Submesh '{submesh.name}' has no active material.")
+
+            # Find Image Texture node of lightmap.
+            for node in submesh.active_material.node_tree.nodes:
+                if node.bl_idname == "ShaderNodeTexImage" and node.name.startswith("g_Lightmap |"):
+                    # Found Image Texture node.
+                    if not node.image:
+                        self.warning(
+                            f"Ignoring Image Texture node in material of mesh '{submesh.name}' with no image assigned."
+                        )
+                        continue  # keep searching same material
+                    if node.image not in bl_images:
+                        bl_images.append(node.image)
+                    break  # do not look for more than one lightmap
+            else:
+                self.warning(f"Could not find a `g_Lightmap` Image Texture node in material of mesh '{submesh.name}'.")
+
+        if not bl_images:
+            return self.error(f"No lightmap textures found to export across selected FLVERs.")
+
+        try:
+            texture_export_info = get_texture_export_info(self.filepath)
+        except Exception as ex:
+            return self.error(str(ex))
+
+        rename_tpf = self.rename_matching_tpfs and self.replace_texture_name
+        for bl_image in bl_images:
+            if not bl_image:
+                self.warning("Ignoring Image Texture node with no image assigned.")
+                continue
+            image_stem = Path(bl_image.name).stem
+
+            if self.replace_texture_name:  # will only be allowed if one Image Texture is being exported
+                repl_name = f"{Path(self.replace_texture_name).stem}.dds"
+            else:
+                repl_name = image_stem
+
+            image_exported, dds_format = texture_export_info.inject_texture(bl_image, image_stem, repl_name, rename_tpf)
+            if image_exported:
+                print(f"Replacing name: {repl_name}")
+                self.info(f"Exported '{bl_image.name}' into '{self.filepath}' with DDS format {dds_format}")
+            else:
+                self.warning(f"Could not find any TPF textures to replace with Blender image: '{image_stem}'")
+
+        # TPFs have all been updated. Now pack modified ones back to their Binders.
+        try:
+            write_msg = texture_export_info.write_files()
+        except Exception as ex:
+            return self.error(str(ex))
+
+        self.info(write_msg)
+        return {"FINISHED"}
 
 
 class FLVER_PT_main_panel(bpy.types.Panel):
@@ -817,6 +907,10 @@ class FLVER_PT_main_panel(bpy.types.Panel):
         row.operator("import_image.dds")
         row = self.layout.row()
         row.operator("export_image.texture_binder")
+        row = self.layout.row()
+        row.operator("bake.lightmaps")
+        row = self.layout.row()
+        row.operator("export_image.lightmaps")
 
 
 def menu_func_import(self, context):
@@ -834,6 +928,8 @@ classes = (
     ExportFLVERIntoBinder,
     ImportDDS,
     ExportTexturesIntoBinder,
+    BakeLightmapTexturse,
+    ExportLightmapTextures,
     FLVER_PT_main_panel,
 )
 

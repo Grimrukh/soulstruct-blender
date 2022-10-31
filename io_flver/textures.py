@@ -17,11 +17,9 @@ import re
 import tempfile
 from pathlib import Path
 
+from soulstruct.base.binder_entry import BinderEntry
 from soulstruct.base.textures.dds import texconv
-from soulstruct.containers import Binder
-from soulstruct.containers.base import BaseBinder, BinderEntry
-from soulstruct.containers.bxf import BaseBXF
-from soulstruct.containers.tpf import TPF, TPFTexture
+from soulstruct.containers import BaseBinder, Binder, BaseBXF, TPF, TPFTexture
 
 import bpy
 
@@ -101,7 +99,8 @@ class SingleTPFTextureExport(TextureExportInfo):
                 self.loose_tpf.path = self.loose_tpf.path.parent / self.new_file_name
             self.loose_tpf.write()
             return f"Wrote modified TPF: {self.loose_tpf.path}"
-        return ""
+        else:
+            raise TextureExportException("Could not find any textures to replace in TPF.")
 
     @property
     def tpf_name(self):
@@ -221,7 +220,7 @@ class SplitBinderTPFTextureExport(TextureExportInfo):
 
     def write_files(self) -> str:
         if not self.modified_bxf_tpfs:
-            raise TextureExportException("Could not find any textures to replace in Binder CHRBNDBHD TPFs.")
+            raise TextureExportException("Could not find any textures to replace in Binder CHRTPFBHD TPFs.")
         for bxf_tpf_entry, bxf_tpf in self.bxf_tpfs.values():
             if bxf_tpf in self.modified_bxf_tpfs:
                 bxf_tpf_entry.set_uncompressed_data(bxf_tpf.pack_dcx())
@@ -230,7 +229,10 @@ class SplitBinderTPFTextureExport(TextureExportInfo):
             bdt_path_or_entry=self.chrtpfbdt_path,
         )
         self.binder.write()  # always same path
-        return (f"Wrote Binder with new CHRTPFBHD + adjacent CHRTPFBDT ({self.chrtpfbdt_path}) with {len(self.modified_binder_tpfs)} modified TPFs.")
+        return (
+            f"Wrote Binder with new CHRTPFBHD + adjacent CHRTPFBDT ({self.chrtpfbdt_path}) with "
+            f"{len(self.modified_bxf_tpfs)} modified TPFs."
+        )
 
 
 def get_texture_export_info(file_path: str) -> TextureExportInfo:
