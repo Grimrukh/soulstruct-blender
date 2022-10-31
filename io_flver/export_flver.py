@@ -223,9 +223,9 @@ class FLVERExporter:
                 Mesh 2 Obj (Mesh)
                 ...
 
-        TODO: Currently only prepared for DS1 map pieces.
+        TODO: Currently only really tested for DS1 map pieces.
         """
-        self.name = bl_armature.name
+        self.name = bl_armature.name  # should just be original/intended FLVER file stem, e.g. `c1234` or `m1000B0A12`
         flver = FLVER()
         extra_flver_props = self.get_all_props(bl_armature, flver.header, "FLVER")
         self.layout_member_unk_x00 = extra_flver_props["layout_member_unk_x00"]
@@ -453,7 +453,7 @@ class FLVERExporter:
             raise ValueError(f"Mesh {bl_mesh.name} must have exactly one material.")
         bl_material = bl_mesh.material_slots[0].material
         fl_material = FLVER.Material()
-        fl_material.name = bl_material.name
+        fl_material.name = bl_material.name.remove_prefix(self.name).strip()
         extra_mat_props = self.get_all_props(bl_material, fl_material, "Material", bl_prop_prefix="material_")
         found_texture_types = set()
         for i in range(extra_mat_props["texture_count"]):

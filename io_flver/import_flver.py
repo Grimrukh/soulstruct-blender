@@ -139,9 +139,10 @@ class FLVERImporter:
         else:
             self.warning("No TPF files or DDS dump folder given. No textures loaded for FLVER.")
 
-        # Note that materials with two sets of textures receive two BSDF nodes mixed 50/50.
+        # Material name has FLVER name as prefix, as different light maps may be applied across FLVERs to materials of
+        # the same 'name' (and those names are all fairly vague/useless anyway).
         self.materials = {
-            i: self.create_material(flver_material)
+            i: self.create_material(flver_material, material_name=f"{self.name} {flver_material.name}")
             for i, flver_material in enumerate(self.flver.materials)
         }
 
@@ -170,7 +171,7 @@ class FLVERImporter:
                 else:
                     self.warning(f"Could not find TPF or dumped texture '{texture_path.stem}' for FLVER '{self.name}'.")
 
-    def create_material(self, flver_material, use_existing=True):
+    def create_material(self, flver_material, material_name: str, use_existing=True):
         """Create a Blender material that represents a single `FLVER.Material`.
 
         NOTE: Actual information contained in the FLVER and used for export is stored in custom properties of the
@@ -182,13 +183,13 @@ class FLVERImporter:
         unneeded materials from Blender as you go.
         """
 
-        existing_material = bpy.data.materials.get(flver_material.name)
+        existing_material = bpy.data.materials.get(material_name)
         if existing_material is not None:
             if use_existing:
                 return existing_material
             # TODO: Should append '<i>' to duplicated name of new material...
 
-        bl_material = bpy.data.materials.new(name=flver_material.name)
+        bl_material = bpy.data.materials.new(name=material_name)
         if self.enable_alpha_hashed:
             bl_material.blend_method = "HASHED"  # show alpha in viewport
 
@@ -257,7 +258,7 @@ class FLVERImporter:
             height_texture = flver_material.find_texture_type("g_Height")
             if height_texture is None:
                 raise ValueError(
-                    f"Material {flver_material.name} has MTD {flver_material.mtd_name} but no 'g_Height' texture."
+                    f"Material {material_name} has MTD {flver_material.mtd_name} but no 'g_Height' texture."
                 )
             height_node = nt.nodes.new("ShaderNodeTexImage")
             height_node.location = (-550, 345)
@@ -273,7 +274,7 @@ class FLVERImporter:
             lightmap_texture = flver_material.find_texture_type("g_Lightmap")
             if lightmap_texture is None:
                 raise ValueError(
-                    f"Material {flver_material.name} has MTD {flver_material.mtd_name} but no 'g_Lightmap' texture."
+                    f"Material {material_name} has MTD {flver_material.mtd_name} but no 'g_Lightmap' texture."
                 )
             lightmap_node = nt.nodes.new("ShaderNodeTexImage")
             lightmap_node.location = (-550, 0)
@@ -289,14 +290,16 @@ class FLVERImporter:
             if diffuse_node_1:
                 light_overlay_node = nt.nodes.new("ShaderNodeMixRGB")
                 light_overlay_node.blend_type = "OVERLAY"
-                light_overlay_node.location = (-200, 1200)
+                light_overlay_node.name = "Texture 1 Lightmap Strength"
+                light_overlay_node.location = (-200, 780)
                 nt.links.new(diffuse_node_1.outputs["Color"], light_overlay_node.inputs[1])
                 nt.links.new(lightmap_node.outputs["Color"], light_overlay_node.inputs[2])
                 nt.links.new(light_overlay_node.outputs["Color"], bsdf_1.inputs["Base Color"])
             if diffuse_node_2:
                 light_overlay_node = nt.nodes.new("ShaderNodeMixRGB")
                 light_overlay_node.blend_type = "OVERLAY"
-                light_overlay_node.location = (-200, 600)
+                light_overlay_node.name = "Texture 2 Lightmap Strength"
+                light_overlay_node.location = (-200, 180)
                 nt.links.new(diffuse_node_2.outputs["Color"], light_overlay_node.inputs[1])
                 nt.links.new(lightmap_node.outputs["Color"], light_overlay_node.inputs[2])
                 nt.links.new(light_overlay_node.outputs["Color"], bsdf_2.inputs["Base Color"])
@@ -558,7 +561,7 @@ class FLVERImporter:
         The AABB of each bone is presumably generated to include all vertices that use that bone as a weight.
         """
         bl_armature = bpy.data.armatures.new(f"{self.name} Armature")
-        bl_armature_obj = self.create_obj(f"FLVER {self.name}", bl_armature, parent_to_armature=False)
+        bl_armature_obj = self.create_obj(f"{self.name}", bl_armature, parent_to_armature=False)
 
         write_bone_type = ""
         warn_partial_bind_pose = False

@@ -25,7 +25,6 @@ from soulstruct.base.binder_entry import BinderEntry
 from soulstruct.base.models.flver import FLVER
 from soulstruct.base.textures.dds import texconv
 from soulstruct.containers import Binder
-from soulstruct.containers.bxf import BaseBXF
 from soulstruct.containers.tpf import TPF
 
 if "FLVERImporter" in locals():
@@ -36,7 +35,7 @@ if "FLVERImporter" in locals():
 from io_flver.core import FLVERImportError, Transform, get_msb_transforms
 from io_flver.export_flver import FLVERExporter
 from io_flver.import_flver import FLVERImporter
-from io_flver.textures import load_tpf_texture_as_png, export_image_into_tpf_texture
+from io_flver.textures import *
 
 if tp.TYPE_CHECKING:
     from .import_flver import FLVERImporter
@@ -58,8 +57,7 @@ bl_info = {
 
 MAP_NAME_RE = re.compile(r"^(m\d\d)_\d\d_\d\d_\d\d$")
 BINDER_RE = re.compile(r"^.*?\.(chr|obj|parts)bnd(\.dcx)?$")
-TPF_RE = re.compile(rf"^(.*)\.tpf(\.dcx)?$")
-CHRBND_RE = re.compile(rf"^(.*)\.chrbnd(\.dcx)?$")
+
 
 
 class LoggingOperator(Operator):
@@ -640,189 +638,157 @@ class ExportTexturesIntoBinder(LoggingOperator, ImportHelper):
         if len(sel_tex_nodes) > 1 and self.replace_texture_name:
             return self.error("Cannot override 'Replace Texture Name' when exporting multiple textures.")
 
-        loose_tpf = None
-        binder = None
-        binder_tpfs = {}  # type: dict[str, tuple[BinderEntry, TPF]]
-        chrtpfbxf = None  # type: BaseBXF | None
-        chrtpfbhd_entry = None  # type: BinderEntry | None
-        chrtpfbdt_path = None  # type: Path | None
-        bxf_tpfs = {}  # type: dict[str, tuple[BinderEntry, TPF]]
+        try:
+            texture_export_info = get_texture_export_info(self.filepath)
+        except Exception as ex:
+            return self.error(str(ex))
 
-        # 1. Export into loose TPF.
-        if TPF_RE.match(self.filepath):
-            try:
-                loose_tpf = TPF(self.filepath)
-            except Exception as ex:
-                return self.error(f"Could not load TPF file. Error: {ex}")
-        else:
-            try:
-                binder = Binder(self.filepath)
-            except Exception as ex:
-                return self.error(f"Could not load Binder file. Error: {ex}")
-
-            # 2. Find TPF entries in Binder.
-            tpf_entries = binder.find_entries_matching_name(TPF_RE)
-            for tpf_entry in tpf_entries:
-                try:
-                    binder_tpfs[tpf_entry.name] = (tpf_entry, TPF(tpf_entry))
-                except Exception as ex:
-                    return self.error(f"Could not load TPF file '{tpf_entry.name}' in Binder. Error: {ex}")
-
-            # 3. Find CHRTPFBHD in Binder.
-            if match := CHRBND_RE.match(self.filepath):
-                chrbnd_name = match.group(1)
-                try:
-                    chrtpfbhd_entry = binder[f"{chrbnd_name}.chrtpfbhd"]
-                except binder.BinderEntryMissing:
-                    if not tpf_entries:
-                        return self.error("Could not find any TPFs or CHRTPFBHDs in Binder.")
-                    # Otherwise, no problem (CHRBND with TPFs).
-                else:
-                    if tpf_entries:
-                        return self.error(f"CHRBND '{self.filepath}' has both loose TPFs and a CHRTPFBHD.")
-                    chrtpfbdt_path = Path(self.filepath).parent / f"{chrbnd_name}.chrtpfbdt"
-                    if not chrtpfbdt_path.is_file():
-                        return self.error(f"Could not find required '{chrtpfbdt_path.name}' next to CHRBND.")
-                    chrtpfbxf = Binder(chrtpfbhd_entry, bdt_source=chrtpfbdt_path)
-                    bxf_tpf_entries = chrtpfbxf.find_entries_matching_name(TPF_RE)
-                    for tpf_entry in bxf_tpf_entries:
-                        try:
-                            bxf_tpfs[tpf_entry.name] = (tpf_entry, TPF(tpf_entry))
-                        except Exception as ex:
-                            return self.error(f"Could not load TPF file '{tpf_entry.name}' in CHRTPFBHD. Error: {ex}")
-
-        modified_loose_tpf = False
-        rename_loose_tpf = ""
-        modified_binder_tpfs = []
-        modified_bxf_tpfs = []
+        rename_tpf = self.rename_matching_tpfs and self.replace_texture_name
         for tex_node in sel_tex_nodes:
             bl_image = tex_node.image
             if not bl_image:
                 self.warning("Ignoring Image Texture node with no image assigned.")
                 continue
             image_stem = Path(bl_image.name).stem
-            new_dds_name = f"{image_stem}.dds"
+
             if self.replace_texture_name:  # will only be allowed if one Image Texture is being exported
                 repl_name = f"{Path(self.replace_texture_name).stem}.dds"
             else:
                 repl_name = image_stem
 
-            image_exported = False
-            print(f"Replacing name: {repl_name}")
-
-            if loose_tpf:
-                tpf_name = Path(self.filepath).name
-                for texture in loose_tpf.textures:
-                    if texture.name == repl_name:
-                        # Replace this texture.
-                        try:
-                            _, dds_format = export_image_into_tpf_texture(bl_image, replace_in_tpf_texture=texture)
-                        except ValueError as ex:
-                            return self.error(f"Could not export image texture '{bl_image.name}'. Error: {ex}")
-                        self.info(f"Exported '{bl_image.name}' into TPF '{self.filepath}' with DDS format {dds_format}")
-                        image_exported = True
-                        texture.name = image_stem
-                        modified_loose_tpf = True
-
-                        if self.replace_texture_name and self.rename_matching_tpfs:
-                            # Check if we should also rename this TPF.
-                            if tpf_name == f"{image_stem}.tpf":
-                                rename_loose_tpf = f"{image_stem}.tpf"
-                            elif tpf_name == f"{image_stem}.tpf.dcx":
-                                rename_loose_tpf = f"{image_stem}.tpf.dcx"
-
-                        break  # texture found
-
-            for tpf_name, (binder_tpf_entry, binder_tpf) in binder_tpfs.items():
-                print(tpf_name)
-                for texture in binder_tpf.textures:
-                    if texture.name == repl_name:
-                        # Replace this texture.
-                        try:
-                            _, dds_format = export_image_into_tpf_texture(bl_image, replace_in_tpf_texture=texture)
-                        except ValueError as ex:
-                            return self.error(f"Could not export image texture '{bl_image.name}'. Error: {ex}.")
-                        self.info(f"Exported '{bl_image.name}' into TPF '{tpf_name}' with DDS format {dds_format}")
-                        image_exported = True
-                        texture.name = image_stem
-                        if binder_tpf not in modified_binder_tpfs:
-                            modified_binder_tpfs.append(binder_tpf)
-
-                        if self.replace_texture_name and self.rename_matching_tpfs:
-                            # Check if we should also rename this TPF.
-                            if tpf_name == f"{image_stem}.tpf":
-                                binder_tpf_entry.set_path_name(f"{image_stem}.tpf")
-                            elif tpf_name == f"{image_stem}.tpf.dcx":
-                                binder_tpf_entry.set_path_name(f"{image_stem}.tpf.dcx")
-
-                        break  # texture found
-
-            for tpf_name, (bxf_tpf_entry, bxf_tpf) in bxf_tpfs.items():
-                for texture in bxf_tpf.textures:
-                    if texture.name == repl_name:
-                        # Replace this texture.
-                        try:
-                            _, dds_format = export_image_into_tpf_texture(bl_image, replace_in_tpf_texture=texture)
-                        except ValueError as ex:
-                            return self.error(f"Could not export image texture '{bl_image.name}'. Error: {ex}.")
-                        self.info(f"Exported '{bl_image.name}' into TPF '{tpf_name}' with DDS format {dds_format}")
-                        image_exported = True
-                        texture.name = image_stem
-                        if bxf_tpf not in modified_bxf_tpfs:
-                            modified_bxf_tpfs.append(bxf_tpf)
-
-                        if self.replace_texture_name and self.rename_matching_tpfs:
-                            # Check if we should also rename this TPF.
-                            if tpf_name == f"{image_stem}.tpf":
-                                bxf_tpf_entry.set_path_name(f"{image_stem}.tpf")
-                            elif tpf_name == f"{image_stem}.tpf.dcx":
-                                bxf_tpf_entry.set_path_name(f"{image_stem}.tpf.dcx")
-
-                        break  # texture found
-
-            if not image_exported:
+            image_exported, dds_format = texture_export_info.inject_texture(bl_image, image_stem, repl_name, rename_tpf)
+            if image_exported:
+                print(f"Replacing name: {repl_name}")
+                self.info(f"Exported '{bl_image.name}' into '{self.filepath}' with DDS format {dds_format}")
+            else:
                 self.warning(f"Could not find any TPF textures to replace with Blender image: '{image_stem}'")
 
         # TPFs have all been updated. Now pack modified ones back to their Binders.
 
-        if loose_tpf:
-            if modified_loose_tpf:
-                # Just re-write TPF.
-                if rename_loose_tpf:
-                    export_tpf_path = str(Path(self.filepath).parent / rename_loose_tpf)
-                else:
-                    export_tpf_path = self.filepath
-                loose_tpf.write(export_tpf_path)
-                self.info(f"Wrote modified TPF: {export_tpf_path}")
+        # TODO: Move into export info methods.
+        try:
+            write_msg = texture_export_info.write_files()
+        except Exception as ex:
+            return self.error(str(ex))
+        else:
+            if write_msg:
+                self.info(write_msg)
                 return {"FINISHED"}
-            return self.error("Could not find any textures to replace in TPF.")
-
-        if binder_tpfs:
-            if not modified_binder_tpfs:
-                return self.error("Could not find any textures to replace in Binder TPFs.")
-            for binder_tpf_entry, binder_tpf in binder_tpfs.values():
-                if binder_tpf in modified_binder_tpfs:
-                    binder_tpf_entry.set_uncompressed_data(binder_tpf.pack_dcx())
-            binder.write()  # always same path
-            self.info(f"Wrote Binder with {len(modified_binder_tpfs)} modified TPFs.")
-            return {"FINISHED"}
-
-        if bxf_tpfs:
-            if not modified_bxf_tpfs:
-                return self.error("Could not find any textures to replace in Binder CHRBNDBHD TPFs.")
-            for bxf_tpf_entry, bxf_tpf in bxf_tpfs.values():
-                if bxf_tpf in modified_bxf_tpfs:
-                    bxf_tpf_entry.set_uncompressed_data(bxf_tpf.pack_dcx())
-            chrtpfbxf.write_split(
-                bhd_path_or_entry=chrtpfbhd_entry,
-                bdt_path_or_entry=chrtpfbdt_path,
-            )
-            self.info(f"Wrote CHRTPFBDT next to CHRBND: {chrtpfbdt_path}")
-            binder.write()  # always same path
-            self.info(f"Wrote Binder with new CHRTPFBHD with {len(modified_binder_tpfs)} modified TPFs.")
-            return {"FINISHED"}
 
         return self.error("No TPFs found or written.")
+
+
+class BakeLightmapTexturse(LoggingOperator, ImportHelper):
+
+    bl_idname = "bake.lightmaps"
+    bl_label = "Bake Selected Lightmaps"
+    bl_description = "Bake lightmap image textures from all materials of all selected FLVERs"
+
+    @classmethod
+    def poll(cls, context):
+        """FLVER armature(s) must be selected."""
+        try:
+            return all(obj.type == "ARMATURE" for obj in context.selected_objects)
+        except IndexError:
+            return False
+
+    def execute(self, context):
+        print("Executing lightmap texture bake...")
+
+        # Get active materials of all submeshes of all selected objects.
+        flver_submeshes = {}
+        for sel_flver_armature in context.selected_objects:
+            submeshes = [obj for obj in bpy.data.objects if obj.parent is sel_flver_armature]
+            if not submeshes:
+                return self.error(f"Selected object '{sel_flver_armature.name}' has no submesh children.")
+            flver_submeshes[sel_flver_armature.name] = submeshes
+
+        # Find texture nodes and set them to active, and get UV layer names.
+        original_active_uv_layers = {}  # maps submesh names to UV layers
+        original_lightmap_strengths = []  # pairs of `(node, value)`
+        texture_names = []
+        for flver_armature, submeshes in flver_submeshes.items():
+            for submesh in submeshes:
+                if not submesh.active_material:
+                    return self.error(f"Submesh '{submesh.name}' has no active material.")
+
+                # Find Image Texture node of lightmap and its UV layer input.
+                for node in submesh.active_material.node_tree.nodes:
+                    if node.bl_idname == "ShaderNodeTexImage" and node.name.startswith("g_Lightmap |"):
+                        # Found Image Texture node.
+                        if node.image.name not in texture_names:
+                            texture_names.append(node.image.name)
+                        try:
+                            uv_name = node.inputs["Vector"].links[0].from_node.attribute_name
+                        except (AttributeError, IndexError):
+                            return self.error(
+                                f"Could not find UVMap attribute for image texture node '{node.name}' in material of "
+                                f"submesh {submesh.name}."
+                            )
+                        node.active = True  # activate texture (for bake target)
+                        original_active_uv_layers[submesh.name] = submesh.data.uv_layers.active
+                        submesh.data.uv_layers[uv_name].active = True  # active UV layer
+
+                        # Set overlay values to zero while baking.
+                        try:
+                            overlay_node_fac = node.outputs["Color"].links[0].to_node.inputs["Fac"]
+                        except (AttributeError, IndexError):
+                            return self.error(
+                                f"Could not find `MixRGB` node connected to output of image texture node '{node.name}' "
+                                f"in material of submesh {submesh.name}. Aborting for safety; please fix node tree."
+                            )
+                        overlay_node = node.outputs["Color"].links[0].to_node
+                        original_lightmap_strengths.append((overlay_node, overlay_node_fac))
+                        # Detect which mix slot lightmap is using and set factor to disable lightmap while baking.
+                        if overlay_node.inputs[1].links[0].from_node == node:  # input 1
+                            overlay_node_fac.default_value = 1.0
+                        else:  # input 2
+                            overlay_node_fac.default_value = 0.0
+                else:
+                    self.warning(
+                        f"Could not find a `g_Lightmap` texture in active material of mesh '{submesh.name}'. "
+                        f"Ignoring submesh."
+                    )
+
+        if not texture_names:
+            return self.error("No lightmap textures found to bake into.")
+
+        # Bake with Cycles. TODO: Reset settings afterward?
+        bpy.context.scene.render.engine = "CYCLES"
+        bpy.context.scene.cycles.device = "GPU"
+        bpy.context.scene.cycles.samples = 128
+        bpy.ops.object.bake(type="DIFFUSE", pass_filter={'DIRECT', 'INDIRECT'}, margin=0, use_selected_to_active=False)
+        self.info(f"Baked {len(texture_names)} lightmap textures: {', '.join(texture_names)}")
+        return {"FINISHED"}
+
+
+class ExportLightmapTextures(LoggingOperator):
+    bl_idname = "export_image.lightmaps"
+    bl_label = "Export Selected Lightmaps"
+    bl_description = (
+        "Export lightmap image textures from all materials of all selected FLVERs into a FromSoftware TPFBXF Binder"
+    )
+
+    filename_ext = ".tpfbhd"
+
+    filter_glob: StringProperty(
+        default="*.tpfbhd",
+        options={'HIDDEN'},
+        maxlen=255,
+    )
+
+    @classmethod
+    def poll(cls, context):
+        """FLVER armature(s) must be selected."""
+        try:
+            return all(obj.type == "ARMATURE" for obj in context.selected_objects)
+        except IndexError:
+            return False
+
+    def execute(self, context):
+        print("Executing lightmap texture export...")
+
+        # TODO: Check all active materials, find 'g_Lightmap' nodes, and export those images into selected TPFBHD.
 
 
 class FLVER_PT_main_panel(bpy.types.Panel):
