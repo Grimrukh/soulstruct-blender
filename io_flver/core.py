@@ -4,6 +4,7 @@ __all__ = [
     "FLVERImportError",
     "FLVERExportError",
     "Transform",
+    "BlenderTransform",
     "flver_vec_to_blender_vec",
     "blender_vec_to_flver_vec",
     "is_uniform",
@@ -11,16 +12,21 @@ __all__ = [
     "fl_forward_up_vectors_to_bl_euler",
     "bl_euler_to_fl_forward_up_vectors",
     "natural_keys",
+    "LoggingOperator",
 ]
 
 import re
-from math import degrees, radians, isclose
+import typing as tp
 from dataclasses import dataclass
+from math import degrees, radians, isclose
 from pathlib import Path
-from mathutils import Euler, Vector
 
 from soulstruct.utilities.maths import Vector3, Matrix3
 from soulstruct.darksouls1r.maps import MSB, get_map
+
+# noinspection PyUnresolvedReferences
+from bpy.types import Operator
+from mathutils import Euler, Vector
 
 
 class FLVERImportError(Exception):
@@ -192,3 +198,26 @@ def natural_keys(text):
         http://nedbatchelder.com/blog/200712/human_sorting.html
     """
     return [atoi(c) for c in re.split(r"(\d+)", text)]
+
+
+class LoggingOperator(Operator):
+
+    cleanup_callback: tp.Callable = None
+
+    def info(self, msg: str):
+        print(f"# INFO: {msg}")
+        self.report({"INFO"}, msg)
+
+    def warning(self, msg: str):
+        print(f"# WARNING: {msg}")
+        self.report({"WARNING"}, msg)
+
+    def error(self, msg: str) -> set[str]:
+        print(f"# ERROR: {msg}")
+        if self.cleanup_callback:
+            try:
+                self.cleanup_callback()
+            except Exception as ex:
+                self.report({"ERROR"}, f"Error occurred during cleanup callback: {ex}")
+        self.report({"ERROR"}, msg)
+        return {"CANCELLED"}

@@ -1,24 +1,28 @@
 from __future__ import annotations
 
-__all__ = ["FLVERExporter"]
+__all__ = ["ExportFLVER", "ExportFLVERIntoBinder"]
 
 import re
+import traceback
 import typing as tp
 from multiprocessing import Pool, Queue
+from pathlib import Path
 
 import bmesh
 import bpy
 import bpy_types
+from bpy.props import StringProperty, BoolProperty, IntProperty, EnumProperty
 from mathutils import Euler, Matrix, Vector
+from bpy_extras.io_utils import ImportHelper, ExportHelper
+from soulstruct.containers.dcx import DCXType
 
+from soulstruct.base.binder_entry import BinderEntry
 from soulstruct.base.models.flver import FLVER, Version
 from soulstruct.base.models.flver.vertex import VertexBuffer, BufferLayout, LayoutMember, MemberType, MemberFormat
+from soulstruct.containers import Binder
 from soulstruct.utilities.maths import Vector3
 
-from .core import blender_vec_to_flver_vec, BlenderTransform, natural_keys, bl_euler_to_fl_forward_up_vectors
-
-if tp.TYPE_CHECKING:
-    from . import ExportFLVER
+from .core import *
 
 # TODO: Doesn't work yet, as I can't pickle Blender Objects at least.
 #    - Would need to convert all the triangles/faces/loops/UVs etc. to Python data first.
@@ -68,6 +72,207 @@ class BlenderProp(tp.NamedTuple):
     default: tp.Any = None
     callback: tp.Callable = None
     do_not_assign: bool = False
+
+
+class ExportFLVER(LoggingOperator, ExportHelper):
+    """Export FLVER from a Blender Armature parent."""
+    bl_idname = "export_scene.flver"
+    bl_label = "Export FLVER"
+    bl_description = "Export a prepared Blender object hierarchy to a FromSoftware FLVER model file."
+
+    # ExportHelper mixin class uses this
+    filename_ext = ".flver"
+
+    filter_glob: StringProperty(
+        default="*.flver;*.flver.dcx",
+        options={'HIDDEN'},
+        maxlen=255,  # Max internal buffer length, longer would be clamped.
+    )
+
+    dcx_type: EnumProperty(
+        name="Compression",
+        items=[
+            ("Null", "None", "Export without any DCX compression"),
+            ("DCX_EDGE", "DES", "Demon's Souls compression"),
+            ("DCX_DFLT_10000_24_9", "DS1/DS2", "Dark Souls 1/2 compression"),
+            ("DCX_DFLT_10000_44_9", "BB/DS3", "Bloodborne/Dark Souls 3 compression"),
+            ("DCX_DFLT_11000_44_9", "Sekiro", "Sekiro compression (requires Oodle DLL)"),
+            ("DCX_KRAK", "Elden Ring", "Elden Ring compression (requires Oodle DLL)"),
+        ],
+        description="Type of DCX compression to apply to exported file"
+    )
+
+    # TODO: Options to:
+    #   - Detect appropriate MSB and update transform of this model instance (if unique) (low priority).
+
+    @classmethod
+    def poll(cls, context):
+        try:
+            return context.selected_objects[0].type == "ARMATURE"
+        except IndexError:
+            return False
+
+    def execute(self, context):
+        selected_objs = [obj for obj in context.selected_objects]
+        if not selected_objs:
+            return self.error("No FLVER parent object selected.")
+        elif len(selected_objs) > 1:
+            return self.error("Multiple objects selected. Exactly one FLVER parent object must be selected.")
+        flver_parent_obj = selected_objs[0]
+        if bpy.ops.object.mode_set.poll():
+            # Must be in OBJECT mode for export, as some data (e.g. UVs) is not accessible in EDIT mode.
+            bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
+
+        exporter = FLVERExporter(self, context)
+
+        try:
+            flver = exporter.export_flver(flver_parent_obj)
+        except Exception as ex:
+            traceback.print_exc()
+            return self.error(f"Cannot get exported FLVER. Error: {ex}")
+        else:
+            flver.dcx_type = DCXType[self.dcx_type]
+            try:
+                # Will create a `.bak` file automatically if absent.
+                flver.write(Path(self.filepath))
+            except Exception as ex:
+                traceback.print_exc()
+                return self.error(f"Cannot write exported FLVER. Error: {ex}")
+
+        return {"FINISHED"}
+
+
+class ExportFLVERIntoBinder(LoggingOperator, ImportHelper):
+    """This appears in the tooltip of the operator and in the generated docs."""
+    bl_idname = "export_scene.flver_binder"
+    bl_label = "Export FLVER Into Binder"
+    bl_description = "Export a FLVER model file into a FromSoftware Binder (BND/BHD)"
+
+    # ImportHelper mixin class uses this
+    filename_ext = ".chrbnd"
+
+    filter_glob: StringProperty(
+        default="*.chrbnd;*.chrbnd.dcx;*.objbnd;*.objbnd.dcx;*.partsbnd;*.partsbnd.dcx",
+        options={'HIDDEN'},
+        maxlen=255,
+    )
+
+    dcx_type: EnumProperty(
+        name="Compression",
+        items=[
+            ("Null", "None", "Export without any DCX compression"),
+            ("DCX_EDGE", "DES", "Demon's Souls compression"),
+            ("DCX_DFLT_10000_24_9", "DS1/DS2", "Dark Souls 1/2 compression"),
+            ("DCX_DFLT_10000_44_9", "BB/DS3", "Bloodborne/Dark Souls 3 compression"),
+            ("DCX_DFLT_11000_44_9", "Sekiro", "Sekiro compression (requires Oodle DLL)"),
+            ("DCX_KRAK", "Elden Ring", "Elden Ring compression (requires Oodle DLL)"),
+        ],
+        description="Type of DCX compression to apply to exported file"
+    )
+
+    overwrite_existing: BoolProperty(
+        name="Overwrite Existing",
+        description="Overwrite first existing '.flver{.dcx}' entry in Binder",
+        default=True,
+    )
+
+    default_entry_id: IntProperty(
+        name="Default ID",
+        description="Binder entry ID to use if a '.flver{.dcx}' entry does not already exist in Binder. If left as -1, "
+                    "an existing entry MUST be found for export to proceed",
+        default=-1,
+        min=-1,
+    )
+
+    default_entry_flags: IntProperty(
+        name="Default Flags",
+        description="Flags to set to Binder entry if it needs to be created",
+        default=0x2,
+    )
+
+    default_entry_path: StringProperty(
+        name="Default Path",
+        description="Path prefix to use for Binder entry if it needs to be created. Use {name} as a format "
+                    "placeholder for the name of this FLVER object. Default is for DS1R `chrbnd.dcx` files",
+        default="N:\\FRPG\\data\\INTERROOT_x64\\chr\\{name}\\{name}.flver",
+    )
+
+    # TODO: DCX compression option (defaults to None).
+
+    @classmethod
+    def poll(cls, context):
+        try:
+            return context.selected_objects[0].type == "ARMATURE"
+        except IndexError:
+            return False
+
+    def execute(self, context):
+        print("Executing export...")
+
+        selected_objs = [obj for obj in context.selected_objects]
+        if not selected_objs:
+            return self.error("No FLVER parent object selected.")
+        elif len(selected_objs) > 1:
+            return self.error("Multiple objects selected. Exactly one FLVER parent object must be selected.")
+        flver_parent_obj = selected_objs[0]
+        if bpy.ops.object.mode_set.poll():
+            # Must be in OBJECT mode for export, as some data (e.g. UVs) is not accessible in EDIT mode.
+            bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
+
+        exporter = FLVERExporter(self, context)
+
+        try:
+            flver = exporter.export_flver(flver_parent_obj)
+        except Exception as ex:
+            traceback.print_exc()
+            return self.error(f"Cannot get exported FLVER. Error: {ex}")
+
+        try:
+            binder = Binder(self.filepath)
+        except Exception as ex:
+            return self.error(f"Could not load Binder file. Error: {ex}.")
+
+        flver_entries = binder.find_entries_matching_name(r".*\.flver(\.dcx)?")
+        if not flver_entries:
+            if self.default_entry_id == -1:
+                return self.error("No FLVER files found in Binder and default entry ID was left as -1.")
+            if self.default_entry_id in binder.entries_by_id:
+                if not self.overwrite_existing:
+                    return self.error(
+                        f"Binder entry {self.default_entry_id} already exists in Binder and overwrite is disabled."
+                    )
+                flver_entry = binder.entries_by_id[self.default_entry_id]
+            else:
+                # Create new entry. TODO: Currently no DCX.
+                entry_path = self.default_entry_path.format(name=flver_parent_obj.name)
+                flver_entry = BinderEntry(
+                    b"", entry_id=self.default_entry_id, path=entry_path, flags=self.default_entry_flags
+                )
+        else:
+            if not self.overwrite_existing:
+                return self.error("FLVER file already exists in Binder and overwrite is disabled.")
+
+            if len(flver_entries) > 1:
+                self.warning(f"Multiple FLVER files found in Binder. Replacing first: {flver_entries[0].name}")
+            flver_entry = flver_entries[0]
+
+        dcx_type = DCXType[self.dcx_type]
+        flver.dcx_type = dcx_type
+
+        try:
+            flver_entry.set_uncompressed_data(flver.pack_dcx())  # DCX will default to None here from exporter function
+        except Exception as ex:
+            traceback.print_exc()
+            return self.error(f"Cannot write exported FLVER. Error: {ex}")
+
+        try:
+            # Will create a `.bak` file automatically if absent.
+            binder.write()
+        except Exception as ex:
+            traceback.print_exc()
+            return self.error(f"Cannot write Binder with new FLVER. Error: {ex}")
+
+        return {"FINISHED"}
 
 
 class FLVERExporter:
@@ -471,7 +676,7 @@ class FLVERExporter:
         # NOTE: Extra textures not required by this shader (e.g., 'g_DetailBumpmap' for most of them) are still
         # written, but missing required textures will raise an error here.
         mtd_name = fl_material.mtd_name
-        mtd_bools = fl_material.get_mtd_bools()
+        mtd_bools = fl_material.get_mtd_info()
         self.validate_found_textures(mtd_bools, found_texture_types, mtd_name)
 
         # TODO: Choose default layout factory with an export enum.

@@ -10,34 +10,33 @@ that use non-[M] MTD shaders will likely also not appear correctly.
 """
 from __future__ import annotations
 
-__all__ = ["FLVERImporter"]
+__all__ = ["ImportFLVER", "ImportFLVERWithMSBChoice"]
 
 import math
 import re
+import traceback
 import typing as tp
 from pathlib import Path
 
 import bpy
 import bpy_types
 import bmesh
+from bpy.props import StringProperty, BoolProperty, CollectionProperty
+from bpy_extras.io_utils import ImportHelper
 from mathutils import Euler, Vector, Matrix
 
+from soulstruct.base.models.flver import FLVER
+from soulstruct.containers import Binder, TPF, TPFTexture
 from soulstruct.utilities.maths import Vector3
 
-from .core import Transform, FLVERImportError, fl_forward_up_vectors_to_bl_euler, is_uniform
-from .textures import load_tpf_texture_as_png
+from .core import *
+from .materials import MaterialNodeCreator
+from .textures import TPF_RE, load_tpf_texture_as_png
 
-if tp.TYPE_CHECKING:
-    from io_flver import ImportFLVER
-    from soulstruct.base.models.flver import FLVER
-    from soulstruct.containers.tpf import TPFTexture
-
-
-# TODO: Turn into import settings.
-NORMAL_MAP_STRENGTH = 0.4
-ROUGHNESS = 0.75
 
 ARMATURE_RE = re.compile(r"(.*) Armature Obj")
+FLVER_BINDER_RE = re.compile(r"^.*?\.(chr|obj|parts)bnd(\.dcx)?$")
+MAP_NAME_RE = re.compile(r"^(m\d\d)_\d\d_\d\d_\d\d$")
 
 
 # Blender matrix to convert from FromSoft space to Blender space.
@@ -51,6 +50,239 @@ FL_TO_BL_SPACE_ROT = Matrix((
     (0.0, 0.0, 1.0),
     (0.0, -1.0, 0.0),
 ))
+
+
+class ImportFLVER(LoggingOperator, ImportHelper):
+    """This appears in the tooltip of the operator and in the generated docs."""
+    bl_idname = "import_scene.flver"
+    bl_label = "Import FLVER"
+    bl_description = "Import a FromSoftware FLVER model file. Can import from BNDs and supports DCX-compressed files."
+
+    # ImportHelper mixin class uses this
+    filename_ext = ".flver"
+
+    filter_glob: StringProperty(
+        default="*.flver;*.flver.dcx;*.chrbnd;*.chrbnd.dcx;*.objbnd;*.objbnd.dcx;*.partsbnd;*.partsbnd.dcx",
+        options={'HIDDEN'},
+        maxlen=255,  # Max internal buffer length, longer would be clamped.
+    )
+
+    dds_path: StringProperty(
+        name="Read Dumped DDS Files",
+        description="Look for pre-dumped DDS textures in this folder, if given",
+        default="D:\\dds_dump",
+    )
+
+    load_map_piece_tpfs: BoolProperty(
+        name="Load Map Piece TPF Files",
+        description="Look for TPF (DDS) textures in adjacent 'mAA' folder for map piece FLVERs",
+        default=True,
+    )
+
+    read_msb_transform: BoolProperty(
+        name="Read MSB Transform",
+        description="Look for matching MSB file in adjacent `MapStudio` folder and set transform of map piece FLVER",
+        default=True,
+    )
+
+    enable_alpha_hashed: BoolProperty(
+        name="Enable Alpha Hashed",
+        description="Enable material Alpha Hashed (rather than Opaque) for single-texture FLVER materials",
+        default=True,
+    )
+
+    files: CollectionProperty(
+        type=bpy.types.OperatorFileListElement,
+        options={'HIDDEN', 'SKIP_SAVE'},
+    )
+
+    directory: StringProperty(
+        options={'HIDDEN'},
+    )
+
+    def execute(self, context):
+        print("Executing import...")
+
+        def GO():
+
+            file_paths = [Path(self.directory, file.name) for file in self.files]
+            flvers = []
+            texture_sources = {}
+
+            for file_path in file_paths:
+
+                if FLVER_BINDER_RE.match(file_path.name):
+                    binder = Binder(file_path)
+
+                    # Find FLVER entry.
+                    flver_entries = binder.find_entries_matching_name(r".*\.flver(\.dcx)?")
+                    if not flver_entries:
+                        raise FLVERImportError(f"Cannot find a FLVER file in binder {file_path}.")
+                    elif len(flver_entries) > 1:
+                        raise FLVERImportError(f"Found multiple FLVER files in binder {file_path}.")
+                    flver = FLVER(flver_entries[0].data)
+                    flvers.append(flver)
+
+                    # Find TPFs or CHRTPFBHDs inside binder, potentially using `chrtpfbdt` file if it exists.
+                    for tpf_entry in binder.find_entries_matching_name(TPF_RE):  # generally only one
+                        tpf = TPF(tpf_entry.data)
+                        # tpf.convert_dds_formats("DX10", "DXT1")  # TODO: outdated
+                        for texture in tpf.textures:
+                            texture_sources[texture.name] = texture
+                    try:
+                        tpfbhd_entry = binder.find_entry_matching_name(r".*\.chrtpfbhd")
+                    except (binder.BinderEntryMissing, ValueError):
+                        pass
+                    else:
+                        # Search for BDT.
+                        tpfbdt_path = file_path.parent / f"{tpfbhd_entry.name.split('.')[0]}.chrtpfbdt"
+                        if tpfbdt_path.is_file():
+                            tpfbxf = Binder(tpfbhd_entry.data, bdt_source=tpfbdt_path)
+                            for tpf_entry in tpfbxf.entries:
+                                match = TPF_RE.match(tpf_entry.name)
+                                if match:
+                                    tpf = TPF(tpf_entry.data)
+                                    tpf.convert_dds_formats("DX10", "DXT1")
+                                    for texture in tpf.textures:
+                                        texture_sources[texture.name] = texture
+                        else:
+                            self.warning(f"Could not find adjacent CHRTPFBDT for TPFs in file {file_path}.")
+                else:
+                    # Map Piece loose FLVER.
+                    flver = FLVER(file_path)
+                    flvers.append(flver)
+
+                    if self.load_map_piece_tpfs:
+                        # Find map piece TPFs in adjacent `mXX` directory.
+                        directory = Path(self.directory)
+                        map_directory_match = MAP_NAME_RE.match(directory.name)
+                        if not map_directory_match:
+                            return self.error("FLVER not located in a map folder (`mAA_BB_CC_DD`). Cannot load TPFs.")
+                        tpf_directory = directory.parent / map_directory_match.group(1)
+                        if not tpf_directory.is_dir():
+                            return self.error(f"`mXX` TPF folder does not exist: {tpf_directory}. Cannot load TPFs.")
+
+                        texture_sources |= TPF.collect_tpf_textures(tpf_directory)
+
+            dds_dump_path = Path(self.dds_path) if self.dds_path else None
+
+            importer = FLVERImporter(self, context, texture_sources, dds_dump_path, self.enable_alpha_hashed)
+
+            for file_path, flver in zip(file_paths, flvers, strict=True):
+
+                transform = None  # type: tp.Optional[Transform]
+
+                if not FLVER_BINDER_RE.match(file_path.name) and self.read_msb_transform:
+                    if MAP_NAME_RE.match(file_path.parent.name):
+                        try:
+                            transforms = get_msb_transforms(file_path)
+                        except Exception as ex:
+                            self.warning(f"Could not get MSB transform. Error: {ex}")
+                        else:
+                            if len(transforms) > 1:
+                                # Defer import through MSB choice operator's `run()` method.
+                                # Note that the same `importer` object is used -- this `execute()` function will NOT be
+                                # called again, TPFs will not be loaded again, etc.
+                                importer.context = context
+                                ImportFLVERWithMSBChoice.run(
+                                    importer=importer,
+                                    flver=flver,
+                                    file_path=file_path,
+                                    transforms=transforms,
+                                    read_tpfs=self.load_map_piece_tpfs,
+                                    dds_path=self.dds_path,
+                                    enable_alpha_blend=self.enable_alpha_hashed,
+                                )
+                                continue
+                            transform = transforms[0][1]
+                    else:
+                        self.warning(f"Cannot read MSB transform for FLVER in unknown directory: {file_path}.")
+                try:
+                    importer.import_flver(flver, file_path=file_path, transform=transform)
+                except Exception as ex:
+                    # Delete any objects created prior to exception.
+                    for obj in importer.all_bl_objs:
+                        bpy.data.objects.remove(obj)
+                    traceback.print_exc()  # for inspection in Blender console
+                    return self.error(f"Cannot import FLVER: {file_path.name}. Error: {ex}")
+
+        import cProfile
+        import pstats
+
+        with cProfile.Profile() as pr:
+            GO()
+        p = pstats.Stats(pr)
+        p = p.strip_dirs()
+        p.sort_stats("tottime").print_stats(20)
+
+        return {"FINISHED"}
+
+
+class ImportFLVERWithMSBChoice(LoggingOperator):
+    """Presents user with a choice of enums from `enum_choices` class variable (set prior).
+
+    See: https://blender.stackexchange.com/questions/6512/how-to-call-invoke-popup
+    """
+    bl_idname = "wm.msb_choice_operator"
+    bl_label = "Choose MSB Entry"
+
+    # For deferred import in `execute()`.
+    importer: tp.Optional[FLVERImporter] = None
+    flver: tp.Optional[FLVER] = None
+    file_path: Path = Path()
+    enum_options: list[tuple[tp.Any, str, str]] = []
+    transforms: tp.Sequence[Transform] = []
+    dds_path: str = "F:\\dds_dump"
+    read_tpfs: bool = False
+
+    choices_enum: bpy.props.EnumProperty(items=lambda self, context: ImportFLVERWithMSBChoice.enum_options)
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
+    def draw(self, context):
+        layout = self.layout
+        col = layout.column()
+        col.prop(self, "choices_enum", expand=True)
+
+    def execute(self, context):
+        choice = int(self.choices_enum)
+        transform = self.transforms[choice]
+
+        self.importer.operator = self
+        self.importer.context = context
+
+        try:
+            self.importer.import_flver(self.flver, file_path=self.file_path, transform=transform)
+        except Exception as ex:
+            for obj in self.importer.all_bl_objs:
+                bpy.data.objects.remove(obj)
+            traceback.print_exc()
+            return self.error(f"Cannot import FLVER: {self.file_path.name}. Error: {ex}")
+
+        return {'FINISHED'}
+
+    @classmethod
+    def run(
+        cls,
+        importer: FLVERImporter,
+        flver: FLVER,
+        file_path: Path,
+        transforms: list[tuple[str, Transform]],
+        read_tpfs=False,
+        dds_path="F:\\dds_dump",
+        enable_alpha_blend=False,
+    ):
+        cls.dds_path = dds_path
+        cls.read_tpfs = read_tpfs
+        cls.enable_alpha_blend = enable_alpha_blend
+        cls.importer = importer
+        cls.flver = flver
+        cls.file_path = file_path
+        cls.enum_options = [(str(i), name, "") for i, (name, _) in enumerate(transforms)]
+        cls.transforms = [tf for _, tf in transforms]
+        # noinspection PyUnresolvedReferences
+        bpy.ops.wm.msb_choice_operator("INVOKE_DEFAULT")
 
 
 class FLVERImporter:
@@ -139,10 +371,17 @@ class FLVERImporter:
         else:
             self.warning("No TPF files or DDS dump folder given. No textures loaded for FLVER.")
 
-        # Material name has FLVER name as prefix, as different light maps may be applied across FLVERs to materials of
-        # the same 'name' (and those names are all fairly vague/useless anyway).
+        material_creator = MaterialNodeCreator(self.operator, self.dds_images)
+
+        # Vanilla material names are unused and essentially worthless. They can also be the same for materials that
+        # actually use different lightmaps, EVEN INSIDE the same FLVER model. Names are changed here to just reflect the
+        # index. The original name is NOT kept to avoid stacking up formatting on export/import and because it is so
+        # useless anyway.
+        self.materials = {}
         self.materials = {
-            i: self.create_material(flver_material, material_name=f"{self.name} {flver_material.name}")
+            i: material_creator.create_material(
+                flver_material,
+                material_name=f"{self.name} Material {i}")
             for i, flver_material in enumerate(self.flver.materials)
         }
 
@@ -171,206 +410,11 @@ class FLVERImporter:
                 else:
                     self.warning(f"Could not find TPF or dumped texture '{texture_path.stem}' for FLVER '{self.name}'.")
 
-    def create_material(self, flver_material, material_name: str, use_existing=True):
-        """Create a Blender material that represents a single `FLVER.Material`.
-
-        NOTE: Actual information contained in the FLVER and used for export is stored in custom properties of the
-        Blender material. The node graph generated here is simply for (very helpful) visualization in Blender, and is
-        NOT synchronized at all with the custom properties.
-
-        If `use_existing=False`, a new material will be created with the FLVER's values even if a material with that
-        name already exists in the Blender environment. Be wary of texture RAM usage in this case! Make sure you delete
-        unneeded materials from Blender as you go.
-        """
-
-        existing_material = bpy.data.materials.get(material_name)
-        if existing_material is not None:
-            if use_existing:
-                return existing_material
-            # TODO: Should append '<i>' to duplicated name of new material...
-
-        bl_material = bpy.data.materials.new(name=material_name)
-        if self.enable_alpha_hashed:
-            bl_material.blend_method = "HASHED"  # show alpha in viewport
-
-        # Critical `Material` information stored in custom properties.
-        bl_material["material_mtd_path"] = flver_material.mtd_path  # str
-        bl_material["material_flags"] = flver_material.flags  # int
-        bl_material["material_gx_index"] = flver_material.gx_index  # int
-        bl_material["material_unk_x18"] = flver_material.unk_x18  # int
-        bl_material["material_texture_count"] = len(flver_material.textures)  # int
-
-        # Texture information is also stored here.
-        for i, fl_tex in enumerate(flver_material.textures):
-            bl_material[f"texture[{i}]_path"] = fl_tex.path  # str
-            bl_material[f"texture[{i}]_texture_type"] = fl_tex.texture_type  # str
-            bl_material[f"texture[{i}]_scale"] = tuple(fl_tex.scale)  # tuple (float)
-            bl_material[f"texture[{i}]_unk_x10"] = fl_tex.unk_x10  # int
-            bl_material[f"texture[{i}]_unk_x11"] = fl_tex.unk_x11  # bool
-            bl_material[f"texture[{i}]_unk_x14"] = fl_tex.unk_x14  # float
-            bl_material[f"texture[{i}]_unk_x18"] = fl_tex.unk_x18  # float
-            bl_material[f"texture[{i}]_unk_x1C"] = fl_tex.unk_x1C  # float
-
-        mtd_bools = flver_material.get_mtd_bools()
-
-        bl_material.use_nodes = True
-        nt = bl_material.node_tree
-        nt.nodes.remove(nt.nodes["Principled BSDF"])
-        output_node = nt.nodes["Material Output"]
-
-        # TODO: Finesse node coordinates.
-
-        bsdf_1, diffuse_node_1 = self.create_bsdf_node(flver_material, mtd_bools, nt, is_second_slot=False)
-        bsdf_2 = diffuse_node_2 = None
-
-        vertex_colors_node = nt.nodes.new("ShaderNodeAttribute")
-        vertex_colors_node.location = (-200, 430)
-        vertex_colors_node.name = vertex_colors_node.attribute_name = "VertexColors"
-
-        if mtd_bools["multiple"] or mtd_bools["alpha"]:
-            # Use a mix shader weighted by vertex alpha.
-            slot_mix_shader = nt.nodes.new("ShaderNodeMixShader")
-            slot_mix_shader.location = (50, 300)
-            nt.links.new(vertex_colors_node.outputs["Alpha"], slot_mix_shader.inputs["Fac"])
-            nt.links.new(slot_mix_shader.outputs["Shader"], output_node.inputs["Surface"])
-        else:
-            slot_mix_shader = None
-            nt.links.new(bsdf_1.outputs["BSDF"], output_node.inputs["Surface"])
-
-        if mtd_bools["multiple"]:
-            # Multi-textures shader (two slots).
-            bsdf_2, diffuse_node_2 = self.create_bsdf_node(flver_material, mtd_bools, nt, is_second_slot=True)
-            nt.links.new(bsdf_1.outputs["BSDF"], slot_mix_shader.inputs[1])
-            nt.links.new(bsdf_2.outputs["BSDF"], slot_mix_shader.inputs[2])
-        elif mtd_bools["alpha"]:
-            # Single-texture shader (one slot). We mix with Transparent BSDF to render vertex alpha.
-            # TODO: Could I not just multiply texture alpha and vertex alpha?
-            transparent = nt.nodes.new("ShaderNodeBsdfTransparent")
-            transparent.location = (-200, 230)
-            nt.links.new(transparent.outputs["BSDF"], slot_mix_shader.inputs[1])
-            nt.links.new(bsdf_1.outputs["BSDF"], slot_mix_shader.inputs[2])
-        # TODO: Not sure if I can easily support 'edge' shader alpha.
-        else:
-            # Single texture, no alpha. Wait to see if lightmap used below.
-            pass
-
-        if mtd_bools["height"]:
-            height_texture = flver_material.find_texture_type("g_Height")
-            if height_texture is None:
-                raise ValueError(
-                    f"Material {material_name} has MTD {flver_material.mtd_name} but no 'g_Height' texture."
-                )
-            height_node = nt.nodes.new("ShaderNodeTexImage")
-            height_node.location = (-550, 345)
-            height_node.name = f"{height_texture.texture_type} | {Path(height_texture.path).name}"
-            height_node.image = self.get_dds_image(height_texture.path)
-            displace_node = nt.nodes.new("ShaderNodeDisplacement")
-            displace_node.location = (-250, 170)
-            nt.links.new(nt.nodes["UVMap1"].outputs["Vector"], height_node.inputs["Vector"])
-            nt.links.new(height_node.outputs["Color"], displace_node.inputs["Normal"])
-            nt.links.new(displace_node.outputs["Displacement"], output_node.inputs["Displacement"])
-
-        if mtd_bools["lightmap"]:
-            lightmap_texture = flver_material.find_texture_type("g_Lightmap")
-            if lightmap_texture is None:
-                raise ValueError(
-                    f"Material {material_name} has MTD {flver_material.mtd_name} but no 'g_Lightmap' texture."
-                )
-            lightmap_node = nt.nodes.new("ShaderNodeTexImage")
-            lightmap_node.location = (-550, 0)
-            lightmap_node.name = f"{lightmap_texture.texture_type} | {Path(lightmap_texture.path).name}"
-            lightmap_node.image = self.get_dds_image(lightmap_texture.path)
-
-            light_uv_attr = nt.nodes.new("ShaderNodeAttribute")
-            light_uv_name = "UVMap3" if mtd_bools["multiple"] else "UVMap2"
-            light_uv_attr.name = light_uv_attr.attribute_name = light_uv_name
-            light_uv_attr.location = (-750, 0)
-            nt.links.new(light_uv_attr.outputs["Vector"], lightmap_node.inputs["Vector"])
-
-            if diffuse_node_1:
-                light_overlay_node = nt.nodes.new("ShaderNodeMixRGB")
-                light_overlay_node.blend_type = "OVERLAY"
-                light_overlay_node.name = "Texture 1 Lightmap Strength"
-                light_overlay_node.location = (-200, 780)
-                nt.links.new(diffuse_node_1.outputs["Color"], light_overlay_node.inputs[1])
-                nt.links.new(lightmap_node.outputs["Color"], light_overlay_node.inputs[2])
-                nt.links.new(light_overlay_node.outputs["Color"], bsdf_1.inputs["Base Color"])
-            if diffuse_node_2:
-                light_overlay_node = nt.nodes.new("ShaderNodeMixRGB")
-                light_overlay_node.blend_type = "OVERLAY"
-                light_overlay_node.name = "Texture 2 Lightmap Strength"
-                light_overlay_node.location = (-200, 180)
-                nt.links.new(diffuse_node_2.outputs["Color"], light_overlay_node.inputs[1])
-                nt.links.new(lightmap_node.outputs["Color"], light_overlay_node.inputs[2])
-                nt.links.new(light_overlay_node.outputs["Color"], bsdf_2.inputs["Base Color"])
-
-        # TODO: Confirm "g_DetailBumpmap" has no content.
-
-        return bl_material
-
     def get_dds_image(self, texture_path: str):
         if self.dds_images and texture_path in self.dds_images:
             return self.dds_images[texture_path]
         self.warning(f"Could not find DDS image: {texture_path}")
         return None
-
-    def create_bsdf_node(self, flver_material, mtd_bools, node_tree, is_second_slot: bool):
-        bsdf = node_tree.nodes.new("ShaderNodeBsdfPrincipled")
-        bsdf.location[1] = 0 if is_second_slot else 1000
-        bsdf.inputs["Roughness"].default_value = ROUGHNESS
-
-        textures = flver_material.get_texture_dict()
-        slot = "_2" if is_second_slot else ""
-        slot_y_offset = 0 if is_second_slot else 1000
-
-        uv_attr = node_tree.nodes.new("ShaderNodeAttribute")
-        uv_attr.name = uv_attr.attribute_name = "UVMap2" if is_second_slot else "UVMap1"
-        uv_attr.location = (-750, 0 + slot_y_offset)
-
-        if mtd_bools["diffuse"]:
-            texture = textures["g_Diffuse" + slot]
-            diffuse_node = node_tree.nodes.new("ShaderNodeTexImage")
-            diffuse_node.location = (-550, 330 + slot_y_offset)
-            diffuse_node.image = self.get_dds_image(texture.path)
-            diffuse_node.name = f"g_Diffuse{slot} | {Path(texture.path).name}"
-            node_tree.links.new(uv_attr.outputs["Vector"], diffuse_node.inputs["Vector"])
-            if not mtd_bools["lightmap"]:  # otherwise, MixRGB node will mediate
-                node_tree.links.new(diffuse_node.outputs["Color"], bsdf.inputs["Base Color"])
-            node_tree.links.new(diffuse_node.outputs["Alpha"], bsdf.inputs["Alpha"])
-        else:
-            diffuse_node = None
-
-        if mtd_bools["specular"]:
-            texture = textures["g_Specular" + slot]
-            node = node_tree.nodes.new("ShaderNodeTexImage")
-            node.location = (-550, 0 + slot_y_offset)
-            node.image = self.get_dds_image(texture.path)
-            node.name = f"g_Specular{slot} | {Path(texture.path).name}"
-            node_tree.links.new(uv_attr.outputs["Vector"], node.inputs["Vector"])
-            node_tree.links.new(node.outputs["Color"], bsdf.inputs["Specular"])
-        else:
-            bsdf.inputs["Specular"].default_value = 0.0  # no default specularity
-
-        if mtd_bools["bumpmap"]:
-            texture = textures["g_Bumpmap" + slot]
-            node = node_tree.nodes.new("ShaderNodeTexImage")
-            node.location = (-550, -330 + slot_y_offset)
-            node.image = self.get_dds_image(texture.path)
-            node.name = f"g_Bumpmap{slot} | {Path(texture.path).name}"
-            normal_map_node = node_tree.nodes.new("ShaderNodeNormalMap")
-            normal_map_node.name = "NormalMap2" if is_second_slot else "NormalMap"
-            normal_map_node.space = "TANGENT"
-            normal_map_node.uv_map = "UVMap2" if is_second_slot else "UVMap1"
-            normal_map_node.inputs["Strength"].default_value = NORMAL_MAP_STRENGTH
-            normal_map_node.location = (-200, -400 + slot_y_offset)
-
-            node_tree.links.new(uv_attr.outputs["Vector"], node.inputs["Vector"])
-            node_tree.links.new(node.outputs["Color"], normal_map_node.inputs["Color"])
-            node_tree.links.new(normal_map_node.outputs["Normal"], bsdf.inputs["Normal"])
-
-        # NOTE: [M] multi-texture still only uses one `g_Height` map if present.
-
-        return bsdf, diffuse_node
 
     def create_mesh_obj(
         self,
@@ -482,7 +526,7 @@ class FLVERImporter:
         self.context.view_layer.objects.active = bl_mesh_obj
 
         bone_vertex_groups = []  # type: list[bpy.types.VertexGroup]
-        bone_vertex_group_indices = {}  # type: dict[(int, float), list[int]]
+        bone_vertex_group_indices = {}  # type: dict[tuple[int, float], list[int]]
 
         # TODO: I *believe* that vertex bone indices are global if and only if `mesh.bone_indices` is empty. (In DSR,
         #  it's never empty.)
