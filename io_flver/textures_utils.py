@@ -8,6 +8,7 @@ __all__ = [
     "SplitBinderTPFTextureExport",
     "get_texture_export_info",
     "load_tpf_texture_as_png",
+    "png_to_bl_image",
     "bl_image_to_dds",
     "get_lightmap_tpf",
 ]
@@ -21,7 +22,6 @@ from pathlib import Path
 from soulstruct.base.binder_entry import BinderEntry
 from soulstruct.base.textures.dds import texconv
 from soulstruct.containers import BaseBinder, Binder, BaseBXF
-from soulstruct.containers.dcx import DCXType
 from soulstruct.containers.tpf import TPF, TPFTexture, TPFPlatform
 
 import bpy
@@ -271,8 +271,27 @@ def get_texture_export_info(file_path: str) -> TextureExportInfo:
 
 
 def load_tpf_texture_as_png(tpf_texture: TPFTexture):
+    """TODO: No longer used in favor of multiprocessing."""
+    from time import perf_counter
+    start = t = perf_counter()
     png_data = tpf_texture.get_png_data()
+    print(f"\n    PNG data get time for {tpf_texture.name}: {perf_counter() - t}")
     temp_png_path = Path(f"~/AppData/Local/Temp/{Path(tpf_texture.name).stem}.png").expanduser()
+    temp_png_path.write_bytes(png_data)
+    t = perf_counter()
+    bl_image = bpy.data.images.load(str(temp_png_path))
+    print(f"    Blender image load time for {temp_png_path.name}: {perf_counter() - t}")
+    t = perf_counter()
+    bl_image.pack()  # embed PNG in `.blend` file
+    print(f"    Blender image pack time for {temp_png_path.name}: {perf_counter() - t}")
+    if temp_png_path.is_file():
+        os.remove(temp_png_path)
+    print(f"Total time: {perf_counter() - start}")
+    return bl_image
+
+
+def png_to_bl_image(image_name: str, png_data: bytes):
+    temp_png_path = Path(f"~/AppData/Local/Temp/{image_name}.png").expanduser()
     temp_png_path.write_bytes(png_data)
     bl_image = bpy.data.images.load(str(temp_png_path))
     bl_image.pack()  # embed PNG in `.blend` file

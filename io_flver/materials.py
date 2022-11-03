@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 __all__ = [
-    "DDSDict",
+    "BlenderImageDict",
     "MaterialNodeCreator",
 ]
 
 import typing as tp
-from pathlib import Path
 
 import bpy
 
@@ -21,11 +20,11 @@ WATER_NORMAL_MAP_STRENGTH = 0.4
 ROUGHNESS = 0.75
 
 
-class DDSDict(dict):
+class BlenderImageDict(dict):
 
-    def __init__(self, operator, images: dict = None):
+    def __init__(self, operator, bl_images: dict = None):
         self._operator = operator
-        super().__init__(images)
+        super().__init__(bl_images)
 
     def __getitem__(self, texture_path: str):
         try:
@@ -38,11 +37,11 @@ class DDSDict(dict):
 class MaterialNodeCreator:
     """Handles creation of various shader node trees that hold textures and simulate FromSoft materials."""
 
-    dds_dict: DDSDict
+    bl_images: BlenderImageDict
 
-    def __init__(self, operator, dds_images: dict[str, tp.Any] = None):
+    def __init__(self, operator, bl_images: dict[str, tp.Any] = None):
         self._operator = operator
-        self.dds_dict = DDSDict(operator, dds_images)
+        self.bl_images = BlenderImageDict(operator, bl_images)
 
     def create_material(
         self,
@@ -81,7 +80,7 @@ class MaterialNodeCreator:
 
         # Texture information is also stored here.
         for i, game_tex in enumerate(flver_material.textures):
-            bl_material[f"texture[{i}]_path"] = game_tex.path  # str
+            bl_material[f"texture[{i}]_path"] = game_tex.path  # str (not `Path`)
             bl_material[f"texture[{i}]_texture_type"] = game_tex.texture_type  # str
             bl_material[f"texture[{i}]_scale"] = tuple(game_tex.scale)  # tuple (float)
             bl_material[f"texture[{i}]_unk_x10"] = game_tex.unk_x10  # int
@@ -161,8 +160,8 @@ class MaterialNodeCreator:
                 )
             height_node = nt.nodes.new("ShaderNodeTexImage")
             height_node.location = (-550, 345)
-            height_node.name = f"{height_texture.texture_type} | {Path(height_texture.path).name}"
-            height_node.image = self.dds_dict[height_texture.path]
+            height_node.name = f"{height_texture.texture_type} | {height_texture.stem}"
+            height_node.image = self.bl_images[height_texture.stem]
             displace_node = nt.nodes.new("ShaderNodeDisplacement")
             displace_node.location = (-250, 170)
             nt.links.new(nt.nodes["UVMap1"].outputs["Vector"], height_node.inputs["Vector"])
@@ -177,8 +176,8 @@ class MaterialNodeCreator:
                 )
             lightmap_node = nt.nodes.new("ShaderNodeTexImage")
             lightmap_node.location = (-550, 0)
-            lightmap_node.name = f"{lightmap_texture.texture_type} | {Path(lightmap_texture.path).name}"
-            lightmap_node.image = self.dds_dict[lightmap_texture.path]
+            lightmap_node.name = f"{lightmap_texture.texture_type} | {lightmap_texture.stem}"
+            lightmap_node.image = self.bl_images[lightmap_texture.stem]
 
             light_uv_attr = nt.nodes.new("ShaderNodeAttribute")
             # TODO: Would love to give the lightmap UV a more unique name, but that complicates FLVER export a bit.
@@ -225,8 +224,8 @@ class MaterialNodeCreator:
             texture = textures["g_Diffuse" + slot]
             diffuse_node = node_tree.nodes.new("ShaderNodeTexImage")
             diffuse_node.location = (-550, 330 + slot_y_offset)
-            diffuse_node.image = self.dds_dict[texture.path]
-            diffuse_node.name = f"g_Diffuse{slot} | {Path(texture.path).name}"
+            diffuse_node.image = self.bl_images[texture.stem]
+            diffuse_node.name = f"g_Diffuse{slot} | {texture.stem}"
             node_tree.links.new(uv_attr.outputs["Vector"], diffuse_node.inputs["Vector"])
             if not mtd_info.lightmap:  # otherwise, MixRGB node will mediate
                 node_tree.links.new(diffuse_node.outputs["Color"], bsdf.inputs["Base Color"])
@@ -238,8 +237,8 @@ class MaterialNodeCreator:
             texture = textures["g_Specular" + slot]
             node = node_tree.nodes.new("ShaderNodeTexImage")
             node.location = (-550, 0 + slot_y_offset)
-            node.image = self.dds_dict[texture.path]
-            node.name = f"g_Specular{slot} | {Path(texture.path).name}"
+            node.image = self.bl_images[texture.stem]
+            node.name = f"g_Specular{slot} | {texture.stem}"
             node_tree.links.new(uv_attr.outputs["Vector"], node.inputs["Vector"])
             node_tree.links.new(node.outputs["Color"], bsdf.inputs["Specular"])
         else:
@@ -249,8 +248,8 @@ class MaterialNodeCreator:
             texture = textures["g_Bumpmap" + slot]
             node = node_tree.nodes.new("ShaderNodeTexImage")
             node.location = (-550, -330 + slot_y_offset)
-            node.image = self.dds_dict[texture.path]
-            node.name = f"g_Bumpmap{slot} | {Path(texture.path).name}"
+            node.image = self.bl_images[texture.stem]
+            node.name = f"g_Bumpmap{slot} | {texture.stem}"
             normal_map_node = node_tree.nodes.new("ShaderNodeNormalMap")
             normal_map_node.name = "NormalMap2" if is_second_slot else "NormalMap"
             normal_map_node.space = "TANGENT"
@@ -285,8 +284,8 @@ class MaterialNodeCreator:
 
         node = node_tree.nodes.new("ShaderNodeTexImage")
         node.location = (-550, 670)
-        node.image = self.dds_dict[bumpmap_texture.path]
-        node.name = f"g_Bumpmap | {Path(bumpmap_texture.path).name}"
+        node.image = self.bl_images[bumpmap_texture.stem]
+        node.name = f"g_Bumpmap | {bumpmap_texture.stem}"
         normal_map_node = node_tree.nodes.new("ShaderNodeNormalMap")
         normal_map_node.name = "NormalMap"
         normal_map_node.space = "TANGENT"

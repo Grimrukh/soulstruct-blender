@@ -14,6 +14,7 @@ import soulstruct
 importlib.reload(soulstruct)
 
 if "FLVER_PT_flver_tools" in locals():
+    print("Reloading add-on module...")
     importlib.reload(sys.modules["io_flver.core"])
     importlib.reload(sys.modules["io_flver.export_flver"])
     importlib.reload(sys.modules["io_flver.import_flver"])

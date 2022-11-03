@@ -17,6 +17,7 @@ from pathlib import Path
 
 import bpy
 from bpy_extras.io_utils import ImportHelper
+from mathutils import Color
 
 from soulstruct.base.binder_entry import BinderEntry
 from soulstruct.containers import BaseBinder, Binder
@@ -75,98 +76,111 @@ class ImportHKX(LoggingOperator, ImportHelper):
     def execute(self, context):
         print("Executing HKX import...")
 
-        file_paths = [Path(self.directory, file.name) for file in self.files]
-        hkxs_with_paths = []  # type: list[tuple[Path, CollisionHKX | list[BinderEntry]]]
+        def GO():
 
-        for file_path in file_paths:
+            file_paths = [Path(self.directory, file.name) for file in self.files]
+            hkxs_with_paths = []  # type: list[tuple[Path, CollisionHKX | list[BinderEntry]]]
 
-            if HKX_BINDER_RE.match(file_path.name):
-                binder = Binder(file_path)
+            for file_path in file_paths:
 
-                # Find HKX entry.
-                hkx_entries = binder.find_entries_matching_name(r".*\.hkx(\.dcx)?")
-                if not hkx_entries:
-                    raise HKXImportError(f"Cannot find any HKX files in binder {file_path}.")
+                if HKX_BINDER_RE.match(file_path.name):
+                    binder = Binder(file_path)
 
-                if len(hkx_entries) > 1:
-                    if self.import_all_from_binder:
-                        for entry in hkx_entries:
-                            try:
-                                hkx = CollisionHKX(entry.data)
-                            except Exception as ex:
-                                self.warning(f"Error occurred while reading HKX Binder entry '{entry.name}': {ex}")
-                            else:
-                                hkx.path = Path(entry.name)  # also done in `GameFile`, but explicitly needed below
-                                hkxs_with_paths.append((file_path, hkx))
+                    # Find HKX entry.
+                    hkx_entries = binder.find_entries_matching_name(r".*\.hkx(\.dcx)?")
+                    if not hkx_entries:
+                        raise HKXImportError(f"Cannot find any HKX files in binder {file_path}.")
+
+                    if len(hkx_entries) > 1:
+                        if self.import_all_from_binder:
+                            for entry in hkx_entries:
+                                try:
+                                    hkx = CollisionHKX(entry.data)
+                                except Exception as ex:
+                                    self.warning(f"Error occurred while reading HKX Binder entry '{entry.name}': {ex}")
+                                else:
+                                    hkx.path = Path(entry.name)  # also done in `GameFile`, but explicitly needed below
+                                    hkxs_with_paths.append((file_path, hkx))
+                        else:
+                            # Queue up entire Binder; user will be prompted to choose entry below.
+                            hkxs_with_paths.append((file_path, hkx_entries))
                     else:
-                        # Queue up entire Binder; user will be prompted to choose entry below.
-                        hkxs_with_paths.append((file_path, hkx_entries))
+                        try:
+                            hkx = CollisionHKX(hkx_entries[0].data)
+                        except Exception as ex:
+                            self.warning(f"Error occurred while reading HKX Binder entry '{hkx_entries[0].name}': {ex}")
+                        else:
+                            hkxs_with_paths.append((file_path, hkx))
                 else:
+                    # Loose HKX.
                     try:
-                        hkx = CollisionHKX(hkx_entries[0].data)
+                        hkx = CollisionHKX(file_path)
                     except Exception as ex:
-                        self.warning(f"Error occurred while reading HKX Binder entry '{hkx_entries[0].name}': {ex}")
+                        self.warning(f"Error occurred while reading HKX file '{file_path.name}': {ex}")
                     else:
                         hkxs_with_paths.append((file_path, hkx))
-            else:
-                # Loose HKX.
-                try:
-                    hkx = CollisionHKX(file_path)
-                except Exception as ex:
-                    self.warning(f"Error occurred while reading HKX file '{file_path.name}': {ex}")
-                else:
-                    hkxs_with_paths.append((file_path, hkx))
 
-        importer = HKXImporter(self, context)
+            importer = HKXImporter(self, context)
 
-        for file_path, hkx_or_entries in hkxs_with_paths:
+            for file_path, hkx_or_entries in hkxs_with_paths:
 
-            if isinstance(hkx_or_entries, list):
-                # Defer through entry selection operator.
-                ImportHKXWithBinderChoice.run(
-                    importer=importer,
-                    binder_file_path=Path(file_path),
-                    read_msb_transform=self.read_msb_transform,
-                    use_material=self.use_material,
-                    hkx_entries=hkx_or_entries,
-                )
-                continue
+                if isinstance(hkx_or_entries, list):
+                    # Defer through entry selection operator.
+                    ImportHKXWithBinderChoice.run(
+                        importer=importer,
+                        binder_file_path=Path(file_path),
+                        read_msb_transform=self.read_msb_transform,
+                        use_material=self.use_material,
+                        hkx_entries=hkx_or_entries,
+                    )
+                    continue
 
-            hkx = hkx_or_entries
-            hkx_name = hkx.path.name.split(".")[0]
+                hkx = hkx_or_entries
+                hkx_name = hkx.path.name.split(".")[0]
 
-            transform = None  # type: tp.Optional[Transform]
-            if self.read_msb_transform:
-                # NOTE: It's unlikely that this MSB search will work for a loose HKX.
-                if MAP_NAME_RE.match(file_path.parent.name):
-                    try:
-                        transforms = get_msb_transforms(hkx_name=hkx_name, hkx_path=file_path)
-                    except Exception as ex:
-                        self.warning(f"Could not get MSB transform. Error: {ex}")
+                self.info(f"Importing HKX: {hkx_name}")
+
+                transform = None  # type: tp.Optional[Transform]
+                if self.read_msb_transform:
+                    # NOTE: It's unlikely that this MSB search will work for a loose HKX.
+                    if MAP_NAME_RE.match(file_path.parent.name):
+                        try:
+                            transforms = get_msb_transforms(hkx_name=hkx_name, hkx_path=file_path)
+                        except Exception as ex:
+                            self.warning(f"Could not get MSB transform. Error: {ex}")
+                        else:
+                            if len(transforms) > 1:
+                                importer.context = context
+                                ImportHKXWithMSBChoice.run(
+                                    importer=importer,
+                                    hkx=hkx,
+                                    hkx_name=hkx_name,
+                                    use_material=self.use_material,
+                                    transforms=transforms,
+                                )
+                                continue
+                            transform = transforms[0][1]
                     else:
-                        if len(transforms) > 1:
-                            importer.context = context
-                            ImportHKXWithMSBChoice.run(
-                                importer=importer,
-                                hkx=hkx,
-                                hkx_name=hkx_name,
-                                use_material=self.use_material,
-                                transforms=transforms,
-                            )
-                            continue
-                        transform = transforms[0][1]
-                else:
-                    self.warning(f"Cannot read MSB transform for HKX in unknown directory: {file_path}.")
+                        self.warning(f"Cannot read MSB transform for HKX in unknown directory: {file_path}.")
 
-            # Import single HKX without MSB transform.
-            try:
-                importer.import_hkx(hkx, name=hkx_name, transform=transform, use_material=self.use_material)
-            except Exception as ex:
-                # Delete any objects created prior to exception.
-                for obj in importer.all_bl_objs:
-                    bpy.data.objects.remove(obj)
-                traceback.print_exc()  # for inspection in Blender console
-                return self.error(f"Cannot import HKX: {file_path.name}. Error: {ex}")
+                # Import single HKX without MSB transform.
+                try:
+                    importer.import_hkx(hkx, name=hkx_name, transform=transform, use_material=self.use_material)
+                except Exception as ex:
+                    # Delete any objects created prior to exception.
+                    for obj in importer.all_bl_objs:
+                        bpy.data.objects.remove(obj)
+                    traceback.print_exc()  # for inspection in Blender console
+                    return self.error(f"Cannot import HKX: {file_path.name}. Error: {ex}")
+
+        import cProfile
+        import pstats
+
+        with cProfile.Profile() as pr:
+            GO()
+        p = pstats.Stats(pr)
+        p = p.strip_dirs()
+        p.sort_stats("tottime").print_stats(40)
 
         return {"FINISHED"}
 
@@ -369,23 +383,26 @@ class HKXImporter:
 
         self.all_bl_objs = [hkx_parent]
 
-        if use_material:
-            material_name = "HKX Lo" if name.startswith("l") else "HKX Hi"  # hi is default for weird names
-            try:
-                bl_material = bpy.data.materials[material_name]
-            except KeyError:
-                # Create basic material: light orange (lo) or light blue (hi/other).
-                color = (0.8, 0.6, 0.6, 1.0) if name.startswith("l") else (0.18, 0.38, 0.8, 1.0)
-                bl_material = self.create_basic_material(material_name, color)
-        else:
-            bl_material = None
-
         meshes = self.hkx.to_meshes()
         material_indices = self.hkx.get_subpart_materials()
         for i, hkx_subpart in enumerate(meshes):
             mesh_name = f"{self.name} Submesh {i}"
             bl_mesh = self.create_mesh_obj(hkx_subpart, material_indices[i], mesh_name)
-            if bl_material:
+            if use_material:
+                # TODO: From HSV, with H jumping up by something like
+                material_name = "HKX Lo" if name.startswith("l") else "HKX Hi"  # hi is default for weird names
+                material_name += " (Mat 1)" if material_indices[i] == 1 else " (Not Mat 1)"
+                try:
+                    bl_material = bpy.data.materials[material_name]
+                except KeyError:
+                    # Create basic material: orange (lo) or blue (hi/other), lighter for material 1 (most common).
+                    color = Color()
+                    # Hue rotates between 10 values. Material index 1 (very common) is mapped to nice blue hue 0.6.
+                    hue = 0.1 * ((material_indices[i] + 5) % 10)
+                    saturation = 0.4 if name.startswith("l") else 0.8
+                    value = 0.5
+                    color.hsv = (hue, saturation, value)
+                    bl_material = self.create_basic_material(material_name, (color.r, color.g, color.b, 1.0))
                 bl_mesh.data.materials.append(bl_material)
 
     def create_mesh_obj(

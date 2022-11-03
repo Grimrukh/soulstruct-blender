@@ -2,7 +2,6 @@ from __future__ import annotations
 
 __all__ = ["ExportFLVER", "ExportFLVERIntoBinder"]
 
-import re
 import traceback
 import typing as tp
 from multiprocessing import Pool, Queue
@@ -658,40 +657,40 @@ class FLVERExporter:
         found_texture_types = set()
         for i in range(extra_mat_props["texture_count"]):
             game_texture = FLVER.Material.Texture()
-            self.get_all_props(bl_material, fl_texture, "Texture", bl_prop_prefix=f"texture[{i}]_")
-            tex_type = fl_texture.texture_type
+            self.get_all_props(bl_material, game_texture, "Texture", bl_prop_prefix=f"texture[{i}]_")
+            tex_type = game_texture.texture_type
             if tex_type not in TEXTURE_TYPES:
                 self.warning(f"Unrecognized FLVER Texture type: {tex_type}")
             if tex_type in found_texture_types:
-                self.warning(f"Ignoring duplicate of texture type '{tex_type}' in Material {fl_material.name}.")
+                self.warning(f"Ignoring duplicate of texture type '{tex_type}' in Material {game_material.name}.")
             else:
                 found_texture_types.add(tex_type)
-                fl_material.textures.append(fl_texture)
+                game_material.textures.append(game_texture)
 
         # NOTE: Extra textures not required by this shader (e.g., 'g_DetailBumpmap' for most of them) are still
         # written, but missing required textures will raise an error here.
-        mtd_name = fl_material.mtd_name
-        mtd_bools = fl_material.get_mtd_info()
+        mtd_name = game_material.mtd_name
+        mtd_bools = game_material.get_mtd_info()
         self.validate_found_textures(mtd_bools, found_texture_types, mtd_name)
 
         # TODO: Choose default layout factory with an export enum.
         if use_chr_layout:
-            fl_layout = self.get_ds1_chr_buffer_layout(
+            game_layout = self.get_ds1_chr_buffer_layout(
                 is_multiple=mtd_bools["multiple"],
             )
         else:
-            fl_layout = self.get_ds1_map_buffer_layout(
+            game_layout = self.get_ds1_map_buffer_layout(
                 is_multiple=mtd_bools["multiple"],
                 is_lightmap=mtd_bools["lightmap"],
             )
         uv_count = 1 + mtd_bools["multiple"] + mtd_bools["lightmap"]
 
         vertex_buffer = VertexBuffer()
-        fl_mesh.vertex_buffers = [vertex_buffer]
+        game_mesh.vertex_buffers = [vertex_buffer]
         return_layout = True
-        if fl_layout in buffer_layouts:
+        if game_layout in buffer_layouts:
             # Already defined.
-            vertex_buffer.layout_index = buffer_layouts.index(fl_layout)
+            vertex_buffer.layout_index = buffer_layouts.index(game_layout)
             return_layout = False
         else:
             vertex_buffer.layout_index = len(buffer_layouts)
@@ -699,15 +698,15 @@ class FLVERExporter:
 
         mesh_builder = MeshBuilder(
             bl_mesh,
-            fl_mesh,
-            fl_layout,
+            game_mesh,
+            game_layout,
             vertex_buffer,
             uv_count,
             extra_mesh_props.get("face_set_count", 1),
             extra_mesh_props.get("cull_back_faces", False),
         )
 
-        return fl_mesh, fl_material, (fl_layout if return_layout else None), mesh_builder
+        return game_mesh, game_material, (game_layout if return_layout else None), mesh_builder
 
     @staticmethod
     def validate_found_textures(mtd_bools: dict[str, bool], found_texture_types: set[str], mtd_name: str):
@@ -759,13 +758,13 @@ class FLVERExporter:
         return BufferLayout(members)
 
 
-def build_fl_mesh_mp(builder: MeshBuilder, bone_names: list[str], queue: Queue):
-    fl_vertices, fl_face_sets, local_bone_indices = build_fl_mesh(builder, bone_names)
-    build_result = MeshBuildResult(fl_vertices, fl_face_sets, local_bone_indices)
+def build_game_mesh_mp(builder: MeshBuilder, bone_names: list[str], queue: Queue):
+    game_vertices, game_face_sets, local_bone_indices = build_game_mesh(builder, bone_names)
+    build_result = MeshBuildResult(game_vertices, game_face_sets, local_bone_indices)
     queue.put(build_result)
 
 
-def build_fl_mesh(
+def build_game_mesh(
     mesh_builder: MeshBuilder, bone_names: list[str],
 ) -> (list[FLVER.Mesh.Vertex], list[FLVER.Mesh.FaceSet], list[int]):
     """Process Blender vertices, faces, and bone-weighted vertex groups into FLVER equivalents."""
@@ -793,7 +792,7 @@ def build_fl_mesh(
     # Dictionary that maps created FLVER vertex indices to `(position, uvs, colors)` triples that mark them as unique.
     flver_v_indices = {}
 
-    fl_face_sets = [
+    game_face_sets = [
         FLVER.Mesh.FaceSet(
             flags=i,
             unk_x06=0,  # TODO: define default in dict
@@ -807,7 +806,7 @@ def build_fl_mesh(
     # NOTE: Vertices that do not appear in any Blender faces will NOT be exported.
     triangles = bm.calc_loop_triangles()
 
-    fl_vertices = []
+    game_vertices = []
     mesh_local_bone_indices = []
 
     # noinspection PyTypeChecker
@@ -906,11 +905,11 @@ def build_fl_mesh(
             v_key = (tuple(position), tuple(uvs), tuple(colors))  # hashable
 
             try:
-                fl_v_i = flver_v_indices[v_key]
+                game_v_i = flver_v_indices[v_key]
             except KeyError:
                 # Create new `Vertex`.
-                fl_v_i = flver_v_indices[v_key] = len(flver_v_indices)
-                fl_vertices.append(FLVER.Mesh.Vertex(
+                game_v_i = flver_v_indices[v_key] = len(flver_v_indices)
+                game_vertices.append(FLVER.Mesh.Vertex(
                     position=position,
                     bone_weights=bone_weights,
                     bone_indices=bone_indices,
@@ -920,16 +919,16 @@ def build_fl_mesh(
                     bitangent=bitangent,
                     colors=colors,
                 ))
-            flver_face.append(fl_v_i)
+            flver_face.append(game_v_i)
 
-        fl_face_sets[0].vertex_indices += flver_face
+        game_face_sets[0].vertex_indices += flver_face
 
     # All LOD face sets are duplicated from the first.
     # TODO: Setting up actual face sets (which share vertices) in Blender would be very annoying.
-    for lod_face_set in fl_face_sets[1:]:
-        lod_face_set.vertex_indices = fl_face_sets[0].vertex_indices.copy()
+    for lod_face_set in game_face_sets[1:]:
+        lod_face_set.vertex_indices = game_face_sets[0].vertex_indices.copy()
 
-    return fl_vertices, fl_face_sets, mesh_local_bone_indices
+    return game_vertices, game_face_sets, mesh_local_bone_indices
 
 
 def recompute_bounding_box(flver: FLVER, bones: list[FLVER.Bone]):

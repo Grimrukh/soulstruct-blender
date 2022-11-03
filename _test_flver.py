@@ -36,7 +36,34 @@ def test():
         print(v.uvs[1])
 
 
+def test_tex_mp():
+    from soulstruct.containers.tpf import TPF, batch_get_tpf_texture_png_data
+    import timeit
+
+    tpfbhd = Binder(VANILLA_MAP_PATH / "m10/m10_0000.tpfbhd")
+    textures = []
+    for entry in tpfbhd.entries:
+        tpf = TPF(entry)
+        for tex in tpf.textures:
+            textures.append(tex)
+
+    count = 20
+
+    def convert_non_parallel():
+        return [t.get_png_data() for t in textures[:count]]
+
+    def convert_parallel():
+        batch_get_tpf_texture_png_data(textures[:count])
+
+    print(timeit.timeit("convert_non_parallel()", number=1, globals=locals()))
+    print(timeit.timeit("convert_parallel()", number=1, globals=locals()))
+
+    # data = batch_get_tpf_texture_png_data(textures[:5])
+    print("Success.")
+
+
 if __name__ == '__main__':
-    test_chr()
+    # test_chr()
     # test()
     # exported_flver()
+    test_tex_mp()

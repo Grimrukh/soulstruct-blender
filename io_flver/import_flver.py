@@ -25,13 +25,15 @@ from bpy.props import StringProperty, BoolProperty, CollectionProperty
 from bpy_extras.io_utils import ImportHelper
 from mathutils import Euler, Vector, Matrix
 
+from soulstruct.base.binder_entry import BinderEntry
 from soulstruct.base.models.flver import FLVER
-from soulstruct.containers import Binder, TPF, TPFTexture
+from soulstruct.containers import Binder
+from soulstruct.containers.tpf import TPF, TPFTexture, batch_get_tpf_texture_png_data
 from soulstruct.utilities.maths import Vector3
 
 from .core import *
 from .materials import MaterialNodeCreator
-from .textures import TPF_RE, load_tpf_texture_as_png
+from .textures import TPF_RE, png_to_bl_image
 
 
 ARMATURE_RE = re.compile(r"(.*) Armature Obj")
@@ -107,7 +109,8 @@ class ImportFLVER(LoggingOperator, ImportHelper):
 
             file_paths = [Path(self.directory, file.name) for file in self.files]
             flvers = []
-            texture_sources = {}
+            attached_texture_sources = {}  # from multi-texture TPFs directly linked to FLVER
+            loose_tpf_sources = {}  # one-texture TPFs that we only read if needed by FLVER
 
             for file_path in file_paths:
 
@@ -126,9 +129,9 @@ class ImportFLVER(LoggingOperator, ImportHelper):
                     # Find TPFs or CHRTPFBHDs inside binder, potentially using `chrtpfbdt` file if it exists.
                     for tpf_entry in binder.find_entries_matching_name(TPF_RE):  # generally only one
                         tpf = TPF(tpf_entry.data)
-                        # tpf.convert_dds_formats("DX10", "DXT1")  # TODO: outdated
                         for texture in tpf.textures:
-                            texture_sources[texture.name] = texture
+                            attached_texture_sources[texture.name] = texture
+
                     try:
                         tpfbhd_entry = binder.find_entry_matching_name(r".*\.chrtpfbhd")
                     except (binder.BinderEntryMissing, ValueError):
@@ -144,7 +147,7 @@ class ImportFLVER(LoggingOperator, ImportHelper):
                                     tpf = TPF(tpf_entry.data)
                                     tpf.convert_dds_formats("DX10", "DXT1")
                                     for texture in tpf.textures:
-                                        texture_sources[texture.name] = texture
+                                        attached_texture_sources[texture.name] = texture
                         else:
                             self.warning(f"Could not find adjacent CHRTPFBDT for TPFs in file {file_path}.")
                 else:
@@ -162,11 +165,13 @@ class ImportFLVER(LoggingOperator, ImportHelper):
                         if not tpf_directory.is_dir():
                             return self.error(f"`mXX` TPF folder does not exist: {tpf_directory}. Cannot load TPFs.")
 
-                        texture_sources |= TPF.collect_tpf_textures(tpf_directory)
+                        loose_tpf_sources |= TPF.collect_tpf_entries(tpf_directory)
 
             dds_dump_path = Path(self.dds_path) if self.dds_path else None
 
-            importer = FLVERImporter(self, context, texture_sources, dds_dump_path, self.enable_alpha_hashed)
+            importer = FLVERImporter(
+                self, context, attached_texture_sources, loose_tpf_sources, dds_dump_path, self.enable_alpha_hashed
+            )
 
             for file_path, flver in zip(file_paths, flvers, strict=True):
 
@@ -214,7 +219,7 @@ class ImportFLVER(LoggingOperator, ImportHelper):
             GO()
         p = pstats.Stats(pr)
         p = p.strip_dirs()
-        p.sort_stats("tottime").print_stats(20)
+        p.sort_stats("cumtime").print_stats(40)
 
         return {"FINISHED"}
 
@@ -296,13 +301,14 @@ class FLVERImporter:
 
     flver: tp.Optional[FLVER]
     name: str
-    dds_images: dict[str, tp.Any]  # values can be string DDS paths or loaded Blender images
+    bl_images: dict[str, tp.Any]  # values can be string DDS paths or loaded Blender images
 
     def __init__(
         self,
         operator: ImportFLVER,
         context,
         texture_sources: dict[str, TPFTexture] = None,
+        loose_tpf_sources: dict[str, BinderEntry] = None,
         dds_dump_path: tp.Optional[Path] = None,
         enable_alpha_hashed=True,
     ):
@@ -312,7 +318,8 @@ class FLVERImporter:
         self.dds_dump_path = dds_dump_path
         # These DDS sources/images are shared between all FLVER files imported with this `FLVERImporter` instance.
         self.texture_sources = texture_sources
-        self.dds_images = {}
+        self.loose_tpf_sources = loose_tpf_sources
+        self.bl_images = {}  # maps texture stems to loaded Blender images
         self.enable_alpha_hashed = enable_alpha_hashed
 
         self.flver = None
@@ -372,12 +379,12 @@ class FLVERImporter:
             )
 
         # TODO: Would be better to do some other basic FLVER validation here before loading the TPFs.
-        if self.texture_sources or self.dds_dump_path:
+        if self.texture_sources or self.loose_tpf_sources or self.dds_dump_path:
             self.load_texture_images()
         else:
             self.warning("No TPF files or DDS dump folder given. No textures loaded for FLVER.")
 
-        material_creator = MaterialNodeCreator(self.operator, self.dds_images)
+        material_creator = MaterialNodeCreator(self.operator, self.bl_images)
 
         # Vanilla material names are unused and essentially worthless. They can also be the same for materials that
         # actually use different lightmaps, EVEN INSIDE the same FLVER model. Names are changed here to just reflect the
@@ -400,27 +407,52 @@ class FLVERImporter:
 
     def load_texture_images(self):
         """Load texture images from either `dds_dump` folder or TPFs found with the FLVER."""
+        textures_to_load = {}  # type: dict[str, TPFTexture]
         for texture_path in self.flver.get_all_texture_paths():
-            if str(texture_path) in self.dds_images:
+            texture_stem = texture_path.stem
+            if texture_stem in self.bl_images:
                 continue  # already loaded
-            if texture_path.stem in self.texture_sources:
+            if texture_stem in textures_to_load:
+                continue  # already queued to load below
+
+            if texture_stem in self.texture_sources:
+                # Found in already-unpacked textures.
                 texture = self.texture_sources[texture_path.stem]
-                bl_image = load_tpf_texture_as_png(texture)
-                self.dds_images[str(texture_path)] = bl_image
-                # Note that the full interroot path is stored in the texture node name.
-            elif self.dds_dump_path:
+                textures_to_load[texture_stem] = texture
+                continue
+
+            if texture_stem in self.loose_tpf_sources:
+                # Found in loose TPF.
+                tpf = TPF(self.loose_tpf_sources[texture_path.stem])
+                if tpf.textures[0].stem != texture_path.stem:
+                    self.warning(
+                        f"Loose TPF '{texture_path.stem}' contained first texture with non-matching name "
+                        f"'{tpf.textures[0].stem}'. Ignoring."
+                    )
+                else:
+                    textures_to_load[texture_stem] = tpf.textures[0]
+                continue
+
+            if self.dds_dump_path:
                 dds_path = self.dds_dump_path / f"{texture_path.stem}.dds"
                 if dds_path.is_file():
                     # print(f"Loading dumped DDS texture: {texture_path.stem}.dds")
-                    self.dds_images[str(texture_path)] = bpy.data.images.load(str(dds_path))
-                else:
-                    self.warning(f"Could not find TPF or dumped texture '{texture_path.stem}' for FLVER '{self.name}'.")
+                    self.bl_images[texture_stem] = bpy.data.images.load(str(dds_path))
+                    continue
 
-    def get_dds_image(self, texture_path: str):
-        if self.dds_images and texture_path in self.dds_images:
-            return self.dds_images[texture_path]
-        self.warning(f"Could not find DDS image: {texture_path}")
-        return None
+            self.warning(f"Could not find TPF or dumped texture '{texture_path.stem}' for FLVER '{self.name}'.")
+
+        if textures_to_load:
+            for texture_stem in textures_to_load:
+                self.info(f"Loading texture into Blender: {texture_stem}")
+            from time import perf_counter
+            t = perf_counter()
+            all_png_data = batch_get_tpf_texture_png_data(list(textures_to_load.values()))
+            print(f"Batch converted to PNG images in {perf_counter() - t} s")
+            for texture_stem, png_data in zip(textures_to_load.keys(), all_png_data):
+                bl_image = png_to_bl_image(texture_stem, png_data)
+                self.bl_images[texture_stem] = bl_image
+                # Note that the full interroot path is stored in material custom properties.
 
     def create_mesh_obj(
         self,
