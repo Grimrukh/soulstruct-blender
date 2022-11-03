@@ -10,9 +10,18 @@ from pathlib import Path
 
 from soulstruct.utilities.files import PACKAGE_PATH
 
+try:
+    from soulstruct_havok.utilities import PACKAGE_PATH as HAVOK_PACKAGE_PATH
+except ImportError:
+    HAVOK_PACKAGE_PATH = None
+
 
 ADDON_MODULES = (
     "io_flver",
+)
+
+HAVOK_ADDON_MODULES = (
+    "io_hkx",
 )
 
 
@@ -35,6 +44,12 @@ def install(blender_scripts_dir: str | Path, update_soulstruct_module=False):
         # Removal may not be complete if Blender is open, particularly as `soulstruct.log` may not be deleted.
         shutil.copytree(PACKAGE_PATH(), blender_scripts_dir / "modules/soulstruct", dirs_exist_ok=True)
 
+        if HAVOK_PACKAGE_PATH is not None:
+            print("# Installing Soulstruct-Havok module into Blender...")
+            shutil.rmtree(blender_scripts_dir / "modules/soulstruct_havok", ignore_errors=True)
+            # Removal may not be complete if Blender is open, particularly as `soulstruct.log` may not be deleted.
+            shutil.copytree(HAVOK_PACKAGE_PATH(), blender_scripts_dir / "modules/soulstruct_havok", dirs_exist_ok=True)
+
     # Install actual Blender scripts.
     this_dir = Path(__file__).parent
     blender_addons_dir = blender_scripts_dir / "addons"
@@ -44,6 +59,14 @@ def install(blender_scripts_dir: str | Path, update_soulstruct_module=False):
         shutil.rmtree(blender_module_dir, ignore_errors=True)
         shutil.copytree(this_dir / addon_module_name, blender_module_dir)
         print(f"# Blender addon `{addon_module_name}` installed to '{blender_addons_dir}'.")
+
+    if HAVOK_PACKAGE_PATH is not None:
+        for havok_addon_module_name in HAVOK_ADDON_MODULES:
+            blender_module_dir = blender_addons_dir / havok_addon_module_name
+            blender_module_dir.mkdir(exist_ok=True, parents=True)
+            shutil.rmtree(blender_module_dir, ignore_errors=True)
+            shutil.copytree(this_dir / havok_addon_module_name, blender_module_dir)
+            print(f"# Blender Havok-enabled addon `{havok_addon_module_name}` installed to '{blender_addons_dir}'.")
 
 
 def main(args):

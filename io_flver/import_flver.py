@@ -10,7 +10,7 @@ that use non-[M] MTD shaders will likely also not appear correctly.
 """
 from __future__ import annotations
 
-__all__ = ["ImportFLVER", "ImportFLVERWithMSBChoice"]
+__all__ = ["ImportFLVER"]  # , "ImportFLVERWithMSBChoice"]
 
 import math
 import re
@@ -184,6 +184,7 @@ class ImportFLVER(LoggingOperator, ImportHelper):
                                 # Note that the same `importer` object is used -- this `execute()` function will NOT be
                                 # called again, TPFs will not be loaded again, etc.
                                 importer.context = context
+                                from io_flver import ImportFLVERWithMSBChoice
                                 ImportFLVERWithMSBChoice.run(
                                     importer=importer,
                                     flver=flver,
@@ -218,6 +219,11 @@ class ImportFLVER(LoggingOperator, ImportHelper):
         return {"FINISHED"}
 
 
+# noinspection PyUnusedLocal
+def get_msb_choices(self, context):
+    return ImportFLVERWithMSBChoice.enum_options
+
+
 class ImportFLVERWithMSBChoice(LoggingOperator):
     """Presents user with a choice of enums from `enum_choices` class variable (set prior).
 
@@ -235,7 +241,7 @@ class ImportFLVERWithMSBChoice(LoggingOperator):
     dds_path: str = "F:\\dds_dump"
     read_tpfs: bool = False
 
-    choices_enum: bpy.props.EnumProperty(items=lambda self, context: ImportFLVERWithMSBChoice.enum_options)
+    choices_enum: bpy.props.EnumProperty(items=get_msb_choices)
 
     def invoke(self, context, event):
         return context.window_manager.invoke_props_dialog(self)
@@ -433,11 +439,11 @@ class FLVERImporter:
 
         Vertex groups are used to rig vertices to bones.
         """
-        bl_mesh = bpy.data.meshes.new(name=f"{mesh_name} Data")
+        bl_mesh = bpy.data.meshes.new(name=mesh_name)
 
         if flver_mesh.invalid_vertex_size:
             # Corrupted mesh. Leave empty.
-            return self.create_obj(f"{mesh_name} Obj <INVALID>", bl_mesh)
+            return self.create_obj(f"{mesh_name} <INVALID>", bl_mesh)
 
         uv_count = max(len(vertex.uvs) for vertex in flver_mesh.vertices)
 
@@ -522,10 +528,11 @@ class FLVERImporter:
         bl_mesh.normals_split_custom_set_from_vertices(bl_vertex_normals)
         bl_mesh.use_auto_smooth = False  # modifies `calc_normals_split()` outcome upon export
 
-        bl_mesh_obj = self.create_obj(f"{mesh_name} Obj", bl_mesh)
+        bl_mesh_obj = self.create_obj(mesh_name, bl_mesh)
         self.context.view_layer.objects.active = bl_mesh_obj
 
         bone_vertex_groups = []  # type: list[bpy.types.VertexGroup]
+        # noinspection PyTypeChecker
         bone_vertex_group_indices = {}  # type: dict[tuple[int, float], list[int]]
 
         # TODO: I *believe* that vertex bone indices are global if and only if `mesh.bone_indices` is empty. (In DSR,
@@ -534,15 +541,15 @@ class FLVERImporter:
             for mesh_bone_index in flver_mesh.bone_indices:
                 group = bl_mesh_obj.vertex_groups.new(name=self.armature.pose.bones[mesh_bone_index].name)
                 bone_vertex_groups.append(group)
-            for i, fl_vert in enumerate(flver_mesh.vertices):
+            for i, game_vert in enumerate(flver_mesh.vertices):
                 # TODO: May be able to assert that this is ALWAYS true for ALL vertices in map pieces.
-                if all(weight == 0.0 for weight in fl_vert.bone_weights) and len(set(fl_vert.bone_indices)) == 1:
+                if all(weight == 0.0 for weight in game_vert.bone_weights) and len(set(game_vert.bone_indices)) == 1:
                     # Map Piece FLVERs use a single duplicated index and no weights.
-                    v_bone_index = fl_vert.bone_indices[0]
+                    v_bone_index = game_vert.bone_indices[0]
                     bone_vertex_group_indices.setdefault((v_bone_index, 1.0), []).append(i)
                 else:
                     # Standard multi-bone weighting.
-                    for v_bone_index, v_bone_weight in zip(fl_vert.bone_indices, fl_vert.bone_weights):
+                    for v_bone_index, v_bone_weight in zip(game_vert.bone_indices, game_vert.bone_weights):
                         if v_bone_weight == 0.0:
                             continue
                         bone_vertex_group_indices.setdefault((v_bone_index, v_bone_weight), []).append(i)
@@ -550,8 +557,8 @@ class FLVERImporter:
             for bone_index in range(len(self.armature.pose.bones)):
                 group = bl_mesh_obj.vertex_groups.new(name=self.armature.pose.bones[bone_index].name)
                 bone_vertex_groups.append(group)
-            for i, fl_vert in enumerate(flver_mesh.vertices):
-                for v_bone_index, v_bone_weight in zip(fl_vert.bone_indices, fl_vert.bone_weights):
+            for i, game_vert in enumerate(flver_mesh.vertices):
+                for v_bone_index, v_bone_weight in zip(game_vert.bone_indices, game_vert.bone_weights):
                     if v_bone_weight == 0.0:
                         continue
                     bone_vertex_group_indices.setdefault((v_bone_index, v_bone_weight), []).append(i)
@@ -634,24 +641,24 @@ class FLVERImporter:
             bpy.ops.object.mode_set(mode="EDIT", toggle=False)
 
         edit_bones = []  # all bones
-        for i, fl_bone in enumerate(self.flver.bones):
+        for i, game_bone in enumerate(self.flver.bones):
             edit_bone = bl_armature_obj.data.edit_bones.new(self.bl_bone_names[i])
-            edit_bone["unk_x3c"] = fl_bone.unk_x3c
+            edit_bone["unk_x3c"] = game_bone.unk_x3c
             edit_bone: bpy_types.EditBone
-            if fl_bone.child_index != -1:
+            if game_bone.child_index != -1:
                 # TODO: Check if this is set IFF bone has exactly one child, which can be auto-detected.
-                edit_bone["child_name"] = self.bl_bone_names[fl_bone.child_index]
-            if fl_bone.next_sibling_index != -1:
-                edit_bone["next_sibling_name"] = self.bl_bone_names[fl_bone.next_sibling_index]
-            if fl_bone.previous_sibling_index != -1:
-                edit_bone["previous_sibling_name"] = self.bl_bone_names[fl_bone.previous_sibling_index]
+                edit_bone["child_name"] = self.bl_bone_names[game_bone.child_index]
+            if game_bone.next_sibling_index != -1:
+                edit_bone["next_sibling_name"] = self.bl_bone_names[game_bone.next_sibling_index]
+            if game_bone.previous_sibling_index != -1:
+                edit_bone["previous_sibling_name"] = self.bl_bone_names[game_bone.previous_sibling_index]
             edit_bones.append(edit_bone)
 
         # NOTE: Bones that have no vertices weighted to them are left as 'unused' root bones in the FLVER skeleton.
         # They may be animated by HKX animations (and will affect their children appropriately) but will not actually
         # affect any vertices in the mesh.
 
-        for fl_bone, edit_bone in zip(self.flver.bones, edit_bones):
+        for game_bone, edit_bone in zip(self.flver.bones, edit_bones):
 
             if write_bone_type == "POSE":
                 # All edit bones are just Y-direction stubs of length 1 ("forward").
@@ -660,34 +667,34 @@ class FLVERImporter:
                 edit_bone.tail = Vector((0, 1, 0))
                 continue
 
-            fl_bone_translate, fl_bone_rotate_mat = fl_bone.get_absolute_translate_rotate(self.flver.bones)
-            fl_bone_rotate = fl_bone_rotate_mat.to_euler_angles(radians=True)
+            game_bone_translate, game_bone_rotate_mat = game_bone.get_absolute_translate_rotate(self.flver.bones)
+            game_bone_rotate = game_bone_rotate_mat.to_euler_angles(radians=True)
 
             # Check if scale is ALMOST one and correct it.
             # TODO: Maybe too aggressive?
-            if is_uniform(fl_bone.scale, rel_tol=0.001) and math.isclose(fl_bone.scale.x, 1.0, rel_tol=0.001):
-                fl_bone.scale = Vector3.ones()
+            if is_uniform(game_bone.scale, rel_tol=0.001) and math.isclose(game_bone.scale.x, 1.0, rel_tol=0.001):
+                game_bone.scale = Vector3.ones()
 
-            if not is_uniform(fl_bone.scale, rel_tol=0.001):
-                self.warning(f"Bone {fl_bone.name} has non-uniform scale: {fl_bone.scale}. Left as identity.")
+            if not is_uniform(game_bone.scale, rel_tol=0.001):
+                self.warning(f"Bone {game_bone.name} has non-uniform scale: {game_bone.scale}. Left as identity.")
                 length = 0.1
-            elif any(c < 0.0 for c in fl_bone.scale):
-                self.warning(f"Bone {fl_bone.name} has negative scale: {fl_bone.scale}. Left as identity.")
+            elif any(c < 0.0 for c in game_bone.scale):
+                self.warning(f"Bone {game_bone.name} has negative scale: {game_bone.scale}. Left as identity.")
                 length = 0.1
             else:
-                length = 0.1 * fl_bone.scale.x
+                length = 0.1 * game_bone.scale.x
 
-            bl_rotate_euler = Euler((fl_bone.rotate.x, fl_bone_rotate.z, -fl_bone_rotate.y))
+            bl_rotate_euler = Euler((game_bone.rotate.x, game_bone_rotate.z, -game_bone_rotate.y))
             tail, roll = bl_rotate_euler.to_quaternion().to_axis_angle()
             edit_bone.tail = length * tail.normalized()
             edit_bone.roll = roll
-            bl_bone_translate = FL_TO_BL_SPACE_POS @ Vector(fl_bone_translate)
+            bl_bone_translate = FL_TO_BL_SPACE_POS @ Vector(game_bone_translate)
             # Exact bone absolute position is always at `head`.
             edit_bone.head = bl_bone_translate
             edit_bone.tail += bl_bone_translate
 
-            if fl_bone.parent_index != -1:
-                parent_edit_bone = edit_bones[fl_bone.parent_index]
+            if game_bone.parent_index != -1:
+                parent_edit_bone = edit_bones[game_bone.parent_index]
                 edit_bone.parent = parent_edit_bone
                 # edit_bone.use_connect = True
 
@@ -697,13 +704,13 @@ class FLVERImporter:
             bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
 
         if write_bone_type == "POSE":
-            for fl_bone, pose_bone in zip(self.flver.bones, bl_armature_obj.pose.bones):
-                fl_bone_translate, fl_bone_rotate = fl_bone.get_absolute_translate_rotate(self.flver.bones)
-                pose_bone.location = FL_TO_BL_SPACE_POS @ Vector(fl_bone_translate)
+            for game_bone, pose_bone in zip(self.flver.bones, bl_armature_obj.pose.bones):
+                game_bone_translate, game_bone_rotate = game_bone.get_absolute_translate_rotate(self.flver.bones)
+                pose_bone.location = FL_TO_BL_SPACE_POS @ Vector(game_bone_translate)
                 pose_bone.rotation_mode = "XYZ"  # not Quaternion
-                bl_bone_rotate = FL_TO_BL_SPACE_ROT @ Vector(fl_bone_rotate.to_euler_angles(radians=True))
+                bl_bone_rotate = FL_TO_BL_SPACE_ROT @ Vector(game_bone_rotate.to_euler_angles(radians=True))
                 pose_bone.rotation_euler = bl_bone_rotate
-                pose_bone.scale = Vector((fl_bone.scale.x, fl_bone.scale.z, fl_bone.scale.y))
+                pose_bone.scale = Vector((game_bone.scale.x, game_bone.scale.z, game_bone.scale.y))
 
         return bl_armature_obj
 
@@ -720,9 +727,9 @@ class FLVERImporter:
 
             bl_dummy.location = (-dummy.position.x, -dummy.position.z, dummy.position.y)
             if dummy.use_upward_vector:
-                bl_dummy.rotation_euler = fl_forward_up_vectors_to_bl_euler(dummy.forward, dummy.upward)
+                bl_dummy.rotation_euler = game_forward_up_vectors_to_bl_euler(dummy.forward, dummy.upward)
             else:  # TODO: I assume this is right (up-ignoring dummies only rotate around vertical axis)
-                bl_dummy.rotation_euler = fl_forward_up_vectors_to_bl_euler(dummy.forward, Vector3(0, 0, 1))
+                bl_dummy.rotation_euler = game_forward_up_vectors_to_bl_euler(dummy.forward, Vector3(0, 0, 1))
 
             # TODO: Parent bone index is used to "place" the dummy. These are usually dedicated bones at the origin,
             #  e.g. 'Model_Dmy', and so won't matter for placement in most cases. I assume they can be used to offset

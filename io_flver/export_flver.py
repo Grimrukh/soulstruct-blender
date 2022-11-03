@@ -28,9 +28,6 @@ from .core import *
 #    - Would need to convert all the triangles/faces/loops/UVs etc. to Python data first.
 USE_MULTIPROCESSING = False
 
-MESH_RE = re.compile(r"(.*) Mesh (\d+) Obj")
-NAME_RE = re.compile(r"FLVER (.*)")
-
 DEBUG_MESH_INDEX = None
 DEBUG_VERTEX_INDICES = []
 
@@ -52,7 +49,7 @@ TEXTURE_TYPES = (
 class MeshBuilder(tp.NamedTuple):
     """Holds data for a potentially multiprocessed mesh-building job."""
     bl_mesh: tp.Any
-    fl_mesh: FLVER.Mesh
+    game_mesh: FLVER.Mesh
     layout: BufferLayout
     buffer: VertexBuffer
     uv_count: int
@@ -62,8 +59,8 @@ class MeshBuilder(tp.NamedTuple):
 
 class MeshBuildResult(tp.NamedTuple):
     """Sent back to main process in a Queue."""
-    fl_vertices: list[FLVER.Mesh.Vertex]
-    fl_face_sets: list[FLVER.Mesh.FaceSet]
+    game_vertices: list[FLVER.Mesh.Vertex]
+    game_face_sets: list[FLVER.Mesh.FaceSet]
     local_bone_indices: list[int]
 
 
@@ -192,12 +189,10 @@ class ExportFLVERIntoBinder(LoggingOperator, ImportHelper):
 
     default_entry_path: StringProperty(
         name="Default Path",
-        description="Path prefix to use for Binder entry if it needs to be created. Use {name} as a format "
+        description="Path to use for Binder entry if it needs to be created. Use {name} as a format "
                     "placeholder for the name of this FLVER object. Default is for DS1R `chrbnd.dcx` files",
         default="N:\\FRPG\\data\\INTERROOT_x64\\chr\\{name}\\{name}.flver",
     )
-
-    # TODO: DCX compression option (defaults to None).
 
     @classmethod
     def poll(cls, context):
@@ -467,20 +462,20 @@ class FLVERExporter:
         for bl_dummy in bl_dummies:
             if not bl_dummy.type == "EMPTY":
                 self.warning(f"Ignoring non-Empty child object '{bl_dummy.name}' of empty Dummy parent.")
-            fl_dummy = self.create_dummy(bl_dummy, bone_names)
-            flver.dummies.append(fl_dummy)
+            game_dummy = self.create_dummy(bl_dummy, bone_names)
+            flver.dummies.append(game_dummy)
 
         # Set up basic Mesh properties.
         mesh_builders = []
         for bl_mesh in bl_meshes:
-            fl_mesh, fl_material, fl_layout, mesh_builder = self.create_mesh_material_layout(
+            game_mesh, game_material, game_layout, mesh_builder = self.create_mesh_material_layout(
                 bl_mesh, flver.buffer_layouts, use_chr_layout=read_bone_type == "EDIT"
             )
-            fl_mesh.material_index = len(flver.materials)
-            flver.materials.append(fl_material)
-            flver.meshes.append(fl_mesh)
-            if fl_layout is not None:
-                flver.buffer_layouts.append(fl_layout)
+            game_mesh.material_index = len(flver.materials)
+            flver.materials.append(game_material)
+            flver.meshes.append(game_mesh)
+            if game_layout is not None:
+                flver.buffer_layouts.append(game_layout)
             mesh_builders.append(mesh_builder)
 
         # Process mesh vertices, faces, and bones.
@@ -493,31 +488,31 @@ class FLVERExporter:
             ]
 
             with Pool() as pool:
-                pool.starmap(build_fl_mesh_mp, worker_args)  # blocks here until all done
+                pool.starmap(build_game_mesh_mp, worker_args)  # blocks here until all done
 
             builder_index = 0
             while not queue.empty():
                 build_result = queue.get()
-                fl_mesh = mesh_builders[builder_index].fl_mesh
-                fl_mesh.vertices = build_result.fl_vertices
-                fl_mesh.face_sets = build_result.fl_face_sets
-                fl_mesh.bone_indices = build_result.local_bone_indices
-                mesh_builders[builder_index].buffer.vertex_count = len(build_result.fl_vertices)
+                game_mesh = mesh_builders[builder_index].game_mesh
+                game_mesh.vertices = build_result.game_vertices
+                game_mesh.face_sets = build_result.game_face_sets
+                game_mesh.bone_indices = build_result.local_bone_indices
+                mesh_builders[builder_index].buffer.vertex_count = len(build_result.game_vertices)
         else:
             for builder in mesh_builders:
                 print(f"Building FLVER mesh: {builder.bl_mesh.name}")
-                fl_vertices, fl_face_sets, mesh_local_bone_indices = build_fl_mesh(
+                game_vertices, game_face_sets, mesh_local_bone_indices = build_game_mesh(
                     builder, bone_names
                 )
-                print(f"    --> {len(fl_vertices)} vertices")
-                if not fl_vertices or not fl_face_sets:
+                print(f"    --> {len(game_vertices)} vertices")
+                if not game_vertices or not game_face_sets:
                     raise ValueError(
                         f"Cannot export a FLVER mesh with no vertices and/or faces: {builder.bl_mesh.name}"
                     )
-                builder.fl_mesh.vertices = fl_vertices
-                builder.fl_mesh.face_sets = fl_face_sets
-                builder.fl_mesh.bone_indices = mesh_local_bone_indices
-                builder.buffer.vertex_count = len(fl_vertices)
+                builder.game_mesh.vertices = game_vertices
+                builder.game_mesh.face_sets = game_face_sets
+                builder.game_mesh.bone_indices = mesh_local_bone_indices
+                builder.buffer.vertex_count = len(game_vertices)
 
         # TODO: Set BB properly per bone (need to update bounds for each bone while building vertices).
         recompute_bounding_box(flver, flver.bones)
@@ -531,36 +526,36 @@ class FLVERExporter:
         if bpy.ops.object.mode_set.poll():
             bpy.ops.object.mode_set(mode="EDIT", toggle=False)
 
-        fl_bones = []
+        game_bones = []
         bl_world_transforms = []  # type: list[BlenderTransform]  # collected and converted to local space later
         edit_bone_names = [edit_bone.name for edit_bone in bl_armature_obj.data.edit_bones]
         if len(set(edit_bone_names)) != len(edit_bone_names):
             raise ValueError(f"Bone names of '{self.name}' armature are not all unique.")
         for edit_bone in bl_armature_obj.data.edit_bones:
-            fl_bone = FLVER.Bone(name=edit_bone.name)
-            self.get_all_props(edit_bone, fl_bone, "Bone")
+            game_bone = FLVER.Bone(name=edit_bone.name)
+            self.get_all_props(edit_bone, game_bone, "Bone")
             if edit_bone.parent:
                 parent_bone_name = edit_bone.parent.name
-                fl_bone.parent_index = edit_bone_names.index(parent_bone_name)
+                game_bone.parent_index = edit_bone_names.index(parent_bone_name)
             else:
-                fl_bone.parent_index = -1
+                game_bone.parent_index = -1
             child_name = edit_bone.get("child_name", None)
             if child_name is not None:
                 # TODO: Check if this is set IFF bone has exactly one child, which can be auto-detected.
                 try:
-                    fl_bone.child_index = edit_bone_names.index(child_name)
+                    game_bone.child_index = edit_bone_names.index(child_name)
                 except IndexError:
                     raise ValueError(f"Cannot find child '{child_name}' of bone '{edit_bone.name}'.")
             next_sibling_name = edit_bone.get("next_sibling_name", None)
             if next_sibling_name is not None:
                 try:
-                    fl_bone.next_sibling_index = edit_bone_names.index(next_sibling_name)
+                    game_bone.next_sibling_index = edit_bone_names.index(next_sibling_name)
                 except IndexError:
                     raise ValueError(f"Cannot find next sibling '{next_sibling_name}' of bone '{edit_bone.name}'.")
             prev_sibling_name = edit_bone.get("previous_sibling_name", None)
             if prev_sibling_name is not None:
                 try:
-                    fl_bone.previous_sibling_index = edit_bone_names.index(prev_sibling_name)
+                    game_bone.previous_sibling_index = edit_bone_names.index(prev_sibling_name)
                 except IndexError:
                     raise ValueError(f"Cannot find previous sibling '{prev_sibling_name}' of bone '{edit_bone.name}'.")
 
@@ -575,14 +570,14 @@ class FLVERExporter:
                     BlenderTransform(world_translate, world_rotate, world_scale),
                 )
 
-            fl_bones.append(fl_bone)
+            game_bones.append(game_bone)
 
         if bpy.ops.object.mode_set.poll():
             bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
 
         if read_bone_type == "POSE":
             # Get absolute bone transform from PoseBone (map pieces).
-            for fl_bone, pose_bone in zip(fl_bones, bl_armature_obj.pose.bones):
+            for game_bone, pose_bone in zip(game_bones, bl_armature_obj.pose.bones):
                 world_translate = Vector(pose_bone.location)
                 world_rotate = Euler(pose_bone.rotation_euler)
                 world_scale = Vector(pose_bone.scale)
@@ -590,33 +585,33 @@ class FLVERExporter:
                     BlenderTransform(world_translate, world_rotate, world_scale),
                 )
 
-        for fl_bone, bl_world_transform in zip(fl_bones, bl_world_transforms):
+        for game_bone, bl_world_transform in zip(game_bones, bl_world_transforms):
             # Convert Blender T/R/S to local space. Since ALL bones are currently in world space, we only need each
             # immediate parent to convert to local space (just translate/rotate relative to parent).
-            if fl_bone.parent_index != -1:
+            if game_bone.parent_index != -1:
                 # Get inverse parent transform and compose.
-                inv_parent = bl_world_transforms[fl_bone.parent_index].inverse()
+                inv_parent = bl_world_transforms[game_bone.parent_index].inverse()
                 bl_local_transform = inv_parent.compose(bl_world_transform)
-                fl_bone.translate = bl_local_transform.fl_translate
-                fl_bone.rotate = bl_local_transform.fl_rotate_rad  # FLVER bone uses radians
+                game_bone.translate = bl_local_transform.game_translate
+                game_bone.rotate = bl_local_transform.game_rotate_rad  # FLVER bone uses radians
                 # TODO: Scale is not transformed to local. (Not transformed to world by importer.)
-                fl_bone.scale = bl_world_transform.fl_scale
+                game_bone.scale = bl_world_transform.game_scale
             else:
                 # World space is local space for root bone.
-                fl_bone.translate = bl_world_transform.fl_translate
-                fl_bone.rotate = bl_world_transform.fl_rotate_rad  # FLVER bone uses radians
-                fl_bone.scale = bl_world_transform.fl_scale
+                game_bone.translate = bl_world_transform.game_translate
+                game_bone.rotate = bl_world_transform.game_rotate_rad  # FLVER bone uses radians
+                game_bone.scale = bl_world_transform.game_scale
 
-        return fl_bones
+        return game_bones
 
     def create_dummy(self, bl_dummy, bone_names: list[str]) -> FLVER.Dummy:
-        fl_dummy = FLVER.Dummy()
-        self.get_all_props(bl_dummy, fl_dummy, "Dummy")
+        game_dummy = FLVER.Dummy()
+        self.get_all_props(bl_dummy, game_dummy, "Dummy")
         bl_transform = BlenderTransform.from_bl_obj(bl_dummy)
-        fl_dummy.position = bl_transform.fl_translate
-        forward, up = bl_euler_to_fl_forward_up_vectors(bl_transform.bl_rotate)
-        fl_dummy.forward = forward
-        fl_dummy.upward = up if fl_dummy.use_upward_vector else Vector3.zero()
+        game_dummy.position = bl_transform.game_translate
+        forward, up = bl_euler_to_game_forward_up_vectors(bl_transform.bl_rotate)
+        game_dummy.forward = forward
+        game_dummy.upward = up if game_dummy.use_upward_vector else Vector3.zero()
 
         parent_bone_name = None
         attach_bone_name = None
@@ -628,41 +623,41 @@ class FLVERExporter:
             else:
                 self.warning(f"Ignoring unrecognized Dummy constraint: {constraint.name}")
         if parent_bone_name is None:
-            fl_dummy.parent_bone_index = -1
+            game_dummy.parent_bone_index = -1
         elif parent_bone_name not in bone_names:
             raise ValueError(
                 f"Dummy Empty '{bl_dummy.name}' 'Dummy Parent Bone' constraint is targeting "
                 f"an invalid bone name: {parent_bone_name}."
             )
         else:
-            fl_dummy.parent_bone_index = bone_names.index(parent_bone_name)
+            game_dummy.parent_bone_index = bone_names.index(parent_bone_name)
         if attach_bone_name is None:
-            fl_dummy.attach_bone_index = -1
+            game_dummy.attach_bone_index = -1
         elif attach_bone_name not in bone_names:
             raise ValueError(
                 f"Dummy Empty '{bl_dummy.name}' 'Dummy Attach Bone' constraint is targeting "
                 f"an invalid bone name: {parent_bone_name}."
             )
         else:
-            fl_dummy.attach_bone_index = bone_names.index(attach_bone_name)
-        return fl_dummy
+            game_dummy.attach_bone_index = bone_names.index(attach_bone_name)
+        return game_dummy
 
     def create_mesh_material_layout(
         self, bl_mesh, buffer_layouts: list[BufferLayout], use_chr_layout: bool
     ) -> (FLVER.Mesh, FLVER.Material, tp.Optional[BufferLayout], MeshBuilder):
-        fl_mesh = FLVER.Mesh()
-        extra_mesh_props = self.get_all_props(bl_mesh, fl_mesh, "Mesh")
+        game_mesh = FLVER.Mesh()
+        extra_mesh_props = self.get_all_props(bl_mesh, game_mesh, "Mesh")
 
         # Process material.
         if len(bl_mesh.material_slots) != 1:
             raise ValueError(f"Mesh {bl_mesh.name} must have exactly one material.")
         bl_material = bl_mesh.material_slots[0].material
-        fl_material = FLVER.Material()
-        fl_material.name = bl_material.name.remove_prefix(self.name).strip()
-        extra_mat_props = self.get_all_props(bl_material, fl_material, "Material", bl_prop_prefix="material_")
+        game_material = FLVER.Material()
+        game_material.name = bl_material.name.remove_prefix(self.name).strip()
+        extra_mat_props = self.get_all_props(bl_material, game_material, "Material", bl_prop_prefix="material_")
         found_texture_types = set()
         for i in range(extra_mat_props["texture_count"]):
-            fl_texture = FLVER.Material.Texture()
+            game_texture = FLVER.Material.Texture()
             self.get_all_props(bl_material, fl_texture, "Texture", bl_prop_prefix=f"texture[{i}]_")
             tex_type = fl_texture.texture_type
             if tex_type not in TEXTURE_TYPES:
@@ -823,7 +818,7 @@ def build_fl_mesh(
             mesh_loop = bl_mesh.loops[loop.index]
 
             if layout.has_member_type(MemberType.Position):
-                position = blender_vec_to_flver_vec(bm.verts[v_i].co)
+                position = blender_vec_to_game_vec(bm.verts[v_i].co)
             else:
                 position = None
 
@@ -872,7 +867,7 @@ def build_fl_mesh(
             if layout.has_member_type(MemberType.Normal):
                 # TODO: 127 is the only value seen in DS1 models thus far for `normal[3]`. Will need to store as a
                 #  custom vertex property for other games that use it.
-                normal = [*blender_vec_to_flver_vec(mesh_loop.normal), 127.0]
+                normal = [*blender_vec_to_game_vec(mesh_loop.normal), 127.0]
             else:
                 normal = None
 
@@ -893,12 +888,12 @@ def build_fl_mesh(
                 uvs = None
 
             if layout.has_member_type(MemberType.Tangent):
-                tangents = [[*blender_vec_to_flver_vec(mesh_loop.tangent), -1.0]]
+                tangents = [[*blender_vec_to_game_vec(mesh_loop.tangent), -1.0]]
             else:
                 tangents = None
 
             if layout.has_member_type(MemberType.Bitangent):
-                bitangent = [*blender_vec_to_flver_vec(mesh_loop.bitangent), -1.0]
+                bitangent = [*blender_vec_to_game_vec(mesh_loop.bitangent), -1.0]
             else:
                 bitangent = None
 

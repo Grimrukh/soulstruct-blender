@@ -20,7 +20,7 @@ if "FLVER_PT_flver_tools" in locals():
     importlib.reload(sys.modules["io_flver.textures"])
     importlib.reload(sys.modules["io_flver.textures_utils"])
 
-from io_flver.core import FLVERImportError, Transform, get_msb_transforms
+from io_flver.core import LoggingOperator, Transform
 from io_flver.export_flver import ExportFLVER, ExportFLVERIntoBinder
 from io_flver.import_flver import ImportFLVER, ImportFLVERWithMSBChoice
 from io_flver.textures import *
@@ -38,6 +38,13 @@ bl_info = {
     "support": "COMMUNITY",
     "category": "Import-Export",
 }
+
+
+def CUSTOM_ENUM(choices):
+    CUSTOM_ENUM.choices = choices
+
+
+CUSTOM_ENUM.choices = []
 
 
 class FLVER_PT_flver_tools(bpy.types.Panel):

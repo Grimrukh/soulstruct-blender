@@ -1,16 +1,15 @@
 from __future__ import annotations
 
 __all__ = [
-    "FLVERImportError",
-    "FLVERExportError",
+    "HKXImportError",
+    "HKXExportError",
+    "HKX_MESH_TYPING",
     "Transform",
     "BlenderTransform",
     "game_vec_to_blender_vec",
     "blender_vec_to_game_vec",
     "is_uniform",
     "get_msb_transforms",
-    "game_forward_up_vectors_to_bl_euler",
-    "bl_euler_to_game_forward_up_vectors",
     "natural_keys",
     "LoggingOperator",
 ]
@@ -21,7 +20,7 @@ from dataclasses import dataclass
 from math import degrees, radians, isclose
 from pathlib import Path
 
-from soulstruct.utilities.maths import Vector3, Matrix3
+from soulstruct.utilities.maths import Vector3
 from soulstruct.darksouls1r.maps import MSB, get_map
 
 # noinspection PyUnresolvedReferences
@@ -29,14 +28,17 @@ from bpy.types import Operator
 from mathutils import Euler, Vector
 
 
-class FLVERImportError(Exception):
-    """Exception raised during FLVER import."""
+class HKXImportError(Exception):
+    """Exception raised during HKX import."""
     pass
 
 
-class FLVERExportError(Exception):
-    """Exception raised during FLVER export."""
+class HKXExportError(Exception):
+    """Exception raised during HKX export."""
     pass
+
+
+HKX_MESH_TYPING = tuple[list[tp.Sequence[float]], list[tp.Sequence[int]]]
 
 
 @dataclass(slots=True)
@@ -138,13 +140,13 @@ def is_uniform(vector: Vector3, rel_tol: float):
     return xy_close and xz_close and yz_close
 
 
-def get_msb_transforms(flver_path: Path, msb_path: Path = None) -> list[tuple[str, Transform]]:
-    """Search MSB at `msb_path` (autodetected from `flver_path.parent` by default) and return
-    `(map_piece_name, Transform)` pairs for all Map Piece entries using the `flver_path` model."""
+def get_msb_transforms(hkx_name: str, hkx_path: Path, msb_path: Path = None) -> list[tuple[str, Transform]]:
+    """Search MSB at `msb_path` (autodetected from `hkx_path.parent` by default) and return
+    `(collision_name, Transform)` pairs for all Collision entries using the `hkx_name` model."""
     if msb_path is None:
-        flver_parent_dir = flver_path.parent
-        flver_map = get_map(flver_parent_dir.name)
-        msb_path = flver_parent_dir.parent / f"MapStudio/{flver_map.msb_file_stem}.msb"
+        hkx_parent_dir = hkx_path.parent
+        hkx_map = get_map(hkx_parent_dir.name)
+        msb_path = hkx_parent_dir.parent / f"MapStudio/{hkx_map.msb_file_stem}.msb"
     if not msb_path.is_file():
         raise FileNotFoundError(f"Cannot find MSB file '{msb_path}'.")
     try:
@@ -155,36 +157,13 @@ def get_msb_transforms(flver_path: Path, msb_path: Path = None) -> list[tuple[st
             f"\nCurrently, only Dark Souls 1 (either version) MSBs are supported."
         )
     matches = []
-    for map_piece in msb.parts.MapPieces:
-        if flver_path.name.startswith(map_piece.model_name):
-            matches.append(map_piece)
+    for collision in msb.parts.Collisions:
+        if hkx_name == collision.model_name:
+            matches.append(collision)
     if not matches:
-        raise ValueError(f"Cannot find any MSB Map Piece entries using model '{flver_path.name}'.")
+        raise ValueError(f"Cannot find any MSB Collision entries using model '{hkx_name}'.")
     transforms = [(m.name, Transform.from_msb_part(m)) for m in matches]
     return transforms
-
-
-def game_forward_up_vectors_to_bl_euler(forward: Vector3, up: Vector3) -> Euler:
-    """Convert `forward` and `up` vectors to Euler angles `(x, y, z)` (in Blender coordinates).
-
-    Mainly used for representing FLVER dummies in Blender.
-    """
-    right = up.cross(forward)
-    rotation_matrix = Matrix3(
-        right.x, up.x, forward.x,
-        right.y, up.y, forward.y,
-        right.z, up.z, forward.z,
-    )
-    euler_angles = rotation_matrix.to_euler_angles(radians=True, order="xzy")
-    return Euler((euler_angles.x, euler_angles.z, -euler_angles.y))
-
-
-def bl_euler_to_game_forward_up_vectors(euler: Euler) -> (Vector3, Vector3):
-    game_euler = Euler((euler.x, -euler.z, euler.y))
-    game_mat = game_euler.to_matrix()
-    forward = Vector3(game_mat.col[2])
-    up = Vector3(game_mat.col[1])
-    return forward, up
 
 
 def atoi(text):

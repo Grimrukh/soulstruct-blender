@@ -80,15 +80,15 @@ class MaterialNodeCreator:
         bl_material["material_texture_count"] = len(flver_material.textures)  # int
 
         # Texture information is also stored here.
-        for i, fl_tex in enumerate(flver_material.textures):
-            bl_material[f"texture[{i}]_path"] = fl_tex.path  # str
-            bl_material[f"texture[{i}]_texture_type"] = fl_tex.texture_type  # str
-            bl_material[f"texture[{i}]_scale"] = tuple(fl_tex.scale)  # tuple (float)
-            bl_material[f"texture[{i}]_unk_x10"] = fl_tex.unk_x10  # int
-            bl_material[f"texture[{i}]_unk_x11"] = fl_tex.unk_x11  # bool
-            bl_material[f"texture[{i}]_unk_x14"] = fl_tex.unk_x14  # float
-            bl_material[f"texture[{i}]_unk_x18"] = fl_tex.unk_x18  # float
-            bl_material[f"texture[{i}]_unk_x1C"] = fl_tex.unk_x1C  # float
+        for i, game_tex in enumerate(flver_material.textures):
+            bl_material[f"texture[{i}]_path"] = game_tex.path  # str
+            bl_material[f"texture[{i}]_texture_type"] = game_tex.texture_type  # str
+            bl_material[f"texture[{i}]_scale"] = tuple(game_tex.scale)  # tuple (float)
+            bl_material[f"texture[{i}]_unk_x10"] = game_tex.unk_x10  # int
+            bl_material[f"texture[{i}]_unk_x11"] = game_tex.unk_x11  # bool
+            bl_material[f"texture[{i}]_unk_x14"] = game_tex.unk_x14  # float
+            bl_material[f"texture[{i}]_unk_x18"] = game_tex.unk_x18  # float
+            bl_material[f"texture[{i}]_unk_x1C"] = game_tex.unk_x1C  # float
 
         mtd_info = flver_material.get_mtd_info()
 
@@ -114,6 +114,11 @@ class MaterialNodeCreator:
                 )
                 return bl_material
             bsdf_1 = self.create_water_shader(nt, textures["g_Bumpmap"])
+        else:
+            # TODO: some kind of shader for materials like 'Snow[L].mtd'
+            self._operator.warning(
+                f"Imported material '{flver_material.name}' will have no shader output (MTD {flver_material.mtd_name})"
+            )
 
         vertex_colors_node = nt.nodes.new("ShaderNodeAttribute")
         vertex_colors_node.location = (-200, 430)
@@ -127,7 +132,8 @@ class MaterialNodeCreator:
             nt.links.new(slot_mix_shader.outputs[0], output_node.inputs["Surface"])
         else:
             slot_mix_shader = None
-            nt.links.new(bsdf_1.outputs[0], output_node.inputs["Surface"])
+            if bsdf_1:
+                nt.links.new(bsdf_1.outputs[0], output_node.inputs["Surface"])
 
         if mtd_info.multiple:
             # Multi-textures shader (two slots).
@@ -140,7 +146,8 @@ class MaterialNodeCreator:
             transparent = nt.nodes.new("ShaderNodeBsdfTransparent")
             transparent.location = (-200, 230)
             nt.links.new(transparent.outputs[0], slot_mix_shader.inputs[1])
-            nt.links.new(bsdf_1.outputs[0], slot_mix_shader.inputs[2])
+            if bsdf_1:
+                nt.links.new(bsdf_1.outputs[0], slot_mix_shader.inputs[2])
         # TODO: Not sure if I can easily support 'edge' shader alpha.
         else:
             # Single texture, no alpha. Wait to see if lightmap used below.
