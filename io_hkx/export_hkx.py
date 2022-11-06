@@ -7,7 +7,6 @@ import traceback
 import typing as tp
 from pathlib import Path
 
-import bmesh
 import bpy
 import bpy_types
 from bpy.props import StringProperty, BoolProperty, IntProperty, EnumProperty
@@ -16,7 +15,6 @@ from soulstruct.containers.dcx import DCXType
 
 from soulstruct.base.binder_entry import BinderEntry
 from soulstruct.containers import Binder
-from soulstruct.utilities.maths import Vector3
 
 from soulstruct_havok.wrappers.hkx2015 import CollisionHKX
 

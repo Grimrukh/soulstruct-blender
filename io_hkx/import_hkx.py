@@ -257,7 +257,7 @@ class ImportHKXWithBinderChoice(LoggingOperator):
             for obj in self.importer.all_bl_objs:
                 bpy.data.objects.remove(obj)
             traceback.print_exc()
-            return self.error(f"Cannot import HKX {self.hkx_name} from '{self.binder_file_path.name}'. Error: {ex}")
+            return self.error(f"Cannot import HKX {hkx_name} from '{self.binder_file_path.name}'. Error: {ex}")
 
         return {'FINISHED'}
 

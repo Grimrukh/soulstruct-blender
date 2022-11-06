@@ -18,6 +18,7 @@ except ImportError:
 
 ADDON_MODULES = (
     "io_flver",
+    "io_nvm",
 )
 
 HAVOK_ADDON_MODULES = (
