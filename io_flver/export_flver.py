@@ -18,6 +18,7 @@ from soulstruct.containers.dcx import DCXType
 from soulstruct.base.binder_entry import BinderEntry
 from soulstruct.base.models.flver import FLVER, Version
 from soulstruct.base.models.flver.vertex import VertexBuffer, BufferLayout, LayoutMember, MemberType, MemberFormat
+from soulstruct.base.models.flver.material import MTDInfo
 from soulstruct.containers import Binder
 from soulstruct.utilities.maths import Vector3
 
@@ -455,13 +456,12 @@ class FLVERExporter:
 
         read_bone_type = self.detect_is_bind_pose(bl_meshes)
         print(f"Exporting FLVER bones from data type: {read_bone_type}")
-        flver.bones = self.create_bones(bl_armature, read_bone_type)
-        bone_names = [bone.name for bone in flver.bones]  # for vertex weighting
+        flver.bones, bl_bone_names = self.create_bones(bl_armature, read_bone_type)
 
         for bl_dummy in bl_dummies:
             if not bl_dummy.type == "EMPTY":
                 self.warning(f"Ignoring non-Empty child object '{bl_dummy.name}' of empty Dummy parent.")
-            game_dummy = self.create_dummy(bl_dummy, bone_names)
+            game_dummy = self.create_dummy(bl_dummy, bl_bone_names)
             flver.dummies.append(game_dummy)
 
         # Set up basic Mesh properties.
@@ -482,7 +482,7 @@ class FLVERExporter:
             queue = Queue()  # type: Queue[MeshBuildResult]
 
             worker_args = [
-                (builder, bone_names, queue)
+                (builder, bl_bone_names, queue)
                 for builder in mesh_builders
             ]
 
@@ -501,7 +501,7 @@ class FLVERExporter:
             for builder in mesh_builders:
                 print(f"Building FLVER mesh: {builder.bl_mesh.name}")
                 game_vertices, game_face_sets, mesh_local_bone_indices = build_game_mesh(
-                    builder, bone_names
+                    builder, bl_bone_names
                 )
                 print(f"    --> {len(game_vertices)} vertices")
                 if not game_vertices or not game_face_sets:
@@ -518,7 +518,7 @@ class FLVERExporter:
 
         return flver
 
-    def create_bones(self, bl_armature_obj, read_bone_type: str) -> list[FLVER.Bone]:
+    def create_bones(self, bl_armature_obj, read_bone_type: str) -> tuple[list[FLVER.Bone], list[str]]:
         self.context.view_layer.objects.active = bl_armature_obj
 
         # We need `EditBone` mode to retrieve custom properties, even if reading transforms from pose later.
@@ -531,7 +531,10 @@ class FLVERExporter:
         if len(set(edit_bone_names)) != len(edit_bone_names):
             raise ValueError(f"Bone names of '{self.name}' armature are not all unique.")
         for edit_bone in bl_armature_obj.data.edit_bones:
-            game_bone = FLVER.Bone(name=edit_bone.name)
+            game_bone_name = edit_bone.name
+            while game_bone_name.endswith(" <DUPE>"):
+                game_bone_name = game_bone_name.removesuffix(" <DUPE>")
+            game_bone = FLVER.Bone(name=game_bone_name)
             self.get_all_props(edit_bone, game_bone, "Bone")
             if edit_bone.parent:
                 parent_bone_name = edit_bone.parent.name
@@ -545,18 +548,24 @@ class FLVERExporter:
                     game_bone.child_index = edit_bone_names.index(child_name)
                 except IndexError:
                     raise ValueError(f"Cannot find child '{child_name}' of bone '{edit_bone.name}'.")
+            else:
+                game_bone.child_index = -1
             next_sibling_name = edit_bone.get("next_sibling_name", None)
             if next_sibling_name is not None:
                 try:
                     game_bone.next_sibling_index = edit_bone_names.index(next_sibling_name)
                 except IndexError:
                     raise ValueError(f"Cannot find next sibling '{next_sibling_name}' of bone '{edit_bone.name}'.")
+            else:
+                game_bone.next_sibling_index = -1
             prev_sibling_name = edit_bone.get("previous_sibling_name", None)
             if prev_sibling_name is not None:
                 try:
                     game_bone.previous_sibling_index = edit_bone_names.index(prev_sibling_name)
                 except IndexError:
                     raise ValueError(f"Cannot find previous sibling '{prev_sibling_name}' of bone '{edit_bone.name}'.")
+            else:
+                game_bone.previous_sibling_index = -1
 
             if read_bone_type == "EDIT":
                 # Get absolute bone transform from EditBone (characters, etc.).
@@ -601,9 +610,9 @@ class FLVERExporter:
                 game_bone.rotate = bl_world_transform.game_rotate_rad  # FLVER bone uses radians
                 game_bone.scale = bl_world_transform.game_scale
 
-        return game_bones
+        return game_bones, edit_bone_names
 
-    def create_dummy(self, bl_dummy, bone_names: list[str]) -> FLVER.Dummy:
+    def create_dummy(self, bl_dummy, bl_bone_names: list[str]) -> FLVER.Dummy:
         game_dummy = FLVER.Dummy()
         self.get_all_props(bl_dummy, game_dummy, "Dummy")
         bl_transform = BlenderTransform.from_bl_obj(bl_dummy)
@@ -623,22 +632,22 @@ class FLVERExporter:
                 self.warning(f"Ignoring unrecognized Dummy constraint: {constraint.name}")
         if parent_bone_name is None:
             game_dummy.parent_bone_index = -1
-        elif parent_bone_name not in bone_names:
+        elif parent_bone_name not in bl_bone_names:
             raise ValueError(
                 f"Dummy Empty '{bl_dummy.name}' 'Dummy Parent Bone' constraint is targeting "
                 f"an invalid bone name: {parent_bone_name}."
             )
         else:
-            game_dummy.parent_bone_index = bone_names.index(parent_bone_name)
+            game_dummy.parent_bone_index = bl_bone_names.index(parent_bone_name)
         if attach_bone_name is None:
             game_dummy.attach_bone_index = -1
-        elif attach_bone_name not in bone_names:
+        elif attach_bone_name not in bl_bone_names:
             raise ValueError(
                 f"Dummy Empty '{bl_dummy.name}' 'Dummy Attach Bone' constraint is targeting "
                 f"an invalid bone name: {parent_bone_name}."
             )
         else:
-            game_dummy.attach_bone_index = bone_names.index(attach_bone_name)
+            game_dummy.attach_bone_index = bl_bone_names.index(attach_bone_name)
         return game_dummy
 
     def create_mesh_material_layout(
@@ -652,7 +661,7 @@ class FLVERExporter:
             raise ValueError(f"Mesh {bl_mesh.name} must have exactly one material.")
         bl_material = bl_mesh.material_slots[0].material
         game_material = FLVER.Material()
-        game_material.name = bl_material.name.remove_prefix(self.name).strip()
+        game_material.name = bl_material.name.removeprefix(self.name).strip()
         extra_mat_props = self.get_all_props(bl_material, game_material, "Material", bl_prop_prefix="material_")
         found_texture_types = set()
         for i in range(extra_mat_props["texture_count"]):
@@ -670,20 +679,21 @@ class FLVERExporter:
         # NOTE: Extra textures not required by this shader (e.g., 'g_DetailBumpmap' for most of them) are still
         # written, but missing required textures will raise an error here.
         mtd_name = game_material.mtd_name
-        mtd_bools = game_material.get_mtd_info()
-        self.validate_found_textures(mtd_bools, found_texture_types, mtd_name)
+        mtd_info = game_material.get_mtd_info()
+        self.validate_found_textures(mtd_info, found_texture_types, mtd_name)
 
         # TODO: Choose default layout factory with an export enum.
         if use_chr_layout:
             game_layout = self.get_ds1_chr_buffer_layout(
-                is_multiple=mtd_bools["multiple"],
+                is_multiple=mtd_info.multiple,
             )
         else:
             game_layout = self.get_ds1_map_buffer_layout(
-                is_multiple=mtd_bools["multiple"],
-                is_lightmap=mtd_bools["lightmap"],
+                is_multiple=mtd_info.multiple,
+                is_lightmap=mtd_info.lightmap,
+                is_foliage=mtd_info.foliage,
             )
-        uv_count = 1 + mtd_bools["multiple"] + mtd_bools["lightmap"]
+        uv_count = game_layout.get_uv_count()
 
         vertex_buffer = VertexBuffer()
         game_mesh.vertex_buffers = [vertex_buffer]
@@ -709,18 +719,18 @@ class FLVERExporter:
         return game_mesh, game_material, (game_layout if return_layout else None), mesh_builder
 
     @staticmethod
-    def validate_found_textures(mtd_bools: dict[str, bool], found_texture_types: set[str], mtd_name: str):
+    def validate_found_textures(mtd_info: MTDInfo, found_texture_types: set[str], mtd_name: str):
         for tex_type in ("Diffuse", "Specular", "Bumpmap"):
-            if mtd_bools[tex_type.lower()]:
+            if getattr(mtd_info, tex_type.lower()):
                 if f"g_{tex_type}" not in found_texture_types:
                     raise ValueError(f"Texture type 'g_{tex_type}' required for material with MTD '{mtd_name}'.")
-                if mtd_bools["multiple"] and f"g_{tex_type}_2" not in found_texture_types:
+                if mtd_info.multiple and f"g_{tex_type}_2" not in found_texture_types:
                     raise ValueError(f"Texture type 'g_{tex_type}_2' required for material with MTD '{mtd_name}'.")
         for tex_type in ("Lightmap", "Height"):
-            if mtd_bools[tex_type.lower()] and f"g_{tex_type}" not in found_texture_types:
+            if getattr(mtd_info, tex_type.lower()) and f"g_{tex_type}" not in found_texture_types:
                 raise ValueError(f"Texture type 'g_{tex_type}' required for material with MTD '{mtd_name}'.")
 
-    def get_ds1_map_buffer_layout(self, is_multiple=False, is_lightmap=False) -> BufferLayout:
+    def get_ds1_map_buffer_layout(self, is_multiple=False, is_lightmap=False, is_foliage=False) -> BufferLayout:
         members = [
             self.member(MemberType.Position, MemberFormat.Float3),
             self.member(MemberType.BoneIndices, MemberFormat.Byte4B),
@@ -728,9 +738,14 @@ class FLVERExporter:
             self.member(MemberType.Tangent, MemberFormat.Byte4C),
             self.member(MemberType.VertexColor, MemberFormat.Byte4C),
         ]
+
         if is_multiple:  # has Bitangent
             members.insert(4, self.member(MemberType.Bitangent, MemberFormat.Byte4C))
-        if is_multiple and is_lightmap:  # three UVs
+
+        if is_foliage:  # four UVs (regardless of lightmap, and never has multiple)
+            members.append(self.member(MemberType.UV, MemberFormat.UVPair))
+            members.append(self.member(MemberType.UV, MemberFormat.UVPair))
+        elif is_multiple and is_lightmap:  # three UVs
             members.append(self.member(MemberType.UV, MemberFormat.UVPair))
             members.append(self.member(MemberType.UV, MemberFormat.UV, index=1))
         elif is_multiple or is_lightmap:  # two UVs
@@ -765,7 +780,7 @@ def build_game_mesh_mp(builder: MeshBuilder, bone_names: list[str], queue: Queue
 
 
 def build_game_mesh(
-    mesh_builder: MeshBuilder, bone_names: list[str],
+    mesh_builder: MeshBuilder, bl_bone_names: list[str],
 ) -> (list[FLVER.Mesh.Vertex], list[FLVER.Mesh.FaceSet], list[int]):
     """Process Blender vertices, faces, and bone-weighted vertex groups into FLVER equivalents."""
 
@@ -833,7 +848,7 @@ def build_game_mesh(
                     for mesh_group in mesh_vertex_groups:
                         if vertex_group.group == mesh_group.index:
                             try:
-                                bone_index = bone_names.index(mesh_group.name)
+                                bone_index = bl_bone_names.index(mesh_group.name)
                             except ValueError:
                                 raise ValueError(f"Vertex is weighted to invalid bone name: '{mesh_group.name}'.")
                             global_bone_indices.append(bone_index)
@@ -859,6 +874,8 @@ def build_game_mesh(
                         bone_indices.append(0)  # zero-weight indices are zero
                 elif len(bone_indices) == 1:
                     bone_indices *= 4  # duplicate single-element list to four-element list
+                else:  # vertex (likely new) with no bone indices
+                    bone_indices = [0] * 4
             else:
                 bone_indices = [0] * 4
                 bone_weights = [0.0] * 4

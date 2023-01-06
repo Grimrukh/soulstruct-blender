@@ -143,6 +143,9 @@ def is_uniform(vector: Vector3, rel_tol: float):
 def get_msb_transforms(hkx_name: str, hkx_path: Path, msb_path: Path = None) -> list[tuple[str, Transform]]:
     """Search MSB at `msb_path` (autodetected from `hkx_path.parent` by default) and return
     `(collision_name, Transform)` pairs for all Collision entries using the `hkx_name` model."""
+    model_name = hkx_name[:7]  # drop `AXX` suffix
+    if model_name.startswith("l"):
+        model_name = f"h{model_name[1:]}"  # models use 'h' prefix
     if msb_path is None:
         hkx_parent_dir = hkx_path.parent
         hkx_map = get_map(hkx_parent_dir.name)
@@ -158,10 +161,10 @@ def get_msb_transforms(hkx_name: str, hkx_path: Path, msb_path: Path = None) -> 
         )
     matches = []
     for collision in msb.parts.Collisions:
-        if hkx_name == collision.model_name:
+        if model_name == collision.model_name:
             matches.append(collision)
     if not matches:
-        raise ValueError(f"Cannot find any MSB Collision entries using model '{hkx_name}'.")
+        raise ValueError(f"Cannot find any MSB Collision entries using model '{model_name}' ({hkx_name}).")
     transforms = [(m.name, Transform.from_msb_part(m)) for m in matches]
     return transforms
 

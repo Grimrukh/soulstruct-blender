@@ -341,9 +341,13 @@ class FLVERImporter:
         # Create FLVER bone index -> Blender bone name dictionary. (Blender names are UTF-8.)
         self.bl_bone_names.clear()
         for bone_index, bone in enumerate(self.flver.bones):
-            # TODO: Just using actual bone names to avoid the need for parsing rules on export.
-            # self.bl_bone_names[bone_index] = f"{self.name} Bone({bone_index}) {bone.name}"
-            self.bl_bone_names[bone_index] = bone.name
+            # Just using actual bone names to avoid the need for parsing rules on export. However, duplicate names
+            # need to be handled with suffixes.
+            if bone.name in self.bl_bone_names.values():
+                # Name already exists. Add ' <DUPE>' suffix (may stack).
+                self.bl_bone_names[bone_index] = bone.name + " <DUPE>"
+            else:
+                self.bl_bone_names[bone_index] = bone.name
 
         # Set mode to OBJECT and deselect all objects.
         if bpy.ops.object.mode_set.poll():
@@ -444,7 +448,7 @@ class FLVERImporter:
 
         if textures_to_load:
             for texture_stem in textures_to_load:
-                self.info(f"Loading texture into Blender: {texture_stem}")
+                self.operator.info(f"Loading texture into Blender: {texture_stem}")
             from time import perf_counter
             t = perf_counter()
             all_png_data = batch_get_tpf_texture_png_data(list(textures_to_load.values()))
@@ -477,7 +481,7 @@ class FLVERImporter:
             # Corrupted mesh. Leave empty.
             return self.create_obj(f"{mesh_name} <INVALID>", bl_mesh)
 
-        uv_count = max(len(vertex.uvs) for vertex in flver_mesh.vertices)
+        uv_count = self.flver.buffer_layouts[flver_mesh.vertex_buffers[0].layout_index].get_uv_count()
 
         vertices = [(-v.position[0], -v.position[2], v.position[1]) for v in flver_mesh.vertices]
         edges = []  # no edges in FLVER
@@ -506,9 +510,6 @@ class FLVERImporter:
         bm.faces.ensure_lookup_table()
         bm.faces.index_update()
         bm.to_mesh(bl_mesh)
-
-        # TODO: I need to store exactly which information is contained in each vertex, so I can reconstruct proper
-        #  vertex buffers on export.
 
         # Note that we don't assign these UV and vertex color layers as they're created, because their address may
         # change as other layers are created, leading to random internal errors.
@@ -571,7 +572,7 @@ class FLVERImporter:
         #  it's never empty.)
         if flver_mesh.bone_indices:
             for mesh_bone_index in flver_mesh.bone_indices:
-                group = bl_mesh_obj.vertex_groups.new(name=self.armature.pose.bones[mesh_bone_index].name)
+                group = bl_mesh_obj.vertex_groups.new(name=self.bl_bone_names[mesh_bone_index])
                 bone_vertex_groups.append(group)
             for i, game_vert in enumerate(flver_mesh.vertices):
                 # TODO: May be able to assert that this is ALWAYS true for ALL vertices in map pieces.
@@ -587,7 +588,7 @@ class FLVERImporter:
                         bone_vertex_group_indices.setdefault((v_bone_index, v_bone_weight), []).append(i)
         else:  # vertex bone indices are global...?
             for bone_index in range(len(self.armature.pose.bones)):
-                group = bl_mesh_obj.vertex_groups.new(name=self.armature.pose.bones[bone_index].name)
+                group = bl_mesh_obj.vertex_groups.new(name=self.bl_bone_names[bone_index])
                 bone_vertex_groups.append(group)
             for i, game_vert in enumerate(flver_mesh.vertices):
                 for v_bone_index, v_bone_weight in zip(game_vert.bone_indices, game_vert.bone_weights):
@@ -674,7 +675,7 @@ class FLVERImporter:
 
         edit_bones = []  # all bones
         for i, game_bone in enumerate(self.flver.bones):
-            edit_bone = bl_armature_obj.data.edit_bones.new(self.bl_bone_names[i])
+            edit_bone = bl_armature_obj.data.edit_bones.new(self.bl_bone_names[i])  # '<DUPE>' suffixes already added
             edit_bone["unk_x3c"] = game_bone.unk_x3c
             edit_bone: bpy_types.EditBone
             if game_bone.child_index != -1:
