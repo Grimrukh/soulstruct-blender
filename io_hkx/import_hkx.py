@@ -243,7 +243,7 @@ class ImportHKXWithBinderChoice(LoggingOperator):
                         ImportHKXWithMSBChoice.run(
                             importer=self.importer,
                             hkx=hkx,
-                            hkx_name=self.hkx_name,
+                            hkx_name=hkx_name,
                             use_material=self.use_material,
                             transforms=transforms,
                         )

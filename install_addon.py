@@ -23,6 +23,7 @@ ADDON_MODULES = (
 
 HAVOK_ADDON_MODULES = (
     "io_hkx",
+    "io_hkxanim",
 )
 
 

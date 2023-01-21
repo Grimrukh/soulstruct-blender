@@ -96,7 +96,8 @@ class ExportFLVER(LoggingOperator, ExportHelper):
             ("DCX_DFLT_11000_44_9", "Sekiro", "Sekiro compression (requires Oodle DLL)"),
             ("DCX_KRAK", "Elden Ring", "Elden Ring compression (requires Oodle DLL)"),
         ],
-        description="Type of DCX compression to apply to exported file"
+        description="Type of DCX compression to apply to exported file",
+        default="DCX_DFLT_10000_24_9",  # DS1 default
     )
 
     # TODO: Options to:
