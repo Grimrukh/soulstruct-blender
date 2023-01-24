@@ -605,7 +605,7 @@ class FLVERExporter:
 
     def create_mesh_material_layout(
         self, bl_mesh, buffer_layouts: list[BufferLayout], use_chr_layout: bool
-    ) -> (FLVER.Mesh, FLVER.Material, tp.Optional[BufferLayout], MeshBuilder):
+    ) -> tuple[FLVER.Mesh, FLVER.Material, tp.Optional[BufferLayout], MeshBuilder]:
         game_mesh = FLVER.Mesh()
         extra_mesh_props = self.props.get_all(bl_mesh, game_mesh, "Mesh")
 
@@ -734,7 +734,7 @@ def build_game_mesh_mp(builder: MeshBuilder, bone_names: list[str], queue: Queue
 
 def build_game_mesh(
     mesh_builder: MeshBuilder, bl_bone_names: list[str],
-) -> (list[FLVER.Mesh.Vertex], list[FLVER.Mesh.FaceSet], list[int]):
+) -> tuple[list[FLVER.Mesh.Vertex], list[FLVER.Mesh.FaceSet], list[int]]:
     """Process Blender vertices, faces, and bone-weighted vertex groups into FLVER equivalents."""
 
     bl_mesh = mesh_builder.bl_mesh.data

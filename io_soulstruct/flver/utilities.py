@@ -14,7 +14,7 @@ from mathutils import Euler
 from soulstruct.utilities.maths import Vector3, Matrix3
 from soulstruct.darksouls1r.maps import MSB, get_map
 
-from io_soulstruct.utilities import Transform
+from io_soulstruct.utilities import Transform, GAME_TO_BL_EULER, BL_TO_GAME_EULER
 
 
 class FLVERImportError(Exception):
@@ -64,13 +64,13 @@ def game_forward_up_vectors_to_bl_euler(forward: Vector3, up: Vector3) -> Euler:
         right.y, up.y, forward.y,
         right.z, up.z, forward.z,
     )
-    euler_angles = rotation_matrix.to_euler_angles(radians=True, order="xzy")
-    return Euler((euler_angles.x, euler_angles.z, -euler_angles.y))
+    game_euler = rotation_matrix.to_euler_angles(radians=True)
+    return GAME_TO_BL_EULER(game_euler)
 
 
-def bl_euler_to_game_forward_up_vectors(euler: Euler) -> (Vector3, Vector3):
-    game_euler = Euler((euler.x, -euler.z, euler.y))
-    game_mat = game_euler.to_matrix()
-    forward = Vector3(game_mat.col[2])
-    up = Vector3(game_mat.col[1])
+def bl_euler_to_game_forward_up_vectors(bl_euler: Euler) -> tuple[Vector3, Vector3]:
+    game_euler = BL_TO_GAME_EULER(bl_euler)
+    game_mat = Matrix3.from_euler_angles(game_euler)
+    forward = Vector3(game_mat[0][2], game_mat[1][2], game_mat[2][2])  # third column
+    up = Vector3(game_mat[0][1], game_mat[1][1], game_mat[2][1])  # second column
     return forward, up

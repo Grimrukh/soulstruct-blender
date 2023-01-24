@@ -389,9 +389,12 @@ class HKXAnimationImporter:
                 bone_curves[bone_name, "scale_y"].keyframe_points.insert(frame_index, s.y, options=fast)
                 bone_curves[bone_name, "scale_z"].keyframe_points.insert(frame_index, s.z, options=fast)
 
+        # Update all F-curves and make them cycle.
         for fcurve in root_curves.values():
+            fcurve.modifiers.new("CYCLES")  # default settings are fine
             fcurve.update()
         for fcurve in bone_curves.values():
+            fcurve.modifiers.new("CYCLES")  # default settings are fine
             fcurve.update()
 
         return action

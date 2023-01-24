@@ -14,18 +14,7 @@ __all__ = [
     "FLVER_PT_bake_subpanel",
 ]
 
-import importlib
-import sys
-
 import bpy
-
-if "FLVER_PT_flver_tools" in locals():
-    print("Reloading add-on module...")
-    importlib.reload(sys.modules["io_soulstruct.flver.core"])
-    importlib.reload(sys.modules["io_soulstruct.flver.export_flver"])
-    importlib.reload(sys.modules["io_soulstruct.flver.import_flver"])
-    importlib.reload(sys.modules["io_soulstruct.flver.textures"])
-    importlib.reload(sys.modules["io_soulstruct.flver.textures_utils"])
 
 from io_soulstruct.flver.import_flver import ImportFLVER, ImportFLVERWithMSBChoice
 from io_soulstruct.flver.export_flver import ExportFLVER, ExportFLVERIntoBinder

@@ -37,7 +37,6 @@ from .materials import MaterialNodeCreator
 from .textures.utilities import TPF_RE, png_to_bl_image
 
 
-ARMATURE_RE = re.compile(r"(.*) Armature Obj")
 FLVER_BINDER_RE = re.compile(r"^.*?\.(chr|obj|parts)bnd(\.dcx)?$")
 MAP_NAME_RE = re.compile(r"^(m\d\d)_\d\d_\d\d_\d\d$")
 
@@ -208,6 +207,8 @@ class ImportFLVER(LoggingOperator, ImportHelper):
                 # Delete any objects created prior to exception.
                 for obj in importer.all_bl_objs:
                     bpy.data.objects.remove(obj)
+                for collection in importer.all_bl_collections:
+                    bpy.data.collections.remove(collection)
                 traceback.print_exc()  # for inspection in Blender console
                 return self.error(f"Cannot import FLVER: {file_path.name}. Error: {ex}")
 
@@ -258,6 +259,8 @@ class ImportFLVERWithMSBChoice(LoggingOperator):
         except Exception as ex:
             for obj in self.importer.all_bl_objs:
                 bpy.data.objects.remove(obj)
+            for collection in self.importer.all_bl_collections:
+                bpy.data.collections.remove(collection)
             traceback.print_exc()
             return self.error(f"Cannot import FLVER: {self.file_path.name}. Error: {ex}")
 
@@ -315,6 +318,7 @@ class FLVERImporter:
         self.flver = None
         self.name = ""
         self.bl_bone_names = {}  # type: dict[int, str]
+        self.all_bl_collections = []
         self.all_bl_objs = []
         self.materials = {}
 
@@ -344,7 +348,17 @@ class FLVERImporter:
             bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
         if bpy.ops.object.select_all.poll():
             bpy.ops.object.select_all(action="DESELECT")
+
+        root_collection = bpy.data.collections.new(f"{self.name} FLVER")
+        mesh_collection = bpy.data.collections.new(f"{self.name} Meshes")
+        dummy_collection = bpy.data.collections.new(f"{self.name} Dummies")
+        self.context.scene.collection.children.link(root_collection)
+        self.all_bl_collections = [root_collection, mesh_collection, dummy_collection]
+        root_collection.children.link(mesh_collection)
+        root_collection.children.link(dummy_collection)
+
         bl_armature = self.create_bones()
+
         if bpy.ops.object.mode_set.poll():  # just to be safe
             bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
 
@@ -394,8 +408,9 @@ class FLVERImporter:
 
         for i, flver_mesh in enumerate(self.flver.meshes):
             mesh_name = f"{self.name} Mesh {i}"
-            bl_obj = self.create_mesh_obj(flver_mesh, mesh_name)
-            bl_obj["face_set_count"] = len(flver_mesh.face_sets)  # custom property
+            bl_mesh_obj = self.create_mesh_obj(flver_mesh, mesh_name)
+            bl_mesh_obj["face_set_count"] = len(flver_mesh.face_sets)  # custom property
+            self.all_bl_collections[1].objects.link(bl_mesh_obj)
 
         self.create_dummies()
 
@@ -637,6 +652,7 @@ class FLVERImporter:
         """
         bl_armature = bpy.data.armatures.new(f"{self.name} Armature")
         bl_armature_obj = self.create_obj(f"{self.name}", bl_armature, parent_to_armature=False)
+        self.all_bl_collections[0].objects.link(bl_armature_obj)
 
         write_bone_type = ""
         warn_partial_bind_pose = False
@@ -750,46 +766,38 @@ class FLVERImporter:
     def create_dummies(self):
         """Create empty objects that represent dummies. All dummies are parented to a root empty object."""
 
-        bl_dummy_parent = self.create_obj(f"{self.name} Dummies")
-
         for i, dummy in enumerate(self.flver.dummies):
             bl_dummy = self.create_obj(f"Dummy<{i}> [{dummy.reference_id}]", parent_to_armature=False)
-            bl_dummy.parent = bl_dummy_parent
+            self.all_bl_collections[2].objects.link(bl_dummy)
+            bl_dummy.parent = self.armature
             bl_dummy.empty_display_type = "ARROWS"  # best display type/size I've found (single arrow not sufficient)
             bl_dummy.empty_display_size = 0.05
 
-            bl_dummy.location = GAME_TO_BL_VECTOR(dummy.position)
-            # TODO: These rotations are probably converted to Blender space wrong.
             if dummy.use_upward_vector:
-                bl_dummy.rotation_euler = game_forward_up_vectors_to_bl_euler(dummy.forward, dummy.upward)
+                bl_rotation_euler = game_forward_up_vectors_to_bl_euler(dummy.forward, dummy.upward)
             else:  # TODO: I assume this is right (up-ignoring dummies only rotate around vertical axis)
-                bl_dummy.rotation_euler = game_forward_up_vectors_to_bl_euler(dummy.forward, Vector3(0, 0, 1))
+                bl_rotation_euler = game_forward_up_vectors_to_bl_euler(dummy.forward, Vector3(0, 1, 0))
 
-            # TODO: Parent bone index is used to "place" the dummy. These are usually dedicated bones at the origin,
-            #  e.g. 'Model_Dmy', and so won't matter for placement in most cases. I assume they can be used to offset
-            #  the dummy while still having its movement attached to the attach bone. In Blender, we just create two
-            #  contraints and leave it to the user to understand the difference in animations.
-
-            # TODO: Moving the model is glitched with the double child constraint. Just place the Dummy according to its
-            #  parent bone (in world space) and record its name on the Dummy for the inverse conversion on export.
-
-            # TODO: In fact, movement is TRIPLY glitched with two constraints and will be singly-glitched with one.
-            #  Need to figure out how to make dummies respect object space *and also* be attached to animation data
-            #  for a specific (pose) bone.
-
-            # Dummy position coordinates are given in the space of this parent bone.
             if dummy.parent_bone_index != -1:
-                parent_constraint = bl_dummy.constraints.new(type="CHILD_OF")
-                parent_constraint.name = "Dummy Parent Bone"
-                parent_constraint.target = self.armature
-                parent_constraint.subtarget = self.bl_bone_names[dummy.parent_bone_index]
+                # Bone's location is given in the space of this parent bone.
+                # NOTE: This is NOT the same as the 'attach' bone, which is used as the actual Blender parent.
+                bl_bone_name = self.bl_bone_names[dummy.parent_bone_index]
+                bl_dummy["parent_bone_name"] = bl_bone_name
+                bl_parent_bone_matrix = self.armature.data.bones[bl_bone_name].matrix_local
+                bl_location = bl_parent_bone_matrix @ GAME_TO_BL_VECTOR(dummy.position)
+            else:
+                # Bone's location is in armature space.
+                bl_dummy["parent_bone_name"] = ""
+                bl_location = GAME_TO_BL_VECTOR(dummy.position)
 
             # Dummy moves with this bone during animations.
             if dummy.attach_bone_index != -1:
-                attach_constraint = bl_dummy.constraints.new(type="CHILD_OF")
-                attach_constraint.name = "Dummy Attach Bone"
-                attach_constraint.target = self.armature
-                attach_constraint.subtarget = self.bl_bone_names[dummy.attach_bone_index]
+                bl_dummy.parent_bone = self.bl_bone_names[dummy.attach_bone_index]
+                bl_dummy.parent_type = "BONE"
+
+            # We need to set the dummy's world matrix, rather than its local matrix, to bypass its possible bone
+            # attachment above.
+            bl_dummy.matrix_world = Matrix.LocRotScale(bl_location, bl_rotation_euler, Vector((1.0, 1.0, 1.0)))
 
             # NOTE: This property is the canonical dummy ID. You are free to rename the dummy without affecting it.
             bl_dummy["reference_id"] = dummy.reference_id  # int
@@ -803,7 +811,7 @@ class FLVERImporter:
     def create_obj(self, name: str, data=None, parent_to_armature=True):
         """Create a new Blender object. By default, will be parented to the FLVER's armature object."""
         obj = bpy.data.objects.new(name, data)
-        self.context.scene.collection.objects.link(obj)
+        self.context.scene.collection.objects.link(obj)  # add to scene's object collection
         self.all_bl_objs.append(obj)
         if parent_to_armature:
             obj.parent = self.armature

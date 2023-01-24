@@ -300,7 +300,7 @@ def png_to_bl_image(image_name: str, png_data: bytes):
     return bl_image
 
 
-def bl_image_to_dds(bl_image, replace_in_tpf_texture: TPFTexture = None, dds_format: str = None) -> (bytes, str):
+def bl_image_to_dds(bl_image, replace_in_tpf_texture: TPFTexture = None, dds_format: str = None) -> tuple[bytes, str]:
     """Export `bl_image` (generally as a PNG), convert it to a DDS of `dds_format` with `texconv`.
 
     Automatically redirects 'TYPELESS' DDS formats to 'UNORM', which seems to work for DS1 'BC7' lightmaps at least.

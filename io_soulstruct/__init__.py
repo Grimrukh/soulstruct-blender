@@ -12,12 +12,16 @@ import sys
 from pathlib import Path
 
 import bpy
-# Force reload of Soulstruct module (for easier updating).
+
+
 modules_path = str(Path(__file__).parent / "modules")
 if modules_path not in sys.path:
     sys.path.append(modules_path)
-import soulstruct
-importlib.reload(soulstruct)
+
+# Reload all Soulstruct and add-on modules (except this one).
+for module_name in list(sys.modules.keys()):
+    if module_name != "io_soulstruct" and "soulstruct" in module_name.split(".")[0]:  # don't reload THIS module
+        importlib.reload(sys.modules[module_name])
 
 from io_soulstruct.flver import *
 from io_soulstruct.navmesh import *
@@ -27,8 +31,6 @@ try:
 except ModuleNotFoundError:
     # `soulstruct_havok` not installed. HKX add-ons not enabled.
     soulstruct_havok = None
-else:
-    importlib.reload(soulstruct_havok)
 
 
 bl_info = {
@@ -52,6 +54,7 @@ def menu_func_import(self, context):
 
 def menu_func_export(self, context):
     self.layout.operator(ExportFLVER.bl_idname, text="FLVER (.flver)")
+    self.layout.operator(ExportFLVERIntoBinder.bl_idname, text="FLVER to Binder (.*bnd)")
     self.layout.operator(ExportNVM.bl_idname, text="NVM (.nvm)")
     self.layout.operator(ExportNVMIntoBinder.bl_idname, text="NVM to Binder (.nvmbnd)")
 
@@ -103,7 +106,8 @@ if soulstruct_havok:
     def havok_menu_func_export(self, context):
         self.layout.operator(ExportHKXCollision.bl_idname, text="HKX Collision (.hkx)")
         self.layout.operator(ExportHKXCollisionIntoBinder.bl_idname, text="HKX Collision to Binder (.hkxbhd)")
-        # TODO: HKX animation export
+        # TODO: HKX animation export (and 'to binder' variant)
+        #  Will need an existing ANIBND with existing compatible Skeleton.HKX, most likely.
 
 else:
     havok_classes = ()
