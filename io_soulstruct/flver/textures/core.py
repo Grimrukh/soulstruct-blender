@@ -17,8 +17,8 @@ from bpy_extras.io_utils import ImportHelper
 from soulstruct.base.textures.dds import texconv
 from soulstruct.containers import DCXType, TPF
 
-from .core import *
-from .textures_utils import *
+from io_soulstruct.utilities import *
+from .utilities import *
 
 
 class ImportDDS(LoggingOperator, ImportHelper):

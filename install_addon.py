@@ -16,17 +16,6 @@ except ImportError:
     HAVOK_PACKAGE_PATH = None
 
 
-ADDON_MODULES = (
-    "io_flver",
-    "io_nvm",
-)
-
-HAVOK_ADDON_MODULES = (
-    "io_hkx",
-    "io_hkxanim",
-)
-
-
 def install(blender_scripts_dir: str | Path, update_soulstruct_module=False):
     """`blender_scripts_dir` should be the `scripts` folder in a specific version of Blender inside your AppData.
 
@@ -55,20 +44,11 @@ def install(blender_scripts_dir: str | Path, update_soulstruct_module=False):
     # Install actual Blender scripts.
     this_dir = Path(__file__).parent
     blender_addons_dir = blender_scripts_dir / "addons"
-    for addon_module_name in ADDON_MODULES:
-        blender_module_dir = blender_addons_dir / addon_module_name
-        blender_module_dir.mkdir(exist_ok=True, parents=True)
-        shutil.rmtree(blender_module_dir, ignore_errors=True)
-        shutil.copytree(this_dir / addon_module_name, blender_module_dir)
-        print(f"# Blender addon `{addon_module_name}` installed to '{blender_addons_dir}'.")
-
-    if HAVOK_PACKAGE_PATH is not None:
-        for havok_addon_module_name in HAVOK_ADDON_MODULES:
-            blender_module_dir = blender_addons_dir / havok_addon_module_name
-            blender_module_dir.mkdir(exist_ok=True, parents=True)
-            shutil.rmtree(blender_module_dir, ignore_errors=True)
-            shutil.copytree(this_dir / havok_addon_module_name, blender_module_dir)
-            print(f"# Blender Havok-enabled addon `{havok_addon_module_name}` installed to '{blender_addons_dir}'.")
+    blender_module_dir = blender_addons_dir / "io_soulstruct"
+    blender_module_dir.mkdir(exist_ok=True, parents=True)
+    shutil.rmtree(blender_module_dir, ignore_errors=True)
+    shutil.copytree(this_dir / "io_soulstruct", blender_module_dir)
+    print(f"# Blender addon `io_soulstruct` installed to '{blender_addons_dir}'.")
 
 
 def main(args):

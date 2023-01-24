@@ -8,7 +8,7 @@ TODO: Currently only supports map collision HKX files from Dark Souls Remastered
 """
 from __future__ import annotations
 
-__all__ = ["ImportHKX", "ImportHKXWithBinderChoice", "ImportHKXWithMSBChoice"]
+__all__ = ["ImportHKXCollision", "ImportHKXCollisionWithBinderChoice", "ImportHKXCollisionWithMSBChoice"]
 
 import re
 import traceback
@@ -24,16 +24,17 @@ from soulstruct.containers import BaseBinder, Binder
 
 from soulstruct_havok.wrappers.hkx2015 import CollisionHKX
 
-from .core import *
+from io_soulstruct.utilities import *
+from .utilities import *
 
 
 HKX_BINDER_RE = re.compile(r"^.*?\.hkxbhd(\.dcx)?$")
 MAP_NAME_RE = re.compile(r"^(m\d\d)_\d\d_\d\d_\d\d$")
 
 
-class ImportHKX(LoggingOperator, ImportHelper):
-    bl_idname = "import_scene.hkx"
-    bl_label = "Import HKX"
+class ImportHKXCollision(LoggingOperator, ImportHelper):
+    bl_idname = "import_scene.hkx_collision"
+    bl_label = "Import HKX Collision"
     bl_description = "Import a HKX collision file. Can import from BNDs and supports DCX-compressed files"
 
     # ImportHelper mixin class uses this
@@ -74,7 +75,7 @@ class ImportHKX(LoggingOperator, ImportHelper):
     )
 
     def execute(self, context):
-        print("Executing HKX import...")
+        print("Executing HKX collision import...")
 
         def GO():
 
@@ -120,13 +121,13 @@ class ImportHKX(LoggingOperator, ImportHelper):
                     else:
                         hkxs_with_paths.append((file_path, hkx))
 
-            importer = HKXImporter(self, context)
+            importer = HKXCollisionImporter(self, context)
 
             for file_path, hkx_or_entries in hkxs_with_paths:
 
                 if isinstance(hkx_or_entries, list):
                     # Defer through entry selection operator.
-                    ImportHKXWithBinderChoice.run(
+                    ImportHKXCollisionWithBinderChoice.run(
                         importer=importer,
                         binder_file_path=Path(file_path),
                         read_msb_transform=self.read_msb_transform,
@@ -151,7 +152,7 @@ class ImportHKX(LoggingOperator, ImportHelper):
                         else:
                             if len(transforms) > 1:
                                 importer.context = context
-                                ImportHKXWithMSBChoice.run(
+                                ImportHKXCollisionWithMSBChoice.run(
                                     importer=importer,
                                     hkx=hkx,
                                     hkx_name=hkx_name,
@@ -187,24 +188,24 @@ class ImportHKX(LoggingOperator, ImportHelper):
 
 # noinspection PyUnusedLocal
 def get_binder_entry_choices(self, context):
-    return ImportHKXWithBinderChoice.enum_options
+    return ImportHKXCollisionWithBinderChoice.enum_options
 
 
 # noinspection PyUnusedLocal
 def get_msb_choices(self, context):
-    return ImportHKXWithMSBChoice.enum_options
+    return ImportHKXCollisionWithMSBChoice.enum_options
 
 
-class ImportHKXWithBinderChoice(LoggingOperator):
+class ImportHKXCollisionWithBinderChoice(LoggingOperator):
     """Presents user with a choice of enums from `enum_choices` class variable (set prior).
 
     See: https://blender.stackexchange.com/questions/6512/how-to-call-invoke-popup
     """
-    bl_idname = "wm.hkx_binder_choice_operator"
-    bl_label = "Choose HKX Binder Entry"
+    bl_idname = "wm.hkx_collision_binder_choice_operator"
+    bl_label = "Choose HKX Collision Binder Entry"
 
     # For deferred import in `execute()`.
-    importer: tp.Optional[HKXImporter] = None
+    importer: tp.Optional[HKXCollisionImporter] = None
     binder: tp.Optional[BaseBinder] = None
     binder_file_path: Path = Path()
     enum_options: list[tuple[tp.Any, str, str]] = []
@@ -240,7 +241,7 @@ class ImportHKXWithBinderChoice(LoggingOperator):
                     self.warning(f"Could not get MSB transform. Error: {ex}")
                 else:
                     if len(transforms) > 1:
-                        ImportHKXWithMSBChoice.run(
+                        ImportHKXCollisionWithMSBChoice.run(
                             importer=self.importer,
                             hkx=hkx,
                             hkx_name=hkx_name,
@@ -264,7 +265,7 @@ class ImportHKXWithBinderChoice(LoggingOperator):
     @classmethod
     def run(
         cls,
-        importer: HKXImporter,
+        importer: HKXCollisionImporter,
         binder_file_path: Path,
         read_msb_transform: bool,
         use_material: bool,
@@ -280,16 +281,16 @@ class ImportHKXWithBinderChoice(LoggingOperator):
         bpy.ops.wm.hkx_binder_choice_operator("INVOKE_DEFAULT")
 
 
-class ImportHKXWithMSBChoice(LoggingOperator):
+class ImportHKXCollisionWithMSBChoice(LoggingOperator):
     """Presents user with a choice of enums from `enum_choices` class variable (set prior).
 
     See: https://blender.stackexchange.com/questions/6512/how-to-call-invoke-popup
     """
-    bl_idname = "wm.hkx_msb_choice_operator"
+    bl_idname = "wm.hkx_collision_msb_choice_operator"
     bl_label = "Choose MSB Entry"
 
     # For deferred import in `execute()`.
-    importer: tp.Optional[HKXImporter] = None
+    importer: tp.Optional[HKXCollisionImporter] = None
     hkx: tp.Optional[CollisionHKX] = None
     hkx_name: str = ""
     enum_options: list[tuple[tp.Any, str, str]] = []
@@ -326,7 +327,7 @@ class ImportHKXWithMSBChoice(LoggingOperator):
     @classmethod
     def run(
         cls,
-        importer: HKXImporter,
+        importer: HKXCollisionImporter,
         hkx: CollisionHKX,
         hkx_name: str,
         use_material: bool,
@@ -342,7 +343,7 @@ class ImportHKXWithMSBChoice(LoggingOperator):
         bpy.ops.wm.hkx_msb_choice_operator("INVOKE_DEFAULT")
 
 
-class HKXImporter:
+class HKXCollisionImporter:
     """Manages imports for a batch of HKX files imported simultaneously."""
 
     hkx: tp.Optional[CollisionHKX]
@@ -350,7 +351,7 @@ class HKXImporter:
 
     def __init__(
         self,
-        operator: ImportHKX,
+        operator: ImportHKXCollision,
         context,
     ):
         self.operator = operator

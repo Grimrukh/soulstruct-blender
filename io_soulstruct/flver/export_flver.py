@@ -22,7 +22,8 @@ from soulstruct.base.models.flver.material import MTDInfo
 from soulstruct.containers import Binder
 from soulstruct.utilities.maths import Vector3
 
-from .core import *
+from io_soulstruct.utilities import *
+from .utilities import *
 
 # TODO: Doesn't work yet, as I can't pickle Blender Objects at least.
 #    - Would need to convert all the triangles/faces/loops/UVs etc. to Python data first.
@@ -62,13 +63,6 @@ class MeshBuildResult(tp.NamedTuple):
     game_vertices: list[FLVER.Mesh.Vertex]
     game_face_sets: list[FLVER.Mesh.FaceSet]
     local_bone_indices: list[int]
-
-
-class BlenderProp(tp.NamedTuple):
-    bl_type: tp.Type
-    default: tp.Any = None
-    callback: tp.Callable = None
-    do_not_assign: bool = False
 
 
 class ExportFLVER(LoggingOperator, ExportHelper):
@@ -273,65 +267,64 @@ class ExportFLVERIntoBinder(LoggingOperator, ImportHelper):
 
 class FLVERExporter:
 
-    # TODO: DS1 values (map pieces, specifically).
-    PROPERTIES = {
-        "FLVER": {
-            "endian": BlenderProp(bytes, b"L"),
-            "version": BlenderProp(str, "DarkSouls_A", Version.__getitem__),
-            "unicode": BlenderProp(int, True, bool),
-            "unk_x4a": BlenderProp(int, False, bool),
-            "unk_x4c": BlenderProp(int, 0),
-            "unk_x5c": BlenderProp(int, 0),
-            "unk_x5d": BlenderProp(int, 0),
-            "unk_x68": BlenderProp(int, 0),
-            "layout_member_unk_x00": BlenderProp(int, 0, do_not_assign=True),
-        },
-        "Bone": {
-            "unk_x3c": BlenderProp(int, 0),
-        },
-        "Mesh": {
-            "face_set_count": BlenderProp(int, 1, do_not_assign=True),
-            "cull_back_faces": BlenderProp(int, False, bool, do_not_assign=True),
-            "default_bone_index": BlenderProp(int, 0),
-            "is_bind_pose": BlenderProp(int, False, bool),  # default suitable for Map Pieces
-        },
-        "Material": {
-            "flags": BlenderProp(int),
-            "mtd_path": BlenderProp(str),
-            "texture_count": BlenderProp(int, do_not_assign=True),
-            "gx_index": BlenderProp(int, -1),
-            "unk_x18": BlenderProp(int, 0),
-        },
-        "Texture": {
-            "texture_type": BlenderProp(str),
-            "path": BlenderProp(str),
-            "unk_x10": BlenderProp(int, 1),
-            "unk_x11": BlenderProp(int, True, bool),
-            "unk_x14": BlenderProp(float, 0.0),
-            "unk_x18": BlenderProp(float, 0.0),
-            "unk_x1C": BlenderProp(float, 0.0),
-            "scale": BlenderProp(tuple, (1.0, 1.0)),
-        },
-        "LayoutMember": {
-            "unk_x00": BlenderProp(int, 0),
-        },
-        "Dummy": {
-            "color": BlenderProp(tuple, (255, 255, 255, 255), list),
-            "reference_id": BlenderProp(int),
-            "flag_1": BlenderProp(int, True, bool),
-            "use_upward_vector": BlenderProp(int, True, bool),
-            "unk_x30": BlenderProp(int, 0),
-            "unk_x34": BlenderProp(int, 0),
-        },
-    }  # type: dict[str, dict[str, BlenderProp]]
-
     operator: bpy_types.Operator
     name: str
     layout_member_unk_x00: int
+    props: BlenderPropertyManager
 
     def __init__(self, operator: ExportFLVER, context):
         self.operator = operator
         self.context = context
+        self.props = BlenderPropertyManager({  # TODO: DS1 values (tailored for map pieces, specifically)
+            "FLVER": {
+                "endian": BlenderProp(bytes, b"L"),
+                "version": BlenderProp(str, "DarkSouls_A", Version.__getitem__),
+                "unicode": BlenderProp(int, True, bool),
+                "unk_x4a": BlenderProp(int, False, bool),
+                "unk_x4c": BlenderProp(int, 0),
+                "unk_x5c": BlenderProp(int, 0),
+                "unk_x5d": BlenderProp(int, 0),
+                "unk_x68": BlenderProp(int, 0),
+                "layout_member_unk_x00": BlenderProp(int, 0, do_not_assign=True),
+            },
+            "Bone": {
+                "unk_x3c": BlenderProp(int, 0),
+            },
+            "Mesh": {
+                "face_set_count": BlenderProp(int, 1, do_not_assign=True),
+                "cull_back_faces": BlenderProp(int, False, bool, do_not_assign=True),
+                "default_bone_index": BlenderProp(int, 0),
+                "is_bind_pose": BlenderProp(int, False, bool),  # default suitable for Map Pieces
+            },
+            "Material": {
+                "flags": BlenderProp(int),
+                "mtd_path": BlenderProp(str),
+                "texture_count": BlenderProp(int, do_not_assign=True),
+                "gx_index": BlenderProp(int, -1),
+                "unk_x18": BlenderProp(int, 0),
+            },
+            "Texture": {
+                "texture_type": BlenderProp(str),
+                "path": BlenderProp(str),
+                "unk_x10": BlenderProp(int, 1),
+                "unk_x11": BlenderProp(int, True, bool),
+                "unk_x14": BlenderProp(float, 0.0),
+                "unk_x18": BlenderProp(float, 0.0),
+                "unk_x1C": BlenderProp(float, 0.0),
+                "scale": BlenderProp(tuple, (1.0, 1.0)),
+            },
+            "LayoutMember": {
+                "unk_x00": BlenderProp(int, 0),
+            },
+            "Dummy": {
+                "color": BlenderProp(tuple, (255, 255, 255, 255), list),
+                "reference_id": BlenderProp(int),
+                "flag_1": BlenderProp(int, True, bool),
+                "use_upward_vector": BlenderProp(int, True, bool),
+                "unk_x30": BlenderProp(int, 0),
+                "unk_x34": BlenderProp(int, 0),
+            },
+        })
 
     def warning(self, msg: str):
         self.operator.report({"WARNING"}, msg)
@@ -344,47 +337,6 @@ class FLVERExporter:
             index=index,
             unk_x00=self.layout_member_unk_x00,
         )
-
-    @classmethod
-    def get(cls, bl_obj, prop_class: str, bl_prop_name: str, py_prop_name: str = None):
-        if py_prop_name is None:
-            py_prop_name = bl_prop_name
-        try:
-            prop = cls.PROPERTIES[prop_class][py_prop_name]
-        except KeyError:
-            raise KeyError(f"Invalid Blender FLVER property class/name: {prop_class}, {bl_prop_name}")
-
-        prop_value = bl_obj.get(bl_prop_name, prop.default)
-
-        if prop_value is None:
-            raise KeyError(f"Object '{bl_obj.name}' does not have required `{prop_class}` property '{bl_prop_name}'.")
-        if prop.bl_type is tuple:
-            # Blender type is an `IDPropertyArray` with `typecode = 'i'` or `'d'`.
-            if type(prop_value).__name__ != "IDPropertyArray":
-                raise KeyError(
-                    f"Object '{bl_obj.name}' property '{bl_prop_name}' does not have type `IDPropertyArray`."
-                )
-            if not prop.callback:
-                prop_value = tuple(prop_value)  # convert `IDPropertyArray` to `tuple` by default
-        elif not isinstance(prop_value, prop.bl_type):
-            raise KeyError(f"Object '{bl_obj.name}' property '{bl_prop_name}' does not have type `{prop.bl_type}`.")
-
-        if prop.callback:
-            prop_value = prop.callback(prop_value)
-
-        return prop_value
-
-    @classmethod
-    def get_all_props(cls, bl_obj, py_obj, prop_class: str, bl_prop_prefix: str = "") -> dict[str, tp.Any]:
-        """Assign all class properties from Blender object `bl_obj` as attributes of Soulstruct object `py_obj`."""
-        unassigned = {}
-        for prop_name, prop in cls.PROPERTIES[prop_class].items():
-            prop_value = cls.get(bl_obj, prop_class, bl_prop_prefix + prop_name, py_prop_name=prop_name)
-            if prop.do_not_assign:
-                unassigned[prop_name] = prop_value
-            else:
-                setattr(py_obj, prop_name, prop_value)
-        return unassigned
 
     def detect_is_bind_pose(self, bl_meshes) -> str:
         read_bone_type = ""
@@ -428,7 +380,7 @@ class FLVERExporter:
         """
         self.name = bl_armature.name  # should just be original/intended FLVER file stem, e.g. `c1234` or `m1000B0A12`
         flver = FLVER()
-        extra_flver_props = self.get_all_props(bl_armature, flver.header, "FLVER")
+        extra_flver_props = self.props.get_all(bl_armature, flver.header, "FLVER")
         self.layout_member_unk_x00 = extra_flver_props["layout_member_unk_x00"]
 
         bl_child_objs = [obj for obj in bpy.data.objects if obj.parent is bl_armature]
@@ -536,7 +488,7 @@ class FLVERExporter:
             while game_bone_name.endswith(" <DUPE>"):
                 game_bone_name = game_bone_name.removesuffix(" <DUPE>")
             game_bone = FLVER.Bone(name=game_bone_name)
-            self.get_all_props(edit_bone, game_bone, "Bone")
+            self.props.get_all(edit_bone, game_bone, "Bone")
             if edit_bone.parent:
                 parent_bone_name = edit_bone.parent.name
                 game_bone.parent_index = edit_bone_names.index(parent_bone_name)
@@ -615,7 +567,7 @@ class FLVERExporter:
 
     def create_dummy(self, bl_dummy, bl_bone_names: list[str]) -> FLVER.Dummy:
         game_dummy = FLVER.Dummy()
-        self.get_all_props(bl_dummy, game_dummy, "Dummy")
+        self.props.get_all(bl_dummy, game_dummy, "Dummy")
         bl_transform = BlenderTransform.from_bl_obj(bl_dummy)
         game_dummy.position = bl_transform.game_translate
         forward, up = bl_euler_to_game_forward_up_vectors(bl_transform.bl_rotate)
@@ -655,7 +607,7 @@ class FLVERExporter:
         self, bl_mesh, buffer_layouts: list[BufferLayout], use_chr_layout: bool
     ) -> (FLVER.Mesh, FLVER.Material, tp.Optional[BufferLayout], MeshBuilder):
         game_mesh = FLVER.Mesh()
-        extra_mesh_props = self.get_all_props(bl_mesh, game_mesh, "Mesh")
+        extra_mesh_props = self.props.get_all(bl_mesh, game_mesh, "Mesh")
 
         # Process material.
         if len(bl_mesh.material_slots) != 1:
@@ -663,11 +615,11 @@ class FLVERExporter:
         bl_material = bl_mesh.material_slots[0].material
         game_material = FLVER.Material()
         game_material.name = bl_material.name.removeprefix(self.name).strip()
-        extra_mat_props = self.get_all_props(bl_material, game_material, "Material", bl_prop_prefix="material_")
+        extra_mat_props = self.props.get_all(bl_material, game_material, "Material", bl_prop_prefix="material_")
         found_texture_types = set()
         for i in range(extra_mat_props["texture_count"]):
             game_texture = FLVER.Material.Texture()
-            self.get_all_props(bl_material, game_texture, "Texture", bl_prop_prefix=f"texture[{i}]_")
+            self.props.get_all(bl_material, game_texture, "Texture", bl_prop_prefix=f"texture[{i}]_")
             tex_type = game_texture.texture_type
             if tex_type not in TEXTURE_TYPES:
                 self.warning(f"Unrecognized FLVER Texture type: {tex_type}")
@@ -833,7 +785,7 @@ def build_game_mesh(
             mesh_loop = bl_mesh.loops[loop.index]
 
             if layout.has_member_type(MemberType.Position):
-                position = blender_vec_to_game_vec(bm.verts[v_i].co)
+                position = BL_TO_GAME_VECTOR_LIST(bm.verts[v_i].co)
             else:
                 position = None
 
@@ -884,7 +836,7 @@ def build_game_mesh(
             if layout.has_member_type(MemberType.Normal):
                 # TODO: 127 is the only value seen in DS1 models thus far for `normal[3]`. Will need to store as a
                 #  custom vertex property for other games that use it.
-                normal = [*blender_vec_to_game_vec(mesh_loop.normal), 127.0]
+                normal = [*BL_TO_GAME_VECTOR_LIST(mesh_loop.normal), 127.0]
             else:
                 normal = None
 
@@ -905,12 +857,12 @@ def build_game_mesh(
                 uvs = None
 
             if layout.has_member_type(MemberType.Tangent):
-                tangents = [[*blender_vec_to_game_vec(mesh_loop.tangent), -1.0]]
+                tangents = [[*BL_TO_GAME_VECTOR_LIST(mesh_loop.tangent), -1.0]]
             else:
                 tangents = None
 
             if layout.has_member_type(MemberType.Bitangent):
-                bitangent = [*blender_vec_to_game_vec(mesh_loop.bitangent), -1.0]
+                bitangent = [*BL_TO_GAME_VECTOR_LIST(mesh_loop.bitangent), -1.0]
             else:
                 bitangent = None
 

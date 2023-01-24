@@ -23,7 +23,7 @@ import bpy_types
 import bmesh
 from bpy.props import StringProperty, BoolProperty, CollectionProperty
 from bpy_extras.io_utils import ImportHelper
-from mathutils import Euler, Vector, Matrix
+from mathutils import Vector, Matrix
 
 from soulstruct.base.binder_entry import BinderEntry
 from soulstruct.base.models.flver import FLVER
@@ -31,27 +31,15 @@ from soulstruct.containers import Binder
 from soulstruct.containers.tpf import TPF, TPFTexture, batch_get_tpf_texture_png_data
 from soulstruct.utilities.maths import Vector3
 
-from .core import *
+from io_soulstruct.utilities import *
+from .utilities import *
 from .materials import MaterialNodeCreator
-from .textures import TPF_RE, png_to_bl_image
+from .textures.utilities import TPF_RE, png_to_bl_image
 
 
 ARMATURE_RE = re.compile(r"(.*) Armature Obj")
 FLVER_BINDER_RE = re.compile(r"^.*?\.(chr|obj|parts)bnd(\.dcx)?$")
 MAP_NAME_RE = re.compile(r"^(m\d\d)_\d\d_\d\d_\d\d$")
-
-
-# Blender matrix to convert from FromSoft space to Blender space.
-FL_TO_BL_SPACE_POS = Matrix((
-    (-1.0, 0.0, 0.0),
-    (0.0, 0.0, -1.0),
-    (0.0, 1.0, 0.0),
-))
-FL_TO_BL_SPACE_ROT = Matrix((
-    (1.0, 0.0, 0.0),
-    (0.0, 0.0, 1.0),
-    (0.0, -1.0, 0.0),
-))
 
 
 class ImportFLVER(LoggingOperator, ImportHelper):
@@ -102,124 +90,126 @@ class ImportFLVER(LoggingOperator, ImportHelper):
         options={'HIDDEN'},
     )
 
+    # Rename to `execute` and rename `execute` below to `_execute` to use this.
+    # def timed_execute(self, context):
+    #
+    #     import cProfile
+    #     import pstats
+    #
+    #     with cProfile.Profile() as pr:
+    #         result = self._execute()
+    #     p = pstats.Stats(pr)
+    #     p = p.strip_dirs()
+    #     p.sort_stats("cumtime").print_stats(40)
+    #
+    #     return result
+
     def execute(self, context):
-        print("Executing import...")
+        print("Executing FLVER import...")
 
-        def GO():
+        file_paths = [Path(self.directory, file.name) for file in self.files]
+        flvers = []
+        attached_texture_sources = {}  # from multi-texture TPFs directly linked to FLVER
+        loose_tpf_sources = {}  # one-texture TPFs that we only read if needed by FLVER
 
-            file_paths = [Path(self.directory, file.name) for file in self.files]
-            flvers = []
-            attached_texture_sources = {}  # from multi-texture TPFs directly linked to FLVER
-            loose_tpf_sources = {}  # one-texture TPFs that we only read if needed by FLVER
+        for file_path in file_paths:
 
-            for file_path in file_paths:
+            if FLVER_BINDER_RE.match(file_path.name):
+                binder = Binder(file_path)
 
-                if FLVER_BINDER_RE.match(file_path.name):
-                    binder = Binder(file_path)
+                # Find FLVER entry.
+                flver_entries = binder.find_entries_matching_name(r".*\.flver(\.dcx)?")
+                if not flver_entries:
+                    raise FLVERImportError(f"Cannot find a FLVER file in binder {file_path}.")
+                elif len(flver_entries) > 1:
+                    raise FLVERImportError(f"Found multiple FLVER files in binder {file_path}.")
+                flver = FLVER(flver_entries[0].data)
+                flvers.append(flver)
 
-                    # Find FLVER entry.
-                    flver_entries = binder.find_entries_matching_name(r".*\.flver(\.dcx)?")
-                    if not flver_entries:
-                        raise FLVERImportError(f"Cannot find a FLVER file in binder {file_path}.")
-                    elif len(flver_entries) > 1:
-                        raise FLVERImportError(f"Found multiple FLVER files in binder {file_path}.")
-                    flver = FLVER(flver_entries[0].data)
-                    flvers.append(flver)
+                # Find TPFs or CHRTPFBHDs inside binder, potentially using `chrtpfbdt` file if it exists.
+                for tpf_entry in binder.find_entries_matching_name(TPF_RE):  # generally only one
+                    tpf = TPF(tpf_entry.data)
+                    for texture in tpf.textures:
+                        attached_texture_sources[texture.name] = texture
 
-                    # Find TPFs or CHRTPFBHDs inside binder, potentially using `chrtpfbdt` file if it exists.
-                    for tpf_entry in binder.find_entries_matching_name(TPF_RE):  # generally only one
-                        tpf = TPF(tpf_entry.data)
-                        for texture in tpf.textures:
-                            attached_texture_sources[texture.name] = texture
-
-                    try:
-                        tpfbhd_entry = binder.find_entry_matching_name(r".*\.chrtpfbhd")
-                    except (binder.BinderEntryMissing, ValueError):
-                        pass
-                    else:
-                        # Search for BDT.
-                        tpfbdt_path = file_path.parent / f"{tpfbhd_entry.name.split('.')[0]}.chrtpfbdt"
-                        if tpfbdt_path.is_file():
-                            tpfbxf = Binder(tpfbhd_entry.data, bdt_source=tpfbdt_path)
-                            for tpf_entry in tpfbxf.entries:
-                                match = TPF_RE.match(tpf_entry.name)
-                                if match:
-                                    tpf = TPF(tpf_entry.data)
-                                    tpf.convert_dds_formats("DX10", "DXT1")
-                                    for texture in tpf.textures:
-                                        attached_texture_sources[texture.name] = texture
-                        else:
-                            self.warning(f"Could not find adjacent CHRTPFBDT for TPFs in file {file_path}.")
-                else:
-                    # Map Piece loose FLVER.
-                    flver = FLVER(file_path)
-                    flvers.append(flver)
-
-                    if self.load_map_piece_tpfs:
-                        # Find map piece TPFs in adjacent `mXX` directory.
-                        directory = Path(self.directory)
-                        map_directory_match = MAP_NAME_RE.match(directory.name)
-                        if not map_directory_match:
-                            return self.error("FLVER not located in a map folder (`mAA_BB_CC_DD`). Cannot load TPFs.")
-                        tpf_directory = directory.parent / map_directory_match.group(1)
-                        if not tpf_directory.is_dir():
-                            return self.error(f"`mXX` TPF folder does not exist: {tpf_directory}. Cannot load TPFs.")
-
-                        loose_tpf_sources |= TPF.collect_tpf_entries(tpf_directory)
-
-            dds_dump_path = Path(self.dds_path) if self.dds_path else None
-
-            importer = FLVERImporter(
-                self, context, attached_texture_sources, loose_tpf_sources, dds_dump_path, self.enable_alpha_hashed
-            )
-
-            for file_path, flver in zip(file_paths, flvers, strict=True):
-
-                transform = None  # type: tp.Optional[Transform]
-
-                if not FLVER_BINDER_RE.match(file_path.name) and self.read_msb_transform:
-                    if MAP_NAME_RE.match(file_path.parent.name):
-                        try:
-                            transforms = get_msb_transforms(file_path)
-                        except Exception as ex:
-                            self.warning(f"Could not get MSB transform. Error: {ex}")
-                        else:
-                            if len(transforms) > 1:
-                                # Defer import through MSB choice operator's `run()` method.
-                                # Note that the same `importer` object is used -- this `execute()` function will NOT be
-                                # called again, TPFs will not be loaded again, etc.
-                                importer.context = context
-                                from io_flver import ImportFLVERWithMSBChoice
-                                ImportFLVERWithMSBChoice.run(
-                                    importer=importer,
-                                    flver=flver,
-                                    file_path=file_path,
-                                    transforms=transforms,
-                                    read_tpfs=self.load_map_piece_tpfs,
-                                    dds_path=self.dds_path,
-                                    enable_alpha_blend=self.enable_alpha_hashed,
-                                )
-                                continue
-                            transform = transforms[0][1]
-                    else:
-                        self.warning(f"Cannot read MSB transform for FLVER in unknown directory: {file_path}.")
                 try:
-                    importer.import_flver(flver, file_path=file_path, transform=transform)
-                except Exception as ex:
-                    # Delete any objects created prior to exception.
-                    for obj in importer.all_bl_objs:
-                        bpy.data.objects.remove(obj)
-                    traceback.print_exc()  # for inspection in Blender console
-                    return self.error(f"Cannot import FLVER: {file_path.name}. Error: {ex}")
+                    tpfbhd_entry = binder.find_entry_matching_name(r".*\.chrtpfbhd")
+                except (binder.BinderEntryMissing, ValueError):
+                    pass
+                else:
+                    # Search for BDT.
+                    tpfbdt_path = file_path.parent / f"{tpfbhd_entry.name.split('.')[0]}.chrtpfbdt"
+                    if tpfbdt_path.is_file():
+                        tpfbxf = Binder(tpfbhd_entry.data, bdt_source=tpfbdt_path)
+                        for tpf_entry in tpfbxf.entries:
+                            match = TPF_RE.match(tpf_entry.name)
+                            if match:
+                                tpf = TPF(tpf_entry.data)
+                                tpf.convert_dds_formats("DX10", "DXT1")
+                                for texture in tpf.textures:
+                                    attached_texture_sources[texture.name] = texture
+                    else:
+                        self.warning(f"Could not find adjacent CHRTPFBDT for TPFs in file {file_path}.")
+            else:
+                # Map Piece loose FLVER.
+                flver = FLVER(file_path)
+                flvers.append(flver)
 
-        import cProfile
-        import pstats
+                if self.load_map_piece_tpfs:
+                    # Find map piece TPFs in adjacent `mXX` directory.
+                    directory = Path(self.directory)
+                    map_directory_match = MAP_NAME_RE.match(directory.name)
+                    if not map_directory_match:
+                        return self.error("FLVER not located in a map folder (`mAA_BB_CC_DD`). Cannot load TPFs.")
+                    tpf_directory = directory.parent / map_directory_match.group(1)
+                    if not tpf_directory.is_dir():
+                        return self.error(f"`mXX` TPF folder does not exist: {tpf_directory}. Cannot load TPFs.")
 
-        with cProfile.Profile() as pr:
-            GO()
-        p = pstats.Stats(pr)
-        p = p.strip_dirs()
-        p.sort_stats("cumtime").print_stats(40)
+                    loose_tpf_sources |= TPF.collect_tpf_entries(tpf_directory)
+
+        dds_dump_path = Path(self.dds_path) if self.dds_path else None
+
+        importer = FLVERImporter(
+            self, context, attached_texture_sources, loose_tpf_sources, dds_dump_path, self.enable_alpha_hashed
+        )
+
+        for file_path, flver in zip(file_paths, flvers, strict=True):
+
+            transform = None  # type: tp.Optional[Transform]
+
+            if not FLVER_BINDER_RE.match(file_path.name) and self.read_msb_transform:
+                if MAP_NAME_RE.match(file_path.parent.name):
+                    try:
+                        transforms = get_msb_transforms(file_path)
+                    except Exception as ex:
+                        self.warning(f"Could not get MSB transform. Error: {ex}")
+                    else:
+                        if len(transforms) > 1:
+                            # Defer import through MSB choice operator's `run()` method.
+                            # Note that the same `importer` object is used -- this `execute()` function will NOT be
+                            # called again, TPFs will not be loaded again, etc.
+                            importer.context = context
+                            ImportFLVERWithMSBChoice.run(
+                                importer=importer,
+                                flver=flver,
+                                file_path=file_path,
+                                transforms=transforms,
+                                read_tpfs=self.load_map_piece_tpfs,
+                                dds_path=self.dds_path,
+                                enable_alpha_blend=self.enable_alpha_hashed,
+                            )
+                            continue
+                        transform = transforms[0][1]
+                else:
+                    self.warning(f"Cannot read MSB transform for FLVER in unknown directory: {file_path}.")
+            try:
+                importer.import_flver(flver, file_path=file_path, transform=transform)
+            except Exception as ex:
+                # Delete any objects created prior to exception.
+                for obj in importer.all_bl_objs:
+                    bpy.data.objects.remove(obj)
+                traceback.print_exc()  # for inspection in Blender console
+                return self.error(f"Cannot import FLVER: {file_path.name}. Error: {ex}")
 
         return {"FINISHED"}
 
@@ -466,7 +456,7 @@ class FLVERImporter:
         """Create a Blender mesh object.
 
         Data is stored in the following ways:
-            vertices are simply `vertex.position` remapped as (-x, y, z)
+            vertices are simply `vertex.position` remapped as (x, y, z)
             edges are not used
             faces are `face_set.get_triangles()`; only index 0 (maximum detail face set) is used
             normals are simply `vertex.normal` remapped as (-x, y, z)
@@ -483,7 +473,7 @@ class FLVERImporter:
 
         uv_count = self.flver.buffer_layouts[flver_mesh.vertex_buffers[0].layout_index].get_uv_count()
 
-        vertices = [(-v.position[0], -v.position[2], v.position[1]) for v in flver_mesh.vertices]
+        vertices = [GAME_TO_BL_VECTOR(v.position) for v in flver_mesh.vertices]
         edges = []  # no edges in FLVER
         faces = flver_mesh.face_sets[0].get_triangles(allow_primitive_restarts=False)
 
@@ -502,7 +492,7 @@ class FLVERImporter:
         bl_mesh.create_normals_split()
         # NOTE: X is negated, but Y and Z are not swapped here, as the global mesh transformation below will do that.
         # (Unfortunately I only discovered this bug on 2021-08-08.)
-        bl_vertex_normals = [(-v.normal[0], -v.normal[2], v.normal[1]) for v in flver_mesh.vertices]
+        bl_vertex_normals = [GAME_TO_BL_VECTOR(v.normal) for v in flver_mesh.vertices]
         for loop in bl_mesh.loops:
             # I think vertex normals need to be copied to loop (vertex-per-face) normals.
             loop.normal[:] = bl_vertex_normals[loop.vertex_index]
@@ -530,7 +520,7 @@ class FLVERImporter:
             loop: bpy.types.MeshLoop
             vertex = flver_mesh.vertices[loop.vertex_index]
             for uv_index, uv in enumerate(vertex.uvs):
-                uv_layers[uv_index].data[j].uv[:] = [uv[0], 1 - uv[1]]  # Z axis discarded, Y axis inverted
+                uv_layers[uv_index].data[j].uv[:] = [uv[0], 1.0 - uv[1]]  # Z axis discarded, Y axis inverted
             if len(vertex.colors) != 1:
                 raise FLVERImportError(
                     f"Vertex {loop.vertex_index} in FLVER mesh {mesh_name} has {len(vertex.colors)} vertex colors. "
@@ -631,16 +621,17 @@ class FLVERImporter:
 
         If a FLVER bone has a parent bone, its FLVER transform is given relative to its parent's frame of reference.
         Determining the final position of any given bone in world space therefore requires all of its parents'
-        transforms to be accumulated up to the root.
+        transforms to be accumulated up to the root. (The same is true for HKX animation coordinates, which are local
+        bone transformations in the same coordinate system.)
 
         Note that while bones are typically used for obvious animation cases in characters, objects, and parts (e.g.
         armor/weapons), they are also occasionally used in a fairly basic way by map pieces to position certain vertices
         in certain meshes. When this happens, so far, the bones have always been root bones, and basically function as
-        anchors for certain vertices. I strongly suspect, but have not absolutely confirmed, that the `is_bind_pose`
-        attribute of each mesh indicates whether FLVER bone data should be written to the EditBone (`is_bind_pose=True`)
-        or PoseBone (`is_bind_pose=False`). Of course, we have to decide for each BONE, not each mesh, so currently I am
-        enforcing that `is_bind_post=False` for ALL meshes in order to write the bone transforms to PoseBone rather than
-        EditBone. A warning will be logged if only some of them are False.
+        shifted origins for the coordinates of certain vertices. I strongly suspect, but have not absolutely confirmed,
+        that the `is_bind_pose` attribute of each mesh indicates whether FLVER bone data should be written to the
+        EditBone (`is_bind_pose=True`) or PoseBone (`is_bind_pose=False`). Of course, we have to decide for each BONE,
+        not each mesh, so currently I am enforcing that `is_bind_post=False` for ALL meshes in order to write the bone
+        transforms to PoseBone rather than EditBone. A warning will be logged if only some of them are `False`.
 
         The AABB of each bone is presumably generated to include all vertices that use that bone as a weight.
         """
@@ -676,6 +667,13 @@ class FLVERImporter:
         edit_bones = []  # all bones
         for i, game_bone in enumerate(self.flver.bones):
             edit_bone = bl_armature_obj.data.edit_bones.new(self.bl_bone_names[i])  # '<DUPE>' suffixes already added
+
+            # If this is disabled, then a bone's rest pose rotation will NOT affect its relative pose basis translation.
+            # That is, pose basis translation will be interpreted as being in parent space (or object for root bones)
+            # rather than in the 'rest pose space' of this bone. We don't want such behavior, particularly for FLVER
+            # root bones like 'Pelvis'.
+            edit_bone.use_local_location = True
+
             edit_bone["unk_x3c"] = game_bone.unk_x3c
             edit_bone: bpy_types.EditBone
             if game_bone.child_index != -1:
@@ -694,37 +692,36 @@ class FLVERImporter:
         for game_bone, edit_bone in zip(self.flver.bones, edit_bones):
 
             if write_bone_type == "POSE":
-                # All edit bones are just Y-direction stubs of length 1 ("forward").
-                # This rotation makes map pieces 'pose' bone data transform as expected.
+                # All edit bones are just Blender-Y-direction stubs of length 1 ("forward").
+                # This rotation makes map piece 'pose' bone data transform as expected.
                 edit_bone.head = Vector((0, 0, 0))
-                edit_bone.tail = Vector((0, 1, 0))
-                continue
+                edit_bone.tail = Vector((0, 1.0, 0))  # TODO: Import option for edit bone length.
+            else:  # "EDIT"
+                edit_bone.length = 0.2  # TODO: import setting (purely for visuals)
 
-            game_bone_translate, game_bone_rotate_mat = game_bone.get_absolute_translate_rotate(self.flver.bones)
-            game_bone_rotate = game_bone_rotate_mat.to_euler_angles(radians=True)
+                # All Blender edit bone transforms are set in object space, with `edit_bone.parent` set below.
+                game_translate, game_rot_mat3 = game_bone.get_absolute_translate_rotate(self.flver.bones)
+                bl_bone_translate = GAME_TO_BL_VECTOR(game_translate)
+                game_rot_euler = game_rot_mat3.to_euler_angles(radians=True)
+                bl_rot_euler = GAME_TO_BL_EULER(game_rot_euler)
 
-            # Check if scale is ALMOST one and correct it.
-            # TODO: Maybe too aggressive?
-            if is_uniform(game_bone.scale, rel_tol=0.001) and math.isclose(game_bone.scale.x, 1.0, rel_tol=0.001):
-                game_bone.scale = Vector3.ones()
+                # Check if scale is ALMOST one and correct it.
+                # TODO: Maybe too aggressive?
+                if is_uniform(game_bone.scale, rel_tol=0.001) and math.isclose(game_bone.scale.x, 1.0, rel_tol=0.001):
+                    bl_bone_scale = Vector((1.0, 1.0, 1.0))
+                else:
+                    bl_bone_scale = GAME_TO_BL_VECTOR(game_bone.scale)
 
-            if not is_uniform(game_bone.scale, rel_tol=0.001):
-                self.warning(f"Bone {game_bone.name} has non-uniform scale: {game_bone.scale}. Left as identity.")
-                length = 0.1
-            elif any(c < 0.0 for c in game_bone.scale):
-                self.warning(f"Bone {game_bone.name} has negative scale: {game_bone.scale}. Left as identity.")
-                length = 0.1
-            else:
-                length = 0.1 * game_bone.scale.x
+                bl_edit_bone_mat = Matrix.LocRotScale(bl_bone_translate, bl_rot_euler, bl_bone_scale)
+                # TODO: Currently properly putting bone scale into 4x4 matrix, rather than `length`, though it is
+                #  unlikely to be ever displayed properly OR actually used by game models/animations.
+                edit_bone.matrix = bl_edit_bone_mat
 
-            bl_rotate_euler = Euler((game_bone.rotate.x, game_bone_rotate.z, -game_bone_rotate.y))
-            tail, roll = bl_rotate_euler.to_quaternion().to_axis_angle()
-            edit_bone.tail = length * tail.normalized()
-            edit_bone.roll = roll
-            bl_bone_translate = FL_TO_BL_SPACE_POS @ Vector(game_bone_translate)
-            # Exact bone absolute position is always at `head`.
-            edit_bone.head = bl_bone_translate
-            edit_bone.tail += bl_bone_translate
+
+                if not is_uniform(game_bone.scale, rel_tol=0.001):
+                    self.warning(f"Bone {game_bone.name} has non-uniform scale: {game_bone.scale}. Left as identity.")
+                elif any(c < 0.0 for c in game_bone.scale):
+                    self.warning(f"Bone {game_bone.name} has negative scale: {game_bone.scale}. Left as identity.")
 
             if game_bone.parent_index != -1:
                 parent_edit_bone = edit_bones[game_bone.parent_index]
@@ -738,12 +735,15 @@ class FLVERImporter:
 
         if write_bone_type == "POSE":
             for game_bone, pose_bone in zip(self.flver.bones, bl_armature_obj.pose.bones):
-                game_bone_translate, game_bone_rotate = game_bone.get_absolute_translate_rotate(self.flver.bones)
-                pose_bone.location = FL_TO_BL_SPACE_POS @ Vector(game_bone_translate)
                 pose_bone.rotation_mode = "XYZ"  # not Quaternion
-                bl_bone_rotate = FL_TO_BL_SPACE_ROT @ Vector(game_bone_rotate.to_euler_angles(radians=True))
-                pose_bone.rotation_euler = bl_bone_rotate
-                pose_bone.scale = Vector((game_bone.scale.x, game_bone.scale.z, game_bone.scale.y))
+                # TODO: Pose bone transforms are relative to parent (in both FLVER and Blender).
+                #  Confirm map pieces still behave as expected, though (they shouldn't even have child bones).
+                # game_bone_translate, game_bone_rotate_mat = game_bone.get_absolute_translate_rotate(self.flver.bones)
+                # game_bone_rotate = game_bone_rotate_mat.to_euler_angles(radians=True)
+                game_translate, game_bone_rotate = game_bone.translate, game_bone.rotate
+                pose_bone.location = GAME_TO_BL_VECTOR(game_translate)
+                pose_bone.rotation_euler = GAME_TO_BL_EULER(game_bone_rotate)
+                pose_bone.scale = GAME_TO_BL_VECTOR(game_bone.scale)
 
         return bl_armature_obj
 
@@ -758,7 +758,8 @@ class FLVERImporter:
             bl_dummy.empty_display_type = "ARROWS"  # best display type/size I've found (single arrow not sufficient)
             bl_dummy.empty_display_size = 0.05
 
-            bl_dummy.location = (-dummy.position.x, -dummy.position.z, dummy.position.y)
+            bl_dummy.location = GAME_TO_BL_VECTOR(dummy.position)
+            # TODO: These rotations are probably converted to Blender space wrong.
             if dummy.use_upward_vector:
                 bl_dummy.rotation_euler = game_forward_up_vectors_to_bl_euler(dummy.forward, dummy.upward)
             else:  # TODO: I assume this is right (up-ignoring dummies only rotate around vertical axis)
@@ -770,7 +771,11 @@ class FLVERImporter:
             #  contraints and leave it to the user to understand the difference in animations.
 
             # TODO: Moving the model is glitched with the double child constraint. Just place the Dummy according to its
-            #  parent bone (in world space) and record its name on the Dummy.
+            #  parent bone (in world space) and record its name on the Dummy for the inverse conversion on export.
+
+            # TODO: In fact, movement is TRIPLY glitched with two constraints and will be singly-glitched with one.
+            #  Need to figure out how to make dummies respect object space *and also* be attached to animation data
+            #  for a specific (pose) bone.
 
             # Dummy position coordinates are given in the space of this parent bone.
             if dummy.parent_bone_index != -1:

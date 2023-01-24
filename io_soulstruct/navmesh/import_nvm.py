@@ -26,7 +26,8 @@ from soulstruct.base.binder_entry import BinderEntry
 from soulstruct.containers import BaseBinder, Binder
 from soulstruct.darksouls1r.maps.nvm import *
 
-from .core import *
+from io_soulstruct.utilities import *
+from .utilities import *
 
 
 NVM_BINDER_RE = re.compile(r"^.*?\.nvmbnd(\.dcx)?$")
@@ -497,14 +498,15 @@ class NVMImporter:
 
     def create_box(self, box: NVMBox):
         """Create an AABB prism representing `box`. Position is baked into mesh data fully, just like the navmesh."""
-        s = game_vec_to_blender_vec(box.start_corner)
-        e = game_vec_to_blender_vec(box.end_corner)
+        start_vec = GAME_TO_BL_VECTOR(box.start_corner)
+        end_vec = GAME_TO_BL_VECTOR(box.end_corner)
         bpy.ops.mesh.primitive_cube_add()
         bl_box = bpy.context.active_object
         self.all_bl_objs.append(bl_box)
         for vertex in bl_box.data.vertices:
-            for c in range(3):
-                vertex.co[c] = s[c] if vertex.co[c] == -1.0 else e[c]
+            vertex.co[0] = start_vec.x if vertex.co[0] == -1.0 else end_vec.x
+            vertex.co[1] = start_vec.y if vertex.co[1] == -1.0 else end_vec.y
+            vertex.co[2] = start_vec.z if vertex.co[2] == -1.0 else end_vec.z
         bpy.ops.object.modifier_add(type="WIREFRAME")
         bl_box.modifiers[0].thickness = 0.02
         bl_box.parent = self.all_bl_objs[0]
