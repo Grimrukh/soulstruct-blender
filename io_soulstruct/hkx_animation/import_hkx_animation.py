@@ -120,7 +120,7 @@ class ImportHKXAnimation(LoggingOperator, ImportHelper):
                 #  Have another deferred operator that lets you choose a loose Skeleton file after a loose animation.
                 raise HKXAnimationImportError("Must import animation from an ANIBND containing a skeleton HKX file.")
                 # try:
-                #     hkx = AnimationHKX(file_path)
+                #     hkx = AnimationHKX.from_path(file_path)
                 # except Exception as ex:
                 #     self.warning(f"Error occurred while reading HKX animation file '{file_path.name}': {ex}")
                 # else:
@@ -158,12 +158,12 @@ class ImportHKXAnimation(LoggingOperator, ImportHelper):
                 if bone_name not in bl_bone_names:
                     raise ValueError(f"Animation bone name '{bone_name}' is missing from selected Blender Armature.")
 
-            world_frames = get_armature_frames(animation_hkx, skeleton_hkx, track_bone_names)
+            arma_frames = get_armature_frames(animation_hkx, skeleton_hkx, track_bone_names)
             root_motion = get_root_motion(animation_hkx)
 
             # Import single animation HKX.
             try:
-                action = importer.create_blender_action(anim_name, world_frames, root_motion)
+                action = importer.create_blender_action(anim_name, arma_frames, root_motion)
             except Exception as ex:
                 traceback.print_exc()  # for inspection in Blender console
                 return self.error(f"Cannot import HKX animation: {file_path.name}. Error: {ex}")
@@ -215,7 +215,7 @@ class ImportHKXAnimationWithBinderChoice(LoggingOperator):
         entry = self.hkx_entries[choice]
         animation_hkx = entry.to_game_file(AnimationHKX)
         anim_name = entry.name.split(".")[0]
-        skeleton_hkx = SkeletonHKX(self.skeleton_entry)
+        skeleton_hkx = self.skeleton_entry.to_game_file(SkeletonHKX)
 
         self.importer.operator = self
         self.importer.context = context
@@ -377,7 +377,9 @@ class HKXAnimationImporter:
                 root_curves["loc_y"].keyframe_points.insert(frame_index, bl_frame_root_motion.y, options=fast)
                 root_curves["loc_z"].keyframe_points.insert(frame_index, bl_frame_root_motion.z, options=fast)
 
-            bl_arma_matrices = {bone_name: trs_transform_to_bl_matrix(transform) for bone_name, transform in frame}
+            bl_arma_matrices = {
+                bone_name: trs_transform_to_bl_matrix(transform) for bone_name, transform in frame.items()
+            }
             bl_arma_inv_matrices = {}  # cached for frame as needed
 
             for bone_name, bl_arma_matrix in bl_arma_matrices.items():
