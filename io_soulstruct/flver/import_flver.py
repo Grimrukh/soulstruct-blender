@@ -25,9 +25,8 @@ from bpy.props import StringProperty, BoolProperty, CollectionProperty
 from bpy_extras.io_utils import ImportHelper
 from mathutils import Vector, Matrix
 
-from soulstruct.base.binder_entry import BinderEntry
 from soulstruct.base.models.flver import FLVER
-from soulstruct.containers import Binder
+from soulstruct.containers import Binder, BinderEntry, BinderEntryNotFoundError
 from soulstruct.containers.tpf import TPF, TPFTexture, batch_get_tpf_texture_png_data
 from soulstruct.utilities.maths import Vector3
 
@@ -114,7 +113,7 @@ class ImportFLVER(LoggingOperator, ImportHelper):
         for file_path in file_paths:
 
             if FLVER_BINDER_RE.match(file_path.name):
-                binder = Binder(file_path)
+                binder = Binder.from_path(file_path)
 
                 # Find FLVER entry.
                 flver_entries = binder.find_entries_matching_name(r".*\.flver(\.dcx)?")
@@ -122,28 +121,28 @@ class ImportFLVER(LoggingOperator, ImportHelper):
                     raise FLVERImportError(f"Cannot find a FLVER file in binder {file_path}.")
                 elif len(flver_entries) > 1:
                     raise FLVERImportError(f"Found multiple FLVER files in binder {file_path}.")
-                flver = FLVER(flver_entries[0].data)
+                flver = flver_entries[0].to_game_file(FLVER)
                 flvers.append(flver)
 
                 # Find TPFs or CHRTPFBHDs inside binder, potentially using `chrtpfbdt` file if it exists.
                 for tpf_entry in binder.find_entries_matching_name(TPF_RE):  # generally only one
-                    tpf = TPF(tpf_entry.data)
+                    tpf = tpf_entry.to_game_file(TPF)
                     for texture in tpf.textures:
                         attached_texture_sources[texture.name] = texture
 
                 try:
                     tpfbhd_entry = binder.find_entry_matching_name(r".*\.chrtpfbhd")
-                except (binder.BinderEntryMissing, ValueError):
+                except (BinderEntryNotFoundError, ValueError):
                     pass
                 else:
                     # Search for BDT.
                     tpfbdt_path = file_path.parent / f"{tpfbhd_entry.name.split('.')[0]}.chrtpfbdt"
                     if tpfbdt_path.is_file():
-                        tpfbxf = Binder(tpfbhd_entry.data, bdt_source=tpfbdt_path)
+                        tpfbxf = Binder.from_bytes(tpfbhd_entry.data, bdt_data=tpfbdt_path.read_bytes())
                         for tpf_entry in tpfbxf.entries:
                             match = TPF_RE.match(tpf_entry.name)
                             if match:
-                                tpf = TPF(tpf_entry.data)
+                                tpf = tpf_entry.to_game_file(TPF)
                                 tpf.convert_dds_formats("DX10", "DXT1")
                                 for texture in tpf.textures:
                                     attached_texture_sources[texture.name] = texture
@@ -151,7 +150,7 @@ class ImportFLVER(LoggingOperator, ImportHelper):
                         self.warning(f"Could not find adjacent CHRTPFBDT for TPFs in file {file_path}.")
             else:
                 # Map Piece loose FLVER.
-                flver = FLVER(file_path)
+                flver = FLVER.from_path(file_path)
                 flvers.append(flver)
 
                 if self.load_map_piece_tpfs:
@@ -364,14 +363,14 @@ class FLVERImporter:
 
         # Assign basic FLVER header information as custom props.
         # TODO: Configure a full-exporter dropdown/choice of game version that defaults as many of these as possible.
-        bl_armature["endian"] = self.flver.header.endian  # bytes
-        bl_armature["version"] = self.flver.header.version.name  # str
-        bl_armature["unicode"] = self.flver.header.unicode  # bool
-        bl_armature["unk_x4a"] = self.flver.header.unk_x4a  # bool
-        bl_armature["unk_x4c"] = self.flver.header.unk_x4c  # int
-        bl_armature["unk_x5c"] = self.flver.header.unk_x5c  # int
-        bl_armature["unk_x5d"] = self.flver.header.unk_x5d  # int
-        bl_armature["unk_x68"] = self.flver.header.unk_x68  # int
+        bl_armature["big_endian"] = self.flver.big_endian  # bool
+        bl_armature["version"] = self.flver.version.name  # str
+        bl_armature["unicode"] = self.flver.unicode  # bool
+        bl_armature["unk_x4a"] = self.flver.unk_x4a  # bool
+        bl_armature["unk_x4c"] = self.flver.unk_x4c  # int
+        bl_armature["unk_x5c"] = self.flver.unk_x5c  # int
+        bl_armature["unk_x5d"] = self.flver.unk_x5d  # int
+        bl_armature["unk_x68"] = self.flver.unk_x68  # int
 
         if transform is not None:
             bl_armature.location = transform.bl_translate
@@ -432,7 +431,7 @@ class FLVERImporter:
 
             if texture_stem in self.loose_tpf_sources:
                 # Found in loose TPF.
-                tpf = TPF(self.loose_tpf_sources[texture_path.stem])
+                tpf = self.loose_tpf_sources[texture_path.stem].to_game_file(TPF)
                 if tpf.textures[0].stem != texture_path.stem:
                     self.warning(
                         f"Loose TPF '{texture_path.stem}' contained first texture with non-matching name "
@@ -776,7 +775,7 @@ class FLVERImporter:
             if dummy.use_upward_vector:
                 bl_rotation_euler = game_forward_up_vectors_to_bl_euler(dummy.forward, dummy.upward)
             else:  # TODO: I assume this is right (up-ignoring dummies only rotate around vertical axis)
-                bl_rotation_euler = game_forward_up_vectors_to_bl_euler(dummy.forward, Vector3(0, 1, 0))
+                bl_rotation_euler = game_forward_up_vectors_to_bl_euler(dummy.forward, Vector3((0, 1, 0)))
 
             if dummy.parent_bone_index != -1:
                 # Bone's location is given in the space of this parent bone.
@@ -801,7 +800,7 @@ class FLVERImporter:
 
             # NOTE: This property is the canonical dummy ID. You are free to rename the dummy without affecting it.
             bl_dummy["reference_id"] = dummy.reference_id  # int
-            bl_dummy["color"] = dummy.color  # RGBA
+            bl_dummy["color"] = dummy.color_rgba  # RGBA
             bl_dummy["flag_1"] = dummy.flag_1  # bool
             bl_dummy["use_upward_vector"] = dummy.use_upward_vector  # bool
             # NOTE: These two properties are only non-zero in Sekiro (and probably Elden Ring).

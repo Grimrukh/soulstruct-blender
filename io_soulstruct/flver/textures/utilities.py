@@ -19,10 +19,9 @@ import re
 import tempfile
 from pathlib import Path
 
-from soulstruct.base.binder_entry import BinderEntry
-from soulstruct.base.textures.dds import texconv
-from soulstruct.containers import BaseBinder, Binder, BaseBXF
+from soulstruct.containers import Binder, BinderEntry, BinderEntryNotFoundError
 from soulstruct.containers.tpf import TPF, TPFTexture, TPFPlatform
+from soulstruct.base.textures.dds import texconv
 
 import bpy
 
@@ -112,17 +111,17 @@ class SingleTPFTextureExport(TextureExportInfo):
 
 class BinderTPFTextureExport(TextureExportInfo):
 
-    binder: BaseBinder
+    binder: Binder
     binder_tpfs: dict[str, tuple[BinderEntry, TPF]]
     modified_binder_tpfs: list[TPF]
 
-    def __init__(self, binder: BaseBinder, tpf_entries: list[BinderEntry]):
+    def __init__(self, binder: Binder, tpf_entries: list[BinderEntry]):
         self.binder = binder
         self.binder_tpfs = {}
         self.modified_binder_tpfs = []
         for tpf_entry in tpf_entries:
             try:
-                self.binder_tpfs[tpf_entry.name] = (tpf_entry, TPF(tpf_entry))
+                self.binder_tpfs[tpf_entry.name] = (tpf_entry, tpf_entry.to_game_file(TPF))
             except Exception as ex:
                 raise TextureExportException(f"Could not load TPF file '{tpf_entry.name}' in Binder. Error: {ex}")
 
@@ -160,32 +159,32 @@ class BinderTPFTextureExport(TextureExportInfo):
             raise TextureExportException("Could not find any textures to replace in Binder TPFs.")
         for binder_tpf_entry, binder_tpf in self.binder_tpfs.values():
             if binder_tpf in self.modified_binder_tpfs:
-                binder_tpf_entry.set_uncompressed_data(binder_tpf.pack_dcx())
+                binder_tpf_entry.set_from_game_file(binder_tpf)
         self.binder.write()  # always same path
         return f"Wrote Binder with {len(self.modified_binder_tpfs)} modified TPFs."
 
 
 class SplitBinderTPFTextureExport(TextureExportInfo):
 
-    binder: BaseBinder
-    chrtpfbxf: BaseBXF
+    binder: Binder
+    chrtpfbxf: Binder
     chrtpfbhd_entry: BinderEntry
     chrtpfbdt_path: Path
     bxf_tpfs: dict[str, tuple[BinderEntry, TPF]]
     modified_bxf_tpfs: list[TPF]
 
-    def __init__(self, file_path: Path, binder: BaseBinder, chrtpfbhd_entry: BinderEntry, chrbnd_name: str):
+    def __init__(self, file_path: Path, binder: Binder, chrtpfbhd_entry: BinderEntry, chrbnd_name: str):
         self.binder = binder
         chrtpfbdt_path = Path(file_path).parent / f"{chrbnd_name}.chrtpfbdt"
         if not chrtpfbdt_path.is_file():
             raise TextureExportException(f"Could not find required '{chrtpfbdt_path.name}' next to CHRBND.")
-        self.chrtpfbxf = Binder(chrtpfbhd_entry, bdt_source=chrtpfbdt_path)
+        self.chrtpfbxf = Binder.from_bytes(chrtpfbhd_entry, bdt_data=chrtpfbdt_path.read_bytes())
         bxf_tpf_entries = self.chrtpfbxf.find_entries_matching_name(TPF_RE)
         self.bxf_tpfs = {}
         self.modified_bxf_tpfs = []
         for tpf_entry in bxf_tpf_entries:
             try:
-                self.bxf_tpfs[tpf_entry.name] = (tpf_entry, TPF(tpf_entry))
+                self.bxf_tpfs[tpf_entry.name] = (tpf_entry, tpf_entry.to_game_file(TPF))
             except Exception as ex:
                 raise TextureExportException(
                     f"Could not load TPF file '{tpf_entry.name}' in CHRTPFBHD. Error: {ex}"
@@ -226,7 +225,7 @@ class SplitBinderTPFTextureExport(TextureExportInfo):
             raise TextureExportException("Could not find any textures to replace in Binder CHRTPFBHD TPFs.")
         for bxf_tpf_entry, bxf_tpf in self.bxf_tpfs.values():
             if bxf_tpf in self.modified_bxf_tpfs:
-                bxf_tpf_entry.set_uncompressed_data(bxf_tpf.pack_dcx())
+                bxf_tpf_entry.set_from_game_file(bxf_tpf)
         self.chrtpfbxf.write_split(
             bhd_path_or_entry=self.chrtpfbhd_entry,
             bdt_path_or_entry=self.chrtpfbdt_path,
@@ -245,7 +244,7 @@ def get_texture_export_info(file_path: str) -> TextureExportInfo:
         return SingleTPFTextureExport(Path(file_path))
 
     try:
-        binder = Binder(file_path)
+        binder = Binder.from_path(file_path)
     except Exception as ex:
         raise TextureExportException(f"Could not load Binder file. Error: {ex}")
 
@@ -257,7 +256,7 @@ def get_texture_export_info(file_path: str) -> TextureExportInfo:
         chrbnd_name = match.group(1)
         try:
             chrtpfbhd_entry = binder[f"{chrbnd_name}.chrtpfbhd"]
-        except binder.BinderEntryMissing:
+        except BinderEntryNotFoundError:
             pass
         else:
             if tpf_entries:

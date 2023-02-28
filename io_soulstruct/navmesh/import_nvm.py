@@ -22,8 +22,7 @@ import bmesh
 from bpy_extras.io_utils import ImportHelper
 from mathutils import Color
 
-from soulstruct.base.binder_entry import BinderEntry
-from soulstruct.containers import BaseBinder, Binder
+from soulstruct.containers import Binder, BinderEntry
 from soulstruct.darksouls1r.maps.nvm import *
 
 from io_soulstruct.utilities import *
@@ -128,7 +127,7 @@ class ImportNVM(LoggingOperator, ImportHelper):
         for file_path in file_paths:
 
             if NVM_BINDER_RE.match(file_path.name):
-                binder = Binder(file_path)
+                binder = Binder.from_path(file_path)
 
                 # Find NVM entry.
                 nvm_entries = binder.find_entries_matching_name(r".*\.nvm(\.dcx)?")
@@ -139,7 +138,7 @@ class ImportNVM(LoggingOperator, ImportHelper):
                     if self.import_all_from_binder:
                         for entry in nvm_entries:
                             try:
-                                nvm = NVM(entry.data)
+                                nvm = entry.to_game_file(NVM)
                             except Exception as ex:
                                 self.warning(f"Error occurred while reading NVM Binder entry '{entry.name}': {ex}")
                             else:
@@ -150,7 +149,7 @@ class ImportNVM(LoggingOperator, ImportHelper):
                         nvms_with_paths.append((file_path, nvm_entries))
                 else:
                     try:
-                        nvm = NVM(nvm_entries[0].data)
+                        nvm = nvm_entries[0].to_game_file(NVM)
                     except Exception as ex:
                         self.warning(f"Error occurred while reading NVM Binder entry '{nvm_entries[0].name}': {ex}")
                     else:
@@ -158,7 +157,7 @@ class ImportNVM(LoggingOperator, ImportHelper):
             else:
                 # Loose NVM.
                 try:
-                    nvm = NVM(file_path)
+                    nvm = NVM.from_path(file_path)
                 except Exception as ex:
                     self.warning(f"Error occurred while reading NVM file '{file_path.name}': {ex}")
                 else:
@@ -240,7 +239,7 @@ class ImportNVMWithBinderChoice(LoggingOperator):
 
     # For deferred import in `execute()`.
     importer: tp.Optional[NVMImporter] = None
-    binder: tp.Optional[BaseBinder] = None
+    binder: tp.Optional[Binder] = None
     binder_file_path: Path = Path()
     enum_options: list[tuple[tp.Any, str, str]] = []
     read_msb_transform: bool = False
@@ -260,7 +259,7 @@ class ImportNVMWithBinderChoice(LoggingOperator):
     def execute(self, context):
         choice = int(self.choices_enum)
         entry = self.nvm_entries[choice]
-        nvm = NVM(entry.data)
+        nvm = entry.to_game_file(NVM)
         nvm_name = entry.name.split(".")[0]
 
         self.importer.operator = self
@@ -472,7 +471,7 @@ class NVMImporter:
         # TODO: There are always three levels of boxes, it seems, so this is very potentially automatable.
 
         # Create box tree (depth first creation order). Nesting info in name is used to export.
-        for box, indices in nvm.get_all_boxes():
+        for box, indices in nvm.get_all_boxes(nvm.root_box):
             if not indices:
                 box_name = f"{self.name} Box ROOT"
             else:

@@ -10,12 +10,11 @@ import bpy
 from bpy_extras.io_utils import ImportHelper
 from mathutils import Vector, Matrix
 
-from soulstruct.base.binder_entry import BinderEntry
-from soulstruct.containers import BaseBinder, Binder
+from soulstruct.containers import Binder, BinderEntry
+from soulstruct.utilities.maths import Vector4
 
 from soulstruct_havok.utilities.maths import TRSTransform
 from soulstruct_havok.wrappers.hkx2015 import AnimationHKX, SkeletonHKX
-from soulstruct_havok.wrappers.hkx2015.animation_manager import AnimationManager
 
 from io_soulstruct.utilities import *
 from .utilities import *
@@ -83,7 +82,7 @@ class ImportHKXAnimation(LoggingOperator, ImportHelper):
         for file_path in file_paths:
 
             if ANIBND_RE.match(file_path.name):
-                binder = Binder(file_path)
+                binder = Binder.from_path(file_path)
 
                 # Find skeleton entry.
                 skeleton_entry = binder.find_entry_matching_name(r"[Ss]keleton\.[Hh][Kk][Xx](\.dcx)?")
@@ -100,22 +99,22 @@ class ImportHKXAnimation(LoggingOperator, ImportHelper):
                     if self.import_all_from_binder:
                         for entry in hkx_entries:
                             try:
-                                hkx = AnimationHKX(entry.data)
+                                animation_hkx = entry.to_game_file(AnimationHKX)
                             except Exception as ex:
                                 self.warning(f"Error occurred while reading HKX Binder entry '{entry.name}': {ex}")
                             else:
-                                hkx.path = Path(entry.name)  # also done in `GameFile`, but explicitly needed below
-                                hkxs_with_paths.append((file_path, hkx))
+                                animation_hkx.path = Path(entry.name)  # also done in `GameFile`, but explicitly needed below
+                                hkxs_with_paths.append((file_path, animation_hkx))
                     else:
                         # Queue up entire Binder; user will be prompted to choose entry below.
                         hkxs_with_paths.append((file_path, hkx_entries))
                 else:
                     try:
-                        hkx = AnimationHKX(hkx_entries[0].data)
+                        animation_hkx = hkx_entries[0].to_game_file(AnimationHKX)
                     except Exception as ex:
                         self.warning(f"Error occurred while reading HKX Binder entry '{hkx_entries[0].name}': {ex}")
                     else:
-                        hkxs_with_paths.append((file_path, hkx))
+                        hkxs_with_paths.append((file_path, animation_hkx))
             else:
                 # TODO: Currently require Skeleton.HKX, so have to use ANIBND.
                 #  Have another deferred operator that lets you choose a loose Skeleton file after a loose animation.
@@ -127,7 +126,7 @@ class ImportHKXAnimation(LoggingOperator, ImportHelper):
                 # else:
                 #     hkxs_with_paths.append((file_path, hkx))
 
-        importer = HKXAnimationImporter(self, context)
+        importer = HKXAnimationImporter(self, context, bl_armature, bl_armature.name)
 
         for (file_path, hkx_or_entries), skeleton_entry in zip(hkxs_with_paths, skeleton_entries):
 
@@ -143,16 +142,28 @@ class ImportHKXAnimation(LoggingOperator, ImportHelper):
                 )
                 continue
 
-            hkx = hkx_or_entries
-            hkx_name = hkx.path.name.split(".")[0]
-            skeleton_hkx = SkeletonHKX(skeleton_entry)
+            animation_hkx = hkx_or_entries
+            anim_name = animation_hkx.path.name.split(".")[0]
+            skeleton_hkx = skeleton_entry.to_game_file(SkeletonHKX)
 
-            self.info(f"Importing HKX animation: {hkx_name}")
+            self.info(f"Importing HKX animation for {bl_armature.name}: {anim_name}")
 
-            # Import single HKX without MSB transform.
+            animation_hkx.animation_container.spline_to_interleaved()
+
+            track_bone_names = [
+                annotation.trackName for annotation in animation_hkx.animation_container.animation.annotationTracks
+            ]
+            bl_bone_names = [b.name for b in bl_armature.data.bones]
+            for bone_name in track_bone_names:
+                if bone_name not in bl_bone_names:
+                    raise ValueError(f"Animation bone name '{bone_name}' is missing from selected Blender Armature.")
+
+            world_frames = get_armature_frames(animation_hkx, skeleton_hkx, track_bone_names)
+            root_motion = get_root_motion(animation_hkx)
+
+            # Import single animation HKX.
             try:
-                action = importer.import_hkx_anim(
-                    hkx, name=hkx_name, bl_armature=bl_armature, skeleton_hkx=skeleton_hkx)
+                action = importer.create_blender_action(anim_name, world_frames, root_motion)
             except Exception as ex:
                 traceback.print_exc()  # for inspection in Blender console
                 return self.error(f"Cannot import HKX animation: {file_path.name}. Error: {ex}")
@@ -181,7 +192,7 @@ class ImportHKXAnimationWithBinderChoice(LoggingOperator):
 
     # For deferred import in `execute()`.
     importer: tp.Optional[HKXAnimationImporter] = None
-    binder: tp.Optional[BaseBinder] = None
+    binder: tp.Optional[Binder] = None
     binder_file_path: Path = Path()
     enum_options: list[tuple[tp.Any, str, str]] = []
     hkx_entries: tp.Sequence[BinderEntry] = []
@@ -202,19 +213,35 @@ class ImportHKXAnimationWithBinderChoice(LoggingOperator):
     def execute(self, context):
         choice = int(self.choices_enum)
         entry = self.hkx_entries[choice]
-        hkx = AnimationHKX(entry.data)
-        hkx_name = entry.name.split(".")[0]
+        animation_hkx = entry.to_game_file(AnimationHKX)
+        anim_name = entry.name.split(".")[0]
         skeleton_hkx = SkeletonHKX(self.skeleton_entry)
 
         self.importer.operator = self
         self.importer.context = context
 
+        self.info(f"Importing HKX animation for {self.bl_armature.name}: {anim_name}")
+
+        animation_hkx.animation_container.spline_to_interleaved()
+
+        track_bone_names = [
+            annotation.trackName for annotation in animation_hkx.animation_container.animation.annotationTracks
+        ]
+        bl_bone_names = [b.name for b in self.bl_armature.data.bones]
+        for bone_name in track_bone_names:
+            if bone_name not in bl_bone_names:
+                raise ValueError(f"Animation bone name '{bone_name}' is missing from selected Blender Armature.")
+
+        arma_frames = get_armature_frames(animation_hkx, skeleton_hkx, track_bone_names)
+        root_motion = get_root_motion(animation_hkx)
+
         try:
-            action = self.importer.import_hkx_anim(
-                hkx, name=hkx_name, bl_armature=self.bl_armature, skeleton_hkx=skeleton_hkx)
+            action = self.importer.create_blender_action(anim_name, arma_frames, root_motion)
         except Exception as ex:
             traceback.print_exc()
-            return self.error(f"Cannot import HKX animation {hkx_name} from '{self.binder_file_path.name}'. Error: {ex}")
+            return self.error(
+                f"Cannot import HKX animation {anim_name} from '{self.binder_file_path.name}'. Error: {ex}"
+            )
         else:
             try:
                 self.bl_armature.animation_data_create()
@@ -248,47 +275,49 @@ class ImportHKXAnimationWithBinderChoice(LoggingOperator):
 class HKXAnimationImporter:
     """Manages imports for a batch of HKX files imported simultaneously."""
 
-    hkx: tp.Optional[AnimationHKX]
-    name: str
-    skeleton_hkx: tp.Optional[SkeletonHKX]
+    model_name: str
 
     def __init__(
         self,
         operator: ImportHKXAnimation,
         context,
+        bl_armature,
+        model_name: str
     ):
         self.operator = operator
         self.context = context
 
-        self.hkx = None
-        self.name = ""
-        self.skeleton_hkx = None
-        self.action = None
-
-    def import_hkx_anim(self, hkx: AnimationHKX, name: str, bl_armature, skeleton_hkx: SkeletonHKX):
-        """Read a HKX animation into a Blender action."""
-        self.hkx = hkx
-        self.name = name  # e.g. "a00_3000"
-        self.skeleton_hkx = skeleton_hkx
-
-        try:
-            self.create_blender_action(self.hkx, self.name, bl_armature, skeleton_hkx)
-        except Exception:
-            # Delete partially created action before raising.
-            if self.action is not None:
-                bpy.data.actions.remove(self.action)
-                self.action = None
-            raise
-        else:
-            self.action.use_fake_user = True
-            return self.action
+        self.bl_armature = bl_armature
+        self.model_name = model_name
 
     def create_blender_action(
         self,
-        animation_hkx: AnimationHKX,
-        animation_name: str,
-        bl_armature,
-        skeleton_hkx: SkeletonHKX,
+        anim_name: str,
+        arma_frames: list[dict[str, TRSTransform]],
+        root_motion: None | list[Vector4] = None,
+    ):
+        """Read a HKX animation into a Blender action."""
+        self.arma_frames = arma_frames
+        self.root_motion = root_motion
+
+        animation_name = f"{self.model_name}|{anim_name}"
+        action = bpy.data.actions.new(animation_name)
+
+        try:
+            self._create_fcurves(action, arma_frames, root_motion)
+        except Exception:
+            # Delete partially created action before raising.
+            bpy.data.actions.remove(action)
+            raise
+        else:
+            action.use_fake_user = True
+            return action
+
+    def _create_fcurves(
+        self,
+        action,
+        arma_frames: list[dict[str, TRSTransform]],
+        root_motion: None | list[Vector4] = None,
     ):
         """Convert a Havok HKX animation file to a Blender action (with fully-sampled keyframes).
 
@@ -301,29 +330,15 @@ class HKXAnimationImporter:
         TODO: Does not support changes in Blender bone names (e.g. '<DUPE>' suffix).
         TODO: Time-scaling argument (with linear interpolation)?
         """
-
-        animation_hkx.spline_to_interleaved()
-        try:
-            root_motion = animation_hkx.get_reference_frame_samples()
-        except TypeError:
-            root_motion = None
-        manager = AnimationManager(skeleton_hkx, {0: animation_hkx})
-
-        track_bone_names = [annotation.trackName for annotation in animation_hkx.animation.annotationTracks]
-        bl_bone_names = [b.name for b in bl_armature.data.bones]
-        for bone_name in track_bone_names:
-            if bone_name not in bl_bone_names:
-                raise ValueError(f"Animation bone name '{bone_name}' is missing from selected Blender Armature.")
-
-        # Get bone local matrix list in same order as tracks.
-        bl_bones = [bl_armature.data.bones[bone_name] for bone_name in track_bone_names]
-
-        # Create Blender 'action', which is a data-block containing the animation data.
-        action = self.action = bpy.data.actions.new(animation_name)
         fast = {"FAST"}
 
-        # Create all FCurves.
+        # Create root motion FCurves.
         if root_motion is not None:
+            if len(root_motion) != len(arma_frames):
+                raise ValueError(
+                    f"Number of animation root motion frames ({len(root_motion)}) does not match number of bone "
+                    f"animation frames ({len(arma_frames)})."
+                )
             root_curves = {
                 "loc_x": action.fcurves.new("location", index=0),
                 "loc_y": action.fcurves.new("location", index=1),
@@ -334,13 +349,13 @@ class HKXAnimationImporter:
 
         bone_curves = {}
 
-        for bone_name in track_bone_names:
+        # Create bone FCurves (ten per bone).
+        for bone_name in arma_frames[0]:
             data_path_prefix = f"pose.bones[\"{bone_name}\"]"
             location_data_path = f"{data_path_prefix}.location"
             rotation_data_path = f"{data_path_prefix}.rotation_quaternion"
             scale_data_path = f"{data_path_prefix}.scale"
 
-            # Create 10 FCurves.
             bone_curves[bone_name, "loc_x"] = action.fcurves.new(location_data_path, index=0)
             bone_curves[bone_name, "loc_y"] = action.fcurves.new(location_data_path, index=1)
             bone_curves[bone_name, "loc_z"] = action.fcurves.new(location_data_path, index=2)
@@ -354,7 +369,7 @@ class HKXAnimationImporter:
             bone_curves[bone_name, "scale_y"] = action.fcurves.new(scale_data_path, index=1)
             bone_curves[bone_name, "scale_z"] = action.fcurves.new(scale_data_path, index=2)
 
-        for frame_index, track_transforms in enumerate(animation_hkx.interleaved_data):
+        for frame_index, frame in enumerate(arma_frames):
 
             if root_motion is not None:
                 bl_frame_root_motion = GAME_TO_BL_VECTOR(root_motion[frame_index])  # drop useless fourth element
@@ -362,18 +377,17 @@ class HKXAnimationImporter:
                 root_curves["loc_y"].keyframe_points.insert(frame_index, bl_frame_root_motion.y, options=fast)
                 root_curves["loc_z"].keyframe_points.insert(frame_index, bl_frame_root_motion.z, options=fast)
 
-            world_transforms = manager.get_all_world_space_transforms_in_frame(frame_index)
-            bl_world_matrices = [trs_transform_to_bl_matrix(transform) for transform in world_transforms]
-            bl_world_inv_matrices = {}  # cached by bone name for frame as needed
+            bl_arma_matrices = {bone_name: trs_transform_to_bl_matrix(transform) for bone_name, transform in frame}
+            bl_arma_inv_matrices = {}  # cached for frame as needed
 
-            for bone_name, bl_world_matrix, bl_bone in zip(track_bone_names, bl_world_matrices, bl_bones):
+            for bone_name, bl_arma_matrix in bl_arma_matrices.items():
 
-                if bl_bone.parent is not None and bl_bone.parent.name not in bl_world_inv_matrices:
-                    # Cache parent's inverted world matrix (may be needed by other sibling bones this frame).
-                    parent_index = track_bone_names.index(bl_bone.parent.name)
-                    bl_world_inv_matrices[bl_bone.parent.name] = bl_world_matrices[parent_index].inverted()
+                bl_bone = self.bl_armature.data.bones[bone_name]
+                if bl_bone.parent is not None and bl_bone.parent.name not in bl_arma_inv_matrices:
+                    # Cache parent's inverted armature matrix (may be needed by other sibling bones this frame).
+                    bl_arma_inv_matrices[bl_bone.parent.name] = bl_arma_matrices[bl_bone.parent.name].inverted()
 
-                bl_basis_matrix = get_basis_matrix(bl_armature, bone_name, bl_world_matrix, bl_world_inv_matrices)
+                bl_basis_matrix = get_basis_matrix(self.bl_armature, bone_name, bl_arma_matrix, bl_arma_inv_matrices)
                 t, r, s = bl_basis_matrix.decompose()
 
                 bone_curves[bone_name, "loc_x"].keyframe_points.insert(frame_index, t.x, options=fast)
@@ -397,8 +411,6 @@ class HKXAnimationImporter:
             fcurve.modifiers.new("CYCLES")  # default settings are fine
             fcurve.update()
 
-        return action
-
 
 def trs_transform_to_bl_matrix(transform: TRSTransform) -> Matrix:
     """Convert a game `TRSTransform` to a Blender 4x4 `Matrix`."""
@@ -408,10 +420,10 @@ def trs_transform_to_bl_matrix(transform: TRSTransform) -> Matrix:
     return Matrix.LocRotScale(bl_translate, bl_rotate, bl_scale)
 
 
-def get_world_matrix(armature, bone_name, basis=None) -> Matrix:
-    """Demonstrates how Blender calculates `pose_bone.matrix` (world matrix) for `bone_name`.
+def get_armature_matrix(armature, bone_name, basis=None) -> Matrix:
+    """Demonstrates how Blender calculates `pose_bone.matrix` (armature matrix) for `bone_name`.
 
-    TODO: Likely needed at export to convert the curve keyframes (in basis space) back to world space.
+    TODO: Likely needed at export to convert the curve keyframes (in basis space) back to armature space.
     """
     local = armature.data.bones[bone_name].matrix_local
     if basis is None:
@@ -419,24 +431,24 @@ def get_world_matrix(armature, bone_name, basis=None) -> Matrix:
 
     parent = armature.pose.bones[bone_name].parent
     if parent is None:  # root bone is simple
-        # world = local @ basis
+        # armature = local @ basis
         return local @ basis
     else:
-        # Apply relative transform of local (edit bone) from parent and then world position of parent:
-        #     world = parent_world @ (parent_local.inv @ local) @ basis
-        #  -> basis = (parent_local.inv @ local)parent_local @ parent_world.inv @ world
+        # Apply relative transform of local (edit bone) from parent and then armature position of parent:
+        #     armature = parent_armature @ (parent_local.inv @ local) @ basis
+        #  -> basis = (parent_local.inv @ local)parent_local @ parent_armature.inv @ armature
         parent_local = armature.data.bones[parent.name].matrix_local
-        return get_world_matrix(armature, parent.name) @ parent_local.inverted() @ local @ basis
+        return get_armature_matrix(armature, parent.name) @ parent_local.inverted() @ local @ basis
 
 
-def get_basis_matrix(armature, bone_name, world_matrix, world_inv_matrices: dict):
-    """Inverse of above: get `pose_bone.matrix_basis` from `world_matrix` by inverted Blender's process."""
+def get_basis_matrix(armature, bone_name, armature_matrix, armature_inv_matrices: dict):
+    """Inverse of above: get `pose_bone.matrix_basis` from `armature_matrix` by inverting Blender's process."""
     local = armature.data.bones[bone_name].matrix_local
     parent = armature.pose.bones[bone_name].parent
 
     if parent is None:
-        return local.inverted() @ world_matrix
+        return local.inverted() @ armature_matrix
     else:
         # TODO: Can't I just use `parent` directly? Why the indexing?
-        parent_world_matrix_inv = world_inv_matrices[parent.name]
-        return local.inverted() @ armature.data.bones[parent.name].matrix_local @ parent_world_matrix_inv @ world_matrix
+        parent_removed = armature_inv_matrices[parent.name] @ armature_matrix
+        return local.inverted() @ armature.data.bones[parent.name].matrix_local @ parent_removed

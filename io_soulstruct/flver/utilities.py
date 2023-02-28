@@ -37,15 +37,15 @@ def get_msb_transforms(flver_path: Path, msb_path: Path = None) -> list[tuple[st
     if not msb_path.is_file():
         raise FileNotFoundError(f"Cannot find MSB file '{msb_path}'.")
     try:
-        msb = MSB(msb_path)
+        msb = MSB.from_path(msb_path)
     except Exception as ex:
         raise RuntimeError(
             f"Cannot open MSB: {ex}.\n"
             f"\nCurrently, only Dark Souls 1 (either version) MSBs are supported."
         )
     matches = []
-    for map_piece in msb.parts.MapPieces:
-        if flver_path.name.startswith(map_piece.model_name):
+    for map_piece in msb.map_pieces:
+        if flver_path.name.startswith(map_piece.model.name):
             matches.append(map_piece)
     if not matches:
         raise ValueError(f"Cannot find any MSB Map Piece entries using model '{flver_path.name}'.")
@@ -59,11 +59,11 @@ def game_forward_up_vectors_to_bl_euler(forward: Vector3, up: Vector3) -> Euler:
     Mainly used for representing FLVER dummies in Blender.
     """
     right = up.cross(forward)
-    rotation_matrix = Matrix3(
-        right.x, up.x, forward.x,
-        right.y, up.y, forward.y,
-        right.z, up.z, forward.z,
-    )
+    rotation_matrix = Matrix3([
+        [right.x, up.x, forward.x],
+        [right.y, up.y, forward.y],
+        [right.z, up.z, forward.z],
+    ])
     game_euler = rotation_matrix.to_euler_angles(radians=True)
     return GAME_TO_BL_EULER(game_euler)
 
@@ -71,6 +71,6 @@ def game_forward_up_vectors_to_bl_euler(forward: Vector3, up: Vector3) -> Euler:
 def bl_euler_to_game_forward_up_vectors(bl_euler: Euler) -> tuple[Vector3, Vector3]:
     game_euler = BL_TO_GAME_EULER(bl_euler)
     game_mat = Matrix3.from_euler_angles(game_euler)
-    forward = Vector3(game_mat[0][2], game_mat[1][2], game_mat[2][2])  # third column
-    up = Vector3(game_mat[0][1], game_mat[1][1], game_mat[2][1])  # second column
+    forward = Vector3((game_mat[0][2], game_mat[1][2], game_mat[2][2]))  # third column
+    up = Vector3((game_mat[0][1], game_mat[1][1], game_mat[2][1]))  # second column
     return forward, up

@@ -26,18 +26,20 @@ for module_name in list(sys.modules.keys()):
 from io_soulstruct.flver import *
 from io_soulstruct.navmesh import *
 
-try:
-    import soulstruct_havok
-except ModuleNotFoundError:
-    # `soulstruct_havok` not installed. HKX add-ons not enabled.
-    soulstruct_havok = None
+import soulstruct_havok
+
+# try:
+#     import soulstruct_havok
+# except ModuleNotFoundError:
+#     # `soulstruct_havok` not installed. HKX add-ons not enabled.
+#     soulstruct_havok = None
 
 
 bl_info = {
     "name": "Soulstruct (FromSoftware Formats)",
     "author": "Scott Mooney (Grimrukh)",
     "version": (1, 0, 0),
-    "blender": (3, 3, 0),
+    "blender": (3, 4, 0),
     "location": "File > Import-Export",
     "description": "Import/export FromSoftware game files: FLVER, NVM navmesh, HKX collisions, HKX animations",
     "warning": "",
@@ -79,18 +81,19 @@ classes = (
     NVM_PT_navmesh_tools,
 )
 
+print("SOULSTRUCT SCRIPTS LOADED")
 
 if soulstruct_havok:
-    from io_soulstruct.hkx_collision import *
+    from io_soulstruct.hkx_map_collision import *
     from io_soulstruct.hkx_animation import *
 
     havok_classes = (
-        ImportHKXCollision,
-        ImportHKXCollisionWithBinderChoice,
-        ImportHKXCollisionWithMSBChoice,
-        ExportHKXCollision,
-        ExportHKXCollisionIntoBinder,
-        HKX_COLLISION_PT_hkx_collision_tools,
+        ImportHKXMapCollision,
+        ImportHKXMapCollisionWithBinderChoice,
+        ImportHKXMapCollisionWithMSBChoice,
+        ExportHKXMapCollision,
+        ExportHKXMapCollisionIntoBinder,
+        HKX_COLLISION_PT_hkx_map_collision_tools,
 
         ImportHKXAnimation,
         ImportHKXAnimationWithBinderChoice,
@@ -99,13 +102,15 @@ if soulstruct_havok:
         HKX_ANIMATION_PT_hkx_animation_tools,
     )
 
+    print("HAVOK INCLUDED")
+
     def havok_menu_func_import(self, context):
-        self.layout.operator(ImportHKXCollision.bl_idname, text="HKX Collision (.hkx/.hkxbhd)")
+        self.layout.operator(ImportHKXMapCollision.bl_idname, text="HKX Collision (.hkx/.hkxbhd)")
         self.layout.operator(ImportHKXAnimation.bl_idname, text="HKX Animation (.hkx/.hkxbhd)")
 
     def havok_menu_func_export(self, context):
-        self.layout.operator(ExportHKXCollision.bl_idname, text="HKX Collision (.hkx)")
-        self.layout.operator(ExportHKXCollisionIntoBinder.bl_idname, text="HKX Collision to Binder (.hkxbhd)")
+        self.layout.operator(ExportHKXMapCollision.bl_idname, text="HKX Collision (.hkx)")
+        self.layout.operator(ExportHKXMapCollisionIntoBinder.bl_idname, text="HKX Collision to Binder (.hkxbhd)")
         # TODO: HKX animation export (and 'to binder' variant)
         #  Will need an existing ANIBND with existing compatible Skeleton.HKX, most likely.
 

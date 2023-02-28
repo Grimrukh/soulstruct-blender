@@ -40,15 +40,15 @@ def get_msb_transforms(hkx_name: str, hkx_path: Path, msb_path: Path = None) -> 
     if not msb_path.is_file():
         raise FileNotFoundError(f"Cannot find MSB file '{msb_path}'.")
     try:
-        msb = MSB(msb_path)
+        msb = MSB.from_path(msb_path)
     except Exception as ex:
         raise RuntimeError(
             f"Cannot open MSB: {ex}.\n"
             f"\nCurrently, only Dark Souls 1 (either version) MSBs are supported."
         )
     matches = []
-    for collision in msb.parts.Collisions:
-        if model_name == collision.model_name:
+    for collision in msb.collisions:
+        if model_name == collision.model.name:
             matches.append(collision)
     if not matches:
         raise ValueError(f"Cannot find any MSB Collision entries using model '{model_name}' ({hkx_name}).")

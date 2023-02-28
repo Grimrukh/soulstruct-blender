@@ -7,15 +7,13 @@ import traceback
 import typing as tp
 from pathlib import Path
 
-import bmesh
 import bpy
 import bpy_types
 from bpy.props import StringProperty, BoolProperty, IntProperty, EnumProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 from soulstruct.containers.dcx import DCXType
 
-from soulstruct.base.binder_entry import BinderEntry
-from soulstruct.containers import Binder
+from soulstruct.containers import Binder, BinderEntry
 from soulstruct.darksouls1r.maps.nvm import NVM
 
 from io_soulstruct.utilities import *
@@ -232,15 +230,13 @@ class ExportNVMIntoBinder(LoggingOperator, ImportHelper):
         nvm.dcx_type = DCXType[self.dcx_type]
 
         try:
-            nvm_entry.set_uncompressed_data(nvm.pack_dcx())
+            nvm_entry.set_from_game_file(nvm)
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Cannot write exported NVM. Error: {ex}")
 
         try:
             # Will create a `.bak` file automatically if absent.
-            from soulstruct.containers import BXF3
-            binder: BXF3
             binder.write()
         except Exception as ex:
             traceback.print_exc()

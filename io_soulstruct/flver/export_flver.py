@@ -15,11 +15,10 @@ from mathutils import Euler, Matrix, Vector
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 from soulstruct.containers.dcx import DCXType
 
-from soulstruct.base.binder_entry import BinderEntry
+from soulstruct.containers import Binder, BinderEntry
 from soulstruct.base.models.flver import FLVER, Version
 from soulstruct.base.models.flver.vertex import VertexBuffer, BufferLayout, LayoutMember, MemberType, MemberFormat
 from soulstruct.base.models.flver.material import MTDInfo
-from soulstruct.containers import Binder
 from soulstruct.utilities.maths import Vector3
 
 from io_soulstruct.utilities import *
@@ -218,7 +217,7 @@ class ExportFLVERIntoBinder(LoggingOperator, ImportHelper):
             return self.error(f"Cannot get exported FLVER. Error: {ex}")
 
         try:
-            binder = Binder(self.filepath)
+            binder = Binder.from_path(self.filepath)
         except Exception as ex:
             return self.error(f"Could not load Binder file. Error: {ex}.")
 
@@ -250,7 +249,7 @@ class ExportFLVERIntoBinder(LoggingOperator, ImportHelper):
         flver.dcx_type = dcx_type
 
         try:
-            flver_entry.set_uncompressed_data(flver.pack_dcx())  # DCX will default to None here from exporter function
+            flver_entry.set_from_game_file(flver)  # DCX will default to None here from exporter function
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Cannot write exported FLVER. Error: {ex}")
@@ -380,7 +379,7 @@ class FLVERExporter:
         """
         self.name = bl_armature.name  # should just be original/intended FLVER file stem, e.g. `c1234` or `m1000B0A12`
         flver = FLVER()
-        extra_flver_props = self.props.get_all(bl_armature, flver.header, "FLVER")
+        extra_flver_props = self.props.get_all(bl_armature, flver, "FLVER")
         self.layout_member_unk_x00 = extra_flver_props["layout_member_unk_x00"]
 
         bl_child_objs = [obj for obj in bpy.data.objects if obj.parent is bl_armature]
@@ -449,7 +448,7 @@ class FLVERExporter:
                 game_mesh.vertices = build_result.game_vertices
                 game_mesh.face_sets = build_result.game_face_sets
                 game_mesh.bone_indices = build_result.local_bone_indices
-                mesh_builders[builder_index].buffer.vertex_count = len(build_result.game_vertices)
+                # mesh_builders[builder_index].buffer.vertex_count = len(build_result.game_vertices)
         else:
             for builder in mesh_builders:
                 print(f"Building FLVER mesh: {builder.bl_mesh.name}")
@@ -648,16 +647,16 @@ class FLVERExporter:
             )
         uv_count = game_layout.get_uv_count()
 
-        vertex_buffer = VertexBuffer()
-        game_mesh.vertex_buffers = [vertex_buffer]
         return_layout = True
         if game_layout in buffer_layouts:
             # Already defined.
-            vertex_buffer.layout_index = buffer_layouts.index(game_layout)
+            vertex_buffer = VertexBuffer(layout_index=buffer_layouts.index(game_layout))
             return_layout = False
         else:
-            vertex_buffer.layout_index = len(buffer_layouts)
+            vertex_buffer = VertexBuffer(layout_index=len(buffer_layouts))
             # Returned `buffer_layout` will be added to FLVER.
+
+        game_mesh.vertex_buffers = [vertex_buffer]
 
         mesh_builder = MeshBuilder(
             bl_mesh,
@@ -907,14 +906,14 @@ def recompute_bounding_box(flver: FLVER, bones: list[FLVER.Bone]):
     y = [v.position[1] for mesh in flver.meshes for v in mesh.vertices]
     z = [v.position[2] for mesh in flver.meshes for v in mesh.vertices]
     if x or y or z:
-        bb_min = Vector3(min(x), min(y), min(z))
-        bb_max = Vector3(max(x), max(y), max(z))
+        bb_min = Vector3((min(x), min(y), min(z)))
+        bb_max = Vector3((max(x), max(y), max(z)))
     else:
         # No vertex data in ANY mesh. Highly suspect, obviously.
         bb_min = Vector3.zero()
         bb_max = Vector3.zero()
-    flver.header.bounding_box_min = bb_min
-    flver.header.bounding_box_max = bb_max
+    flver.bounding_box_min = bb_min
+    flver.bounding_box_max = bb_max
     for bone in bones:
         bone.bounding_box_min = bb_min
         bone.bounding_box_max = bb_max

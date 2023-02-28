@@ -8,7 +8,7 @@ TODO: Currently only supports map collision HKX files from Dark Souls Remastered
 """
 from __future__ import annotations
 
-__all__ = ["ImportHKXCollision", "ImportHKXCollisionWithBinderChoice", "ImportHKXCollisionWithMSBChoice"]
+__all__ = ["ImportHKXMapCollision", "ImportHKXMapCollisionWithBinderChoice", "ImportHKXMapCollisionWithMSBChoice"]
 
 import re
 import traceback
@@ -19,10 +19,9 @@ import bpy
 from bpy_extras.io_utils import ImportHelper
 from mathutils import Color
 
-from soulstruct.base.binder_entry import BinderEntry
-from soulstruct.containers import BaseBinder, Binder
+from soulstruct.containers import Binder, BinderEntry
 
-from soulstruct_havok.wrappers.hkx2015 import CollisionHKX
+from soulstruct_havok.wrappers.hkx2015 import MapCollisionHKX
 
 from io_soulstruct.utilities import *
 from .utilities import *
@@ -32,8 +31,8 @@ HKX_BINDER_RE = re.compile(r"^.*?\.hkxbhd(\.dcx)?$")
 MAP_NAME_RE = re.compile(r"^(m\d\d)_\d\d_\d\d_\d\d$")
 
 
-class ImportHKXCollision(LoggingOperator, ImportHelper):
-    bl_idname = "import_scene.hkx_collision"
+class ImportHKXMapCollision(LoggingOperator, ImportHelper):
+    bl_idname = "import_scene.hkx_map_collision"
     bl_label = "Import HKX Collision"
     bl_description = "Import a HKX collision file. Can import from BNDs and supports DCX-compressed files"
 
@@ -80,12 +79,12 @@ class ImportHKXCollision(LoggingOperator, ImportHelper):
         def GO():
 
             file_paths = [Path(self.directory, file.name) for file in self.files]
-            hkxs_with_paths = []  # type: list[tuple[Path, CollisionHKX | list[BinderEntry]]]
+            hkxs_with_paths = []  # type: list[tuple[Path, MapCollisionHKX | list[BinderEntry]]]
 
             for file_path in file_paths:
 
                 if HKX_BINDER_RE.match(file_path.name):
-                    binder = Binder(file_path)
+                    binder = Binder.from_path(file_path)
 
                     # Find HKX entry.
                     hkx_entries = binder.find_entries_matching_name(r".*\.hkx(\.dcx)?")
@@ -96,7 +95,7 @@ class ImportHKXCollision(LoggingOperator, ImportHelper):
                         if self.import_all_from_binder:
                             for entry in hkx_entries:
                                 try:
-                                    hkx = CollisionHKX(entry.data)
+                                    hkx = entry.to_game_file(MapCollisionHKX)
                                 except Exception as ex:
                                     self.warning(f"Error occurred while reading HKX Binder entry '{entry.name}': {ex}")
                                 else:
@@ -107,7 +106,7 @@ class ImportHKXCollision(LoggingOperator, ImportHelper):
                             hkxs_with_paths.append((file_path, hkx_entries))
                     else:
                         try:
-                            hkx = CollisionHKX(hkx_entries[0].data)
+                            hkx = hkx_entries[0].to_game_file(MapCollisionHKX)
                         except Exception as ex:
                             self.warning(f"Error occurred while reading HKX Binder entry '{hkx_entries[0].name}': {ex}")
                         else:
@@ -115,19 +114,19 @@ class ImportHKXCollision(LoggingOperator, ImportHelper):
                 else:
                     # Loose HKX.
                     try:
-                        hkx = CollisionHKX(file_path)
+                        hkx = MapCollisionHKX.from_path(file_path)
                     except Exception as ex:
                         self.warning(f"Error occurred while reading HKX file '{file_path.name}': {ex}")
                     else:
                         hkxs_with_paths.append((file_path, hkx))
 
-            importer = HKXCollisionImporter(self, context)
+            importer = HKXMapCollisionImporter(self, context)
 
             for file_path, hkx_or_entries in hkxs_with_paths:
 
                 if isinstance(hkx_or_entries, list):
                     # Defer through entry selection operator.
-                    ImportHKXCollisionWithBinderChoice.run(
+                    ImportHKXMapCollisionWithBinderChoice.run(
                         importer=importer,
                         binder_file_path=Path(file_path),
                         read_msb_transform=self.read_msb_transform,
@@ -152,7 +151,7 @@ class ImportHKXCollision(LoggingOperator, ImportHelper):
                         else:
                             if len(transforms) > 1:
                                 importer.context = context
-                                ImportHKXCollisionWithMSBChoice.run(
+                                ImportHKXMapCollisionWithMSBChoice.run(
                                     importer=importer,
                                     hkx=hkx,
                                     hkx_name=hkx_name,
@@ -188,25 +187,25 @@ class ImportHKXCollision(LoggingOperator, ImportHelper):
 
 # noinspection PyUnusedLocal
 def get_binder_entry_choices(self, context):
-    return ImportHKXCollisionWithBinderChoice.enum_options
+    return ImportHKXMapCollisionWithBinderChoice.enum_options
 
 
 # noinspection PyUnusedLocal
 def get_msb_choices(self, context):
-    return ImportHKXCollisionWithMSBChoice.enum_options
+    return ImportHKXMapCollisionWithMSBChoice.enum_options
 
 
-class ImportHKXCollisionWithBinderChoice(LoggingOperator):
+class ImportHKXMapCollisionWithBinderChoice(LoggingOperator):
     """Presents user with a choice of enums from `enum_choices` class variable (set prior).
 
     See: https://blender.stackexchange.com/questions/6512/how-to-call-invoke-popup
     """
-    bl_idname = "wm.hkx_collision_binder_choice_operator"
+    bl_idname = "wm.hkx_map_collision_binder_choice_operator"
     bl_label = "Choose HKX Collision Binder Entry"
 
     # For deferred import in `execute()`.
-    importer: tp.Optional[HKXCollisionImporter] = None
-    binder: tp.Optional[BaseBinder] = None
+    importer: tp.Optional[HKXMapCollisionImporter] = None
+    binder: tp.Optional[Binder] = None
     binder_file_path: Path = Path()
     enum_options: list[tuple[tp.Any, str, str]] = []
     read_msb_transform: bool = False
@@ -226,7 +225,7 @@ class ImportHKXCollisionWithBinderChoice(LoggingOperator):
     def execute(self, context):
         choice = int(self.choices_enum)
         entry = self.hkx_entries[choice]
-        hkx = CollisionHKX(entry.data)
+        hkx = entry.to_game_file(MapCollisionHKX)
         hkx_name = entry.name.split(".")[0]
 
         self.importer.operator = self
@@ -241,7 +240,7 @@ class ImportHKXCollisionWithBinderChoice(LoggingOperator):
                     self.warning(f"Could not get MSB transform. Error: {ex}")
                 else:
                     if len(transforms) > 1:
-                        ImportHKXCollisionWithMSBChoice.run(
+                        ImportHKXMapCollisionWithMSBChoice.run(
                             importer=self.importer,
                             hkx=hkx,
                             hkx_name=hkx_name,
@@ -265,7 +264,7 @@ class ImportHKXCollisionWithBinderChoice(LoggingOperator):
     @classmethod
     def run(
         cls,
-        importer: HKXCollisionImporter,
+        importer: HKXMapCollisionImporter,
         binder_file_path: Path,
         read_msb_transform: bool,
         use_material: bool,
@@ -281,17 +280,17 @@ class ImportHKXCollisionWithBinderChoice(LoggingOperator):
         bpy.ops.wm.hkx_binder_choice_operator("INVOKE_DEFAULT")
 
 
-class ImportHKXCollisionWithMSBChoice(LoggingOperator):
+class ImportHKXMapCollisionWithMSBChoice(LoggingOperator):
     """Presents user with a choice of enums from `enum_choices` class variable (set prior).
 
     See: https://blender.stackexchange.com/questions/6512/how-to-call-invoke-popup
     """
-    bl_idname = "wm.hkx_collision_msb_choice_operator"
+    bl_idname = "wm.hkx_map_collision_msb_choice_operator"
     bl_label = "Choose MSB Entry"
 
     # For deferred import in `execute()`.
-    importer: tp.Optional[HKXCollisionImporter] = None
-    hkx: tp.Optional[CollisionHKX] = None
+    importer: tp.Optional[HKXMapCollisionImporter] = None
+    hkx: tp.Optional[MapCollisionHKX] = None
     hkx_name: str = ""
     enum_options: list[tuple[tp.Any, str, str]] = []
     use_material: bool = True
@@ -327,8 +326,8 @@ class ImportHKXCollisionWithMSBChoice(LoggingOperator):
     @classmethod
     def run(
         cls,
-        importer: HKXCollisionImporter,
-        hkx: CollisionHKX,
+        importer: HKXMapCollisionImporter,
+        hkx: MapCollisionHKX,
         hkx_name: str,
         use_material: bool,
         transforms: list[tuple[str, Transform]],
@@ -343,15 +342,15 @@ class ImportHKXCollisionWithMSBChoice(LoggingOperator):
         bpy.ops.wm.hkx_msb_choice_operator("INVOKE_DEFAULT")
 
 
-class HKXCollisionImporter:
+class HKXMapCollisionImporter:
     """Manages imports for a batch of HKX files imported simultaneously."""
 
-    hkx: tp.Optional[CollisionHKX]
+    hkx: tp.Optional[MapCollisionHKX]
     name: str
 
     def __init__(
         self,
-        operator: ImportHKXCollision,
+        operator: ImportHKXMapCollision,
         context,
     ):
         self.operator = operator
@@ -361,7 +360,7 @@ class HKXCollisionImporter:
         self.name = ""
         self.all_bl_objs = []
 
-    def import_hkx(self, hkx: CollisionHKX, name: str, transform: Transform = None, use_material=True):
+    def import_hkx(self, hkx: MapCollisionHKX, name: str, transform: Transform = None, use_material=True):
         """Read a HKX into a collection of Blender mesh objects."""
         self.hkx = hkx
         self.name = name  # should not have extensions (e.g. `h0100B0A10`)
@@ -385,7 +384,7 @@ class HKXCollisionImporter:
         self.all_bl_objs = [hkx_parent]
 
         meshes = self.hkx.to_meshes()
-        material_indices = self.hkx.get_subpart_materials()
+        material_indices = self.hkx.map_collision_physics_data.get_subpart_materials()
         for i, hkx_subpart in enumerate(meshes):
             mesh_name = f"{self.name} Submesh {i}"
             bl_mesh = self.create_mesh_obj(hkx_subpart, material_indices[i], mesh_name)

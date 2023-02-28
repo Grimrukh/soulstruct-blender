@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-__all__ = ["ExportHKXCollision", "ExportHKXCollisionIntoBinder"]
+__all__ = ["ExportHKXMapCollision", "ExportHKXMapCollisionIntoBinder"]
 
 import re
 import traceback
-import typing as tp
 from pathlib import Path
 
 import bpy
@@ -13,10 +12,9 @@ from bpy.props import StringProperty, BoolProperty, IntProperty, EnumProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 from soulstruct.containers.dcx import DCXType
 
-from soulstruct.base.binder_entry import BinderEntry
-from soulstruct.containers import Binder
+from soulstruct.containers import Binder, BinderEntry
 
-from soulstruct_havok.wrappers.hkx2015 import CollisionHKX
+from soulstruct_havok.wrappers.hkx2015 import MapCollisionHKX
 
 from io_soulstruct.utilities import *
 from .utilities import *
@@ -27,9 +25,9 @@ DEBUG_VERTEX_INDICES = []
 HKX_COLLISION_NAME_RE = re.compile(r"^([hl])(\d\d\d\d)B(\d)A(\d\d)$")  # no extensions
 
 
-class ExportHKXCollision(LoggingOperator, ExportHelper):
+class ExportHKXMapCollision(LoggingOperator, ExportHelper):
     """Export HKX from a selection of Blender meshes."""
-    bl_idname = "export_scene.hkx_collision"
+    bl_idname = "export_scene.hkx_map_collision"
     bl_label = "Export HKX Collision"
     bl_description = "Export child meshes of selected Blender empty parent to a HKX collision file"
 
@@ -85,10 +83,10 @@ class ExportHKXCollision(LoggingOperator, ExportHelper):
         if bpy.ops.object.mode_set.poll():
             bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
 
-        exporter = HKXCollisionExporter(self, context)
+        exporter = HKXMapCollisionExporter(self, context)
 
         try:
-            hkx = exporter.export_hkx_collision(bl_meshes, name=hkx_name)
+            hkx = exporter.export_hkx_map_collision(bl_meshes, name=hkx_name)
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Cannot get exported HKX. Error: {ex}")
@@ -104,8 +102,8 @@ class ExportHKXCollision(LoggingOperator, ExportHelper):
         return {"FINISHED"}
 
 
-class ExportHKXCollisionIntoBinder(LoggingOperator, ImportHelper):
-    bl_idname = "export_scene.hkx_collision_binder"
+class ExportHKXMapCollisionIntoBinder(LoggingOperator, ImportHelper):
+    bl_idname = "export_scene.hkx_map_collision_binder"
     bl_label = "Export HKX Collision Into Binder"
     bl_description = "Export a HKX collision file into a FromSoftware Binder (BND/BHD)"
 
@@ -181,10 +179,10 @@ class ExportHKXCollisionIntoBinder(LoggingOperator, ImportHelper):
         if bpy.ops.object.mode_set.poll():
             bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
 
-        exporter = HKXCollisionExporter(self, context)
+        exporter = HKXMapCollisionExporter(self, context)
 
         try:
-            hkx = exporter.export_hkx_collision(bl_meshes, name=hkx_name)
+            hkx = exporter.export_hkx_map_collision(bl_meshes, name=hkx_name)
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Cannot get exported HKX. Error: {ex}")
@@ -192,7 +190,7 @@ class ExportHKXCollisionIntoBinder(LoggingOperator, ImportHelper):
             hkx.dcx_type = DCXType[self.dcx_type]
 
         try:
-            binder = Binder(self.filepath)
+            binder = Binder.from_path(self.filepath)
         except Exception as ex:
             return self.error(f"Could not load Binder file. Error: {ex}.")
 
@@ -232,15 +230,13 @@ class ExportHKXCollisionIntoBinder(LoggingOperator, ImportHelper):
         hkx.dcx_type = DCXType[self.dcx_type]
 
         try:
-            hkx_entry.set_uncompressed_data(hkx.pack_dcx())
+            hkx_entry.set_from_game_file(hkx)
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Cannot write exported HKX. Error: {ex}")
 
         try:
             # Will create a `.bak` file automatically if absent.
-            from soulstruct.containers import BXF3
-            binder: BXF3
             binder.write()
         except Exception as ex:
             traceback.print_exc()
@@ -249,12 +245,12 @@ class ExportHKXCollisionIntoBinder(LoggingOperator, ImportHelper):
         return {"FINISHED"}
 
 
-class HKXCollisionExporter:
+class HKXMapCollisionExporter:
 
     props: BlenderPropertyManager
     operator: bpy_types.Operator
 
-    def __init__(self, operator: ExportHKXCollision, context):
+    def __init__(self, operator: ExportHKXMapCollision, context):
         self.operator = operator
         self.context = context
         self.props = BlenderPropertyManager({
@@ -265,7 +261,7 @@ class HKXCollisionExporter:
         self.operator.report({"WARNING"}, msg)
         print(f"# WARNING: {msg}")
 
-    def export_hkx_collision(self, bl_meshes, name: str) -> CollisionHKX:
+    def export_hkx_map_collision(self, bl_meshes, name: str) -> MapCollisionHKX:
         """Create HKX from Blender meshes (subparts).
 
         TODO: Currently only supported for DSR and Havok 2015.
@@ -290,10 +286,11 @@ class HKXCollisionExporter:
 
             hkx_meshes.append((hkx_verts, hkx_faces))
 
-        hkx = CollisionHKX.from_meshes(
-            hkx_meshes,
+        hkx = MapCollisionHKX.from_meshes(
+            meshes=hkx_meshes,
             hkx_name=name,
             material_indices=hkx_material_indices,
+            # Bundled template HKX serves fine.
             # DCX applied by caller.
         )
 

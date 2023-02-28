@@ -39,7 +39,7 @@ def GAME_TO_BL_VECTOR(game_vector) -> Vector:
 
 def BL_TO_GAME_VECTOR(bl_vector: Vector):
     """See above."""
-    return Vector3(bl_vector.x, bl_vector.z, bl_vector.y)
+    return Vector3((bl_vector.x, bl_vector.z, bl_vector.y))
 
 
 def BL_TO_GAME_VECTOR_LIST(bl_vector: Vector):
@@ -59,7 +59,7 @@ def GAME_TO_BL_EULER(game_euler) -> Euler:
 
 def BL_TO_GAME_EULER(bl_euler: Euler) -> Vector3:
     """See above."""
-    return Vector3(-bl_euler.x, -bl_euler.z, -bl_euler.y)
+    return Vector3((-bl_euler.x, -bl_euler.z, -bl_euler.y))
 
 
 @dataclass(slots=True)

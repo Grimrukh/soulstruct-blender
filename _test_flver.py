@@ -5,8 +5,8 @@ from soulstruct.containers import Binder
 from soulstruct.base.models.flver import FLVER
 
 
-VANILLA_CHR_PATH = Path("C:/Steam/steamapps/common/DARK SOULS REMASTERED (Vanilla Backup)/chr")
-VANILLA_MAP_PATH = Path("C:/Steam/steamapps/common/DARK SOULS REMASTERED (Vanilla Backup)/map")
+VANILLA_CHR_PATH = Path("C:/Steam/steamapps/common/DARK SOULS REMASTERED (Vanilla Backup 1.03.1)/chr")
+VANILLA_MAP_PATH = Path("C:/Steam/steamapps/common/DARK SOULS REMASTERED (Vanilla Backup 1.03.1)/map")
 TEST_PATH = Path(__file__).parent / "tests"
 
 
@@ -17,10 +17,23 @@ def exported_flver():
 
 def test_chr():
 
-    chrbnd = Binder(VANILLA_CHR_PATH / "c1200.chrbnd.dcx")
-    for entry in chrbnd:
-        print(entry, entry.flags.has_flag_1)
-    # chr_flver = FLVER.from_chrbnd(VANILLA_CHR_PATH / "c1200.chrbnd.dcx")
+    chrbnd = Binder.from_path(VANILLA_CHR_PATH / "c1200.chrbnd.dcx")
+    flver_entry = chrbnd[200]
+    chr_flver = flver_entry.to_game_file(FLVER)
+    for attr in (
+        "big_endian",
+        "version",
+        "bounding_box_min",
+        "bounding_box_max",
+        "vertex_indices_size",
+        "unicode",
+        "unk_x4a",
+        "unk_x4c",
+        "unk_x5c",
+        "unk_x5d",
+        "unk_x68",
+    ):
+        print(attr, getattr(chr_flver, attr))
     # exported = FLVER("C:/Users/Scott/Documents/untitled.flver")
 
     # for dummy in chr_flver.dummies:
@@ -63,7 +76,7 @@ def test_tex_mp():
 
 
 if __name__ == '__main__':
-    # test_chr()
+    test_chr()
     # test()
     # exported_flver()
-    test_tex_mp()
+    # test_tex_mp()

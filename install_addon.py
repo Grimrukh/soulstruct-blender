@@ -10,10 +10,7 @@ from pathlib import Path
 
 from soulstruct.utilities.files import PACKAGE_PATH
 
-try:
-    from soulstruct_havok.utilities import PACKAGE_PATH as HAVOK_PACKAGE_PATH
-except ImportError:
-    HAVOK_PACKAGE_PATH = None
+from soulstruct_havok.utilities import PACKAGE_PATH as HAVOK_PACKAGE_PATH
 
 
 def install(blender_scripts_dir: str | Path, update_soulstruct_module=False):
@@ -35,6 +32,10 @@ def install(blender_scripts_dir: str | Path, update_soulstruct_module=False):
         # Removal may not be complete if Blender is open, particularly as `soulstruct.log` may not be deleted.
         shutil.copytree(PACKAGE_PATH(), blender_scripts_dir / "modules/soulstruct", dirs_exist_ok=True)
 
+        install_site_package("colorama", blender_scripts_dir / "modules/colorama")
+        install_site_package("scipy", blender_scripts_dir / "modules/scipy")
+        install_site_package("scipy.libs", blender_scripts_dir / "modules/scipy.libs")
+
         if HAVOK_PACKAGE_PATH is not None:
             print("# Installing Soulstruct-Havok module into Blender...")
             shutil.rmtree(blender_scripts_dir / "modules/soulstruct_havok", ignore_errors=True)
@@ -49,6 +50,20 @@ def install(blender_scripts_dir: str | Path, update_soulstruct_module=False):
     shutil.rmtree(blender_module_dir, ignore_errors=True)
     shutil.copytree(this_dir / "io_soulstruct", blender_module_dir)
     print(f"# Blender addon `io_soulstruct` installed to '{blender_addons_dir}'.")
+
+
+def install_site_package(dir_name: str, destination_dir: Path):
+    exe_path = Path(sys.executable)
+    site_packages_dir = exe_path.parent / "Lib/site-packages"
+    if not site_packages_dir.is_dir():  # exe could be in `Scripts` subfolder (venv)
+        site_packages_dir = exe_path.parent / "../Lib/site-packages"
+        if not site_packages_dir.is_dir():
+            raise FileNotFoundError(f"Could not find site-packages directory for Python executable: {exe_path}.")
+    package_dir = site_packages_dir / dir_name
+    if not package_dir.is_dir():
+        raise FileNotFoundError(f"Could not find site-package directory: {package_dir}.")
+    print(f"# Installing site-package `{dir_name}` into Blender...")
+    shutil.copytree(package_dir, destination_dir, dirs_exist_ok=True)
 
 
 def main(args):
