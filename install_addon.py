@@ -13,7 +13,7 @@ from soulstruct.utilities.files import PACKAGE_PATH
 from soulstruct_havok.utilities import PACKAGE_PATH as HAVOK_PACKAGE_PATH
 
 
-def install(blender_scripts_dir: str | Path, update_soulstruct_module=False):
+def install(blender_scripts_dir: str | Path, update_soulstruct_module=False, update_third_party_modules=False):
     """`blender_scripts_dir` should be the `scripts` folder in a specific version of Blender inside your AppData.
 
     For example:
@@ -32,9 +32,10 @@ def install(blender_scripts_dir: str | Path, update_soulstruct_module=False):
         # Removal may not be complete if Blender is open, particularly as `soulstruct.log` may not be deleted.
         shutil.copytree(PACKAGE_PATH(), blender_scripts_dir / "modules/soulstruct", dirs_exist_ok=True)
 
-        install_site_package("colorama", blender_scripts_dir / "modules/colorama")
-        install_site_package("scipy", blender_scripts_dir / "modules/scipy")
-        install_site_package("scipy.libs", blender_scripts_dir / "modules/scipy.libs")
+        if update_third_party_modules:
+            install_site_package("colorama", blender_scripts_dir / "modules/colorama")
+            install_site_package("scipy", blender_scripts_dir / "modules/scipy")
+            install_site_package("scipy.libs", blender_scripts_dir / "modules/scipy.libs")
 
         if HAVOK_PACKAGE_PATH is not None:
             print("# Installing Soulstruct-Havok module into Blender...")

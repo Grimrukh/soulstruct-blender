@@ -277,7 +277,7 @@ class ImportHKXMapCollisionWithBinderChoice(LoggingOperator):
         cls.use_material = use_material
         cls.hkx_entries = hkx_entries
         # noinspection PyUnresolvedReferences
-        bpy.ops.wm.hkx_binder_choice_operator("INVOKE_DEFAULT")
+        bpy.ops.wm.hkx_map_collision_binder_choice_operator("INVOKE_DEFAULT")
 
 
 class ImportHKXMapCollisionWithMSBChoice(LoggingOperator):

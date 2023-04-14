@@ -81,11 +81,10 @@ classes = (
     NVM_PT_navmesh_tools,
 )
 
-print("SOULSTRUCT SCRIPTS LOADED")
-
 if soulstruct_havok:
     from io_soulstruct.hkx_map_collision import *
     from io_soulstruct.hkx_animation import *
+    from io_soulstruct.hkx_cutscene import *
 
     havok_classes = (
         ImportHKXMapCollision,
@@ -100,13 +99,15 @@ if soulstruct_havok:
         # ExportHKXAnimation,
         # ExportHKXAnimationIntoBinder,
         HKX_ANIMATION_PT_hkx_animation_tools,
-    )
 
-    print("HAVOK INCLUDED")
+        ImportHKXCutscene,
+        HKX_CUTSCENE_PT_hkx_cutscene_tools,
+    )
 
     def havok_menu_func_import(self, context):
         self.layout.operator(ImportHKXMapCollision.bl_idname, text="HKX Collision (.hkx/.hkxbhd)")
         self.layout.operator(ImportHKXAnimation.bl_idname, text="HKX Animation (.hkx/.hkxbhd)")
+        self.layout.operator(ImportHKXCutscene.bl_idname, text="HKX Cutscene (.remobnd)")
 
     def havok_menu_func_export(self, context):
         self.layout.operator(ExportHKXMapCollision.bl_idname, text="HKX Collision (.hkx)")
