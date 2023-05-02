@@ -66,6 +66,8 @@ classes = (
     ImportFLVERWithMSBChoice,
     ExportFLVER,
     ExportFLVERIntoBinder,
+    ExportFLVERToMapDirectory,
+    ExportMapDirectorySettings,
     ImportDDS,
     ExportTexturesIntoBinder,
     LightmapBakeProperties,
@@ -128,6 +130,7 @@ def register():
     bpy.types.TOPBAR_MT_file_export.append(menu_func_export)
 
     bpy.types.Scene.lightmap_bake_props = bpy.props.PointerProperty(type=LightmapBakeProperties)
+    bpy.types.Scene.export_map_directory_settings = bpy.props.PointerProperty(type=ExportMapDirectorySettings)
 
     if havok_classes:
         for cls in havok_classes:
@@ -149,6 +152,7 @@ def unregister():
         bpy.types.TOPBAR_MT_file_export.remove(havok_menu_func_export)
 
     del bpy.types.Scene.lightmap_bake_props
+    del bpy.types.Scene.export_map_directory_settings
 
 
 if __name__ == "__main__":

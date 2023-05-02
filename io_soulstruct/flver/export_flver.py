@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-__all__ = ["ExportFLVER", "ExportFLVERIntoBinder"]
+__all__ = ["ExportFLVER", "ExportFLVERIntoBinder", "ExportFLVERToMapDirectory", "ExportMapDirectorySettings"]
 
 import traceback
 import typing as tp
@@ -64,8 +64,90 @@ class MeshBuildResult(tp.NamedTuple):
     local_bone_indices: list[int]
 
 
+class ExportMapDirectorySettings(bpy.types.PropertyGroup):
+    game_directory: bpy.props.StringProperty(
+        name="Game Directory",
+        description="Directory of FromSoftware game files",
+        subtype="DIR_PATH",
+    )
+    map_stem: bpy.props.StringProperty(
+        name="Map Stem",
+        description="Stem of FromSoftware game map name (e.g. 'm10_00_00_00')",
+    )
+    dcx_type: EnumProperty(
+        name="Compression",
+        items=[
+            ("Null", "None", "Export without any DCX compression"),
+            ("DCX_EDGE", "DES", "Demon's Souls compression"),
+            ("DCX_DFLT_10000_24_9", "DS1/DS2", "Dark Souls 1/2 compression"),
+            ("DCX_DFLT_10000_44_9", "BB/DS3", "Bloodborne/Dark Souls 3 compression"),
+            ("DCX_DFLT_11000_44_9", "Sekiro", "Sekiro compression (requires Oodle DLL)"),
+            ("DCX_KRAK", "Elden Ring", "Elden Ring compression (requires Oodle DLL)"),
+        ],
+        description="Type of DCX compression to apply to exported file",
+        default = "DCX_DFLT_10000_24_9",  # DS1 default
+    )
+
+
+class ExportFLVERToMapDirectory(LoggingOperator):
+    """Export FLVER model from a Blender Armature parent to an auto-named map piece file in the given map directory."""
+    bl_idname = "export_scene_map.flver"
+    bl_label = "Export FLVER to Map Directory"
+    bl_description = (
+        "Export a prepared Blender object hierarchy to a FromSoftware "
+        "FLVER model file in a given `map` directory."
+    )
+
+    @classmethod
+    def poll(cls, context):
+        try:
+            return context.selected_objects[0].type == "ARMATURE"
+        except IndexError:
+            return False
+
+    def execute(self, context):
+        game_directory = context.scene.export_map_directory_settings.game_directory
+        map_stem = context.scene.export_map_directory_settings.map_stem
+        dcx_type = context.scene.export_map_directory_settings.dcx_type
+
+        map_dir_path = Path(game_directory) / f"map/{map_stem}"
+
+        if not map_dir_path.is_dir():
+            return self.error(f"Invalid game map directory: {map_dir_path}")
+
+        selected_objs = [obj for obj in context.selected_objects]
+        if not selected_objs:
+            return self.error("No FLVER parent object selected.")
+        elif len(selected_objs) > 1:
+            return self.error("Multiple objects selected. Exactly one FLVER parent object must be selected.")
+        flver_parent_obj = selected_objs[0]
+        flver_name = flver_parent_obj.name.split(" ")[0] + ".flver"  # DCX will be added automatically below if needed
+        if bpy.ops.object.mode_set.poll():
+            # Must be in OBJECT mode for export, as some data (e.g. UVs) is not accessible in EDIT mode.
+            bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
+
+        exporter = FLVERExporter(self, context)
+
+        try:
+            flver = exporter.export_flver(flver_parent_obj)
+        except Exception as ex:
+            traceback.print_exc()
+            return self.error(f"Cannot get exported FLVER. Error: {ex}")
+        else:
+            flver.dcx_type = DCXType[dcx_type]
+            try:
+                # Will create a `.bak` file automatically if absent, and add `.dcx` extension if necessary.
+                flver.write(map_dir_path / flver_name)
+            except Exception as ex:
+                traceback.print_exc()
+                return self.error(f"Cannot write exported FLVER. Error: {ex}")
+            self.info(f"Exported FLVER to: {map_dir_path / flver_name}")
+
+        return {"FINISHED"}
+
+
 class ExportFLVER(LoggingOperator, ExportHelper):
-    """Export FLVER from a Blender Armature parent."""
+    """Export FLVER model from a Blender Armature parent to a file."""
     bl_idname = "export_scene.flver"
     bl_label = "Export FLVER"
     bl_description = "Export a prepared Blender object hierarchy to a FromSoftware FLVER model file."
@@ -129,12 +211,13 @@ class ExportFLVER(LoggingOperator, ExportHelper):
             except Exception as ex:
                 traceback.print_exc()
                 return self.error(f"Cannot write exported FLVER. Error: {ex}")
+            self.info(f"Exported FLVER to: {self.filepath}")
 
         return {"FINISHED"}
 
 
 class ExportFLVERIntoBinder(LoggingOperator, ImportHelper):
-    """This appears in the tooltip of the operator and in the generated docs."""
+    """Export FLVER model from a Blender Armature parent into a chosen game binder (BND/BHD)."""
     bl_idname = "export_scene.flver_binder"
     bl_label = "Export FLVER Into Binder"
     bl_description = "Export a FLVER model file into a FromSoftware Binder (BND/BHD)"
@@ -249,7 +332,7 @@ class ExportFLVERIntoBinder(LoggingOperator, ImportHelper):
         flver.dcx_type = dcx_type
 
         try:
-            flver_entry.set_from_game_file(flver)  # DCX will default to None here from exporter function
+            flver_entry.set_from_binary_file(flver)  # DCX will default to None here from exporter function
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Cannot write exported FLVER. Error: {ex}")
@@ -276,7 +359,7 @@ class FLVERExporter:
         self.context = context
         self.props = BlenderPropertyManager({  # TODO: DS1 values (tailored for map pieces, specifically)
             "FLVER": {
-                "endian": BlenderProp(bytes, b"L"),
+                "big_endian": BlenderProp(int, False, bool),
                 "version": BlenderProp(str, "DarkSouls_A", Version.__getitem__),
                 "unicode": BlenderProp(int, True, bool),
                 "unk_x4a": BlenderProp(int, False, bool),
@@ -463,7 +546,6 @@ class FLVERExporter:
                 builder.game_mesh.vertices = game_vertices
                 builder.game_mesh.face_sets = game_face_sets
                 builder.game_mesh.bone_indices = mesh_local_bone_indices
-                builder.buffer.vertex_count = len(game_vertices)
 
         # TODO: Set BB properly per bone (need to update bounds for each bone while building vertices).
         recompute_bounding_box(flver, flver.bones)

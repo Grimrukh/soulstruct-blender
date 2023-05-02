@@ -30,7 +30,12 @@ def install(blender_scripts_dir: str | Path, update_soulstruct_module=False, upd
         print("# Installing Soulstruct module into Blender...")
         shutil.rmtree(blender_scripts_dir / "modules/soulstruct", ignore_errors=True)
         # Removal may not be complete if Blender is open, particularly as `soulstruct.log` may not be deleted.
-        shutil.copytree(PACKAGE_PATH(), blender_scripts_dir / "modules/soulstruct", dirs_exist_ok=True)
+        shutil.copytree(
+            PACKAGE_PATH(),
+            blender_scripts_dir / "modules/soulstruct",
+            dirs_exist_ok=True,
+            ignore=shutil.ignore_patterns("*.pyc", "__pycache__", "oo2core_6_win64.dll"),
+        )
 
         if update_third_party_modules:
             install_site_package("colorama", blender_scripts_dir / "modules/colorama")

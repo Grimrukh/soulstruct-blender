@@ -230,7 +230,7 @@ class ExportHKXMapCollisionIntoBinder(LoggingOperator, ImportHelper):
         hkx.dcx_type = DCXType[self.dcx_type]
 
         try:
-            hkx_entry.set_from_game_file(hkx)
+            hkx_entry.set_from_binary_file(hkx)
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Cannot write exported HKX. Error: {ex}")

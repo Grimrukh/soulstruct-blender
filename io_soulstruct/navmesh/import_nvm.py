@@ -138,7 +138,7 @@ class ImportNVM(LoggingOperator, ImportHelper):
                     if self.import_all_from_binder:
                         for entry in nvm_entries:
                             try:
-                                nvm = entry.to_game_file(NVM)
+                                nvm = entry.to_binary_file(NVM)
                             except Exception as ex:
                                 self.warning(f"Error occurred while reading NVM Binder entry '{entry.name}': {ex}")
                             else:
@@ -149,7 +149,7 @@ class ImportNVM(LoggingOperator, ImportHelper):
                         nvms_with_paths.append((file_path, nvm_entries))
                 else:
                     try:
-                        nvm = nvm_entries[0].to_game_file(NVM)
+                        nvm = nvm_entries[0].to_binary_file(NVM)
                     except Exception as ex:
                         self.warning(f"Error occurred while reading NVM Binder entry '{nvm_entries[0].name}': {ex}")
                     else:
@@ -259,7 +259,7 @@ class ImportNVMWithBinderChoice(LoggingOperator):
     def execute(self, context):
         choice = int(self.choices_enum)
         entry = self.nvm_entries[choice]
-        nvm = entry.to_game_file(NVM)
+        nvm = entry.to_binary_file(NVM)
         nvm_name = entry.name.split(".")[0]
 
         self.importer.operator = self

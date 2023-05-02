@@ -5,6 +5,8 @@ __all__ = [
     "ImportFLVERWithMSBChoice",
     "ExportFLVER",
     "ExportFLVERIntoBinder",
+    "ExportFLVERToMapDirectory",
+    "ExportMapDirectorySettings",
     "ImportDDS",
     "ExportTexturesIntoBinder",
     "LightmapBakeProperties",
@@ -17,7 +19,9 @@ __all__ = [
 import bpy
 
 from io_soulstruct.flver.import_flver import ImportFLVER, ImportFLVERWithMSBChoice
-from io_soulstruct.flver.export_flver import ExportFLVER, ExportFLVERIntoBinder
+from io_soulstruct.flver.export_flver import (
+    ExportFLVER, ExportFLVERIntoBinder, ExportFLVERToMapDirectory, ExportMapDirectorySettings
+)
 from io_soulstruct.flver.textures import *
 
 
@@ -43,6 +47,13 @@ class FLVER_PT_flver_tools(bpy.types.Panel):
         export_box = self.layout.box()
         export_box.operator("export_scene.flver")
         export_box.operator("export_scene.flver_binder")
+
+        export_map_settings = context.scene.export_map_directory_settings
+        export_to_map_box = self.layout.box()
+        export_to_map_box.prop(export_map_settings, "game_directory")
+        export_to_map_box.prop(export_map_settings, "map_stem")
+        export_to_map_box.prop(export_map_settings, "dcx_type")
+        export_to_map_box.operator("export_scene_map.flver")
 
         textures_box = self.layout.box()
         textures_box.operator("import_image.dds")

@@ -230,7 +230,7 @@ class ExportNVMIntoBinder(LoggingOperator, ImportHelper):
         nvm.dcx_type = DCXType[self.dcx_type]
 
         try:
-            nvm_entry.set_from_game_file(nvm)
+            nvm_entry.set_from_binary_file(nvm)
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Cannot write exported NVM. Error: {ex}")

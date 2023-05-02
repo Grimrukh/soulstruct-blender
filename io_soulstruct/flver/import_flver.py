@@ -121,12 +121,12 @@ class ImportFLVER(LoggingOperator, ImportHelper):
                     raise FLVERImportError(f"Cannot find a FLVER file in binder {file_path}.")
                 elif len(flver_entries) > 1:
                     raise FLVERImportError(f"Found multiple FLVER files in binder {file_path}.")
-                flver = flver_entries[0].to_game_file(FLVER)
+                flver = flver_entries[0].to_binary_file(FLVER)
                 flvers.append(flver)
 
                 # Find TPFs or CHRTPFBHDs inside binder, potentially using `chrtpfbdt` file if it exists.
                 for tpf_entry in binder.find_entries_matching_name(TPF_RE):  # generally only one
-                    tpf = tpf_entry.to_game_file(TPF)
+                    tpf = tpf_entry.to_binary_file(TPF)
                     for texture in tpf.textures:
                         attached_texture_sources[texture.name] = texture
 
@@ -142,7 +142,7 @@ class ImportFLVER(LoggingOperator, ImportHelper):
                         for tpf_entry in tpfbxf.entries:
                             match = TPF_RE.match(tpf_entry.name)
                             if match:
-                                tpf = tpf_entry.to_game_file(TPF)
+                                tpf = tpf_entry.to_binary_file(TPF)
                                 tpf.convert_dds_formats("DX10", "DXT1")
                                 for texture in tpf.textures:
                                     attached_texture_sources[texture.name] = texture
@@ -295,13 +295,17 @@ class FLVERImporter:
     name: str
     bl_images: dict[str, tp.Any]  # values can be string DDS paths or loaded Blender images
 
+    texture_sources: dict[str, TPFTexture]
+    loose_tpf_sources: dict[str, BinderEntry | TPFTexture]
+    dds_dump_path: Path | None
+
     def __init__(
         self,
         operator: ImportFLVER,
         context,
         texture_sources: dict[str, TPFTexture] = None,
-        loose_tpf_sources: dict[str, BinderEntry] = None,
-        dds_dump_path: tp.Optional[Path] = None,
+        loose_tpf_sources: dict[str, BinderEntry | TPFTexture] = None,
+        dds_dump_path: Path | None = None,
         enable_alpha_hashed=True,
     ):
         self.operator = operator
@@ -414,7 +418,7 @@ class FLVERImporter:
         self.create_dummies()
 
     def load_texture_images(self):
-        """Load texture images from either `dds_dump` folder or TPFs found with the FLVER."""
+        """Load texture images from either `dds_dump` folder, TPFs found with the FLVER, or scanned loose (map) TPFs."""
         textures_to_load = {}  # type: dict[str, TPFTexture]
         for texture_path in self.flver.get_all_texture_paths():
             texture_stem = texture_path.stem
@@ -431,15 +435,30 @@ class FLVERImporter:
 
             if texture_stem in self.loose_tpf_sources:
                 # Found in loose TPF.
-                tpf = self.loose_tpf_sources[texture_path.stem].to_game_file(TPF)
-                if tpf.textures[0].stem != texture_path.stem:
-                    self.warning(
-                        f"Loose TPF '{texture_path.stem}' contained first texture with non-matching name "
-                        f"'{tpf.textures[0].stem}'. Ignoring."
-                    )
+                texture_source = self.loose_tpf_sources[texture_path.stem]
+                if isinstance(texture_source, BinderEntry):
+                    # Source is a BinderEntry, so it's a TPF inside a Binder.
+                    tpf = self.loose_tpf_sources[texture_path.stem].to_binary_file(TPF)
+                    if tpf.textures[0].stem != texture_path.stem:
+                        self.warning(
+                            f"Loose TPF '{texture_path.stem}' contained first texture with non-matching name "
+                            f"'{tpf.textures[0].stem}'. Ignoring."
+                        )
+                    else:
+                        textures_to_load[texture_stem] = tpf.textures[0]
+                    continue
+                elif isinstance(texture_source, TPFTexture):
+                    # Source is a TPFTexture loaded from a loose TPF file, not a Binder.
+                    if texture_source.stem != texture_path.stem:
+                        self.warning(
+                            f"Loose TPFTexture keyed under '{texture_stem}' has non-matching name "
+                            f"'{texture_source.stem}'. Ignoring."
+                        )
+                    else:
+                        textures_to_load[texture_stem] = texture_source
+                    continue
                 else:
-                    textures_to_load[texture_stem] = tpf.textures[0]
-                continue
+                    self.warning(f"Unexpected loose TPF source type for '{texture_stem}': {type(texture_source)}")
 
             if self.dds_dump_path:
                 dds_path = self.dds_dump_path / f"{texture_path.stem}.dds"
@@ -783,11 +802,11 @@ class FLVERImporter:
                 bl_bone_name = self.bl_bone_names[dummy.parent_bone_index]
                 bl_dummy["parent_bone_name"] = bl_bone_name
                 bl_parent_bone_matrix = self.armature.data.bones[bl_bone_name].matrix_local
-                bl_location = bl_parent_bone_matrix @ GAME_TO_BL_VECTOR(dummy.position)
+                bl_location = bl_parent_bone_matrix @ GAME_TO_BL_VECTOR(dummy.translate)
             else:
                 # Bone's location is in armature space.
                 bl_dummy["parent_bone_name"] = ""
-                bl_location = GAME_TO_BL_VECTOR(dummy.position)
+                bl_location = GAME_TO_BL_VECTOR(dummy.translate)
 
             # Dummy moves with this bone during animations.
             if dummy.attach_bone_index != -1:

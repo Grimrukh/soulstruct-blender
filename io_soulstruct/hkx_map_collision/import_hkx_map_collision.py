@@ -95,7 +95,7 @@ class ImportHKXMapCollision(LoggingOperator, ImportHelper):
                         if self.import_all_from_binder:
                             for entry in hkx_entries:
                                 try:
-                                    hkx = entry.to_game_file(MapCollisionHKX)
+                                    hkx = entry.to_binary_file(MapCollisionHKX)
                                 except Exception as ex:
                                     self.warning(f"Error occurred while reading HKX Binder entry '{entry.name}': {ex}")
                                 else:
@@ -106,7 +106,7 @@ class ImportHKXMapCollision(LoggingOperator, ImportHelper):
                             hkxs_with_paths.append((file_path, hkx_entries))
                     else:
                         try:
-                            hkx = hkx_entries[0].to_game_file(MapCollisionHKX)
+                            hkx = hkx_entries[0].to_binary_file(MapCollisionHKX)
                         except Exception as ex:
                             self.warning(f"Error occurred while reading HKX Binder entry '{hkx_entries[0].name}': {ex}")
                         else:
@@ -225,7 +225,7 @@ class ImportHKXMapCollisionWithBinderChoice(LoggingOperator):
     def execute(self, context):
         choice = int(self.choices_enum)
         entry = self.hkx_entries[choice]
-        hkx = entry.to_game_file(MapCollisionHKX)
+        hkx = entry.to_binary_file(MapCollisionHKX)
         hkx_name = entry.name.split(".")[0]
 
         self.importer.operator = self

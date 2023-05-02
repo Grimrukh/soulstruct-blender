@@ -15,7 +15,7 @@ import bpy
 from bpy_extras.io_utils import ImportHelper
 
 from soulstruct.base.textures.dds import texconv
-from soulstruct.containers import DCXType, TPF
+from soulstruct.containers import BinderEntry, BinderEntryFlags, DCXType, TPF
 
 from io_soulstruct.utilities import *
 from .utilities import *
@@ -63,7 +63,7 @@ class ImportDDS(LoggingOperator, ImportHelper):
         for file_path in file_paths:
 
             if TPF_RE.match(file_path.name):
-                tpf = TPF(file_path)
+                tpf = TPF.from_path(file_path)
                 if len(tpf.textures) > 1:
                     # TODO: Could load all and assign to multiple selected Image Texture nodes if names match?
                     return self.error(f"Cannot import TPF file containing more than one texture: {file_path}")
@@ -128,7 +128,16 @@ class ExportTexturesIntoBinder(LoggingOperator, ImportHelper):
 
     rename_matching_tpfs: bpy.props.BoolProperty(
         name="Rename Matching TRFs",
-        description="Also change name of any TPF wrappers if they match the name being replaced."
+        description="Also change name of any TPF wrappers if they match the name being replaced"
+    )
+
+    files: bpy.props.CollectionProperty(
+        type=bpy.types.OperatorFileListElement,
+        options={'HIDDEN', 'SKIP_SAVE'},
+    )
+
+    directory: bpy.props.StringProperty(
+        options={'HIDDEN'},
     )
 
     # TODO: Option: if texture name is changed, update that texture path in FLVER (in Binder and custom Blender prop).
@@ -148,6 +157,8 @@ class ExportTexturesIntoBinder(LoggingOperator, ImportHelper):
     def execute(self, context):
         print("Executing texture export...")
 
+        file_paths = [Path(self.directory, file.name) for file in self.files]
+
         sel_tex_nodes = [
             node for node in context.active_object.active_material.node_tree.nodes
             if node.select and node.bl_idname == "ShaderNodeTexImage"
@@ -157,12 +168,15 @@ class ExportTexturesIntoBinder(LoggingOperator, ImportHelper):
         if len(sel_tex_nodes) > 1 and self.replace_texture_name:
             return self.error("Cannot override 'Replace Texture Name' when exporting multiple textures.")
 
-        try:
-            texture_export_info = get_texture_export_info(self.filepath)
-        except Exception as ex:
-            return self.error(str(ex))
+        texture_export_infos = {}  # type: dict[Path, TextureExportInfo]
+        for file_path in file_paths:
+            try:
+                texture_export_infos[file_path] = get_texture_export_info(str(file_path))
+            except Exception as ex:
+                return self.error(str(ex))
 
         rename_tpf = self.rename_matching_tpfs and self.replace_texture_name
+        replaced_texture_export_info = None
         for tex_node in sel_tex_nodes:
             bl_image = tex_node.image
             if not bl_image:
@@ -171,24 +185,29 @@ class ExportTexturesIntoBinder(LoggingOperator, ImportHelper):
             image_stem = Path(bl_image.name).stem
 
             if self.replace_texture_name:  # will only be allowed if one Image Texture is being exported
-                repl_name = f"{Path(self.replace_texture_name).stem}.dds"
+                repl_name = Path(self.replace_texture_name).stem
             else:
                 repl_name = image_stem
 
-            image_exported, dds_format = texture_export_info.inject_texture(bl_image, image_stem, repl_name, rename_tpf)
-            if image_exported:
-                print(f"Replacing name: {repl_name}")
-                self.info(f"Exported '{bl_image.name}' into '{self.filepath}' with DDS format {dds_format}")
+            for file_path, texture_export_info in texture_export_infos.items():
+                image_exported, dds_format = texture_export_info.inject_texture(bl_image, image_stem, repl_name, rename_tpf)
+                if image_exported:
+                    print(f"Replacing name: {repl_name}")
+                    self.info(f"Exported '{bl_image.name}' into '{self.filepath}' with DDS format {dds_format}")
+                    replaced_texture_export_info = texture_export_info
+                    break  # do not search other file paths
+                else:
+                    self.info(f"Could not find any TPF textures to replace with Blender image in {file_path.name}: '{image_stem}'")
             else:
-                self.warning(f"Could not find any TPF textures to replace with Blender image: '{image_stem}'")
+                self.warning(f"Could not find any TPF textures to replace with Blender image in ANY files: '{image_stem}'")
 
-        # TPFs have all been updated. Now pack modified ones back to their Binders.
-        try:
-            write_msg = texture_export_info.write_files()
-        except Exception as ex:
-            return self.error(str(ex))
-
-        self.info(write_msg)
+        if replaced_texture_export_info:
+            # TPFs have all been updated. Now pack modified ones back to their Binders.
+            try:
+                write_msg = replaced_texture_export_info.write_files()
+            except Exception as ex:
+                return self.error(str(ex))
+            self.info(write_msg)
         return {"FINISHED"}
 
 
@@ -481,7 +500,7 @@ class ExportLightmapTextures(LoggingOperator, ImportHelper):
                 continue
             image_stem = Path(bl_image.name).stem
             image_exported, dds_format = texture_export_info.inject_texture(
-                bl_image, image_stem, image_stem, rename_tpf=False
+                bl_image, image_stem, repl_name=image_stem, rename_tpf=False
             )
             if image_exported:
                 self.info(f"Exported '{bl_image.name}' into '{self.filepath}' with DDS format {dds_format}")
@@ -493,11 +512,11 @@ class ExportLightmapTextures(LoggingOperator, ImportHelper):
                     if new_tpf.dcx_type != DCXType.Null:
                         new_tpf_entry_path += ".dcx"
                     texture_export_info.chrtpfbxf.add_entry(
-                        texture_export_info.chrtpfbxf.BinderEntry(
+                        BinderEntry(
                             data=new_tpf.pack_dcx(),
                             entry_id=texture_export_info.chrtpfbxf.highest_entry_id + 1,
                             path=new_tpf_entry_path,
-                            flags=0x2,  # TODO: DS1 default
+                            flags=BinderEntryFlags(0x2),  # TODO: DS1 default
                         )
                     )
                 else:

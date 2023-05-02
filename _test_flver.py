@@ -11,7 +11,7 @@ TEST_PATH = Path(__file__).parent / "tests"
 
 
 def exported_flver():
-    exported = FLVER("C:/Users/Scott/Documents/untitled.flver")
+    exported = FLVER.from_path("C:/Users/Scott/Documents/untitled.flver")
     print(exported.meshes)
 
 
@@ -19,7 +19,7 @@ def test_chr():
 
     chrbnd = Binder.from_path(VANILLA_CHR_PATH / "c1200.chrbnd.dcx")
     flver_entry = chrbnd[200]
-    chr_flver = flver_entry.to_game_file(FLVER)
+    chr_flver = flver_entry.to_binary_file(FLVER)
     for attr in (
         "big_endian",
         "version",
@@ -42,7 +42,7 @@ def test_chr():
 
 def test():
 
-    map_flver = FLVER(VANILLA_MAP_PATH / "m10_01_00_00/m3220B1A10.flver.dcx")
+    map_flver = FLVER.from_path(VANILLA_MAP_PATH / "m10_01_00_00/m3220B1A10.flver.dcx")
 
     mesh = map_flver.meshes[11]
     for v in mesh.vertices:
@@ -53,10 +53,10 @@ def test_tex_mp():
     from soulstruct.containers.tpf import TPF, batch_get_tpf_texture_png_data
     import timeit
 
-    tpfbhd = Binder(VANILLA_MAP_PATH / "m10/m10_0000.tpfbhd")
+    tpfbhd = Binder.from_path(VANILLA_MAP_PATH / "m10/m10_0000.tpfbhd")
     textures = []
     for entry in tpfbhd.entries:
-        tpf = TPF(entry)
+        tpf = entry.to_binary_file(TPF)
         for tex in tpf.textures:
             textures.append(tex)
 
@@ -75,8 +75,28 @@ def test_tex_mp():
     print("Success.")
 
 
+def check_flver():
+    working = FLVER.from_path("C:/Steam/steamapps/common/DARK SOULS REMASTERED (Nightfall)/map/m13_01_00_00/m2000E1A13.flver.dcx.bak")
+    bad = FLVER.from_path("C:/Steam/steamapps/common/DARK SOULS REMASTERED (Nightfall)/map/m13_01_00_00/m2000E1A13.flver.dcx")
+
+    working_mesh_5 = working.meshes[5]
+    bad_mesh_5 = bad.meshes[5]
+
+    print(len(working_mesh_5.vertices))
+    print(len(bad_mesh_5.vertices))
+
+    for i, (working_v, bad_v) in enumerate(zip(working_mesh_5.vertices, bad_mesh_5.vertices)):
+        if working_v.uvs != bad_v.uvs:
+            print(i)
+            print(working_v.uvs)
+            print(bad_v.uvs)
+            break
+
+
 if __name__ == '__main__':
-    test_chr()
+    # test_chr()
     # test()
     # exported_flver()
     # test_tex_mp()
+
+    check_flver()

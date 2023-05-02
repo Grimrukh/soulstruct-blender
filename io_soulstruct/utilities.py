@@ -149,7 +149,7 @@ class BlenderProp(tp.NamedTuple):
 
 class BlenderPropertyManager:
 
-    _properties: dict[str, dict[str, BlenderProp]]
+    properties: dict[str, dict[str, BlenderProp]]
 
     def __init__(self, property_dict: dict[str, dict[str, BlenderProp]]):
         self.properties = property_dict
@@ -158,7 +158,7 @@ class BlenderPropertyManager:
         if py_prop_name is None:
             py_prop_name = bl_prop_name
         try:
-            prop = self._properties[prop_class][py_prop_name]
+            prop = self.properties[prop_class][py_prop_name]
         except KeyError:
             raise KeyError(f"Invalid Blender HKX property class/name: {prop_class}, {bl_prop_name}")
 
@@ -185,7 +185,7 @@ class BlenderPropertyManager:
     def get_all(self, bl_obj, py_obj, prop_class: str, bl_prop_prefix: str = "") -> dict[str, tp.Any]:
         """Assign all class properties from Blender object `bl_obj` as attributes of Soulstruct object `py_obj`."""
         unassigned = {}
-        for prop_name, prop in self._properties[prop_class].items():
+        for prop_name, prop in self.properties[prop_class].items():
             prop_value = self.get(bl_obj, prop_class, bl_prop_prefix + prop_name, py_prop_name=prop_name)
             if prop.do_not_assign:
                 unassigned[prop_name] = prop_value

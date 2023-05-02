@@ -99,7 +99,7 @@ class ImportHKXAnimation(LoggingOperator, ImportHelper):
                     if self.import_all_from_binder:
                         for entry in hkx_entries:
                             try:
-                                animation_hkx = entry.to_game_file(AnimationHKX)
+                                animation_hkx = entry.to_binary_file(AnimationHKX)
                             except Exception as ex:
                                 self.warning(f"Error occurred while reading HKX Binder entry '{entry.name}': {ex}")
                             else:
@@ -110,7 +110,7 @@ class ImportHKXAnimation(LoggingOperator, ImportHelper):
                         hkxs_with_paths.append((file_path, hkx_entries))
                 else:
                     try:
-                        animation_hkx = hkx_entries[0].to_game_file(AnimationHKX)
+                        animation_hkx = hkx_entries[0].to_binary_file(AnimationHKX)
                     except Exception as ex:
                         self.warning(f"Error occurred while reading HKX Binder entry '{hkx_entries[0].name}': {ex}")
                     else:
@@ -144,7 +144,7 @@ class ImportHKXAnimation(LoggingOperator, ImportHelper):
 
             animation_hkx = hkx_or_entries
             anim_name = animation_hkx.path.name.split(".")[0]
-            skeleton_hkx = skeleton_entry.to_game_file(SkeletonHKX)
+            skeleton_hkx = skeleton_entry.to_binary_file(SkeletonHKX)
 
             self.info(f"Importing HKX animation for {bl_armature.name}: {anim_name}")
 
@@ -213,9 +213,9 @@ class ImportHKXAnimationWithBinderChoice(LoggingOperator):
     def execute(self, context):
         choice = int(self.choices_enum)
         entry = self.hkx_entries[choice]
-        animation_hkx = entry.to_game_file(AnimationHKX)
+        animation_hkx = entry.to_binary_file(AnimationHKX)
         anim_name = entry.name.split(".")[0]
-        skeleton_hkx = self.skeleton_entry.to_game_file(SkeletonHKX)
+        skeleton_hkx = self.skeleton_entry.to_binary_file(SkeletonHKX)
 
         self.importer.operator = self
         self.importer.context = context

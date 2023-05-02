@@ -2,6 +2,7 @@ from __future__ import annotations
 
 __all__ = [
     "TPF_RE",
+    "TextureExportInfo",
     "TextureExportException",
     "SingleTPFTextureExport",
     "BinderTPFTextureExport",
@@ -62,7 +63,7 @@ class SingleTPFTextureExport(TextureExportInfo):
         self.modified = False
         self.new_file_name = ""
         try:
-            self.loose_tpf = TPF(file_path)
+            self.loose_tpf = TPF.from_path(file_path)
         except Exception as ex:
             raise TextureExportException(f"Could not load TPF file. Error: {ex}")
 
@@ -121,7 +122,7 @@ class BinderTPFTextureExport(TextureExportInfo):
         self.modified_binder_tpfs = []
         for tpf_entry in tpf_entries:
             try:
-                self.binder_tpfs[tpf_entry.name] = (tpf_entry, tpf_entry.to_game_file(TPF))
+                self.binder_tpfs[tpf_entry.name] = (tpf_entry, tpf_entry.to_binary_file(TPF))
             except Exception as ex:
                 raise TextureExportException(f"Could not load TPF file '{tpf_entry.name}' in Binder. Error: {ex}")
 
@@ -159,7 +160,8 @@ class BinderTPFTextureExport(TextureExportInfo):
             raise TextureExportException("Could not find any textures to replace in Binder TPFs.")
         for binder_tpf_entry, binder_tpf in self.binder_tpfs.values():
             if binder_tpf in self.modified_binder_tpfs:
-                binder_tpf_entry.set_from_game_file(binder_tpf)
+                binder_tpf_entry.set_from_binary_file(binder_tpf)
+        print(self.binder.path, self.binder.is_split_bxf)
         self.binder.write()  # always same path
         return f"Wrote Binder with {len(self.modified_binder_tpfs)} modified TPFs."
 
@@ -184,7 +186,7 @@ class SplitBinderTPFTextureExport(TextureExportInfo):
         self.modified_bxf_tpfs = []
         for tpf_entry in bxf_tpf_entries:
             try:
-                self.bxf_tpfs[tpf_entry.name] = (tpf_entry, tpf_entry.to_game_file(TPF))
+                self.bxf_tpfs[tpf_entry.name] = (tpf_entry, tpf_entry.to_binary_file(TPF))
             except Exception as ex:
                 raise TextureExportException(
                     f"Could not load TPF file '{tpf_entry.name}' in CHRTPFBHD. Error: {ex}"
@@ -225,7 +227,7 @@ class SplitBinderTPFTextureExport(TextureExportInfo):
             raise TextureExportException("Could not find any textures to replace in Binder CHRTPFBHD TPFs.")
         for bxf_tpf_entry, bxf_tpf in self.bxf_tpfs.values():
             if bxf_tpf in self.modified_bxf_tpfs:
-                bxf_tpf_entry.set_from_game_file(bxf_tpf)
+                bxf_tpf_entry.set_from_binary_file(bxf_tpf)
         self.chrtpfbxf.write_split(
             bhd_path_or_entry=self.chrtpfbhd_entry,
             bdt_path_or_entry=self.chrtpfbdt_path,
@@ -321,7 +323,7 @@ def bl_image_to_dds(bl_image, replace_in_tpf_texture: TPFTexture = None, dds_for
 
     temp_image_path = Path(f"~/AppData/Local/Temp/temp.png").expanduser()
     bl_image.filepath_raw = str(temp_image_path)
-    bl_image.save()
+    bl_image.save()  # TODO: sometimes fails with 'No error' (depending on how Blender is storing image data I think)
     with tempfile.TemporaryDirectory() as output_dir:
         texconv_result = texconv("-o", output_dir, "-ft", "dds", "-f", dds_format, temp_image_path)
         try:
