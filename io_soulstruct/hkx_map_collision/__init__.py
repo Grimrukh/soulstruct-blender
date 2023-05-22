@@ -45,6 +45,7 @@ class HKX_COLLISION_PT_hkx_map_collision_tools(bpy.types.Panel):
     bl_region_type = "UI"
     bl_category = "HKX Map Collision"
 
+    # noinspection PyUnusedLocal
     def draw(self, context):
         import_box = self.layout.box()
         import_box.operator("import_scene.hkx_map_collision")

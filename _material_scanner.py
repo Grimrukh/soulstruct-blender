@@ -737,9 +737,9 @@ def scan_chr_layouts():
     for chrbnd_path in VANILLA_CHR_PATH.glob("*.chrbnd.dcx"):
         if re.match(r"c[01]000", chrbnd_path.name):
             continue
-        chrbnd = Binder(chrbnd_path)
+        chrbnd = Binder.from_path(chrbnd_path)
         print(f"Reading FLVER in {chrbnd_path.name}...")
-        flver = FLVER(chrbnd[200])
+        flver = chrbnd[200].to_binary_file(FLVER)
         for mesh in flver.meshes:
             if mesh.material_index < 0:
                 raise ValueError(f"Invalid material index: {mesh.material_index}")
@@ -768,9 +768,9 @@ def scan_chr():
     for chrbnd_path in VANILLA_CHR_PATH.glob("*.chrbnd.dcx"):
         if re.match(r"c[01]000", chrbnd_path.name):
             continue
-        chrbnd = Binder(chrbnd_path)
+        chrbnd = Binder.from_path(chrbnd_path)
         print(f"Reading FLVER in {chrbnd_path.name}...")
-        flver = FLVER(chrbnd[200])
+        flver = chrbnd[200].to_binary_file(FLVER)
         for material in flver.materials:
             texture_types = [tex.texture_type for tex in material.textures]
             mtd_and_texture_types.append((Path(material.mtd_path).stem, texture_types))
@@ -787,7 +787,7 @@ def scan_map():
             if "m12_00_00_01" in str(flver_path):
                 continue  # skip duplicate DLC directory (models are still read from _00 folder)
             print(f"Reading FLVER {flver_path.name}...")
-            flver = FLVER(flver_path)
+            flver = FLVER.from_path(flver_path)
             for material in flver.materials:
                 texture_types = [tex.texture_type for tex in material.textures]
                 f.write(f"    ('{Path(material.mtd_path).stem}', {texture_types}),\n")
@@ -802,7 +802,7 @@ def scan_map_layouts():
         if "m12_00_00_01" in str(flver_path):
             continue  # skip duplicate DLC directory (models are still read from _00 folder)
         print(f"Reading FLVER {flver_path.name}...")
-        flver = FLVER(flver_path)
+        flver = FLVER.from_path(flver_path)
         for mesh in flver.meshes:
             if mesh.material_index < 0:
                 raise ValueError(f"Invalid material index: {mesh.material_index}")

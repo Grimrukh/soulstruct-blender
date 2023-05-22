@@ -248,9 +248,11 @@ class ImportNVMWithBinderChoice(LoggingOperator):
 
     choices_enum: bpy.props.EnumProperty(items=get_binder_entry_choices)
 
+    # noinspection PyUnusedLocal
     def invoke(self, context, event):
         return context.window_manager.invoke_props_dialog(self)
 
+    # noinspection PyUnusedLocal
     def draw(self, context):
         layout = self.layout
         col = layout.column()
@@ -332,9 +334,11 @@ class ImportNVMWithMSBChoice(LoggingOperator):
 
     choices_enum: bpy.props.EnumProperty(items=get_msb_choices)
 
+    # noinspection PyUnusedLocal
     def invoke(self, context, event):
         return context.window_manager.invoke_props_dialog(self)
 
+    # noinspection PyUnusedLocal
     def draw(self, context):
         layout = self.layout
         col = layout.column()

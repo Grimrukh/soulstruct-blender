@@ -39,15 +39,15 @@ def get_msb_transforms(nvm_name: str, nvm_path: Path, msb_path: Path = None) -> 
     if not msb_path.is_file():
         raise FileNotFoundError(f"Cannot find MSB file '{msb_path}'.")
     try:
-        msb = MSB(msb_path)
+        msb = MSB.from_path(msb_path)
     except Exception as ex:
         raise RuntimeError(
             f"Cannot open MSB: {ex}.\n"
             f"\nCurrently, only Dark Souls 1 (either version) MSBs are supported."
         )
     matches = []
-    for navmesh in msb.parts.Navmeshes:
-        if model_name == navmesh.model_name:
+    for navmesh in msb.navmeshes:
+        if model_name == navmesh.model.name:
             matches.append(navmesh)
     if not matches:
         raise ValueError(f"Cannot find any MSB Navmesh entries using model '{model_name}' ({nvm_name}).")

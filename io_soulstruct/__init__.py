@@ -49,11 +49,13 @@ bl_info = {
 }
 
 
+# noinspection PyUnusedLocal
 def menu_func_import(self, context):
     self.layout.operator(ImportFLVER.bl_idname, text="FLVER (.flver/.*bnd)")
     self.layout.operator(ImportNVM.bl_idname, text="NVM (.nvm/.nvmbnd)")
 
 
+# noinspection PyUnusedLocal
 def menu_func_export(self, context):
     self.layout.operator(ExportFLVER.bl_idname, text="FLVER (.flver)")
     self.layout.operator(ExportFLVERIntoBinder.bl_idname, text="FLVER to Binder (.*bnd)")
@@ -106,11 +108,15 @@ if soulstruct_havok:
         HKX_CUTSCENE_PT_hkx_cutscene_tools,
     )
 
+
+    # noinspection PyUnusedLocal
     def havok_menu_func_import(self, context):
         self.layout.operator(ImportHKXMapCollision.bl_idname, text="HKX Collision (.hkx/.hkxbhd)")
         self.layout.operator(ImportHKXAnimation.bl_idname, text="HKX Animation (.hkx/.hkxbhd)")
         self.layout.operator(ImportHKXCutscene.bl_idname, text="HKX Cutscene (.remobnd)")
 
+
+    # noinspection PyUnusedLocal
     def havok_menu_func_export(self, context):
         self.layout.operator(ExportHKXMapCollision.bl_idname, text="HKX Collision (.hkx)")
         self.layout.operator(ExportHKXMapCollisionIntoBinder.bl_idname, text="HKX Collision to Binder (.hkxbhd)")

@@ -202,9 +202,11 @@ class ImportHKXAnimationWithBinderChoice(LoggingOperator):
 
     choices_enum: bpy.props.EnumProperty(items=get_binder_entry_choices)
 
+    # noinspection PyUnusedLocal
     def invoke(self, context, event):
         return context.window_manager.invoke_props_dialog(self)
 
+    # noinspection PyUnusedLocal
     def draw(self, context):
         layout = self.layout
         col = layout.column()
@@ -422,10 +424,12 @@ def trs_transform_to_bl_matrix(transform: TRSTransform) -> Matrix:
     return Matrix.LocRotScale(bl_translate, bl_rotate, bl_scale)
 
 
-def get_armature_matrix(armature, bone_name, basis=None) -> Matrix:
+def get_armature_matrix(armature, bone_name: str, basis=None) -> Matrix:
     """Demonstrates how Blender calculates `pose_bone.matrix` (armature matrix) for `bone_name`.
 
     TODO: Likely needed at export to convert the curve keyframes (in basis space) back to armature space.
+
+    Inverse of `get_basis_matrix()`.
     """
     local = armature.data.bones[bone_name].matrix_local
     if basis is None:
@@ -443,8 +447,13 @@ def get_armature_matrix(armature, bone_name, basis=None) -> Matrix:
         return get_armature_matrix(armature, parent.name) @ parent_local.inverted() @ local @ basis
 
 
-def get_basis_matrix(armature, bone_name, armature_matrix, armature_inv_matrices: dict):
-    """Inverse of above: get `pose_bone.matrix_basis` from `armature_matrix` by inverting Blender's process."""
+def get_basis_matrix(armature, bone_name: str, armature_matrix: Matrix, armature_inv_matrices: dict):
+    """Get `pose_bone.matrix_basis` from `armature_matrix` by inverting Blender's process.
+
+    Accepts `armature_inv_matrices` to avoid recalculating the inverted matrices of multi-child bones.
+
+    Inverse of `get_armature_matrix()`.
+    """
     local = armature.data.bones[bone_name].matrix_local
     parent = armature.pose.bones[bone_name].parent
 
