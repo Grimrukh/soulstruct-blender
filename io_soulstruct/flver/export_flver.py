@@ -721,12 +721,15 @@ class FLVERExporter:
             game_layout = self.get_ds1_chr_buffer_layout(
                 is_multiple=mtd_info.multiple,
             )
+            print(f"CHR:", game_layout)
         else:
             game_layout = self.get_ds1_map_buffer_layout(
                 is_multiple=mtd_info.multiple,
                 is_lightmap=mtd_info.lightmap,
                 is_foliage=mtd_info.foliage,
+                no_tangents=mtd_info.no_tangents,
             )
+            print(game_layout)
         uv_count = game_layout.get_uv_count()
 
         return_layout = True
@@ -764,17 +767,24 @@ class FLVERExporter:
             if getattr(mtd_info, tex_type.lower()) and f"g_{tex_type}" not in found_texture_types:
                 raise ValueError(f"Texture type 'g_{tex_type}' required for material with MTD '{mtd_name}'.")
 
-    def get_ds1_map_buffer_layout(self, is_multiple=False, is_lightmap=False, is_foliage=False) -> BufferLayout:
-        members = [
+    def get_ds1_map_buffer_layout(
+        self, is_multiple=False, is_lightmap=False, is_foliage=False, no_tangents=False
+    ) -> BufferLayout:
+        members = [  # always present
             self.member(MemberType.Position, MemberFormat.Float3),
             self.member(MemberType.BoneIndices, MemberFormat.Byte4B),
             self.member(MemberType.Normal, MemberFormat.Byte4C),
-            self.member(MemberType.Tangent, MemberFormat.Byte4C),
+            # Tangent/Bitangent will be inserted here if needed.
             self.member(MemberType.VertexColor, MemberFormat.Byte4C),
+            # UV/UVPair will be appended here if needed.
         ]
 
-        if is_multiple:  # has Bitangent
-            members.insert(4, self.member(MemberType.Bitangent, MemberFormat.Byte4C))
+        if not no_tangents:
+            members.insert(3, self.member(MemberType.Tangent, MemberFormat.Byte4C))
+            if is_multiple:  # has Bitangent
+                members.insert(4, self.member(MemberType.Bitangent, MemberFormat.Byte4C))
+        elif is_multiple:  # has Bitangent but not Tangent (probably never happens)
+            members.insert(3, self.member(MemberType.Bitangent, MemberFormat.Byte4C))
 
         if is_foliage:  # four UVs (regardless of lightmap, and never has multiple)
             members.append(self.member(MemberType.UV, MemberFormat.UVPair))
@@ -845,7 +855,7 @@ def build_game_mesh(
         FLVER.Mesh.FaceSet(
             flags=i,
             unk_x06=0,  # TODO: define default in dict
-            triangle_strip=False,
+            triangle_strip=False,  # vertices are ALWAYS exported as triangles, not strips (too hard to compute)
             cull_back_faces=mesh_builder.cull_back_faces,
             vertex_indices=[],
         )
@@ -858,6 +868,12 @@ def build_game_mesh(
     game_vertices = []
     mesh_local_bone_indices = []
 
+    # Create defaults once to reuse. Though mutable, these will never be modified here.
+    empty = []
+    v3_zero = [0.0] * 3
+    v4_zero = [0.0] * 4
+    v4_int_zero = [0] * 4
+
     # noinspection PyTypeChecker
     for f_i, face in enumerate(triangles):
         flver_face = []
@@ -868,7 +884,7 @@ def build_game_mesh(
             if layout.has_member_type(MemberType.Position):
                 position = BL_TO_GAME_VECTOR_LIST(bm.verts[v_i].co)
             else:
-                position = None
+                position = v3_zero  # should never happen
 
             if layout.has_member_type(MemberType.BoneIndices):
 
@@ -909,17 +925,17 @@ def build_game_mesh(
                 elif len(bone_indices) == 1:
                     bone_indices *= 4  # duplicate single-element list to four-element list
                 else:  # vertex (likely new) with no bone indices
-                    bone_indices = [0] * 4
+                    bone_indices = v4_int_zero
             else:
-                bone_indices = [0] * 4
-                bone_weights = [0.0] * 4
+                bone_indices = v4_int_zero
+                bone_weights = v4_zero
 
             if layout.has_member_type(MemberType.Normal):
                 # TODO: 127 is the only value seen in DS1 models thus far for `normal[3]`. Will need to store as a
                 #  custom vertex property for other games that use it.
                 normal = [*BL_TO_GAME_VECTOR_LIST(mesh_loop.normal), 127.0]
             else:
-                normal = None
+                normal = v4_zero
 
             # Get UVs from loop. We always need to do this because even if the vertex has already been filled, we need
             # to check if this loop has different UVs and create a duplicate vertex if so.
@@ -935,25 +951,25 @@ def build_game_mesh(
                     bl_uv = uv_layer.data[loop.index].uv
                     uvs.append((bl_uv[0], 1 - bl_uv[1], 0.0))  # FLVER UV always has Z coordinate (usually 0)
             else:
-                uvs = None
+                uvs = empty
 
             if layout.has_member_type(MemberType.Tangent):
                 tangents = [[*BL_TO_GAME_VECTOR_LIST(mesh_loop.tangent), -1.0]]
             else:
-                tangents = None
+                tangents = empty  # happens very rarely (e.g. `[Dn]` shaders)
 
             if layout.has_member_type(MemberType.Bitangent):
                 bitangent = [*BL_TO_GAME_VECTOR_LIST(mesh_loop.bitangent), -1.0]
             else:
-                bitangent = None
+                bitangent = v4_zero
 
             # Same with vertex colors. Though they are stored as a list, there should always only be one color layer.
             if layout.has_member_type(MemberType.VertexColor):
                 colors = [tuple(bl_mesh.vertex_colors["VertexColors"].data[loop.index].color)]
             else:
-                colors = None
+                colors = empty  # not yet observed (all DS1 materials use vertex colors)
 
-            v_key = (tuple(position), tuple(uvs), tuple(colors))  # hashable
+            v_key = (tuple(position), tuple(bone_indices), tuple(uvs), tuple(colors))  # hashable
 
             try:
                 game_v_i = flver_v_indices[v_key]

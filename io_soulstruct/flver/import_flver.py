@@ -354,13 +354,14 @@ class FLVERImporter:
         if bpy.ops.object.select_all.poll():
             bpy.ops.object.select_all(action="DESELECT")
 
-        root_collection = bpy.data.collections.new(f"{self.name} FLVER")
-        mesh_collection = bpy.data.collections.new(f"{self.name} Meshes")
-        dummy_collection = bpy.data.collections.new(f"{self.name} Dummies")
-        self.context.scene.collection.children.link(root_collection)
-        self.all_bl_collections = [root_collection, mesh_collection, dummy_collection]
-        root_collection.children.link(mesh_collection)
-        root_collection.children.link(dummy_collection)
+        # TODO: Collections too annoying to manage.
+        # root_collection = bpy.data.collections.new(f"{self.name} FLVER")
+        # mesh_collection = bpy.data.collections.new(f"{self.name} Meshes")
+        # dummy_collection = bpy.data.collections.new(f"{self.name} Dummies")
+        # self.context.scene.collection.children.link(root_collection)
+        # self.all_bl_collections = [root_collection, mesh_collection, dummy_collection]
+        # root_collection.children.link(mesh_collection)
+        # root_collection.children.link(dummy_collection)
 
         bl_armature = self.create_bones()
 
@@ -415,7 +416,7 @@ class FLVERImporter:
             mesh_name = f"{self.name} Mesh {i}"
             bl_mesh_obj = self.create_mesh_obj(flver_mesh, mesh_name)
             bl_mesh_obj["face_set_count"] = len(flver_mesh.face_sets)  # custom property
-            self.all_bl_collections[1].objects.link(bl_mesh_obj)
+            # self.all_bl_collections[1].objects.link(bl_mesh_obj)
 
         self.create_dummies()
 
@@ -672,7 +673,7 @@ class FLVERImporter:
         """
         bl_armature = bpy.data.armatures.new(f"{self.name} Armature")
         bl_armature_obj = self.create_obj(f"{self.name}", bl_armature, parent_to_armature=False)
-        self.all_bl_collections[0].objects.link(bl_armature_obj)
+        # self.all_bl_collections[0].objects.link(bl_armature_obj)
 
         write_bone_type = ""
         warn_partial_bind_pose = False
@@ -784,11 +785,14 @@ class FLVERImporter:
         return bl_armature_obj
 
     def create_dummies(self):
-        """Create empty objects that represent dummies. All dummies are parented to a root empty object."""
+        """Create empty objects that represent dummies.
+
+        All dummies are children of the armature, and most of a specific bone given in 'attach_bone_name'.
+        """
 
         for i, dummy in enumerate(self.flver.dummies):
             bl_dummy = self.create_obj(f"Dummy<{i}> [{dummy.reference_id}]", parent_to_armature=False)
-            self.all_bl_collections[2].objects.link(bl_dummy)
+            # self.all_bl_collections[2].objects.link(bl_dummy)
             bl_dummy.parent = self.armature
             bl_dummy.empty_display_type = "ARROWS"  # best display type/size I've found (single arrow not sufficient)
             bl_dummy.empty_display_size = 0.05

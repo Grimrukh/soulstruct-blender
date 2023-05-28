@@ -35,7 +35,8 @@ def FL_TO_BL_QUAT(quaternion: GameQuaternion) -> BlenderQuaternion:
 
 def get_armature_frames(animation_hkx: AnimationHKX, skeleton_hkx: SkeletonHKX, track_bone_names: list[str]):
     """Get a list of animation frame dictionaries, which each map bone names to armature-space transforms that frame."""
-    anibnd = ANIBND(skeleton_hkx=skeleton_hkx, animations_hkx={0: animation_hkx})
+    # Create ANIBND with just this animation (always using dummy/default ID 0).
+    anibnd = ANIBND(skeleton_hkx=skeleton_hkx, animations_hkx={0: animation_hkx}, default_anim_id=0)
     world_frames = []
     for frame_index in range(len(anibnd[0].interleaved_data)):
         track_transforms = anibnd.get_all_armature_space_transforms_in_frame(frame_index)

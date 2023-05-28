@@ -37,6 +37,11 @@ def install(blender_scripts_dir: str | Path, update_soulstruct_module=False, upd
             ignore=shutil.ignore_patterns("*.pyc", "__pycache__", "oo2core_6_win64.dll"),
         )
 
+        # Copy over `oo2core_6_win64.dll` if it exists and isn't already in destination folder.
+        oo2core_dll = PACKAGE_PATH("oo2core_6_win64.dll")
+        if oo2core_dll.is_file() and not (blender_scripts_dir / "modules/soulstruct/oo2core_6_win64.dll").is_file():
+            shutil.copy(oo2core_dll, blender_scripts_dir / "modules/soulstruct")
+
         if update_third_party_modules:
             install_site_package("colorama", blender_scripts_dir / "modules/colorama")
             install_site_package("scipy", blender_scripts_dir / "modules/scipy")
@@ -74,14 +79,19 @@ def install_site_package(dir_name: str, destination_dir: Path):
 
 def main(args):
     match args:
+        case[blender_scripts_directory, "--updateSoulstruct", "--updateThirdParty"]:
+            install(blender_scripts_directory, update_soulstruct_module=True, update_third_party_modules=True)
         case [blender_scripts_directory, "--updateSoulstruct"]:
             install(blender_scripts_directory, update_soulstruct_module=True)
+        case [blender_scripts_directory, "--updateThirdParty"]:
+            install(blender_scripts_directory, update_third_party_modules=True)
         case [blender_scripts_directory]:
             install(blender_scripts_directory, update_soulstruct_module=False)
         case _:
             print(
                 f"INVALID ARGUMENTS: {sys.argv}\n"
-                f"Usage: `python install_addon.py [blender_scripts_directory] [--updateSoulstruct]`"
+                f"Usage: `python install_addon.py [blender_scripts_directory] "
+                f"[--updateSoulstruct] [--updateThirdParty]`"
             )
 
 
