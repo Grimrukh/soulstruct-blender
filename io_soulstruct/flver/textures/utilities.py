@@ -12,9 +12,12 @@ __all__ = [
     "png_to_bl_image",
     "bl_image_to_dds",
     "get_lightmap_tpf",
+    "collect_binder_tpfs",
+    "collect_map_tpfs",
 ]
 
 import abc
+import logging
 import os
 import re
 import tempfile
@@ -28,6 +31,8 @@ import bpy
 
 TPF_RE = re.compile(rf"^(.*)\.tpf(\.dcx)?$")
 CHRBND_RE = re.compile(rf"^(.*)\.chrbnd(\.dcx)?$")
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class TextureExportException(Exception):
@@ -291,13 +296,20 @@ def load_tpf_texture_as_png(tpf_texture: TPFTexture):
     return bl_image
 
 
-def png_to_bl_image(image_name: str, png_data: bytes):
-    temp_png_path = Path(f"~/AppData/Local/Temp/{image_name}.png").expanduser()
-    temp_png_path.write_bytes(png_data)
-    bl_image = bpy.data.images.load(str(temp_png_path))
+def png_to_bl_image(image_name: str, png_data: bytes, write_png_directory: Path = None):
+    if write_png_directory is None:
+        # Use a temporarily file.
+        write_png_path = Path(f"~/AppData/Local/Temp/{image_name}.png").expanduser()
+        delete_png = True
+    else:
+        write_png_path = write_png_directory / f"{image_name}.png"
+        delete_png = False
+
+    write_png_path.write_bytes(png_data)
+    bl_image = bpy.data.images.load(str(write_png_path))
     bl_image.pack()  # embed PNG in `.blend` file
-    if temp_png_path.is_file():
-        os.remove(temp_png_path)
+    if delete_png:
+        write_png_path.unlink(missing_ok=True)
     return bl_image
 
 
@@ -357,3 +369,54 @@ def get_lightmap_tpf(bl_lightmap_image, dds_format="BC7_UNORM"):
     # Insert DDS content.
     bl_image_to_dds(bl_lightmap_image, replace_in_tpf_texture=texture, dds_format=dds_format)
     return tpf
+
+
+def collect_binder_tpfs(binder: Binder, binder_path: Path = None) -> dict[str, TPFTexture]:
+    """Find TPFs or CHRTPFBHDs inside binder, potentially using `chrtpfbdt` file if it exists (in which case
+    `binder_path` must be given)."""
+    textures = {}  # type: dict[str, TPFTexture]
+
+    for tpf_entry in binder.find_entries_matching_name(TPF_RE):  # generally only one
+        tpf = tpf_entry.to_binary_file(TPF)
+        for texture in tpf.textures:
+            textures[texture.name] = texture
+
+    if binder_path is None:
+        binder_path = binder.path
+    if binder_path is None:
+        return textures
+
+    try:
+        tpfbhd_entry = binder.find_entry_matching_name(r".*\.chrtpfbhd")
+    except (BinderEntryNotFoundError, ValueError):
+        return textures
+
+    # Search for BDT.
+    tpfbdt_path = binder_path.parent / f"{tpfbhd_entry.name.split('.')[0]}.chrtpfbdt"
+    if tpfbdt_path.is_file():
+        tpfbxf = Binder.from_bytes(tpfbhd_entry.data, bdt_data=tpfbdt_path.read_bytes())
+        for tpf_entry in tpfbxf.entries:
+            match = TPF_RE.match(tpf_entry.name)
+            if match:
+                tpf = tpf_entry.to_binary_file(TPF)
+                tpf.convert_dds_formats("DX10", "DXT1")
+                for texture in tpf.textures:
+                    textures[texture.name] = texture
+    else:
+        _LOGGER.warning(f"Could not find expected CHRTPFBDT file for '{binder_path.name}' at {tpfbdt_path}.")
+    return textures
+
+
+def collect_map_tpfs(map_path: Path) -> dict[str, BinderEntry | TPFTexture]:
+    """Find map piece TPFs in adjacent `mXX` directory."""
+    textures = {}
+    map_directory_match = re.match(r"^(m\d\d)_\d\d_\d\d_\d\d$", map_path.name)
+    if not map_directory_match:
+        _LOGGER.warning("FLVER not located in a map folder (`mAA_BB_CC_DD`). Cannot load TPFs.")
+        return textures
+    tpf_directory = map_path.parent / map_directory_match.group(1)
+    if not tpf_directory.is_dir():
+        _LOGGER.warning(f"`mXX` TPF folder does not exist: {tpf_directory}. Cannot load TPFs.")
+        return textures
+
+    return TPF.collect_tpf_entries(tpf_directory)

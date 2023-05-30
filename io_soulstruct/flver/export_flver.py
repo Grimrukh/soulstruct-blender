@@ -69,6 +69,7 @@ class ExportMapDirectorySettings(bpy.types.PropertyGroup):
         name="Game Directory",
         description="Directory of FromSoftware game files",
         subtype="DIR_PATH",
+        default=get_last_game_directory(),
     )
     map_stem: bpy.props.StringProperty(
         name="Map Stem",
@@ -109,6 +110,11 @@ class ExportFLVERToMapDirectory(LoggingOperator):
         game_directory = context.scene.export_map_directory_settings.game_directory
         map_stem = context.scene.export_map_directory_settings.map_stem
         dcx_type = context.scene.export_map_directory_settings.dcx_type
+
+        # Save last `game_directory` (even if this function fails).
+        last_game_directory_path = Path(__file__).parent / "../game_directory.txt"
+        last_game_directory_path.write_text(game_directory)
+        print(last_game_directory_path)
 
         map_dir_path = Path(game_directory) / f"map/{map_stem}"
 
@@ -721,7 +727,6 @@ class FLVERExporter:
             game_layout = self.get_ds1_chr_buffer_layout(
                 is_multiple=mtd_info.multiple,
             )
-            print(f"CHR:", game_layout)
         else:
             game_layout = self.get_ds1_map_buffer_layout(
                 is_multiple=mtd_info.multiple,
@@ -729,7 +734,6 @@ class FLVERExporter:
                 is_foliage=mtd_info.foliage,
                 no_tangents=mtd_info.no_tangents,
             )
-            print(game_layout)
         uv_count = game_layout.get_uv_count()
 
         return_layout = True

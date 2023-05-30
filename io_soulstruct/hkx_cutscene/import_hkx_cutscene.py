@@ -1,27 +1,29 @@
-"""VERY early/experimental system for importing/exporting DSR animations into Blender."""
+"""VERY early/experimental system for importing/exporting DSR cutscene animations into Blender."""
 from __future__ import annotations
 
+import math
 import re
 import traceback
+import typing as tp
 from pathlib import Path
 
 import bpy
 from bpy_extras.io_utils import ImportHelper
-from mathutils import Vector, Matrix
+from mathutils import Matrix
 
-from soulstruct.darksouls1r.maps import MSB  # TODO: will need `MapStudioDirectory` eventually
-from soulstruct.base.animations.sibcam import CameraFrameTransform
+from soulstruct.containers import Binder
+from soulstruct.base.animations.sibcam import CameraFrameTransform, FoVKeyframe
+from soulstruct.base.models.flver import FLVER
+from soulstruct.darksouls1r.maps import MapStudioDirectory
+from soulstruct.darksouls1r.maps.parts import *
 
 from soulstruct_havok.utilities.maths import TRSTransform
 from soulstruct_havok.wrappers.hkx2015 import RemoBND
 
 from io_soulstruct.utilities import *
+from io_soulstruct.flver.import_flver import FLVERImporter
+from io_soulstruct.flver.textures.utilities import collect_binder_tpfs, collect_map_tpfs
 from .utilities import *
-
-
-def FL_TO_BL_VECTOR(sequence) -> Vector:
-    """Simply swaps Y and Z axes."""
-    return Vector((sequence[0], sequence[2], sequence[1]))
 
 
 REMOBND_RE = re.compile(r"^.*?\.remobnd(\.dcx)?$")
@@ -41,10 +43,28 @@ class ImportHKXCutscene(LoggingOperator, ImportHelper):
         maxlen=255,  # Max internal buffer length, longer would be clamped.
     )
 
-    assign_to_armature: bpy.props.BoolProperty(
-        name="Assign to Armature",
-        description="Assign imported cutscene action to selected FLVER armature immediately",
+    game_directory: bpy.props.StringProperty(
+        name="Game Directory",
+        description="Directory of game files to load MSBs and missing cutscene parts from",
+        default=get_last_game_directory(),
+    )
+
+    assign_to_armatures: bpy.props.BoolProperty(
+        name="Assign to Armatures",
+        description="Assign imported cutscene actions to part armatures immediately",
         default=True,
+    )
+
+    for_60_fps: bpy.props.BoolProperty(
+        name="For 60 FPS",
+        description="Scale animation keyframes to 60 FPS (from 30 FPS)",
+        default=True,
+    )
+
+    camera_name: bpy.props.StringProperty(
+        name="Camera Name",
+        description="Name of cutscene camera object to create and animate",
+        default="{CutsceneName} Camera",
     )
 
     camera_data_only: bpy.props.BoolProperty(
@@ -53,79 +73,169 @@ class ImportHKXCutscene(LoggingOperator, ImportHelper):
         default=False,
     )
 
-    files: bpy.props.CollectionProperty(
-        type=bpy.types.OperatorFileListElement,
-        options={'HIDDEN', 'SKIP_SAVE'},
+    load_missing_parts: bpy.props.BoolProperty(
+        name="Load Missing Parts",
+        description="Try to load missing cutscene parts (map pieces, objects, characters) from game files",
+        default=True,
     )
 
-    directory: bpy.props.StringProperty(
-        options={'HIDDEN'},
+    png_cache_path: bpy.props.StringProperty(
+        name="Cached PNG path",
+        description="Directory to use for reading/writing cached texture PNGs",
+        default="D:\\blender_png_cache",
     )
 
-    @classmethod
-    def poll(cls, context):
-        """Animation's rigged armature must be selected (to extract bone names)."""
-        try:
-            return context.selected_objects[0].type == "ARMATURE"
-        except IndexError:
-            return False
+    read_from_png_cache: bpy.props.BoolProperty(
+        name="Read from PNG Cache",
+        description="Read cached PNGs (instead of DDS files) from the above directory if available",
+        default=True,
+    )
+
+    write_to_png_cache: bpy.props.BoolProperty(
+        name="Write to PNG Cache",
+        description="Write PNGs of any loaded textures (DDS files) to the above directory for future use",
+        default=True,
+    )
+
+    enable_alpha_hashed: bpy.props.BoolProperty(
+        name="Enable Alpha Hashed",
+        description="Enable material Alpha Hashed (rather than Opaque) for single-texture FLVER materials",
+        default=True,
+    )
 
     def execute(self, context):
 
-        bl_armature = context.selected_objects[0]
+        remobnd_path = Path(self.filepath)
 
-        file_paths = [Path(self.directory, file.name) for file in self.files]
-        remobnds_with_paths = []  # type: list[tuple[Path, RemoBND]]
+        if REMOBND_RE.match(remobnd_path.name):
+            try:
+                remobnd = RemoBND.from_path(remobnd_path)
+            except Exception as ex:
+                raise HKXCutsceneImportError(f"Could not parse RemoBND file '{remobnd_path}': {ex}")
+        else:
+            raise HKXCutsceneImportError("Must import cutscene from a `remobnd` binder file.")
 
-        for file_path in file_paths:
+        importer = HKXCutsceneImporter(self, context, self.for_60_fps)
 
-            if REMOBND_RE.match(file_path.name):
-                try:
-                    remobnd = RemoBND.from_path(file_path)
-                except Exception as ex:
-                    raise HKXCutsceneImportError(f"Could not parse RemoBND file '{file_path}': {ex}")
-                remobnds_with_paths.append((file_path, remobnd))
+        try:
+            self.create_camera(context, remobnd, importer)
+        except Exception as ex:
+            traceback.print_exc()  # for inspection in Blender console
+            return self.error(f"Cannot import HKX cutscene camera data from {remobnd_path.name}. Error: {ex}")
+
+        if self.camera_data_only:
+            self.info("Imported HKX cutscene camera data.")
+            return {"FINISHED"}
+
+        loaded_map_studio_directories = {}  # type: dict[Path, MapStudioDirectory]
+
+        if not self.game_directory:
+            # Assume RemoBND is in the appropriate game `remo` folder.
+            game_directory = remobnd_path.parent.parent
+        else:
+            game_directory = Path(self.game_directory)
+
+        map_studio_path = Path(game_directory, "map/MapStudio")
+        map_studio_directory = loaded_map_studio_directories.setdefault(
+            map_studio_path, MapStudioDirectory.from_path(map_studio_path)
+        )
+
+        self.info(f"Importing MSBs for HKX cutscene: {remobnd.cutscene_name}")
+        remobnd.load_remo_parts(map_studio_directory)
+
+        self.info(f"Importing HKX cutscene: {remobnd.cutscene_name}")
+
+        part_armatures = {}  # type: dict[str, tp.Any]
+        flvers_to_import = {}  # type: dict[str, FLVER]
+        attached_texture_sources = {}  # from multi-texture TPFs directly linked to FLVER
+        loose_tpf_sources = {}  # one-texture TPFs that we only read if needed by FLVER
+
+        for part_name, remo_part in remobnd.remo_parts.items():
+            if remo_part.part is None:
+                continue  # TODO: handle Player and dummies
+            # Find `part_name` Blender armature.
+            for obj in bpy.data.objects:
+                if obj.type == "ARMATURE" and obj.name == part_name:
+                    part_armatures[part_name] = obj
+                    break
             else:
-                raise HKXCutsceneImportError("Must import cutscene from a `remobnd` binder file.")
+                if not self.load_missing_parts:
+                    continue
+                # Try to load given part from game files.
+                if isinstance(remo_part.part, MSBMapPiece):
+                    # Map piece FLVERs are always in map version `mAA_BB_CC_00`.
+                    area, block = remo_part.map_area_block
+                    map_path = game_directory / f"map/m{area:02d}_{block:02d}_00_00"
+                    flver = FLVER.from_path(map_path / f"{remo_part.part.model.name}A{area:02d}.flver.dcx")
+                    loose_tpf_sources |= collect_map_tpfs(map_path)
+                elif isinstance(remo_part.part, MSBCharacter):
+                    chrbnd_path = game_directory / f"chr/{remo_part.part.model.name}.chrbnd.dcx"
+                    if not chrbnd_path.is_file():
+                        self.warning(f"Could not find CHRBND to import for cutscene: {chrbnd_path}")
+                        continue
+                    chrbnd = Binder.from_path(chrbnd_path)
+                    attached_texture_sources |= collect_binder_tpfs(chrbnd, chrbnd_path)
+                    flver = chrbnd.find_entry_matching_name(r".*\.flver$").to_binary_file(FLVER)
+                elif isinstance(remo_part.part, MSBObject):
+                    objbnd_path = game_directory / f"obj/{remo_part.part.model.name}.objbnd.dcx"
+                    if not objbnd_path.is_file():
+                        self.warning(f"Could not find CHRBND to import for cutscene: {objbnd_path}")
+                        continue
+                    objbnd = Binder.from_path(objbnd_path)
+                    attached_texture_sources |= collect_binder_tpfs(objbnd, objbnd_path)
+                    flver = objbnd.find_entry_matching_name(r".*\.flver$").to_binary_file(FLVER)
+                else:
+                    self.warning(
+                        f"Cannot load FLVER model for unknown part type: {type(remo_part.part).__name__}"
+                    )
+                    continue
+                flvers_to_import[part_name] = flver
 
-        importer = HKXCutsceneImporter(self, context, bl_armature, bl_armature.name)
+        # Load FLVERs.
+        if flvers_to_import:
+            flver_importer = FLVERImporter(
+                self,
+                context,
+                attached_texture_sources,
+                loose_tpf_sources,
+                png_cache_path=Path(self.png_cache_path),
+                read_from_png_cache=self.read_from_png_cache,
+                write_to_png_cache=self.write_to_png_cache,
+                enable_alpha_hashed=self.enable_alpha_hashed,
+            )
+            for part_name, flver in flvers_to_import.items():
+                msb_part = remobnd.remo_parts[part_name]
+                if isinstance(msb_part, MSBMapPiece):
+                    transform = Transform.from_msb_part(msb_part)
+                else:
+                    # Even static objects are 'placed' in cutscenes by animating their root bone.
+                    transform = None
+                self.info(f"Importing FLVER for '{part_name}'...")
+                # TODO: Catch and ignore errors?
+                part_armature = flver_importer.import_flver(
+                    flver,
+                    name=part_name,  # exact match to cutscene part name
+                    transform=transform,  # set for map pieces
+                )
+                part_armatures[part_name] = part_armature
 
-        loaded_msbs = {}  # type: dict[str, MSB]
+        for part_name, remo_part in remobnd.remo_parts.items():
+            if part_name not in part_armatures:
+                continue  # part not loaded - omitted from cutscene
+            part_armature = part_armatures[part_name]
 
-        for file_path, remobnd in remobnds_with_paths:
-
-            # TODO: usual Darkroot DD exception yada yada (add GET_MAP method to `RemoBND`).
-            msb_name = f"m{remobnd.map_area:02}_{remobnd.map_block:02}_00_00.msb"
-            if msb_name not in loaded_msbs:
-                msb_path = Path(file_path.parent, f"../map/MapStudio/{msb_name}")
-                if not msb_path.exists():
-                    raise HKXCutsceneImportError(f"MSB file '{msb_path}' does not exist. Cannot check cutscene parts.")
-                loaded_msbs[msb_name] = MSB.from_path(msb_path)
-
-            self.info(f"Importing MSB for HKX cutscene: {remobnd.cutscene_name}")
-            remobnd.load_remo_parts(loaded_msbs[msb_name])
-
-            self.info(f"Importing HKX cutscene: {remobnd.cutscene_name}")
-
-            # TODO: Hack right now. Using selected armature -- a single character in the cutscene -- to check bone
-            #  names. Eventually, search for all used part instance/model names.
-            part_name = bl_armature.name
-            if part_name not in remobnd.remo_parts:
-                raise HKXCutsceneImportError(f"RemoBND file '{file_path}' does not contain part '{part_name}'.")
-            remo_part = remobnd.remo_parts[part_name]
-            # TODO: Currently checking first cut for bone names. Eventually, check all cuts.
+            # Get bone names from first cut that includes this part.
             first_cut_transforms = list(remo_part.cut_arma_transforms.values())[0]
             track_bone_names = list(first_cut_transforms.keys())
 
-            bl_bone_names = [b.name for b in bl_armature.data.bones]
+            bl_bone_names = [b.name for b in part_armature.data.bones]
             for bone_name in track_bone_names:
+                # TODO: is the 'master' check here necessary?
                 if bone_name != "master" and bone_name not in bl_bone_names:
                     raise ValueError(
-                        f"Cutscene bone name '{bone_name}' is missing from selected Blender Armature "
-                        f"({bl_armature.name})."
+                        f"Cutscene bone name '{bone_name}' is missing from part armature '{part_armature.name}'."
                     )
 
-            # TODO: again, just applying to selected armature for now
             all_cut_transforms = {}
             for cut in remobnd.cuts:
                 if cut.name in remo_part.cut_arma_transforms:
@@ -134,134 +244,159 @@ class ImportHKXCutscene(LoggingOperator, ImportHelper):
                         all_cut_transforms.setdefault(bone_name, []).extend(transforms)
                 else:
                     # Model is absent in this cut. Use default position.
-                    # TODO: Using identity for now.
+                    # TODO: Using identity for now. Probably want to keep last known position in previous cut?
                     frame_count = len(cut.sibcam.camera_animation)
                     default_transform = TRSTransform.identity()
                     for bone_name in ["master"] + track_bone_names:
                         all_cut_transforms.setdefault(bone_name, []).extend([default_transform] * frame_count)
 
-            # Add motion to camera.
-            # TODO: quick hack name access. Should probably just create a new Camera.
-            camera = bpy.data.objects["Camera"]
-            camera_transforms = []
-            # TODO: FoV. `camera.data.lens = 100 / math.tan(fov)` seems to work.
-            #  Just need to figure out how the SIBCAM FoV keyframe indices work, since they seem too low at a glance.
-            for cut in remobnd.cuts:
-                camera_transforms += cut.sibcam.camera_animation
+            # Create action for this part.
             try:
-                camera_action = importer.create_camera_action(remobnd.cutscene_name, camera_transforms)
+                action = importer.create_blender_action(
+                    remobnd.cutscene_name, part_armature, all_cut_transforms
+                )
             except Exception as ex:
                 traceback.print_exc()  # for inspection in Blender console
-                return self.error(f"Cannot import HKX cutscene camera data from {file_path.name}. Error: {ex}")
-            else:
+                return self.error(f"Cannot import HKX animation: {remobnd_path.name}. Error: {ex}")
+
+            if self.assign_to_armatures:
                 try:
-                    camera.animation_data_create()
-                    camera.animation_data.action = camera_action
+                    part_armature.animation_data_create()
+                    part_armature.animation_data.action = action
                 except Exception as ex:
                     self.warning(
-                        f"Camera animation was imported, but action could not be assigned to Camera. Error: {ex}"
+                        f"Animation was imported, but action could not be assigned to Armature. Error: {ex}"
                     )
 
-            if self.camera_data_only:
-                continue
-
-            # Import single animation HKX.
-            # TODO: Need to add 'null' keyframes (maybe use 'master' position) for cuts from which each character (right
-            #  now, just the selected armature) is absent.
-            try:
-                action = importer.create_blender_action(remobnd.cutscene_name, all_cut_transforms)
-            except Exception as ex:
-                traceback.print_exc()  # for inspection in Blender console
-                return self.error(f"Cannot import HKX animation: {file_path.name}. Error: {ex}")
-            else:
-                try:
-                    bl_armature.animation_data_create()
-                    bl_armature.animation_data.action = action
-                except Exception as ex:
-                    self.warning(f"Animation was imported, but action could not be assigned to Armature. Error: {ex}")
-
         return {"FINISHED"}
+
+    def create_camera(self, context, remobnd: RemoBND, importer: HKXCutsceneImporter) -> bpy.types.Camera:
+        # Create a new Blender camera.
+        camera_name = self.camera_name.format(CutsceneName=remobnd.cutscene_name)
+        camera_data = bpy.data.cameras.new(self.camera_name.format(CutsceneName=remobnd.cutscene_name) + " Data")
+        camera_obj = bpy.data.objects.new(camera_name, camera_data)
+        context.scene.collection.objects.link(camera_obj)  # add to scene's object collection
+
+        # Add motion to camera.
+        camera_transforms = []
+        camera_fov_keyframes = []
+        for cut in remobnd.cuts:
+            # Camera is obviously present in every cut and we can just join all the keyframed transforms.
+            camera_transforms += cut.sibcam.camera_animation
+            camera_fov_keyframes += cut.sibcam.fov_keyframes
+
+        camera_obj_action, camera_data_action = importer.create_camera_actions(
+            remobnd.cutscene_name, camera_transforms, camera_fov_keyframes
+        )
+
+        # New camera always has action assigned.
+        try:
+            camera_obj.animation_data_create()
+            camera_obj.animation_data.action = camera_obj_action
+            camera_data.animation_data_create()
+            camera_data.animation_data.action = camera_data_action
+        except Exception as ex:
+            self.warning(
+                f"Camera animation was imported, but action could not be assigned to Camera. Error: {ex}"
+            )
+
+        return camera_obj
 
 
 class HKXCutsceneImporter:
     """Manages imports for a batch of HKX files imported simultaneously."""
 
-    model_name: str
+    for_60_fps: bool
 
     def __init__(
         self,
         operator: ImportHKXCutscene,
         context,
-        bl_armature,
-        model_name: str
+        for_60_fps: bool,
     ):
         self.operator = operator
         self.context = context
+        self.for_60_fps = for_60_fps
 
-        self.bl_armature = bl_armature
-        self.model_name = model_name
-
-    @staticmethod
-    def create_camera_action(
+    def create_camera_actions(
+        self,
         cutscene_name: str,
         camera_transforms: list[CameraFrameTransform],
+        camera_fov_keyframes: list[FoVKeyframe],
     ):
-        action_name = f"Camera|{cutscene_name}"
-        action = bpy.data.actions.new(action_name)
+        """Creates two new Blender action for a cutscene camera: one for the object (transform) and one for its data
+        (focal length)."""
+        obj_action_name = f"{cutscene_name}[Camera]"
+        obj_action = bpy.data.actions.new(obj_action_name)
+        data_action_name = f"{cutscene_name}[CameraData]"
+        data_action = bpy.data.actions.new(data_action_name)
         fast = {"FAST"}
 
         try:
-            camera_curves = {
-                "loc_x": action.fcurves.new("location", index=0),
-                "loc_y": action.fcurves.new("location", index=1),
-                "loc_z": action.fcurves.new("location", index=2),
-                "euler_x": action.fcurves.new("rotation_euler", index=0),
-                "euler_y": action.fcurves.new("rotation_euler", index=1),
-                "euler_z": action.fcurves.new("rotation_euler", index=2),
+            obj_curves = {
+                "loc_x": obj_action.fcurves.new("location", index=0),
+                "loc_y": obj_action.fcurves.new("location", index=1),
+                "loc_z": obj_action.fcurves.new("location", index=2),
+                "euler_x": obj_action.fcurves.new("rotation_euler", index=0),
+                "euler_y": obj_action.fcurves.new("rotation_euler", index=1),
+                "euler_z": obj_action.fcurves.new("rotation_euler", index=2),
+            }
+            data_curves = {
+                "lens": data_action.fcurves.new("lens"),
             }
             for frame_index, camera_transform in enumerate(camera_transforms):
+                bl_frame_index = frame_index * 2 if self.for_60_fps else frame_index
                 bl_translate = GAME_TO_BL_VECTOR(camera_transform.position)
                 bl_euler = GAME_TO_BL_EULER(camera_transform.rotation)
-                camera_curves["loc_x"].keyframe_points.insert(frame_index, bl_translate.x, options=fast)
-                camera_curves["loc_y"].keyframe_points.insert(frame_index, bl_translate.y, options=fast)
-                camera_curves["loc_z"].keyframe_points.insert(frame_index, bl_translate.z, options=fast)
-                camera_curves["euler_x"].keyframe_points.insert(frame_index, bl_euler.x, options=fast)
-                camera_curves["euler_y"].keyframe_points.insert(frame_index, bl_euler.y, options=fast)
-                camera_curves["euler_z"].keyframe_points.insert(frame_index, bl_euler.z, options=fast)
-            for fcurve in camera_curves.values():
+                obj_curves["loc_x"].keyframe_points.insert(bl_frame_index, bl_translate.x, options=fast)
+                obj_curves["loc_y"].keyframe_points.insert(bl_frame_index, bl_translate.y, options=fast)
+                obj_curves["loc_z"].keyframe_points.insert(bl_frame_index, bl_translate.z, options=fast)
+                obj_curves["euler_x"].keyframe_points.insert(bl_frame_index, bl_euler.x, options=fast)
+                obj_curves["euler_y"].keyframe_points.insert(bl_frame_index, bl_euler.y, options=fast)
+                obj_curves["euler_z"].keyframe_points.insert(bl_frame_index, bl_euler.z, options=fast)
+            for fov_keyframe in camera_fov_keyframes:
+                # TODO: Confirm this is a good conversion, and that the frame index is correct.
+                focal_length = 100 / math.tan(fov_keyframe.fov)
+                bl_frame_index = fov_keyframe.frame_index * 2 if self.for_60_fps else fov_keyframe.frame_index
+                data_curves["lens"].keyframe_points.insert(bl_frame_index, focal_length, options=fast)
+            for fcurve in obj_curves.values():
+                fcurve.update()
+            for fcurve in data_curves.values():
                 fcurve.update()
 
         except Exception:
             # Delete partially created action before raising.
-            bpy.data.actions.remove(action)
+            bpy.data.actions.remove(obj_action)
+            bpy.data.actions.remove(data_action)
             raise
         else:
-            action.use_fake_user = True
-            return action
+            obj_action.use_fake_user = True
+            data_action.use_fake_user = True
+            return obj_action, data_action
 
     def create_blender_action(
         self,
         cutscene_name: str,
+        part_armature,
         all_cut_transforms: [dict[str, list[TRSTransform]]],
     ):
         """Read a HKX animation into a Blender action."""
-        self.all_cut_transforms = all_cut_transforms
-
-        action_name = f"{self.model_name}|{cutscene_name}"
+        action_name = f"{cutscene_name}[{part_armature.name}]"
         action = bpy.data.actions.new(action_name)
 
         try:
-            self._create_fcurves(action, all_cut_transforms)
+            self._create_fcurves(part_armature, action, all_cut_transforms)
         except Exception:
             # Delete partially created action before raising.
             bpy.data.actions.remove(action)
             raise
         else:
-            action.use_fake_user = True
+            action.use_fake_user = True  # prevent Blender from deleting Action if unassigned
             return action
 
     def _create_fcurves(
         self,
+        part_armature,
         action,
         all_cut_transforms: dict[str, list[TRSTransform]],
     ):
@@ -277,20 +412,6 @@ class HKXCutsceneImporter:
         TODO: Time-scaling argument (with linear interpolation)?
         """
         fast = {"FAST"}
-
-        # Create 'root motion' (master bone) FCurves.
-        # master_curves = {
-        #     "loc_x": action.fcurves.new("location", index=0),
-        #     "loc_y": action.fcurves.new("location", index=1),
-        #     "loc_z": action.fcurves.new("location", index=2),
-        #     "rot_w": action.fcurves.new("rotation_quaternion", index=0),
-        #     "rot_x": action.fcurves.new("rotation_quaternion", index=1),
-        #     "rot_y": action.fcurves.new("rotation_quaternion", index=2),
-        #     "rot_z": action.fcurves.new("rotation_quaternion", index=3),
-        #     "scale_x": action.fcurves.new("scale", index=0),
-        #     "scale_y": action.fcurves.new("scale", index=1),
-        #     "scale_z": action.fcurves.new("scale", index=2),
-        # }
 
         bone_curves = {}
 
@@ -326,44 +447,47 @@ class HKXCutsceneImporter:
 
             for frame_index, bl_arma_matrix in enumerate(bone_arma_matrices):
 
+                bl_frame_index = frame_index * 2 if self.for_60_fps else frame_index
+
                 if bone_name == "master":
+                    # TODO: Cutscenes do not seem to animate 'master' for characters?
                     # `bl_arma_matrix` is just raw Blender world (game) space 'root' transform. No parenting.
                     # t, r, s = bl_arma_matrix.decompose()
-                    # master_curves["loc_x"].keyframe_points.insert(frame_index, t.x, options=fast)
-                    # master_curves["loc_y"].keyframe_points.insert(frame_index, t.y, options=fast)
-                    # master_curves["loc_z"].keyframe_points.insert(frame_index, t.z, options=fast)
-                    # master_curves["rot_w"].keyframe_points.insert(frame_index, r.w, options=fast)
-                    # master_curves["rot_x"].keyframe_points.insert(frame_index, r.x, options=fast)
-                    # master_curves["rot_y"].keyframe_points.insert(frame_index, r.y, options=fast)
-                    # master_curves["rot_z"].keyframe_points.insert(frame_index, r.z, options=fast)
-                    # master_curves["scale_x"].keyframe_points.insert(frame_index, s.x, options=fast)
-                    # master_curves["scale_y"].keyframe_points.insert(frame_index, s.y, options=fast)
-                    # master_curves["scale_z"].keyframe_points.insert(frame_index, s.z, options=fast)
+                    # master_curves["loc_x"].keyframe_points.insert(bl_frame_index, t.x, options=fast)
+                    # master_curves["loc_y"].keyframe_points.insert(bl_frame_index, t.y, options=fast)
+                    # master_curves["loc_z"].keyframe_points.insert(bl_frame_index, t.z, options=fast)
+                    # master_curves["rot_w"].keyframe_points.insert(bl_frame_index, r.w, options=fast)
+                    # master_curves["rot_x"].keyframe_points.insert(bl_frame_index, r.x, options=fast)
+                    # master_curves["rot_y"].keyframe_points.insert(bl_frame_index, r.y, options=fast)
+                    # master_curves["rot_z"].keyframe_points.insert(bl_frame_index, r.z, options=fast)
+                    # master_curves["scale_x"].keyframe_points.insert(bl_frame_index, s.x, options=fast)
+                    # master_curves["scale_y"].keyframe_points.insert(bl_frame_index, s.y, options=fast)
+                    # master_curves["scale_z"].keyframe_points.insert(bl_frame_index, s.z, options=fast)
                     continue
 
-                bl_bone = self.bl_armature.data.bones[bone_name]
+                bl_bone = part_armature.data.bones[bone_name]
                 if bl_bone.parent is not None and (bl_bone.parent.name, frame_index) not in bl_arma_inv_matrices:
                     # Cache parent's inverted armature matrix (may be needed by other sibling bones this frame).
                     parent_bl_arma_matrix = all_bone_arma_matrices[bl_bone.parent.name][frame_index]
                     bl_arma_inv_matrices[bl_bone.parent.name, frame_index] = parent_bl_arma_matrix.inverted()
 
                 bl_basis_matrix = get_basis_matrix(
-                    self.bl_armature, bone_name, bl_arma_matrix, bl_arma_inv_matrices, frame_index
+                    part_armature, bone_name, bl_arma_matrix, bl_arma_inv_matrices, frame_index
                 )
                 t, r, s = bl_basis_matrix.decompose()
 
-                bone_curves[bone_name, "loc_x"].keyframe_points.insert(frame_index, t.x, options=fast)
-                bone_curves[bone_name, "loc_y"].keyframe_points.insert(frame_index, t.y, options=fast)
-                bone_curves[bone_name, "loc_z"].keyframe_points.insert(frame_index, t.z, options=fast)
+                bone_curves[bone_name, "loc_x"].keyframe_points.insert(bl_frame_index, t.x, options=fast)
+                bone_curves[bone_name, "loc_y"].keyframe_points.insert(bl_frame_index, t.y, options=fast)
+                bone_curves[bone_name, "loc_z"].keyframe_points.insert(bl_frame_index, t.z, options=fast)
 
-                bone_curves[bone_name, "rot_w"].keyframe_points.insert(frame_index, r.w, options=fast)
-                bone_curves[bone_name, "rot_x"].keyframe_points.insert(frame_index, r.x, options=fast)
-                bone_curves[bone_name, "rot_y"].keyframe_points.insert(frame_index, r.y, options=fast)
-                bone_curves[bone_name, "rot_z"].keyframe_points.insert(frame_index, r.z, options=fast)
+                bone_curves[bone_name, "rot_w"].keyframe_points.insert(bl_frame_index, r.w, options=fast)
+                bone_curves[bone_name, "rot_x"].keyframe_points.insert(bl_frame_index, r.x, options=fast)
+                bone_curves[bone_name, "rot_y"].keyframe_points.insert(bl_frame_index, r.y, options=fast)
+                bone_curves[bone_name, "rot_z"].keyframe_points.insert(bl_frame_index, r.z, options=fast)
 
-                bone_curves[bone_name, "scale_x"].keyframe_points.insert(frame_index, s.x, options=fast)
-                bone_curves[bone_name, "scale_y"].keyframe_points.insert(frame_index, s.y, options=fast)
-                bone_curves[bone_name, "scale_z"].keyframe_points.insert(frame_index, s.z, options=fast)
+                bone_curves[bone_name, "scale_x"].keyframe_points.insert(bl_frame_index, s.x, options=fast)
+                bone_curves[bone_name, "scale_y"].keyframe_points.insert(bl_frame_index, s.y, options=fast)
+                bone_curves[bone_name, "scale_z"].keyframe_points.insert(bl_frame_index, s.z, options=fast)
 
         # Update all F-curves. They do NOT cycle, unlike standard animations.
         # for fcurve in master_curves.values():

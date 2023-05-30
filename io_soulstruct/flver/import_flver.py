@@ -26,14 +26,14 @@ from bpy_extras.io_utils import ImportHelper
 from mathutils import Vector, Matrix
 
 from soulstruct.base.models.flver import FLVER
-from soulstruct.containers import Binder, BinderEntry, BinderEntryNotFoundError
+from soulstruct.containers import Binder, BinderEntry
 from soulstruct.containers.tpf import TPF, TPFTexture, batch_get_tpf_texture_png_data
 from soulstruct.utilities.maths import Vector3
 
 from io_soulstruct.utilities import *
 from .utilities import *
 from .materials import MaterialNodeCreator
-from .textures.utilities import TPF_RE, png_to_bl_image
+from .textures.utilities import png_to_bl_image, collect_binder_tpfs, collect_map_tpfs
 
 
 FLVER_BINDER_RE = re.compile(r"^.*?\.(chr|obj|parts)bnd(\.dcx)?$")
@@ -55,10 +55,22 @@ class ImportFLVER(LoggingOperator, ImportHelper):
         maxlen=255,  # Max internal buffer length, longer would be clamped.
     )
 
-    dds_path: StringProperty(
-        name="Read Dumped DDS Files",
-        description="Look for pre-dumped DDS textures in this folder, if given",
-        default="D:\\dds_dump",
+    png_cache_path: StringProperty(
+        name="Cached PNG path",
+        description="Directory to use for reading/writing cached texture PNGs",
+        default="D:\\blender_png_cache",
+    )
+
+    read_from_png_cache: BoolProperty(
+        name="Read from PNG Cache",
+        description="Read cached PNGs (instead of DDS files) from the above directory if available",
+        default=True,
+    )
+
+    write_to_png_cache: BoolProperty(
+        name="Write to PNG Cache",
+        description="Write PNGs of any loaded textures (DDS files) to the above directory for future use",
+        default=True,
     )
 
     load_map_piece_tpfs: BoolProperty(
@@ -124,30 +136,8 @@ class ImportFLVER(LoggingOperator, ImportHelper):
                 flver = flver_entries[0].to_binary_file(FLVER)
                 flvers.append(flver)
 
-                # Find TPFs or CHRTPFBHDs inside binder, potentially using `chrtpfbdt` file if it exists.
-                for tpf_entry in binder.find_entries_matching_name(TPF_RE):  # generally only one
-                    tpf = tpf_entry.to_binary_file(TPF)
-                    for texture in tpf.textures:
-                        attached_texture_sources[texture.name] = texture
-
-                try:
-                    tpfbhd_entry = binder.find_entry_matching_name(r".*\.chrtpfbhd")
-                except (BinderEntryNotFoundError, ValueError):
-                    pass
-                else:
-                    # Search for BDT.
-                    tpfbdt_path = file_path.parent / f"{tpfbhd_entry.name.split('.')[0]}.chrtpfbdt"
-                    if tpfbdt_path.is_file():
-                        tpfbxf = Binder.from_bytes(tpfbhd_entry.data, bdt_data=tpfbdt_path.read_bytes())
-                        for tpf_entry in tpfbxf.entries:
-                            match = TPF_RE.match(tpf_entry.name)
-                            if match:
-                                tpf = tpf_entry.to_binary_file(TPF)
-                                tpf.convert_dds_formats("DX10", "DXT1")
-                                for texture in tpf.textures:
-                                    attached_texture_sources[texture.name] = texture
-                    else:
-                        self.warning(f"Could not find adjacent CHRTPFBDT for TPFs in file {file_path}.")
+                # TODO: Also works for objbnd and partsbnd...?
+                attached_texture_sources |= collect_binder_tpfs(binder, file_path)
             else:
                 # Map Piece loose FLVER.
                 flver = FLVER.from_path(file_path)
@@ -155,20 +145,12 @@ class ImportFLVER(LoggingOperator, ImportHelper):
 
                 if self.load_map_piece_tpfs:
                     # Find map piece TPFs in adjacent `mXX` directory.
-                    directory = Path(self.directory)
-                    map_directory_match = MAP_NAME_RE.match(directory.name)
-                    if not map_directory_match:
-                        return self.error("FLVER not located in a map folder (`mAA_BB_CC_DD`). Cannot load TPFs.")
-                    tpf_directory = directory.parent / map_directory_match.group(1)
-                    if not tpf_directory.is_dir():
-                        return self.error(f"`mXX` TPF folder does not exist: {tpf_directory}. Cannot load TPFs.")
+                    loose_tpf_sources |= collect_map_tpfs(map_path=file_path.parent)
 
-                    loose_tpf_sources |= TPF.collect_tpf_entries(tpf_directory)
-
-        dds_dump_path = Path(self.dds_path) if self.dds_path else None
+        png_cache_path = Path(self.png_cache_path) if self.png_cache_path else None
 
         importer = FLVERImporter(
-            self, context, attached_texture_sources, loose_tpf_sources, dds_dump_path, self.enable_alpha_hashed
+            self, context, attached_texture_sources, loose_tpf_sources, png_cache_path, self.enable_alpha_hashed
         )
 
         for file_path, flver in zip(file_paths, flvers, strict=True):
@@ -193,7 +175,7 @@ class ImportFLVER(LoggingOperator, ImportHelper):
                                 file_path=file_path,
                                 transforms=transforms,
                                 read_tpfs=self.load_map_piece_tpfs,
-                                dds_path=self.dds_path,
+                                png_cache_path=self.png_cache_path,
                                 enable_alpha_blend=self.enable_alpha_hashed,
                             )
                             continue
@@ -201,7 +183,8 @@ class ImportFLVER(LoggingOperator, ImportHelper):
                 else:
                     self.warning(f"Cannot read MSB transform for FLVER in unknown directory: {file_path}.")
             try:
-                importer.import_flver(flver, file_path=file_path, transform=transform)
+                name = file_path.name.split(".")[0]  # drop all extensions
+                importer.import_flver(flver, name=name, transform=transform)
             except Exception as ex:
                 # Delete any objects created prior to exception.
                 for obj in importer.all_bl_objs:
@@ -233,7 +216,7 @@ class ImportFLVERWithMSBChoice(LoggingOperator):
     file_path: Path = Path()
     enum_options: list[tuple[tp.Any, str, str]] = []
     transforms: tp.Sequence[Transform] = []
-    dds_path: str = "F:\\dds_dump"
+    png_cache_path: Path = Path("D:/png_cache_path")
     read_tpfs: bool = False
 
     choices_enum: bpy.props.EnumProperty(items=get_msb_choices)
@@ -256,7 +239,8 @@ class ImportFLVERWithMSBChoice(LoggingOperator):
         self.importer.context = context
 
         try:
-            self.importer.import_flver(self.flver, file_path=self.file_path, transform=transform)
+            name = self.file_path.name.split(".")[0]  # drop all extensions
+            self.importer.import_flver(self.flver, name=name, transform=transform)
         except Exception as ex:
             for obj in self.importer.all_bl_objs:
                 bpy.data.objects.remove(obj)
@@ -275,10 +259,10 @@ class ImportFLVERWithMSBChoice(LoggingOperator):
         file_path: Path,
         transforms: list[tuple[str, Transform]],
         read_tpfs=False,
-        dds_path="F:\\dds_dump",
+        png_cache_path: Path | None = Path("D:/blender_png_cache"),
         enable_alpha_blend=False,
     ):
-        cls.dds_path = dds_path
+        cls.png_cache_path = png_cache_path
         cls.read_tpfs = read_tpfs
         cls.enable_alpha_blend = enable_alpha_blend
         cls.importer = importer
@@ -299,21 +283,29 @@ class FLVERImporter:
 
     texture_sources: dict[str, TPFTexture]
     loose_tpf_sources: dict[str, BinderEntry | TPFTexture]
-    dds_dump_path: Path | None
+    png_cache_path: Path | None
+    read_from_png_cache: bool
+    write_to_png_cache: bool
+    enable_alpha_hashed: bool
 
     def __init__(
         self,
-        operator: ImportFLVER,
+        operator: LoggingOperator,
         context,
         texture_sources: dict[str, TPFTexture] = None,
         loose_tpf_sources: dict[str, BinderEntry | TPFTexture] = None,
-        dds_dump_path: Path | None = None,
+        png_cache_path: Path | None = None,
+        read_from_png_cache=True,
+        write_to_png_cache=True,
         enable_alpha_hashed=True,
     ):
         self.operator = operator
         self.context = context
 
-        self.dds_dump_path = dds_dump_path
+        self.png_cache_path = png_cache_path
+        self.read_from_png_cache = read_from_png_cache
+        self.write_to_png_cache = write_to_png_cache
+
         # These DDS sources/images are shared between all FLVER files imported with this `FLVERImporter` instance.
         self.texture_sources = texture_sources
         self.loose_tpf_sources = loose_tpf_sources
@@ -327,7 +319,7 @@ class FLVERImporter:
         self.all_bl_objs = []
         self.materials = {}
 
-    def import_flver(self, flver: FLVER, file_path: Path, transform: tp.Optional[Transform] = None):
+    def import_flver(self, flver: FLVER, name: str, transform: tp.Optional[Transform] = None):
         """Read a FLVER into a collection of Blender mesh objects (and one Armature).
 
         TODO:
@@ -335,7 +327,7 @@ class FLVERImporter:
                 - If an existing material is found, but has no texture images, maybe just load those into it.
         """
         self.flver = flver
-        self.name = file_path.name.split(".")[0]  # drop all extensions
+        self.name = name
 
         # Create FLVER bone index -> Blender bone name dictionary. (Blender names are UTF-8.)
         self.bl_bone_names.clear()
@@ -393,7 +385,7 @@ class FLVERImporter:
             )
 
         # TODO: Would be better to do some other basic FLVER validation here before loading the TPFs.
-        if self.texture_sources or self.loose_tpf_sources or self.dds_dump_path:
+        if self.texture_sources or self.loose_tpf_sources or self.png_cache_path:
             self.load_texture_images()
         else:
             self.warning("No TPF files or DDS dump folder given. No textures loaded for FLVER.")
@@ -420,8 +412,10 @@ class FLVERImporter:
 
         self.create_dummies()
 
+        return self.all_bl_objs[0]  # might be used by other importers
+
     def load_texture_images(self):
-        """Load texture images from either `dds_dump` folder, TPFs found with the FLVER, or scanned loose (map) TPFs."""
+        """Load texture images from either `png_cache` folder, TPFs found with the FLVER, or scanned loose (map) TPFs."""
         textures_to_load = {}  # type: dict[str, TPFTexture]
         for texture_path in self.flver.get_all_texture_paths():
             texture_stem = texture_path.stem
@@ -429,6 +423,12 @@ class FLVERImporter:
                 continue  # already loaded
             if texture_stem in textures_to_load:
                 continue  # already queued to load below
+
+            if self.read_from_png_cache and self.png_cache_path:
+                png_path = self.png_cache_path / f"{texture_stem}.png"
+                if png_path.is_file():
+                    self.bl_images[texture_stem] = bpy.data.images.load(str(png_path))
+                    continue
 
             if texture_stem in self.texture_sources:
                 # Found in already-unpacked textures.
@@ -463,14 +463,7 @@ class FLVERImporter:
                 else:
                     self.warning(f"Unexpected loose TPF source type for '{texture_stem}': {type(texture_source)}")
 
-            if self.dds_dump_path:
-                dds_path = self.dds_dump_path / f"{texture_path.stem}.dds"
-                if dds_path.is_file():
-                    # print(f"Loading dumped DDS texture: {texture_path.stem}.dds")
-                    self.bl_images[texture_stem] = bpy.data.images.load(str(dds_path))
-                    continue
-
-            self.warning(f"Could not find TPF or dumped texture '{texture_path.stem}' for FLVER '{self.name}'.")
+            self.warning(f"Could not find TPF or cached PNG '{texture_path.stem}' for FLVER '{self.name}'.")
 
         if textures_to_load:
             for texture_stem in textures_to_load:
@@ -478,9 +471,10 @@ class FLVERImporter:
             from time import perf_counter
             t = perf_counter()
             all_png_data = batch_get_tpf_texture_png_data(list(textures_to_load.values()))
-            print(f"Batch converted to PNG images in {perf_counter() - t} s")
+            write_png_directory = self.png_cache_path if self.write_to_png_cache else None
+            print(f"# INFO: Batch converted to PNG images in {perf_counter() - t} s (cached = {self.write_to_png_cache})")
             for texture_stem, png_data in zip(textures_to_load.keys(), all_png_data):
-                bl_image = png_to_bl_image(texture_stem, png_data)
+                bl_image = png_to_bl_image(texture_stem, png_data, write_png_directory)
                 self.bl_images[texture_stem] = bl_image
                 # Note that the full interroot path is stored in material custom properties.
 
@@ -666,7 +660,7 @@ class FLVERImporter:
         shifted origins for the coordinates of certain vertices. I strongly suspect, but have not absolutely confirmed,
         that the `is_bind_pose` attribute of each mesh indicates whether FLVER bone data should be written to the
         EditBone (`is_bind_pose=True`) or PoseBone (`is_bind_pose=False`). Of course, we have to decide for each BONE,
-        not each mesh, so currently I am enforcing that `is_bind_post=False` for ALL meshes in order to write the bone
+        not each mesh, so currently I am enforcing that `is_bind_pose=False` for ALL meshes in order to write the bone
         transforms to PoseBone rather than EditBone. A warning will be logged if only some of them are `False`.
 
         The AABB of each bone is presumably generated to include all vertices that use that bone as a weight.
@@ -772,14 +766,13 @@ class FLVERImporter:
 
         if write_bone_type == "POSE":
             for game_bone, pose_bone in zip(self.flver.bones, bl_armature_obj.pose.bones):
-                pose_bone.rotation_mode = "XYZ"  # not Quaternion
                 # TODO: Pose bone transforms are relative to parent (in both FLVER and Blender).
                 #  Confirm map pieces still behave as expected, though (they shouldn't even have child bones).
                 # game_bone_translate, game_bone_rotate_mat = game_bone.get_absolute_translate_rotate(self.flver.bones)
                 # game_bone_rotate = game_bone_rotate_mat.to_euler_angles(radians=True)
                 game_translate, game_bone_rotate = game_bone.translate, game_bone.rotate
                 pose_bone.location = GAME_TO_BL_VECTOR(game_translate)
-                pose_bone.rotation_euler = GAME_TO_BL_EULER(game_bone_rotate)
+                pose_bone.rotation_quaternion = GAME_TO_BL_EULER(game_bone_rotate).to_quaternion()
                 pose_bone.scale = GAME_TO_BL_VECTOR(game_bone.scale)
 
         return bl_armature_obj

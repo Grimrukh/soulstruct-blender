@@ -14,12 +14,15 @@ __all__ = [
     "is_uniform",
     "natural_keys",
     "LoggingOperator",
+    "get_last_game_directory",
+    "set_last_game_directory",
 ]
 
 import math
 import re
 import typing as tp
 from dataclasses import dataclass
+from pathlib import Path
 
 # noinspection PyUnresolvedReferences
 from bpy.types import Operator
@@ -235,3 +238,19 @@ class LoggingOperator(Operator):
                 self.report({"ERROR"}, f"Error occurred during cleanup callback: {ex}")
         self.report({"ERROR"}, msg)
         return {"CANCELLED"}
+
+
+def get_last_game_directory():
+    """Load last `game_directory` from text file."""
+    last_game_directory_path = Path(__file__).parent / "game_directory.txt"
+    if last_game_directory_path.is_file():
+        game_directory = last_game_directory_path.read_text()
+        if Path(game_directory).is_dir():
+            return game_directory
+    return ""
+
+
+def set_last_game_directory(game_directory: str):
+    """Save last `game_directory` to text file."""
+    last_game_directory_path = Path(__file__).parent / "game_directory.txt"
+    last_game_directory_path.write_text(game_directory)

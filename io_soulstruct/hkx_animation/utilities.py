@@ -9,7 +9,7 @@ __all__ = [
 ]
 
 from mathutils import Euler, Quaternion as BlenderQuaternion
-from soulstruct_havok.utilities.maths import Quaternion as GameQuaternion
+from soulstruct_havok.utilities.maths import Quaternion as GameQuaternion, TRSTransform
 
 from soulstruct_havok.wrappers.hkx2015 import AnimationHKX, SkeletonHKX, ANIBND
 
@@ -33,7 +33,9 @@ def FL_TO_BL_QUAT(quaternion: GameQuaternion) -> BlenderQuaternion:
     return bl_euler.to_quaternion()
 
 
-def get_armature_frames(animation_hkx: AnimationHKX, skeleton_hkx: SkeletonHKX, track_bone_names: list[str]):
+def get_armature_frames(
+    animation_hkx: AnimationHKX, skeleton_hkx: SkeletonHKX, track_bone_names: list[str]
+) -> list[dict[str, TRSTransform]]:
     """Get a list of animation frame dictionaries, which each map bone names to armature-space transforms that frame."""
     # Create ANIBND with just this animation (always using dummy/default ID 0).
     anibnd = ANIBND(skeleton_hkx=skeleton_hkx, animations_hkx={0: animation_hkx}, default_anim_id=0)
