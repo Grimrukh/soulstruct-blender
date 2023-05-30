@@ -407,14 +407,14 @@ def collect_binder_tpfs(binder: Binder, binder_path: Path = None) -> dict[str, T
     return textures
 
 
-def collect_map_tpfs(map_path: Path) -> dict[str, BinderEntry | TPFTexture]:
+def collect_map_tpfs(map_dir_path: Path) -> dict[str, BinderEntry | TPFTexture]:
     """Find map piece TPFs in adjacent `mXX` directory."""
     textures = {}
-    map_directory_match = re.match(r"^(m\d\d)_\d\d_\d\d_\d\d$", map_path.name)
+    map_directory_match = re.match(r"^(m\d\d)_\d\d_\d\d_\d\d$", map_dir_path.name)
     if not map_directory_match:
         _LOGGER.warning("FLVER not located in a map folder (`mAA_BB_CC_DD`). Cannot load TPFs.")
         return textures
-    tpf_directory = map_path.parent / map_directory_match.group(1)
+    tpf_directory = map_dir_path.parent / map_directory_match.group(1)
     if not tpf_directory.is_dir():
         _LOGGER.warning(f"`mXX` TPF folder does not exist: {tpf_directory}. Cannot load TPFs.")
         return textures

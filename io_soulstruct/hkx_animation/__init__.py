@@ -4,7 +4,7 @@ __all__ = [
     "ImportHKXAnimation",
     "ImportHKXAnimationWithBinderChoice",
     "ArmatureActionChoiceOperator",
-    "SelectArmatureActionButton",
+    "SelectArmatureActionOperator",
     "HKX_ANIMATION_PT_hkx_animation_tools",
 ]
 
@@ -21,7 +21,7 @@ if "HKX_ANIMATION_PT_hkx_tools" in locals():
 
 # from io_hkx.export_hkx import ExportHKXAnim, ExportHKXAnimIntoBinder
 from .import_hkx_animation import ImportHKXAnimation, ImportHKXAnimationWithBinderChoice
-from .select_hkx_animation import ArmatureActionChoiceOperator, SelectArmatureActionButton
+from .select_hkx_animation import ArmatureActionChoiceOperator, SelectArmatureActionOperator
 
 
 class HKX_ANIMATION_PT_hkx_animation_tools(bpy.types.Panel):
@@ -34,8 +34,8 @@ class HKX_ANIMATION_PT_hkx_animation_tools(bpy.types.Panel):
     # noinspection PyUnusedLocal
     def draw(self, context):
         import_box = self.layout.box()
-        import_box.operator("import_scene.hkx_animation")
-        import_box.operator("animation.select_action")
+        import_box.operator(ImportHKXAnimation.bl_idname)
+        import_box.operator(SelectArmatureActionOperator.bl_idname)
 
         # TODO: export
         # export_box = self.layout.box()

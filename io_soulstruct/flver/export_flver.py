@@ -96,7 +96,7 @@ class ExportFLVERToMapDirectory(LoggingOperator):
     bl_label = "Export FLVER to Map Directory"
     bl_description = (
         "Export a prepared Blender object hierarchy to a FromSoftware "
-        "FLVER model file in a given `map` directory."
+        "FLVER model file in a given `map` directory"
     )
 
     @classmethod

@@ -16,9 +16,13 @@ __all__ = [
     "LoggingOperator",
     "get_last_game_directory",
     "set_last_game_directory",
+    "profile_execute",
 ]
 
+import cProfile
+import functools
 import math
+import pstats
 import re
 import typing as tp
 from dataclasses import dataclass
@@ -254,3 +258,18 @@ def set_last_game_directory(game_directory: str):
     """Save last `game_directory` to text file."""
     last_game_directory_path = Path(__file__).parent / "game_directory.txt"
     last_game_directory_path.write_text(game_directory)
+
+
+def profile_execute(execute_method: tp.Callable):
+    """Profiles the given `execute` method and prints the results to the console."""
+
+    @functools.wraps(execute_method)
+    def decorated(self, context):
+
+        with cProfile.Profile() as pr:
+            result = execute_method(context)
+        p = pstats.Stats(pr)
+        p = p.strip_dirs()
+        p.sort_stats("cumtime").print_stats(40)
+
+        return result

@@ -39,9 +39,9 @@ bl_info = {
     "name": "Soulstruct (FromSoftware Formats)",
     "author": "Scott Mooney (Grimrukh)",
     "version": (1, 0, 0),
-    "blender": (3, 4, 0),
+    "blender": (3, 5, 0),
     "location": "File > Import-Export",
-    "description": "Import/export FromSoftware game files: FLVER, NVM navmesh, HKX collisions, HKX animations",
+    "description": "Import/export FromSoftware game files: FLVER models, NVM navmeshes, HKX collisions, HKX animations",
     "warning": "",
     "doc_url": "https://github.com/Grimrukh/soulstruct-blender",
     "support": "COMMUNITY",
@@ -66,15 +66,22 @@ def menu_func_export(self, context):
 classes = (
     ImportFLVER,
     ImportFLVERWithMSBChoice,
+    ImportEquipmentFLVER,
+
+    HideAllDummiesOperator,
+    ShowAllDummiesOperator,
+
     ExportFLVER,
     ExportFLVERIntoBinder,
     ExportFLVERToMapDirectory,
     ExportMapDirectorySettings,
+
     ImportDDS,
     ExportTexturesIntoBinder,
     LightmapBakeProperties,
     BakeLightmapTextures,
     ExportLightmapTextures,
+
     FLVER_PT_flver_tools,
     FLVER_PT_bake_subpanel,
 
@@ -101,7 +108,7 @@ if soulstruct_havok:
         ImportHKXAnimation,
         ImportHKXAnimationWithBinderChoice,
         ArmatureActionChoiceOperator,
-        SelectArmatureActionButton,
+        SelectArmatureActionOperator,
         # ExportHKXAnimation,
         # ExportHKXAnimationIntoBinder,
         HKX_ANIMATION_PT_hkx_animation_tools,

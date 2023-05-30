@@ -26,6 +26,7 @@ def FL_TO_BL_VECTOR(sequence) -> Vector:
 
 
 ANIBND_RE = re.compile(r"^.*?\.anibnd(\.dcx)?$")
+c0000_ANIBND_RE = re.compile(r"^c0000_.*\.anibnd(\.dcx)?$")
 OBJBND_RE = re.compile(r"^.*?\.objbnd(\.dcx)?$")
 
 
@@ -92,9 +93,14 @@ class ImportHKXAnimation(LoggingOperator, ImportHelper):
                 anibnd_entry = objbnd.find_entry_matching_name(r".*\.anibnd(\.dcx)?")
                 if not anibnd_entry:
                     raise HKXAnimationImportError("OBJBND binder does not contain an ANIBND binder.")
-                anibnd = Binder.from_binder_entry(anibnd_entry)
+                skeleton_anibnd = anibnd = Binder.from_binder_entry(anibnd_entry)
             elif ANIBND_RE.match(file_path.name):
                 anibnd = Binder.from_path(file_path)
+                if c0000_match := c0000_ANIBND_RE.match(file_path.name):
+                    # c0000 skeleton is in base `c0000.anibnd{.dcx}` file.
+                    skeleton_anibnd = Binder.from_path(file_path.parent / f"c0000.anibnd{c0000_match.group(1)}")
+                else:
+                    skeleton_anibnd = anibnd
             else:
                 # TODO: Currently require Skeleton.HKX, so have to use ANIBND.
                 #  Have another deferred operator that lets you choose a loose Skeleton file after a loose animation.
@@ -104,7 +110,7 @@ class ImportHKXAnimation(LoggingOperator, ImportHelper):
                 )
 
             # Find skeleton entry.
-            skeleton_entry = anibnd.find_entry_matching_name(r"[Ss]keleton\.[Hh][Kk][Xx](\.dcx)?")
+            skeleton_entry = skeleton_anibnd.find_entry_matching_name(r"[Ss]keleton\.[Hh][Kk][Xx](\.dcx)?")
             if not skeleton_entry:
                 raise HKXAnimationImportError("Must import animation from an ANIBND containing a skeleton HKX file.")
             skeleton_hkx = SkeletonHKX.from_binder_entry(skeleton_entry)

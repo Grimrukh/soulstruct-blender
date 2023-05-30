@@ -30,10 +30,11 @@ class NVM_PT_navmesh_tools(bpy.types.Panel):
     bl_region_type = "UI"
     bl_category = "Navmesh"
 
+    # noinspection PyUnusedLocal
     def draw(self, context):
         import_box = self.layout.box()
-        import_box.operator("import_scene.nvm")
+        import_box.operator(ImportNVM.bl_idname)
 
         export_box = self.layout.box()
-        export_box.operator("export_scene.nvm")
-        export_box.operator("export_scene.nvm_binder")
+        export_box.operator(ExportNVM.bl_idname)
+        export_box.operator(ExportNVMIntoBinder.bl_idname)

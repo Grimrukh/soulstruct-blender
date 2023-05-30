@@ -25,8 +25,9 @@ class HKX_CUTSCENE_PT_hkx_cutscene_tools(bpy.types.Panel):
     bl_region_type = "UI"
     bl_category = "HKX Cutscene"
 
+    # noinspection PyUnusedLocal
     def draw(self, context):
         import_box = self.layout.box()
-        import_box.operator("import_scene.hkx_cutscene")
+        import_box.operator(ImportHKXCutscene.bl_idname)
 
         # TODO: export

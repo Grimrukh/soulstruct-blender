@@ -2,7 +2,7 @@
 Blender file (Action datablocks)."""
 from __future__ import annotations
 
-__all__ = ["ArmatureActionChoiceOperator", "SelectArmatureActionButton"]
+__all__ = ["ArmatureActionChoiceOperator", "SelectArmatureActionOperator"]
 
 import typing as tp
 
@@ -66,7 +66,7 @@ def get_armature_action_choices(self, context):
     return ArmatureActionChoiceOperator.enum_options
 
 
-class SelectArmatureActionButton(LoggingOperator):
+class SelectArmatureActionOperator(LoggingOperator):
     bl_idname = "animation.select_action"
     bl_label = "Select Animation"
 

@@ -1,16 +1,23 @@
 """
 Import FLVER files (with/without DCX) into Blender 3.3+ (Python 3.10+ scripting required).
 
-The FLVER is imported as an Armature object with all FLVER sub-meshes as Mesh children. Critical FLVER information is
-stored with custom properties as necessary.
+Can find FLVERs in CHRBND, OBJBND, and PARTSBND binders (with or without DCX compression).
 
-Currently only thoroughly tested for DS1/DSR map pieces, including map pieces with multiple root bones. Models with real
-bone hierarchies (i.e., basically everything except map pieces) will likely not be set up correctly. Non-map materials
-that use non-[M] MTD shaders will likely also not appear correctly.
+The FLVER is imported as an Armature object with all FLVER sub-meshes as Mesh children and model 'dummy points' as Empty
+children.
+
+New Blender materials will be created as needed that approximate in-game look (including conversion and loading of
+located DDS textures), but existing materials with the same name as the FLVER materials will be used if the user selects
+this option (on by default).
+
+Critical FLVER information needed for export, but not represented anywhere else in Blender, is stored with custom
+properties as necessary (on FLVER armatures, meshes, dummies, and materials).
+
+NOTE: Currently only thoroughly tested for DS1/DSR.
 """
 from __future__ import annotations
 
-__all__ = ["ImportFLVER"]  # , "ImportFLVERWithMSBChoice"]
+__all__ = ["ImportFLVER", "ImportFLVERWithMSBChoice", "ImportEquipmentFLVER"]
 
 import math
 import re
@@ -21,7 +28,7 @@ from pathlib import Path
 import bpy
 import bpy_types
 import bmesh
-from bpy.props import StringProperty, BoolProperty, CollectionProperty
+from bpy.props import StringProperty, BoolProperty, EnumProperty, CollectionProperty
 from bpy_extras.io_utils import ImportHelper
 from mathutils import Vector, Matrix
 
@@ -55,6 +62,12 @@ class ImportFLVER(LoggingOperator, ImportHelper):
         maxlen=255,  # Max internal buffer length, longer would be clamped.
     )
 
+    use_existing_materials: BoolProperty(
+        name="Use Existing Materials",
+        description="Use existing materials with the same name as the FLVER materials (if any)",
+        default=True,
+    )
+
     png_cache_path: StringProperty(
         name="Cached PNG path",
         description="Directory to use for reading/writing cached texture PNGs",
@@ -85,10 +98,16 @@ class ImportFLVER(LoggingOperator, ImportHelper):
         default=True,
     )
 
-    enable_alpha_hashed: BoolProperty(
-        name="Enable Alpha Hashed",
-        description="Enable material Alpha Hashed (rather than Opaque) for single-texture FLVER materials",
-        default=True,
+    material_blend_mode: EnumProperty(
+        name="Alpha Blend Mode",
+        description="Alpha mode to use for new single-texture FLVER materials",
+        items=[
+            ('OPAQUE', "Opaque", "Opaque Blend Mode"),
+            ('CLIP', "Clip", "Clip Blend Mode"),
+            ('HASHED', "Hashed", "Hashed Blend Mode"),
+            ('BLEND', "Blend", "Sorted Blend Mode"),
+        ],
+        default="HASHED",
     )
 
     files: CollectionProperty(
@@ -99,20 +118,6 @@ class ImportFLVER(LoggingOperator, ImportHelper):
     directory: StringProperty(
         options={'HIDDEN'},
     )
-
-    # Rename to `execute` and rename `execute` below to `_execute` to use this.
-    # def timed_execute(self, context):
-    #
-    #     import cProfile
-    #     import pstats
-    #
-    #     with cProfile.Profile() as pr:
-    #         result = self._execute()
-    #     p = pstats.Stats(pr)
-    #     p = p.strip_dirs()
-    #     p.sort_stats("cumtime").print_stats(40)
-    #
-    #     return result
 
     def execute(self, context):
         print("Executing FLVER import...")
@@ -126,31 +131,26 @@ class ImportFLVER(LoggingOperator, ImportHelper):
 
             if FLVER_BINDER_RE.match(file_path.name):
                 binder = Binder.from_path(file_path)
-
-                # Find FLVER entry.
-                flver_entries = binder.find_entries_matching_name(r".*\.flver(\.dcx)?")
-                if not flver_entries:
-                    raise FLVERImportError(f"Cannot find a FLVER file in binder {file_path}.")
-                elif len(flver_entries) > 1:
-                    raise FLVERImportError(f"Found multiple FLVER files in binder {file_path}.")
-                flver = flver_entries[0].to_binary_file(FLVER)
+                flver = get_flver_from_binder(binder, file_path)
                 flvers.append(flver)
-
-                # TODO: Also works for objbnd and partsbnd...?
                 attached_texture_sources |= collect_binder_tpfs(binder, file_path)
-            else:
-                # Map Piece loose FLVER.
+            else:  # e.g. loose Map Piece FLVER
                 flver = FLVER.from_path(file_path)
                 flvers.append(flver)
-
                 if self.load_map_piece_tpfs:
                     # Find map piece TPFs in adjacent `mXX` directory.
-                    loose_tpf_sources |= collect_map_tpfs(map_path=file_path.parent)
+                    loose_tpf_sources |= collect_map_tpfs(map_dir_path=file_path.parent)
 
         png_cache_path = Path(self.png_cache_path) if self.png_cache_path else None
 
         importer = FLVERImporter(
-            self, context, attached_texture_sources, loose_tpf_sources, png_cache_path, self.enable_alpha_hashed
+            self,
+            context,
+            use_existing_materials=self.use_existing_materials,
+            texture_sources=attached_texture_sources,
+            loose_tpf_sources=loose_tpf_sources,
+            png_cache_path=png_cache_path,
+            material_blend_mode=self.material_blend_mode,
         )
 
         for file_path, flver in zip(file_paths, flvers, strict=True):
@@ -174,9 +174,13 @@ class ImportFLVER(LoggingOperator, ImportHelper):
                                 flver=flver,
                                 file_path=file_path,
                                 transforms=transforms,
-                                read_tpfs=self.load_map_piece_tpfs,
-                                png_cache_path=self.png_cache_path,
-                                enable_alpha_blend=self.enable_alpha_hashed,
+                                use_existing_materials=self.use_existing_materials,
+                                png_cache_path=png_cache_path,
+                                read_from_png_cache=self.read_from_png_cache,
+                                write_to_png_cache=self.write_to_png_cache,
+                                load_map_piece_tpfs=self.load_map_piece_tpfs,
+                                read_msb_transform=self.read_msb_transform,
+                                material_blend_mode=self.material_blend_mode,
                             )
                             continue
                         transform = transforms[0][1]
@@ -189,8 +193,6 @@ class ImportFLVER(LoggingOperator, ImportHelper):
                 # Delete any objects created prior to exception.
                 for obj in importer.all_bl_objs:
                     bpy.data.objects.remove(obj)
-                for collection in importer.all_bl_collections:
-                    bpy.data.collections.remove(collection)
                 traceback.print_exc()  # for inspection in Blender console
                 return self.error(f"Cannot import FLVER: {file_path.name}. Error: {ex}")
 
@@ -207,7 +209,7 @@ class ImportFLVERWithMSBChoice(LoggingOperator):
 
     See: https://blender.stackexchange.com/questions/6512/how-to-call-invoke-popup
     """
-    bl_idname = "wm.msb_choice_operator"
+    bl_idname = "wm.flver_with_msb_choice"
     bl_label = "Choose MSB Entry"
 
     # For deferred import in `execute()`.
@@ -216,8 +218,14 @@ class ImportFLVERWithMSBChoice(LoggingOperator):
     file_path: Path = Path()
     enum_options: list[tuple[tp.Any, str, str]] = []
     transforms: tp.Sequence[Transform] = []
-    png_cache_path: Path = Path("D:/png_cache_path")
-    read_tpfs: bool = False
+
+    use_existing_materials: bool = True
+    png_cache_path: Path = Path("D:/blender_png_cache")
+    read_from_png_cache: bool = True
+    write_to_png_cache: bool = True
+    load_map_piece_tpfs: bool = True
+    read_msb_transform: bool = True
+    material_blend_mode: str = "HASHED"
 
     choices_enum: bpy.props.EnumProperty(items=get_msb_choices)
 
@@ -244,8 +252,6 @@ class ImportFLVERWithMSBChoice(LoggingOperator):
         except Exception as ex:
             for obj in self.importer.all_bl_objs:
                 bpy.data.objects.remove(obj)
-            for collection in self.importer.all_bl_collections:
-                bpy.data.collections.remove(collection)
             traceback.print_exc()
             return self.error(f"Cannot import FLVER: {self.file_path.name}. Error: {ex}")
 
@@ -258,69 +264,211 @@ class ImportFLVERWithMSBChoice(LoggingOperator):
         flver: FLVER,
         file_path: Path,
         transforms: list[tuple[str, Transform]],
-        read_tpfs=False,
-        png_cache_path: Path | None = Path("D:/blender_png_cache"),
-        enable_alpha_blend=False,
+        use_existing_materials: bool,
+        png_cache_path: Path,
+        read_from_png_cache: bool,
+        write_to_png_cache: bool,
+        load_map_piece_tpfs: bool,
+        read_msb_transform: bool,
+        material_blend_mode: str,
     ):
+        cls.use_existing_materials = use_existing_materials
         cls.png_cache_path = png_cache_path
-        cls.read_tpfs = read_tpfs
-        cls.enable_alpha_blend = enable_alpha_blend
+        cls.read_from_png_cache = read_from_png_cache
+        cls.write_to_png_cache = write_to_png_cache
+        cls.load_map_piece_tpfs = load_map_piece_tpfs
+        cls.read_msb_transform = read_msb_transform
+        cls.material_blend_mode = material_blend_mode
+
         cls.importer = importer
         cls.flver = flver
         cls.file_path = file_path
         cls.enum_options = [(str(i), name, "") for i, (name, _) in enumerate(transforms)]
         cls.transforms = [tf for _, tf in transforms]
         # noinspection PyUnresolvedReferences
-        bpy.ops.wm.msb_choice_operator("INVOKE_DEFAULT")
+        bpy.ops.wm.flver_with_msb_choice("INVOKE_DEFAULT")
+
+
+class ImportEquipmentFLVER(LoggingOperator, ImportHelper):
+    """Import weapon/armor FLVER from a `partsbnd` binder and attach it to selected armature (c0000)."""
+    bl_idname = "import_scene.equipment_flver"
+    bl_label = "Import Equipment FLVER"
+    bl_description = "Import a FromSoftware FLVER equipment model file from a PARTSBND file and attach to c0000."
+
+    filename_ext = ".partsbnd"
+
+    filter_glob: StringProperty(
+        default="*.flver;*.flver.dcx;*.partsbnd;*.partsbnd.dcx",
+        options={'HIDDEN'},
+        maxlen=255,  # Max internal buffer length, longer would be clamped.
+    )
+
+    use_existing_materials: BoolProperty(
+        name="Use Existing Materials",
+        description="Use existing materials with the same name as the FLVER materials (if any)",
+        default=True,
+    )
+
+    png_cache_path: StringProperty(
+        name="Cached PNG path",
+        description="Directory to use for reading/writing cached texture PNGs",
+        default="D:\\blender_png_cache",
+    )
+
+    read_from_png_cache: BoolProperty(
+        name="Read from PNG Cache",
+        description="Read cached PNGs (instead of DDS files) from the above directory if available",
+        default=True,
+    )
+
+    write_to_png_cache: BoolProperty(
+        name="Write to PNG Cache",
+        description="Write PNGs of any loaded textures (DDS files) to the above directory for future use",
+        default=True,
+    )
+
+    material_blend_mode: EnumProperty(
+        name="Alpha Blend Mode",
+        description="Alpha mode to use for new single-texture FLVER materials",
+        items=[
+            ('OPAQUE', "Opaque", "Opaque Blend Mode"),
+            ('CLIP', "Clip", "Clip Blend Mode"),
+            ('HASHED', "Hashed", "Hashed Blend Mode"),
+            ('BLEND', "Blend", "Sorted Blend Mode"),
+        ],
+        default="HASHED",
+    )
+
+    files: CollectionProperty(
+        type=bpy.types.OperatorFileListElement,
+        options={'HIDDEN', 'SKIP_SAVE'},
+    )
+
+    directory: StringProperty(
+        options={'HIDDEN'},
+    )
+
+    @classmethod
+    def poll(cls, context):
+        """Animation's rigged armature must be selected (to extract bone names)."""
+        try:
+            # TODO: Could further check that selected armature is a c0000 (e.g. by checking bones).
+            return context.selected_objects[0].type == "ARMATURE"
+        except IndexError:
+            return False
+
+    def execute(self, context):
+        print("Executing Equipment FLVER import...")
+
+        c0000_armature = context.selected_objects[0]
+
+        file_paths = [Path(self.directory, file.name) for file in self.files]
+        flvers = []
+        attached_texture_sources = {}  # from multi-texture TPFs directly linked to FLVER
+        loose_tpf_sources = {}  # one-texture TPFs that we only read if needed by FLVER
+
+        for file_path in file_paths:
+
+            if FLVER_BINDER_RE.match(file_path.name):
+                binder = Binder.from_path(file_path)
+                flver = get_flver_from_binder(binder, file_path)
+                flvers.append(flver)
+                attached_texture_sources |= collect_binder_tpfs(binder, file_path)
+            else:  # e.g. loose Map Piece FLVER
+                flver = FLVER.from_path(file_path)
+                flvers.append(flver)
+                if self.load_map_piece_tpfs:
+                    # Find map piece TPFs in adjacent `mXX` directory.
+                    loose_tpf_sources |= collect_map_tpfs(map_dir_path=file_path.parent)
+
+        png_cache_path = Path(self.png_cache_path) if self.png_cache_path else None
+
+        importer = FLVERImporter(
+            self,
+            context,
+            use_existing_materials=self.use_existing_materials,
+            texture_sources=attached_texture_sources,
+            loose_tpf_sources=loose_tpf_sources,
+            png_cache_path=png_cache_path,
+            material_blend_mode=self.material_blend_mode,
+        )
+
+        for file_path, flver in zip(file_paths, flvers, strict=True):
+
+            try:
+                name = file_path.name.split(".")[0]  # drop all extensions
+                importer.import_flver(flver, name=name, existing_armature=c0000_armature)
+            except Exception as ex:
+                # Delete any objects created prior to exception (except existing armature at index 0).
+                for obj in importer.all_bl_objs[1:]:
+                    bpy.data.objects.remove(obj)
+                traceback.print_exc()  # for inspection in Blender console
+                return self.error(f"Cannot import equipment FLVER: {file_path.name}. Error: {ex}")
+
+        return {"FINISHED"}
 
 
 class FLVERImporter:
-    """Manages imports for a batch of FLVER files imported simultaneously."""
+    """Manages imports for a batch of FLVER files imported simultaneously.
+
+    Call `import_flver()` to import a single FLVER file.
+    """
 
     flver: tp.Optional[FLVER]
     name: str
     bl_images: dict[str, tp.Any]  # values can be string DDS paths or loaded Blender images
 
+    use_existing_materials: bool
     texture_sources: dict[str, TPFTexture]
     loose_tpf_sources: dict[str, BinderEntry | TPFTexture]
     png_cache_path: Path | None
     read_from_png_cache: bool
     write_to_png_cache: bool
-    enable_alpha_hashed: bool
+    material_blend_mode: str
 
     def __init__(
         self,
         operator: LoggingOperator,
         context,
+        use_existing_materials=True,
         texture_sources: dict[str, TPFTexture] = None,
         loose_tpf_sources: dict[str, BinderEntry | TPFTexture] = None,
         png_cache_path: Path | None = None,
         read_from_png_cache=True,
         write_to_png_cache=True,
-        enable_alpha_hashed=True,
+        material_blend_mode="HASHED",
     ):
         self.operator = operator
         self.context = context
 
-        self.png_cache_path = png_cache_path
-        self.read_from_png_cache = read_from_png_cache
-        self.write_to_png_cache = write_to_png_cache
-
+        self.use_existing_materials = use_existing_materials
         # These DDS sources/images are shared between all FLVER files imported with this `FLVERImporter` instance.
         self.texture_sources = texture_sources
         self.loose_tpf_sources = loose_tpf_sources
-        self.bl_images = {}  # maps texture stems to loaded Blender images
-        self.enable_alpha_hashed = enable_alpha_hashed
+        self.png_cache_path = png_cache_path
+        self.read_from_png_cache = read_from_png_cache
+        self.write_to_png_cache = write_to_png_cache
+        self.material_blend_mode = material_blend_mode
 
+        # NOT cleared for each import.
+        self.bl_images = {}  # maps texture stems to loaded Blender images
+
+        # NOTE: These are all reset/cleared for every FLVER import.
         self.flver = None
         self.name = ""
-        self.bl_bone_names = {}  # type: dict[int, str]
-        self.all_bl_collections = []
         self.all_bl_objs = []
         self.materials = {}
+        self.bl_bone_names = {}  # type: dict[int, str]
 
-    def import_flver(self, flver: FLVER, name: str, transform: tp.Optional[Transform] = None):
+    def import_flver(
+        self, flver: FLVER, name: str, transform: tp.Optional[Transform] = None, existing_armature=None
+    ):
         """Read a FLVER into a collection of Blender mesh objects (and one Armature).
+
+        If `existing_armature` is passed, the skeleton of `flver` will be ignored, and its submeshes will be parented
+        to the bones of `existing_armature` instead (e.g. for parenting equipment models to c0000). Dummies should
+        generally not be present in these FLVERs, but if they do exist, they will also be parented to the armature with
+        their original FLVER name as a prefix to distinguish them from the dummies of `existing_armature`.
 
         TODO:
             - Not fully happy with how duplicate materials are handled.
@@ -328,9 +476,12 @@ class FLVERImporter:
         """
         self.flver = flver
         self.name = name
+        self.bl_bone_names.clear()
+        self.materials = {}
 
         # Create FLVER bone index -> Blender bone name dictionary. (Blender names are UTF-8.)
-        self.bl_bone_names.clear()
+        # This is done even when `existing_armature` is given, as the order of bones in this new FLVER may be different
+        # and the vertex weight indices need to be directed to the names of bones in `existing_armature` correctly.
         for bone_index, bone in enumerate(self.flver.bones):
             # Just using actual bone names to avoid the need for parsing rules on export. However, duplicate names
             # need to be handled with suffixes.
@@ -340,44 +491,21 @@ class FLVERImporter:
             else:
                 self.bl_bone_names[bone_index] = bone.name
 
-        # Set mode to OBJECT and deselect all objects.
-        if bpy.ops.object.mode_set.poll():
-            bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
-        if bpy.ops.object.select_all.poll():
-            bpy.ops.object.select_all(action="DESELECT")
-
-        # TODO: Collections too annoying to manage.
-        # root_collection = bpy.data.collections.new(f"{self.name} FLVER")
-        # mesh_collection = bpy.data.collections.new(f"{self.name} Meshes")
-        # dummy_collection = bpy.data.collections.new(f"{self.name} Dummies")
-        # self.context.scene.collection.children.link(root_collection)
-        # self.all_bl_collections = [root_collection, mesh_collection, dummy_collection]
-        # root_collection.children.link(mesh_collection)
-        # root_collection.children.link(dummy_collection)
-
-        bl_armature = self.create_bones()
-
-        if bpy.ops.object.mode_set.poll():  # just to be safe
-            bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
-
-        # Assign basic FLVER header information as custom props.
-        # TODO: Configure a full-exporter dropdown/choice of game version that defaults as many of these as possible.
-        bl_armature["big_endian"] = self.flver.big_endian  # bool
-        bl_armature["version"] = self.flver.version.name  # str
-        bl_armature["unicode"] = self.flver.unicode  # bool
-        bl_armature["unk_x4a"] = self.flver.unk_x4a  # bool
-        bl_armature["unk_x4c"] = self.flver.unk_x4c  # int
-        bl_armature["unk_x5c"] = self.flver.unk_x5c  # int
-        bl_armature["unk_x5d"] = self.flver.unk_x5d  # int
-        bl_armature["unk_x68"] = self.flver.unk_x68  # int
-
-        if transform is not None:
-            bl_armature.location = transform.bl_translate
-            bl_armature.rotation_euler = transform.bl_rotate
-            bl_armature.scale = transform.bl_scale
+        if existing_armature:
+            # Do not create an armature for this FLVER; parent it to `existing_armature` instead.
+            bl_armature = existing_armature
+            # Parts FLVERs sometimes have extra non-c0000 bones (e.g. multiple bones with their own name), which we will
+            # delete here, to ensure that any attempt to use them in the new meshes raises an error.
+            for bone_index in tuple(self.bl_bone_names):
+                if self.bl_bone_names[bone_index] not in bl_armature.data.bones:
+                    self.bl_bone_names.pop(bone_index)
+            dummy_prefix = self.name  # we generally don't expect any dummies, but will distinguish them with this
+        else:
+            # Create a new armature for this FLVER.
+            bl_armature = self.create_armature(transform)
+            dummy_prefix = ""
 
         self.all_bl_objs = [bl_armature]
-        self.materials = {}
 
         if self.flver.gx_lists:
             self.warning(
@@ -400,7 +528,10 @@ class FLVERImporter:
         self.materials = {
             i: material_creator.create_material(
                 flver_material,
-                material_name=f"{self.name} Material {i}")
+                material_name=f"{self.name} Material {i}",
+                use_existing=self.use_existing_materials,
+                material_blend_mode=self.material_blend_mode,
+            )
             for i, flver_material in enumerate(self.flver.materials)
         }
 
@@ -408,11 +539,42 @@ class FLVERImporter:
             mesh_name = f"{self.name} Mesh {i}"
             bl_mesh_obj = self.create_mesh_obj(flver_mesh, mesh_name)
             bl_mesh_obj["face_set_count"] = len(flver_mesh.face_sets)  # custom property
-            # self.all_bl_collections[1].objects.link(bl_mesh_obj)
 
-        self.create_dummies()
+        self.create_dummies(dummy_prefix)
 
         return self.all_bl_objs[0]  # might be used by other importers
+
+    def create_armature(self, transform: tp.Optional[Transform] = None):
+        """Create a new Blender armature to serve as the parent object for the entire FLVER."""
+
+        # Set mode to OBJECT and deselect all objects.
+        if bpy.ops.object.mode_set.poll():
+            bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
+        if bpy.ops.object.select_all.poll():
+            bpy.ops.object.select_all(action="DESELECT")
+
+        bl_armature = self.create_bones()
+
+        if bpy.ops.object.mode_set.poll():  # just to be safe
+            bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
+
+        # Assign basic FLVER header information as custom props.
+        # TODO: Configure a full-exporter dropdown/choice of game version that defaults as many of these as possible.
+        bl_armature["big_endian"] = self.flver.big_endian  # bool
+        bl_armature["version"] = self.flver.version.name  # str
+        bl_armature["unicode"] = self.flver.unicode  # bool
+        bl_armature["unk_x4a"] = self.flver.unk_x4a  # bool
+        bl_armature["unk_x4c"] = self.flver.unk_x4c  # int
+        bl_armature["unk_x5c"] = self.flver.unk_x5c  # int
+        bl_armature["unk_x5d"] = self.flver.unk_x5d  # int
+        bl_armature["unk_x68"] = self.flver.unk_x68  # int
+
+        if transform is not None:
+            bl_armature.location = transform.bl_translate
+            bl_armature.rotation_euler = transform.bl_rotate
+            bl_armature.scale = transform.bl_scale
+
+        return bl_armature
 
     def load_texture_images(self):
         """Load texture images from either `png_cache` folder, TPFs found with the FLVER, or scanned loose (map) TPFs."""
@@ -667,7 +829,6 @@ class FLVERImporter:
         """
         bl_armature = bpy.data.armatures.new(f"{self.name} Armature")
         bl_armature_obj = self.create_obj(f"{self.name}", bl_armature, parent_to_armature=False)
-        # self.all_bl_collections[0].objects.link(bl_armature_obj)
 
         write_bone_type = ""
         warn_partial_bind_pose = False
@@ -748,7 +909,6 @@ class FLVERImporter:
                 #  unlikely to be ever displayed properly OR actually used by game models/animations.
                 edit_bone.matrix = bl_edit_bone_mat
 
-
                 if not is_uniform(game_bone.scale, rel_tol=0.001):
                     self.warning(f"Bone {game_bone.name} has non-uniform scale: {game_bone.scale}. Left as identity.")
                 elif any(c < 0.0 for c in game_bone.scale):
@@ -777,16 +937,18 @@ class FLVERImporter:
 
         return bl_armature_obj
 
-    def create_dummies(self):
+    def create_dummies(self, dummy_prefix=""):
         """Create empty objects that represent dummies.
 
-        All dummies are children of the armature, and most of a specific bone given in 'attach_bone_name'.
+        All dummies are children of the armature, and most are children of a specific bone given in 'attach_bone_name'.
         """
 
         for i, dummy in enumerate(self.flver.dummies):
-            bl_dummy = self.create_obj(f"Dummy<{i}> [{dummy.reference_id}]", parent_to_armature=False)
-            # self.all_bl_collections[2].objects.link(bl_dummy)
-            bl_dummy.parent = self.armature
+            if dummy_prefix:
+                name = f"{dummy_prefix} Dummy<{i}> [{dummy.reference_id}]"
+            else:
+                name = f"Dummy<{i}> [{dummy.reference_id}]"
+            bl_dummy = self.create_obj(name, parent_to_armature=True)
             bl_dummy.empty_display_type = "ARROWS"  # best display type/size I've found (single arrow not sufficient)
             bl_dummy.empty_display_size = 0.05
 

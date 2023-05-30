@@ -48,8 +48,8 @@ class HKX_COLLISION_PT_hkx_map_collision_tools(bpy.types.Panel):
     # noinspection PyUnusedLocal
     def draw(self, context):
         import_box = self.layout.box()
-        import_box.operator("import_scene.hkx_map_collision")
+        import_box.operator(ImportHKXMapCollision.bl_idname)
 
         export_box = self.layout.box()
-        export_box.operator("export_scene.hkx_map_collision")
-        export_box.operator("export_scene.hkx_map_collision_binder")
+        export_box.operator(ExportHKXMapCollision.bl_idname)
+        export_box.operator(ExportHKXMapCollisionIntoBinder.bl_idname)

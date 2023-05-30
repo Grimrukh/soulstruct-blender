@@ -48,7 +48,7 @@ class MaterialNodeCreator:
         flver_material: Material,
         material_name: str,
         use_existing=True,
-        enable_alpha_hashed=True,
+        material_blend_mode="HASHED",
     ):
         """Create a Blender material that represents a single `FLVER.Material`.
 
@@ -64,12 +64,13 @@ class MaterialNodeCreator:
         existing_material = bpy.data.materials.get(material_name)
         if existing_material is not None:
             if use_existing:
+                # TODO: Not applying new `material_blend_mode`?
                 return existing_material
             # TODO: Should append '<i>' to duplicated name of new material...
 
         bl_material = bpy.data.materials.new(name=material_name)
-        if enable_alpha_hashed:
-            bl_material.blend_method = "HASHED"  # show alpha in viewport
+        if material_blend_mode:
+            bl_material.blend_method = material_blend_mode
 
         # Critical `Material` information stored in custom properties.
         bl_material["material_mtd_path"] = flver_material.mtd_path  # str
