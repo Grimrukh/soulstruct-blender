@@ -8,7 +8,7 @@ from pathlib import Path
 
 import bpy
 from bpy_extras.io_utils import ImportHelper
-from mathutils import Vector, Matrix
+from mathutils import Vector, Quaternion as BlenderQuaternion
 
 from soulstruct.containers import Binder, BinderEntry
 from soulstruct.utilities.maths import Vector4
@@ -17,6 +17,7 @@ from soulstruct_havok.utilities.maths import TRSTransform
 from soulstruct_havok.wrappers.hkx2015 import AnimationHKX, SkeletonHKX
 
 from io_soulstruct.utilities import *
+from io_soulstruct.havok.utilities import GAME_TRS_TO_BL_MATRIX, get_basis_matrix
 from .utilities import *
 
 
@@ -49,14 +50,8 @@ class ImportHKXAnimation(LoggingOperator, ImportHelper):
         default=False,
     )
 
-    assign_to_armature: bpy.props.BoolProperty(
-        name="Assign to Armature",
-        description="Assign imported animation action to selected FLVER armature immediately",
-        default=True,
-    )
-
-    for_60_fps: bpy.props.BoolProperty(
-        name="For 60 FPS",
+    to_60_fps: bpy.props.BoolProperty(
+        name="To 60 FPS",
         description="Scale animation keyframes to 60 FPS (from 30 FPS)",
         default=True,
     )
@@ -140,7 +135,7 @@ class ImportHKXAnimation(LoggingOperator, ImportHelper):
                 else:
                     hkxs_with_paths.append((file_path, skeleton_hkx, animation_hkx))
 
-        importer = HKXAnimationImporter(self, context, bl_armature, bl_armature.name, self.for_60_fps)
+        importer = HKXAnimationImporter(self, context, bl_armature, bl_armature.name, self.to_60_fps)
 
         for (file_path, skeleton_hkx, hkx_or_entries) in hkxs_with_paths:
 
@@ -152,7 +147,6 @@ class ImportHKXAnimation(LoggingOperator, ImportHelper):
                     hkx_entries=hkx_or_entries,
                     bl_armature=bl_armature,
                     skeleton_hkx=skeleton_hkx,
-                    assign_to_armature=self.assign_to_armature,
                 )
                 continue
 
@@ -176,21 +170,10 @@ class ImportHKXAnimation(LoggingOperator, ImportHelper):
 
             # Import single animation HKX.
             try:
-                action = importer.create_blender_action(anim_name, arma_frames, root_motion)
+                importer.create_action(anim_name, arma_frames, root_motion)
             except Exception as ex:
-                traceback.print_exc()  # for inspection in Blender console
+                traceback.print_exc()
                 return self.error(f"Cannot import HKX animation: {file_path.name}. Error: {ex}")
-
-            if self.assign_to_armature:
-                try:
-                    bl_armature.animation_data_create()
-                    bl_armature.animation_data.action = action
-                    # Update Blender timeline start/stop times.
-                    bpy.context.scene.frame_start = int(action.frame_range[0])
-                    bpy.context.scene.frame_end = int(action.frame_range[1])
-                    bpy.context.scene.frame_set(bpy.context.scene.frame_start)
-                except Exception as ex:
-                    self.warning(f"Animation was imported, but action could not be assigned to Armature. Error: {ex}")
 
         return {"FINISHED"}
 
@@ -216,7 +199,6 @@ class ImportHKXAnimationWithBinderChoice(LoggingOperator):
     hkx_entries: tp.Sequence[BinderEntry] = []
     bl_armature = None
     skeleton_hkx: SkeletonHKX | None = None
-    assign_to_armature: bool = False
 
     choices_enum: bpy.props.EnumProperty(items=get_binder_entry_choices)
 
@@ -255,23 +237,12 @@ class ImportHKXAnimationWithBinderChoice(LoggingOperator):
         root_motion = get_root_motion(animation_hkx)
 
         try:
-            action = self.importer.create_blender_action(anim_name, arma_frames, root_motion)
+            self.importer.create_action(anim_name, arma_frames, root_motion)
         except Exception as ex:
             traceback.print_exc()
             return self.error(
                 f"Cannot import HKX animation {anim_name} from '{self.binder_file_path.name}'. Error: {ex}"
             )
-
-        if self.assign_to_armature:
-            try:
-                self.bl_armature.animation_data_create()
-                self.bl_armature.animation_data.action = action
-                # Update Blender timeline start/stop times.
-                bpy.context.scene.frame_start = int(action.frame_range[0])
-                bpy.context.scene.frame_end = int(action.frame_range[1])
-                bpy.context.scene.frame_set(bpy.context.scene.frame_start)
-            except Exception as ex:
-                self.warning(f"Animation was imported, but action could not be assigned to Armature. Error: {ex}")
 
         return {"FINISHED"}
 
@@ -283,7 +254,6 @@ class ImportHKXAnimationWithBinderChoice(LoggingOperator):
         hkx_entries: list[BinderEntry],
         bl_armature,
         skeleton_hkx: SkeletonHKX,
-        assign_to_armature: bool,
     ):
         cls.importer = importer
         cls.binder_file_path = binder_file_path
@@ -291,7 +261,6 @@ class ImportHKXAnimationWithBinderChoice(LoggingOperator):
         cls.hkx_entries = hkx_entries
         cls.bl_armature = bl_armature
         cls.skeleton_hkx = skeleton_hkx
-        cls.assign_to_armature = assign_to_armature
         # noinspection PyUnresolvedReferences
         bpy.ops.wm.hkx_animation_binder_choice_operator("INVOKE_DEFAULT")
 
@@ -299,8 +268,10 @@ class ImportHKXAnimationWithBinderChoice(LoggingOperator):
 class HKXAnimationImporter:
     """Manages imports for a batch of HKX files imported simultaneously."""
 
+    FAST = {"FAST"}
+
     model_name: str
-    for_60_fps: bool
+    to_60_fps: bool
 
     def __init__(
         self,
@@ -308,184 +279,123 @@ class HKXAnimationImporter:
         context,
         bl_armature,
         model_name: str,
-        for_60_fps: bool,
+        to_60_fps: bool,
     ):
         self.operator = operator
         self.context = context
 
         self.bl_armature = bl_armature
         self.model_name = model_name
-        self.for_60_fps = for_60_fps
+        self.to_60_fps = to_60_fps
 
-    def create_blender_action(
+    def create_action(
         self,
-        anim_name: str,
+        animation_name: str,
         arma_frames: list[dict[str, TRSTransform]],
         root_motion: None | list[Vector4] = None,
     ):
-        """Read a HKX animation into a Blender action."""
-        self.arma_frames = arma_frames
-        self.root_motion = root_motion
-
-        animation_name = f"{self.model_name}|{anim_name}"
-        action = bpy.data.actions.new(animation_name)
-
+        """Import single animation HKX."""
+        action_name = f"{self.model_name}|{animation_name}"
+        action = None
+        original_location = self.bl_armature.location.copy()
         try:
-            self._create_fcurves(action, arma_frames, root_motion)
+            self.bl_armature.animation_data_create()
+            self.bl_armature.animation_data.action = action = bpy.data.actions.new(name=action_name)
+            self._add_armature_keyframes(arma_frames, root_motion)
         except Exception:
-            # Delete partially created action before raising.
-            bpy.data.actions.remove(action)
+            if action:
+                bpy.data.actions.remove(action)
+            self.bl_armature.location = original_location  # reset location (i.e. erase last root motion)
+            # TODO: should reset last bone transforms (`matrix_basis`) as well
             raise
-        else:
-            action.use_fake_user = True
-            return action
 
-    def _create_fcurves(
+        # Ensure action is not deleted when not in use.
+        action.use_fake_user = True
+        # Update all F-curves and make them cycle.
+        for fcurve in action.fcurves:
+            fcurve.modifiers.new("CYCLES")  # default settings are fine
+            fcurve.update()
+        # Update Blender timeline start/stop times.
+        bpy.context.scene.frame_start = int(action.frame_range[0])
+        bpy.context.scene.frame_end = int(action.frame_range[1])
+        bpy.context.scene.frame_set(bpy.context.scene.frame_start)
+
+    def _add_armature_keyframes(
         self,
-        action,
         arma_frames: list[dict[str, TRSTransform]],
         root_motion: None | list[Vector4] = None,
     ):
         """Convert a Havok HKX animation file to a Blender action (with fully-sampled keyframes).
 
-        `bl_armature` is required to properly set the `matrix_basis` of each pose bone relative to the bone resting
+        The action to add keyframes to should already be the active action on `self.bl_armature`. This is required to
+        use the `keyframe_insert()` method, which allows full-Vector and full-Quaternion keyframes to be inserted and
+        have Blender properly interpolate (e.g. Quaternion slerp) between them, which it cannot do if we use FCurves and
+        set the `keyframe_points` directly for each coordinate.
+
+        We also use `self.bl_armature` to properly set the `matrix_basis` of each pose bone relative to the bone resting
         positions (set to the edit bones).
 
         `skeleton_hkx` is required to compute animation frame transforms in object coordinates, as the bone hierarchy
         can differ for HKX skeletons versus the FLVER skeleton in `bl_armature`.
 
         TODO: Does not support changes in Blender bone names (e.g. '<DUPE>' suffix).
-        TODO: Time-scaling argument (with linear interpolation)?
         """
-        fast = {"FAST"}
-
-        # Create root motion FCurves.
         if root_motion is not None:
             if len(root_motion) != len(arma_frames):
                 raise ValueError(
                     f"Number of animation root motion frames ({len(root_motion)}) does not match number of bone "
                     f"animation frames ({len(arma_frames)})."
                 )
-            root_curves = {
-                "loc_x": action.fcurves.new("location", index=0),
-                "loc_y": action.fcurves.new("location", index=1),
-                "loc_z": action.fcurves.new("location", index=2),
-            }
-        else:
-            root_curves = {}
 
-        bone_curves = {}
+        # FIRST: Convert armature-space frame data to Blender `(location, rotation_quaternion, scale)` tuples.
+        # Note that we decompose the basis matrices so that quaternion discontinuities are handled properly.
+        last_frame_rotations = {}  # type: dict[str, BlenderQuaternion]
+        basis_frames = []  # type: list[dict[str, tuple[Vector, BlenderQuaternion, Vector]]]
 
-        # Create bone FCurves (ten per bone).
-        for bone_name in arma_frames[0]:
-            data_path_prefix = f"pose.bones[\"{bone_name}\"]"
-            location_data_path = f"{data_path_prefix}.location"
-            rotation_data_path = f"{data_path_prefix}.rotation_quaternion"
-            scale_data_path = f"{data_path_prefix}.scale"
-
-            bone_curves[bone_name, "loc_x"] = action.fcurves.new(location_data_path, index=0)
-            bone_curves[bone_name, "loc_y"] = action.fcurves.new(location_data_path, index=1)
-            bone_curves[bone_name, "loc_z"] = action.fcurves.new(location_data_path, index=2)
-
-            bone_curves[bone_name, "rot_w"] = action.fcurves.new(rotation_data_path, index=0)
-            bone_curves[bone_name, "rot_x"] = action.fcurves.new(rotation_data_path, index=1)
-            bone_curves[bone_name, "rot_y"] = action.fcurves.new(rotation_data_path, index=2)
-            bone_curves[bone_name, "rot_z"] = action.fcurves.new(rotation_data_path, index=3)
-
-            bone_curves[bone_name, "scale_x"] = action.fcurves.new(scale_data_path, index=0)
-            bone_curves[bone_name, "scale_y"] = action.fcurves.new(scale_data_path, index=1)
-            bone_curves[bone_name, "scale_z"] = action.fcurves.new(scale_data_path, index=2)
-
-        for frame_index, frame in enumerate(arma_frames):
-
-            bl_frame_index = frame_index * 2 if self.for_60_fps else frame_index
-
-            if root_motion is not None:
-                bl_frame_root_motion = GAME_TO_BL_VECTOR(root_motion[frame_index])  # drop useless fourth element
-                root_curves["loc_x"].keyframe_points.insert(bl_frame_index, bl_frame_root_motion.x, options=fast)
-                root_curves["loc_y"].keyframe_points.insert(bl_frame_index, bl_frame_root_motion.y, options=fast)
-                root_curves["loc_z"].keyframe_points.insert(bl_frame_index, bl_frame_root_motion.z, options=fast)
-
+        for frame in arma_frames:
             bl_arma_matrices = {
-                bone_name: trs_transform_to_bl_matrix(transform) for bone_name, transform in frame.items()
+                bone_name: GAME_TRS_TO_BL_MATRIX(transform) for bone_name, transform in frame.items()
             }
             bl_arma_inv_matrices = {}  # cached for frame as needed
 
-            for bone_name, bl_arma_matrix in bl_arma_matrices.items():
+            basis_frame = {}
 
-                bl_bone = self.bl_armature.data.bones[bone_name]
-                if bl_bone.parent is not None and bl_bone.parent.name not in bl_arma_inv_matrices:
+            for bone_name, bl_arma_matrix in bl_arma_matrices.items():
+                bl_edit_bone = self.bl_armature.data.bones[bone_name]
+                if bl_edit_bone.parent is not None and bl_edit_bone.parent.name not in bl_arma_inv_matrices:
                     # Cache parent's inverted armature matrix (may be needed by other sibling bones this frame).
-                    bl_arma_inv_matrices[bl_bone.parent.name] = bl_arma_matrices[bl_bone.parent.name].inverted()
+                    parent_name = bl_edit_bone.parent.name
+                    bl_arma_inv_matrices[parent_name] = bl_arma_matrices[parent_name].inverted()
 
                 bl_basis_matrix = get_basis_matrix(self.bl_armature, bone_name, bl_arma_matrix, bl_arma_inv_matrices)
                 t, r, s = bl_basis_matrix.decompose()
 
-                bone_curves[bone_name, "loc_x"].keyframe_points.insert(bl_frame_index, t.x, options=fast)
-                bone_curves[bone_name, "loc_y"].keyframe_points.insert(bl_frame_index, t.y, options=fast)
-                bone_curves[bone_name, "loc_z"].keyframe_points.insert(bl_frame_index, t.z, options=fast)
+                if bone_name in last_frame_rotations:
+                    if last_frame_rotations[bone_name].dot(r) < 0:
+                        r.negate()  # negate quaternion to avoid discontinuity (reverse direction of rotation)
 
-                bone_curves[bone_name, "rot_w"].keyframe_points.insert(bl_frame_index, r.w, options=fast)
-                bone_curves[bone_name, "rot_x"].keyframe_points.insert(bl_frame_index, r.x, options=fast)
-                bone_curves[bone_name, "rot_y"].keyframe_points.insert(bl_frame_index, r.y, options=fast)
-                bone_curves[bone_name, "rot_z"].keyframe_points.insert(bl_frame_index, r.z, options=fast)
+                basis_frame[bone_name] = (t, r, s)
+                last_frame_rotations[bone_name] = r
 
-                bone_curves[bone_name, "scale_x"].keyframe_points.insert(bl_frame_index, s.x, options=fast)
-                bone_curves[bone_name, "scale_y"].keyframe_points.insert(bl_frame_index, s.y, options=fast)
-                bone_curves[bone_name, "scale_z"].keyframe_points.insert(bl_frame_index, s.z, options=fast)
+            basis_frames.append(basis_frame)
 
-        # Update all F-curves and make them cycle.
-        for fcurve in root_curves.values():
-            fcurve.modifiers.new("CYCLES")  # default settings are fine
-            fcurve.update()
-        for fcurve in bone_curves.values():
-            fcurve.modifiers.new("CYCLES")  # default settings are fine
-            fcurve.update()
+        for frame_index, frame in enumerate(basis_frames):
 
+            # TODO: Make this a more general 'frame scaling' option, e.g. by having importer take input/output FPS.
+            #  (Should be able to read/infer input FPS from HKX file, actually.)
+            bl_frame_index = frame_index * 2 if self.to_60_fps else frame_index
 
-def trs_transform_to_bl_matrix(transform: TRSTransform) -> Matrix:
-    """Convert a game `TRSTransform` to a Blender 4x4 `Matrix`."""
-    bl_translate = GAME_TO_BL_VECTOR(transform.translation)
-    bl_rotate = FL_TO_BL_QUAT(transform.rotation)
-    bl_scale = GAME_TO_BL_VECTOR(transform.scale)
-    return Matrix.LocRotScale(bl_translate, bl_rotate, bl_scale)
+            if root_motion is not None:
+                self.bl_armature.location = GAME_TO_BL_VECTOR(root_motion[frame_index])  # drop useless fourth element
+                self.bl_armature.keyframe_insert(data_path="location", frame=bl_frame_index)
 
+            for bone_name, (t, r, s) in frame.items():
+                bl_pose_bone = self.bl_armature.pose.bones[bone_name]
+                bl_pose_bone.location = t
+                bl_pose_bone.rotation_quaternion = r
+                bl_pose_bone.scale = s
 
-def get_armature_matrix(armature, bone_name: str, basis=None) -> Matrix:
-    """Demonstrates how Blender calculates `pose_bone.matrix` (armature matrix) for `bone_name`.
-
-    TODO: Likely needed at export to convert the curve keyframes (in basis space) back to armature space.
-
-    Inverse of `get_basis_matrix()`.
-    """
-    local = armature.data.bones[bone_name].matrix_local
-    if basis is None:
-        basis = armature.pose.bones[bone_name].matrix_basis
-
-    parent = armature.pose.bones[bone_name].parent
-    if parent is None:  # root bone is simple
-        # armature = local @ basis
-        return local @ basis
-    else:
-        # Apply relative transform of local (edit bone) from parent and then armature position of parent:
-        #     armature = parent_armature @ (parent_local.inv @ local) @ basis
-        #  -> basis = (parent_local.inv @ local)parent_local @ parent_armature.inv @ armature
-        parent_local = armature.data.bones[parent.name].matrix_local
-        return get_armature_matrix(armature, parent.name) @ parent_local.inverted() @ local @ basis
-
-
-def get_basis_matrix(armature, bone_name: str, armature_matrix: Matrix, armature_inv_matrices: dict):
-    """Get `pose_bone.matrix_basis` from `armature_matrix` by inverting Blender's process.
-
-    Accepts `armature_inv_matrices` to avoid recalculating the inverted matrices of multi-child bones.
-
-    Inverse of `get_armature_matrix()`.
-    """
-    local = armature.data.bones[bone_name].matrix_local
-    parent = armature.pose.bones[bone_name].parent
-
-    if parent is None:
-        return local.inverted() @ armature_matrix
-    else:
-        parent_removed = armature_inv_matrices[parent.name] @ armature_matrix
-        return local.inverted() @ armature.data.bones[parent.name].matrix_local @ parent_removed
+                # Insert keyframes for location, rotation, scale.
+                bl_pose_bone.keyframe_insert(data_path="location", frame=bl_frame_index)
+                bl_pose_bone.keyframe_insert(data_path="rotation_quaternion", frame=bl_frame_index)
+                bl_pose_bone.keyframe_insert(data_path="scale", frame=bl_frame_index)

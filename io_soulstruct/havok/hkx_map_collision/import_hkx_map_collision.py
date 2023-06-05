@@ -89,7 +89,7 @@ class ImportHKXMapCollision(LoggingOperator, ImportHelper):
                     # Find HKX entry.
                     hkx_entries = binder.find_entries_matching_name(r".*\.hkx(\.dcx)?")
                     if not hkx_entries:
-                        raise HKXImportError(f"Cannot find any HKX files in binder {file_path}.")
+                        raise HKXMapCollisionImportError(f"Cannot find any HKX files in binder {file_path}.")
 
                     if len(hkx_entries) > 1:
                         if self.import_all_from_binder:
@@ -145,7 +145,7 @@ class ImportHKXMapCollision(LoggingOperator, ImportHelper):
                     # NOTE: It's unlikely that this MSB search will work for a loose HKX.
                     if MAP_NAME_RE.match(file_path.parent.name):
                         try:
-                            transforms = get_msb_transforms(hkx_name=hkx_name, hkx_path=file_path)
+                            transforms = get_collision_msb_transforms(hkx_name=hkx_name, hkx_path=file_path)
                         except Exception as ex:
                             self.warning(f"Could not get MSB transform. Error: {ex}")
                         else:
@@ -237,7 +237,7 @@ class ImportHKXMapCollisionWithBinderChoice(LoggingOperator):
         if self.read_msb_transform:
             if MAP_NAME_RE.match(self.binder_file_path.parent.name):
                 try:
-                    transforms = get_msb_transforms(hkx_name=hkx_name, hkx_path=self.binder_file_path)
+                    transforms = get_collision_msb_transforms(hkx_name=hkx_name, hkx_path=self.binder_file_path)
                 except Exception as ex:
                     self.warning(f"Could not get MSB transform. Error: {ex}")
                 else:

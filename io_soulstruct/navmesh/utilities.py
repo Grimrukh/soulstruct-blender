@@ -4,7 +4,7 @@ __all__ = [
     "NVMImportError",
     "NVMExportError",
     "NVM_MESH_TYPING",
-    "get_msb_transforms",
+    "get_navmesh_msb_transforms",
 ]
 
 from pathlib import Path
@@ -28,7 +28,7 @@ class NVMExportError(Exception):
 NVM_MESH_TYPING = tuple[list[tp.Sequence[float]], list[tp.Sequence[int]]]
 
 
-def get_msb_transforms(nvm_name: str, nvm_path: Path, msb_path: Path = None) -> list[tuple[str, Transform]]:
+def get_navmesh_msb_transforms(nvm_name: str, nvm_path: Path, msb_path: Path = None) -> list[tuple[str, Transform]]:
     """Search MSB at `msb_path` (autodetected from `nvm_path.parent` by default) and return
     `(navmesh_name, Transform)` pairs for all Navmesh entries using the `nvm_name` model."""
     model_name = nvm_name[:7]  # drop `AXX` suffix

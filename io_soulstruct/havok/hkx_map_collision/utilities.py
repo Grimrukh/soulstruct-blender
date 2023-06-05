@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 __all__ = [
-    "HKXImportError",
-    "HKXExportError",
+    "HKXMapCollisionImportError",
+    "HKXMapCollisionExportError",
     "HKX_MESH_TYPING",
-    "get_msb_transforms",
+    "get_collision_msb_transforms",
 ]
 
 import typing as tp
@@ -14,20 +14,22 @@ from soulstruct.darksouls1r.maps import MSB, get_map
 
 from io_soulstruct.utilities import Transform
 
-class HKXImportError(Exception):
-    """Exception raised during HKX import."""
+class HKXMapCollisionImportError(Exception):
+    """Exception raised during HKX map collision import."""
     pass
 
 
-class HKXExportError(Exception):
-    """Exception raised during HKX export."""
+class HKXMapCollisionExportError(Exception):
+    """Exception raised during HKX map collision export."""
     pass
 
 
 HKX_MESH_TYPING = tuple[list[tp.Sequence[float]], list[tp.Sequence[int]]]
 
 
-def get_msb_transforms(hkx_name: str, hkx_path: Path, msb_path: Path = None) -> list[tuple[str, Transform]]:
+def get_collision_msb_transforms(
+    hkx_name: str, hkx_path: Path, msb_path: Path = None
+) -> list[tuple[str, Transform]]:
     """Search MSB at `msb_path` (autodetected from `hkx_path.parent` by default) and return
     `(collision_name, Transform)` pairs for all Collision entries using the `hkx_name` model."""
     model_name = hkx_name[:7]  # drop `AXX` suffix

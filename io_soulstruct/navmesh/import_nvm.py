@@ -188,7 +188,7 @@ class ImportNVM(LoggingOperator, ImportHelper):
                 # NOTE: It's unlikely that this MSB search will work for a loose NVM.
                 if MAP_NAME_RE.match(file_path.parent.name):
                     try:
-                        transforms = get_msb_transforms(nvm_name=nvm_name, nvm_path=file_path)
+                        transforms = get_navmesh_msb_transforms(nvm_name=nvm_name, nvm_path=file_path)
                     except Exception as ex:
                         self.warning(f"Could not get MSB transform. Error: {ex}")
                     else:
@@ -271,7 +271,7 @@ class ImportNVMWithBinderChoice(LoggingOperator):
         if self.read_msb_transform:
             if MAP_NAME_RE.match(self.binder_file_path.parent.name):
                 try:
-                    transforms = get_msb_transforms(nvm_name=nvm_name, nvm_path=self.binder_file_path)
+                    transforms = get_navmesh_msb_transforms(nvm_name=nvm_name, nvm_path=self.binder_file_path)
                 except Exception as ex:
                     self.warning(f"Could not get MSB transform. Error: {ex}")
                 else:

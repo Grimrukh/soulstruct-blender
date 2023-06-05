@@ -18,9 +18,12 @@ modules_path = str(Path(__file__).parent / "modules")
 if modules_path not in sys.path:
     sys.path.append(modules_path)
 
-# Reload all Soulstruct and add-on modules (except this one).
+# Reload all Soulstruct modules, then all modules in this add-on (except this script).
 for module_name in list(sys.modules.keys()):
-    if module_name != "io_soulstruct" and "soulstruct" in module_name.split(".")[0]:  # don't reload THIS module
+    if "io_soulstruct" not in module_name and "soulstruct" in module_name.split(".")[0]:
+        importlib.reload(sys.modules[module_name])
+for module_name in list(sys.modules.keys()):
+    if module_name != "io_soulstruct" and "io_soulstruct" in module_name.split(".")[0]:  # don't reload THIS module
         importlib.reload(sys.modules[module_name])
 
 from io_soulstruct.flver import *
@@ -93,9 +96,9 @@ classes = (
 )
 
 if soulstruct_havok:
-    from io_soulstruct.hkx_map_collision import *
-    from io_soulstruct.hkx_animation import *
-    from io_soulstruct.hkx_cutscene import *
+    from io_soulstruct.havok.hkx_map_collision import *
+    from io_soulstruct.havok.hkx_animation import *
+    from io_soulstruct.havok.hkx_cutscene import *
 
     havok_classes = (
         ImportHKXMapCollision,
@@ -107,13 +110,14 @@ if soulstruct_havok:
 
         ImportHKXAnimation,
         ImportHKXAnimationWithBinderChoice,
+        ExportHKXAnimation,
+        ExportHKXAnimationIntoBinder,
         ArmatureActionChoiceOperator,
         SelectArmatureActionOperator,
-        # ExportHKXAnimation,
-        # ExportHKXAnimationIntoBinder,
         HKX_ANIMATION_PT_hkx_animation_tools,
 
         ImportHKXCutscene,
+        ExportHKXCutscene,
         HKX_CUTSCENE_PT_hkx_cutscene_tools,
     )
 
@@ -129,8 +133,9 @@ if soulstruct_havok:
     def havok_menu_func_export(self, context):
         self.layout.operator(ExportHKXMapCollision.bl_idname, text="HKX Collision (.hkx)")
         self.layout.operator(ExportHKXMapCollisionIntoBinder.bl_idname, text="HKX Collision to Binder (.hkxbhd)")
-        # TODO: HKX animation export (and 'to binder' variant)
-        #  Will need an existing ANIBND with existing compatible Skeleton.HKX, most likely.
+        self.layout.operator(ExportHKXAnimation.bl_idname, text="HKX Animation (.hkx)")
+        self.layout.operator(ExportHKXAnimationIntoBinder.bl_idname, text="HKX Animation to Binder (.hkxbhd)")
+        self.layout.operator(ExportHKXCutscene.bl_idname, text="HKX Cutscene (.remobnd)")
 
 else:
     havok_classes = ()

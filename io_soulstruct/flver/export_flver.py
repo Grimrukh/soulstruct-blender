@@ -247,7 +247,8 @@ class ExportFLVERIntoBinder(LoggingOperator, ImportHelper):
             ("DCX_DFLT_11000_44_9", "Sekiro", "Sekiro compression (requires Oodle DLL)"),
             ("DCX_KRAK", "Elden Ring", "Elden Ring compression (requires Oodle DLL)"),
         ],
-        description="Type of DCX compression to apply to exported file"
+        description="Type of DCX compression to apply to exported file",
+        default="Null",  # typically no DCX compression inside Binder
     )
 
     overwrite_existing: BoolProperty(

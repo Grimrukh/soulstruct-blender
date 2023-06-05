@@ -6,7 +6,7 @@ __all__ = [
     "HideAllDummiesOperator",
     "ShowAllDummiesOperator",
     "get_flver_from_binder",
-    "get_msb_transforms",
+    "get_map_piece_msb_transforms",
     "game_forward_up_vectors_to_bl_euler",
     "bl_euler_to_game_forward_up_vectors",
 ]
@@ -85,7 +85,7 @@ def get_flver_from_binder(binder: Binder, file_path: Path) -> FLVER:
     return flver_entries[0].to_binary_file(FLVER)
 
 
-def get_msb_transforms(flver_path: Path, msb_path: Path = None) -> list[tuple[str, Transform]]:
+def get_map_piece_msb_transforms(flver_path: Path, msb_path: Path = None) -> list[tuple[str, Transform]]:
     """Search MSB at `msb_path` (autodetected from `flver_path.parent` by default) and return
     `(map_piece_name, Transform)` pairs for all Map Piece entries using the `flver_path` model."""
     if msb_path is None:

@@ -160,7 +160,7 @@ class ImportFLVER(LoggingOperator, ImportHelper):
             if not FLVER_BINDER_RE.match(file_path.name) and self.read_msb_transform:
                 if MAP_NAME_RE.match(file_path.parent.name):
                     try:
-                        transforms = get_msb_transforms(file_path)
+                        transforms = get_map_piece_msb_transforms(file_path)
                     except Exception as ex:
                         self.warning(f"Could not get MSB transform. Error: {ex}")
                     else:
@@ -188,13 +188,19 @@ class ImportFLVER(LoggingOperator, ImportHelper):
                     self.warning(f"Cannot read MSB transform for FLVER in unknown directory: {file_path}.")
             try:
                 name = file_path.name.split(".")[0]  # drop all extensions
-                importer.import_flver(flver, name=name, transform=transform)
+                bl_armature = importer.import_flver(flver, name=name, transform=transform)
             except Exception as ex:
                 # Delete any objects created prior to exception.
                 for obj in importer.all_bl_objs:
                     bpy.data.objects.remove(obj)
                 traceback.print_exc()  # for inspection in Blender console
                 return self.error(f"Cannot import FLVER: {file_path.name}. Error: {ex}")
+
+            # Select newly imported armature.
+            if bl_armature:
+                bpy.ops.object.select_all(action='DESELECT')
+                bl_armature.select_set(True)
+                bpy.context.view_layer.objects.active = bl_armature
 
         return {"FINISHED"}
 
@@ -248,12 +254,18 @@ class ImportFLVERWithMSBChoice(LoggingOperator):
 
         try:
             name = self.file_path.name.split(".")[0]  # drop all extensions
-            self.importer.import_flver(self.flver, name=name, transform=transform)
+            bl_armature = self.importer.import_flver(self.flver, name=name, transform=transform)
         except Exception as ex:
             for obj in self.importer.all_bl_objs:
                 bpy.data.objects.remove(obj)
             traceback.print_exc()
             return self.error(f"Cannot import FLVER: {self.file_path.name}. Error: {ex}")
+
+        # Select newly imported armature.
+        if bl_armature:
+            bpy.ops.object.select_all(action='DESELECT')
+            bl_armature.select_set(True)
+            bpy.context.view_layer.objects.active = bl_armature
 
         return {'FINISHED'}
 
@@ -397,13 +409,19 @@ class ImportEquipmentFLVER(LoggingOperator, ImportHelper):
 
             try:
                 name = file_path.name.split(".")[0]  # drop all extensions
-                importer.import_flver(flver, name=name, existing_armature=c0000_armature)
+                bl_armature = importer.import_flver(flver, name=name, existing_armature=c0000_armature)
             except Exception as ex:
                 # Delete any objects created prior to exception (except existing armature at index 0).
                 for obj in importer.all_bl_objs[1:]:
                     bpy.data.objects.remove(obj)
                 traceback.print_exc()  # for inspection in Blender console
                 return self.error(f"Cannot import equipment FLVER: {file_path.name}. Error: {ex}")
+
+            # Select newly imported armature.
+            if bl_armature:
+                bpy.ops.object.select_all(action='DESELECT')
+                bl_armature.select_set(True)
+                bpy.context.view_layer.objects.active = bl_armature
 
         return {"FINISHED"}
 
@@ -443,9 +461,9 @@ class FLVERImporter:
 
         self.use_existing_materials = use_existing_materials
         # These DDS sources/images are shared between all FLVER files imported with this `FLVERImporter` instance.
-        self.texture_sources = texture_sources
-        self.loose_tpf_sources = loose_tpf_sources
-        self.png_cache_path = png_cache_path
+        self.texture_sources = texture_sources if texture_sources is not None else {}
+        self.loose_tpf_sources = loose_tpf_sources if loose_tpf_sources is not None else {}
+        self.png_cache_path = Path(png_cache_path) if png_cache_path is not None else None
         self.read_from_png_cache = read_from_png_cache
         self.write_to_png_cache = write_to_png_cache
         self.material_blend_mode = material_blend_mode

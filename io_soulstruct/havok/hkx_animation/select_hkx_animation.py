@@ -69,6 +69,7 @@ def get_armature_action_choices(self, context):
 class SelectArmatureActionOperator(LoggingOperator):
     bl_idname = "animation.select_action"
     bl_label = "Select Animation"
+    bl_description = "Select an animation from the list of imported animations in the current Blender file"
 
     @classmethod
     def poll(cls, context):

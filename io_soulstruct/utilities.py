@@ -4,7 +4,8 @@ from __future__ import annotations
 __all__ = [
     "GAME_TO_BL_VECTOR",
     "GAME_TO_BL_EULER",
-    "BL_TO_GAME_VECTOR",
+    "BL_TO_GAME_VECTOR3",
+    "BL_TO_GAME_VECTOR4",
     "BL_TO_GAME_VECTOR_LIST",
     "BL_TO_GAME_EULER",
     "Transform",
@@ -32,7 +33,7 @@ from pathlib import Path
 from bpy.types import Operator
 from mathutils import Euler, Vector, Matrix
 
-from soulstruct.utilities.maths import Vector3
+from soulstruct.utilities.maths import Vector3, Vector4
 
 
 def GAME_TO_BL_VECTOR(game_vector) -> Vector:
@@ -44,9 +45,14 @@ def GAME_TO_BL_VECTOR(game_vector) -> Vector:
     return Vector((game_vector[0], game_vector[2], game_vector[1]))
 
 
-def BL_TO_GAME_VECTOR(bl_vector: Vector):
+def BL_TO_GAME_VECTOR3(bl_vector: Vector):
     """See above."""
     return Vector3((bl_vector.x, bl_vector.z, bl_vector.y))
+
+
+def BL_TO_GAME_VECTOR4(bl_vector: Vector, w=0.0):
+    """See above."""
+    return Vector4((bl_vector.x, bl_vector.z, bl_vector.y, w))
 
 
 def BL_TO_GAME_VECTOR_LIST(bl_vector: Vector):
@@ -107,7 +113,7 @@ class BlenderTransform:
 
     @property
     def game_translate(self) -> Vector3:
-        return BL_TO_GAME_VECTOR(self.bl_translate)
+        return BL_TO_GAME_VECTOR3(self.bl_translate)
 
     @property
     def game_rotate_deg(self) -> Vector3:
@@ -119,7 +125,7 @@ class BlenderTransform:
 
     @property
     def game_scale(self) -> Vector3:
-        return BL_TO_GAME_VECTOR(self.bl_scale)
+        return BL_TO_GAME_VECTOR3(self.bl_scale)
 
     @classmethod
     def from_bl_obj(cls, bl_obj) -> BlenderTransform:
@@ -267,9 +273,11 @@ def profile_execute(execute_method: tp.Callable):
     def decorated(self, context):
 
         with cProfile.Profile() as pr:
-            result = execute_method(context)
+            result = execute_method(self, context)
         p = pstats.Stats(pr)
         p = p.strip_dirs()
         p.sort_stats("cumtime").print_stats(40)
 
         return result
+
+    return decorated

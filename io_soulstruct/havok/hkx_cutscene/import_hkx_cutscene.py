@@ -9,7 +9,7 @@ from pathlib import Path
 
 import bpy
 from bpy_extras.io_utils import ImportHelper
-from mathutils import Matrix
+from mathutils import Vector, Quaternion as BlenderQuaternion
 
 from soulstruct.containers import Binder
 from soulstruct.base.animations.sibcam import CameraFrameTransform, FoVKeyframe
@@ -23,7 +23,8 @@ from soulstruct_havok.wrappers.hkx2015 import RemoBND
 from io_soulstruct.utilities import *
 from io_soulstruct.flver.import_flver import FLVERImporter
 from io_soulstruct.flver.textures.utilities import collect_binder_tpfs, collect_map_tpfs
-from .utilities import *
+from io_soulstruct.havok.utilities import GAME_TRS_TO_BL_MATRIX, get_basis_matrix
+from .utilities import HKXCutsceneImportError
 
 
 REMOBND_RE = re.compile(r"^.*?\.remobnd(\.dcx)?$")
@@ -49,13 +50,7 @@ class ImportHKXCutscene(LoggingOperator, ImportHelper):
         default=get_last_game_directory(),
     )
 
-    assign_to_armatures: bpy.props.BoolProperty(
-        name="Assign to Armatures",
-        description="Assign imported cutscene actions to part armatures immediately",
-        default=True,
-    )
-
-    for_60_fps: bpy.props.BoolProperty(
+    to_60_fps: bpy.props.BoolProperty(
         name="For 60 FPS",
         description="Scale animation keyframes to 60 FPS (from 30 FPS)",
         default=True,
@@ -97,10 +92,16 @@ class ImportHKXCutscene(LoggingOperator, ImportHelper):
         default=True,
     )
 
-    enable_alpha_hashed: bpy.props.BoolProperty(
-        name="Enable Alpha Hashed",
-        description="Enable material Alpha Hashed (rather than Opaque) for single-texture FLVER materials",
-        default=True,
+    material_blend_mode: bpy.props.EnumProperty(
+        name="Alpha Blend Mode",
+        description="Alpha mode to use for new single-texture FLVER materials",
+        items=[
+            ('OPAQUE', "Opaque", "Opaque Blend Mode"),
+            ('CLIP', "Clip", "Clip Blend Mode"),
+            ('HASHED', "Hashed", "Hashed Blend Mode"),
+            ('BLEND', "Blend", "Sorted Blend Mode"),
+        ],
+        default="HASHED",
     )
 
     def execute(self, context):
@@ -115,7 +116,7 @@ class ImportHKXCutscene(LoggingOperator, ImportHelper):
         else:
             raise HKXCutsceneImportError("Must import cutscene from a `remobnd` binder file.")
 
-        importer = HKXCutsceneImporter(self, context, self.for_60_fps)
+        importer = HKXCutsceneImporter(self, context, self.to_60_fps)
 
         try:
             self.create_camera(context, remobnd, importer)
@@ -174,6 +175,7 @@ class ImportHKXCutscene(LoggingOperator, ImportHelper):
                         self.warning(f"Could not find CHRBND to import for cutscene: {chrbnd_path}")
                         continue
                     chrbnd = Binder.from_path(chrbnd_path)
+                    # TODO: This doesn't seem to be finding the right TPFs for characters.
                     attached_texture_sources |= collect_binder_tpfs(chrbnd, chrbnd_path)
                     flver = chrbnd.find_entry_matching_name(r".*\.flver$").to_binary_file(FLVER)
                 elif isinstance(remo_part.part, MSBObject):
@@ -196,12 +198,12 @@ class ImportHKXCutscene(LoggingOperator, ImportHelper):
             flver_importer = FLVERImporter(
                 self,
                 context,
-                attached_texture_sources,
-                loose_tpf_sources,
+                texture_sources=attached_texture_sources,
+                loose_tpf_sources=loose_tpf_sources,
                 png_cache_path=Path(self.png_cache_path),
                 read_from_png_cache=self.read_from_png_cache,
                 write_to_png_cache=self.write_to_png_cache,
-                enable_alpha_hashed=self.enable_alpha_hashed,
+                material_blend_mode=self.material_blend_mode,
             )
             for part_name, flver in flvers_to_import.items():
                 msb_part = remobnd.remo_parts[part_name]
@@ -225,50 +227,48 @@ class ImportHKXCutscene(LoggingOperator, ImportHelper):
             part_armature = part_armatures[part_name]
 
             # Get bone names from first cut that includes this part.
-            first_cut_transforms = list(remo_part.cut_arma_transforms.values())[0]
-            track_bone_names = list(first_cut_transforms.keys())
+            first_cut_frames = next(iter(remo_part.cut_arma_frames.values()))
+            track_bone_names = list(first_cut_frames[0].keys())
 
             bl_bone_names = [b.name for b in part_armature.data.bones]
             for bone_name in track_bone_names:
                 # TODO: is the 'master' check here necessary?
                 if bone_name != "master" and bone_name not in bl_bone_names:
+                    print(track_bone_names)
                     raise ValueError(
                         f"Cutscene bone name '{bone_name}' is missing from part armature '{part_armature.name}'."
                     )
 
-            # Maps bone names to lists (cuts) of `TRSTransform` lists, in armature space.
+            # Each frame maps bone names to a `TRSTransform` in armature space. Cuts are just lists of frames.
             # Separate cuts are maintained so that we can disable interpolation between them as keyframes are added.
-            all_cut_transforms = {}  # type: dict[str, list[list[TRSTransform]]]
+            all_cut_frames = []  # type: list[list[dict[str, TRSTransform]]]
             for cut in remobnd.cuts:
-                if cut.name in remo_part.cut_arma_transforms:
+
+                if cut.name in remo_part.cut_arma_frames:
                     # Model is present in this cut. Use real transforms.
-                    for bone_name, transforms in remo_part.cut_arma_transforms[cut.name].items():
-                        all_cut_transforms.setdefault(bone_name, []).append(transforms)
+                    all_cut_frames.append(remo_part.cut_arma_frames[cut.name])
                 else:
                     # Model is absent in this cut. Use default position.
                     # TODO: Using identity for now. Probably want to keep last known transform in previous cut?
-                    frame_count = len(cut.sibcam.camera_animation)
                     default_transform = TRSTransform.identity()
-                    for bone_name in ["master"] + track_bone_names:
-                        all_cut_transforms.setdefault(bone_name, []).append([default_transform] * frame_count)
+                    default_frame = {
+                        bone_name: default_transform
+                        for bone_name in track_bone_names  # TODO: what about 'master' or other root bone name?
+                    }
+                    frame_count = len(cut.sibcam.camera_animation)
+                    all_cut_frames.append([default_frame] * frame_count)
 
             # Create action for this part.
+            # TODO: Bug: actions of different parts (and camera) are OUT OF SYNC.
+            #  Not sure yet how this could be happening. Should double-check number of frames for each part in each
+            #  cut?
             try:
-                action = importer.create_blender_action(
-                    remobnd.cutscene_name, part_armature, all_cut_transforms
+                importer.create_part_action(
+                    remobnd.cutscene_name, part_armature, all_cut_frames
                 )
             except Exception as ex:
                 traceback.print_exc()  # for inspection in Blender console
                 return self.error(f"Cannot import HKX animation: {remobnd_path.name}. Error: {ex}")
-
-            if self.assign_to_armatures:
-                try:
-                    part_armature.animation_data_create()
-                    part_armature.animation_data.action = action
-                except Exception as ex:
-                    self.warning(
-                        f"Animation was imported, but action could not be assigned to Armature. Error: {ex}"
-                    )
 
         return {"FINISHED"}
 
@@ -288,7 +288,7 @@ class ImportHKXCutscene(LoggingOperator, ImportHelper):
         ]  # type: list[list[FoVKeyframe]]
 
         camera_obj_action, camera_data_action = importer.create_camera_actions(
-            remobnd.cutscene_name, camera_transforms, camera_fov_keyframes
+            camera_obj, remobnd.cutscene_name, camera_transforms, camera_fov_keyframes
         )
 
         # New camera always has action assigned.
@@ -310,129 +310,167 @@ class HKXCutsceneImporter:
 
     FAST = {"FAST"}
 
-    for_60_fps: bool
+    to_60_fps: bool
 
     def __init__(
         self,
         operator: ImportHKXCutscene,
         context,
-        for_60_fps: bool,
+        to_60_fps: bool,
     ):
         self.operator = operator
         self.context = context
-        self.for_60_fps = for_60_fps
+        self.to_60_fps = to_60_fps
 
     def create_camera_actions(
         self,
+        camera_obj,
         cutscene_name: str,
         camera_transforms: list[list[CameraFrameTransform]],
         camera_fov_keyframes: list[list[FoVKeyframe]],
     ):
-        """Creates two new Blender action for a cutscene camera: one for the object (transform) and one for its data
-        (focal length)."""
-        # TODO: Pass in lists of cuts, not all transforms at once, to set last frame of each cut to CONSTANT.
+        """Creates two new actions: one for the camera object (transform) and one for its data (focal length)."""
+
         obj_action_name = f"{cutscene_name}[Camera]"
-        obj_action = bpy.data.actions.new(obj_action_name)
+        obj_action = None
         data_action_name = f"{cutscene_name}[CameraData]"
-        data_action = bpy.data.actions.new(data_action_name)
-        fast = {"FAST"}
+        data_action = None
+
+        original_location = camera_obj.location.copy()
+        original_rotation = camera_obj.rotation_euler.copy()
+        original_focal_length = camera_obj.data.lens
 
         try:
-            obj_curves = {
-                "loc_x": obj_action.fcurves.new("location", index=0),
-                "loc_y": obj_action.fcurves.new("location", index=1),
-                "loc_z": obj_action.fcurves.new("location", index=2),
-                "euler_x": obj_action.fcurves.new("rotation_euler", index=0),
-                "euler_y": obj_action.fcurves.new("rotation_euler", index=1),
-                "euler_z": obj_action.fcurves.new("rotation_euler", index=2),
-            }
-            data_curves = {
-                "lens": data_action.fcurves.new("lens"),
-            }
-
-            # NOT reset across cuts.
-            frame_index = 0
-
-            for cut_camera_transforms in camera_transforms:
-
-                for cut_frame_index, camera_transform in enumerate(cut_camera_transforms):
-                    frame_index += 1
-                    bl_frame_index = frame_index * 2 if self.for_60_fps else frame_index
-                    bl_translate = GAME_TO_BL_VECTOR(camera_transform.position)
-                    bl_euler = GAME_TO_BL_EULER(camera_transform.rotation)
-                    new_keyframes = [
-                        obj_curves["loc_x"].keyframe_points.insert(bl_frame_index, bl_translate.x, options=fast),
-                        obj_curves["loc_y"].keyframe_points.insert(bl_frame_index, bl_translate.y, options=fast),
-                        obj_curves["loc_z"].keyframe_points.insert(bl_frame_index, bl_translate.z, options=fast),
-                        obj_curves["euler_x"].keyframe_points.insert(bl_frame_index, bl_euler.x, options=fast),
-                        obj_curves["euler_y"].keyframe_points.insert(bl_frame_index, bl_euler.y, options=fast),
-                        obj_curves["euler_z"].keyframe_points.insert(bl_frame_index, bl_euler.z, options=fast),
-                    ]
-                    for keyframe in new_keyframes:
-                        if cut_frame_index == len(cut_camera_transforms) - 1:
-                            keyframe.interpolation = "CONSTANT"
-                        else:
-                            keyframe.interpolation = "LINEAR"  # TODO: I assume this is fine for 30 -> 60 FPS.
-
-            cut_first_frame_index = 0
-
-            for cut_fov_keyframes in camera_fov_keyframes:
-                # TODO: Conversion seems... ALMOST correct.
-                for fov_keyframe in cut_fov_keyframes:
-                    focal_length = 100 / math.tan(fov_keyframe.fov)
-                    frame_index = cut_first_frame_index + fov_keyframe.frame_index
-                    bl_frame_index = frame_index * 2 if self.for_60_fps else frame_index
-                    keyframe = data_curves["lens"].keyframe_points.insert(bl_frame_index, focal_length, options=fast)
-                    if fov_keyframe.frame_index == len(cut_fov_keyframes) - 1:
-                        keyframe.interpolation = "CONSTANT"  # probably rare/never for sparse FoV keyframes
-                    else:
-                        keyframe.interpolation = "LINEAR"
-                cut_first_frame_index += len(cut_fov_keyframes)
-
-            for fcurve in obj_curves.values():
-                fcurve.update()
-            for fcurve in data_curves.values():
-                fcurve.update()
-
+            camera_obj.animation_data_create()
+            camera_obj.animation_data.action = obj_action = bpy.data.actions.new(name=obj_action_name)
+            camera_obj.data.animation_data_create()
+            camera_obj.data.animation_data.action = data_action = bpy.data.actions.new(name=data_action_name)
+            self._add_camera_keyframes(camera_obj, camera_transforms, camera_fov_keyframes)
         except Exception:
-            # Delete partially created action before raising.
-            bpy.data.actions.remove(obj_action)
-            bpy.data.actions.remove(data_action)
+            if obj_action:
+                bpy.data.actions.remove(obj_action)
+            if data_action:
+                bpy.data.actions.remove(data_action)
+            # Reset camera to original state. (NOTE: Redundant since camera is always created by cutscene!)
+            camera_obj.location = original_location
+            camera_obj.rotation_euler = original_rotation
+            camera_obj.data.lens = original_focal_length
             raise
-        else:
-            obj_action.use_fake_user = True
-            data_action.use_fake_user = True
-            return obj_action, data_action
 
-    def create_blender_action(
+        # Ensure actions are not deleted when not in use.
+        obj_action.use_fake_user = True
+        data_action.use_fake_user = True
+        # Update all F-curves (they do NOT cycle).
+        for fcurve in obj_action.fcurves:
+            fcurve.update()
+        for fcurve in data_action.fcurves:
+            fcurve.update()
+
+        # Update Blender timeline start/stop times.
+        bpy.context.scene.frame_start = int(obj_action.frame_range[0])
+        bpy.context.scene.frame_end = int(obj_action.frame_range[1])
+        bpy.context.scene.frame_set(bpy.context.scene.frame_start)
+        return obj_action, data_action
+
+    def _add_camera_keyframes(
+        self,
+        camera_obj,
+        camera_transforms: list[list[CameraFrameTransform]],
+        camera_fov_keyframes: list[list[FoVKeyframe]],
+    ):
+        """Add keyframes for camera object and data (focal length)."""
+
+        final_frame_indices = set()
+
+        # TODO: Fix any camera rotation discontinuities first?
+
+        # NOT reset across cuts.
+        cutscene_frame_index = 0
+
+        for cut_camera_transforms in camera_transforms:
+
+            for cut_frame_index, camera_transform in enumerate(cut_camera_transforms):
+                cutscene_frame_index += 1
+                bl_frame_index = cutscene_frame_index * 2 if self.to_60_fps else cutscene_frame_index
+                bl_translate = GAME_TO_BL_VECTOR(camera_transform.position)
+                bl_euler = GAME_TO_BL_EULER(camera_transform.rotation)
+                camera_obj.location = bl_translate
+                camera_obj.rotation_euler = bl_euler
+                camera_obj.keyframe_insert(data_path="location", frame=bl_frame_index)
+                camera_obj.keyframe_insert(data_path="rotation_euler", frame=bl_frame_index)
+                if cut_frame_index == len(cut_camera_transforms) - 1:
+                    final_frame_indices.add(bl_frame_index)
+
+        cut_first_frame_index = 1  # starts at 1!
+
+        for cut_fov_keyframes, cut_camera_transforms in zip(camera_fov_keyframes, camera_transforms):
+
+            for keyframe_index, fov_keyframe in enumerate(cut_fov_keyframes):
+                # TODO: Conversion seems... ALMOST correct.
+                camera_obj.data.lens = 100 / math.tan(fov_keyframe.fov)
+                cutscene_frame_index = cut_first_frame_index + fov_keyframe.frame_index
+                bl_frame_index = cutscene_frame_index * 2 if self.to_60_fps else cutscene_frame_index
+                camera_obj.data.keyframe_insert(data_path="lens", frame=bl_frame_index)
+
+                if keyframe_index == len(cut_fov_keyframes) - 1:
+                    # Do not interpolate between final cut FoV keyframe and first keyframe in next cut!
+                    final_frame_indices.add(bl_frame_index)
+
+            # TODO: This seems to randomly be off by 1 in either direction (first frame is too early or too late).
+            #  I must be missing something with the alignment to camera position.
+            cut_first_frame_index += len(cut_camera_transforms)
+
+
+        # Make all keyframes in `cut_final_frame_indices` 'CONSTANT' interpolation.
+
+        for action in (camera_obj.animation_data.action, camera_obj.data.animation_data.action):
+            for fcurve in action.fcurves:
+                for keyframe in fcurve.keyframe_points:
+                    if keyframe.co.x in final_frame_indices:
+                        keyframe.interpolation = "CONSTANT"
+
+    def create_part_action(
         self,
         cutscene_name: str,
         part_armature,
-        all_cut_transforms: [dict[str, list[list[TRSTransform]]]],
+        all_cut_frames: list[list[dict[str, TRSTransform]]],
     ):
-        """Read a HKX animation into a Blender action."""
+        """Import single animation HKX."""
         action_name = f"{cutscene_name}[{part_armature.name}]"
-        action = bpy.data.actions.new(action_name)
-
+        action = None
+        original_location = part_armature.location.copy()
         try:
-            self._create_fcurves(part_armature, action, all_cut_transforms)
+            part_armature.animation_data_create()
+            part_armature.animation_data.action = action = bpy.data.actions.new(name=action_name)
+            print(f"# INFO: Adding keyframes to action {action_name}...")
+            self._add_armature_keyframes(part_armature, all_cut_frames)
         except Exception:
-            # Delete partially created action before raising.
-            bpy.data.actions.remove(action)
+            if action:
+                bpy.data.actions.remove(action)
+            part_armature.location = original_location  # reset location (i.e. erase last root motion)
+            # TODO: should reset last bone transforms (`matrix_basis`) as well
             raise
-        else:
-            action.use_fake_user = True  # prevent Blender from deleting Action if unassigned
-            return action
 
-    def _create_fcurves(
+        # Ensure action is not deleted when not in use.
+        action.use_fake_user = True
+        # Update all F-curves and make them cycle.
+        for fcurve in action.fcurves:
+            fcurve.modifiers.new("CYCLES")  # default settings are fine
+            fcurve.update()
+
+    def _add_armature_keyframes(
         self,
         part_armature,
-        action,
-        all_cut_transforms: dict[str, list[list[TRSTransform]]],
+        all_cut_frames: list[list[dict[str, TRSTransform]]],
     ):
         """Convert a Havok HKX animation file to a Blender action (with fully-sampled keyframes).
 
-        `bl_armature` is required to properly set the `matrix_basis` of each pose bone relative to the bone resting
+        The action to add keyframes to should already be the active action on `self.bl_armature`. This is required to
+        use the `keyframe_insert()` method, which allows full-Vector and full-Quaternion keyframes to be inserted and
+        have Blender properly interpolate (e.g. Quaternion slerp) between them, which it cannot do if we use FCurves and
+        set the `keyframe_points` directly for each coordinate.
+
+        We also use `self.bl_armature` to properly set the `matrix_basis` of each pose bone relative to the bone resting
         positions (set to the edit bones).
 
         `skeleton_hkx` is required to compute animation frame transforms in object coordinates, as the bone hierarchy
@@ -441,124 +479,88 @@ class HKXCutsceneImporter:
         TODO: Does not support changes in Blender bone names (e.g. '<DUPE>' suffix).
         """
 
-        bone_curves = {}
+        # FIRST: Convert armature-space frame data to Blender `(location, rotation_quaternion, scale)` tuples.
+        # Note that we decompose the basis matrices so that quaternion discontinuities are handled properly.
+        all_basis_frames = []  # type: list[list[dict[str, tuple[Vector, BlenderQuaternion, Vector]]]]
 
-        # Create bone FCurves (ten per bone).
-        for bone_name in all_cut_transforms.keys():
-            if bone_name == "master":
-                continue
-            data_prefix = f"pose.bones[\"{bone_name}\"]"
+        cut_final_frame_indices = set()  # type: set[int]
 
-            for i, c in enumerate("xyz"):
-                bone_curves[bone_name, f"loc_{c}"] = action.fcurves.new(f"{data_prefix}.location", index=i)
-            for i, c in enumerate("wxyz"):
-                bone_curves[bone_name, f"rot_{c}"] = action.fcurves.new(f"{data_prefix}.rotation_quaternion", index=i)
-            for i, c in enumerate("xyz"):
-                bone_curves[bone_name, f"scale_{c}"] = action.fcurves.new(f"{data_prefix}.scale", index=i)
+        for cut_frames in all_cut_frames:
 
-        all_bone_arma_matrices = {
-            bone_name: [
-                [trs_transform_to_bl_matrix(transform) for transform in cut_transforms]
-                for cut_transforms in bone_frame_transforms
-            ]
-            for bone_name, bone_frame_transforms in all_cut_transforms.items()
-        }
-        bl_arma_inv_matrices = {}  # cached per `(bone_name, frame)` as needed
+            cut_basis_frames = []  # type: list[dict[str, tuple[Vector, BlenderQuaternion, Vector]]]
+            last_frame_rotations = {}  # type: dict[str, BlenderQuaternion]
 
-        def add_keyframe(bone: str, key: str, index: int, v: float):
-            return bone_curves[bone, key].keyframe_points.insert(index, v, options=self.FAST)
+            for cut_frame_index, frame in enumerate(cut_frames):
 
-        for bone_name, bone_arma_matrices in all_bone_arma_matrices.items():
+                bl_arma_matrices = {
+                    bone_name: GAME_TRS_TO_BL_MATRIX(transform) for bone_name, transform in frame.items()
+                }
+                bl_arma_inv_matrices = {}  # cached for frame as needed
 
-            # NOT reset for each cut.
-            frame_index = 0
+                basis_frame = {}
 
-            for cut_bl_arma_matrices in bone_arma_matrices:
-                for cut_frame_index, bl_arma_matrix in enumerate(cut_bl_arma_matrices):
-
-                    frame_index += 1
-                    bl_i = frame_index * 2 if self.for_60_fps else frame_index
+                for bone_name, bl_arma_matrix in bl_arma_matrices.items():
 
                     if bone_name == "master":
-                        # TODO: Cutscenes do not seem to animate 'master' for characters? Not sure if I need to skip it
-                        #  like this, though - might be harmless.
+                        # TODO: Hack, because I don't know how to get the root bone name reliably.
+                        #  Never seems to be animated anyway and FLVER hierarchy (in DS1) doesn't use it.
                         continue
 
-                    bl_bone = part_armature.data.bones[bone_name]
-                    if bl_bone.parent is not None and (bl_bone.parent.name, frame_index) not in bl_arma_inv_matrices:
+                    bl_edit_bone = part_armature.data.bones[bone_name]
+                    if bl_edit_bone.parent is not None and bl_edit_bone.parent.name not in bl_arma_inv_matrices:
                         # Cache parent's inverted armature matrix (may be needed by other sibling bones this frame).
-                        parent_bl_arma_matrix = all_bone_arma_matrices[bl_bone.parent.name][frame_index]
-                        bl_arma_inv_matrices[bl_bone.parent.name, frame_index] = parent_bl_arma_matrix.inverted()
+                        parent_name = bl_edit_bone.parent.name
+                        bl_arma_inv_matrices[parent_name] = bl_arma_matrices[parent_name].inverted()
 
                     bl_basis_matrix = get_basis_matrix(
-                        part_armature, bone_name, bl_arma_matrix, bl_arma_inv_matrices, frame_index
+                        part_armature, bone_name, bl_arma_matrix, bl_arma_inv_matrices
                     )
                     t, r, s = bl_basis_matrix.decompose()
 
-                    new_keyframes = [
-                        add_keyframe(bone_name, "loc_x", bl_i, t.x),
-                        add_keyframe(bone_name, "loc_y", bl_i, t.y),
-                        add_keyframe(bone_name, "loc_z", bl_i, t.z),
-                        add_keyframe(bone_name, "rot_w", bl_i, r.w),
-                        add_keyframe(bone_name, "rot_x", bl_i, r.x),
-                        add_keyframe(bone_name, "rot_y", bl_i, r.y),
-                        add_keyframe(bone_name, "rot_z", bl_i, r.z),
-                        add_keyframe(bone_name, "scale_x", bl_i, s.x),
-                        add_keyframe(bone_name, "scale_y", bl_i, s.y),
-                        add_keyframe(bone_name, "scale_z", bl_i, s.z),
-                    ]
+                    if bone_name in last_frame_rotations:
+                        if last_frame_rotations[bone_name].dot(r) < 0:
+                            r.negate()  # negate quaternion to avoid discontinuity (reverse direction of rotation)
 
-                    # Interpolation is LINEAR by default, or CONSTANT for the last keyframe.
-                    for keyframe in new_keyframes:
-                        if cut_frame_index == len(cut_bl_arma_matrices) - 1:
-                            keyframe.interpolation = "CONSTANT"
-                        else:
-                            keyframe.interpolation = "LINEAR"  # TODO: I assume this is fine for 30 -> 60 FPS.
+                    basis_frame[bone_name] = (t, r, s)
+                    last_frame_rotations[bone_name] = r
 
-        # Update all F-curves. They do NOT cycle, unlike standard animations.
-        # for fcurve in master_curves.values():
-        #     fcurve.update()
-        for fcurve in bone_curves.values():
-            fcurve.update()
+                cut_basis_frames.append(basis_frame)
 
+            all_basis_frames.append(cut_basis_frames)
 
-def trs_transform_to_bl_matrix(transform: TRSTransform) -> Matrix:
-    """Convert a game `TRSTransform` to a Blender 4x4 `Matrix`."""
-    bl_translate = GAME_TO_BL_VECTOR(transform.translation)
-    bl_rotate = FL_TO_BL_QUAT(transform.rotation)
-    bl_scale = GAME_TO_BL_VECTOR(transform.scale)
-    return Matrix.LocRotScale(bl_translate, bl_rotate, bl_scale)
+        # NOT reset across cuts.
+        cutscene_frame_index = 0
 
+        for cut_basis_frames in all_basis_frames:
 
-def get_armature_matrix(armature, bone_name, basis=None) -> Matrix:
-    """Demonstrates how Blender calculates `pose_bone.matrix` (armature matrix) for `bone_name`.
+            for cut_frame_index, basis_frame in enumerate(cut_basis_frames):
 
-    TODO: Likely needed at export to convert the curve keyframes (in basis space) back to armature space.
-    """
-    local = armature.data.bones[bone_name].matrix_local
-    if basis is None:
-        basis = armature.pose.bones[bone_name].matrix_basis
+                cutscene_frame_index += 1
 
-    parent = armature.pose.bones[bone_name].parent
-    if parent is None:  # root bone is simple
-        # armature = local @ basis
-        return local @ basis
-    else:
-        # Apply relative transform of local (edit bone) from parent and then armature position of parent:
-        #     armature = parent_armature @ (parent_local.inv @ local) @ basis
-        #  -> basis = (parent_local.inv @ local)parent_local @ parent_armature.inv @ armature
-        parent_local = armature.data.bones[parent.name].matrix_local
-        return get_armature_matrix(armature, parent.name) @ parent_local.inverted() @ local @ basis
+                # TODO: Make this a more general 'frame scaling' option, e.g. by having importer take input/output FPS.
+                #  (Should be able to read/infer input FPS from HKX file, actually.)
+                bl_frame_index = cutscene_frame_index * 2 if self.to_60_fps else cutscene_frame_index
+
+                for bone_name, (t, r, s) in basis_frame.items():
+                    bl_pose_bone = part_armature.pose.bones[bone_name]
+                    bl_pose_bone.location = t
+                    bl_pose_bone.rotation_quaternion = r
+                    bl_pose_bone.scale = s
+
+                    # Insert keyframes for location, rotation, scale.
+                    bl_pose_bone.keyframe_insert(data_path="location", frame=bl_frame_index)
+                    bl_pose_bone.keyframe_insert(data_path="rotation_quaternion", frame=bl_frame_index)
+                    bl_pose_bone.keyframe_insert(data_path="scale", frame=bl_frame_index)
+
+                if cut_frame_index == len(cut_basis_frames) - 1:
+                    cut_final_frame_indices.add(bl_frame_index)
+
+        # Make all keyframes in `cut_final_frame_indices` 'CONSTANT' interpolation.
+        print(f"Final cut frames: {cut_final_frame_indices}")
+        action = part_armature.animation_data.action
+        for fcurve in action.fcurves:
+            for keyframe in fcurve.keyframe_points:
+                if keyframe.co.x in cut_final_frame_indices:
+                    keyframe.interpolation = "CONSTANT"
 
 
-def get_basis_matrix(armature, bone_name, armature_matrix, armature_inv_matrices: dict, frame_index: int):
-    """Inverse of above: get `pose_bone.matrix_basis` from `armature_matrix` by inverting Blender's process."""
-    local = armature.data.bones[bone_name].matrix_local
-    parent = armature.pose.bones[bone_name].parent
-
-    if parent is None:
-        return local.inverted() @ armature_matrix
-    else:
-        # TODO: Can't I just use `parent` directly? Why the indexing?
-        parent_removed = armature_inv_matrices[parent.name, frame_index] @ armature_matrix
-        return local.inverted() @ armature.data.bones[parent.name].matrix_local @ parent_removed
