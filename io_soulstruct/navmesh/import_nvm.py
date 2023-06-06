@@ -295,7 +295,7 @@ class ImportNVMWithBinderChoice(LoggingOperator):
             traceback.print_exc()
             return self.error(f"Cannot import NVM {nvm_name} from '{self.binder_file_path.name}'. Error: {ex}")
 
-        return {'FINISHED'}
+        return {"FINISHED"}
 
     @classmethod
     def run(
@@ -359,7 +359,7 @@ class ImportNVMWithMSBChoice(LoggingOperator):
             traceback.print_exc()
             return self.error(f"Cannot import NVM: {self.file_path.name}. Error: {ex}")
 
-        return {'FINISHED'}
+        return {"FINISHED"}
 
     @classmethod
     def run(

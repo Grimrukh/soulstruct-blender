@@ -9,7 +9,7 @@ from pathlib import Path
 
 import bpy
 import bpy_types
-from bpy.props import StringProperty, BoolProperty, IntProperty, EnumProperty
+from bpy.props import StringProperty, BoolProperty, IntProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 from soulstruct.containers.dcx import DCXType
 
@@ -40,18 +40,7 @@ class ExportNVM(LoggingOperator, ExportHelper):
         maxlen=255,  # Max internal buffer length, longer would be clamped.
     )
 
-    dcx_type: EnumProperty(
-        name="Compression",
-        items=[
-            ("Null", "None", "Export without any DCX compression"),
-            ("DCX_EDGE", "DES", "Demon's Souls compression"),
-            ("DCX_DFLT_10000_24_9", "DS1/DS2", "Dark Souls 1/2 compression"),
-            ("DCX_DFLT_10000_44_9", "BB/DS3", "Bloodborne/Dark Souls 3 compression"),
-            ("DCX_DFLT_11000_44_9", "Sekiro", "Sekiro compression (requires Oodle DLL)"),
-            ("DCX_KRAK", "Elden Ring", "Elden Ring compression (requires Oodle DLL)"),
-        ],
-        description="Type of DCX compression to apply to exported file"
-    )
+    dcx_type: get_dcx_enum_property(DCXType.Null)  # no compression in DS1
 
     # TODO: Options to:
     #   - Detect appropriate MSB and update transform of this model instance (if unique) (low priority).
@@ -116,19 +105,7 @@ class ExportNVMIntoBinder(LoggingOperator, ImportHelper):
         maxlen=255,
     )
 
-    dcx_type: EnumProperty(
-        name="Compression",
-        items=[
-            ("Null", "None", "Export without any DCX compression"),
-            ("DCX_EDGE", "DES", "Demon's Souls compression"),
-            ("DCX_DFLT_10000_24_9", "DS1/DS2", "Dark Souls 1/2 compression"),
-            ("DCX_DFLT_10000_44_9", "BB/DS3", "Bloodborne/Dark Souls 3 compression"),
-            ("DCX_DFLT_11000_44_9", "Sekiro", "Sekiro compression (requires Oodle DLL)"),
-            ("DCX_KRAK", "Elden Ring", "Elden Ring compression (requires Oodle DLL)"),
-        ],
-        default="DCX_DFLT_10000_24_9",
-        description="Type of DCX compression to apply to exported file"
-    )
+    dcx_type: get_dcx_enum_property(DCXType.Null)  # no compression in DS1 binders
 
     overwrite_existing: BoolProperty(
         name="Overwrite Existing",

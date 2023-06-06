@@ -40,19 +40,7 @@ class ExportHKXCutscene(LoggingOperator, ExportHelper):
         maxlen=255,  # Max internal buffer length, longer would be clamped.
     )
 
-    dcx_type: EnumProperty(
-        name="Compression",
-        items=[
-            ("Null", "None", "Export without any DCX compression"),
-            ("DCX_EDGE", "DES", "Demon's Souls compression"),
-            ("DCX_DFLT_10000_24_9", "DS1/DS2", "Dark Souls 1/2 compression"),
-            ("DCX_DFLT_10000_44_9", "BB/DS3", "Bloodborne/Dark Souls 3 compression"),
-            ("DCX_DFLT_11000_44_9", "Sekiro", "Sekiro compression (requires Oodle DLL)"),
-            ("DCX_KRAK", "Elden Ring", "Elden Ring compression (requires Oodle DLL)"),
-        ],
-        description="Type of DCX compression to apply to exported file",
-        default="DCX_DFLT_10000_24_9",  # DS1 default
-    )
+    dcx_type: get_dcx_enum_property(DCXType.DS1_DS2)  # DS1 RemoBND default
 
     @classmethod
     def poll(cls, context):
@@ -65,4 +53,4 @@ class ExportHKXCutscene(LoggingOperator, ExportHelper):
     def execute(self, context):
         # TODO
         print("Executing HKX cutscene export...")
-        return {'FINISHED'}
+        return {"FINISHED"}

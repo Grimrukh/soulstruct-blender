@@ -7,7 +7,7 @@ import traceback
 from pathlib import Path
 
 import bpy
-from bpy.props import StringProperty, BoolProperty, IntProperty, EnumProperty
+from bpy.props import StringProperty, BoolProperty, IntProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 
 from soulstruct.containers import Binder, BinderFlags, DCXType
@@ -20,67 +20,6 @@ from .utilities import *
 
 
 BONE_DATA_PATH_RE = re.compile(r"pose\.bones\[(\w+)]\.(location|rotation_quaterion|scale)")
-
-
-def create_animation_hkx(skeleton_hkx: SkeletonHKX, bl_armature, from_60_fps: bool) -> AnimationHKX:
-    if bl_armature.animation_data is None:
-        raise HKXAnimationExportError(f"Armature '{bl_armature.name}' has no animation data.")
-    action = bl_armature.animation_data.action
-    if action is None:
-        raise HKXAnimationExportError(f"Armature '{bl_armature.name}' has no action assigned to its animation data.")
-
-    # TODO: Technically, animation export only needs a start/end frame range, since it samples location/bone pose
-    #  on every single frame anyway and does NOT need to actually use the action FCurves!
-
-    # Determine the frame range.
-    # TODO: Export bool option to just read from current scene values, rather than checking action.
-    start_frame = int(min(fcurve.range()[0] for fcurve in action.fcurves))
-    end_frame = int(max(fcurve.range()[1] for fcurve in action.fcurves))
-
-    # All frame interleaved transforms, in armature space.
-    root_frames = []  # type: list[Vector4]
-    armature_space_frames = []  # type: list[list[TRSTransform]]
-
-    has_root_motion = False
-
-    # Animation track order will match Blender bone order (which should come from FLVER).
-    track_bone_mapping = list(range(len(skeleton_hkx.skeleton.bones)))
-
-    # Evaluate all curves at every frame.
-    for i, frame in enumerate(range(start_frame, end_frame + 1)):
-
-        if from_60_fps and i % 2 == 1:
-            # Skip every second frame (frame 0 should generally be keyframed).
-            continue
-
-        bpy.context.scene.frame_set(frame)
-        armature_space_frame = []  # type: list[TRSTransform]
-
-        # We collect root motion vectors, as we're not sure if any root motion exists yet.
-        root_frames.append(BL_TO_GAME_VECTOR4(bl_armature.location))
-        if len(root_frames) >= 2 and root_frames[-1] != root_frames[-2]:
-            # Some actual root motion has appeared.
-            has_root_motion = True
-
-        for bone in skeleton_hkx.skeleton.bones:
-            try:
-                bl_bone = bl_armature.pose.bones[bone.name]
-            except KeyError:
-                raise HKXAnimationExportError(f"Bone '{bone.name}' in HKX skeleton not found in Blender armature.")
-            armature_space_transform = BL_MATRIX_TO_GAME_TRS(bl_bone.matrix)
-            armature_space_frame.append(armature_space_transform)
-
-        armature_space_frames.append(armature_space_frame)
-
-    animation_hkx = AnimationHKX.from_dsr_interleaved_template(
-        skeleton_hkx=skeleton_hkx,
-        interleaved_data=armature_space_frames,
-        transform_track_to_bone_indices=track_bone_mapping,
-        reference_frame_samples=root_frames if has_root_motion else None,
-        is_armature_space=True,
-    )
-
-    return animation_hkx
 
 
 class ExportHKXAnimation(LoggingOperator, ExportHelper):
@@ -110,19 +49,7 @@ class ExportHKXAnimation(LoggingOperator, ExportHelper):
         default=True,
     )
 
-    dcx_type: EnumProperty(
-        name="Compression",
-        items=[
-            ("Null", "None", "Export without any DCX compression"),
-            ("DCX_EDGE", "DES", "Demon's Souls compression"),
-            ("DCX_DFLT_10000_24_9", "DS1/DS2", "Dark Souls 1/2 compression"),
-            ("DCX_DFLT_10000_44_9", "BB/DS3", "Bloodborne/Dark Souls 3 compression"),
-            ("DCX_DFLT_11000_44_9", "Sekiro", "Sekiro compression (requires Oodle DLL)"),
-            ("DCX_KRAK", "Elden Ring", "Elden Ring compression (requires Oodle DLL)"),
-        ],
-        description="Type of DCX compression to apply to exported file",
-        default="DCX_DFLT_10000_24_9",  # DS1 default
-    )
+    dcx_type: get_dcx_enum_property(DCXType.Null)
 
     @classmethod
     def poll(cls, context):
@@ -154,17 +81,20 @@ class ExportHKXAnimation(LoggingOperator, ExportHelper):
 
         bl_armature = context.selected_objects[0]
 
+        current_frame = context.scene.frame_current
         try:
             animation_hkx = create_animation_hkx(skeleton_hkx, bl_armature, self.from_60_fps)
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Failed to create animation HKX: {ex}")
+        finally:
+            context.scene.frame_set(current_frame)
 
         animation_hkx.dcx_type = DCXType[self.dcx_type]
 
         animation_hkx.write(animation_file_path)
 
-        return {'FINISHED'}
+        return {"FINISHED"}
 
 
 class ExportHKXAnimationIntoBinder(LoggingOperator, ImportHelper):
@@ -182,19 +112,7 @@ class ExportHKXAnimationIntoBinder(LoggingOperator, ImportHelper):
         maxlen=255,
     )
 
-    dcx_type: EnumProperty(
-        name="Compression",
-        items=[
-            ("Null", "None", "Export without any DCX compression"),
-            ("DCX_EDGE", "DES", "Demon's Souls compression"),
-            ("DCX_DFLT_10000_24_9", "DS1/DS2", "Dark Souls 1/2 compression"),
-            ("DCX_DFLT_10000_44_9", "BB/DS3", "Bloodborne/Dark Souls 3 compression"),
-            ("DCX_DFLT_11000_44_9", "Sekiro", "Sekiro compression (requires Oodle DLL)"),
-            ("DCX_KRAK", "Elden Ring", "Elden Ring compression (requires Oodle DLL)"),
-        ],
-        description="Type of DCX compression to apply to exported file (typically not used in Binder)",
-        default="Null",  # typically no DCX compression inside Binder
-    )
+    dcx_type: get_dcx_enum_property(DCXType.Null)  # typically no DCX compression inside Binder
 
     from_60_fps: bpy.props.BoolProperty(
         name="From 60 FPS",
@@ -254,11 +172,14 @@ class ExportHKXAnimationIntoBinder(LoggingOperator, ImportHelper):
         animation_name = get_animation_name(self.animation_id, self.name_template[1:], prefix=self.name_template[0])
         print(f"Animation name: {animation_name}")
 
+        current_frame = context.scene.frame_current
         try:
             animation_hkx = create_animation_hkx(skeleton_hkx, bl_armature, self.from_60_fps)
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Failed to create animation HKX: {ex}")
+        finally:
+            context.scene.frame_set(current_frame)
 
         animation_hkx.dcx_type = DCXType[self.dcx_type]
 
@@ -270,4 +191,65 @@ class ExportHKXAnimationIntoBinder(LoggingOperator, ImportHelper):
         # Write modified binder back.
         binder.write()
 
-        return {'FINISHED'}
+        return {"FINISHED"}
+
+
+def create_animation_hkx(skeleton_hkx: SkeletonHKX, bl_armature, from_60_fps: bool) -> AnimationHKX:
+    if bl_armature.animation_data is None:
+        raise HKXAnimationExportError(f"Armature '{bl_armature.name}' has no animation data.")
+    action = bl_armature.animation_data.action
+    if action is None:
+        raise HKXAnimationExportError(f"Armature '{bl_armature.name}' has no action assigned to its animation data.")
+
+    # TODO: Technically, animation export only needs a start/end frame range, since it samples location/bone pose
+    #  on every single frame anyway and does NOT need to actually use the action FCurves!
+
+    # Determine the frame range.
+    # TODO: Export bool option to just read from current scene values, rather than checking action.
+    start_frame = int(min(fcurve.range()[0] for fcurve in action.fcurves))
+    end_frame = int(max(fcurve.range()[1] for fcurve in action.fcurves))
+
+    # All frame interleaved transforms, in armature space.
+    root_frames = []  # type: list[Vector4]
+    armature_space_frames = []  # type: list[list[TRSTransform]]
+
+    has_root_motion = False
+
+    # Animation track order will match Blender bone order (which should come from FLVER).
+    track_bone_mapping = list(range(len(skeleton_hkx.skeleton.bones)))
+
+    # Evaluate all curves at every frame.
+    for i, frame in enumerate(range(start_frame, end_frame + 1)):
+
+        if from_60_fps and i % 2 == 1:
+            # Skip every second frame to convert 60 FPS to 30 FPS (frame 0 should generally be keyframed).
+            continue
+
+        bpy.context.scene.frame_set(frame)
+        armature_space_frame = []  # type: list[TRSTransform]
+
+        # We collect root motion vectors, as we're not sure if any root motion exists yet.
+        root_frames.append(BL_TO_GAME_VECTOR4(bl_armature.location))
+        if len(root_frames) >= 2 and root_frames[-1] != root_frames[-2]:
+            # Some actual root motion has appeared.
+            has_root_motion = True
+
+        for bone in skeleton_hkx.skeleton.bones:
+            try:
+                bl_bone = bl_armature.pose.bones[bone.name]
+            except KeyError:
+                raise HKXAnimationExportError(f"Bone '{bone.name}' in HKX skeleton not found in Blender armature.")
+            armature_space_transform = BL_MATRIX_TO_GAME_TRS(bl_bone.matrix)
+            armature_space_frame.append(armature_space_transform)
+
+        armature_space_frames.append(armature_space_frame)
+
+    animation_hkx = AnimationHKX.from_dsr_interleaved_template(
+        skeleton_hkx=skeleton_hkx,
+        interleaved_data=armature_space_frames,
+        transform_track_to_bone_indices=track_bone_mapping,
+        reference_frame_samples=root_frames if has_root_motion else None,
+        is_armature_space=True,
+    )
+
+    return animation_hkx

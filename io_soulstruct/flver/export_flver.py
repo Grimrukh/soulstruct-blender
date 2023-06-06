@@ -10,8 +10,7 @@ from pathlib import Path
 import bmesh
 import bpy
 import bpy_types
-from bpy.props import StringProperty, BoolProperty, IntProperty, EnumProperty
-from mathutils import Euler, Matrix, Vector
+from bpy.props import StringProperty, FloatProperty, BoolProperty, IntProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 from soulstruct.containers.dcx import DCXType
 
@@ -19,7 +18,7 @@ from soulstruct.containers import Binder, BinderEntry
 from soulstruct.base.models.flver import FLVER, Version
 from soulstruct.base.models.flver.vertex import VertexBuffer, BufferLayout, LayoutMember, MemberType, MemberFormat
 from soulstruct.base.models.flver.material import MTDInfo
-from soulstruct.utilities.maths import Vector3
+from soulstruct.utilities.maths import Vector3, Matrix3
 
 from io_soulstruct.utilities import *
 from .utilities import *
@@ -65,29 +64,21 @@ class MeshBuildResult(tp.NamedTuple):
 
 
 class ExportMapDirectorySettings(bpy.types.PropertyGroup):
+    """Manages settings for quickly exporting Map Piece FLVERs into a game's `map` directory."""
+
     game_directory: bpy.props.StringProperty(
         name="Game Directory",
         description="Directory of FromSoftware game files",
         subtype="DIR_PATH",
         default=get_last_game_directory(),
     )
+
     map_stem: bpy.props.StringProperty(
         name="Map Stem",
         description="Stem of FromSoftware game map name (e.g. 'm10_00_00_00')",
     )
-    dcx_type: EnumProperty(
-        name="Compression",
-        items=[
-            ("Null", "None", "Export without any DCX compression"),
-            ("DCX_EDGE", "DES", "Demon's Souls compression"),
-            ("DCX_DFLT_10000_24_9", "DS1/DS2", "Dark Souls 1/2 compression"),
-            ("DCX_DFLT_10000_44_9", "BB/DS3", "Bloodborne/Dark Souls 3 compression"),
-            ("DCX_DFLT_11000_44_9", "Sekiro", "Sekiro compression (requires Oodle DLL)"),
-            ("DCX_KRAK", "Elden Ring", "Elden Ring compression (requires Oodle DLL)"),
-        ],
-        description="Type of DCX compression to apply to exported file",
-        default = "DCX_DFLT_10000_24_9",  # DS1 default
-    )
+
+    dcx_type: get_dcx_enum_property(DCXType.DS1_DS2)  # map FLVERs in DS1 are compressed
 
 
 class ExportFLVERToMapDirectory(LoggingOperator):
@@ -97,6 +88,13 @@ class ExportFLVERToMapDirectory(LoggingOperator):
     bl_description = (
         "Export a prepared Blender object hierarchy to a FromSoftware "
         "FLVER model file in a given `map` directory"
+    )
+
+    base_edit_bone_length: FloatProperty(
+        name="Base Edit Bone Length",
+        description="Length of edit bones corresponding to bone scale 1",
+        default=0.2,
+        min=0.01,
     )
 
     @classmethod
@@ -114,7 +112,6 @@ class ExportFLVERToMapDirectory(LoggingOperator):
         # Save last `game_directory` (even if this function fails).
         last_game_directory_path = Path(__file__).parent / "../game_directory.txt"
         last_game_directory_path.write_text(game_directory)
-        print(last_game_directory_path)
 
         map_dir_path = Path(game_directory) / f"map/{map_stem}"
 
@@ -132,7 +129,7 @@ class ExportFLVERToMapDirectory(LoggingOperator):
             # Must be in OBJECT mode for export, as some data (e.g. UVs) is not accessible in EDIT mode.
             bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
 
-        exporter = FLVERExporter(self, context)
+        exporter = FLVERExporter(self, context, base_edit_bone_length=self.base_edit_bone_length)
 
         try:
             flver = exporter.export_flver(flver_parent_obj)
@@ -167,18 +164,13 @@ class ExportFLVER(LoggingOperator, ExportHelper):
         maxlen=255,  # Max internal buffer length, longer would be clamped.
     )
 
-    dcx_type: EnumProperty(
-        name="Compression",
-        items=[
-            ("Null", "None", "Export without any DCX compression"),
-            ("DCX_EDGE", "DES", "Demon's Souls compression"),
-            ("DCX_DFLT_10000_24_9", "DS1/DS2", "Dark Souls 1/2 compression"),
-            ("DCX_DFLT_10000_44_9", "BB/DS3", "Bloodborne/Dark Souls 3 compression"),
-            ("DCX_DFLT_11000_44_9", "Sekiro", "Sekiro compression (requires Oodle DLL)"),
-            ("DCX_KRAK", "Elden Ring", "Elden Ring compression (requires Oodle DLL)"),
-        ],
-        description="Type of DCX compression to apply to exported file",
-        default="DCX_DFLT_10000_24_9",  # DS1 default
+    dcx_type: get_dcx_enum_property(DCXType.DS1_DS2)  # standalone DSR FLVERs are compressed
+
+    base_edit_bone_length: FloatProperty(
+        name="Base Edit Bone Length",
+        description="Length of edit bones corresponding to bone scale 1",
+        default=0.2,
+        min=0.01,
     )
 
     # TODO: Options to:
@@ -202,7 +194,7 @@ class ExportFLVER(LoggingOperator, ExportHelper):
             # Must be in OBJECT mode for export, as some data (e.g. UVs) is not accessible in EDIT mode.
             bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
 
-        exporter = FLVERExporter(self, context)
+        exporter = FLVERExporter(self, context, base_edit_bone_length=self.base_edit_bone_length)
 
         try:
             flver = exporter.export_flver(flver_parent_obj)
@@ -237,18 +229,13 @@ class ExportFLVERIntoBinder(LoggingOperator, ImportHelper):
         maxlen=255,
     )
 
-    dcx_type: EnumProperty(
-        name="Compression",
-        items=[
-            ("Null", "None", "Export without any DCX compression"),
-            ("DCX_EDGE", "DES", "Demon's Souls compression"),
-            ("DCX_DFLT_10000_24_9", "DS1/DS2", "Dark Souls 1/2 compression"),
-            ("DCX_DFLT_10000_44_9", "BB/DS3", "Bloodborne/Dark Souls 3 compression"),
-            ("DCX_DFLT_11000_44_9", "Sekiro", "Sekiro compression (requires Oodle DLL)"),
-            ("DCX_KRAK", "Elden Ring", "Elden Ring compression (requires Oodle DLL)"),
-        ],
-        description="Type of DCX compression to apply to exported file",
-        default="Null",  # typically no DCX compression inside Binder
+    dcx_type: get_dcx_enum_property(DCXType.Null)  # no compression in DSR binders
+
+    base_edit_bone_length: FloatProperty(
+        name="Base Edit Bone Length",
+        description="Length of edit bones corresponding to bone scale 1",
+        default=0.2,
+        min=0.01,
     )
 
     overwrite_existing: BoolProperty(
@@ -298,7 +285,7 @@ class ExportFLVERIntoBinder(LoggingOperator, ImportHelper):
             # Must be in OBJECT mode for export, as some data (e.g. UVs) is not accessible in EDIT mode.
             bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
 
-        exporter = FLVERExporter(self, context)
+        exporter = FLVERExporter(self, context, base_edit_bone_length=self.base_edit_bone_length)
 
         try:
             flver = exporter.export_flver(flver_parent_obj)
@@ -360,10 +347,12 @@ class FLVERExporter:
     name: str
     layout_member_unk_x00: int
     props: BlenderPropertyManager
+    base_edit_bone_length: float
 
-    def __init__(self, operator: ExportFLVER, context):
+    def __init__(self, operator: ExportFLVER, context, base_edit_bone_length=0.2):
         self.operator = operator
         self.context = context
+        self.base_edit_bone_length = base_edit_bone_length
         self.props = BlenderPropertyManager({  # TODO: DS1 values (tailored for map pieces, specifically)
             "FLVER": {
                 "big_endian": BlenderProp(int, False, bool),
@@ -391,10 +380,11 @@ class FLVERExporter:
                 "texture_count": BlenderProp(int, do_not_assign=True),
                 "gx_index": BlenderProp(int, -1),
                 "unk_x18": BlenderProp(int, 0),
+                "texture_path_prefix": BlenderProp(str, "", do_not_assign=True),
             },
             "Texture": {
                 "texture_type": BlenderProp(str),
-                "path": BlenderProp(str),
+                "path_suffix": BlenderProp(str, do_not_assign=True),  # added to material prefix above
                 "unk_x10": BlenderProp(int, 1),
                 "unk_x11": BlenderProp(int, True, bool),
                 "unk_x14": BlenderProp(float, 0.0),
@@ -465,7 +455,7 @@ class FLVERExporter:
                 Mesh 2 Obj (Mesh)
                 ...
 
-        TODO: Currently only really tested for DS1 map pieces.
+        TODO: Currently only really tested for DS1 FLVERs.
         """
         self.name = bl_armature.name  # should just be original/intended FLVER file stem, e.g. `c1234` or `m1000B0A12`
         flver = FLVER()
@@ -498,7 +488,8 @@ class FLVERExporter:
 
         read_bone_type = self.detect_is_bind_pose(bl_meshes)
         print(f"Exporting FLVER bones from data type: {read_bone_type}")
-        flver.bones, bl_bone_names = self.create_bones(bl_armature, read_bone_type)
+        flver.bones, bl_bone_names, bone_arma_transforms = self.create_bones(bl_armature, read_bone_type)
+        flver.set_bone_armature_space_transforms(bone_arma_transforms)
 
         for bl_dummy in bl_dummies:
             if not bl_dummy.type == "EMPTY":
@@ -559,23 +550,33 @@ class FLVERExporter:
 
         return flver
 
-    def create_bones(self, bl_armature_obj, read_bone_type: str) -> tuple[list[FLVER.Bone], list[str]]:
-        self.context.view_layer.objects.active = bl_armature_obj
+    def create_bones(
+        self, bl_armature_obj, read_bone_type: str
+    ) -> tuple[list[FLVER.Bone], list[str], list[tuple[Vector3, Matrix3, Vector3]]]:
+        """Create `FLVER` bones from Blender armature bones and get their armature space transforms.
 
-        # We need `EditBone` mode to retrieve custom properties, even if reading transforms from pose later.
+        Bone transform data may be read from either EDIT mode (typical for characters and objects) or POSE mode (typical
+        for map pieces). This is specified by `read_bone_type`.
+        """
+
+        # We need `EditBone` mode to retrieve custom properties, even if reading the actual transforms from pose later.
+        self.context.view_layer.objects.active = bl_armature_obj
         if bpy.ops.object.mode_set.poll():
             bpy.ops.object.mode_set(mode="EDIT", toggle=False)
 
         game_bones = []
-        bl_world_transforms = []  # type: list[BlenderTransform]  # collected and converted to local space later
+        game_arma_transforms = []  # type: list[tuple[Vector3, Matrix3, Vector3]]  # translate, rotate matrix, scale
         edit_bone_names = [edit_bone.name for edit_bone in bl_armature_obj.data.edit_bones]
         if len(set(edit_bone_names)) != len(edit_bone_names):
             raise ValueError(f"Bone names of '{self.name}' armature are not all unique.")
+
         for edit_bone in bl_armature_obj.data.edit_bones:
             game_bone_name = edit_bone.name
             while game_bone_name.endswith(" <DUPE>"):
                 game_bone_name = game_bone_name.removesuffix(" <DUPE>")
+
             game_bone = FLVER.Bone(name=game_bone_name)
+
             self.props.get_all(edit_bone, game_bone, "Bone")
             if edit_bone.parent:
                 parent_bone_name = edit_bone.parent.name
@@ -609,15 +610,14 @@ class FLVERExporter:
                 game_bone.previous_sibling_index = -1
 
             if read_bone_type == "EDIT":
-                # Get absolute bone transform from EditBone (characters, etc.).
-                world_translate = Vector(edit_bone.head)
-                rotate_mat = Matrix.Rotation(edit_bone.roll, 3, edit_bone.tail - edit_bone.head)
-                world_rotate = rotate_mat.to_euler()
-                scale = 10 * edit_bone.length
-                world_scale = Vector((scale, scale, scale))
-                bl_world_transforms.append(
-                    BlenderTransform(world_translate, world_rotate, world_scale),
-                )
+                # Get armature-space bone transform from rigged `EditBone` (characters and objects, typically).
+                bl_translate = edit_bone.matrix.translation
+                bl_rotmat = edit_bone.matrix.to_3x3()  # get rotation submatrix
+                game_arma_translate = BL_TO_GAME_VECTOR3(bl_translate)
+                game_arma_rotmat = BL_TO_GAME_MAT3(bl_rotmat)
+                s = edit_bone.length / self.base_edit_bone_length
+                game_arma_scale = s * Vector3.one()
+                game_arma_transforms.append((game_arma_translate, game_arma_rotmat, game_arma_scale))
 
             game_bones.append(game_bone)
 
@@ -625,33 +625,39 @@ class FLVERExporter:
             bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
 
         if read_bone_type == "POSE":
-            # Get absolute bone transform from PoseBone (map pieces).
+            # Get armature-space bone transform from PoseBone (map pieces).
             for game_bone, pose_bone in zip(game_bones, bl_armature_obj.pose.bones):
-                world_translate = Vector(pose_bone.location)
-                world_rotate = Euler(pose_bone.rotation_euler)
-                world_scale = Vector(pose_bone.scale)
-                bl_world_transforms.append(
-                    BlenderTransform(world_translate, world_rotate, world_scale),
-                )
 
-        for game_bone, bl_world_transform in zip(game_bones, bl_world_transforms):
-            # Convert Blender T/R/S to local space. Since ALL bones are currently in world space, we only need each
-            # immediate parent to convert to local space (just translate/rotate relative to parent).
-            if game_bone.parent_index != -1:
-                # Get inverse parent transform and compose.
-                inv_parent = bl_world_transforms[game_bone.parent_index].inverse()
-                bl_local_transform = inv_parent.compose(bl_world_transform)
-                game_bone.translate = bl_local_transform.game_translate
-                game_bone.rotate = bl_local_transform.game_rotate_rad  # FLVER bone uses radians
-                # TODO: Scale is not transformed to local. (Not transformed to world by importer.)
-                game_bone.scale = bl_world_transform.game_scale
-            else:
-                # World space is local space for root bone.
-                game_bone.translate = bl_world_transform.game_translate
-                game_bone.rotate = bl_world_transform.game_rotate_rad  # FLVER bone uses radians
-                game_bone.scale = bl_world_transform.game_scale
+                game_arma_translate = BL_TO_GAME_VECTOR3(pose_bone.location)
+                if pose_bone.rotation_mode == "QUATERNION":
+                    bl_rot_quat = pose_bone.rotation_quaternion
+                    bl_rotmat = bl_rot_quat.to_matrix()
+                    game_arma_rotmat = BL_TO_GAME_MAT3(bl_rotmat)
+                elif pose_bone.rotation_mode == "XYZ":
+                    # TODO: Could this cause the same weird Blender gimbal lock errors as I was seeing with characters?
+                    #  If so, I may want to make sure I always set pose bone rotation to QUATERNION mode.
+                    bl_rot_euler = pose_bone.rotation_euler
+                    bl_rotmat = bl_rot_euler.to_matrix()
+                    game_arma_rotmat = BL_TO_GAME_MAT3(bl_rotmat)
+                else:
+                    raise FLVERExportError(
+                        f"Unsupported rotation mode '{pose_bone.rotation_mode}' for bone '{pose_bone.name}'. Must be "
+                        f"'QUATERNION' or 'XYZ' (Euler)."
+                    )
+                # Warn if scale is not uniform, then use X scale anyway.
+                if not is_uniform(pose_bone.scale, rel_tol=0.001):
+                    self.warning(
+                        f"Non-uniform scale detected on bone '{pose_bone.name}' of armature '{bl_armature_obj.name}'. "
+                        f"Using X scale only: {pose_bone.scale.x}"
+                    )
+                game_arma_scale = pose_bone.scale.x * Vector3.one()  # always forced to be uniform in FLVER
+                game_arma_transforms.append((
+                    game_arma_translate,
+                    game_arma_rotmat,
+                    game_arma_scale,
+                ))
 
-        return game_bones, edit_bone_names
+        return game_bones, edit_bone_names, game_arma_transforms
 
     def create_dummy(self, bl_dummy, bl_bone_names: list[str]) -> FLVER.Dummy:
         game_dummy = FLVER.Dummy()
@@ -704,10 +710,12 @@ class FLVERExporter:
         game_material = FLVER.Material()
         game_material.name = bl_material.name.removeprefix(self.name).strip()
         extra_mat_props = self.props.get_all(bl_material, game_material, "Material", bl_prop_prefix="material_")
+        texture_path_prefix = extra_mat_props["texture_path_prefix"]
         found_texture_types = set()
         for i in range(extra_mat_props["texture_count"]):
             game_texture = FLVER.Material.Texture()
-            self.props.get_all(bl_material, game_texture, "Texture", bl_prop_prefix=f"texture[{i}]_")
+            extra_tex_props = self.props.get_all(bl_material, game_texture, "Texture", bl_prop_prefix=f"texture[{i}]_")
+            game_texture.path = texture_path_prefix + extra_tex_props["path_suffix"]
             tex_type = game_texture.texture_type
             if tex_type not in TEXTURE_TYPES:
                 self.warning(f"Unrecognized FLVER Texture type: {tex_type}")

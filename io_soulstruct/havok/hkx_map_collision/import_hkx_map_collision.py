@@ -261,7 +261,7 @@ class ImportHKXMapCollisionWithBinderChoice(LoggingOperator):
             traceback.print_exc()
             return self.error(f"Cannot import HKX {hkx_name} from '{self.binder_file_path.name}'. Error: {ex}")
 
-        return {'FINISHED'}
+        return {"FINISHED"}
 
     @classmethod
     def run(
@@ -325,7 +325,7 @@ class ImportHKXMapCollisionWithMSBChoice(LoggingOperator):
             traceback.print_exc()
             return self.error(f"Cannot import HKX: {self.file_path.name}. Error: {ex}")
 
-        return {'FINISHED'}
+        return {"FINISHED"}
 
     @classmethod
     def run(

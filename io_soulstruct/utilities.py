@@ -4,10 +4,14 @@ from __future__ import annotations
 __all__ = [
     "GAME_TO_BL_VECTOR",
     "GAME_TO_BL_EULER",
+    "GAME_TO_BL_MAT3",
     "BL_TO_GAME_VECTOR3",
     "BL_TO_GAME_VECTOR4",
     "BL_TO_GAME_VECTOR_LIST",
     "BL_TO_GAME_EULER",
+    "BL_TO_GAME_MAT3",
+    "BL_EDIT_BONE_DEFAULT_QUAT",
+    "BL_EDIT_BONE_DEFAULT_QUAT_INV",
     "Transform",
     "BlenderTransform",
     "BlenderProp",
@@ -15,6 +19,7 @@ __all__ = [
     "is_uniform",
     "natural_keys",
     "LoggingOperator",
+    "get_dcx_enum_property",
     "get_last_game_directory",
     "set_last_game_directory",
     "profile_execute",
@@ -29,11 +34,13 @@ import typing as tp
 from dataclasses import dataclass
 from pathlib import Path
 
+from bpy.props import EnumProperty
 # noinspection PyUnresolvedReferences
 from bpy.types import Operator
 from mathutils import Euler, Vector, Matrix
 
-from soulstruct.utilities.maths import Vector3, Vector4
+from soulstruct.containers import DCXType
+from soulstruct.utilities.maths import Vector3, Vector4, Matrix3
 
 
 def GAME_TO_BL_VECTOR(game_vector) -> Vector:
@@ -70,9 +77,39 @@ def GAME_TO_BL_EULER(game_euler) -> Euler:
     return Euler((-game_euler[0], -game_euler[2], -game_euler[1]))
 
 
+def GAME_TO_BL_MAT3(game_mat3: Matrix3) -> Matrix:
+    """Converts a 3x3 rotation matrix from the game to a Blender Matrix.
+
+    Swaps columns 1 and 2, and rows 1 and 2.
+    """
+    r = game_mat3
+    return Matrix((
+        (r[0, 0], r[0, 2], r[0, 1]),
+        (r[2, 0], r[2, 2], r[2, 1]),
+        (r[1, 0], r[1, 2], r[1, 1]),
+    ))
+
+
+def BL_TO_GAME_MAT3(bl_mat3: Matrix) -> Matrix3:
+    """Converts a 3x3 rotation matrix from Blender to the game.
+
+    This is the same transformation as GAME_TO_BL_MAT3, but the types are swapped.
+    """
+    r = bl_mat3
+    return Matrix3((
+        (r[0][0], r[0][2], r[0][1]),
+        (r[2][0], r[2][2], r[2][1]),
+        (r[1][0], r[1][2], r[1][1]),
+    ))
+
+
 def BL_TO_GAME_EULER(bl_euler: Euler) -> Vector3:
     """See above."""
     return Vector3((-bl_euler.x, -bl_euler.z, -bl_euler.y))
+
+
+BL_EDIT_BONE_DEFAULT_QUAT = Euler((0.0, 1.0, 0.0)).to_quaternion()
+BL_EDIT_BONE_DEFAULT_QUAT_INV = BL_EDIT_BONE_DEFAULT_QUAT.inverted()
 
 
 @dataclass(slots=True)
@@ -207,7 +244,7 @@ class BlenderPropertyManager:
         return unassigned
 
 
-def is_uniform(vector: Vector3, rel_tol: float):
+def is_uniform(vector: Vector | Vector3, rel_tol: float):
     xy_close = math.isclose(vector.x, vector.y, rel_tol=rel_tol)
     xz_close = math.isclose(vector.x, vector.z, rel_tol=rel_tol)
     yz_close = math.isclose(vector.y, vector.z, rel_tol=rel_tol)
@@ -248,6 +285,27 @@ class LoggingOperator(Operator):
                 self.report({"ERROR"}, f"Error occurred during cleanup callback: {ex}")
         self.report({"ERROR"}, msg)
         return {"CANCELLED"}
+
+
+def get_dcx_enum_property(default: str | DCXType = "Null"):
+    """Create a Blender `EnumProperty` for selecting DCX compression type.
+
+    Will default to `default` string, which should be one of the items below. The "default default" is "Null", which
+    means no DCX compression will be applied.
+    """
+    return EnumProperty(
+        name="Compression",
+        items=[
+            ("Null", "None", "Export without any DCX compression"),
+            ("DCX_EDGE", "DES", "Demon's Souls compression"),
+            ("DCX_DFLT_10000_24_9", "DS1/DS2", "Dark Souls 1/2 compression"),
+            ("DCX_DFLT_10000_44_9", "BB/DS3", "Bloodborne/Dark Souls 3 compression"),
+            ("DCX_DFLT_11000_44_9", "Sekiro", "Sekiro compression (requires Oodle DLL)"),
+            ("DCX_KRAK", "Elden Ring", "Elden Ring compression (requires Oodle DLL)"),
+        ],
+        description="Type of DCX compression to apply to exported file (typically not used in Binder)",
+        default=default if isinstance(default, str) else default.name,
+    )
 
 
 def get_last_game_directory():

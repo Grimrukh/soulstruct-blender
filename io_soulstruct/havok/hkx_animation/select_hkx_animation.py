@@ -44,7 +44,7 @@ class ArmatureActionChoiceOperator(LoggingOperator):
             bpy.context.scene.frame_end = int(action.frame_range[1])
             bpy.context.scene.frame_set(bpy.context.scene.frame_start)
 
-        return {'FINISHED'}
+        return {"FINISHED"}
 
     @classmethod
     def run(
@@ -81,4 +81,4 @@ class SelectArmatureActionOperator(LoggingOperator):
 
     def execute(self, context):
         ArmatureActionChoiceOperator.run(context.selected_objects[0])
-        return {'FINISHED'}
+        return {"FINISHED"}
