@@ -9,7 +9,6 @@ from pathlib import Path
 
 import bmesh
 import bpy
-import bpy_types
 from bpy.props import StringProperty, FloatProperty, BoolProperty, IntProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 from soulstruct.containers.dcx import DCXType
@@ -18,7 +17,7 @@ from soulstruct.containers import Binder, BinderEntry
 from soulstruct.base.models.flver import FLVER, Version
 from soulstruct.base.models.flver.vertex import VertexBuffer, BufferLayout, LayoutMember, MemberType, MemberFormat
 from soulstruct.base.models.flver.material import MTDInfo
-from soulstruct.utilities.maths import Vector3, Matrix3
+from soulstruct.utilities.maths import Vector2, Vector3, Matrix3
 
 from io_soulstruct.utilities import *
 from .utilities import *
@@ -343,7 +342,7 @@ class ExportFLVERIntoBinder(LoggingOperator, ImportHelper):
 
 class FLVERExporter:
 
-    operator: bpy_types.Operator
+    operator: ExportFLVER
     name: str
     layout_member_unk_x00: int
     props: BlenderPropertyManager
@@ -390,14 +389,15 @@ class FLVERExporter:
                 "unk_x14": BlenderProp(float, 0.0),
                 "unk_x18": BlenderProp(float, 0.0),
                 "unk_x1C": BlenderProp(float, 0.0),
-                "scale": BlenderProp(tuple, (1.0, 1.0)),
+                "scale": BlenderProp(tuple, (1.0, 1.0), Vector2),
             },
             "LayoutMember": {
                 "unk_x00": BlenderProp(int, 0),
             },
             "Dummy": {
-                "color": BlenderProp(tuple, (255, 255, 255, 255), list),
-                "reference_id": BlenderProp(int),
+                "color_rgba": BlenderProp(tuple, (255, 255, 255, 255), list),
+                # "reference_id": BlenderProp(int),  # stored in dummy name for editing convenience
+                "parent_bone_name": BlenderProp(str, "", do_not_assign=True),
                 "flag_1": BlenderProp(int, True, bool),
                 "use_upward_vector": BlenderProp(int, True, bool),
                 "unk_x30": BlenderProp(int, 0),
@@ -466,15 +466,30 @@ class FLVERExporter:
         bl_meshes = []
         bl_dummies = []
 
-        # Scan children of Armature.
+        # Scan children of Armature for meshes (Blender meshes)and dummies (Blender empties).
         for child in bl_child_objs:
             if child.type == "MESH":
                 bl_meshes.append(child)
             elif child.type == "EMPTY":
-                if bl_dummies:
-                    self.warning(f"Second Empty child of FLVER '{child.name}' ignored. Dummies only taken from first.")
-                else:
-                    bl_dummies = [obj for obj in bpy.data.objects if obj.parent is child]
+                # Check for required 'unk_x30' custom property to detect dummies.
+                if child.get("unk_x30") is None:
+                    self.warning(
+                        f"Empty child of FLVER '{child.name}' ignored. (Missing 'unk_x30' Dummy property and possibly "
+                        f"other required properties and proper Dummy name; see docs.)"
+                    )
+                    continue
+
+                dummy_dict = parse_dummy_name(child.name)
+                if dummy_dict is None:
+                    self.warning(
+                        f"Could not interpret Dummy name: '{child.name}'. Ignoring it. Format should be: \n"
+                        f"    `[other_model] Dummy<index> [reference_id]` "
+                        f"    where `[other_model]` is an optional prefix used only for attached equipment FLVERs"
+                    )
+                # TODO: exclude dummies with wrong 'other_model' prefix, depending on whether c0000 or that equipment
+                #  is being exported. Currently excluding all dummies with any 'other_model'.
+                if not dummy_dict["other_model"]:
+                    bl_dummies.append((child, dummy_dict))
             else:
                 self.warning(f"Non-Mesh, non-Empty Child object '{child.name}' of FLVER ignored.")
 
@@ -482,29 +497,37 @@ class FLVERExporter:
             self.operator.report({"ERROR"}, f"No mesh children of {self.name} found to export.")
             return None
 
-        # Sort dummies/meshes by 'human sorting' on name (should match order in Blender hierarchy view).
-        bl_dummies.sort(key=lambda obj: natural_keys(obj.name))
+        # Sort dummies/meshes by 'human sorting' on Blender name (should match order in Blender hierarchy view).
+        bl_dummies.sort(key=lambda obj: natural_keys(obj[0].name))
         bl_meshes.sort(key=lambda obj: natural_keys(obj.name))
 
         read_bone_type = self.detect_is_bind_pose(bl_meshes)
-        print(f"Exporting FLVER bones from data type: {read_bone_type}")
+        self.operator.info(f"Exporting FLVER '{self.name}' with bone data from {read_bone_type.capitalize()}Bones.")
         flver.bones, bl_bone_names, bone_arma_transforms = self.create_bones(bl_armature, read_bone_type)
         flver.set_bone_armature_space_transforms(bone_arma_transforms)
 
-        for bl_dummy in bl_dummies:
-            if not bl_dummy.type == "EMPTY":
-                self.warning(f"Ignoring non-Empty child object '{bl_dummy.name}' of empty Dummy parent.")
-            game_dummy = self.create_dummy(bl_dummy, bl_bone_names)
+        bl_bone_data = bl_armature.data.bones
+        for bl_dummy, dummy_dict in bl_dummies:
+            game_dummy = self.create_dummy(bl_dummy, dummy_dict["reference_id"], bl_bone_names, bl_bone_data)
             flver.dummies.append(game_dummy)
 
         # Set up basic Mesh properties.
         mesh_builders = []
+        material_hashes = []
         for bl_mesh in bl_meshes:
+            # TODO: Current choosing default vertex buffer layout based on read bone type, which in terms depends on
+            #  `mesh.is_bind_pose` at FLVER import. All a bit messily wired together...
             game_mesh, game_material, game_layout, mesh_builder = self.create_mesh_material_layout(
                 bl_mesh, flver.buffer_layouts, use_chr_layout=read_bone_type == "EDIT"
             )
-            game_mesh.material_index = len(flver.materials)
-            flver.materials.append(game_material)
+            # Check if a `Material` with the same hash already exists and re-use that if so.
+            material_hash = hash(game_material)
+            try:
+                game_mesh.material_index = material_hashes.index(material_hash)
+            except ValueError:  # new unique `Material` (including its `Texture`s)
+                game_mesh.material_index = len(flver.materials)
+                flver.materials.append(game_material)
+                material_hashes.append(material_hash)
             flver.meshes.append(game_mesh)
             if game_layout is not None:
                 flver.buffer_layouts.append(game_layout)
@@ -545,8 +568,9 @@ class FLVERExporter:
                 builder.game_mesh.face_sets = game_face_sets
                 builder.game_mesh.bone_indices = mesh_local_bone_indices
 
-        # TODO: Set BB properly per bone (need to update bounds for each bone while building vertices).
-        recompute_bounding_box(flver, flver.bones)
+        flver.sort_mesh_bone_indices()
+        # TODO: untested, remove this if it works :)
+        flver.refresh_bounding_boxes(refresh_bone_bounding_boxes=True)
 
         return flver
 
@@ -659,42 +683,44 @@ class FLVERExporter:
 
         return game_bones, edit_bone_names, game_arma_transforms
 
-    def create_dummy(self, bl_dummy, bl_bone_names: list[str]) -> FLVER.Dummy:
-        game_dummy = FLVER.Dummy()
-        self.props.get_all(bl_dummy, game_dummy, "Dummy")
-        bl_transform = BlenderTransform.from_bl_obj(bl_dummy)
-        game_dummy.position = bl_transform.game_translate
-        forward, up = bl_euler_to_game_forward_up_vectors(bl_transform.bl_rotate)
+    def create_dummy(self, bl_dummy, reference_id: int, bl_bone_names: list[str], bl_bone_data: list) -> FLVER.Dummy:
+        """Create a single `FLVER.Dummy` from a Blender Dummy empty."""
+        game_dummy = FLVER.Dummy(reference_id=reference_id)
+        extra_props = self.props.get_all(bl_dummy, game_dummy, "Dummy")
+
+        # We decompose the world matrix of the dummy to 'bypass' any attach bone to get its translate and rotate.
+        # However, the translate may still be relative to a parent bone, so we need to account for that below.
+        bl_dummy_translate = bl_dummy.matrix_world.translation
+        bl_dummy_rotmat = bl_dummy.matrix_world.to_3x3()
+
+        if parent_bone_name := extra_props["parent_bone_name"]:
+            # Dummy's Blender 'world' translate is actually given in the space of this bone in the FLVER file.
+            try:
+                game_dummy.parent_bone_index = bl_bone_names.index(parent_bone_name)
+            except ValueError:
+                raise FLVERExportError(f"Dummy '{bl_dummy.name}' parent bone '{parent_bone_name}' not in Armature.")
+            bl_parent_bone_matrix_inv = bl_bone_data[parent_bone_name].matrix_local.inverted()
+            game_dummy.translate = BL_TO_GAME_VECTOR3(bl_parent_bone_matrix_inv @ bl_dummy_translate)
+        else:
+            game_dummy.parent_bone_index = -1
+            game_dummy.translate = BL_TO_GAME_VECTOR3(bl_dummy_translate)
+
+        forward, up = bl_rotmat_to_game_forward_up_vectors(bl_dummy_rotmat)
         game_dummy.forward = forward
         game_dummy.upward = up if game_dummy.use_upward_vector else Vector3.zero()
 
-        parent_bone_name = None
-        attach_bone_name = None
-        for constraint in bl_dummy.constraints:
-            if constraint.name == "Dummy Parent Bone":
-                parent_bone_name = constraint.subtarget
-            elif constraint.name == "Dummy Attach Bone":
-                attach_bone_name = constraint.subtarget
-            else:
-                self.warning(f"Ignoring unrecognized Dummy constraint: {constraint.name}")
-        if parent_bone_name is None:
-            game_dummy.parent_bone_index = -1
-        elif parent_bone_name not in bl_bone_names:
-            raise ValueError(
-                f"Dummy Empty '{bl_dummy.name}' 'Dummy Parent Bone' constraint is targeting "
-                f"an invalid bone name: {parent_bone_name}."
-            )
+        if bl_dummy.parent_type == "BONE":
+            # Dummy has an 'attach bone' that is its Blender parent.
+            try:
+                game_dummy.attach_bone_index = bl_bone_names.index(bl_dummy.parent_bone)
+            except ValueError:
+                raise FLVERExportError(
+                    f"Dummy '{bl_dummy.name}' attach bone (Blender parent) '{bl_dummy.parent_bone}' not in Armature."
+                )
         else:
-            game_dummy.parent_bone_index = bl_bone_names.index(parent_bone_name)
-        if attach_bone_name is None:
+            # Dummy has no attach bone.
             game_dummy.attach_bone_index = -1
-        elif attach_bone_name not in bl_bone_names:
-            raise ValueError(
-                f"Dummy Empty '{bl_dummy.name}' 'Dummy Attach Bone' constraint is targeting "
-                f"an invalid bone name: {parent_bone_name}."
-            )
-        else:
-            game_dummy.attach_bone_index = bl_bone_names.index(attach_bone_name)
+
         return game_dummy
 
     def create_mesh_material_layout(
@@ -715,7 +741,10 @@ class FLVERExporter:
         for i in range(extra_mat_props["texture_count"]):
             game_texture = FLVER.Material.Texture()
             extra_tex_props = self.props.get_all(bl_material, game_texture, "Texture", bl_prop_prefix=f"texture[{i}]_")
-            game_texture.path = texture_path_prefix + extra_tex_props["path_suffix"]
+            if extra_tex_props["path_suffix"]:
+                game_texture.path = texture_path_prefix + extra_tex_props["path_suffix"]
+            else:  # empty suffix means entire path is empty
+                game_texture.path = ""
             tex_type = game_texture.texture_type
             if tex_type not in TEXTURE_TYPES:
                 self.warning(f"Unrecognized FLVER Texture type: {tex_type}")
@@ -813,6 +842,7 @@ class FLVERExporter:
         return BufferLayout(members)
 
     def get_ds1_chr_buffer_layout(self, is_multiple=False) -> BufferLayout:
+        """Default buffer layout for character (and probably object) materials in DS1R."""
         members = [
             self.member(MemberType.Position, MemberFormat.Float3),
             self.member(MemberType.BoneIndices, MemberFormat.Byte4B),
@@ -924,8 +954,13 @@ def build_game_mesh(
                 bone_indices = []  # local
                 for global_bone_index in global_bone_indices:
                     try:
+                        # Check if mesh already has this bone index from a previous vertex.
                         bone_indices.append(mesh_local_bone_indices.index(global_bone_index))
                     except ValueError:
+                        # First vertex to be weighted to this bone index in mesh.
+                        # NOTE: Unfortunately, to sort the mesh bone indices, we would have to iterate over all vertices
+                        # a second time, so we just append them in the order they appear. There is an optional `FLVER`
+                        # method that sorts them, but the user must call it themselves.
                         bone_indices.append(len(mesh_local_bone_indices))
                         mesh_local_bone_indices.append(global_bone_index)
 
@@ -1009,22 +1044,3 @@ def build_game_mesh(
         lod_face_set.vertex_indices = game_face_sets[0].vertex_indices.copy()
 
     return game_vertices, game_face_sets, mesh_local_bone_indices
-
-
-def recompute_bounding_box(flver: FLVER, bones: list[FLVER.Bone]):
-    """Update bounding box min/max for `flver.header` and all bones in `bones`."""
-    x = [v.position[0] for mesh in flver.meshes for v in mesh.vertices]
-    y = [v.position[1] for mesh in flver.meshes for v in mesh.vertices]
-    z = [v.position[2] for mesh in flver.meshes for v in mesh.vertices]
-    if x or y or z:
-        bb_min = Vector3((min(x), min(y), min(z)))
-        bb_max = Vector3((max(x), max(y), max(z)))
-    else:
-        # No vertex data in ANY mesh. Highly suspect, obviously.
-        bb_min = Vector3.zero()
-        bb_max = Vector3.zero()
-    flver.bounding_box_min = bb_min
-    flver.bounding_box_max = bb_max
-    for bone in bones:
-        bone.bounding_box_min = bb_min
-        bone.bounding_box_max = bb_max

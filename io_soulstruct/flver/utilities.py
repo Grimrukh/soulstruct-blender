@@ -3,23 +3,31 @@ from __future__ import annotations
 __all__ = [
     "FLVERImportError",
     "FLVERExportError",
+    "parse_dummy_name",
     "HideAllDummiesOperator",
     "ShowAllDummiesOperator",
     "get_flver_from_binder",
     "get_map_piece_msb_transforms",
     "game_forward_up_vectors_to_bl_euler",
     "bl_euler_to_game_forward_up_vectors",
+    "bl_rotmat_to_game_forward_up_vectors",
 ]
 
+import re
 from pathlib import Path
 
-from mathutils import Euler
+from mathutils import Euler, Matrix
 
 from soulstruct import Binder, FLVER
 from soulstruct.utilities.maths import Vector3, Matrix3
 from soulstruct.darksouls1r.maps import MSB, get_map
 
-from io_soulstruct.utilities import Transform, GAME_TO_BL_EULER, BL_TO_GAME_EULER, LoggingOperator
+from io_soulstruct.utilities import Transform, GAME_TO_BL_EULER, BL_TO_GAME_EULER, BL_TO_GAME_MAT3, LoggingOperator
+
+
+DUMMY_NAME_RE = re.compile(  # accepts and ignore Blender '.001' suffix, etc.
+    r"^(?P<other_model>\[\w+])? *Dummy<(?P<index>\d+)> *(?P<reference_id>\[\d+]) *(\.\d+)?$"
+)
 
 
 class FLVERImportError(Exception):
@@ -76,6 +84,24 @@ class ShowAllDummiesOperator(LoggingOperator):
         return {"FINISHED"}
 
 
+def parse_dummy_name(dummy_name: str) -> dict[str, str | int]:
+    """Parse a FLVER dummy name into its component parts: `other_model`, `index`, and `reference_id`.
+
+    Returns a dictionary with keys `other_model` (str, optional), `index` (int), and `reference_id` (int).
+
+    If the dummy name is invalid, an empty dictionary is returned.
+    """
+    match = DUMMY_NAME_RE.match(dummy_name)
+    if match is None:
+        return {}  # invalid name
+    other_model = match.group("other_model")
+    return {
+        "other_model": other_model[1:-1] if other_model else "",  # exclude brackets
+        "index": int(match.group("index")),
+        "reference_id": int(match.group("reference_id")[1:-1]),  # exclude brackets
+    }
+
+
 def get_flver_from_binder(binder: Binder, file_path: Path) -> FLVER:
     flver_entries = binder.find_entries_matching_name(r".*\.flver(\.dcx)?")
     if not flver_entries:
@@ -127,8 +153,17 @@ def game_forward_up_vectors_to_bl_euler(forward: Vector3, up: Vector3) -> Euler:
 
 
 def bl_euler_to_game_forward_up_vectors(bl_euler: Euler) -> tuple[Vector3, Vector3]:
+    """Convert a Blender `Euler` to its forward-axis and up-axis vectors in game space (for `FLVER.Dummy`)."""
     game_euler = BL_TO_GAME_EULER(bl_euler)
     game_mat = Matrix3.from_euler_angles(game_euler)
-    forward = Vector3((game_mat[0][2], game_mat[1][2], game_mat[2][2]))  # third column
-    up = Vector3((game_mat[0][1], game_mat[1][1], game_mat[2][1]))  # second column
+    forward = Vector3((game_mat[0][2], game_mat[1][2], game_mat[2][2]))  # third column (Z)
+    up = Vector3((game_mat[0][1], game_mat[1][1], game_mat[2][1]))  # second column (Y)
+    return forward, up
+
+
+def bl_rotmat_to_game_forward_up_vectors(bl_rotmat: Matrix) -> tuple[Vector3, Vector3]:
+    """Convert a Blender `Matrix` to its game equivalent's forward-axis and up-axis vectors (for `FLVER.Dummy`)."""
+    game_mat = BL_TO_GAME_MAT3(bl_rotmat)
+    forward = Vector3((game_mat[0][2], game_mat[1][2], game_mat[2][2]))  # third column (Z)
+    up = Vector3((game_mat[0][1], game_mat[1][1], game_mat[2][1]))  # second column (Y)
     return forward, up

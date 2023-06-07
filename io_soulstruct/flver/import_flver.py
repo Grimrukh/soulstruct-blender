@@ -30,12 +30,12 @@ import bpy_types
 import bmesh
 from bpy.props import StringProperty, FloatProperty, BoolProperty, EnumProperty, CollectionProperty
 from bpy_extras.io_utils import ImportHelper
-from mathutils import Vector, Matrix, Euler
+from mathutils import Vector, Matrix
 
 from soulstruct.base.models.flver import FLVER
 from soulstruct.containers import Binder, BinderEntry
 from soulstruct.containers.tpf import TPF, TPFTexture, batch_get_tpf_texture_png_data
-from soulstruct.utilities.maths import Vector3, Matrix3, Matrix4
+from soulstruct.utilities.maths import Vector3
 
 from io_soulstruct.utilities import *
 from .utilities import *
@@ -999,52 +999,59 @@ class FLVERImporter:
     def create_dummies(self, dummy_prefix=""):
         """Create empty objects that represent dummies.
 
+        The reference ID of the dummy (the value used to refer to it in other game files/code) is included in the name,
+        so that it can be easily modified. The format of the dummy name should therefore not be changed. (Note that the
+        order of dummies does not matter, and multiple dummies can have the same reference ID.)
+
         All dummies are children of the armature, and most are children of a specific bone given in 'attach_bone_name'.
+        As much as I'd like to nest them under another empty object, to properly attach them to the armature, they have
+        to be direct children.
         """
 
-        for i, dummy in enumerate(self.flver.dummies):
+        for i, game_dummy in enumerate(self.flver.dummies):
             if dummy_prefix:
-                name = f"{dummy_prefix} Dummy<{i}> [{dummy.reference_id}]"
+                name = f"[{dummy_prefix}] Dummy<{i}> [{game_dummy.reference_id}]"
             else:
-                name = f"Dummy<{i}> [{dummy.reference_id}]"
+                name = f"Dummy<{i}> [{game_dummy.reference_id}]"
             bl_dummy = self.create_obj(name, parent_to_armature=True)
             bl_dummy.empty_display_type = "ARROWS"  # best display type/size I've found (single arrow not sufficient)
             bl_dummy.empty_display_size = 0.05
 
-            if dummy.use_upward_vector:
-                bl_rotation_euler = game_forward_up_vectors_to_bl_euler(dummy.forward, dummy.upward)
+            if game_dummy.use_upward_vector:
+                bl_rotation_euler = game_forward_up_vectors_to_bl_euler(game_dummy.forward, game_dummy.upward)
             else:  # TODO: I assume this is right (up-ignoring dummies only rotate around vertical axis)
-                bl_rotation_euler = game_forward_up_vectors_to_bl_euler(dummy.forward, Vector3((0, 1, 0)))
+                bl_rotation_euler = game_forward_up_vectors_to_bl_euler(game_dummy.forward, Vector3((0, 1, 0)))
 
-            if dummy.parent_bone_index != -1:
-                # Bone's location is given in the space of this parent bone.
-                # NOTE: This is NOT the same as the 'attach' bone, which is used as the actual Blender parent.
-                bl_bone_name = self.bl_bone_names[dummy.parent_bone_index]
+            if game_dummy.parent_bone_index != -1:
+                # Bone's FLVER translate is in the space of (i.e. relative to) this parent bone.
+                # NOTE: This is NOT the same as the 'attach' bone, which is used as the actual Blender parent and
+                # controls how the dummy moves during armature animations.
+                bl_bone_name = self.bl_bone_names[game_dummy.parent_bone_index]
                 bl_dummy["parent_bone_name"] = bl_bone_name
                 bl_parent_bone_matrix = self.armature.data.bones[bl_bone_name].matrix_local
-                bl_location = bl_parent_bone_matrix @ GAME_TO_BL_VECTOR(dummy.translate)
+                bl_location = bl_parent_bone_matrix @ GAME_TO_BL_VECTOR(game_dummy.translate)
             else:
                 # Bone's location is in armature space.
                 bl_dummy["parent_bone_name"] = ""
-                bl_location = GAME_TO_BL_VECTOR(dummy.translate)
+                bl_location = GAME_TO_BL_VECTOR(game_dummy.translate)
 
             # Dummy moves with this bone during animations.
-            if dummy.attach_bone_index != -1:
-                bl_dummy.parent_bone = self.bl_bone_names[dummy.attach_bone_index]
+            if game_dummy.attach_bone_index != -1:
+                bl_dummy.parent_bone = self.bl_bone_names[game_dummy.attach_bone_index]
                 bl_dummy.parent_type = "BONE"
 
             # We need to set the dummy's world matrix, rather than its local matrix, to bypass its possible bone
             # attachment above.
             bl_dummy.matrix_world = Matrix.LocRotScale(bl_location, bl_rotation_euler, Vector((1.0, 1.0, 1.0)))
 
-            # NOTE: This property is the canonical dummy ID. You are free to rename the dummy without affecting it.
-            bl_dummy["reference_id"] = dummy.reference_id  # int
-            bl_dummy["color"] = dummy.color_rgba  # RGBA
-            bl_dummy["flag_1"] = dummy.flag_1  # bool
-            bl_dummy["use_upward_vector"] = dummy.use_upward_vector  # bool
+            # NOTE: Reference ID not included as a property.
+            # bl_dummy["reference_id"] = dummy.reference_id  # int
+            bl_dummy["color_rgba"] = game_dummy.color_rgba  # RGBA
+            bl_dummy["flag_1"] = game_dummy.flag_1  # bool
+            bl_dummy["use_upward_vector"] = game_dummy.use_upward_vector  # bool
             # NOTE: These two properties are only non-zero in Sekiro (and probably Elden Ring).
-            bl_dummy["unk_x30"] = dummy.unk_x30  # int
-            bl_dummy["unk_x34"] = dummy.unk_x34  # int
+            bl_dummy["unk_x30"] = game_dummy.unk_x30  # int
+            bl_dummy["unk_x34"] = game_dummy.unk_x34  # int
 
     def create_obj(self, name: str, data=None, parent_to_armature=True):
         """Create a new Blender object. By default, will be parented to the FLVER's armature object."""
