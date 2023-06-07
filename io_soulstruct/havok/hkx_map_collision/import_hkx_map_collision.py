@@ -76,111 +76,100 @@ class ImportHKXMapCollision(LoggingOperator, ImportHelper):
     def execute(self, context):
         print("Executing HKX collision import...")
 
-        def GO():
+        file_paths = [Path(self.directory, file.name) for file in self.files]
+        hkxs_with_paths = []  # type: list[tuple[Path, MapCollisionHKX | list[BinderEntry]]]
 
-            file_paths = [Path(self.directory, file.name) for file in self.files]
-            hkxs_with_paths = []  # type: list[tuple[Path, MapCollisionHKX | list[BinderEntry]]]
+        for file_path in file_paths:
 
-            for file_path in file_paths:
+            if HKX_BINDER_RE.match(file_path.name):
+                binder = Binder.from_path(file_path)
 
-                if HKX_BINDER_RE.match(file_path.name):
-                    binder = Binder.from_path(file_path)
+                # Find HKX entry.
+                hkx_entries = binder.find_entries_matching_name(r".*\.hkx(\.dcx)?")
+                if not hkx_entries:
+                    raise HKXMapCollisionImportError(f"Cannot find any HKX files in binder {file_path}.")
 
-                    # Find HKX entry.
-                    hkx_entries = binder.find_entries_matching_name(r".*\.hkx(\.dcx)?")
-                    if not hkx_entries:
-                        raise HKXMapCollisionImportError(f"Cannot find any HKX files in binder {file_path}.")
-
-                    if len(hkx_entries) > 1:
-                        if self.import_all_from_binder:
-                            for entry in hkx_entries:
-                                try:
-                                    hkx = entry.to_binary_file(MapCollisionHKX)
-                                except Exception as ex:
-                                    self.warning(f"Error occurred while reading HKX Binder entry '{entry.name}': {ex}")
-                                else:
-                                    hkx.path = Path(entry.name)  # also done in `GameFile`, but explicitly needed below
-                                    hkxs_with_paths.append((file_path, hkx))
-                        else:
-                            # Queue up entire Binder; user will be prompted to choose entry below.
-                            hkxs_with_paths.append((file_path, hkx_entries))
+                if len(hkx_entries) > 1:
+                    if self.import_all_from_binder:
+                        for entry in hkx_entries:
+                            try:
+                                hkx = entry.to_binary_file(MapCollisionHKX)
+                            except Exception as ex:
+                                self.warning(f"Error occurred while reading HKX Binder entry '{entry.name}': {ex}")
+                            else:
+                                hkx.path = Path(entry.name)  # also done in `GameFile`, but explicitly needed below
+                                hkxs_with_paths.append((file_path, hkx))
                     else:
-                        try:
-                            hkx = hkx_entries[0].to_binary_file(MapCollisionHKX)
-                        except Exception as ex:
-                            self.warning(f"Error occurred while reading HKX Binder entry '{hkx_entries[0].name}': {ex}")
-                        else:
-                            hkxs_with_paths.append((file_path, hkx))
+                        # Queue up entire Binder; user will be prompted to choose entry below.
+                        hkxs_with_paths.append((file_path, hkx_entries))
                 else:
-                    # Loose HKX.
                     try:
-                        hkx = MapCollisionHKX.from_path(file_path)
+                        hkx = hkx_entries[0].to_binary_file(MapCollisionHKX)
                     except Exception as ex:
-                        self.warning(f"Error occurred while reading HKX file '{file_path.name}': {ex}")
+                        self.warning(f"Error occurred while reading HKX Binder entry '{hkx_entries[0].name}': {ex}")
                     else:
                         hkxs_with_paths.append((file_path, hkx))
-
-            importer = HKXMapCollisionImporter(self, context)
-
-            for file_path, hkx_or_entries in hkxs_with_paths:
-
-                if isinstance(hkx_or_entries, list):
-                    # Defer through entry selection operator.
-                    ImportHKXMapCollisionWithBinderChoice.run(
-                        importer=importer,
-                        binder_file_path=Path(file_path),
-                        read_msb_transform=self.read_msb_transform,
-                        use_material=self.use_material,
-                        hkx_entries=hkx_or_entries,
-                    )
-                    continue
-
-                hkx = hkx_or_entries
-                hkx_name = hkx.path.name.split(".")[0]
-
-                self.info(f"Importing HKX: {hkx_name}")
-
-                transform = None  # type: tp.Optional[Transform]
-                if self.read_msb_transform:
-                    # NOTE: It's unlikely that this MSB search will work for a loose HKX.
-                    if MAP_NAME_RE.match(file_path.parent.name):
-                        try:
-                            transforms = get_collision_msb_transforms(hkx_name=hkx_name, hkx_path=file_path)
-                        except Exception as ex:
-                            self.warning(f"Could not get MSB transform. Error: {ex}")
-                        else:
-                            if len(transforms) > 1:
-                                importer.context = context
-                                ImportHKXMapCollisionWithMSBChoice.run(
-                                    importer=importer,
-                                    hkx=hkx,
-                                    hkx_name=hkx_name,
-                                    use_material=self.use_material,
-                                    transforms=transforms,
-                                )
-                                continue
-                            transform = transforms[0][1]
-                    else:
-                        self.warning(f"Cannot read MSB transform for HKX in unknown directory: {file_path}.")
-
-                # Import single HKX without MSB transform.
+            else:
+                # Loose HKX.
                 try:
-                    importer.import_hkx(hkx, name=hkx_name, transform=transform, use_material=self.use_material)
+                    hkx = MapCollisionHKX.from_path(file_path)
                 except Exception as ex:
-                    # Delete any objects created prior to exception.
-                    for obj in importer.all_bl_objs:
-                        bpy.data.objects.remove(obj)
-                    traceback.print_exc()  # for inspection in Blender console
-                    return self.error(f"Cannot import HKX: {file_path.name}. Error: {ex}")
+                    self.warning(f"Error occurred while reading HKX file '{file_path.name}': {ex}")
+                else:
+                    hkxs_with_paths.append((file_path, hkx))
 
-        import cProfile
-        import pstats
+        importer = HKXMapCollisionImporter(self, context)
 
-        with cProfile.Profile() as pr:
-            GO()
-        p = pstats.Stats(pr)
-        p = p.strip_dirs()
-        p.sort_stats("tottime").print_stats(40)
+        for file_path, hkx_or_entries in hkxs_with_paths:
+
+            if isinstance(hkx_or_entries, list):
+                # Defer through entry selection operator.
+                ImportHKXMapCollisionWithBinderChoice.run(
+                    importer=importer,
+                    binder_file_path=Path(file_path),
+                    read_msb_transform=self.read_msb_transform,
+                    use_material=self.use_material,
+                    hkx_entries=hkx_or_entries,
+                )
+                continue
+
+            hkx = hkx_or_entries
+            hkx_name = hkx.path.name.split(".")[0]
+
+            self.info(f"Importing HKX: {hkx_name}")
+
+            transform = None  # type: tp.Optional[Transform]
+            if self.read_msb_transform:
+                # NOTE: It's unlikely that this MSB search will work for a loose HKX.
+                if MAP_NAME_RE.match(file_path.parent.name):
+                    try:
+                        transforms = get_collision_msb_transforms(hkx_name=hkx_name, hkx_path=file_path)
+                    except Exception as ex:
+                        self.warning(f"Could not get MSB transform. Error: {ex}")
+                    else:
+                        if len(transforms) > 1:
+                            importer.context = context
+                            ImportHKXMapCollisionWithMSBChoice.run(
+                                importer=importer,
+                                hkx=hkx,
+                                hkx_name=hkx_name,
+                                use_material=self.use_material,
+                                transforms=transforms,
+                            )
+                            continue
+                        transform = transforms[0][1]
+                else:
+                    self.warning(f"Cannot read MSB transform for HKX in unknown directory: {file_path}.")
+
+            # Import single HKX without MSB transform.
+            try:
+                importer.import_hkx(hkx, name=hkx_name, transform=transform, use_material=self.use_material)
+            except Exception as ex:
+                # Delete any objects created prior to exception.
+                for obj in importer.all_bl_objs:
+                    bpy.data.objects.remove(obj)
+                traceback.print_exc()  # for inspection in Blender console
+                return self.error(f"Cannot import HKX: {file_path.name}. Error: {ex}")
 
         return {"FINISHED"}
 

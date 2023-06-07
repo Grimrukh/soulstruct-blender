@@ -889,6 +889,11 @@ class FLVERImporter:
                 f"(bone data written to PoseBones). Writing all bone data to EditBones."
             )
 
+        # TODO: Theoretically, we could handled mixed bind pose/non-bind pose meshes IF AND ONLY IF they did not use the
+        #  same bones. The bind pose bones could have their data written to EditBones, and the non-bind pose bones could
+        #  have their data written to PoseBones. The 'is_bind_pose' custom property of each mesh can likewise be used on
+        #  export, once it's confirmed that the same bone does not appear in both types of mesh.
+
         self.context.view_layer.objects.active = bl_armature
         if bpy.ops.object.mode_set.poll():
             bpy.ops.object.mode_set(mode="EDIT", toggle=False)
@@ -906,9 +911,8 @@ class FLVERImporter:
             if bpy.ops.object.mode_set.poll():
                 bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
         elif write_bone_type == "POSE":
-            pose_bones = bl_armature.pose.bones
             # This method will change back to OBJECT mode internally before setting pose bone data.
-            self.write_data_to_pose_bones(edit_bones, pose_bones)
+            self.write_data_to_pose_bones(bl_armature, edit_bones)
         else:
             # Should not be possible to reach.
             raise ValueError(f"Invalid `write_bone_type`: {write_bone_type}")
@@ -976,8 +980,9 @@ class FLVERImporter:
                 edit_bone.parent = parent_edit_bone
                 # edit_bone.use_connect = True
 
-    def write_data_to_pose_bones(self, edit_bones: list[bpy_types.EditBone], pose_bones: list[bpy_types.PoseBone]):
-        for game_bone, edit_bone, pose_bone in zip(self.flver.bones, edit_bones, pose_bones):
+    def write_data_to_pose_bones(self, bl_armature, edit_bones: list[bpy_types.EditBone]):
+
+        for game_bone, edit_bone in zip(self.flver.bones, edit_bones, strict=True):
             # All edit bones are just Blender-Y-direction ("forward") stubs of base length.
             # This rigging makes map piece 'pose' bone data transform as expected for showing accurate vertex positions.
             edit_bone.head = Vector((0, 0, 0))
@@ -987,6 +992,7 @@ class FLVERImporter:
         if bpy.ops.object.mode_set.poll():
             bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
 
+        pose_bones = bl_armature.pose.bones  # type: list[bpy_types.PoseBone]
         for game_bone, pose_bone in zip(self.flver.bones, pose_bones):
             # TODO: Pose bone transforms are relative to parent (in both FLVER and Blender).
             #  Confirm map pieces still behave as expected, though (they shouldn't even have child bones).

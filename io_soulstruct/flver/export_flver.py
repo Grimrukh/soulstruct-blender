@@ -569,7 +569,6 @@ class FLVERExporter:
                 builder.game_mesh.bone_indices = mesh_local_bone_indices
 
         flver.sort_mesh_bone_indices()
-        # TODO: untested, remove this if it works :)
         flver.refresh_bounding_boxes(refresh_bone_bounding_boxes=True)
 
         return flver
@@ -1017,7 +1016,7 @@ def build_game_mesh(
             else:
                 colors = empty  # not yet observed (all DS1 materials use vertex colors)
 
-            v_key = (tuple(position), tuple(bone_indices), tuple(uvs), tuple(colors))  # hashable
+            v_key = (tuple(position), tuple(bone_indices), tuple(bone_weights), tuple(uvs), tuple(colors))  # hashable
 
             try:
                 game_v_i = flver_v_indices[v_key]
