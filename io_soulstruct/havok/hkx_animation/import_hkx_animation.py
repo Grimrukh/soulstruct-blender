@@ -76,6 +76,8 @@ class ImportHKXAnimation(LoggingOperator, ImportHelper):
     def execute(self, context):
 
         bl_armature = context.selected_objects[0]
+        # noinspection PyTypeChecker
+        armature_data = bl_armature.data  # type: bpy.types.Armature
 
         file_paths = [Path(self.directory, file.name) for file in self.files]
         hkxs_with_paths = []  # type: list[tuple[Path, SkeletonHKX, AnimationHKX | list[BinderEntry]]]
@@ -160,7 +162,7 @@ class ImportHKXAnimation(LoggingOperator, ImportHelper):
             track_bone_names = [
                 annotation.trackName for annotation in animation_hkx.animation_container.animation.annotationTracks
             ]
-            bl_bone_names = [b.name for b in bl_armature.data.bones]
+            bl_bone_names = [b.name for b in armature_data.bones]
             for bone_name in track_bone_names:
                 if bone_name not in bl_bone_names:
                     raise ValueError(f"Animation bone name '{bone_name}' is missing from selected Blender Armature.")

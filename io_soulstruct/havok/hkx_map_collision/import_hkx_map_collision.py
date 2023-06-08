@@ -502,7 +502,9 @@ class ImportHKXMapCollisionWithMSBChoice(LoggingOperator):
         hkx_model_name = self.import_info.hkx_name.split(".")[0]
 
         try:
-            hkx_parent = self.importer.import_hkx(self.hkx, bl_name=hkx_model_name, use_material=self.use_material)
+            hkx_parent = self.importer.import_hkx(
+                self.import_info.hkx, bl_name=hkx_model_name, use_material=self.use_material
+            )
         except Exception as ex:
             for obj in self.importer.all_bl_objs:
                 bpy.data.objects.remove(obj)
@@ -587,18 +589,30 @@ class HKXMapCollisionImporter:
             hkx_parent = existing_parent
         else:
             # Empty parent.
-            hkx_parent = bpy.data.objects.new(self.bl_name, None)
+            hkx_parent = bpy.data.objects.new(bl_name, None)
             self.context.scene.collection.objects.link(hkx_parent)
             self.all_bl_objs = [hkx_parent]
 
         meshes = self.hkx.to_meshes()
         material_indices = self.hkx.map_collision_physics_data.get_subpart_materials()
+        if bl_name.startswith("h"):
+            is_hi_res = True
+        elif bl_name.startswith("l"):
+            is_hi_res = False
+        else:
+            is_hi_res = True
+            self.operator.warning(f"Cannot determine if HKX is hi-res or lo-res: {bl_name}. Defaulting to hi-res.")
+
+        # NOTE: We include the collision's full name in each submesh so that Blender does not add '.001' suffixes to
+        # distinguish them across collisions (which could be a problem even if we just leave off the map indicator).
+        # However, on export, only the first (lower-cased) letter of each submesh is used to check its resolution.
+        submesh_name_prefix = f"{bl_name} Submesh"
         for i, hkx_subpart in enumerate(meshes):
-            mesh_name = f"{self.bl_name} Submesh {i}"
+            mesh_name = f"{submesh_name_prefix} {i}"
             bl_mesh = self.create_mesh_obj(hkx_subpart, material_indices[i], mesh_name)
             if use_material:
                 # TODO: From HSV, with H jumping up by something like
-                material_name = "HKX Lo" if bl_name.startswith("l") else "HKX Hi"  # hi is default for weird names
+                material_name = "HKX Hi" if is_hi_res else "HKX Lo"
                 material_name += " (Mat 1)" if material_indices[i] == 1 else " (Not Mat 1)"
                 try:
                     bl_material = bpy.data.materials[material_name]
@@ -607,7 +621,7 @@ class HKXMapCollisionImporter:
                     color = Color()
                     # Hue rotates between 10 values. Material index 1 (very common) is mapped to nice blue hue 0.6.
                     hue = 0.1 * ((material_indices[i] + 5) % 10)
-                    saturation = 0.4 if bl_name.startswith("l") else 0.8
+                    saturation = 0.8 if is_hi_res else 0.4
                     value = 0.5
                     color.hsv = (hue, saturation, value)
                     bl_material = self.create_basic_material(material_name, (color.r, color.g, color.b, 1.0))

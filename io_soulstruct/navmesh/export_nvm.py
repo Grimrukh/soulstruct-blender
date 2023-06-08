@@ -8,7 +8,6 @@ import typing as tp
 from pathlib import Path
 
 import bpy
-import bpy_types
 from bpy.props import StringProperty, BoolProperty, IntProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 from soulstruct.containers.dcx import DCXType
@@ -167,7 +166,7 @@ class ExportNVMIntoBinder(LoggingOperator, ImportHelper):
             nvm.dcx_type = DCXType[self.dcx_type]
 
         try:
-            binder = Binder(self.filepath)
+            binder = Binder.from_path(self.filepath)
         except Exception as ex:
             return self.error(f"Could not load Binder file. Error: {ex}.")
 
@@ -230,9 +229,9 @@ class NVMExporter:
         },
     }  # type: dict[str, dict[str, BlenderProp]]
 
-    operator: bpy_types.Operator
+    operator: LoggingOperator
 
-    def __init__(self, operator: ExportNVM, context):
+    def __init__(self, operator: LoggingOperator, context):
         self.operator = operator
         self.context = context
 

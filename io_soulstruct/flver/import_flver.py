@@ -17,7 +17,7 @@ NOTE: Currently only thoroughly tested for DS1/DSR.
 """
 from __future__ import annotations
 
-__all__ = ["ImportFLVER", "ImportFLVERWithMSBChoice", "ImportEquipmentFLVER"]
+__all__ = ["ImportFLVER", "ImportFLVERWithMSBChoice", "ImportEquipmentFLVER", "FLVERImporter"]
 
 import math
 import re
@@ -26,7 +26,7 @@ import typing as tp
 from pathlib import Path
 
 import bpy
-import bpy_types
+import bpy.ops
 import bmesh
 from bpy.props import StringProperty, FloatProperty, BoolProperty, EnumProperty, CollectionProperty
 from bpy_extras.io_utils import ImportHelper
@@ -241,7 +241,7 @@ class ImportFLVERWithMSBChoice(LoggingOperator):
     read_msb_transform: bool = True
     material_blend_mode: str = "HASHED"
 
-    choices_enum: bpy.props.EnumProperty(items=get_msb_choices)
+    choices_enum: EnumProperty(items=get_msb_choices)
 
     # noinspection PyUnusedLocal
     def invoke(self, context, event):
@@ -392,7 +392,6 @@ class ImportEquipmentFLVER(LoggingOperator, ImportHelper):
         file_paths = [Path(self.directory, file.name) for file in self.files]
         flvers = []
         attached_texture_sources = {}  # from multi-texture TPFs directly linked to FLVER
-        loose_tpf_sources = {}  # one-texture TPFs that we only read if needed by FLVER
 
         for file_path in file_paths:
 
@@ -401,12 +400,10 @@ class ImportEquipmentFLVER(LoggingOperator, ImportHelper):
                 flver = get_flver_from_binder(binder, file_path)
                 flvers.append(flver)
                 attached_texture_sources |= collect_binder_tpfs(binder, file_path)
-            else:  # e.g. loose Map Piece FLVER
+            else:  # loose equipment FLVER is unusual but supported, but TPFs may not be found
                 flver = FLVER.from_path(file_path)
                 flvers.append(flver)
-                if self.load_map_piece_tpfs:
-                    # Find map piece TPFs in adjacent `mXX` directory.
-                    loose_tpf_sources |= collect_map_tpfs(map_dir_path=file_path.parent)
+                # No loose TPF sources (nowhere to look).
 
         png_cache_path = Path(self.png_cache_path) if self.png_cache_path else None
 
@@ -415,7 +412,7 @@ class ImportEquipmentFLVER(LoggingOperator, ImportHelper):
             context,
             use_existing_materials=self.use_existing_materials,
             texture_sources=attached_texture_sources,
-            loose_tpf_sources=loose_tpf_sources,
+            loose_tpf_sources={},
             png_cache_path=png_cache_path,
             material_blend_mode=self.material_blend_mode,
             base_edit_bone_length=self.base_edit_bone_length,
@@ -616,7 +613,7 @@ class FLVERImporter:
         return bl_armature
 
     def load_texture_images(self):
-        """Load texture images from either `png_cache` folder, TPFs found with the FLVER, or scanned loose (map) TPFs."""
+        """Load texture images from either `png_cache` folder, TPFs found with the FLVER, or found loose (map) TPFs."""
         textures_to_load = {}  # type: dict[str, TPFTexture]
         for texture_path in self.flver.get_all_texture_paths():
             texture_stem = texture_path.stem
@@ -673,7 +670,7 @@ class FLVERImporter:
             t = perf_counter()
             all_png_data = batch_get_tpf_texture_png_data(list(textures_to_load.values()))
             write_png_directory = self.png_cache_path if self.write_to_png_cache else None
-            print(f"# INFO: Batch converted to PNG images in {perf_counter() - t} s (cached = {self.write_to_png_cache})")
+            print(f"# INFO: Converted PNG images in {perf_counter() - t} s (cached = {self.write_to_png_cache})")
             for texture_stem, png_data in zip(textures_to_load.keys(), all_png_data):
                 bl_image = png_to_bl_image(texture_stem, png_data, write_png_directory)
                 self.bl_images[texture_stem] = bl_image
@@ -711,10 +708,10 @@ class FLVERImporter:
         bl_mesh.from_pydata(vertices, edges, faces)
         bl_mesh.materials.append(self.materials[flver_mesh.material_index])
 
-        bm = bmesh.new()
         if bpy.context.mode == "EDIT_MESH":
-            bm.from_edit_mesh(bl_mesh)
+            bm = bmesh.from_edit_mesh(bl_mesh)
         else:
+            bm = bmesh.new()
             bm.from_mesh(bl_mesh)
 
         # To create normals, we create custom "split" normals, and copy them to the loop normals.
@@ -763,10 +760,10 @@ class FLVERImporter:
         bl_mesh.calc_normals_split()
 
         # Delete vertices not used in face set 0. We do this after setting UVs and other layers above.
-        bm = bmesh.new()
         if bpy.context.mode == "EDIT_MESH":
-            bm.from_edit_mesh(bl_mesh)
+            bm = bmesh.from_edit_mesh(bl_mesh)
         else:
+            bm = bmesh.new()
             bm.from_mesh(bl_mesh)
         bm.verts.ensure_lookup_table()
         used_vertex_indices = {i for face in faces for i in face}
@@ -917,12 +914,12 @@ class FLVERImporter:
             # Should not be possible to reach.
             raise ValueError(f"Invalid `write_bone_type`: {write_bone_type}")
 
-    def create_edit_bones(self, bl_armature) -> list[bpy_types.EditBone]:
+    def create_edit_bones(self, bl_armature) -> list[bpy.types.EditBone]:
         """Create all edit bones from FLVER bones in `bl_armature`."""
         edit_bones = []  # all bones
         for game_bone, bl_bone_name in zip(self.flver.bones, self.bl_bone_names.values(), strict=True):
             edit_bone = bl_armature.data.edit_bones.new(bl_bone_name)  # '<DUPE>' suffixes already added to names
-            edit_bone: bpy_types.EditBone
+            edit_bone: bpy.types.EditBone
 
             edit_bone["unk_x3c"] = game_bone.unk_x3c  # TODO: seems to be 1 for root bones?
 
@@ -942,7 +939,7 @@ class FLVERImporter:
             edit_bones.append(edit_bone)
         return edit_bones
 
-    def write_data_to_edit_bones(self, edit_bones: list[bpy_types.EditBone]):
+    def write_data_to_edit_bones(self, edit_bones: list[bpy.types.EditBone]):
 
         game_arma_transforms = self.flver.get_bone_armature_space_transforms()
 
@@ -980,7 +977,7 @@ class FLVERImporter:
                 edit_bone.parent = parent_edit_bone
                 # edit_bone.use_connect = True
 
-    def write_data_to_pose_bones(self, bl_armature, edit_bones: list[bpy_types.EditBone]):
+    def write_data_to_pose_bones(self, bl_armature, edit_bones: list[bpy.types.EditBone]):
 
         for game_bone, edit_bone in zip(self.flver.bones, edit_bones, strict=True):
             # All edit bones are just Blender-Y-direction ("forward") stubs of base length.
@@ -992,7 +989,7 @@ class FLVERImporter:
         if bpy.ops.object.mode_set.poll():
             bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
 
-        pose_bones = bl_armature.pose.bones  # type: list[bpy_types.PoseBone]
+        pose_bones = bl_armature.pose.bones  # type: list[bpy.types.PoseBone]
         for game_bone, pose_bone in zip(self.flver.bones, pose_bones):
             # TODO: Pose bone transforms are relative to parent (in both FLVER and Blender).
             #  Confirm map pieces still behave as expected, though (they shouldn't even have child bones).

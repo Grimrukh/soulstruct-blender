@@ -106,7 +106,7 @@ class ExportFLVERToMapDirectory(LoggingOperator):
     def execute(self, context):
         game_directory = context.scene.export_map_directory_settings.game_directory
         map_stem = context.scene.export_map_directory_settings.map_stem
-        dcx_type = context.scene.export_map_directory_settings.dcx_type
+        dcx_type = DCXType[context.scene.export_map_directory_settings.dcx_type]
 
         # Save last `game_directory` (even if this function fails).
         last_game_directory_path = Path(__file__).parent / "../game_directory.txt"
@@ -136,7 +136,7 @@ class ExportFLVERToMapDirectory(LoggingOperator):
             traceback.print_exc()
             return self.error(f"Cannot get exported FLVER. Error: {ex}")
         else:
-            flver.dcx_type = DCXType[dcx_type]
+            flver.dcx_type = dcx_type
             try:
                 # Will create a `.bak` file automatically if absent, and add `.dcx` extension if necessary.
                 flver.write(map_dir_path / flver_name)
@@ -342,13 +342,13 @@ class ExportFLVERIntoBinder(LoggingOperator, ImportHelper):
 
 class FLVERExporter:
 
-    operator: ExportFLVER
+    operator: LoggingOperator
     name: str
     layout_member_unk_x00: int
     props: BlenderPropertyManager
     base_edit_bone_length: float
 
-    def __init__(self, operator: ExportFLVER, context, base_edit_bone_length=0.2):
+    def __init__(self, operator: LoggingOperator, context, base_edit_bone_length=0.2):
         self.operator = operator
         self.context = context
         self.base_edit_bone_length = base_edit_bone_length

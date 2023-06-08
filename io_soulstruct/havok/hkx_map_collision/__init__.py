@@ -6,6 +6,7 @@ __all__ = [
     "ImportHKXMapCollisionWithMSBChoice",
     "ExportHKXMapCollision",
     "ExportHKXMapCollisionIntoBinder",
+    "ExportHKXMapCollisionToMapDirectoryBHD",
     "HKX_COLLISION_PT_hkx_map_collision_tools",
 ]
 
@@ -34,8 +35,12 @@ if "HKX_PT_hkx_tools" in locals():
     importlib.reload(sys.modules["io_soulstruct.hkx_map_collision.import_hkx"])
     importlib.reload(sys.modules["io_soulstruct.hkx_map_collision.export_hkx"])
 
-from .export_hkx_map_collision import ExportHKXMapCollision, ExportHKXMapCollisionIntoBinder
-from .import_hkx_map_collision import ImportHKXMapCollision, ImportHKXMapCollisionWithBinderChoice, ImportHKXMapCollisionWithMSBChoice
+from .import_hkx_map_collision import (
+    ImportHKXMapCollision, ImportHKXMapCollisionWithBinderChoice, ImportHKXMapCollisionWithMSBChoice
+)
+from .export_hkx_map_collision import (
+    ExportHKXMapCollision, ExportHKXMapCollisionIntoBinder, ExportHKXMapCollisionToMapDirectoryBHD
+)
 
 
 class HKX_COLLISION_PT_hkx_map_collision_tools(bpy.types.Panel):
@@ -53,3 +58,9 @@ class HKX_COLLISION_PT_hkx_map_collision_tools(bpy.types.Panel):
         export_box = self.layout.box()
         export_box.operator(ExportHKXMapCollision.bl_idname)
         export_box.operator(ExportHKXMapCollisionIntoBinder.bl_idname)
+
+        export_map_settings = context.scene.export_map_directory_settings
+        export_to_map_box = self.layout.box()
+        export_to_map_box.prop(export_map_settings, "game_directory")
+        export_to_map_box.prop(export_map_settings, "map_stem")  # TODO: must match Blender collision name (for now)
+        export_to_map_box.operator(ExportHKXMapCollisionToMapDirectoryBHD.bl_idname)

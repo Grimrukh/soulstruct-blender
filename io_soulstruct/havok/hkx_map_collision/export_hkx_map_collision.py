@@ -1,18 +1,17 @@
 from __future__ import annotations
 
-__all__ = ["ExportHKXMapCollision", "ExportHKXMapCollisionIntoBinder"]
+__all__ = ["ExportHKXMapCollision", "ExportHKXMapCollisionIntoBinder", "ExportHKXMapCollisionToMapDirectoryBHD"]
 
 import re
 import traceback
 from pathlib import Path
 
 import bpy
-import bpy_types
 from bpy.props import StringProperty, BoolProperty, IntProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 from soulstruct.containers.dcx import DCXType
 
-from soulstruct.containers import Binder, BinderEntry
+from soulstruct.containers import Binder, BinderEntry, BinderEntryFlags
 
 from soulstruct_havok.wrappers.hkx2015 import MapCollisionHKX
 
@@ -26,7 +25,7 @@ HKX_COLLISION_NAME_RE = re.compile(r"^([hl])(\d\d\d\d)B(\d)A(\d\d)$")  # no exte
 
 
 def get_mesh_children(
-    operator: LoggingOperator, bl_parent, get_other_resolution: bool, allow_any_name: bool
+    operator: LoggingOperator, bl_parent: bpy.types.Object, get_other_resolution: bool, allow_any_name: bool
 ) -> tuple[str, list, str, list]:
     """Return a tuple of `(hkx_model_name, bl_meshes, other_res_model_name, other_res_bl_meshes)`."""
     bl_meshes = []
@@ -50,18 +49,20 @@ def get_mesh_children(
         case _:
             if get_other_resolution:
                 raise HKXMapCollisionExportError(
-                    f"Selected Empty parent '{hkx_model_name}' must start with 'h' or 'l'."
+                    f"Selected Empty parent '{hkx_model_name}' must start with 'h' or 'l' to get other resolution."
                 )
             other_res_model_name = ""
+
     for child in bl_parent.children:
+        res = child.name.lower()[0]
         if child.type != "MESH":
             operator.warning(f"Ignoring non-mesh child '{child.name}' of selected Empty parent.")
-        elif child.name.startswith(hkx_model_name):
+        elif res == hkx_model_name[0]:
             bl_meshes.append(child)
-        elif get_other_resolution and child.name.startswith(other_res_model_name):  # cannot be empty here
+        elif get_other_resolution and res == other_res_model_name[0]:  # cannot be empty here
             other_res_bl_meshes.append(child)
         else:
-            operator.warning(f"Ignoring child '{child.name}' of selected Empty parent with non-matching name.")
+            operator.warning(f"Ignoring child '{child.name}' of selected Empty parent with non-'Hi', non-'Lo' name.")
 
     # Ensure meshes have the same order as they do in the Blender viewer.
     bl_meshes.sort(key=lambda obj: natural_keys(obj.name))
@@ -119,14 +120,22 @@ class ExportHKXMapCollision(LoggingOperator, ExportHelper):
             return self.error("No Empty with child meshes selected for HKX export.")
         if len(selected_objs) > 1:
             return self.error("More than one object cannot be selected for HKX export.")
+        hkx_parent = selected_objs[0]
+
+        hkx_path = Path(self.filepath)
+        if not self.allow_any_name and HKX_COLLISION_NAME_RE.match(hkx_path.name) is None:
+            return self.error(
+                f"HKX export file name '{hkx_path.name}' must be 'h####B#A##' or 'l####B#A##' "
+                f"(`allow_any_name = False`)."
+            )
 
         try:
             hkx_model_name, bl_meshes, other_res_model_name, other_res_bl_meshes = get_mesh_children(
-                self, selected_objs[0], self.write_other_resolution, self.allow_any_name
+                self, hkx_parent, self.write_other_resolution, self.allow_any_name
             )
         except HKXMapCollisionExportError as ex:
             traceback.print_exc()
-            return self.error(f"Children of object '{selected_objs[0]}' cannot be exported. Error: {ex}")
+            return self.error(f"Children of object '{hkx_parent.name}' cannot be exported. Error: {ex}")
 
         # TODO: Not needed for meshes only?
         if bpy.ops.object.mode_set.poll():
@@ -155,7 +164,6 @@ class ExportHKXMapCollision(LoggingOperator, ExportHelper):
             else:
                 self.warning(f"No Blender mesh children found for other resolution '{other_res_model_name}'.")
 
-        hkx_path = Path(self.filepath)
         try:
             # Will create a `.bak` file automatically if absent.
             hkx.write(hkx_path)
@@ -194,6 +202,19 @@ class ExportHKXMapCollisionIntoBinder(LoggingOperator, ImportHelper):
 
     dcx_type: get_dcx_enum_property(DCXType.DS1_DS2)  # map collisions in DS1 binder are compressed
 
+    write_other_resolution: BoolProperty(
+        name="Write Other Resolution",
+        description="Write the other resolution of the collision (h/l) if its submeshes are also under this parent",
+        default=True,
+    )
+
+    allow_any_name: BoolProperty(
+        name="Allow Any Name",
+        description="Allow any name for the parent Empty (i.e. does not have to start with "
+                    "'h####B#A##' or 'l####B#A##')",
+        default=False,
+    )
+
     overwrite_existing: BoolProperty(
         name="Overwrite Existing",
         description="Overwrite first existing '{name}.hkx{.dcx}' matching entry in Binder",
@@ -211,7 +232,7 @@ class ExportHKXMapCollisionIntoBinder(LoggingOperator, ImportHelper):
         description="Path prefix to use for Binder entry if it needs to be created. Use {name} as a format "
                     "placeholder for the name of this HKX object and {map} as a format placeholder for map string "
                     "'mAA_BB_00_00', which will try to be detected from HKX name (eg 'h0500B1A12' -> 'm12_01_00_00')",
-        default="{map}\\{name}.hkx.dcx",
+        default="{map}\\{name}.hkx.dcx",  # note that HKX files inside DSR BHDs are indeed DCX-compressed
     )
 
     @classmethod
@@ -231,107 +252,276 @@ class ExportHKXMapCollisionIntoBinder(LoggingOperator, ImportHelper):
             return self.error("No Empty with child meshes selected for HKX export.")
         if len(selected_objs) > 1:
             return self.error("More than one object cannot be selected for HKX export.")
+        hkx_parent = selected_objs[0]
+
+        hkx_binder_path = Path(self.filepath)
 
         try:
-            hkx_model_name, bl_meshes, other_res_model_name, other_res_bl_meshes = get_mesh_children(
-                self, selected_objs[0], self.write_other_resolution, self.allow_any_name
+            export_hkx_to_binder(
+                self,
+                context,
+                hkx_parent,
+                hkx_binder_path,
+                dcx_type=DCXType[self.dcx_type],
+                write_other_resolution=self.write_other_resolution,
+                allow_any_name=self.allow_any_name,
+                default_entry_path=self.default_entry_path,
+                default_entry_flags=BinderEntryFlags(self.default_entry_flags),
+                overwrite_existing=self.overwrite_existing,
             )
-        except HKXMapCollisionExportError as ex:
-            traceback.print_exc()
-            return self.error(f"Children of object '{selected_objs[0]}' cannot be exported. Error: {ex}")
-
-        # TODO: Not needed for meshes only?
-        if bpy.ops.object.mode_set.poll():
-            bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
-
-        exporter = HKXMapCollisionExporter(self, context)
-
-        try:
-            hkx = exporter.export_hkx_map_collision(bl_meshes, name=hkx_model_name)
         except Exception as ex:
             traceback.print_exc()
-            return self.error(f"Cannot get exported HKX for '{hkx_model_name}'. Error: {ex}")
-        hkx.dcx_type = DCXType[self.dcx_type]
-
-        other_res_hkx = None
-        if other_res_model_name:
-            if other_res_bl_meshes:
-                try:
-                    other_res_hkx = exporter.export_hkx_map_collision(other_res_bl_meshes, name=other_res_model_name)
-                except Exception as ex:
-                    traceback.print_exc()
-                    return self.error(
-                        f"Cannot get exported HKX for other resolution '{other_res_model_name}. Error: {ex}"
-                    )
-                other_res_hkx.dcx_type = DCXType[self.dcx_type]
-            else:
-                self.warning(f"No Blender mesh children found for other resolution '{other_res_model_name}'.")
-
-        # TODO: Adjust from here to also find 'other_res' binder next to chosen one (`self.filepath`).
-        #  Check for other-res binder first above, actually, so we don't bother creating the HKX if we can't find it.
-
-        try:
-            binder = Binder.from_path(self.filepath)
-        except Exception as ex:
-            return self.error(f"Could not load Binder file. Error: {ex}.")
-
-        matching_entries = binder.find_entries_matching_name(rf"{hkx_name}\.hkx(\.dcx)?")
-        if not matching_entries:
-            # Create new entry.
-            if "{map}" in self.default_entry_path:
-                if match := HKX_COLLISION_NAME_RE.match(hkx_name):
-                    block, area = int(match.group(3)), int(match.group(4))
-                    map_str = f"m{area:02d}_{block:02d}_00_00"
-                else:
-                    return self.error(
-                        f"Could not determine '{{map}}' for new Binder entry from HKX name: {hkx_name}. It must be in "
-                        f"the format '[hl]####A#B##' for map name 'mAA_BB_00_00' to be detected."
-                    )
-                entry_path = self.default_entry_path.format(map=map_str, name=hkx_name)
-            else:
-                entry_path = self.default_entry_path.format(name=hkx_name)
-            new_entry_id = binder.highest_entry_id + 1
-            hkx_entry = BinderEntry(
-                b"", entry_id=new_entry_id, path=entry_path, flags=self.default_entry_flags
-            )
-            binder.add_entry(hkx_entry)
-            self.info(f"Creating new Binder entry: ID {new_entry_id}, path '{entry_path}'")
-        else:
-            if not self.overwrite_existing:
-                return self.error(f"HKX named '{hkx_name}' already exists in Binder and overwrite is disabled.")
-
-            if len(matching_entries) > 1:
-                self.warning(
-                    f"Multiple HKXs named '{hkx_name}' found in Binder. Replacing first: {matching_entries[0].name}"
-                )
-            else:
-                self.info(f"Replacing existing Binder entry: ID {matching_entries[0]}, path '{matching_entries[0]}'")
-            hkx_entry = matching_entries[0]
-
-        hkx.dcx_type = DCXType[self.dcx_type]
-
-        try:
-            hkx_entry.set_from_binary_file(hkx)
-        except Exception as ex:
-            traceback.print_exc()
-            return self.error(f"Cannot write exported HKX. Error: {ex}")
-
-        try:
-            # Will create a `.bak` file automatically if absent.
-            binder.write()
-        except Exception as ex:
-            traceback.print_exc()
-            return self.error(f"Cannot write Binder with new HKX. Error: {ex}")
+            return self.error(f"Could not execute HKX export to Binder. Error: {ex}")
 
         return {"FINISHED"}
+
+
+class ExportHKXMapCollisionToMapDirectoryBHD(LoggingOperator):
+    """Export a HKX collision file into a FromSoftware DSR map directory BHD."""
+    bl_idname = "export_scene_map.hkx_map_collision"
+    bl_label = "Export HKX Collision to Map Directory BHD"
+    bl_description = (
+        "Export a HKX collision file into a FromSoftware '.hkxbhd' Binder in a specific map directory in DSR"
+    )
+
+    @classmethod
+    def poll(cls, context):
+        """Must select a single empty parent of only (and at least one) child meshes."""
+        is_empty_selected = len(context.selected_objects) == 1 and context.selected_objects[0].type == "EMPTY"
+        if not is_empty_selected:
+            return False
+        children = context.selected_objects[0].children
+        return len(children) >= 1 and all(child.type == "MESH" for child in children)
+
+    def execute(self, context):
+        game_directory = context.scene.export_map_directory_settings.game_directory
+        map_stem = context.scene.export_map_directory_settings.map_stem
+        # NOTE: Always uses DSR DCX.
+
+        # Save last `game_directory` (even if this function fails).
+        last_game_directory_path = Path(__file__).parent / "../game_directory.txt"
+        last_game_directory_path.write_text(game_directory)
+
+        map_dir_path = Path(game_directory) / f"map/{map_stem}"
+
+        if not map_dir_path.is_dir():
+            return self.error(f"Invalid game map directory: {map_dir_path}")
+
+        selected_objs = [obj for obj in context.selected_objects]
+        if not selected_objs:
+            return self.error("No Empty with child meshes selected for HKX export.")
+        if len(selected_objs) > 1:
+            return self.error("More than one object cannot be selected for HKX export.")
+        hkx_parent = selected_objs[0]
+
+        name_match = HKX_COLLISION_NAME_RE.match(hkx_parent.name[:10])
+        if name_match is None:
+            return self.error(
+                f"Selected object '{hkx_parent.name}' does not match the expected name pattern for "
+                f"a HKX collision parent object: 'hXXXXAXBXX' or 'lXXXXAXBXX'."
+            )
+
+        block, area = int(name_match.group(3)), int(name_match.group(4))
+        name_map_stem = f"m{area:02d}_{block:02d}_00_00"  # TODO: 01 suffix for Darkroot collisions? Don't think so...
+        # TODO: could theoretically do some kind of name swizzling to quickly export to the 'wrong map', but just
+        #  enforcing a match between selected map stem and collision name for now.
+        if name_map_stem != map_stem:
+            return self.error(
+                f"Selected object '{hkx_parent.name}' does not match the expected map stem '{map_stem}'."
+            )
+
+        res = hkx_parent.name[0]
+        hkx_binder_path = map_dir_path / f"{res}{map_stem[1:]}.hkxbhd"  # drop 'm' from stem
+
+        try:
+            export_hkx_to_binder(
+                self,
+                context,
+                hkx_parent,
+                hkx_binder_path,
+                dcx_type=DCXType.DS1_DS2,
+                write_other_resolution=True,
+                allow_any_name=False,
+                default_entry_path="{map}\\{name}.hkx.dcx",
+                default_entry_flags=BinderEntryFlags(0x2),
+                overwrite_existing=True,
+            )
+        except Exception as ex:
+            traceback.print_exc()
+            return self.error(f"Could not execute HKX export to Binder. Error: {ex}")
+
+        return {"FINISHED"}
+
+
+def find_binder_hkx_entry(
+    operator: LoggingOperator,
+    binder: Binder,
+    hkx_model_name: str,
+    default_entry_path: str,
+    default_entry_flags: BinderEntryFlags,
+    overwrite_existing: bool,
+) -> BinderEntry:
+    matching_entries = binder.find_entries_matching_name(rf"{hkx_model_name}\.hkx(\.dcx)?")
+
+    if not matching_entries:
+        # Create new entry.
+        if "{map}" in default_entry_path:
+            if match := HKX_COLLISION_NAME_RE.match(hkx_model_name):
+                block, area = int(match.group(3)), int(match.group(4))
+                map_str = f"m{area:02d}_{block:02d}_00_00"
+            else:
+                raise HKXMapCollisionExportError(
+                    f"Could not determine '{{map}}' for new Binder entry from HKX name: {hkx_model_name}. It must "
+                    f"be in the format '[hl]####A#B##' for map name 'mAA_BB_00_00' to be detected."
+                )
+            entry_path = default_entry_path.format(map=map_str, name=hkx_model_name)
+        else:
+            entry_path = default_entry_path.format(name=hkx_model_name)
+        new_entry_id = binder.highest_entry_id + 1
+        hkx_entry = BinderEntry(
+            b"", entry_id=new_entry_id, path=entry_path, flags=default_entry_flags
+        )
+        binder.add_entry(hkx_entry)
+        operator.info(f"Creating new Binder entry: ID {new_entry_id}, path '{entry_path}'")
+        return hkx_entry
+
+    if not overwrite_existing:
+        raise HKXMapCollisionExportError(
+            f"HKX named '{hkx_model_name}' already exists in Binder and overwrite is disabled."
+        )
+
+    entry = matching_entries[0]
+    if len(matching_entries) > 1:
+        operator.warning(
+            f"Multiple HKXs named '{hkx_model_name}' found in Binder. Replacing first: {entry.name}"
+        )
+    else:
+        operator.info(f"Replacing existing Binder entry: ID {entry.id}, path '{entry.path}'")
+    return matching_entries[0]
+
+
+def export_hkx_to_binder(
+    operator: LoggingOperator,
+    context: bpy.types.Context,
+    hkx_parent: bpy.types.Object,
+    hkx_binder_path: Path,
+    dcx_type: DCXType,
+    write_other_resolution: bool,
+    allow_any_name: bool,
+    default_entry_path: str,
+    default_entry_flags: BinderEntryFlags,
+    overwrite_existing: bool,
+):
+    try:
+        hkx_model_name, bl_meshes, other_res_model_name, other_res_bl_meshes = get_mesh_children(
+            operator, hkx_parent, write_other_resolution, allow_any_name
+        )
+    except HKXMapCollisionExportError as ex:
+        raise HKXMapCollisionExportError(f"Children of object '{hkx_parent}' cannot be exported. Error: {ex}")
+
+    # Try loading (and finding other) Binder first, so we don't bother exporting any meshes if it fails.
+    try:
+        binder = Binder.from_path(hkx_binder_path)
+    except Exception as ex:
+        raise HKXMapCollisionExportError(f"Could not load Binder file. Error: {ex}.")
+
+    other_res_binder = None  # type: Binder | None
+    if other_res_model_name and other_res_bl_meshes:
+        other_res_binder_name = f"{other_res_model_name[0]}{hkx_binder_path.name[1:]}"
+        other_res_binder_path = hkx_binder_path.with_name(other_res_binder_name)
+        try:
+            other_res_binder = Binder.from_path(other_res_binder_path)
+        except Exception as ex:
+            raise HKXMapCollisionExportError(f"Could not load Binder file for other resolution. Error: {ex}.")
+        if other_res_binder_name[0] == hkx_binder_path.name[0]:
+            # Tried to export, e.g., 'h' parent into 'l' binder. Just swap the binders.
+            binder, other_res_binder = other_res_binder, binder
+
+    # Find Binder entries.
+    try:
+        hkx_entry = find_binder_hkx_entry(
+            operator,
+            binder,
+            hkx_model_name,
+            default_entry_path,
+            default_entry_flags,
+            overwrite_existing,
+        )
+    except Exception as ex:
+        raise HKXMapCollisionExportError(f"Cannot find or create Binder entry for '{hkx_model_name}'. Error: {ex}")
+
+    other_res_hkx_entry = None
+    if other_res_model_name:
+        try:
+            other_res_hkx_entry = find_binder_hkx_entry(
+                operator,
+                other_res_binder,
+                other_res_model_name,
+                default_entry_path,
+                default_entry_flags,
+                overwrite_existing,
+            )
+        except Exception as ex:
+            raise HKXMapCollisionExportError(
+                f"Cannot find or create Binder entry for '{other_res_model_name}'. Error: {ex}"
+            )
+
+    # TODO: Not needed for meshes only?
+    if bpy.ops.object.mode_set.poll():
+        bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
+
+    exporter = HKXMapCollisionExporter(operator, context)
+
+    try:
+        hkx = exporter.export_hkx_map_collision(bl_meshes, name=hkx_model_name)
+    except Exception as ex:
+        raise HKXMapCollisionExportError(f"Cannot get exported HKX for '{hkx_model_name}'. Error: {ex}")
+    hkx.dcx_type = dcx_type
+
+    other_res_hkx = None
+    if other_res_model_name:
+        if other_res_bl_meshes:
+            try:
+                other_res_hkx = exporter.export_hkx_map_collision(other_res_bl_meshes, name=other_res_model_name)
+            except Exception as ex:
+                raise HKXMapCollisionExportError(
+                    f"Cannot get exported HKX for other resolution '{other_res_model_name}. Error: {ex}"
+                )
+            other_res_hkx.dcx_type = dcx_type
+        else:
+            operator.warning(f"No Blender mesh children found for other resolution '{other_res_model_name}'.")
+
+    try:
+        hkx_entry.set_from_binary_file(hkx)
+    except Exception as ex:
+        raise HKXMapCollisionExportError(f"Cannot pack exported HKX '{hkx_model_name}'. Error: {ex}")
+
+    if other_res_model_name:
+        try:
+            other_res_hkx_entry.set_from_binary_file(other_res_hkx)
+        except Exception as ex:
+            raise HKXMapCollisionExportError(f"Cannot pack exported HKX '{other_res_model_name}'. Error: {ex}")
+
+    try:
+        # Will create a `.bak` file automatically if absent.
+        binder.write()
+    except Exception as ex:
+        raise HKXMapCollisionExportError(f"Cannot write Binder with new HKX '{hkx_model_name}'. Error: {ex}")
+
+    if other_res_binder:
+        try:
+            # Will create a `.bak` file automatically if absent.
+            other_res_binder.write()
+        except Exception as ex:
+            raise HKXMapCollisionExportError(f"Cannot write Binder with new HKX '{other_res_model_name}'. Error: {ex}")
 
 
 class HKXMapCollisionExporter:
 
     props: BlenderPropertyManager
-    operator: bpy_types.Operator
+    operator: LoggingOperator
 
-    def __init__(self, operator: ExportHKXMapCollision, context):
+    def __init__(self, operator: LoggingOperator, context):
         self.operator = operator
         self.context = context
         self.props = BlenderPropertyManager({

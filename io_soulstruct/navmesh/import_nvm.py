@@ -279,7 +279,7 @@ class ImportNVMWithBinderChoice(LoggingOperator):
                         ImportNVMWithMSBChoice.run(
                             importer=self.importer,
                             nvm=nvm,
-                            nvm_name=self.nvm_name,
+                            nvm_name=nvm_name,
                             use_material=self.use_material,
                             transforms=transforms,
                         )
@@ -357,7 +357,7 @@ class ImportNVMWithMSBChoice(LoggingOperator):
             for obj in self.importer.all_bl_objs:
                 bpy.data.objects.remove(obj)
             traceback.print_exc()
-            return self.error(f"Cannot import NVM: {self.file_path.name}. Error: {ex}")
+            return self.error(f"Cannot import NVM: {self.nvm_name}. Error: {ex}")
 
         return {"FINISHED"}
 
@@ -505,8 +505,10 @@ class NVMImporter:
         end_vec = GAME_TO_BL_VECTOR(box.end_corner)
         bpy.ops.mesh.primitive_cube_add()
         bl_box = bpy.context.active_object
+        # noinspection PyTypeChecker
+        box_data = bl_box.data  # type: bpy.types.Mesh
         self.all_bl_objs.append(bl_box)
-        for vertex in bl_box.data.vertices:
+        for vertex in box_data.vertices:
             vertex.co[0] = start_vec.x if vertex.co[0] == -1.0 else end_vec.x
             vertex.co[1] = start_vec.y if vertex.co[1] == -1.0 else end_vec.y
             vertex.co[2] = start_vec.z if vertex.co[2] == -1.0 else end_vec.z

@@ -276,7 +276,7 @@ class ImportHKXCutscene(LoggingOperator, ImportHelper):
         # Create a new Blender camera.
         camera_name = self.camera_name.format(CutsceneName=remobnd.cutscene_name)
         camera_data = bpy.data.cameras.new(self.camera_name.format(CutsceneName=remobnd.cutscene_name) + " Data")
-        camera_obj = bpy.data.objects.new(camera_name, camera_data)
+        camera_obj = bpy.data.objects.new(camera_name, camera_data)  # type: bpy.types.Object
         context.scene.collection.objects.link(camera_obj)  # add to scene's object collection
 
         # Add motion to camera.
@@ -324,12 +324,14 @@ class HKXCutsceneImporter:
 
     def create_camera_actions(
         self,
-        camera_obj,
+        camera_obj: bpy.types.Object,
         cutscene_name: str,
         camera_transforms: list[list[CameraFrameTransform]],
         camera_fov_keyframes: list[list[FoVKeyframe]],
     ):
         """Creates two new actions: one for the camera object (transform) and one for its data (focal length)."""
+        # noinspection PyTypeChecker
+        camera_data = camera_obj.data  # type: bpy.types.Camera
 
         obj_action_name = f"{cutscene_name}[Camera]"
         obj_action = None
@@ -338,13 +340,13 @@ class HKXCutsceneImporter:
 
         original_location = camera_obj.location.copy()
         original_rotation = camera_obj.rotation_euler.copy()
-        original_focal_length = camera_obj.data.lens
+        original_focal_length = camera_data.lens
 
         try:
             camera_obj.animation_data_create()
             camera_obj.animation_data.action = obj_action = bpy.data.actions.new(name=obj_action_name)
-            camera_obj.data.animation_data_create()
-            camera_obj.data.animation_data.action = data_action = bpy.data.actions.new(name=data_action_name)
+            camera_data.animation_data_create()
+            camera_data.animation_data.action = data_action = bpy.data.actions.new(name=data_action_name)
             self._add_camera_keyframes(camera_obj, camera_transforms, camera_fov_keyframes)
         except Exception:
             if obj_action:
@@ -354,7 +356,7 @@ class HKXCutsceneImporter:
             # Reset camera to original state. (NOTE: Redundant since camera is always created by cutscene!)
             camera_obj.location = original_location
             camera_obj.rotation_euler = original_rotation
-            camera_obj.data.lens = original_focal_length
+            camera_data.lens = original_focal_length
             raise
 
         # Ensure actions are not deleted when not in use.
@@ -374,11 +376,13 @@ class HKXCutsceneImporter:
 
     def _add_camera_keyframes(
         self,
-        camera_obj,
+        camera_obj: bpy.types.Object,
         camera_transforms: list[list[CameraFrameTransform]],
         camera_fov_keyframes: list[list[FoVKeyframe]],
     ):
         """Add keyframes for camera object and data (focal length)."""
+        # noinspection PyTypeChecker
+        camera_data = camera_obj.data  # type: bpy.types.Camera
 
         final_frame_indices = set()
 
@@ -407,10 +411,10 @@ class HKXCutsceneImporter:
 
             for keyframe_index, fov_keyframe in enumerate(cut_fov_keyframes):
                 # TODO: Conversion seems... ALMOST correct.
-                camera_obj.data.lens = 100 / math.tan(fov_keyframe.fov)
+                camera_data.lens = 100 / math.tan(fov_keyframe.fov)
                 cutscene_frame_index = cut_first_frame_index + fov_keyframe.frame_index
                 bl_frame_index = cutscene_frame_index * 2 if self.to_60_fps else cutscene_frame_index
-                camera_obj.data.keyframe_insert(data_path="lens", frame=bl_frame_index)
+                camera_data.keyframe_insert(data_path="lens", frame=bl_frame_index)
 
                 if keyframe_index == len(cut_fov_keyframes) - 1:
                     # Do not interpolate between final cut FoV keyframe and first keyframe in next cut!
@@ -420,10 +424,9 @@ class HKXCutsceneImporter:
             #  I must be missing something with the alignment to camera position.
             cut_first_frame_index += len(cut_camera_transforms)
 
-
         # Make all keyframes in `cut_final_frame_indices` 'CONSTANT' interpolation.
 
-        for action in (camera_obj.animation_data.action, camera_obj.data.animation_data.action):
+        for action in (camera_obj.animation_data.action, camera_data.animation_data.action):
             for fcurve in action.fcurves:
                 for keyframe in fcurve.keyframe_points:
                     if keyframe.co.x in final_frame_indices:
@@ -562,5 +565,3 @@ class HKXCutsceneImporter:
             for keyframe in fcurve.keyframe_points:
                 if keyframe.co.x in cut_final_frame_indices:
                     keyframe.interpolation = "CONSTANT"
-
-

@@ -9,7 +9,6 @@ from pathlib import Path
 
 import bmesh
 import bpy
-import bpy_types
 from bpy.props import StringProperty, BoolProperty, IntProperty, EnumProperty
 from mathutils import Euler, Matrix, Vector
 from bpy_extras.io_utils import ExportHelper

@@ -29,6 +29,7 @@ for module_name in list(sys.modules.keys()):
 from io_soulstruct.flver import *
 from io_soulstruct.navmesh import *
 
+# TODO: Currently asserting that `soulstruct_havok` is installed, but this is not necessary for all add-ons.
 import soulstruct_havok
 
 # try:
@@ -107,6 +108,7 @@ if soulstruct_havok:
         ImportHKXMapCollisionWithMSBChoice,
         ExportHKXMapCollision,
         ExportHKXMapCollisionIntoBinder,
+        ExportHKXMapCollisionToMapDirectoryBHD,
         HKX_COLLISION_PT_hkx_map_collision_tools,
 
         ImportHKXAnimation,
@@ -122,13 +124,11 @@ if soulstruct_havok:
         HKX_CUTSCENE_PT_hkx_cutscene_tools,
     )
 
-
     # noinspection PyUnusedLocal
     def havok_menu_func_import(self, context):
         self.layout.operator(ImportHKXMapCollision.bl_idname, text="HKX Collision (.hkx/.hkxbhd)")
         self.layout.operator(ImportHKXAnimation.bl_idname, text="HKX Animation (.hkx/.hkxbhd)")
         self.layout.operator(ImportHKXCutscene.bl_idname, text="HKX Cutscene (.remobnd)")
-
 
     # noinspection PyUnusedLocal
     def havok_menu_func_export(self, context):
