@@ -3,6 +3,7 @@ from __future__ import annotations
 __all__ = [
     "FLVERImportError",
     "FLVERExportError",
+    "PrintGameTransform",
     "parse_dummy_name",
     "HideAllDummiesOperator",
     "ShowAllDummiesOperator",
@@ -22,7 +23,9 @@ from soulstruct import Binder, FLVER
 from soulstruct.utilities.maths import Vector3, Matrix3
 from soulstruct.darksouls1r.maps import MSB, get_map
 
-from io_soulstruct.utilities import Transform, GAME_TO_BL_EULER, BL_TO_GAME_EULER, BL_TO_GAME_MAT3, LoggingOperator
+from io_soulstruct.utilities import (
+    Transform, BlenderTransform, GAME_TO_BL_EULER, BL_TO_GAME_EULER, BL_TO_GAME_MAT3, LoggingOperator
+)
 
 
 DUMMY_NAME_RE = re.compile(  # accepts and ignore Blender '.001' suffix, etc.
@@ -81,6 +84,30 @@ class ShowAllDummiesOperator(LoggingOperator):
         for child in armature.children:
             if child.type == "EMPTY" and "dummy" in child.name.lower():
                 child.hide_viewport = False
+        return {"FINISHED"}
+
+
+class PrintGameTransform(LoggingOperator):
+    """Simple operator that prints the Blender transform of a selected object to console in game coordinates."""
+    bl_idname = "io_scene_soulstruct.print_game_transform"
+    bl_label = "Print Game Transform"
+    bl_description = "Print the selected object's transform in game coordinates to console."
+
+    @classmethod
+    def poll(cls, context):
+        return context.object is not None
+
+    # noinspection PyMethodMayBeStatic
+    def execute(self, context):
+        obj = context.object
+        if obj:
+            bl_transform = BlenderTransform(obj.location, obj.rotation_euler, obj.scale)
+            print(
+                f"FromSoftware game transform of object '{obj.name}':\n"
+                f"    translate = {repr(bl_transform.game_translate)}\n"
+                f"    rotate = {repr(bl_transform.game_rotate_rad)}\n"
+                f"    scale = {repr(bl_transform.game_scale)}"
+            )
         return {"FINISHED"}
 
 

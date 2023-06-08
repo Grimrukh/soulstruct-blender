@@ -6,6 +6,7 @@ __all__ = [
     "ImportEquipmentFLVER",
     "HideAllDummiesOperator",
     "ShowAllDummiesOperator",
+    "PrintGameTransform",
     "ExportFLVER",
     "ExportFLVERIntoBinder",
     "ExportFLVERToMapDirectory",
@@ -26,7 +27,7 @@ from io_soulstruct.flver.export_flver import (
     ExportFLVER, ExportFLVERIntoBinder, ExportFLVERToMapDirectory, ExportMapDirectorySettings
 )
 from io_soulstruct.flver.textures import *
-from io_soulstruct.flver.utilities import HideAllDummiesOperator, ShowAllDummiesOperator
+from io_soulstruct.flver.utilities import HideAllDummiesOperator, ShowAllDummiesOperator, PrintGameTransform
 
 
 def CUSTOM_ENUM(choices):
@@ -55,9 +56,10 @@ class FLVER_PT_flver_tools(bpy.types.Panel):
         export_box.operator(ExportFLVER.bl_idname)
         export_box.operator(ExportFLVERIntoBinder.bl_idname)
 
-        dummy_box = self.layout.box()
-        dummy_box.operator(HideAllDummiesOperator.bl_idname)
-        dummy_box.operator(ShowAllDummiesOperator.bl_idname)
+        misc_box = self.layout.box()
+        misc_box.operator(HideAllDummiesOperator.bl_idname)
+        misc_box.operator(ShowAllDummiesOperator.bl_idname)
+        misc_box.operator(PrintGameTransform.bl_idname)
 
         export_map_settings = context.scene.export_map_directory_settings
         export_to_map_box = self.layout.box()

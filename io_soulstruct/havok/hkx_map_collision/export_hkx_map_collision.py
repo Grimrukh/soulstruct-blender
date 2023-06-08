@@ -25,6 +25,51 @@ DEBUG_VERTEX_INDICES = []
 HKX_COLLISION_NAME_RE = re.compile(r"^([hl])(\d\d\d\d)B(\d)A(\d\d)$")  # no extensions
 
 
+def get_mesh_children(
+    operator: LoggingOperator, bl_parent, get_other_resolution: bool, allow_any_name: bool
+) -> tuple[str, list, str, list]:
+    """Return a tuple of `(hkx_model_name, bl_meshes, other_res_model_name, other_res_bl_meshes)`."""
+    bl_meshes = []
+    other_res_bl_meshes = []
+    parent_name = bl_parent.name
+
+    if not allow_any_name:
+        if not HKX_COLLISION_NAME_RE.match(parent_name[:10]):
+            raise HKXMapCollisionExportError(
+                f"Selected Empty parent '{parent_name}' must start with 'h####B#A##' or 'l####B#A##'."
+            )
+        hkx_model_name = parent_name[:10]  # string that appears in actual HKX file and is the exported file stem
+    else:
+        hkx_model_name = parent_name
+
+    match hkx_model_name[0]:
+        case "h":
+            other_res_model_name = f"l{hkx_model_name[1:]}"
+        case "l":
+            other_res_model_name = f"h{hkx_model_name[1:]}"
+        case _:
+            if get_other_resolution:
+                raise HKXMapCollisionExportError(
+                    f"Selected Empty parent '{hkx_model_name}' must start with 'h' or 'l'."
+                )
+            other_res_model_name = ""
+    for child in bl_parent.children:
+        if child.type != "MESH":
+            operator.warning(f"Ignoring non-mesh child '{child.name}' of selected Empty parent.")
+        elif child.name.startswith(hkx_model_name):
+            bl_meshes.append(child)
+        elif get_other_resolution and child.name.startswith(other_res_model_name):  # cannot be empty here
+            other_res_bl_meshes.append(child)
+        else:
+            operator.warning(f"Ignoring child '{child.name}' of selected Empty parent with non-matching name.")
+
+    # Ensure meshes have the same order as they do in the Blender viewer.
+    bl_meshes.sort(key=lambda obj: natural_keys(obj.name))
+    other_res_bl_meshes.sort(key=lambda obj: natural_keys(obj.name))
+
+    return hkx_model_name, bl_meshes, other_res_model_name, other_res_bl_meshes
+
+
 class ExportHKXMapCollision(LoggingOperator, ExportHelper):
     """Export HKX from a selection of Blender meshes."""
     bl_idname = "export_scene.hkx_map_collision"
@@ -42,13 +87,31 @@ class ExportHKXMapCollision(LoggingOperator, ExportHelper):
 
     dcx_type: get_dcx_enum_property(DCXType.Null)  # typically no DCX compression for map collisions
 
+    write_other_resolution: BoolProperty(
+        name="Write Other Resolution",
+        description="Write the other resolution of the collision (h/l) if its submeshes are also under this parent",
+        default=True,
+    )
+
+    allow_any_name: BoolProperty(
+        name="Allow Any Name",
+        description="Allow any name for the parent Empty (i.e. does not have to start with "
+                    "'h####B#A##' or 'l####B#A##')",
+        default=False,
+    )
+
     # TODO: Options to:
-    #   - Detect appropriate MSB and update transform of this model instance (if unique) (low priority).
+    #   - Detect appropriate MSB and update transform of this model instance (if unique) (low priority, especially
+    #     because I handle MSB collision transforms procedurally).
 
     @classmethod
     def poll(cls, context):
-        """Requires selected of multiple meshes or a single empty (which should have child subpart meshes)."""
-        return len(context.selected_objects) == 1 and context.selected_objects[0].type == "EMPTY"
+        """Must select a single empty parent of only (and at least one) child meshes."""
+        is_empty_selected = len(context.selected_objects) == 1 and context.selected_objects[0].type == "EMPTY"
+        if not is_empty_selected:
+            return False
+        children = context.selected_objects[0].children
+        return len(children) >= 1 and all(child.type == "MESH" for child in children)
 
     def execute(self, context):
         selected_objs = [obj for obj in context.selected_objects]
@@ -57,16 +120,13 @@ class ExportHKXMapCollision(LoggingOperator, ExportHelper):
         if len(selected_objs) > 1:
             return self.error("More than one object cannot be selected for HKX export.")
 
-        bl_meshes = []
-        hkx_name = selected_objs[0].name
-        children = [obj for obj in bpy.data.objects if obj.parent is selected_objs[0]]
-        for child in children:
-            if child.type != "MESH":
-                return self.error(f"Ignoring non-mesh child '{child.name}' of selected Empty parent.")
-            else:
-                bl_meshes.append(child)
-
-        bl_meshes.sort(key=lambda obj: natural_keys(obj.name))
+        try:
+            hkx_model_name, bl_meshes, other_res_model_name, other_res_bl_meshes = get_mesh_children(
+                self, selected_objs[0], self.write_other_resolution, self.allow_any_name
+            )
+        except HKXMapCollisionExportError as ex:
+            traceback.print_exc()
+            return self.error(f"Children of object '{selected_objs[0]}' cannot be exported. Error: {ex}")
 
         # TODO: Not needed for meshes only?
         if bpy.ops.object.mode_set.poll():
@@ -75,18 +135,45 @@ class ExportHKXMapCollision(LoggingOperator, ExportHelper):
         exporter = HKXMapCollisionExporter(self, context)
 
         try:
-            hkx = exporter.export_hkx_map_collision(bl_meshes, name=hkx_name)
+            hkx = exporter.export_hkx_map_collision(bl_meshes, name=hkx_model_name)
         except Exception as ex:
             traceback.print_exc()
-            return self.error(f"Cannot get exported HKX. Error: {ex}")
-        else:
-            hkx.dcx_type = DCXType[self.dcx_type]
+            return self.error(f"Cannot get exported HKX for '{hkx_model_name}'. Error: {ex}")
+        hkx.dcx_type = DCXType[self.dcx_type]
+
+        other_res_hkx = None
+        if other_res_model_name:
+            if other_res_bl_meshes:
+                try:
+                    other_res_hkx = exporter.export_hkx_map_collision(other_res_bl_meshes, name=other_res_model_name)
+                except Exception as ex:
+                    traceback.print_exc()
+                    return self.error(
+                        f"Cannot get exported HKX for other resolution '{other_res_model_name}. Error: {ex}"
+                    )
+                other_res_hkx.dcx_type = DCXType[self.dcx_type]
+            else:
+                self.warning(f"No Blender mesh children found for other resolution '{other_res_model_name}'.")
+
+        hkx_path = Path(self.filepath)
+        try:
+            # Will create a `.bak` file automatically if absent.
+            hkx.write(hkx_path)
+        except Exception as ex:
+            traceback.print_exc()
+            return self.error(f"Cannot write exported HKX '{hkx_model_name}' to '{hkx_path}'. Error: {ex}")
+
+        if other_res_hkx:
+            other_res_hkx_path = hkx_path.with_name(f"{other_res_model_name[0]}{hkx_path.name[1:]}")
             try:
                 # Will create a `.bak` file automatically if absent.
-                hkx.write(Path(self.filepath))
+                other_res_hkx.write(other_res_hkx_path)
             except Exception as ex:
                 traceback.print_exc()
-                return self.error(f"Cannot write exported HKX. Error: {ex}")
+                return self.error(
+                    f"Wrote target resolution HKX '{hkx_model_name}', but cannot write other-resolution HKX "
+                    f"'{other_res_model_name}' to '{other_res_hkx_path}'. Error: {ex}"
+                )
 
         return {"FINISHED"}
 
@@ -129,8 +216,12 @@ class ExportHKXMapCollisionIntoBinder(LoggingOperator, ImportHelper):
 
     @classmethod
     def poll(cls, context):
-        """Requires selected of multiple meshes or a single empty (which should have child subpart meshes)."""
-        return len(context.selected_objects) == 1 and context.selected_objects[0].type == "EMPTY"
+        """Must select a single empty parent of only (and at least one) child meshes."""
+        is_empty_selected = len(context.selected_objects) == 1 and context.selected_objects[0].type == "EMPTY"
+        if not is_empty_selected:
+            return False
+        children = context.selected_objects[0].children
+        return len(children) >= 1 and all(child.type == "MESH" for child in children)
 
     def execute(self, context):
         print("Executing HKX export to Binder...")
@@ -141,16 +232,13 @@ class ExportHKXMapCollisionIntoBinder(LoggingOperator, ImportHelper):
         if len(selected_objs) > 1:
             return self.error("More than one object cannot be selected for HKX export.")
 
-        bl_meshes = []
-        hkx_name = selected_objs[0].name
-        children = [obj for obj in bpy.data.objects if obj.parent is selected_objs[0]]
-        for child in children:
-            if child.type != "MESH":
-                return self.error(f"Ignoring non-mesh child '{child.name}' of selected Empty parent.")
-            else:
-                bl_meshes.append(child)
-
-        bl_meshes.sort(key=lambda obj: natural_keys(obj.name))
+        try:
+            hkx_model_name, bl_meshes, other_res_model_name, other_res_bl_meshes = get_mesh_children(
+                self, selected_objs[0], self.write_other_resolution, self.allow_any_name
+            )
+        except HKXMapCollisionExportError as ex:
+            traceback.print_exc()
+            return self.error(f"Children of object '{selected_objs[0]}' cannot be exported. Error: {ex}")
 
         # TODO: Not needed for meshes only?
         if bpy.ops.object.mode_set.poll():
@@ -159,12 +247,28 @@ class ExportHKXMapCollisionIntoBinder(LoggingOperator, ImportHelper):
         exporter = HKXMapCollisionExporter(self, context)
 
         try:
-            hkx = exporter.export_hkx_map_collision(bl_meshes, name=hkx_name)
+            hkx = exporter.export_hkx_map_collision(bl_meshes, name=hkx_model_name)
         except Exception as ex:
             traceback.print_exc()
-            return self.error(f"Cannot get exported HKX. Error: {ex}")
-        else:
-            hkx.dcx_type = DCXType[self.dcx_type]
+            return self.error(f"Cannot get exported HKX for '{hkx_model_name}'. Error: {ex}")
+        hkx.dcx_type = DCXType[self.dcx_type]
+
+        other_res_hkx = None
+        if other_res_model_name:
+            if other_res_bl_meshes:
+                try:
+                    other_res_hkx = exporter.export_hkx_map_collision(other_res_bl_meshes, name=other_res_model_name)
+                except Exception as ex:
+                    traceback.print_exc()
+                    return self.error(
+                        f"Cannot get exported HKX for other resolution '{other_res_model_name}. Error: {ex}"
+                    )
+                other_res_hkx.dcx_type = DCXType[self.dcx_type]
+            else:
+                self.warning(f"No Blender mesh children found for other resolution '{other_res_model_name}'.")
+
+        # TODO: Adjust from here to also find 'other_res' binder next to chosen one (`self.filepath`).
+        #  Check for other-res binder first above, actually, so we don't bother creating the HKX if we can't find it.
 
         try:
             binder = Binder.from_path(self.filepath)

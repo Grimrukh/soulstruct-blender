@@ -73,6 +73,7 @@ classes = (
 
     HideAllDummiesOperator,
     ShowAllDummiesOperator,
+    PrintGameTransform,
 
     ExportFLVER,
     ExportFLVERIntoBinder,
