@@ -7,7 +7,7 @@ __all__ = [
     "GAME_TO_BL_MAT3",
     "BL_TO_GAME_VECTOR3",
     "BL_TO_GAME_VECTOR4",
-    "BL_TO_GAME_VECTOR_LIST",
+    "BL_TO_GAME_VECTOR3_LIST",
     "BL_TO_GAME_EULER",
     "BL_TO_GAME_MAT3",
     "BL_EDIT_BONE_DEFAULT_QUAT",
@@ -43,7 +43,7 @@ from soulstruct.containers import DCXType
 from soulstruct.utilities.maths import Vector3, Vector4, Matrix3
 
 
-def GAME_TO_BL_VECTOR(game_vector) -> Vector:
+def GAME_TO_BL_VECTOR(game_vector: Vector3 | tp.Sequence[float, float, float]) -> Vector:
     """Just swaps Y and Z axes. X increases to the right in both systems; the game is left-handed and Blender is
     right-handed.
 
@@ -62,7 +62,7 @@ def BL_TO_GAME_VECTOR4(bl_vector: Vector, w=0.0):
     return Vector4((bl_vector.x, bl_vector.z, bl_vector.y, w))
 
 
-def BL_TO_GAME_VECTOR_LIST(bl_vector: Vector):
+def BL_TO_GAME_VECTOR3_LIST(bl_vector: Vector) -> list[float, float, float]:
     """Faster version that just returns a list."""
     return [bl_vector.x, bl_vector.z, bl_vector.y]
 

@@ -924,7 +924,7 @@ def build_game_mesh(
             mesh_loop = bl_mesh.loops[loop.index]
 
             if layout.has_member_type(MemberType.Position):
-                position = BL_TO_GAME_VECTOR_LIST(bm.verts[v_i].co)
+                position = BL_TO_GAME_VECTOR3_LIST(bm.verts[v_i].co)
             else:
                 position = v3_zero  # should never happen
 
@@ -980,7 +980,7 @@ def build_game_mesh(
             if layout.has_member_type(MemberType.Normal):
                 # TODO: 127 is the only value seen in DS1 models thus far for `normal[3]`. Will need to store as a
                 #  custom vertex property for other games that use it.
-                normal = [*BL_TO_GAME_VECTOR_LIST(mesh_loop.normal), 127.0]
+                normal = [*BL_TO_GAME_VECTOR3_LIST(mesh_loop.normal), 127.0]
             else:
                 normal = v4_zero
 
@@ -1001,12 +1001,12 @@ def build_game_mesh(
                 uvs = empty
 
             if layout.has_member_type(MemberType.Tangent):
-                tangents = [[*BL_TO_GAME_VECTOR_LIST(mesh_loop.tangent), -1.0]]
+                tangents = [[*BL_TO_GAME_VECTOR3_LIST(mesh_loop.tangent), -1.0]]
             else:
                 tangents = empty  # happens very rarely (e.g. `[Dn]` shaders)
 
             if layout.has_member_type(MemberType.Bitangent):
-                bitangent = [*BL_TO_GAME_VECTOR_LIST(mesh_loop.bitangent), -1.0]
+                bitangent = [*BL_TO_GAME_VECTOR3_LIST(mesh_loop.bitangent), -1.0]
             else:
                 bitangent = v4_zero
 

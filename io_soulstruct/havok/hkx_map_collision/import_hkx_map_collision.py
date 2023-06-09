@@ -638,7 +638,7 @@ class HKXMapCollisionImporter:
         """Create a Blender mesh object. The only custom property for HKX is material index."""
         bl_mesh = bpy.data.meshes.new(name=mesh_name)
 
-        vertices = [(-v[0], -v[2], v[1]) for v in hkx_mesh[0]]  # forward is -Z, up is Y, X is mirrored
+        vertices = [GAME_TO_BL_VECTOR(v) for v in hkx_mesh[0]]  # forward is -Z, up is Y, X is mirrored
         edges = []  # no edges in HKX
         faces = hkx_mesh[1]
         bl_mesh.from_pydata(vertices, edges, faces)

@@ -548,11 +548,11 @@ class HKXMapCollisionExporter:
             material_index = self.props.get(bl_mesh, "HKX", "material_index")
             hkx_material_indices.append(material_index)
 
-            hkx_verts = [BL_TO_GAME_VECTOR_LIST(vert.co) for vert in bl_mesh.data.vertices]
+            hkx_verts = [BL_TO_GAME_VECTOR3_LIST(vert.co) for vert in bl_mesh.data.vertices]
             hkx_faces = []
             for face in bl_mesh.data.polygons:
                 if len(face.vertices) != 3:
-                    raise ValueError(f"Found a non-triangular mesh face in HKX. It must be triangulated first.")
+                    raise ValueError(f"Found a non-triangular mesh face in HKX. Mesh must be triangulated first.")
                 hkx_faces.append(tuple(face.vertices))
 
             hkx_meshes.append((hkx_verts, hkx_faces))

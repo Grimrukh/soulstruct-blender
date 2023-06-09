@@ -293,7 +293,7 @@ class NVMExporter:
             material_index = self.get(bl_mesh, "NVM", "material_index")
             nvm_material_indices.append(material_index)
 
-            nvm_verts = [BL_TO_GAME_VECTOR_LIST(vert.co) for vert in bl_mesh.data.vertices]
+            nvm_verts = [BL_TO_GAME_VECTOR3_LIST(vert.co) for vert in bl_mesh.data.vertices]
             nvm_faces = []
             for face in bl_mesh.data.polygons:
                 if len(face.vertices) != 3:
