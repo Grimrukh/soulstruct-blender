@@ -287,14 +287,18 @@ class LoggingOperator(Operator):
         return {"CANCELLED"}
 
 
-def get_dcx_enum_property(default: str | DCXType = "Null"):
+def get_dcx_enum_property(
+    default: str | DCXType = "Null",
+    name="Compression",
+    description="Type of DCX compression to apply to exported file (typically not used in Binder)",
+):
     """Create a Blender `EnumProperty` for selecting DCX compression type.
 
     Will default to `default` string, which should be one of the items below. The "default default" is "Null", which
     means no DCX compression will be applied.
     """
     return EnumProperty(
-        name="Compression",
+        name=name,
         items=[
             ("Null", "None", "Export without any DCX compression"),
             ("DCX_EDGE", "DES", "Demon's Souls compression"),
@@ -303,7 +307,7 @@ def get_dcx_enum_property(default: str | DCXType = "Null"):
             ("DCX_DFLT_11000_44_9", "Sekiro", "Sekiro compression (requires Oodle DLL)"),
             ("DCX_KRAK", "Elden Ring", "Elden Ring compression (requires Oodle DLL)"),
         ],
-        description="Type of DCX compression to apply to exported file (typically not used in Binder)",
+        description=description,
         default=default if isinstance(default, str) else default.name,
     )
 

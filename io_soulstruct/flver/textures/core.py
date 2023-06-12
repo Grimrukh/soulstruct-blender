@@ -120,15 +120,29 @@ class ExportTexturesIntoBinder(LoggingOperator, ImportHelper):
         maxlen=255,
     )
 
-    replace_texture_name: bpy.props.StringProperty(
-        name="Replace Texture Name",
-        description="Replace texture/TPF with this name (defaults to exported texture name)",
+    new_texture_stem: bpy.props.StringProperty(
+        name="New Texture Name",
+        description="Name (without extensions) of texture to be exported (defaults to Blender image name)",
         default="",
     )
 
-    rename_matching_tpfs: bpy.props.BoolProperty(
-        name="Rename Matching TRFs",
-        description="Also change name of any TPF wrappers if they match the name being replaced"
+    texture_stem_to_replace: bpy.props.StringProperty(
+        name="Texture Name to Replace",
+        description="Name (without extensions) of texture in binder to replace (defaults to 'New Texture Name' above)",
+        default="",
+    )
+
+    rename_tpf_containers: bpy.props.BoolProperty(
+        name="Rename TPF Containers",
+        description="Also change name of any TPF wrappers if they match 'Texture Name to Replace'",
+        default=True,
+    )
+
+    new_mipmap_count: bpy.props.IntProperty(
+        name="New Mipmap Count",
+        description="Number of mipmaps to generate for each texture (-1 = same as replaced file, 0 = all mipmaps)",
+        default=-1,
+        min=-1,
     )
 
     files: bpy.props.CollectionProperty(
@@ -157,6 +171,8 @@ class ExportTexturesIntoBinder(LoggingOperator, ImportHelper):
     def execute(self, context):
         print("Executing texture export...")
 
+        # TODO: Should this operator really support export to multiple binders simultaneously (and they'd have to be in
+        #  the same folder)?
         file_paths = [Path(self.directory, file.name) for file in self.files]
 
         sel_tex_nodes = [
@@ -175,31 +191,45 @@ class ExportTexturesIntoBinder(LoggingOperator, ImportHelper):
             except Exception as ex:
                 return self.error(str(ex))
 
-        rename_tpf = self.rename_matching_tpfs and self.replace_texture_name
         replaced_texture_export_info = None
         for tex_node in sel_tex_nodes:
             bl_image = tex_node.image
             if not bl_image:
                 self.warning("Ignoring Image Texture node with no image assigned.")
                 continue
-            image_stem = Path(bl_image.name).stem
 
-            if self.replace_texture_name:  # will only be allowed if one Image Texture is being exported
-                repl_name = Path(self.replace_texture_name).stem
+            image_stem = Path(bl_image.name).stem
+            new_texture_stem = self.new_texture_stem if self.new_texture_stem else image_stem
+
+            if self.texture_stem_to_replace:  # will only be allowed if one Image Texture is being exported
+                texture_name_to_replace = Path(self.texture_stem_to_replace).stem
             else:
-                repl_name = image_stem
+                texture_name_to_replace = new_texture_stem
 
             for file_path, texture_export_info in texture_export_infos.items():
-                image_exported, dds_format = texture_export_info.inject_texture(bl_image, image_stem, repl_name, rename_tpf)
+                image_exported, dds_format = texture_export_info.inject_texture(
+                    bl_image,
+                    new_name=new_texture_stem,
+                    name_to_replace=texture_name_to_replace,
+                    rename_tpf=self.rename_tpf_containers,
+                )
                 if image_exported:
-                    print(f"Replacing name: {repl_name}")
-                    self.info(f"Exported '{bl_image.name}' into '{self.filepath}' with DDS format {dds_format}")
+                    print(f"Replacing texture name '{texture_name_to_replace}' with new texture '{new_texture_stem}'")
+                    self.info(
+                        f"Exported '{bl_image.name}' into '{self.filepath}', replacing texture "
+                        f"'{texture_name_to_replace}', with name '{new_texture_stem}' and DDS format {dds_format}."
+                    )
                     replaced_texture_export_info = texture_export_info
                     break  # do not search other file paths
                 else:
-                    self.info(f"Could not find any TPF textures to replace with Blender image in {file_path.name}: '{image_stem}'")
+                    self.info(
+                        f"Could not find any TPF textures to replace with Blender image "
+                        f"in {file_path.name}: '{image_stem}'"
+                    )
             else:
-                self.warning(f"Could not find any TPF textures to replace with Blender image in ANY files: '{image_stem}'")
+                self.warning(
+                    f"Could not find any TPF textures to replace with Blender image in ANY files: '{image_stem}'"
+                )
 
         if replaced_texture_export_info:
             # TPFs have all been updated. Now pack modified ones back to their Binders.
@@ -415,7 +445,7 @@ class ExportLightmapTextures(LoggingOperator, ImportHelper):
     filename_ext = ".tpfbhd"
 
     filter_glob: bpy.props.StringProperty(
-        default="*.tpf;*.tpf.dcx;*.tpfbhd;*.chrbnd;*.chrbnd.dcx;*.objbnd;*.objbnd.dcx;*.partsbnd;*.partsbnd.dcx",
+        default="*.tpf;*.tpf.dcx;*.tpfbhd;*bnd;*bnd.dcx",
         options={'HIDDEN'},
         maxlen=255,
     )
@@ -423,9 +453,9 @@ class ExportLightmapTextures(LoggingOperator, ImportHelper):
     create_new_if_missing: bpy.props.BoolProperty(
         name="Create New TPF If Missing",
         description="If enabled, exporter will create a new TPF using default DS1 lightmap settings if an existing "
-                    "TPF is not found (TPFBHD files only). Disable for safety if you expect to replace an existing "
-                    "lightmap",
-        default=True,
+                    "TPF is not found (TPFBHD files only). Leave disabled for safety if you expect to replace an "
+                    "existing lightmap",
+        default=False,
     )
 
     new_texture_dds_format: bpy.props.StringProperty(
@@ -434,17 +464,9 @@ class ExportLightmapTextures(LoggingOperator, ImportHelper):
         default="BC7_UNORM",
     )
 
-    new_tpf_dcx_type: bpy.props.EnumProperty(
+    new_tpf_dcx_type: get_dcx_enum_property(
+        DCXType.DS1_DS2,
         name="New TPF Compression",
-        items=[
-            ("Null", "None", "Export without any DCX compression"),
-            ("DCX_EDGE", "DES", "Demon's Souls compression"),
-            ("DCX_DFLT_10000_24_9", "DS1/DS2", "Dark Souls 1/2 compression"),
-            ("DCX_DFLT_10000_44_9", "BB/DS3", "Bloodborne/Dark Souls 3 compression"),
-            ("DCX_DFLT_11000_44_9", "Sekiro", "Sekiro compression (requires Oodle DLL)"),
-            ("DCX_KRAK", "Elden Ring", "Elden Ring compression (requires Oodle DLL)"),
-        ],
-        default="DCX_DFLT_10000_24_9",
         description="Type of DCX compression to apply to any newly created TPFs. Default is suitable for Dark Souls 1 "
                     "map textures going into TPFBHD Binders"
     )
@@ -500,29 +522,30 @@ class ExportLightmapTextures(LoggingOperator, ImportHelper):
                 continue
             image_stem = Path(bl_image.name).stem
             image_exported, dds_format = texture_export_info.inject_texture(
-                bl_image, image_stem, repl_name=image_stem, rename_tpf=False
+                bl_image,
+                new_name=image_stem,
+                name_to_replace=image_stem,
+                rename_tpf=False,
             )
             if image_exported:
-                self.info(f"Exported '{bl_image.name}' into '{self.filepath}' with DDS format {dds_format}")
+                self.info(f"Exported texture '{image_stem}' into '{self.filepath}' with DDS format {dds_format}")
             elif self.create_new_if_missing:
                 if isinstance(texture_export_info, SplitBinderTPFTextureExport):
                     new_tpf = get_lightmap_tpf(bl_image, dds_format=self.new_texture_dds_format)
                     new_tpf.dcx_type = DCXType[self.new_tpf_dcx_type]
-                    new_tpf_entry_path = Path(bl_image.name).name + ".tpf"
-                    if new_tpf.dcx_type != DCXType.Null:
-                        new_tpf_entry_path += ".dcx"
+                    new_tpf_entry_path = new_tpf.dcx_type.process_path(Path(bl_image.name).name + ".tpf")
                     texture_export_info.chrtpfbxf.add_entry(
                         BinderEntry(
                             data=new_tpf.pack_dcx(),
                             entry_id=texture_export_info.chrtpfbxf.highest_entry_id + 1,
                             path=new_tpf_entry_path,
-                            flags=BinderEntryFlags(0x2),  # TODO: DS1 default
+                            flags=BinderEntryFlags(0x2),  # TODO: DS1 default (and everything seen so far I believe)
                         )
                     )
                 else:
                     self.warning(
-                        f"Could not find any TPF textures to replace with Blender image (and new TPF creation not "
-                        f"supported for export to existing BND/TPF): '{image_stem}'"
+                        f"Could not find any TPF textures to replace with Blender image (and new TPF creation only "
+                        f"currently supported for split BHD/BDT binders): '{image_stem}'"
                     )
 
             else:

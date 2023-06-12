@@ -46,11 +46,19 @@ class TextureExportInfo(abc.ABC):
     def inject_texture(
         self,
         bl_image,
-        image_stem: str,
-        repl_name: str,
+        new_name: str,
+        name_to_replace: str,
         rename_tpf: bool,
     ) -> tuple[bool, str]:
-        """Inject a Blender image object into TPF. Returns True if texture was exported and the format of the DDS."""
+        """Inject a Blender image object into TPF. Returns True if texture was exported and the format of the DDS.
+
+        Args:
+            bl_image: Blender image object to export.
+            new_name: Name to give the exported texture. Will default to the name of the Blender image.
+            name_to_replace: Name of the texture in the TPF to replace. Will default to `new_name`.
+            rename_tpf: If True, and if the texture's TPF container also matches `name_to_replace`, the name of the TPF
+                container will also be changed to `new_name`.
+        """
         ...
 
     @abc.abstractmethod
@@ -62,11 +70,11 @@ class SingleTPFTextureExport(TextureExportInfo):
 
     loose_tpf: TPF
     modified: bool
-    new_file_name: str
+    new_tpf_file_name: str
 
     def __init__(self, file_path: Path):
         self.modified = False
-        self.new_file_name = ""
+        self.new_tpf_file_name = ""
         try:
             self.loose_tpf = TPF.from_path(file_path)
         except Exception as ex:
@@ -75,26 +83,26 @@ class SingleTPFTextureExport(TextureExportInfo):
     def inject_texture(
         self,
         bl_image,
-        image_stem: str,
-        repl_name: str,
+        new_name: str,
+        name_to_replace: str,
         rename_tpf: bool,
     ) -> tuple[bool, str]:
         for texture in self.loose_tpf.textures:
-            if texture.name == repl_name:
+            if texture.name == name_to_replace:
                 # Replace this texture.
                 try:
                     _, dds_format = bl_image_to_dds(bl_image, replace_in_tpf_texture=texture)
                 except ValueError as ex:
                     raise TextureExportException(f"Could not export image texture '{bl_image.name}'. Error: {ex}")
-                texture.name = image_stem
+                texture.name = new_name
                 self.modified = True
 
                 if rename_tpf:
                     # Check if we should also rename this TPF.
-                    if self.tpf_name == f"{image_stem}.tpf":
-                        self.new_file_name = f"{image_stem}.tpf"
-                    elif self.tpf_name == f"{image_stem}.tpf.dcx":
-                        self.new_file_name = f"{image_stem}.tpf.dcx"
+                    if self.source_tpf_file_name == f"{name_to_replace}.tpf":
+                        self.new_tpf_file_name = f"{new_name}.tpf"
+                    elif self.source_tpf_file_name == f"{name_to_replace}.tpf.dcx":
+                        self.new_tpf_file_name = f"{new_name}.tpf.dcx"
 
                 return True, dds_format
 
@@ -103,15 +111,15 @@ class SingleTPFTextureExport(TextureExportInfo):
     def write_files(self) -> str:
         if self.modified:
             # Just re-write TPF.
-            if self.new_file_name:
-                self.loose_tpf.path = self.loose_tpf.path.parent / self.new_file_name
+            if self.new_tpf_file_name:
+                self.loose_tpf.path = self.loose_tpf.path.parent / self.new_tpf_file_name
             self.loose_tpf.write()
             return f"Wrote modified TPF: {self.loose_tpf.path}"
         else:
             raise TextureExportException("Could not find any textures to replace in TPF.")
 
     @property
-    def tpf_name(self):
+    def source_tpf_file_name(self):
         return self.loose_tpf.path.name
 
 
@@ -134,28 +142,28 @@ class BinderTPFTextureExport(TextureExportInfo):
     def inject_texture(
         self,
         bl_image,
-        image_stem: str,
-        repl_name: str,
+        new_name: str,
+        name_to_replace: str,
         rename_tpf: bool,
     ) -> tuple[bool, str]:
         for tpf_name, (binder_tpf_entry, binder_tpf) in self.binder_tpfs.items():
             for texture in binder_tpf.textures:
-                if texture.name == repl_name:
+                if texture.name == name_to_replace:
                     # Replace this texture.
                     try:
                         _, dds_format = bl_image_to_dds(bl_image, replace_in_tpf_texture=texture)
                     except ValueError as ex:
                         raise TextureExportException(f"Could not export image texture '{bl_image.name}'. Error: {ex}.")
-                    texture.name = image_stem
+                    texture.name = new_name
                     if binder_tpf not in self.modified_binder_tpfs:
                         self.modified_binder_tpfs.append(binder_tpf)
 
                     if rename_tpf:
                         # Check if we should also rename this TPF.
-                        if tpf_name == f"{image_stem}.tpf":
-                            binder_tpf_entry.set_path_name(f"{image_stem}.tpf")
-                        elif tpf_name == f"{image_stem}.tpf.dcx":
-                            binder_tpf_entry.set_path_name(f"{image_stem}.tpf.dcx")
+                        if tpf_name == f"{name_to_replace}.tpf":
+                            binder_tpf_entry.set_path_name(f"{new_name}.tpf")
+                        elif tpf_name == f"{name_to_replace}.tpf.dcx":
+                            binder_tpf_entry.set_path_name(f"{new_name}.tpf.dcx")
 
                     return True, dds_format
         return False, ""
@@ -200,29 +208,29 @@ class SplitBinderTPFTextureExport(TextureExportInfo):
     def inject_texture(
         self,
         bl_image,
-        image_stem: str,
-        repl_name: str,
+        new_name: str,
+        name_to_replace: str,
         rename_tpf: bool,
     ) -> tuple[bool, str]:
         for tpf_name, (bxf_tpf_entry, bxf_tpf) in self.bxf_tpfs.items():
             for texture in bxf_tpf.textures:
-                if texture.name == repl_name:
+                if texture.name == name_to_replace:
                     # Replace this texture.
                     try:
                         _, dds_format = bl_image_to_dds(bl_image, replace_in_tpf_texture=texture)
                     except ValueError as ex:
                         raise TextureExportException(f"Could not export image texture '{bl_image.name}'. Error: {ex}.")
 
-                    texture.name = image_stem
+                    texture.name = new_name
                     if bxf_tpf not in self.modified_bxf_tpfs:
                         self.modified_bxf_tpfs.append(bxf_tpf)
 
                     if rename_tpf:
                         # Check if we should also rename this TPF.
-                        if tpf_name == f"{image_stem}.tpf":
-                            bxf_tpf_entry.set_path_name(f"{image_stem}.tpf")
-                        elif tpf_name == f"{image_stem}.tpf.dcx":
-                            bxf_tpf_entry.set_path_name(f"{image_stem}.tpf.dcx")
+                        if tpf_name == f"{name_to_replace}.tpf":
+                            bxf_tpf_entry.set_path_name(f"{new_name}.tpf")
+                        elif tpf_name == f"{name_to_replace}.tpf.dcx":
+                            bxf_tpf_entry.set_path_name(f"{new_name}.tpf.dcx")
 
                     return True, dds_format
         return False, ""
@@ -313,13 +321,22 @@ def png_to_bl_image(image_name: str, png_data: bytes, write_png_directory: Path 
     return bl_image
 
 
-def bl_image_to_dds(bl_image, replace_in_tpf_texture: TPFTexture = None, dds_format: str = None) -> tuple[bytes, str]:
+def bl_image_to_dds(
+    bl_image,
+    replace_in_tpf_texture: TPFTexture = None,
+    dds_format: str = None,
+    mipmap_count=-1,
+) -> tuple[bytes, str]:
     """Export `bl_image` (generally as a PNG), convert it to a DDS of `dds_format` with `texconv`.
 
     Automatically redirects 'TYPELESS' DDS formats to 'UNORM', which seems to work for DS1 'BC7' lightmaps at least.
 
     If `replace_in_tpf_texture` is given, the DDS data will be automatically assigned to it, and `dds_format` will
     default to the format currently used in that `TPFTexture`.
+
+    If `mipmap_count` is left as -1, it will default to matching the mipmap count in `replace_in_tpf_texture` (if given)
+    or else default to 0, which will generate a full mipmap chain with `texconv`. A specified value of 0 will do this
+    explicitly; any more than that will generate exactly that many mipmaps.
 
     Returns a tuple of the DDS bytes and the DDS format actually used.
     """
@@ -333,11 +350,20 @@ def bl_image_to_dds(bl_image, replace_in_tpf_texture: TPFTexture = None, dds_for
         dds_format = old_dds_format.replace("TYPELESS", "UNORM")
         print(f"# INFO: Changing DDS format '{old_dds_format}' to '{dds_format}' for conversion.")
 
+    if replace_in_tpf_texture and mipmap_count == -1:
+        # Detect original mipmap count.
+        mipmap_count = replace_in_tpf_texture.get_dds().header.mipmap_count
+    elif mipmap_count == -1:
+        # Default to 0 (no source texture to check).
+        mipmap_count = 0
+
     temp_image_path = Path(f"~/AppData/Local/Temp/temp.png").expanduser()
     bl_image.filepath_raw = str(temp_image_path)
     bl_image.save()  # TODO: sometimes fails with 'No error' (depending on how Blender is storing image data I think)
     with tempfile.TemporaryDirectory() as output_dir:
-        texconv_result = texconv("-o", output_dir, "-ft", "dds", "-f", dds_format, temp_image_path)
+        texconv_result = texconv(
+            "-o", output_dir, "-ft", "dds", "-f", dds_format, "-m", str(mipmap_count), temp_image_path
+        )
         try:
             dds_data = Path(output_dir, "temp.dds").read_bytes()
         except FileNotFoundError:
