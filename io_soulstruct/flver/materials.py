@@ -105,6 +105,10 @@ class MaterialNodeCreator:
 
         textures = flver_material.get_texture_dict()
 
+        vertex_colors_node = nt.nodes.new("ShaderNodeAttribute")
+        vertex_colors_node.location = (-200, 430)
+        vertex_colors_node.name = vertex_colors_node.attribute_name = "VertexColors"
+
         # TODO: Finesse node coordinates.
 
         bsdf_1 = diffuse_node_1 = bsdf_2 = diffuse_node_2 = None
@@ -119,16 +123,13 @@ class MaterialNodeCreator:
                     f"'g_Bumpmap' texture. Blender material node tree will be incomplete."
                 )
                 return bl_material
-            bsdf_1 = self.create_water_shader(nt, textures["g_Bumpmap"])
+            bsdf_1 = self.create_water_shader(nt, textures["g_Bumpmap"], vertex_colors_node)
         else:
             # TODO: some kind of shader for materials like 'Snow[L].mtd'
             self._operator.warning(
                 f"Imported material '{flver_material.name}' will have no shader output (MTD {flver_material.mtd_name})"
             )
 
-        vertex_colors_node = nt.nodes.new("ShaderNodeAttribute")
-        vertex_colors_node.location = (-200, 430)
-        vertex_colors_node.name = vertex_colors_node.attribute_name = "VertexColors"
 
         if mtd_info.multiple or mtd_info.alpha:
             # Use a mix shader weighted by vertex alpha.
@@ -272,7 +273,7 @@ class MaterialNodeCreator:
 
         return bsdf, diffuse_node
 
-    def create_water_shader(self, node_tree, bumpmap_texture):
+    def create_water_shader(self, node_tree, bumpmap_texture, vertex_colors_node):
         water_mix = node_tree.nodes.new("ShaderNodeMixShader")
         water_mix.location = (0, 1000)
 
@@ -303,5 +304,6 @@ class MaterialNodeCreator:
         node_tree.links.new(uv_attr.outputs["Vector"], node.inputs["Vector"])
         node_tree.links.new(node.outputs["Color"], normal_map_node.inputs["Color"])
         node_tree.links.new(normal_map_node.outputs["Normal"], glass.inputs["Normal"])
+        node_tree.links.new(vertex_colors_node.outputs["Alpha"], water_mix.inputs["Fac"])
 
         return water_mix
