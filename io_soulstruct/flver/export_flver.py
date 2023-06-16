@@ -882,7 +882,9 @@ def build_game_mesh(
         # try:
         #     bl_mesh.calc_tangents(uvmap="UVMap2")
         # except RuntimeError:
-        raise RuntimeError("Could not find UVMap1 or UVMap2. If this mesh is empty, delete it.")
+        raise RuntimeError(
+            "Could not find UVMap1 or UVMap2. Make sure the mesh is triangulated and not empty (or delete it)."
+        )
 
     # Temporary BMesh is triangulated, but is never saved back to Blender.
     bm = bmesh.new()
