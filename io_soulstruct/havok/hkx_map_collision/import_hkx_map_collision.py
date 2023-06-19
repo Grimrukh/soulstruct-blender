@@ -551,7 +551,7 @@ class ImportHKXMapCollisionWithMSBChoice(LoggingOperator):
         cls.use_material = use_material
         cls.transforms = [tf for _, tf in transforms]
         # noinspection PyUnresolvedReferences
-        bpy.ops.wm.hkx_msb_choice_operator("INVOKE_DEFAULT")
+        bpy.ops.wm.hkx_map_collision_msb_choice_operator("INVOKE_DEFAULT")
 
 
 class HKXMapCollisionImporter:

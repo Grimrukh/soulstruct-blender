@@ -569,7 +569,15 @@ class FLVERExporter:
                 builder.game_mesh.bone_indices = mesh_local_bone_indices
 
         flver.sort_mesh_bone_indices()
-        flver.refresh_bounding_boxes(refresh_bone_bounding_boxes=True)
+
+        # TODO: Bone bounding box space seems to be always local to the bone for characters and always in armature space
+        #  for map pieces. Not sure about objects, could be some of each (haven't found any non-origin bones that any
+        #  vertices are weighted to with `is_bind_pose=True`). This is my temporary hack since we are already using
+        #  'read_bone_type == POSE' as a marker for map pieces.
+        flver.refresh_bounding_boxes(
+            refresh_bone_bounding_boxes=True,
+            bone_bounding_boxes_in_armature_space=read_bone_type == "POSE",
+        )
 
         return flver
 
@@ -639,6 +647,7 @@ class FLVERExporter:
                 game_arma_translate = BL_TO_GAME_VECTOR3(bl_translate)
                 game_arma_rotmat = BL_TO_GAME_MAT3(bl_rotmat)
                 s = edit_bone.length / self.base_edit_bone_length
+                # NOTE: only uniform scale is supported for these "is_bind_pose" mesh bones
                 game_arma_scale = s * Vector3.one()
                 game_arma_transforms.append((game_arma_translate, game_arma_rotmat, game_arma_scale))
 
@@ -649,6 +658,7 @@ class FLVERExporter:
 
         if read_bone_type == "POSE":
             # Get armature-space bone transform from PoseBone (map pieces).
+            # Note that non-uniform bone scale is supported here (and is actually used in some old vanilla map pieces).
             for game_bone, pose_bone in zip(game_bones, bl_armature_obj.pose.bones):
 
                 game_arma_translate = BL_TO_GAME_VECTOR3(pose_bone.location)
@@ -667,13 +677,7 @@ class FLVERExporter:
                         f"Unsupported rotation mode '{pose_bone.rotation_mode}' for bone '{pose_bone.name}'. Must be "
                         f"'QUATERNION' or 'XYZ' (Euler)."
                     )
-                # Warn if scale is not uniform, then use X scale anyway.
-                if not is_uniform(pose_bone.scale, rel_tol=0.001):
-                    self.warning(
-                        f"Non-uniform scale detected on bone '{pose_bone.name}' of armature '{bl_armature_obj.name}'. "
-                        f"Using X scale only: {pose_bone.scale.x}"
-                    )
-                game_arma_scale = pose_bone.scale.x * Vector3.one()  # always forced to be uniform in FLVER
+                game_arma_scale = BL_TO_GAME_VECTOR3(pose_bone.scale)  # can be non-uniform
                 game_arma_transforms.append((
                     game_arma_translate,
                     game_arma_rotmat,
@@ -768,9 +772,11 @@ class FLVERExporter:
             game_layout = self.get_ds1_map_buffer_layout(
                 is_multiple=mtd_info.multiple,
                 is_lightmap=mtd_info.lightmap,
-                is_foliage=mtd_info.foliage,
+                extra_uv_maps=mtd_info.extra_uv_maps,
                 no_tangents=mtd_info.no_tangents,
             )
+            print(mtd_info)
+            print(game_layout)
         uv_count = game_layout.get_uv_count()
 
         return_layout = True
@@ -809,7 +815,7 @@ class FLVERExporter:
                 raise ValueError(f"Texture type 'g_{tex_type}' required for material with MTD '{mtd_name}'.")
 
     def get_ds1_map_buffer_layout(
-        self, is_multiple=False, is_lightmap=False, is_foliage=False, no_tangents=False
+        self, is_multiple=False, is_lightmap=False, extra_uv_maps: tuple[int, int] = None, no_tangents=False
     ) -> BufferLayout:
         members = [  # always present
             self.member(MemberType.Position, MemberFormat.Float3),
@@ -827,16 +833,37 @@ class FLVERExporter:
         elif is_multiple:  # has Bitangent but not Tangent (probably never happens)
             members.insert(3, self.member(MemberType.Bitangent, MemberFormat.Byte4C))
 
-        if is_foliage:  # four UVs (regardless of lightmap, and never has multiple)
-            members.append(self.member(MemberType.UV, MemberFormat.UVPair))
-            members.append(self.member(MemberType.UV, MemberFormat.UVPair))
-        elif is_multiple and is_lightmap:  # three UVs
-            members.append(self.member(MemberType.UV, MemberFormat.UVPair))
-            members.append(self.member(MemberType.UV, MemberFormat.UV, index=1))
+        # Calculate total UV map count and use a combination of UVPair and UV format members below.
+        if is_multiple and is_lightmap:  # three UVs
+            uv_count = 3
         elif is_multiple or is_lightmap:  # two UVs
-            members.append(self.member(MemberType.UV, MemberFormat.UVPair))
+            uv_count = 2
         else:  # one UV
-            members.append(self.member(MemberType.UV, MemberFormat.UV))
+            uv_count = 1
+
+        if extra_uv_maps:
+            extra_count, first_index = extra_uv_maps
+            if first_index > uv_count:
+                raise ValueError(
+                    f"Material already has {uv_count} UV maps, but extra UV maps start at index {first_index}."
+                )
+            uv_count = first_index + extra_count  # will add 'dummy' UVs for some shaders (e.g. 'M_3Ivy[DSB].mtd')
+
+        if uv_count > 4:
+            raise ValueError(f"Cannot have more than 4 UV maps in a vertex buffer (got {uv_count}).")
+
+        uv_member_index = 0
+        while uv_count > 0:  # extra UVs
+            # For odd counts, single UV member is added first.
+            if uv_count % 2:
+                members.append(self.member(MemberType.UV, MemberFormat.UV, index=uv_member_index))
+                uv_count -= 1
+                uv_member_index += 1
+            else:  # must be a non-zero even number remaining
+                # Use a UVPair member.
+                members.append(self.member(MemberType.UV, MemberFormat.UVPair, index=uv_member_index))
+                uv_count -= 2
+                uv_member_index += 1
 
         return BufferLayout(members)
 
@@ -911,6 +938,7 @@ def build_game_mesh(
 
     game_vertices = []
     mesh_local_bone_indices = []
+    no_bone_warning_done = False
 
     # Create defaults once to reuse. Though mutable, these will never be modified here.
     empty = []
@@ -951,6 +979,20 @@ def build_game_mesh(
                             break
                 if len(global_bone_indices) > 4:
                     raise ValueError(f"Vertex cannot be weighted to >4 bones ({len(global_bone_indices)} is too many).")
+                elif len(global_bone_indices) == 0:
+                    if len(bl_bone_names) == 1:
+                        # Omitted bone indices can be assumed to be the only bone in the skeleton.
+                        if not no_bone_warning_done:
+                            print(
+                                f"WARNING: Vertex in mesh '{bl_mesh.name}' is not weighted to any bones. "
+                                f"Weighting in 'map piece' mode to only bone in skeleton: '{bl_bone_names[0]}'."
+                            )
+                            no_bone_warning_done = True
+                        global_bone_indices = v4_int_zero
+                        bone_weights = v4_zero
+                    else:
+                        # Can't guess which bone to weight to. Raise error.
+                        raise ValueError("Vertex is not weighted to any bones, and there are >1 bones to choose from.")
 
                 bone_indices = []  # local
                 for global_bone_index in global_bone_indices:
@@ -978,6 +1020,9 @@ def build_game_mesh(
             else:
                 bone_indices = v4_int_zero
                 bone_weights = v4_zero
+
+            if not bone_indices:
+                raise ValueError(f"Vertex with position {position} has no bone indices.")
 
             if layout.has_member_type(MemberType.Normal):
                 # TODO: 127 is the only value seen in DS1 models thus far for `normal[3]`. Will need to store as a
