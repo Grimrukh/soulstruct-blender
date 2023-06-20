@@ -775,8 +775,8 @@ class FLVERExporter:
                 extra_uv_maps=mtd_info.extra_uv_maps,
                 no_tangents=mtd_info.no_tangents,
             )
-            print(mtd_info)
-            print(game_layout)
+            # print(mtd_info)
+            # print(game_layout)
         uv_count = game_layout.get_uv_count()
 
         return_layout = True

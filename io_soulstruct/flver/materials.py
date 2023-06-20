@@ -130,6 +130,8 @@ class MaterialNodeCreator:
                 f"Imported material '{flver_material.name}' will have no shader output (MTD {flver_material.mtd_name})"
             )
 
+        # print(f"\nCreating Blender material for {flver_material.name}...")
+        # print(mtd_info)
 
         if mtd_info.multiple or mtd_info.alpha:
             # Use a mix shader weighted by vertex alpha.
@@ -183,7 +185,7 @@ class MaterialNodeCreator:
                     f"Material {material_name} has MTD {flver_material.mtd_name} but no 'g_Lightmap' texture."
                 )
             lightmap_node = nt.nodes.new("ShaderNodeTexImage")
-            lightmap_node.location = (-550, 0)
+            lightmap_node.location = (-850, 500)  # always left of other textures
             lightmap_node.name = f"{lightmap_texture.texture_type} | {lightmap_texture.stem}"
             lightmap_node.image = self.bl_images[lightmap_texture.stem]
 
@@ -191,7 +193,7 @@ class MaterialNodeCreator:
             # TODO: Would love to give the lightmap UV a more unique name, but that complicates FLVER export a bit.
             light_uv_name = "UVMap3" if mtd_info.multiple else "UVMap2"
             light_uv_attr.name = light_uv_attr.attribute_name = light_uv_name
-            light_uv_attr.location = (-750, 0)
+            light_uv_attr.location = (-1050, 500)  # always left of other textures
             nt.links.new(light_uv_attr.outputs["Vector"], lightmap_node.inputs["Vector"])
 
             # Set up overlay mix nodes between lightmap and diffuse textures.
