@@ -50,7 +50,6 @@ class ImportHKXMapCollision(LoggingOperator, ImportHelper):
     bl_label = "Import HKX Collision"
     bl_description = "Import a HKX map collision file. Can import from BHD/BDT binders and handles DCX compression"
 
-    # ImportHelper mixin class uses this
     filename_ext = ".hkx"
 
     filter_glob: bpy.props.StringProperty(

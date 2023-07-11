@@ -91,6 +91,7 @@ classes = (
     FLVER_PT_bake_subpanel,
 
     ImportNVM,
+    ImportNVMWithBinderChoice,
     ImportNVMWithMSBChoice,
     ExportNVM,
     ExportNVMIntoBinder,

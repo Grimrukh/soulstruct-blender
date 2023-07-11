@@ -157,6 +157,8 @@ class ImportFLVER(LoggingOperator, ImportHelper):
             texture_sources=attached_texture_sources,
             loose_tpf_sources=loose_tpf_sources,
             png_cache_path=png_cache_path,
+            read_from_png_cache=self.read_from_png_cache,
+            write_to_png_cache=self.write_to_png_cache,
             material_blend_mode=self.material_blend_mode,
             base_edit_bone_length=self.base_edit_bone_length,
         )
