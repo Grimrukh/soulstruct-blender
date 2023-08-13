@@ -98,6 +98,8 @@ classes = (
     ImportMCP,
     ImportMCG,
     NVM_PT_navmesh_tools,
+    NavmeshFlagSettings,
+    AddRemoveNVMFaceFlags,
 )
 
 if soulstruct_havok:
@@ -155,6 +157,7 @@ def register():
 
     bpy.types.Scene.lightmap_bake_props = bpy.props.PointerProperty(type=LightmapBakeProperties)
     bpy.types.Scene.export_map_directory_settings = bpy.props.PointerProperty(type=ExportMapDirectorySettings)
+    bpy.types.Scene.navmesh_flag_props = bpy.props.PointerProperty(type=NavmeshFlagSettings)
 
     if havok_classes:
         for cls in havok_classes:
@@ -168,6 +171,10 @@ def unregister():
         bpy.utils.unregister_class(cls)
     bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)
     bpy.types.TOPBAR_MT_file_export.remove(menu_func_export)
+
+    del bpy.types.Scene.lightmap_bake_props
+    del bpy.types.Scene.export_map_directory_settings
+    del bpy.types.Scene.nvm_property_group
 
     if havok_classes:
         for cls in havok_classes:

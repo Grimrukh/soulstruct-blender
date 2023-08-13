@@ -22,7 +22,8 @@ import bmesh
 from bpy_extras.io_utils import ImportHelper
 
 from soulstruct.containers import Binder, BinderEntry
-from soulstruct.darksouls1r.maps.nvm import *
+from soulstruct.darksouls1r.maps.navmesh.nvm import NVM, NVMBox
+from soulstruct.darksouls1r.events.emevd.enums import NavmeshType
 
 from io_soulstruct.utilities import *
 from .utilities import *
@@ -50,20 +51,20 @@ BLACK = hsv_color(0.0, 0.5, 0.0)
 
 # In descending priority order. All flags can be inspected in custom properties.
 NAVMESH_FLAG_COLORS = {
-    NavmeshType.Solid: BLACK,
+    NavmeshType.Disable: BLACK,
     NavmeshType.Degenerate: BLACK,
     NavmeshType.Obstacle: PINK,
     NavmeshType.MapExit: RED,  # between-map navmesh connection
     NavmeshType.Hole: ORANGE,
     NavmeshType.Ladder: ORANGE,
     NavmeshType.ClosedDoor: ORANGE,
-    NavmeshType.Exit: MAGENTA,  # within-map navmesh connection
+    NavmeshType.Gate: MAGENTA,  # within-map navmesh connection
     NavmeshType.Door: YELLOW,
     NavmeshType.InsideWall: YELLOW,
-    NavmeshType.Cliff: YELLOW,
-    NavmeshType.WallTouchingFloor: YELLOW,
+    NavmeshType.Edge: YELLOW,
+    NavmeshType.FloorToWall: YELLOW,
     NavmeshType.LandingPoint: ORANGE,
-    NavmeshType.WideSpace: DEEP_BLUE,
+    NavmeshType.LargeSpace: DEEP_BLUE,
     NavmeshType.Event: GREEN,
     NavmeshType.Wall: CYAN,
     NavmeshType.Default: PURPLE,
@@ -517,10 +518,10 @@ class NVMImporter:
 
         if use_material:
             mesh_materials = []
-            for bl_face, nvm_face in zip(bl_mesh.polygons, nvm.triangles):
+            for bl_face, nvm_triangle in zip(bl_mesh.polygons, nvm.triangles):
                 # Color face according to its single `flag` if present.
                 try:
-                    flag = nvm_face.flag
+                    flag = nvm_triangle.flag
                     material_name = f"Navmesh Flag {flag.name}"
                 except ValueError:
                     material_name = "Navmesh Flag <Unknown>"
@@ -539,7 +540,7 @@ class NVMImporter:
                         except KeyError:
                             # Create new material with color from dictionary.
                             try:
-                                color = NAVMESH_FLAG_COLORS[nvm_face.flag]
+                                color = NAVMESH_FLAG_COLORS[nvm_triangle.flag]
                             except (ValueError, KeyError):
                                 # Multiple flags or an unspecified flag color.
                                 color = WHITE
@@ -555,18 +556,13 @@ class NVMImporter:
         bm.verts.ensure_lookup_table()
         bm.faces.ensure_lookup_table()
 
-        navmesh_type_layers = {}
-        for navmesh_type in NavmeshType:
-            if navmesh_type == NavmeshType.Default:
-                continue  # redundant
-            navmesh_type_layers[navmesh_type] = bm.faces.layers.int.new(f"{navmesh_type.name}")
+        flags_layer = bm.faces.layers.int.new("nvm_face_flags")
 
         # TODO: Is there any chance the face count could change, e.g. if some NVM faces were degenerate and ignored
         #  by Blender during BMesh construction?
         for f_i, face in enumerate(bm.faces):
-            nvm_face = nvm.triangles[f_i]
-            for navmesh_type, navmesh_layer in navmesh_type_layers.items():
-                face[navmesh_layer] = int(nvm_face.all_flags & navmesh_type == navmesh_type)
+            nvm_triangle = nvm.triangles[f_i]
+            face[flags_layer] = nvm_triangle.flags
 
         bm.to_mesh(bl_mesh)
         del bm

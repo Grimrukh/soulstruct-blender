@@ -13,7 +13,7 @@ from bpy_extras.io_utils import ImportHelper, ExportHelper
 from soulstruct.containers.dcx import DCXType
 
 from soulstruct.containers import Binder, BinderEntry
-from soulstruct.darksouls1r.maps.nvm import NVM
+from soulstruct.darksouls1r.maps.navmesh import NVM
 
 from io_soulstruct.utilities import *
 from .utilities import *
@@ -25,7 +25,10 @@ NVM_NAME_RE = re.compile(r"^([hl])(\d\d\d\d)B(\d)A(\d\d)$")  # no extensions
 
 
 class ExportNVM(LoggingOperator, ExportHelper):
-    """Export NVM from a selection of Blender meshes."""
+    """Export NVM from a Blender mesh.
+
+    Mesh faces should be using materials named `Navmesh Flag {type}`
+    """
     bl_idname = "export_scene.nvm"
     bl_label = "Export NVM"
     bl_description = "Export child meshes of selected Blender empty parent to a NVM collision file"
@@ -301,6 +304,9 @@ class NVMExporter:
                 nvm_faces.append(tuple(face.vertices))
 
             nvm_meshes.append((nvm_verts, nvm_faces))
+
+        # Get connected faces.
+        connected_face_indices = []
 
         # TODO
         nvm = NVM()
