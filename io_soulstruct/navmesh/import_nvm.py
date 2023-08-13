@@ -20,7 +20,6 @@ from pathlib import Path
 import bpy
 import bmesh
 from bpy_extras.io_utils import ImportHelper
-from mathutils import Color
 
 from soulstruct.containers import Binder, BinderEntry
 from soulstruct.darksouls1r.maps.nvm import *
@@ -34,13 +33,7 @@ NVM_BINDER_RE = re.compile(r"^.*?\.nvmbnd(\.dcx)?$")
 MAP_NAME_RE = re.compile(r"^(m\d\d)_\d\d_\d\d_\d\d$")
 
 
-def hsv_color(hue: float, saturation: float, value: float, alpha=1.0) -> tuple[float, float, float, float]:
-    color = Color()
-    color.hsv = (hue, saturation, value)
-    return color.r, color.g, color.b, alpha
-
-
-RED = hsv_color(0.0, 0.5, 0.5)
+RED = hsv_color(0.0, 0.8, 0.5)
 ORANGE = hsv_color(0.066, 0.5, 0.5)
 YELLOW = hsv_color(0.15, 0.5, 0.5)
 GREEN = hsv_color(0.33, 0.5, 0.5)
@@ -48,7 +41,7 @@ CYAN = hsv_color(0.5, 0.5, 0.5)
 SKY_BLUE = hsv_color(0.6, 0.5, 0.5)
 DEEP_BLUE = hsv_color(0.66, 0.5, 0.5)
 PURPLE = hsv_color(0.7, 0.8, 0.5)
-MAGENTA = hsv_color(0.8, 0.5, 0.5)
+MAGENTA = hsv_color(0.8, 0.8, 0.5)
 PINK = hsv_color(0.95, 0.5, 0.5)
 WHITE = hsv_color(0.0, 0.0, 1.0)
 GREY = hsv_color(0.0, 0.0, 0.25)
@@ -60,11 +53,11 @@ NAVMESH_FLAG_COLORS = {
     NavmeshType.Solid: BLACK,
     NavmeshType.Degenerate: BLACK,
     NavmeshType.Obstacle: PINK,
-    NavmeshType.ObstacleExit: RED,
-    NavmeshType.Hole: RED,
+    NavmeshType.MapExit: RED,  # between-map navmesh connection
+    NavmeshType.Hole: ORANGE,
     NavmeshType.Ladder: ORANGE,
     NavmeshType.ClosedDoor: ORANGE,
-    NavmeshType.Exit: ORANGE,
+    NavmeshType.Exit: MAGENTA,  # within-map navmesh connection
     NavmeshType.Door: YELLOW,
     NavmeshType.InsideWall: YELLOW,
     NavmeshType.Cliff: YELLOW,
@@ -129,9 +122,9 @@ class ImportNVM(LoggingOperator, ImportHelper):
         default=True,
     )
 
-    create_boxes: bpy.props.BoolProperty(
-        name="Create Boxes",
-        description="If enabled, create quaternary box tree for all imported navmeshes",
+    create_quadtree_boxes: bpy.props.BoolProperty(
+        name="Create Quadtree Boxes",
+        description="If enabled, create quadtree boxes for all imported navmeshes",
         default=False,
     )
 
@@ -179,7 +172,7 @@ class ImportNVM(LoggingOperator, ImportHelper):
                     binder_file_path=import_info.path,
                     read_msb_transform=self.read_msb_transform,
                     use_material=self.use_material,
-                    create_boxes=self.create_boxes,
+                    create_quadtree_boxes=self.create_quadtree_boxes,
                     nvm_entries=import_info.entries,
                 )
                 continue
@@ -204,7 +197,7 @@ class ImportNVM(LoggingOperator, ImportHelper):
                                 importer=importer,
                                 import_info=import_info,
                                 use_material=self.use_material,
-                                create_boxes=self.create_boxes,
+                                create_quadtree_boxes=self.create_quadtree_boxes,
                                 transforms=transforms,
                             )
                             continue
@@ -215,7 +208,7 @@ class ImportNVM(LoggingOperator, ImportHelper):
             # Import single NVM.
             try:
                 nvm_obj = importer.import_nvm(
-                    nvm, bl_name=nvm_model_name, use_material=self.use_material, create_boxes=self.create_boxes,
+                    nvm, bl_name=nvm_model_name, use_material=self.use_material, create_quadtree_boxes=self.create_quadtree_boxes,
                 )
             except Exception as ex:
                 # Delete any objects created prior to exception.
@@ -316,7 +309,7 @@ class ImportNVMWithBinderChoice(LoggingOperator):
 
     read_msb_transform: bool = False
     use_material: bool = True
-    create_boxes: bool = False
+    create_quadtree_boxes: bool = False
 
     choices_enum: bpy.props.EnumProperty(items=get_binder_entry_choices)
 
@@ -354,7 +347,7 @@ class ImportNVMWithBinderChoice(LoggingOperator):
                             importer=self.importer,
                             import_info=import_info,
                             use_material=self.use_material,
-                            create_boxes=self.create_boxes,
+                            create_quadtree_boxes=self.create_quadtree_boxes,
                             transforms=transforms,
                         )
                         return {"FINISHED"}
@@ -366,7 +359,7 @@ class ImportNVMWithBinderChoice(LoggingOperator):
                 nvm,
                 bl_name=nvm_model_name,
                 use_material=self.use_material,
-                create_boxes=self.create_boxes,
+                create_quadtree_boxes=self.create_quadtree_boxes,
             )
         except Exception as ex:
             for obj in self.importer.all_bl_objs:
@@ -389,7 +382,7 @@ class ImportNVMWithBinderChoice(LoggingOperator):
         binder_file_path: Path,
         read_msb_transform: bool,
         use_material: bool,
-        create_boxes: bool,
+        create_quadtree_boxes: bool,
         nvm_entries: list[BinderEntry],
     ):
         cls.importer = importer
@@ -397,7 +390,7 @@ class ImportNVMWithBinderChoice(LoggingOperator):
         cls.enum_options = [(str(i), entry.name, "") for i, entry in enumerate(nvm_entries)]
         cls.read_msb_transform = read_msb_transform
         cls.use_material = use_material
-        cls.create_boxes = create_boxes
+        cls.create_quadtree_boxes = create_quadtree_boxes
         cls.nvm_entries = nvm_entries
         # noinspection PyUnresolvedReferences
         bpy.ops.wm.nvm_binder_choice_operator("INVOKE_DEFAULT")
@@ -416,7 +409,7 @@ class ImportNVMWithMSBChoice(LoggingOperator):
     import_info: NVMImportInfo | None = None
     enum_options: list[tuple[tp.Any, str, str]] = []
     use_material: bool = True
-    create_boxes: bool = False
+    create_quadtree_boxes: bool = False
     transforms: tp.Sequence[Transform] = []
 
     choices_enum: bpy.props.EnumProperty(items=get_msb_choices)
@@ -445,7 +438,7 @@ class ImportNVMWithMSBChoice(LoggingOperator):
                 self.import_info.nvm,
                 bl_name=nvm_model_name,
                 use_material=self.use_material,
-                create_boxes=self.create_boxes,
+                create_quadtree_boxes=self.create_quadtree_boxes,
             )
         except Exception as ex:
             for obj in self.importer.all_bl_objs:
@@ -467,14 +460,14 @@ class ImportNVMWithMSBChoice(LoggingOperator):
         importer: NVMImporter,
         import_info: NVMImportInfo,
         use_material: bool,
-        create_boxes: bool,
+        create_quadtree_boxes: bool,
         transforms: list[tuple[str, Transform]],
     ):
         cls.importer = importer
         cls.import_info = import_info
         cls.enum_options = [(str(i), name, "") for i, (name, _) in enumerate(transforms)]
         cls.use_material = use_material
-        cls.create_boxes = create_boxes
+        cls.create_quadtree_boxes = create_quadtree_boxes
         cls.transforms = [tf for _, tf in transforms]
         # noinspection PyUnresolvedReferences
         bpy.ops.wm.nvm_msb_choice_operator("INVOKE_DEFAULT")
@@ -498,7 +491,7 @@ class NVMImporter:
         self.bl_name = ""
         self.all_bl_objs = []
 
-    def import_nvm(self, nvm: NVM, bl_name: str, use_material=True, create_boxes=False):
+    def import_nvm(self, nvm: NVM, bl_name: str, use_material=True, create_quadtree_boxes=False):
         """Read a NVM into a collection of Blender mesh objects."""
         self.nvm = nvm
         self.bl_name = bl_name  # should not have extensions (e.g. `h0100B0A10`)
@@ -514,7 +507,7 @@ class NVMImporter:
 
         # Create mesh.
         bl_mesh = bpy.data.meshes.new(name=bl_name)
-        vertices = [(-v[0], -v[2], v[1]) for v in nvm.vertices]  # forward is -Z, up is Y, X is mirrored
+        vertices = [GAME_TO_BL_VECTOR(v) for v in nvm.vertices]
         edges = []  # no edges in NVM
         faces = [triangle.vertex_indices for triangle in nvm.triangles]
         bl_mesh.from_pydata(vertices, edges, faces)
@@ -526,10 +519,11 @@ class NVMImporter:
             mesh_materials = []
             for bl_face, nvm_face in zip(bl_mesh.polygons, nvm.triangles):
                 # Color face according to its single `flag` if present.
-                if nvm_face.flag is None:
+                try:
+                    flag = nvm_face.flag
+                    material_name = f"Navmesh Flag {flag.name}"
+                except ValueError:
                     material_name = "Navmesh Flag <Unknown>"
-                else:
-                    material_name = f"Navmesh Flag {nvm_face.flag.name}"
 
                 try:
                     bl_face.material_index = mesh_materials.index(material_name)
@@ -538,9 +532,18 @@ class NVMImporter:
                     try:
                         bl_material = bl_mesh.materials.data.materials[material_name]
                     except KeyError:
-                        # Material does not exist yet. Create new material with color from dictionary.
-                        color = NAVMESH_FLAG_COLORS[nvm_face.flag] if nvm_face.flag is not None else WHITE
-                        bl_material = self.create_basic_material(material_name, color)
+                        # Material does not exist yet.
+                        # Try to get existing material from Blender.
+                        try:
+                            bl_material = bpy.data.materials[material_name]
+                        except KeyError:
+                            # Create new material with color from dictionary.
+                            try:
+                                color = NAVMESH_FLAG_COLORS[nvm_face.flag]
+                            except (ValueError, KeyError):
+                                # Multiple flags or an unspecified flag color.
+                                color = WHITE
+                            bl_material = create_basic_material(material_name, color)
                     # Add material to this mesh and this face.
                     bl_mesh.materials.append(bl_material)
                     bl_face.material_index = len(mesh_materials)
@@ -568,7 +571,7 @@ class NVMImporter:
         bm.to_mesh(bl_mesh)
         del bm
 
-        if create_boxes:
+        if create_quadtree_boxes:
             # Create box tree (depth first creation order). Nesting info in name is used to export.
             for box, indices in nvm.get_all_boxes(nvm.root_box):
                 if not indices:
@@ -584,16 +587,6 @@ class NVMImporter:
         # TODO: Event entities?
 
         return mesh_obj
-
-    @staticmethod
-    def create_basic_material(material_name: str, color: tuple[float, float, float, float]):
-        """Create a very basic material with a single diffuse color."""
-        bl_material = bpy.data.materials.new(name=material_name)
-        bl_material.use_nodes = True
-        nt = bl_material.node_tree
-        bsdf = nt.nodes["Principled BSDF"]
-        bsdf.inputs["Base Color"].default_value = color
-        return bl_material
 
     @staticmethod
     def create_box(box: NVMBox):

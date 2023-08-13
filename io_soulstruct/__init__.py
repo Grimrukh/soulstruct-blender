@@ -95,6 +95,8 @@ classes = (
     ImportNVMWithMSBChoice,
     ExportNVM,
     ExportNVMIntoBinder,
+    ImportMCP,
+    ImportMCG,
     NVM_PT_navmesh_tools,
 )
 

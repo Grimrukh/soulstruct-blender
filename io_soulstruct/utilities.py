@@ -23,6 +23,7 @@ __all__ = [
     "get_last_game_directory",
     "set_last_game_directory",
     "profile_execute",
+    "create_basic_material",
 ]
 
 import cProfile
@@ -34,6 +35,7 @@ import typing as tp
 from dataclasses import dataclass
 from pathlib import Path
 
+import bpy
 from bpy.props import EnumProperty
 # noinspection PyUnresolvedReferences
 from bpy.types import Operator
@@ -343,3 +345,13 @@ def profile_execute(execute_method: tp.Callable):
         return result
 
     return decorated
+
+
+def create_basic_material(material_name: str, color: tuple[float, float, float, float]):
+    """Create a very basic material with a single diffuse color."""
+    bl_material = bpy.data.materials.new(name=material_name)
+    bl_material.use_nodes = True
+    nt = bl_material.node_tree
+    bsdf = nt.nodes["Principled BSDF"]
+    bsdf.inputs["Base Color"].default_value = color
+    return bl_material

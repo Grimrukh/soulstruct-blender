@@ -5,10 +5,13 @@ __all__ = [
     "NVMExportError",
     "NVM_MESH_TYPING",
     "get_navmesh_msb_transforms",
+    "hsv_color",
 ]
 
 from pathlib import Path
 import typing as tp
+
+from mathutils import Color
 
 from soulstruct.darksouls1r.maps import MSB, get_map
 
@@ -53,3 +56,9 @@ def get_navmesh_msb_transforms(nvm_name: str, nvm_path: Path, msb_path: Path = N
         raise ValueError(f"Cannot find any MSB Navmesh entries using model '{model_name}' ({nvm_name}).")
     transforms = [(m.name, Transform.from_msb_part(m)) for m in matches]
     return transforms
+
+
+def hsv_color(hue: float, saturation: float, value: float, alpha=1.0) -> tuple[float, float, float, float]:
+    color = Color()
+    color.hsv = (hue, saturation, value)
+    return color.r, color.g, color.b, alpha
