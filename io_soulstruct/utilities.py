@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 __all__ = [
+    "MAP_STEM_RE",
     "GAME_TO_BL_VECTOR",
     "GAME_TO_BL_EULER",
     "GAME_TO_BL_MAT3",
@@ -23,6 +24,7 @@ __all__ = [
     "get_last_game_directory",
     "set_last_game_directory",
     "profile_execute",
+    "hsv_color",
     "create_basic_material",
 ]
 
@@ -39,10 +41,13 @@ import bpy
 from bpy.props import EnumProperty
 # noinspection PyUnresolvedReferences
 from bpy.types import Operator
-from mathutils import Euler, Vector, Matrix
+from mathutils import Color, Euler, Vector, Matrix
 
 from soulstruct.containers import DCXType
 from soulstruct.utilities.maths import Vector3, Vector4, Matrix3
+
+
+MAP_STEM_RE = re.compile(r"^m(?P<area>\d\d)_(?P<block>\d\d)_(?P<cc>\d\d)_(?P<dd>\d\d)$")
 
 
 def GAME_TO_BL_VECTOR(game_vector: Vector3 | tp.Sequence[float, float, float]) -> Vector:
@@ -345,6 +350,12 @@ def profile_execute(execute_method: tp.Callable):
         return result
 
     return decorated
+
+
+def hsv_color(hue: float, saturation: float, value: float, alpha=1.0) -> tuple[float, float, float, float]:
+    color = Color()
+    color.hsv = (hue, saturation, value)
+    return color.r, color.g, color.b, alpha
 
 
 def create_basic_material(material_name: str, color: tuple[float, float, float, float]):

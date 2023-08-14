@@ -10,7 +10,7 @@ This file format is only used in DeS and DS1 (PTDE/DSR).
 """
 from __future__ import annotations
 
-__all__ = ["ImportMCP", "ImportMCG"]
+__all__ = ["ImportMCG"]
 
 import re
 from pathlib import Path
@@ -18,59 +18,15 @@ from pathlib import Path
 import bpy
 from bpy_extras.io_utils import ImportHelper
 
-from soulstruct.darksouls1r.maps.navmesh import MCP, MCG, NavmeshAABB, GateNode, GateEdge
+from soulstruct.darksouls1r.maps import MSB
+from soulstruct.darksouls1r.maps.navmesh import MCG, GateNode, GateEdge
 
 from io_soulstruct.utilities import *
-from .utilities import hsv_color
 
 
-MCP_NAME_RE = re.compile(r".*\.mcp(\.dcx)?")
-MCG_NAME_RE = re.compile(r".*\.mcg(\.dcx)?")
-MAP_NAME_RE = re.compile(r"^(m\d\d)_\d\d_\d\d_\d\d$")
-
-
-class ImportMCP(LoggingOperator, ImportHelper):
-    bl_idname = "import_scene.mcp"
-    bl_label = "Import MCP"
-    bl_description = "Import an MCP navmesh AABB file. Supports DCX-compressed files"
-
-    filename_ext = ".mcp"
-
-    filter_glob: bpy.props.StringProperty(
-        default="*.mcp;*.mcp.dcx",
-        options={'HIDDEN'},
-        maxlen=255,
-    )
-
-    files: bpy.props.CollectionProperty(
-        type=bpy.types.OperatorFileListElement,
-        options={'HIDDEN', 'SKIP_SAVE'},
-    )
-
-    directory: bpy.props.StringProperty(
-        options={'HIDDEN'},
-    )
-
-    def execute(self, context):
-        print("Executing MCP import...")
-
-        file_paths = [Path(self.directory, file.name) for file in self.files]
-
-        mcps = []
-        for file_path in file_paths:
-            try:
-                mcp = MCP.from_path(file_path)
-            except Exception as ex:
-                self.warning(f"Error occurred while reading MCP file '{file_path.name}': {ex}")
-            else:
-                mcps.append(mcp)
-
-        importer = MCPImporter(self, context)
-        for i, mcp in enumerate(mcps):
-            # TODO: load navmesh part names from MSB (and check same count)
-            importer.import_mcp(mcp, f"{file_paths[i].stem} MCP")
-
-        return {'FINISHED'}
+MCG_NAME_RE = re.compile(r"(?P<stem>.*)\.mcg(?P<dcx>\.dcx)?")
+GATE_COLOR = hsv_color(0.333, 0.9, 0.2)
+EDGE_COLOR = hsv_color(0.333, 0.9, 0.2)
 
 
 class ImportMCG(LoggingOperator, ImportHelper):
@@ -95,6 +51,12 @@ class ImportMCG(LoggingOperator, ImportHelper):
         options={'HIDDEN'},
     )
 
+    load_msb_navmesh_names: bpy.props.BoolProperty(
+        name="Load MSB Navmesh Names",
+        description="Load navmesh part names from the map's MSB file and add them to names of created MCG edges",
+        default=True,
+    )
+
     def execute(self, context):
         print("Executing MCG import...")
 
@@ -109,77 +71,31 @@ class ImportMCG(LoggingOperator, ImportHelper):
             else:
                 mcgs.append(mcg)
 
+        navmesh_part_names = []
+        if self.load_msb_navmesh_names:
+            map_path_match = MAP_STEM_RE.match(Path(self.directory).stem)
+            if not map_path_match:
+                self.warning(f"Could not determine map name from directory '{self.directory}'.")
+                # Continue with MCG import below.
+            else:
+                # NOTE: Still correct for DS1 `m12_00_00_01` MCG, which should be used over the _00 one anyway.
+                msb_path = Path(self.directory).parent / f"MapStudio/{map_path_match.group(0)}.msb"
+                msb = MSB.from_path(msb_path)
+                navmesh_part_names = [navmesh.name for navmesh in msb.navmeshes]
+
         importer = MCGImporter(self, context)
         for i, mcg in enumerate(mcgs):
             # TODO: load navmesh part names from MSB (and check same count)
-            importer.import_mcg(mcg, f"{file_paths[i].stem} MCG")
+            importer.import_mcg(mcg, f"{file_paths[i].stem} MCG", navmesh_part_names=navmesh_part_names)
 
         return {'FINISHED'}
-
-
-class MCPImporter:
-
-    def __init__(
-        self,
-        operator: ImportMCP,
-        context,
-    ):
-        self.operator = operator
-        self.context = context
-
-        self.mcp = None
-        self.bl_name = ""
-        self.all_bl_objs = []
-
-    def import_mcp(self, mcp: MCP, bl_name: str, navmesh_part_names: list[str] = None) -> bpy.types.Object:
-        self.mcp = mcp
-        self.bl_name = bl_name
-        self.operator.info(f"Importing MCP: {bl_name}")
-
-        # Set mode to OBJECT and deselect all objects.
-        if bpy.ops.object.mode_set.poll():
-            bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
-        if bpy.ops.object.select_all.poll():
-            bpy.ops.object.select_all(action="DESELECT")
-        if bpy.ops.object.mode_set.poll():  # just to be safe
-            bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
-
-        mcp_parent = bpy.data.objects.new(bl_name, None)  # empty parent for all AABB meshes
-        self.context.collection.objects.link(mcp_parent)
-        self.all_bl_objs.append(mcp_parent)
-
-        for i, aabb in enumerate(mcp.aabbs):
-            aabb: NavmeshAABB
-            bl_aabb = self.create_aabb(aabb)
-            bl_aabb.name = f"AABB {i} ({navmesh_part_names[i]})" if navmesh_part_names else f"AABB {i}"
-            bl_aabb.parent = mcp_parent
-            self.all_bl_objs.append(bl_aabb)
-
-        return mcp_parent
-
-    @staticmethod
-    def create_aabb(aabb: NavmeshAABB):
-        """Create an AABB prism representing `aabb`. Position is baked into mesh data fully, just like the navmesh."""
-        start_vec = GAME_TO_BL_VECTOR(aabb.aabb_start)
-        end_vec = GAME_TO_BL_VECTOR(aabb.aabb_end)
-        bpy.ops.mesh.primitive_cube_add()
-        bl_box = bpy.context.active_object
-        # noinspection PyTypeChecker
-        box_data = bl_box.data  # type: bpy.types.Mesh
-        for vertex in box_data.vertices:
-            vertex.co[0] = start_vec.x if vertex.co[0] == -1.0 else end_vec.x
-            vertex.co[1] = start_vec.y if vertex.co[1] == -1.0 else end_vec.y
-            vertex.co[2] = start_vec.z if vertex.co[2] == -1.0 else end_vec.z
-        bpy.ops.object.modifier_add(type="WIREFRAME")
-        bl_box.modifiers[0].thickness = 0.2
-        return bl_box
 
 
 class MCGImporter:
 
     def __init__(
         self,
-        operator: ImportMCP,
+        operator: ImportMCG,
         context,
     ):
         self.operator = operator
@@ -189,10 +105,20 @@ class MCGImporter:
         self.bl_name = ""
         self.all_bl_objs = []
 
-    def import_mcg(self, mcg: MCG, bl_name: str, navmesh_part_names: list[str] = None) -> bpy.types.Object:
+    def import_mcg(self, mcg: MCG, bl_name: str, navmesh_part_names: list[str] = ()) -> bpy.types.Object:
         self.mcg = mcg
         self.bl_name = bl_name
         self.operator.info(f"Importing MCG: {bl_name}")
+
+        if navmesh_part_names:
+            highest_navmesh_index = max(edge._navmesh_part_index for edge in mcg.edges)
+            if highest_navmesh_index >= len(navmesh_part_names):
+                self.operator.warning(
+                    f"Highest MCG edge navmesh part index ({highest_navmesh_index}) exceeds number of navmesh part "
+                    f"names provided ({len(navmesh_part_names)}. Ignoring these part names."
+                )
+                navmesh_part_names = []
+            # NOTE: navmesh count can exceed highest edge index, as some navmeshes may have no edges in them.
 
         # Set mode to OBJECT and deselect all objects.
         if bpy.ops.object.mode_set.poll():
@@ -215,13 +141,17 @@ class MCGImporter:
 
         for i, node in enumerate(mcg.nodes):
             node: GateNode
-            bl_sphere = self.create_node(node)
-            bl_sphere.name = f"Node {i}"
-            bl_sphere.parent = mcg_parent
-            bl_sphere.data.materials.append(bl_material)
-            # TODO: other custom properties?
-            bl_sphere["unknown_offset"] = node.unknown_offset
-            self.all_bl_objs.append(bl_sphere)
+            bl_node = self.create_node(node)
+            bl_node.name = f"Node {i}"
+            if node._dead_end_navmesh_index >= 0 and navmesh_part_names:
+                bl_node.name += f" <Dead End: {navmesh_part_names[node._dead_end_navmesh_index]}>"
+            bl_node.parent = mcg_parent
+            bl_node.data.materials.append(bl_material)
+            bl_node["dead_end_navmesh_index"] = node._dead_end_navmesh_index
+            bl_node["unknown_offset"] = node.unknown_offset
+            bl_node["connected_node_indices"] = [mcg.nodes.index(n) for n in node.connected_nodes]
+            bl_node["connected_edge_indices"] = [mcg.edges.index(e) for e in node.connected_edges]
+            self.all_bl_objs.append(bl_node)
 
         for i, edge in enumerate(mcg.edges):
             edge: GateEdge
@@ -229,6 +159,8 @@ class MCGImporter:
             start_node_index = mcg.nodes.index(edge.start_node)
             end_node_index = mcg.nodes.index(edge.end_node)
             bl_edge.name = f"Edge {i} ({start_node_index} -> {end_node_index})"
+            if navmesh_part_names:
+                bl_edge.name += f" <{navmesh_part_names[edge._navmesh_part_index]}>"
             bl_edge.parent = mcg_parent
             bl_edge.data.materials.append(bl_material)
 

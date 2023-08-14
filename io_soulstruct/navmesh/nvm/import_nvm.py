@@ -12,7 +12,6 @@ from __future__ import annotations
 
 __all__ = ["ImportNVM", "ImportNVMWithBinderChoice", "ImportNVMWithMSBChoice"]
 
-import re
 import traceback
 import typing as tp
 from pathlib import Path
@@ -23,52 +22,9 @@ from bpy_extras.io_utils import ImportHelper
 
 from soulstruct.containers import Binder, BinderEntry
 from soulstruct.darksouls1r.maps.navmesh.nvm import NVM, NVMBox
-from soulstruct.darksouls1r.events.emevd.enums import NavmeshType
 
 from io_soulstruct.utilities import *
 from .utilities import *
-
-
-NVM_NAME_RE = re.compile(r".*\.nvm(\.dcx)?")
-NVM_BINDER_RE = re.compile(r"^.*?\.nvmbnd(\.dcx)?$")
-MAP_NAME_RE = re.compile(r"^(m\d\d)_\d\d_\d\d_\d\d$")
-
-
-RED = hsv_color(0.0, 0.8, 0.5)
-ORANGE = hsv_color(0.066, 0.5, 0.5)
-YELLOW = hsv_color(0.15, 0.5, 0.5)
-GREEN = hsv_color(0.33, 0.5, 0.5)
-CYAN = hsv_color(0.5, 0.5, 0.5)
-SKY_BLUE = hsv_color(0.6, 0.5, 0.5)
-DEEP_BLUE = hsv_color(0.66, 0.5, 0.5)
-PURPLE = hsv_color(0.7, 0.8, 0.5)
-MAGENTA = hsv_color(0.8, 0.8, 0.5)
-PINK = hsv_color(0.95, 0.5, 0.5)
-WHITE = hsv_color(0.0, 0.0, 1.0)
-GREY = hsv_color(0.0, 0.0, 0.25)
-BLACK = hsv_color(0.0, 0.5, 0.0)
-
-
-# In descending priority order. All flags can be inspected in custom properties.
-NAVMESH_FLAG_COLORS = {
-    NavmeshType.Disable: BLACK,
-    NavmeshType.Degenerate: BLACK,
-    NavmeshType.Obstacle: PINK,
-    NavmeshType.MapExit: RED,  # between-map navmesh connection
-    NavmeshType.Hole: ORANGE,
-    NavmeshType.Ladder: ORANGE,
-    NavmeshType.ClosedDoor: ORANGE,
-    NavmeshType.Gate: MAGENTA,  # within-map navmesh connection
-    NavmeshType.Door: YELLOW,
-    NavmeshType.InsideWall: YELLOW,
-    NavmeshType.Edge: YELLOW,
-    NavmeshType.FloorToWall: YELLOW,
-    NavmeshType.LandingPoint: ORANGE,
-    NavmeshType.LargeSpace: DEEP_BLUE,
-    NavmeshType.Event: GREEN,
-    NavmeshType.Wall: CYAN,
-    NavmeshType.Default: PURPLE,
-}
 
 
 class NVMImportInfo(tp.NamedTuple):
@@ -146,7 +102,7 @@ class ImportNVM(LoggingOperator, ImportHelper):
 
         for file_path in file_paths:
 
-            is_binder = NVM_BINDER_RE.match(file_path.name) is not None
+            is_binder = NVMBND_NAME_RE.match(file_path.name) is not None
 
             if is_binder:
                 binder = Binder.from_path(file_path)
@@ -186,7 +142,7 @@ class ImportNVM(LoggingOperator, ImportHelper):
             transform = None  # type: tp.Optional[Transform]
             if self.read_msb_transform:
                 # NOTE: It's unlikely that this MSB search will work for a loose NVM, but we can try.
-                if MAP_NAME_RE.match(import_info.path.parent.name):
+                if MAP_STEM_RE.match(import_info.path.parent.name):
                     try:
                         transforms = get_navmesh_msb_transforms(nvm_name=nvm_model_name, nvm_path=import_info.path)
                     except Exception as ex:
@@ -236,7 +192,7 @@ class ImportNVM(LoggingOperator, ImportHelper):
         multiple entries that the user may need to choose from.
         """
         # Find NVM entry.
-        nvm_entries = binder.find_entries_matching_name(NVM_NAME_RE)
+        nvm_entries = binder.find_entries_matching_name(ANY_NVM_NAME_RE)
         if not nvm_entries:
             raise NVMImportError(f"Cannot find any '.nvm{{.dcx}}' files in binder {file_path}.")
         # Filter by `navmesh_model_id` if needed.
@@ -337,7 +293,7 @@ class ImportNVMWithBinderChoice(LoggingOperator):
 
         transform = None
         if self.read_msb_transform:
-            if MAP_NAME_RE.match(self.binder_file_path.parent.name):
+            if MAP_STEM_RE.match(self.binder_file_path.parent.name):
                 try:
                     transforms = get_navmesh_msb_transforms(nvm_name=nvm_model_name, nvm_path=self.binder_file_path)
                 except Exception as ex:
@@ -496,7 +452,6 @@ class NVMImporter:
         """Read a NVM into a collection of Blender mesh objects."""
         self.nvm = nvm
         self.bl_name = bl_name  # should not have extensions (e.g. `h0100B0A10`)
-        self.operator.info(f"Importing NVM: {bl_name}")
 
         # Set mode to OBJECT and deselect all objects.
         if bpy.ops.object.mode_set.poll():
@@ -517,72 +472,56 @@ class NVMImporter:
         self.all_bl_objs = [mesh_obj]
 
         if use_material:
-            mesh_materials = []
             for bl_face, nvm_triangle in zip(bl_mesh.polygons, nvm.triangles):
-                # Color face according to its single `flag` if present.
-                try:
-                    flag = nvm_triangle.flag
-                    material_name = f"Navmesh Flag {flag.name}"
-                except ValueError:
-                    material_name = "Navmesh Flag <Unknown>"
+                set_face_material(bl_mesh, bl_face, nvm_triangle.flags)
 
-                try:
-                    bl_face.material_index = mesh_materials.index(material_name)
-                except ValueError:
-                    # Material not added to mesh yet.
-                    try:
-                        bl_material = bl_mesh.materials.data.materials[material_name]
-                    except KeyError:
-                        # Material does not exist yet.
-                        # Try to get existing material from Blender.
-                        try:
-                            bl_material = bpy.data.materials[material_name]
-                        except KeyError:
-                            # Create new material with color from dictionary.
-                            try:
-                                color = NAVMESH_FLAG_COLORS[nvm_triangle.flag]
-                            except (ValueError, KeyError):
-                                # Multiple flags or an unspecified flag color.
-                                color = WHITE
-                            bl_material = create_basic_material(material_name, color)
-                    # Add material to this mesh and this face.
-                    bl_mesh.materials.append(bl_material)
-                    bl_face.material_index = len(mesh_materials)
-                    mesh_materials.append(material_name)
-
-        # Create BMESH (as we need to assign face flag data).
+        # Create `BMesh` (as we need to assign face flag data to a custom `int` layer).
         bm = bmesh.new()
         bm.from_mesh(bl_mesh)
         bm.verts.ensure_lookup_table()
         bm.faces.ensure_lookup_table()
 
         flags_layer = bm.faces.layers.int.new("nvm_face_flags")
+        obstacle_count_layer = bm.faces.layers.int.new("nvm_face_obstacle_count")
 
         # TODO: Is there any chance the face count could change, e.g. if some NVM faces were degenerate and ignored
         #  by Blender during BMesh construction?
         for f_i, face in enumerate(bm.faces):
             nvm_triangle = nvm.triangles[f_i]
             face[flags_layer] = nvm_triangle.flags
+            face[obstacle_count_layer] = nvm_triangle.obstacle_count
 
         bm.to_mesh(bl_mesh)
         del bm
 
         if create_quadtree_boxes:
-            # Create box tree (depth first creation order). Nesting info in name is used to export.
-            for box, indices in nvm.get_all_boxes(nvm.root_box):
-                if not indices:
-                    box_name = f"{bl_name} Box ROOT"
-                else:
-                    indices_string = "-".join(str(i) for i in indices)
-                    box_name = f"{bl_name} Box {indices_string}"
-                bl_box = self.create_box(box)
-                self.all_bl_objs.append(bl_box)
-                bl_box.parent = mesh_obj
-                bl_box.name = box_name
+            self.create_nvm_quadtree(mesh_obj, nvm, bl_name)
 
         # TODO: Event entities?
 
         return mesh_obj
+
+
+
+    def create_nvm_quadtree(self, bl_mesh, nvm: NVM, bl_name: str) -> list[bpy.types.Object]:
+        """Create box tree (depth first creation order).
+
+        NOTE: These boxes should be imported for inspection only. They are automatically generated from the mesh
+        min/max vertex coordinates on NVM export.
+        """
+        boxes = []
+        for box, indices in nvm.get_all_boxes(nvm.root_box):
+            if not indices:
+                box_name = f"{bl_name} Box ROOT"
+            else:
+                indices_string = "-".join(str(i) for i in indices)
+                box_name = f"{bl_name} Box {indices_string}"
+            bl_box = self.create_box(box)
+            bl_box.name = box_name
+            boxes.append(bl_box)
+            self.all_bl_objs.append(bl_box)
+            bl_box.parent = bl_mesh
+        return boxes
 
     @staticmethod
     def create_box(box: NVMBox):

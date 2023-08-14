@@ -98,8 +98,9 @@ classes = (
     ImportMCP,
     ImportMCG,
     NVM_PT_navmesh_tools,
-    NavmeshFlagSettings,
+    NavmeshFaceSettings,
     AddRemoveNVMFaceFlags,
+    SetNVMFaceObstacleCount,
 )
 
 if soulstruct_havok:
@@ -157,7 +158,7 @@ def register():
 
     bpy.types.Scene.lightmap_bake_props = bpy.props.PointerProperty(type=LightmapBakeProperties)
     bpy.types.Scene.export_map_directory_settings = bpy.props.PointerProperty(type=ExportMapDirectorySettings)
-    bpy.types.Scene.navmesh_flag_props = bpy.props.PointerProperty(type=NavmeshFlagSettings)
+    bpy.types.Scene.navmesh_face_settings = bpy.props.PointerProperty(type=NavmeshFaceSettings)
 
     if havok_classes:
         for cls in havok_classes:
