@@ -25,8 +25,6 @@ from io_soulstruct.utilities import *
 
 
 MCG_NAME_RE = re.compile(r"(?P<stem>.*)\.mcg(?P<dcx>\.dcx)?")
-GATE_COLOR = hsv_color(0.333, 0.9, 0.2)
-EDGE_COLOR = hsv_color(0.333, 0.9, 0.2)
 
 
 class ImportMCG(LoggingOperator, ImportHelper):
@@ -128,48 +126,90 @@ class MCGImporter:
         if bpy.ops.object.mode_set.poll():  # just to be safe
             bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
 
-        mcg_parent = bpy.data.objects.new(bl_name, None)  # empty parent for all AABB meshes
+        mcg_parent = bpy.data.objects.new(bl_name, None)  # empty parent for MCG node and edge parents
         self.context.collection.objects.link(mcg_parent)
         self.all_bl_objs.append(mcg_parent)
+        
+        node_parent = bpy.data.objects.new(f"{bl_name} Nodes", None)
+        self.context.collection.objects.link(node_parent)
+        self.all_bl_objs.append(node_parent)
+        node_parent.parent = mcg_parent
+        
+        edge_parent = bpy.data.objects.new(f"{bl_name} Edges", None)
+        self.context.collection.objects.link(edge_parent)
+        self.all_bl_objs.append(edge_parent)
+        edge_parent.parent = mcg_parent
 
-        try:
-            bl_material = bpy.data.materials["Navmesh MCG"]
-        except KeyError:
-            # Create new material with green color.
-            color = hsv_color(0.333, 0.9, 0.2)
-            bl_material = create_basic_material("Navmesh MCG", color)
+        # Automatically set node and edge parents for drawing.
+        self.context.scene.mcg_draw_settings.mcg_node_parent_name = node_parent.name
+        self.context.scene.mcg_draw_settings.mcg_edge_parent_name = edge_parent.name
 
+        # try:
+        #     bl_material = bpy.data.materials["Navmesh MCG"]
+        # except KeyError:
+        #     # Create new material with green color.
+        #     color = hsv_color(0.333, 0.9, 0.2)
+        #     bl_material = create_basic_material("Navmesh MCG", color)
+
+        bl_node_names = []  # type: list[str]
         for i, node in enumerate(mcg.nodes):
             node: GateNode
-            bl_node = self.create_node(node)
-            bl_node.name = f"Node {i}"
+            name = f"Node {i}"
             if node._dead_end_navmesh_index >= 0 and navmesh_part_names:
-                bl_node.name += f" <Dead End: {navmesh_part_names[node._dead_end_navmesh_index]}>"
-            bl_node.parent = mcg_parent
-            bl_node.data.materials.append(bl_material)
-            bl_node["dead_end_navmesh_index"] = node._dead_end_navmesh_index
+                # NOTE: For inspection convenience only. The true navmesh part name/index is stored in properties.
+                name += f" <Dead End: {navmesh_part_names[node._dead_end_navmesh_index]}>"
+
+            bl_node = self.create_node(node, name, as_sphere=False)
+            self.context.collection.objects.link(bl_node)
+            self.all_bl_objs.append(bl_node)
+            bl_node.parent = node_parent
+            # bl_node.data.materials.append(bl_material)
+            
+            if navmesh_part_names:
+                try:
+                    bl_node["dead_end_navmesh_name"] = navmesh_part_names[node._dead_end_navmesh_index]
+                except IndexError:
+                    raise ValueError(f"Node {i} has invalid dead-end navmesh index {node._dead_end_navmesh_index}.")
+            else:
+                bl_node["dead_end_navmesh_index"] = node._dead_end_navmesh_index
             bl_node["unknown_offset"] = node.unknown_offset
             bl_node["connected_node_indices"] = [mcg.nodes.index(n) for n in node.connected_nodes]
             bl_node["connected_edge_indices"] = [mcg.edges.index(e) for e in node.connected_edges]
             self.all_bl_objs.append(bl_node)
+            bl_node_names.append(bl_node.name)
 
         for i, edge in enumerate(mcg.edges):
             edge: GateEdge
-            bl_edge = self.create_edge(edge)
             start_node_index = mcg.nodes.index(edge.start_node)
             end_node_index = mcg.nodes.index(edge.end_node)
-            bl_edge.name = f"Edge {i} ({start_node_index} -> {end_node_index})"
+            name = f"Edge {i} ({start_node_index} -> {end_node_index})"
             if navmesh_part_names:
-                bl_edge.name += f" <{navmesh_part_names[edge._navmesh_part_index]}>"
-            bl_edge.parent = mcg_parent
-            bl_edge.data.materials.append(bl_material)
+                # NOTE: For inspection convenience only. The true navmesh part name/index is stored in properties.
+                name += f" <{navmesh_part_names[edge._navmesh_part_index]}>"
 
-            # Custom properties
-            bl_edge["start_node_index"] = start_node_index
+            bl_edge = self.create_edge(edge, name, as_cylinder=False)
+            self.context.collection.objects.link(bl_edge)
+            self.all_bl_objs.append(bl_edge)
+            bl_edge.parent = edge_parent
+            # bl_edge.data.materials.append(bl_material)
+
+            try:
+                bl_edge["start_node_name"] = bl_node_names[start_node_index]
+            except IndexError:
+                raise ValueError(f"Edge {i} has invalid start node index {start_node_index}.")
             bl_edge["start_node_faces"] = edge.start_node_triangle_indices
-            bl_edge["end_node_index"] = end_node_index
+            try:
+                bl_edge["end_node_name"] = bl_node_names[end_node_index]
+            except IndexError:
+                raise ValueError(f"Edge {i} has invalid end node index {end_node_index}.")
             bl_edge["end_node_faces"] = edge.end_node_triangle_indices
-            bl_edge["navmesh_index"] = edge._navmesh_part_index  # TODO: not deferenced yet
+            if navmesh_part_names:
+                try:
+                    bl_edge["navmesh_name"] = navmesh_part_names[edge._navmesh_part_index]
+                except IndexError:
+                    raise ValueError(f"Edge {i} has invalid navmesh index {edge._navmesh_part_index}.")
+            else:
+                bl_edge["navmesh_index"] = edge._navmesh_part_index
             bl_edge["cost"] = edge.cost
 
             self.all_bl_objs.append(bl_edge)
@@ -177,35 +217,46 @@ class MCGImporter:
         return mcg_parent
 
     @staticmethod
-    def create_node(node: GateNode):
-        """Create a sphere representing `node`. Its transform represents its position."""
+    def create_node(node: GateNode, name: str, as_sphere=False):
+        """Create an Empty or Icosphere representing `node`. Its transform represents its position."""
         position = GAME_TO_BL_VECTOR(node.translate)
-        bpy.ops.mesh.primitive_ico_sphere_add(4)
-        bl_sphere = bpy.context.active_object
-        bl_sphere.location = position
-        bpy.ops.object.modifier_add(type="WIREFRAME")
-        bl_sphere.modifiers[0].thickness = 0.05
-        return bl_sphere
+        if as_sphere:
+            bpy.ops.mesh.primitive_ico_sphere_add(4)
+            bl_node = bpy.context.active_object
+            bpy.ops.object.modifier_add(type="WIREFRAME")
+            bl_node.modifiers[0].thickness = 0.05
+            bl_node.name = name
+        else:
+            bl_node = bpy.data.objects.new(name, None)
+            bl_node.empty_display_type = "SPHERE"
+        bl_node.location = position
+        return bl_node
 
     @staticmethod
-    def create_edge(edge: GateEdge):
-        """Create a cylinder representing `edge` that connects two nodes."""
+    def create_edge(edge: GateEdge, name: str, as_cylinder=False):
+        """Create an Empty or Cylinder representing `edge` that connects two nodes."""
+
         # Calculate the distance and midpoint
         start = GAME_TO_BL_VECTOR(edge.start_node.translate)
         end = GAME_TO_BL_VECTOR(edge.end_node.translate)
         direction = end - start
         midpoint = (start + end) / 2.0
 
-        # Add a cylinder
-        bpy.ops.mesh.primitive_cylinder_add(
-            radius=0.2,
-            depth=direction.length,
-            location=midpoint,
-        )
+        if as_cylinder:
+            # Add a cylinder
+            bpy.ops.mesh.primitive_cylinder_add(
+                radius=0.2,
+                depth=direction.length,
+                location=midpoint,
+            )
+            bl_edge = bpy.context.active_object
+            bl_edge.name = name
+        else:
+            bl_edge = bpy.data.objects.new(name, None)
+            bl_edge.empty_display_type = "SINGLE_ARROW"
+            bl_edge.location = midpoint
 
-        bl_cylinder = bpy.context.active_object
-        # Rotate the cylinder to point from start to end
-        bl_cylinder.rotation_euler = direction.to_track_quat('Z', 'Y').to_euler()
-        # bpy.ops.object.modifier_add(type="WIREFRAME")
-        # bl_cylinder.modifiers[0].thickness = 0.03
-        return bl_cylinder
+        # Point cylinder OR empty arrow in direction of edge.
+        bl_edge.rotation_euler = direction.to_track_quat('Z', 'Y').to_euler()
+
+        return bl_edge

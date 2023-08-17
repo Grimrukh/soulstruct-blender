@@ -57,6 +57,7 @@ bl_info = {
 def menu_func_import(self, context):
     self.layout.operator(ImportFLVER.bl_idname, text="FLVER (.flver/.*bnd)")
     self.layout.operator(ImportNVM.bl_idname, text="NVM (.nvm/.nvmbnd)")
+    self.layout.operator(ImportMCG.bl_idname, text="MCG (.mcg)")
 
 
 # noinspection PyUnusedLocal
@@ -67,7 +68,8 @@ def menu_func_export(self, context):
     self.layout.operator(ExportNVMIntoBinder.bl_idname, text="NVM to Binder (.nvmbnd)")
 
 
-classes = (
+# Classes to register.
+CLASSES = (
     ImportFLVER,
     ImportFLVERWithMSBChoice,
     ImportEquipmentFLVER,
@@ -99,8 +101,10 @@ classes = (
     ImportMCG,
     NVM_PT_navmesh_tools,
     NavmeshFaceSettings,
-    AddRemoveNVMFaceFlags,
+    AddNVMFaceFlags,
+    RemoveNVMFaceFlags,
     SetNVMFaceObstacleCount,
+    MCGDrawSettings,
 )
 
 if soulstruct_havok:
@@ -108,7 +112,8 @@ if soulstruct_havok:
     from io_soulstruct.havok.hkx_animation import *
     from io_soulstruct.havok.hkx_cutscene import *
 
-    havok_classes = (
+    # Extra Havok classes to register.
+    HAVOK_CLASSES = (
         ImportHKXMapCollision,
         ImportHKXMapCollisionWithBinderChoice,
         ImportHKXMapCollisionWithMSBChoice,
@@ -145,13 +150,16 @@ if soulstruct_havok:
         self.layout.operator(ExportHKXCutscene.bl_idname, text="HKX Cutscene (.remobnd)")
 
 else:
-    havok_classes = ()
+    HAVOK_CLASSES = ()
     havok_menu_func_import = None
     havok_menu_func_export = None
 
 
+HANDLERS = []
+
+
 def register():
-    for cls in classes:
+    for cls in CLASSES:
         bpy.utils.register_class(cls)
     bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
     bpy.types.TOPBAR_MT_file_export.append(menu_func_export)
@@ -159,32 +167,39 @@ def register():
     bpy.types.Scene.lightmap_bake_props = bpy.props.PointerProperty(type=LightmapBakeProperties)
     bpy.types.Scene.export_map_directory_settings = bpy.props.PointerProperty(type=ExportMapDirectorySettings)
     bpy.types.Scene.navmesh_face_settings = bpy.props.PointerProperty(type=NavmeshFaceSettings)
+    bpy.types.Scene.mcg_draw_settings = bpy.props.PointerProperty(type=MCGDrawSettings)
 
-    if havok_classes:
-        for cls in havok_classes:
+    HANDLERS.append(bpy.types.SpaceView3D.draw_handler_add(draw_mcg_nodes, (), "WINDOW", "POST_VIEW"))
+    HANDLERS.append(bpy.types.SpaceView3D.draw_handler_add(draw_mcg_node_labels, (), "WINDOW", "POST_PIXEL"))
+    HANDLERS.append(bpy.types.SpaceView3D.draw_handler_add(draw_mcg_edges, (), "WINDOW", "POST_VIEW"))
+
+    if HAVOK_CLASSES:
+        for cls in HAVOK_CLASSES:
             bpy.utils.register_class(cls)
         bpy.types.TOPBAR_MT_file_import.append(havok_menu_func_import)
         bpy.types.TOPBAR_MT_file_export.append(havok_menu_func_export)
 
 
 def unregister():
-    for cls in classes:
+    for cls in CLASSES:
         bpy.utils.unregister_class(cls)
     bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)
     bpy.types.TOPBAR_MT_file_export.remove(menu_func_export)
 
-    del bpy.types.Scene.lightmap_bake_props
-    del bpy.types.Scene.export_map_directory_settings
-    del bpy.types.Scene.nvm_property_group
-
-    if havok_classes:
-        for cls in havok_classes:
+    if HAVOK_CLASSES:
+        for cls in HAVOK_CLASSES:
             bpy.utils.unregister_class(cls)
         bpy.types.TOPBAR_MT_file_import.remove(havok_menu_func_import)
         bpy.types.TOPBAR_MT_file_export.remove(havok_menu_func_export)
 
     del bpy.types.Scene.lightmap_bake_props
     del bpy.types.Scene.export_map_directory_settings
+    del bpy.types.Scene.navmesh_face_settings
+    del bpy.types.Scene.mcg_draw_settings
+
+    for handler in HANDLERS:
+        bpy.types.SpaceView3D.draw_handler_remove(handler, "WINDOW")
+    HANDLERS.clear()
 
 
 if __name__ == "__main__":

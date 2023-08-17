@@ -17,7 +17,6 @@ from pathlib import Path
 
 import bpy
 from bpy_extras.io_utils import ImportHelper
-from mathutils import Color
 
 from soulstruct.containers import Binder, BinderEntry
 
@@ -29,7 +28,6 @@ from .utilities import *
 
 HKX_NAME_RE = re.compile(r".*\.hkx(\.dcx)?")
 HKX_BINDER_RE = re.compile(r"^.*?\.hkxbhd(\.dcx)?$")
-MAP_NAME_RE = re.compile(r"^(m\d\d)_\d\d_\d\d_\d\d$")
 
 
 class HKXImportInfo(tp.NamedTuple):
@@ -163,7 +161,7 @@ class ImportHKXMapCollision(LoggingOperator, ImportHelper):
             transform = None  # type: tp.Optional[Transform]
             if self.read_msb_transform:
                 # NOTE: It's unlikely that this MSB search will work for a loose HKX, but we can try.
-                if MAP_NAME_RE.match(import_info.path.parent.name):
+                if MAP_STEM_RE.match(import_info.path.parent.name):
                     try:
                         transforms = get_collision_msb_transforms(hkx_name=hkx_model_name, hkx_path=import_info.path)
                     except Exception as ex:
@@ -394,7 +392,7 @@ class ImportHKXMapCollisionWithBinderChoice(LoggingOperator):
 
         transform = None
         if self.read_msb_transform:
-            if MAP_NAME_RE.match(self.binder_file_path.parent.name):
+            if MAP_STEM_RE.match(self.binder_file_path.parent.name):
                 try:
                     transforms = get_collision_msb_transforms(hkx_name=hkx_model_name, hkx_path=self.binder_file_path)
                 except Exception as ex:
@@ -610,20 +608,19 @@ class HKXMapCollisionImporter:
             mesh_name = f"{submesh_name_prefix} {i}"
             bl_mesh = self.create_mesh_obj(hkx_subpart, material_indices[i], mesh_name)
             if use_material:
-                # TODO: From HSV, with H jumping up by something like
                 material_name = "HKX Hi" if is_hi_res else "HKX Lo"
                 material_name += " (Mat 1)" if material_indices[i] == 1 else " (Not Mat 1)"
                 try:
                     bl_material = bpy.data.materials[material_name]
                 except KeyError:
                     # Create basic material: orange (lo) or blue (hi/other), lighter for material 1 (most common).
-                    color = Color()
                     # Hue rotates between 10 values. Material index 1 (very common) is mapped to nice blue hue 0.6.
                     hue = 0.1 * ((material_indices[i] + 5) % 10)
                     saturation = 0.8 if is_hi_res else 0.4
                     value = 0.5
-                    color.hsv = (hue, saturation, value)
-                    bl_material = self.create_basic_material(material_name, (color.r, color.g, color.b, 1.0))
+                    color = hsv_color(hue, saturation, value)
+                    # NOTE: Not using wireframe in collision materials (unlike navmesh) as there is no per-face data.
+                    bl_material = create_basic_material(material_name, color, wireframe_pixel_width=0.0)
                 bl_mesh.data.materials.append(bl_material)
 
         return hkx_parent
@@ -646,15 +643,6 @@ class HKXMapCollisionImporter:
         bl_mesh_obj["material_index"] = material_index
 
         return bl_mesh_obj
-
-    @staticmethod
-    def create_basic_material(material_name: str, color: tuple[float, float, float, float]):
-        bl_material = bpy.data.materials.new(name=material_name)
-        bl_material.use_nodes = True
-        nt = bl_material.node_tree
-        bsdf = nt.nodes["Principled BSDF"]
-        bsdf.inputs["Base Color"].default_value = color
-        return bl_material
 
     def create_obj(self, name: str, data=None):
         """Create a new Blender object and parent it to main Empty."""

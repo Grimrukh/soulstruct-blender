@@ -10,8 +10,13 @@ __all__ = [
     "ImportMCG",
     "NVM_PT_navmesh_tools",
     "NavmeshFaceSettings",
-    "AddRemoveNVMFaceFlags",
+    "AddNVMFaceFlags",
+    "RemoveNVMFaceFlags",
     "SetNVMFaceObstacleCount",
+    "MCGDrawSettings",
+    "draw_mcg_nodes",
+    "draw_mcg_node_labels",
+    "draw_mcg_edges",
 ]
 
 import importlib
@@ -29,7 +34,7 @@ if "NVM_PT_nvm_tools" in locals():
 
 from .nvm import ImportNVM, ImportNVMWithBinderChoice, ImportNVMWithMSBChoice, ExportNVM, ExportNVMIntoBinder
 from .nvm.utilities import set_face_material
-from .nav_graph import ImportMCP, ImportMCG
+from .nav_graph import ImportMCP, ImportMCG, MCGDrawSettings, draw_mcg_nodes, draw_mcg_node_labels, draw_mcg_edges
 
 
 _navmesh_type_items = [
@@ -40,15 +45,6 @@ _navmesh_type_items = [
 
 class NavmeshFaceSettings(bpy.types.PropertyGroup):
 
-    flag_action: bpy.props.EnumProperty(
-        name="Action",
-        items=[
-            ("ADD", "Add", "Add a navmesh flag."),
-            ("REMOVE", "Remove", "Remove a navmesh flag."),
-        ],
-        default="ADD",
-        description="Whether to add or remove a navmesh flag type.",
-    )
     flag_type: bpy.props.EnumProperty(
         name="Flag",
         items=_navmesh_type_items,
@@ -74,9 +70,9 @@ class RefreshFaceIndices(bpy.types.Operator):
         return {'FINISHED'}
 
 
-class AddRemoveNVMFaceFlags(bpy.types.Operator):
-    bl_idname = "object.add_remove_nvm_face_flags"
-    bl_label = "Add/Remove NVM Face Flags"
+class AddNVMFaceFlags(bpy.types.Operator):
+    bl_idname = "object.add_nvm_face_flags"
+    bl_label = "Add NVM Face Flags"
 
     @classmethod
     def poll(cls, context):
@@ -93,13 +89,36 @@ class AddRemoveNVMFaceFlags(bpy.types.Operator):
         if flags_layer:
             selected_faces = [face for face in bm.faces if face.select]
             for face in selected_faces:
-                if props.flag_action == "ADD":
-                    face[flags_layer] |= int(props.flag_type)
-                elif props.flag_action == "REMOVE":
-                    face[flags_layer] &= ~int(props.flag_type)
-                else:
-                    raise ValueError(f"Invalid action: {props.flag_action}")
+                face[flags_layer] |= int(props.flag_type)
+                set_face_material(bl_mesh=obj.data, bl_face=face, face_flags=face[flags_layer])
 
+            bmesh.update_edit_mesh(obj.data)
+
+        # TODO: Would be nice to remove now-unused materials from the mesh.
+
+        return {"FINISHED"}
+
+
+class RemoveNVMFaceFlags(bpy.types.Operator):
+    bl_idname = "object.remove_nvm_face_flags"
+    bl_label = "Remove NVM Face Flags"
+
+    @classmethod
+    def poll(cls, context):
+        return context.edit_object is not None and context.mode == "EDIT_MESH"
+
+    # noinspection PyMethodMayBeStatic
+    def execute(self, context):
+        obj = context.edit_object
+        bm = bmesh.from_edit_mesh(obj.data)
+
+        props = context.scene.navmesh_face_settings  # type: NavmeshFaceSettings
+
+        flags_layer = bm.faces.layers.int.get("nvm_face_flags")
+        if flags_layer:
+            selected_faces = [face for face in bm.faces if face.select]
+            for face in selected_faces:
+                face[flags_layer] &= ~int(props.flag_type)
                 set_face_material(bl_mesh=obj.data, bl_face=face, face_flags=face[flags_layer])
 
             bmesh.update_edit_mesh(obj.data)
@@ -157,6 +176,16 @@ class NVM_PT_navmesh_tools(bpy.types.Panel):
 
         # NOTE: No plans for MCP/MCG export yet. Preferring to edit manually and use Blender just to inspect.
 
+        self.layout.label(text="MCG Draw Settings:")
+        mcg_draw_settings_box = self.layout.box()
+        mcg_draw_settings_box.prop(context.scene.mcg_draw_settings, "mcg_node_parent_name")
+        mcg_draw_settings_box.prop(context.scene.mcg_draw_settings, "mcg_node_draw_enabled")
+        mcg_draw_settings_box.prop(context.scene.mcg_draw_settings, "mcg_node_label_draw_enabled")
+        mcg_draw_settings_box.prop(context.scene.mcg_draw_settings, "mcg_edge_parent_name")
+        mcg_draw_settings_box.prop(context.scene.mcg_draw_settings, "mcg_edge_draw_enabled")
+        mcg_draw_settings_box.prop(context.scene.mcg_draw_settings, "mcg_node_label_font_size")
+        mcg_draw_settings_box.prop(context.scene.mcg_draw_settings, "mcg_node_label_font_color")
+
         self.layout.label(text="Selected Face Indices:")
         selected_faces_box = self.layout.box()
         obj = bpy.context.edit_object
@@ -188,9 +217,8 @@ class NVM_PT_navmesh_tools(bpy.types.Panel):
                 row = flag_box.row()
                 row.prop(props, "flag_type")
                 row = flag_box.row()
-                row.prop(props, "flag_action")
-                row = flag_box.row()
-                row.operator(AddRemoveNVMFaceFlags.bl_idname, text="Add/Remove Flag")
+                row.operator(AddNVMFaceFlags.bl_idname, text="Add Flag")
+                row.operator(RemoveNVMFaceFlags.bl_idname, text="Remove Flag")
 
                 # Box and button to set obstacle count for selected faces.
                 obstacle_box = self.layout.box()

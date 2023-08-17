@@ -143,7 +143,7 @@ def set_face_material(bl_mesh, bl_face, face_flags: int):
             except (ValueError, KeyError):
                 # Unspecified flag color.
                 color = NAVMESH_UNKNOWN_FLAG_COLOR
-        bl_material = create_basic_material(material_name, color)
+        bl_material = create_basic_material(material_name, color, wireframe_pixel_width=2)
 
     # Add material to this mesh and this face.
     bl_face.material_index = len(bl_mesh.materials)
