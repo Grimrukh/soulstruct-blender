@@ -11,7 +11,7 @@ from bpy_extras.io_utils import ImportHelper, ExportHelper
 import bmesh
 
 from soulstruct.containers import Binder, BinderEntry, DCXType
-from soulstruct.darksouls1r.maps.navmesh.nvm import NVM, NVMTriangle
+from soulstruct.darksouls1r.maps.navmesh.nvm import NVM, NVMTriangle, NVMEventEntity
 
 from io_soulstruct.utilities import *
 from .utilities import *
@@ -54,7 +54,7 @@ class ExportNVM(LoggingOperator, ExportHelper):
             return self.error("No Empty with child meshes selected for NVM export.")
         if len(selected_objs) > 1:
             return self.error("More than one object cannot be selected for NVM export.")
-        bl_mesh = selected_objs[0].data
+        bl_mesh_obj = selected_objs[0]
 
         # TODO: Not needed for meshes only?
         if bpy.ops.object.mode_set.poll():
@@ -63,7 +63,7 @@ class ExportNVM(LoggingOperator, ExportHelper):
         exporter = NVMExporter(self, context)
 
         try:
-            nvm = exporter.export_nvm(bl_mesh)
+            nvm = exporter.export_nvm(bl_mesh_obj)
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Cannot get exported NVM. Error: {ex}")
@@ -128,7 +128,7 @@ class ExportNVMIntoBinder(LoggingOperator, ImportHelper):
             return self.error("No Mesh selected for NVM export.")
         if len(selected_objs) > 1:
             return self.error("More than one object cannot be selected for NVM export.")
-        bl_mesh = selected_objs[0].data
+        bl_mesh_obj = selected_objs[0]
         nvm_stem = selected_objs[0].name
 
         try:
@@ -143,7 +143,7 @@ class ExportNVMIntoBinder(LoggingOperator, ImportHelper):
         exporter = NVMExporter(self, context)
 
         try:
-            nvm = exporter.export_nvm(bl_mesh)
+            nvm = exporter.export_nvm(bl_mesh_obj)
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Cannot get exported NVM. Error: {ex}")
@@ -213,42 +213,43 @@ class NVMExporter:
         self.operator.report({"WARNING"}, msg)
         print(f"# WARNING: {msg}")
 
-    def export_nvm(self, bl_mesh) -> NVM:
+    def export_nvm(self, bl_mesh_obj) -> NVM:
         """Create NVM from Blender meshes (subparts).
 
         This is much simpler than FLVER or HKX map collision mesh export. Note that the navmesh name is not needed, as
         it appears nowhere in the NVM binary file.
         """
-        nvm_verts = [BL_TO_GAME_VECTOR3_LIST(vert.co) for vert in bl_mesh.data.vertices]  # type: list[list[float]]
+        nvm_verts = [BL_TO_GAME_VECTOR3_LIST(vert.co) for vert in bl_mesh_obj.data.vertices]  # type: list[list[float]]
         nvm_faces = []  # type: list[tuple[int, int, int]]
-        for face in bl_mesh.data.polygons:
+        for face in bl_mesh_obj.data.polygons:
             if len(face.vertices) != 3:
                 raise ValueError(f"Found a non-triangular mesh face in NVM. It must be triangulated first.")
             nvm_faces.append(tuple(face.vertices))
 
-        def find_connected_face_index(edge_v1: int, edge_v2: int) -> int:
+        def find_connected_face_index(edge_v1: int, edge_v2: int, not_face) -> int:
             """Find face that shares an edge with the given edge.
 
             Returns -1 if no connected face is found (i.e. edge is on the edge of the mesh).
             """
-            for i, f in enumerate(nvm_faces):
-                if edge_v1 in f and edge_v2 in f:  # order doesn't matter
-                    return i
+            # TODO: Could surely iterate over faces just once for this?
+            for i_, f_ in enumerate(nvm_faces):
+                if f_ != not_face and edge_v1 in f_ and edge_v2 in f_:  # order doesn't matter
+                    return i_
             return -1
 
         # Get connected faces along each edge of each face.
         nvm_connected_face_indices = []  # type: list[tuple[int, int, int]]
         for face in nvm_faces:
-            connected_v1 = find_connected_face_index(face[0], face[1])
-            connected_v2 = find_connected_face_index(face[1], face[2])
-            connected_v3 = find_connected_face_index(face[2], face[0])
+            connected_v1 = find_connected_face_index(face[0], face[1], face)
+            connected_v2 = find_connected_face_index(face[1], face[2], face)
+            connected_v3 = find_connected_face_index(face[2], face[0], face)
             nvm_connected_face_indices.append((connected_v1, connected_v2, connected_v3))
             if connected_v1 == -1 and connected_v2 == -1 and connected_v3 == -1:
                 self.warning(f"NVM face {face} appears to have no connected faces, which is very suspicious!")
 
         # Create `BMesh` to access custom face layers for `flags` and `obstacle_count`.
         bm = bmesh.new()
-        bm.from_mesh(bl_mesh)
+        bm.from_mesh(bl_mesh_obj.data)
         bm.verts.ensure_lookup_table()
         bm.faces.ensure_lookup_table()
 
@@ -277,11 +278,28 @@ class NVMExporter:
             for i in range(len(nvm_faces))
         ]
 
+        event_entities = []
+        event_prefix = f"{bl_mesh_obj.name} Event "
+        for child in bl_mesh_obj.children:
+            if child.name.startswith(event_prefix):
+                try:
+                    entity_id = child["entity_id"]
+                except KeyError:
+                    self.warning(f"Event entity '{child.name}' does not have 'entity_id' custom property. Ignoring.")
+                    continue
+                try:
+                    triangle_indices = child["triangle_indices"]
+                except KeyError:
+                    self.warning(f"Event entity '{child.name}' does not have 'triangle_indices' custom property. "
+                                 f"Ignoring.")
+                    continue
+                event_entities.append(NVMEventEntity(entity_id=entity_id, triangle_indices=list(triangle_indices)))
+
         nvm = NVM(
             big_endian=False,
             vertices=nvm_verts,
             triangles=nvm_triangles,
-            event_entities=[],  # TODO: represent in Blender
+            event_entities=event_entities,
             # quadtree boxes generated automatically
         )
 

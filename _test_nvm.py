@@ -5,9 +5,8 @@ from soulstruct.config import DSR_PATH
 
 def main():
     nvmbnd = Binder.from_path(DSR_PATH + r"\map\m10_00_00_00\m10_00_00_00.nvmbnd.dcx")
-    nvm = nvmbnd[0].to_binary_file(NVM)
-    for tri in nvm.triangles:
-        print(tri)
+    nvm = nvmbnd[2].to_binary_file(NVM)
+    nvm.write("test.nvm")
 
 
 if __name__ == '__main__':

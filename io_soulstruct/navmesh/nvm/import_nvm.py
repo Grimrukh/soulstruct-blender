@@ -19,10 +19,11 @@ from pathlib import Path
 import bpy
 import bmesh
 from bpy_extras.io_utils import ImportHelper
+from mathutils import Vector
 
 from soulstruct.containers import Binder, BinderEntry, BinderEntryNotFoundError
 from soulstruct.darksouls1r.maps import MSB
-from soulstruct.darksouls1r.maps.navmesh.nvm import NVM, NVMBox
+from soulstruct.darksouls1r.maps.navmesh.nvm import NVM, NVMBox, NVMEventEntity
 
 from io_soulstruct.utilities import *
 from .utilities import *
@@ -565,20 +566,22 @@ class NVMImporter:
         flags_layer = bm.faces.layers.int.new("nvm_face_flags")
         obstacle_count_layer = bm.faces.layers.int.new("nvm_face_obstacle_count")
 
-        # TODO: Is there any chance the face count could change, e.g. if some NVM faces were degenerate and ignored
-        #  by Blender during BMesh construction?
         for f_i, face in enumerate(bm.faces):
             nvm_triangle = nvm.triangles[f_i]
             face[flags_layer] = nvm_triangle.flags
             face[obstacle_count_layer] = nvm_triangle.obstacle_count
+
+        for event in nvm.event_entities:
+            bl_event = self.create_event_entity(event, bm.faces, import_info.bl_name)
+            self.context.scene.collection.objects.link(bl_event)
+            self.all_bl_objs.append(bl_event)
+            bl_event.parent = mesh_obj
 
         bm.to_mesh(bl_mesh)
         del bm
 
         if create_quadtree_boxes:
             self.create_nvm_quadtree(mesh_obj, nvm, import_info.bl_name)
-
-        # TODO: Event entities?
 
         self.imported_models[import_info.model_file_stem] = mesh_obj
 
@@ -623,3 +626,24 @@ class NVMImporter:
         bpy.ops.object.modifier_add(type="WIREFRAME")
         bl_box.modifiers[0].thickness = 0.02
         return bl_box
+
+    @staticmethod
+    def create_event_entity(nvm_event_entity: NVMEventEntity, bm_faces: list[bmesh.types.BMFace], bl_nvm_name: str):
+        """Create an Empty child that just holds the ID and triangle indices of a NVM event entity.
+
+        Object is placed at the centroid of the faces it references, but this is just for convenience, and does not
+        affect export. The user should move the event around if they change the attached faces.
+        """
+        bl_event = bpy.data.objects.new(f"{bl_nvm_name} Event {nvm_event_entity.entity_id}", None)
+        bl_event.empty_display_type = "SPHERE"
+
+        # Get the average position of the faces.
+        avg_pos = Vector((0, 0, 0))
+        for i in nvm_event_entity.triangle_indices:
+            avg_pos += bm_faces[i].calc_center_median()
+        avg_pos /= len(nvm_event_entity.triangle_indices)
+        bl_event.location = avg_pos
+
+        bl_event["entity_id"] = nvm_event_entity.entity_id
+        bl_event["triangle_indices"] = nvm_event_entity.triangle_indices
+        return bl_event

@@ -47,7 +47,7 @@ NAVMESH_FLAG_COLORS = {
     NavmeshType.Disable: hsv_color(0.0, 0.0, 0.1),  # DARK GREY
     NavmeshType.Degenerate: hsv_color(0.0, 0.0, 0.1),  # DARK GREY
     NavmeshType.Obstacle: hsv_color(0.064, 0.9, 0.2),  # DARK ORANGE
-    NavmeshType.MapExit: hsv_color(0.33, 0.9, 0.8),  # LIGHT GREEN
+    NavmeshType.MapExit: hsv_color(0.3, 0.9, 1.0),  # LIGHT GREEN
     NavmeshType.Hole: hsv_color(0.066, 0.9, 0.5),  # ORANGE
     NavmeshType.Ladder: hsv_color(0.15, 0.9, 0.5),  # YELLOW
     NavmeshType.ClosedDoor: hsv_color(0.66, 0.9, 0.25),  # DARK BLUE
