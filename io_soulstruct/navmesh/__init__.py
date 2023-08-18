@@ -176,7 +176,7 @@ class NVM_PT_navmesh_tools(bpy.types.Panel):
         import_navgraph_box.operator(ImportMCG.bl_idname)
 
         export_navgraph_box = self.layout.box()
-        export_navgraph_box.operator(ExportMCG.bl_idname)
+        export_navgraph_box.operator(ExportMCG.bl_idname, text="Export MCG + MCP")
 
         # NOTE: No plans for MCP/MCG export yet. Preferring to edit manually and use Blender just to inspect.
 
