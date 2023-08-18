@@ -8,6 +8,7 @@ __all__ = [
     "ExportNVMIntoBinder",
     "ImportMCP",
     "ImportMCG",
+    "ExportMCG",
     "NVM_PT_navmesh_tools",
     "NavmeshFaceSettings",
     "AddNVMFaceFlags",
@@ -34,7 +35,7 @@ if "NVM_PT_nvm_tools" in locals():
 
 from .nvm import ImportNVM, ImportNVMWithBinderChoice, ImportNVMWithMSBChoice, ExportNVM, ExportNVMIntoBinder
 from .nvm.utilities import set_face_material
-from .nav_graph import ImportMCP, ImportMCG, MCGDrawSettings, draw_mcg_nodes, draw_mcg_node_labels, draw_mcg_edges
+from .nav_graph import *
 
 
 _navmesh_type_items = [
@@ -174,15 +175,17 @@ class NVM_PT_navmesh_tools(bpy.types.Panel):
         import_navgraph_box.operator(ImportMCP.bl_idname)
         import_navgraph_box.operator(ImportMCG.bl_idname)
 
+        export_navgraph_box = self.layout.box()
+        export_navgraph_box.operator(ExportMCG.bl_idname)
+
         # NOTE: No plans for MCP/MCG export yet. Preferring to edit manually and use Blender just to inspect.
 
         self.layout.label(text="MCG Draw Settings:")
         mcg_draw_settings_box = self.layout.box()
-        mcg_draw_settings_box.prop(context.scene.mcg_draw_settings, "mcg_node_parent_name")
-        mcg_draw_settings_box.prop(context.scene.mcg_draw_settings, "mcg_node_draw_enabled")
+        mcg_draw_settings_box.prop(context.scene.mcg_draw_settings, "mcg_parent_name")
+        mcg_draw_settings_box.prop(context.scene.mcg_draw_settings, "mcg_graph_draw_enabled")
+        mcg_draw_settings_box.prop(context.scene.mcg_draw_settings, "mcg_graph_color")
         mcg_draw_settings_box.prop(context.scene.mcg_draw_settings, "mcg_node_label_draw_enabled")
-        mcg_draw_settings_box.prop(context.scene.mcg_draw_settings, "mcg_edge_parent_name")
-        mcg_draw_settings_box.prop(context.scene.mcg_draw_settings, "mcg_edge_draw_enabled")
         mcg_draw_settings_box.prop(context.scene.mcg_draw_settings, "mcg_node_label_font_size")
         mcg_draw_settings_box.prop(context.scene.mcg_draw_settings, "mcg_node_label_font_color")
 

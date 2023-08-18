@@ -42,49 +42,33 @@ STANDARD_NVM_STEM_RE = re.compile(r"^n(\d{4})B(?P<B>\d)A(?P<A>\d{2})$")  # no ex
 NVMBND_NAME_RE = re.compile(r"^.*?\.nvmbnd(\.dcx)?$")
 
 
-RED = hsv_color(0.0, 0.8, 0.5)
-ORANGE = hsv_color(0.066, 0.5, 0.5)
-YELLOW = hsv_color(0.15, 0.5, 0.5)
-GREEN = hsv_color(0.33, 0.5, 0.5)
-CYAN = hsv_color(0.5, 0.5, 0.5)
-SKY_BLUE = hsv_color(0.6, 0.5, 0.5)
-DEEP_BLUE = hsv_color(0.66, 0.5, 0.5)
-PURPLE = hsv_color(0.7, 0.8, 0.5)
-MAGENTA = hsv_color(0.8, 0.8, 0.5)
-PINK = hsv_color(0.95, 0.5, 0.5)
-WHITE = hsv_color(0.0, 0.0, 1.0)
-GREY = hsv_color(0.0, 0.0, 0.25)
-BLACK = hsv_color(0.0, 0.5, 0.0)
-
-
 # In descending priority order. All flags can be inspected in custom properties.
 NAVMESH_FLAG_COLORS = {
-    NavmeshType.Disable: BLACK,
-    NavmeshType.Degenerate: BLACK,
-    NavmeshType.Obstacle: PINK,
-    NavmeshType.MapExit: RED,  # between-map navmesh connection
-    NavmeshType.Hole: ORANGE,
-    NavmeshType.Ladder: ORANGE,
-    NavmeshType.ClosedDoor: ORANGE,
-    NavmeshType.Gate: MAGENTA,  # within-map navmesh connection
-    NavmeshType.Door: YELLOW,
-    NavmeshType.InsideWall: YELLOW,
-    NavmeshType.Edge: YELLOW,
-    NavmeshType.DropAdjacent: YELLOW,
-    NavmeshType.LandingPoint: ORANGE,
-    NavmeshType.LargeSpace: DEEP_BLUE,
-    NavmeshType.Event: GREEN,
-    NavmeshType.Drop: CYAN,
-    NavmeshType.Default: PURPLE,
+    NavmeshType.Disable: hsv_color(0.0, 0.0, 0.1),  # DARK GREY
+    NavmeshType.Degenerate: hsv_color(0.0, 0.0, 0.1),  # DARK GREY
+    NavmeshType.Obstacle: hsv_color(0.064, 0.9, 0.2),  # DARK ORANGE
+    NavmeshType.MapExit: hsv_color(0.33, 0.9, 0.8),  # LIGHT GREEN
+    NavmeshType.Hole: hsv_color(0.066, 0.9, 0.5),  # ORANGE
+    NavmeshType.Ladder: hsv_color(0.15, 0.9, 0.5),  # YELLOW
+    NavmeshType.ClosedDoor: hsv_color(0.66, 0.9, 0.25),  # DARK BLUE
+    NavmeshType.Gate: hsv_color(0.33, 0.9, 0.15),  # DARK GREEN
+    NavmeshType.Door: hsv_color(0.66, 0.9, 0.75),  # LIGHT BLUE
+    NavmeshType.InsideWall: hsv_color(0.4, 0.9, 0.3),  # TURQUOISE
+    NavmeshType.Edge: hsv_color(0.066, 0.9, 0.5),  # ORANGE
+    NavmeshType.DropAdjacent: hsv_color(0.0, 0.8, 0.8),  # LIGHT RED
+    NavmeshType.LandingPoint: hsv_color(0.4, 0.9, 0.7),  # LIGHT TURQUOISE
+    NavmeshType.LargeSpace: hsv_color(0.7, 0.9, 0.7),  # PURPLE
+    NavmeshType.Event: hsv_color(0.5, 0.9, 0.5),  # CYAN
+    NavmeshType.Drop: hsv_color(0.0, 0.8, 0.1),  # DARK RED
+    NavmeshType.Default: hsv_color(0.8, 0.9, 0.5),  # MAGENTA
 }
-NAVMESH_MULTIPLE_FLAG_COLOR = WHITE
-NAVMESH_UNKNOWN_FLAG_COLOR = GREY
+NAVMESH_MULTIPLE_FLAG_COLOR = hsv_color(0.0, 0.0, 1.0)  # WHITE
+NAVMESH_UNKNOWN_FLAG_COLOR = hsv_color(0.0, 0.0, 0.25)  # GREY
 
 
-def get_navmesh_msb_transforms(nvm_name: str, nvm_path: Path, msb_path: Path = None) -> list[tuple[str, Transform]]:
+def get_navmesh_msb_transforms(msb_model_name: str, nvm_path: Path, msb_path: Path = None) -> list[tuple[str, Transform]]:
     """Search MSB at `msb_path` (autodetected from `nvm_path.parent` by default) and return
     `(navmesh_name, Transform)` pairs for all Navmesh entries using the `nvm_name` model."""
-    model_name = nvm_name[:7]  # drop `AXX` suffix
     if msb_path is None:
         nvm_parent_dir = nvm_path.parent
         nvm_map = get_map(nvm_parent_dir.name)
@@ -100,10 +84,10 @@ def get_navmesh_msb_transforms(nvm_name: str, nvm_path: Path, msb_path: Path = N
         )
     matches = []
     for navmesh in msb.navmeshes:
-        if model_name == navmesh.model.name:
+        if msb_model_name == navmesh.model.name:
             matches.append(navmesh)
     if not matches:
-        raise ValueError(f"Cannot find any MSB Navmesh entries using model '{model_name}' ({nvm_name}).")
+        raise ValueError(f"Cannot find any MSB Navmesh entries using MSB model '{msb_model_name}'.")
     transforms = [(m.name, Transform.from_msb_part(m)) for m in matches]
     return transforms
 

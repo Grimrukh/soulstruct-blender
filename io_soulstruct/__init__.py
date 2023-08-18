@@ -99,6 +99,7 @@ CLASSES = (
     ExportNVMIntoBinder,
     ImportMCP,
     ImportMCG,
+    ExportMCG,
     NVM_PT_navmesh_tools,
     NavmeshFaceSettings,
     AddNVMFaceFlags,

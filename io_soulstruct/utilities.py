@@ -217,7 +217,7 @@ class BlenderPropertyManager:
         try:
             prop = self.properties[prop_class][py_prop_name]
         except KeyError:
-            raise KeyError(f"Invalid Blender HKX property class/name: {prop_class}, {bl_prop_name}")
+            raise KeyError(f"Invalid Blender object property class/name: {prop_class}, {bl_prop_name}")
 
         prop_value = bl_obj.get(bl_prop_name, prop.default)
 
