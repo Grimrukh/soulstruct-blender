@@ -35,6 +35,7 @@ class NVMImportInfo(tp.NamedTuple):
     model_file_stem: str  # generally stem of NVM file or Binder entry
     bl_name: str  # name to assign to Blender object (usually same as `nvm_name`)
     nvm: NVM  # parsed NVM
+    is_msb_part: bool = False  # if true, will write `model_file_stem` to Blender object custom property
 
 
 class NVMImportChoiceInfo(tp.NamedTuple):
@@ -121,6 +122,8 @@ class ImportNVM(LoggingOperator, ImportHelper):
         else:
             msb_path = None
 
+        msb = None
+
         for file_path in file_paths:
 
             is_binder = NVMBND_NAME_RE.match(file_path.name) is not None
@@ -170,8 +173,12 @@ class ImportNVM(LoggingOperator, ImportHelper):
 
             transform = None  # type: tp.Optional[Transform]
             if self.read_msb_transform:
-                # NOTE: It's unlikely that this MSB search will work for a loose NVM, but we can try.
-                if MAP_STEM_RE.match(import_info.path.parent.name):
+                if msb is not None:
+                    # Already have MSB source of binder NVM.
+                    msb_navmesh = msb.navmeshes.find_entry_name(import_info.bl_name)
+                    transform = Transform.from_msb_part(msb_navmesh)
+                elif MAP_STEM_RE.match(import_info.path.parent.name):
+                    # NOTE: It's unlikely that this MSB search will work for a loose NVM, but we can try.
                     msb_model_name = import_info.model_file_stem[:7]
                     try:
                         transforms = get_navmesh_msb_transforms(msb_model_name, nvm_path=import_info.path)
@@ -267,7 +274,8 @@ class ImportNVM(LoggingOperator, ImportHelper):
     ) -> list[NVMImportInfo | NVMImportChoiceInfo]:
         """Load each `NVM` file from a `Binder` used in the given MSB and queue them for import.
 
-        NOTE: Requires that each model file exists only once in the NVMBND.
+        NOTE: Requires that each model file exists only once in the NVMBND. Sets model file stem as `model_name` custom
+        property in Blender so it can be used for exporting models.
         """
         # Load all models used by MSB parts.
         new_import_infos = []  # type: list[NVMImportInfo]
@@ -290,7 +298,7 @@ class ImportNVM(LoggingOperator, ImportHelper):
             else:
                 nvm.path = Path(entry.name)  # also done in `GameFile`, but explicitly needed below
                 # May involve duplicate models, which will be handled by importer.
-                new_import_infos.append(NVMImportInfo(file_path, entry.minimal_stem, navmesh_part.name, nvm))
+                new_import_infos.append(NVMImportInfo(file_path, entry.minimal_stem, navmesh_part.name, nvm, True))
         return new_import_infos
 
     def check_nvm_entry_model_id(self, nvm_entry: BinderEntry) -> bool:
@@ -582,6 +590,10 @@ class NVMImporter:
 
         if create_quadtree_boxes:
             self.create_nvm_quadtree(mesh_obj, nvm, import_info.bl_name)
+
+        # Assign `model_file_stem` property if requested (usually because Blender object names are parts, not models).
+        if import_info.is_msb_part:
+            mesh_obj["model_file_stem"] = import_info.model_file_stem
 
         self.imported_models[import_info.model_file_stem] = mesh_obj
 

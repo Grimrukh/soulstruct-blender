@@ -15,7 +15,7 @@ import bpy
 from bpy_extras.io_utils import ImportHelper
 
 from soulstruct.base.textures.dds import texconv
-from soulstruct.containers import BinderEntry, BinderEntryFlags, DCXType, TPF
+from soulstruct.containers import BinderEntry, DCXType, TPF
 
 from io_soulstruct.utilities import *
 from .utilities import *
@@ -539,7 +539,7 @@ class ExportLightmapTextures(LoggingOperator, ImportHelper):
                             data=new_tpf.pack_dcx(),
                             entry_id=texture_export_info.chrtpfbxf.highest_entry_id + 1,
                             path=new_tpf_entry_path,
-                            flags=BinderEntryFlags(0x2),  # TODO: DS1 default (and everything seen so far I believe)
+                            flags=0x2,  # TODO: DS1 default (and everything seen so far I believe)
                         )
                     )
                 else:

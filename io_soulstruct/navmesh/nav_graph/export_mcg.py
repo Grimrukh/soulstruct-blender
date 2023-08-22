@@ -205,8 +205,8 @@ class MCGExporter:
         node_prefix = f"m{map_id[0]:02d}_{map_id[1]:02d}_{map_id[2]:02d}_{map_id[3]:02d} Node "
         for i, bl_node in enumerate(bl_nodes):
             if bl_node.name.startswith(node_prefix):
-                node_name = bl_node.name.split("<")[0].strip()  # ignore dead end navmesh suffix
-                node_dict[node_name] = i
+                node_name = bl_node.name.removeprefix(node_prefix).split("<")[0].strip()  # ignore dead end suffix
+                node_dict[f"Node {node_name}"] = i
             else:
                 raise MCGExportError(f"Node '{bl_node.name}' does not start with 'Node '.")
 

@@ -66,22 +66,27 @@ NAVMESH_MULTIPLE_FLAG_COLOR = hsv_color(0.0, 0.0, 1.0)  # WHITE
 NAVMESH_UNKNOWN_FLAG_COLOR = hsv_color(0.0, 0.0, 0.25)  # GREY
 
 
-def get_navmesh_msb_transforms(msb_model_name: str, nvm_path: Path, msb_path: Path = None) -> list[tuple[str, Transform]]:
+def get_navmesh_msb_transforms(
+    msb_model_name: str, nvm_path: Path, msb: MSB | None = None, msb_path: Path = None
+) -> list[tuple[str, Transform]]:
     """Search MSB at `msb_path` (autodetected from `nvm_path.parent` by default) and return
     `(navmesh_name, Transform)` pairs for all Navmesh entries using the `nvm_name` model."""
-    if msb_path is None:
+    if msb is None and msb_path is None:
         nvm_parent_dir = nvm_path.parent
         nvm_map = get_map(nvm_parent_dir.name)
         msb_path = nvm_parent_dir.parent / f"MapStudio/{nvm_map.msb_file_stem}.msb"
-    if not msb_path.is_file():
-        raise FileNotFoundError(f"Cannot find MSB file '{msb_path}'.")
-    try:
-        msb = MSB.from_path(msb_path)
-    except Exception as ex:
-        raise RuntimeError(
-            f"Cannot open MSB: {ex}.\n"
-            f"\nCurrently, only Dark Souls 1 (either version) MSBs are supported."
-        )
+    if msb is None:
+        if not msb_path.is_file():
+            raise FileNotFoundError(f"Cannot find MSB file '{msb_path}'.")
+        try:
+            msb = MSB.from_path(msb_path)
+        except Exception as ex:
+            raise RuntimeError(
+                f"Cannot open MSB: {ex}.\n"
+                f"\nCurrently, only Dark Souls 1 (either version) MSBs are supported."
+            )
+    elif msb_path is not None:
+        raise ValueError("Cannot provide both `msb` and `msb_path`.")
     matches = []
     for navmesh in msb.navmeshes:
         if msb_model_name == navmesh.model.name:

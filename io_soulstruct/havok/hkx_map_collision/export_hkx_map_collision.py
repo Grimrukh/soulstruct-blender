@@ -11,7 +11,7 @@ from bpy.props import StringProperty, BoolProperty, IntProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 from soulstruct.containers.dcx import DCXType
 
-from soulstruct.containers import Binder, BinderEntry, BinderEntryFlags
+from soulstruct.containers import Binder, BinderEntry
 
 from soulstruct_havok.wrappers.hkx2015 import MapCollisionHKX
 
@@ -266,7 +266,7 @@ class ExportHKXMapCollisionIntoBinder(LoggingOperator, ImportHelper):
                 write_other_resolution=self.write_other_resolution,
                 allow_any_name=self.allow_any_name,
                 default_entry_path=self.default_entry_path,
-                default_entry_flags=BinderEntryFlags(self.default_entry_flags),
+                default_entry_flags=self.default_entry_flags,
                 overwrite_existing=self.overwrite_existing,
             )
         except Exception as ex:
@@ -343,7 +343,7 @@ class ExportHKXMapCollisionToMapDirectoryBHD(LoggingOperator):
                 write_other_resolution=True,
                 allow_any_name=False,
                 default_entry_path="{map}\\{name}.hkx.dcx",
-                default_entry_flags=BinderEntryFlags(0x2),
+                default_entry_flags=0x2,
                 overwrite_existing=True,
             )
         except Exception as ex:
@@ -358,7 +358,7 @@ def find_binder_hkx_entry(
     binder: Binder,
     hkx_model_name: str,
     default_entry_path: str,
-    default_entry_flags: BinderEntryFlags,
+    default_entry_flags: int,
     overwrite_existing: bool,
 ) -> BinderEntry:
     matching_entries = binder.find_entries_matching_name(rf"{hkx_model_name}\.hkx(\.dcx)?")
@@ -409,7 +409,7 @@ def export_hkx_to_binder(
     write_other_resolution: bool,
     allow_any_name: bool,
     default_entry_path: str,
-    default_entry_flags: BinderEntryFlags,
+    default_entry_flags: int,
     overwrite_existing: bool,
 ):
     try:

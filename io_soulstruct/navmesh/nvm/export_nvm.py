@@ -14,7 +14,6 @@ from soulstruct.containers import Binder, BinderEntry, DCXType
 from soulstruct.darksouls1r.maps.navmesh.nvm import NVM, NVMTriangle, NVMEventEntity
 
 from io_soulstruct.utilities import *
-from .utilities import *
 
 
 DEBUG_MESH_INDEX = None
@@ -83,7 +82,7 @@ class ExportNVM(LoggingOperator, ExportHelper):
 class ExportNVMIntoBinder(LoggingOperator, ImportHelper):
     bl_idname = "export_scene.nvm_binder"
     bl_label = "Export NVM Into Binder"
-    bl_description = "Export a NVM navmesh file into a FromSoftware Binder (BND/BHD)"
+    bl_description = "Export NVM navmesh files into a FromSoftware Binder (BND/BHD)"
 
     filename_ext = ".nvmbnd"
 
@@ -117,24 +116,21 @@ class ExportNVMIntoBinder(LoggingOperator, ImportHelper):
 
     @classmethod
     def poll(cls, context):
-        """Requires a single selected Mesh object."""
-        return len(context.selected_objects) == 1 and context.selected_objects[0].type == "MESH"
+        """Requires one or more selected Mesh objects."""
+        return len(context.selected_objects) >= 1 and all(obj.type == "MESH" for obj in context.selected_objects)
 
     def execute(self, context):
         print("Executing NVM export to Binder...")
 
         selected_objs = [obj for obj in context.selected_objects]
         if not selected_objs:
-            return self.error("No Mesh selected for NVM export.")
-        if len(selected_objs) > 1:
-            return self.error("More than one object cannot be selected for NVM export.")
-        bl_mesh_obj = selected_objs[0]
-        nvm_stem = selected_objs[0].name
+            return self.error("No Meshes selected for NVM export.")
 
         try:
             binder = Binder.from_path(self.filepath)
         except Exception as ex:
             return self.error(f"Could not load Binder file. Error: {ex}.")
+        binder_stem = binder.path.name.split(".")[0]
 
         # TODO: Not needed for meshes only?
         if bpy.ops.object.mode_set.poll():
@@ -142,54 +138,58 @@ class ExportNVMIntoBinder(LoggingOperator, ImportHelper):
 
         exporter = NVMExporter(self, context)
 
-        try:
-            nvm = exporter.export_nvm(bl_mesh_obj)
-        except Exception as ex:
-            traceback.print_exc()
-            return self.error(f"Cannot get exported NVM. Error: {ex}")
-        else:
-            nvm.dcx_type = DCXType[self.dcx_type]  # most likely `Null` for file in `nvmbnd` Binder
+        for bl_mesh_obj in selected_objs:
+            model_file_stem = bl_mesh_obj.get("model_file_stem", bl_mesh_obj.name)
 
-        matching_entries = binder.find_entries_matching_name(rf"{nvm_stem}\.nvm(\.dcx)?")
-        if not matching_entries:
-            # Create new entry.
-            if "{map}" in self.default_entry_path:
-                # We can try to detect the map area and block from the NVM name.
-                if match := STANDARD_NVM_STEM_RE.match(nvm_stem):
-                    group_dict = match.groupdict()
-                    area, block = int(group_dict["A"]), int(group_dict["B"])
-                    map_str = f"m{area:02d}_{block:02d}_00_00"  # TODO: confirm DS1 m12_00 uses m12_00_00_00, not _01
+            try:
+                nvm = exporter.export_nvm(bl_mesh_obj)
+            except Exception as ex:
+                traceback.print_exc()
+                return self.error(f"Cannot get exported NVM. Error: {ex}")
+            else:
+                nvm.dcx_type = DCXType[self.dcx_type]  # most likely `Null` for file in `nvmbnd` Binder
+
+            matching_entries = binder.find_entries_matching_name(rf"{model_file_stem}\.nvm(\.dcx)?")
+            if not matching_entries:
+                # Create new entry.
+                if "{map}" in self.default_entry_path:
+                    if MAP_STEM_RE.match(binder_stem):
+                        map_str = binder_stem
+                    else:
+                        return self.error(
+                            f"Could not determine '{{map}}' for new Binder entry from Binder stem: {binder_stem}. "
+                            f"You must replace the '{{map}}' template in the Default Entry Path with a known map stem."
+                        )
+                    entry_path = self.default_entry_path.format(map=map_str, name=model_file_stem)
                 else:
-                    return self.error(
-                        f"Could not determine '{{map}}' for new Binder entry from NVM name: {nvm_stem}. It must be in "
-                        f"the format 'n####A#B##' for map name 'mAA_BB_00_00' to be detected."
-                    )
-                entry_path = self.default_entry_path.format(map=map_str, name=nvm_stem)
-            else:
-                entry_path = self.default_entry_path.format(name=nvm_stem)
-            new_entry_id = binder.highest_entry_id + 1
-            nvm_entry = BinderEntry(
-                b"", entry_id=new_entry_id, path=entry_path, flags=self.default_entry_flags
-            )
-            binder.add_entry(nvm_entry)
-            self.info(f"Creating new Binder entry: ID {new_entry_id}, path '{entry_path}'")
-        else:
-            if not self.overwrite_existing:
-                return self.error(f"NVM named '{nvm_stem}' already exists in Binder and overwrite is disabled.")
-
-            if len(matching_entries) > 1:
-                self.warning(
-                    f"Multiple NVMs named '{nvm_stem}' found in Binder. Replacing first: {matching_entries[0].name}"
+                    entry_path = self.default_entry_path.format(name=model_file_stem)
+                new_entry_id = binder.highest_entry_id + 1
+                nvm_entry = BinderEntry(
+                    b"", entry_id=new_entry_id, path=entry_path, flags=self.default_entry_flags
                 )
+                binder.add_entry(nvm_entry)
+                self.info(f"Creating new Binder entry: ID {new_entry_id}, path '{entry_path}'")
             else:
-                self.info(f"Replacing existing Binder entry: ID {matching_entries[0]}, path '{matching_entries[0]}'")
-            nvm_entry = matching_entries[0]
+                if not self.overwrite_existing:
+                    return self.error(f"NVM named '{model_file_stem}' already exists in Binder and overwrite = False.")
 
-        try:
-            nvm_entry.set_from_binary_file(nvm)
-        except Exception as ex:
-            traceback.print_exc()
-            return self.error(f"Cannot write exported NVM. Error: {ex}")
+                nvm_entry = matching_entries[0]
+
+                if len(matching_entries) > 1:
+                    self.warning(
+                        f"Multiple NVMs with stem '{model_file_stem}' found in Binder. "
+                        f"Replacing first: {nvm_entry.name}"
+                    )
+                else:
+                    self.info(
+                        f"Replacing existing Binder entry: ID {nvm_entry.entry_id}, path '{nvm_entry.path}'"
+                    )
+
+            try:
+                nvm_entry.set_from_binary_file(nvm)
+            except Exception as ex:
+                traceback.print_exc()
+                return self.error(f"Cannot write exported NVM. Error: {ex}")
 
         try:
             # Will create a `.bak` file automatically if absent.
