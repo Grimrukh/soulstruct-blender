@@ -175,7 +175,9 @@ class MCGImporter:
             except IndexError:
                 raise ValueError(f"Edge {i} has invalid navmesh index {edge._navmesh_part_index}.")
             # NOTE: Suffix is for inspection convenience only. The true navmesh part name/index is stored in properties.
-            name = f"{map_stem} Edge {i} ({start_node_index} -> {end_node_index}) <{navmesh_name}>"
+            # Also note that we don't include the edge index in the name (unlike nodes) because it is unused elsewhere.
+            # The start and end node indices are enough to uniquely identify an edge.
+            name = f"{map_stem} Edge ({start_node_index} -> {end_node_index}) <{navmesh_name}>"
             bl_edge = self.create_edge(edge, name)
             self.context.collection.objects.link(bl_edge)
             self.all_bl_objs.append(bl_edge)
@@ -209,7 +211,7 @@ class MCGImporter:
         direction = end - start
         midpoint = (start + end) / 2.0
         bl_edge = bpy.data.objects.new(name, None)
-        bl_edge.empty_display_type = "SINGLE_ARROW"
+        bl_edge.empty_display_type = "PLAIN_AXES"
         bl_edge.location = midpoint
         # Point empty arrow in direction of edge.
         bl_edge.rotation_euler = direction.to_track_quat('Z', 'Y').to_euler()

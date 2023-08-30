@@ -294,6 +294,9 @@ class NVMExporter:
                                  f"Ignoring.")
                     continue
                 event_entities.append(NVMEventEntity(entity_id=entity_id, triangle_indices=list(triangle_indices)))
+            else:
+                self.warning(f"Child object '{child.name}' of NVM object '{bl_mesh_obj.name}' does not start with "
+                             f"'{event_prefix}'. Ignoring it as a navmesh event entity.")
 
         nvm = NVM(
             big_endian=False,

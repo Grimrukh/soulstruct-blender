@@ -647,7 +647,7 @@ class NVMImporter:
         affect export. The user should move the event around if they change the attached faces.
         """
         bl_event = bpy.data.objects.new(f"{bl_nvm_name} Event {nvm_event_entity.entity_id}", None)
-        bl_event.empty_display_type = "SPHERE"
+        bl_event.empty_display_type = "CUBE"  # to distinguish it from node spheres
 
         # Get the average position of the faces.
         avg_pos = Vector((0, 0, 0))

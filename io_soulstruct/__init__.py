@@ -28,6 +28,7 @@ for module_name in list(sys.modules.keys()):
 
 from io_soulstruct.flver import *
 from io_soulstruct.navmesh import *
+from io_soulstruct.misc_operators import *
 
 # TODO: Currently asserting that `soulstruct_havok` is installed, but this is not necessary for all add-ons.
 import soulstruct_havok
@@ -68,8 +69,15 @@ def menu_func_export(self, context):
     self.layout.operator(ExportNVMIntoBinder.bl_idname, text="NVM to Binder (.nvmbnd)")
 
 
+# noinspection PyUnusedLocal
+def menu_func_view3d_mt(self, context):
+    self.layout.operator(CopyMeshSelectionOperator.bl_idname, text="Copy Mesh Selection to Mesh")
+
+
 # Classes to register.
 CLASSES = (
+    CopyMeshSelectionOperator,
+
     ImportFLVER,
     ImportFLVERWithMSBChoice,
     ImportEquipmentFLVER,
@@ -100,6 +108,7 @@ CLASSES = (
     ImportMCP,
     ImportMCG,
     ExportMCG,
+    CreateMCGEdge,
     NVM_PT_navmesh_tools,
     NavmeshFaceSettings,
     AddNVMFaceFlags,
@@ -164,6 +173,7 @@ def register():
         bpy.utils.register_class(cls)
     bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
     bpy.types.TOPBAR_MT_file_export.append(menu_func_export)
+    bpy.types.VIEW3D_MT_object.append(menu_func_view3d_mt)
 
     bpy.types.Scene.lightmap_bake_props = bpy.props.PointerProperty(type=LightmapBakeProperties)
     bpy.types.Scene.export_map_directory_settings = bpy.props.PointerProperty(type=ExportMapDirectorySettings)
@@ -186,6 +196,7 @@ def unregister():
         bpy.utils.unregister_class(cls)
     bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)
     bpy.types.TOPBAR_MT_file_export.remove(menu_func_export)
+    bpy.types.VIEW3D_MT_object.remove(menu_func_view3d_mt)
 
     if HAVOK_CLASSES:
         for cls in HAVOK_CLASSES:

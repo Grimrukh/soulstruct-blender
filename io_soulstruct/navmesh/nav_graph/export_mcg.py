@@ -126,6 +126,7 @@ class ExportMCG(LoggingOperator, ExportHelper):
         try:
             # Will create a `.bak` file automatically if absent.
             mcg.write(mcg_path)
+            self.info(f"Wrote MCG successfully: {mcg_path.name}")
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Cannot write exported MCG. Error: {ex}")
@@ -153,6 +154,7 @@ class ExportMCG(LoggingOperator, ExportHelper):
             try:
                 # Will create a `.bak` file automatically if absent.
                 mcp.write(mcp_path)
+                self.info(f"Wrote MCP successfully: {mcp_path.name}")
             except Exception as ex:
                 traceback.print_exc()
                 self.warning(f"Cannot write auto-generated MCP. Error: {ex}")
@@ -208,7 +210,7 @@ class MCGExporter:
                 node_name = bl_node.name.removeprefix(node_prefix).split("<")[0].strip()  # ignore dead end suffix
                 node_dict[f"Node {node_name}"] = i
             else:
-                raise MCGExportError(f"Node '{bl_node.name}' does not start with 'Node '.")
+                raise MCGExportError(f"Node '{bl_node.name}' does not start with '{node_prefix}'.")
 
         nodes = []
         for bl_node in bl_nodes:

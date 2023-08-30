@@ -18,6 +18,7 @@ __all__ = [
     "draw_mcg_nodes",
     "draw_mcg_node_labels",
     "draw_mcg_edges",
+    "CreateMCGEdge",
 ]
 
 import importlib
@@ -184,55 +185,69 @@ class NVM_PT_navmesh_tools(bpy.types.Panel):
         mcg_draw_settings_box = self.layout.box()
         mcg_draw_settings_box.prop(context.scene.mcg_draw_settings, "mcg_parent_name")
         mcg_draw_settings_box.prop(context.scene.mcg_draw_settings, "mcg_graph_draw_enabled")
+        mcg_draw_settings_box.prop(context.scene.mcg_draw_settings, "mcg_graph_draw_selected_nodes_only")
         mcg_draw_settings_box.prop(context.scene.mcg_draw_settings, "mcg_graph_color")
         mcg_draw_settings_box.prop(context.scene.mcg_draw_settings, "mcg_node_label_draw_enabled")
         mcg_draw_settings_box.prop(context.scene.mcg_draw_settings, "mcg_node_label_font_size")
         mcg_draw_settings_box.prop(context.scene.mcg_draw_settings, "mcg_node_label_font_color")
+        mcg_draw_settings_box.prop(context.scene.mcg_draw_settings, "mcg_edge_triangles_highlight_enabled")
+
+        mcg_edit_box = self.layout.box()
+        mcg_edit_box.operator(CreateMCGEdge.bl_idname, text="Create MCG Edge")
 
         self.layout.label(text="Selected Face Indices:")
         selected_faces_box = self.layout.box()
         obj = bpy.context.edit_object
         if obj and obj.type == 'MESH' and bpy.context.mode == 'EDIT_MESH':
             bm = bmesh.from_edit_mesh(obj.data)
-            flags_layer = bm.faces.layers.int.get("nvm_face_flags")
-            obstacle_count_layer = bm.faces.layers.int.get("nvm_face_obstacle_count")
-            selected_faces = [f for f in bm.faces if f.select]
-            for face in selected_faces:
-                face_row = selected_faces_box.row()
-                face_flags = face[flags_layer]
-                face_obstacle_count = face[obstacle_count_layer]
-                suffix = " | ".join([n.name for n in NavmeshType if n.value & face_flags])
-                if suffix:
-                    suffix = f" ({suffix})"
-                if face_obstacle_count > 0:
-                    suffix += f" <{face_obstacle_count} obstacles>"
-                # Show selected face index, flag type names, and obstacle count.
-                face_row.label(text=f"{face.index}{suffix}")
-
-            if selected_faces:
-                # Call refresh operator to tag redraw.
-                # refresh_row = selected_faces_box.row()
-                # refresh_row.operator(RefreshFaceIndices.bl_idname)
-
-                # Draw operators to add/remove a chosen flag type to/from all selected faces.
-                props = context.scene.navmesh_face_settings
-                flag_box = self.layout.box()
-                row = flag_box.row()
-                row.prop(props, "flag_type")
-                row = flag_box.row()
-                row.operator(AddNVMFaceFlags.bl_idname, text="Add Flag")
-                row.operator(RemoveNVMFaceFlags.bl_idname, text="Remove Flag")
-
-                # Box and button to set obstacle count for selected faces.
-                obstacle_box = self.layout.box()
-                row = obstacle_box.row()
-                row.prop(props, "obstacle_count")
-                row = obstacle_box.row()
-                row.operator(SetNVMFaceObstacleCount.bl_idname, text="Set Obstacle Count")
-            else:
-                # Prompt user to select some faces.
-                selected_faces_box.label(text="Select faces in Edit Mode")
-
-            del bm
+            layout_selected_faces(bm, self.layout, context, selected_faces_box)
         else:
-            selected_faces_box.label(text="Select faces in Edit Mode")
+            selected_faces_box.label(text="Select navmesh faces in Edit Mode")
+
+def layout_selected_faces(bm: bmesh.types.BMesh, layout, context, selected_faces_box):
+    flags_layer = bm.faces.layers.int.get("nvm_face_flags")
+    obstacle_count_layer = bm.faces.layers.int.get("nvm_face_obstacle_count")
+
+    if flags_layer is None or obstacle_count_layer is None:
+        # Prompt user to select some faces.
+        selected_faces_box.label(text="Select navmesh faces in Edit Mode")
+        return
+
+    selected_faces = [f for f in bm.faces if f.select]
+    for face in selected_faces:
+        face_row = selected_faces_box.row()
+        face_flags = face[flags_layer]
+        face_obstacle_count = face[obstacle_count_layer]
+        suffix = " | ".join([n.name for n in NavmeshType if n.value & face_flags])
+        if suffix:
+            suffix = f" ({suffix})"
+        if face_obstacle_count > 0:
+            suffix += f" <{face_obstacle_count} obstacles>"
+        # Show selected face index, flag type names, and obstacle count.
+        face_row.label(text=f"{face.index}{suffix}")
+
+    if selected_faces:
+        # Call refresh operator to tag redraw.
+        # refresh_row = selected_faces_box.row()
+        # refresh_row.operator(RefreshFaceIndices.bl_idname)
+
+        # Draw operators to add/remove a chosen flag type to/from all selected faces.
+        props = context.scene.navmesh_face_settings
+        flag_box = layout.box()
+        row = flag_box.row()
+        row.prop(props, "flag_type")
+        row = flag_box.row()
+        row.operator(AddNVMFaceFlags.bl_idname, text="Add Flag")
+        row.operator(RemoveNVMFaceFlags.bl_idname, text="Remove Flag")
+
+        # Box and button to set obstacle count for selected faces.
+        obstacle_box = layout.box()
+        row = obstacle_box.row()
+        row.prop(props, "obstacle_count")
+        row = obstacle_box.row()
+        row.operator(SetNVMFaceObstacleCount.bl_idname, text="Set Obstacle Count")
+    else:
+        # Prompt user to select some faces.
+        selected_faces_box.label(text="Select navmesh faces in Edit Mode")
+
+    del bm

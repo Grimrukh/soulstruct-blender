@@ -34,6 +34,7 @@ if "HKX_PT_hkx_tools" in locals():
     importlib.reload(sys.modules["io_soulstruct.hkx_map_collision.utilities"])
     importlib.reload(sys.modules["io_soulstruct.hkx_map_collision.import_hkx"])
     importlib.reload(sys.modules["io_soulstruct.hkx_map_collision.export_hkx"])
+    importlib.reload(sys.modules["io_soulstruct.misc_operators"])
 
 from .import_hkx_map_collision import (
     ImportHKXMapCollision, ImportHKXMapCollisionWithBinderChoice, ImportHKXMapCollisionWithMSBChoice
@@ -41,6 +42,8 @@ from .import_hkx_map_collision import (
 from .export_hkx_map_collision import (
     ExportHKXMapCollision, ExportHKXMapCollisionIntoBinder, ExportHKXMapCollisionToMapDirectoryBHD
 )
+
+from io_soulstruct.misc_operators import CopyMeshSelectionOperator
 
 
 class HKX_COLLISION_PT_hkx_map_collision_tools(bpy.types.Panel):
@@ -64,3 +67,7 @@ class HKX_COLLISION_PT_hkx_map_collision_tools(bpy.types.Panel):
         export_to_map_box.prop(export_map_settings, "game_directory")
         export_to_map_box.prop(export_map_settings, "map_stem")  # TODO: must match Blender collision name (for now)
         export_to_map_box.operator(ExportHKXMapCollisionToMapDirectoryBHD.bl_idname)
+
+        misc_operators_box = self.layout.box()
+        # Useful in particular for creating HKX map collisions (e.g. from FLVER or high <> low res).
+        misc_operators_box.operator(CopyMeshSelectionOperator.bl_idname)
