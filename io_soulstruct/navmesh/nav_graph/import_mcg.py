@@ -19,7 +19,7 @@ import bpy
 from bpy_extras.io_utils import ImportHelper
 
 from soulstruct.darksouls1r.maps import MSB
-from soulstruct.darksouls1r.maps.navmesh import MCG, GateNode, GateEdge
+from soulstruct.darksouls1r.maps.navmesh import MCG, MCGNode, MCGEdge
 
 from io_soulstruct.utilities import *
 from .utilities import MCGImportError
@@ -106,7 +106,7 @@ class MCGImporter:
     def import_mcg(self, mcg: MCG, map_stem: str, navmesh_part_names: list[str]) -> bpy.types.Object:
         self.operator.info(f"Importing MCG: {map_stem}")
 
-        highest_navmesh_index = max(edge._navmesh_part_index for edge in mcg.edges)
+        highest_navmesh_index = max(edge.navmesh_index for edge in mcg.edges)
         if highest_navmesh_index >= len(navmesh_part_names):
             raise MCGImportError(
                 f"Highest MCG edge navmesh part index ({highest_navmesh_index}) exceeds number of navmesh part "
@@ -136,66 +136,86 @@ class MCGImporter:
         self.all_bl_objs.append(edge_parent)
         edge_parent.parent = mcg_parent
 
-        # Automatically set node and edge parents for drawing.
-        self.context.scene.mcg_draw_settings.mcg_parent_name = mcg_parent.name
+        # Actual MCG binary file stores navmesh node triangle indices for every edge, which is extremely redundant, as
+        # every node touches exactly two navmeshes and its connected edges in each of those two navmeshes always use
+        # consistent triangles. So we store them on the NODES in Blender and write them back to edges on export. (This
+        # is strictly a Blender thing - the Soulstruct `MCGEdge` classes still hold their node triangle indices - but
+        # does use a Soulstruct `MCG` method to verify the triangles used on a node-by-node basis rather than by edge.)
+        # NOTE: If a node uses inconsistent triangles in different edges in the same navmesh, the first indices will be
+        # used a warning logged. If a node seemingly has edges in more than two navmeshes, import will fail, as the MCG
+        # file is not valid (for DS1 at least).
+        node_triangle_indices = mcg.get_navmesh_triangles_by_node()
 
-        for i, node in enumerate(mcg.nodes):
-            node: GateNode
+        for i, (node, triangle_indices) in enumerate(zip(mcg.nodes, node_triangle_indices)):
+            node: MCGNode
             name = f"{map_stem} Node {i}"
-            if node._dead_end_navmesh_index >= 0 and navmesh_part_names:
-                # NOTE: For inspection convenience only. The true navmesh part name/index is stored in properties.
-                name += f" <Dead End: {navmesh_part_names[node._dead_end_navmesh_index]}>"
 
             bl_node = self.create_node(node, name)
             self.context.collection.objects.link(bl_node)
             self.all_bl_objs.append(bl_node)
             bl_node.parent = node_parent
             
-            if node._dead_end_navmesh_index >= 0:
+            if node.dead_end_navmesh_index >= 0:
                 try:
-                    bl_node["dead_end_navmesh_name"] = navmesh_part_names[node._dead_end_navmesh_index]
+                    dead_end_navmesh_name = navmesh_part_names[node.dead_end_navmesh_index]
                 except IndexError:
-                    raise ValueError(f"Node {i} has invalid dead-end navmesh index {node._dead_end_navmesh_index}.")
+                    raise ValueError(f"Node {i} has invalid dead-end navmesh index: {node.dead_end_navmesh_index}")
+                bl_node["Dead End Navmesh Name"] = dead_end_navmesh_name
+                # NOTE: For inspection convenience only. The true navmesh part name/index is stored in properties.
+                bl_node.name += f" <Dead End: {dead_end_navmesh_name}>"
             else:
-                bl_node["dead_end_navmesh_name"] = ""
-            bl_node["unknown_offset"] = node.unknown_offset
+                bl_node["Dead End Navmesh Name"] = ""
+            bl_node["Unk Offset"] = node.unknown_offset
+            # Triangle indices are stored on the node, not the edge, for convenience, as they should be the same.
+            for navmesh_key in ("a", "b"):
+                key_caps = navmesh_key.capitalize()
+                if triangle_indices[navmesh_key]:
+                    navmesh_a_index, navmesh_a_triangles = triangle_indices[navmesh_key]
+                    try:
+                        bl_node[f"Navmesh {key_caps} Name"] = navmesh_part_names[navmesh_a_index]
+                    except IndexError:
+                        raise ValueError(f"Node {i} has invalid navmesh {key_caps} index: {navmesh_a_index}")
+                    bl_node[f"Navmesh {key_caps} Triangles"] = navmesh_a_triangles
+
             # Connected node/edge indices not kept; inferred from edges.
             self.all_bl_objs.append(bl_node)
 
         for i, edge in enumerate(mcg.edges):
-            edge: GateEdge
-            start_node_index = mcg.nodes.index(edge.start_node)
-            end_node_index = mcg.nodes.index(edge.end_node)
-            if start_node_index >= len(mcg.nodes):
-                raise ValueError(f"Edge {i} has invalid start node index {start_node_index}.")
-            if end_node_index >= len(mcg.nodes):
-                raise ValueError(f"Edge {i} has invalid end node index {end_node_index}.")
+            edge: MCGEdge  # TODO: remove when PyCharm fixed
+            node_a_index = mcg.nodes.index(edge.node_a)
+            node_b_index = mcg.nodes.index(edge.node_b)
+            if node_a_index >= len(mcg.nodes):
+                raise ValueError(f"Edge {i} has invalid node A index: {node_a_index}")
+            if node_b_index >= len(mcg.nodes):
+                raise ValueError(f"Edge {i} has invalid node B index: {node_b_index}")
             try:
-                navmesh_name = navmesh_part_names[edge._navmesh_part_index]
+                navmesh_name = navmesh_part_names[edge.navmesh_index]
             except IndexError:
-                raise ValueError(f"Edge {i} has invalid navmesh index {edge._navmesh_part_index}.")
+                raise ValueError(f"Edge {i} has invalid navmesh index {edge.navmesh_index}.")
             # NOTE: Suffix is for inspection convenience only. The true navmesh part name/index is stored in properties.
             # Also note that we don't include the edge index in the name (unlike nodes) because it is unused elsewhere.
             # The start and end node indices are enough to uniquely identify an edge.
-            name = f"{map_stem} Edge ({start_node_index} -> {end_node_index}) <{navmesh_name}>"
+            name = f"{map_stem} Edge ({node_a_index} -> {node_b_index}) <{navmesh_name}>"
             bl_edge = self.create_edge(edge, name)
             self.context.collection.objects.link(bl_edge)
             self.all_bl_objs.append(bl_edge)
             bl_edge.parent = edge_parent
 
-            bl_edge["start_node_name"] = f"Node {start_node_index}"
-            bl_edge["start_node_triangle_indices"] = edge.start_node_triangle_indices
-            bl_edge["end_node_name"] = f"Node {end_node_index}"
-            bl_edge["end_node_triangle_indices"] = edge.end_node_triangle_indices
-            bl_edge["navmesh_name"] = navmesh_name
-            bl_edge["cost"] = edge.cost
+            bl_edge["Cost"] = edge.cost
+            bl_edge["Navmesh Name"] = navmesh_name
+            bl_edge["Node A"] = f"Node {node_a_index}"
+            bl_edge["Node B"] = f"Node {node_b_index}"
+            # Triangles are stored on the nodes (above) as they should be identical for all edges on the same navmesh.
 
             self.all_bl_objs.append(bl_edge)
+
+        # Automatically set node and edge parents for drawing.
+        self.context.scene.mcg_draw_settings.mcg_parent_name = mcg_parent.name
 
         return mcg_parent
 
     @staticmethod
-    def create_node(node: GateNode, name: str):
+    def create_node(node: MCGNode, name: str):
         """Create an Empty representing `node`."""
         position = GAME_TO_BL_VECTOR(node.translate)
         bl_node = bpy.data.objects.new(name, None)
@@ -204,10 +224,10 @@ class MCGImporter:
         return bl_node
 
     @staticmethod
-    def create_edge(edge: GateEdge, name: str):
+    def create_edge(edge: MCGEdge, name: str):
         """Create an Empty representing `edge` that connects two nodes."""
-        start = GAME_TO_BL_VECTOR(edge.start_node.translate)
-        end = GAME_TO_BL_VECTOR(edge.end_node.translate)
+        start = GAME_TO_BL_VECTOR(edge.node_a.translate)
+        end = GAME_TO_BL_VECTOR(edge.node_b.translate)
         direction = end - start
         midpoint = (start + end) / 2.0
         bl_edge = bpy.data.objects.new(name, None)

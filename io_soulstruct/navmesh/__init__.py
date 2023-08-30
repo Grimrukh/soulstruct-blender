@@ -18,7 +18,6 @@ __all__ = [
     "draw_mcg_nodes",
     "draw_mcg_node_labels",
     "draw_mcg_edges",
-    "CreateMCGEdge",
 ]
 
 import importlib
@@ -173,8 +172,8 @@ class NVM_PT_navmesh_tools(bpy.types.Panel):
         export_box.operator(ExportNVMIntoBinder.bl_idname)
 
         import_navgraph_box = self.layout.box()
-        import_navgraph_box.operator(ImportMCP.bl_idname)
         import_navgraph_box.operator(ImportMCG.bl_idname)
+        import_navgraph_box.operator(ImportMCP.bl_idname)
 
         export_navgraph_box = self.layout.box()
         export_navgraph_box.operator(ExportMCG.bl_idname, text="Export MCG + MCP")
@@ -193,7 +192,7 @@ class NVM_PT_navmesh_tools(bpy.types.Panel):
         mcg_draw_settings_box.prop(context.scene.mcg_draw_settings, "mcg_edge_triangles_highlight_enabled")
 
         mcg_edit_box = self.layout.box()
-        mcg_edit_box.operator(CreateMCGEdge.bl_idname, text="Create MCG Edge")
+        mcg_edit_box.operator(CreateMCGEdgeOperator.bl_idname, text="Create MCG Edge")
 
         self.layout.label(text="Selected Face Indices:")
         selected_faces_box = self.layout.box()

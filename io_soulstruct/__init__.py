@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 import bpy
-
+from io_soulstruct.navmesh.nav_graph import CreateMCGEdgeOperator
 
 modules_path = str(Path(__file__).parent / "modules")
 if modules_path not in sys.path:
@@ -108,7 +108,7 @@ CLASSES = (
     ImportMCP,
     ImportMCG,
     ExportMCG,
-    CreateMCGEdge,
+    CreateMCGEdgeOperator,
     NVM_PT_navmesh_tools,
     NavmeshFaceSettings,
     AddNVMFaceFlags,

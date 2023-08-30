@@ -17,7 +17,7 @@ from gpu_extras.batch import batch_for_shader
 class MCGDrawSettings(bpy.types.PropertyGroup):
     mcg_parent_name: bpy.props.StringProperty(name="MCG Parent", default="")
     mcg_graph_draw_enabled: bpy.props.BoolProperty(name="Draw Graph", default=True)
-    mcg_graph_draw_selected_nodes_only: bpy.props.BoolProperty(name="Draw Selected Nodes Only", default=False)
+    mcg_graph_draw_selected_nodes_only: bpy.props.BoolProperty(name="Selected Only", default=False)
     mcg_graph_color: bpy.props.FloatVectorProperty(
         name="Graph Color", subtype="COLOR", default=(0.5, 1.0, 0.5)
     )
@@ -92,12 +92,44 @@ def draw_mcg_node_labels():
     except KeyError:
         return  # invalid MCG parent name
 
+    node_parent = edge_parent = None
     for child in mcg_parent.children:
         if child.name.endswith(" Nodes"):
             node_parent = child
-            break
+            if edge_parent:
+                break
+        if child.name.endswith(" Edges"):  # needed to get nodes connected to selected
+            edge_parent = child
+            if node_parent:
+                break
     else:
         return  # No node parent found.
+
+    if settings.mcg_graph_draw_selected_nodes_only:
+        # Use edges to detect connected nodes.
+        node_name_map = {}
+        node_prefix = node_parent.name[:-1]  # just drop 's'
+        for node in node_parent.children:
+            if node.name.startswith(node_prefix):
+                node_name = "Node " + node.name.removeprefix(node_prefix).split("<")[0].strip()
+                node_name_map[node_name] = node.name
+
+        selected_node_names = {node.name for node in node_parent.children if node.select_get()}
+        all_node_names = selected_node_names.copy()
+        for edge in edge_parent.children:
+            node_a_name = node_name_map.get(edge["Node A"])
+            node_b_name = node_name_map.get(edge["Node B"])
+            if edge.select_get():
+                all_node_names.add(node_a_name)
+                all_node_names.add(node_b_name)
+            if node_a_name in selected_node_names:
+                all_node_names.add(node_b_name)
+            elif node_b_name in selected_node_names:
+                all_node_names.add(node_a_name)
+
+        nodes_to_label = [bpy.data.objects[node_name] for node_name in all_node_names]
+    else:
+        nodes_to_label = node_parent.children  # label all nodes
 
     font_id = 0
     try:
@@ -111,9 +143,7 @@ def draw_mcg_node_labels():
 
     map_stem = mcg_parent_name.split(" ")[0]
     node_prefix = f"{map_stem} Node "
-    for node in node_parent.children:
-        if settings.mcg_graph_draw_selected_nodes_only and not node.select_get():
-            continue  # skip non-selected node
+    for node in nodes_to_label:
         try:
             node_index = node.name.removeprefix(node_prefix).split(" ")[0]
         except IndexError:
@@ -168,34 +198,34 @@ def draw_mcg_edges():
             node_name = node.name.removeprefix(map_stem).split("<")[0].strip()
             node_objects[node_name] = node
 
-    start_triangles_coords = []
-    end_triangles_coords = []
-    selected_start_node = selected_end_node = None
+    node_a_triangles_coords = []
+    node_b_triangles_coords = []
+    selected_node_a = selected_node_b = None
     for edge in edge_parent.children:
         try:
-            start_node_name = edge["start_node_name"]
-            end_node_name = edge["end_node_name"]
+            node_a_name = edge["Node A"]
+            node_b_name = edge["Node B"]
         except KeyError:
             continue  # Edge is not properly configured (can't find node names)
 
-        start_node = node_objects.get(start_node_name)
-        end_node = node_objects.get(end_node_name)
-        if start_node is None or end_node is None:
-            continue  # Edge is not properly configured (can't find nodes)
+        node_a = node_objects.get(node_a_name)
+        node_b = node_objects.get(node_b_name)
+        if node_a is None or node_b is None:
+            continue  # edge is not properly configured (can't find nodes)
 
         if (
             settings.mcg_graph_draw_selected_nodes_only
             and not edge.select_get()
-            and not (start_node.select_get() or end_node.select_get())
+            and not (node_a.select_get() or node_b.select_get())
         ):
             # At least one of the edge's nodes must be selected to draw it, if this setting is enabled.
             continue
 
-        all_edge_vertex_pairs.extend([start_node.location, end_node.location])
+        all_edge_vertex_pairs.extend([node_a.location, node_b.location])
 
         # Also move edge object itself for convenience.
-        direction = end_node.location - start_node.location
-        midpoint = (start_node.location + end_node.location) / 2.0
+        direction = node_b.location - node_a.location
+        midpoint = (node_a.location + node_b.location) / 2.0
         edge.location = midpoint
         # Point empty arrow in direction of edge.
         edge.rotation_euler = direction.to_track_quat('Z', 'Y').to_euler()
@@ -203,30 +233,40 @@ def draw_mcg_edges():
         if settings.mcg_edge_triangles_highlight_enabled and bpy.context.active_object == edge:
             # Draw triangles over faces linked to start and end nodes.
             try:
-                navmesh = bpy.data.objects[edge["navmesh_name"]]
+                navmesh = bpy.data.objects[edge["Navmesh Name"]]
             except KeyError:
                 pass  # can't draw
             else:
-                start_triangle_indices = edge["start_node_triangle_indices"]
-                end_triangle_indices = edge["end_node_triangle_indices"]
-                for i in start_triangle_indices:
+                if node_a["Navmesh A Name"] == navmesh.name:
+                    node_a_triangles = node_a["Navmesh A Triangles"]
+                elif node_a["Navmesh B Name"] == navmesh.name:
+                    node_a_triangles = node_a["Navmesh B Triangles"]
+                else:
+                    node_a_triangles = []  # can't find
+                for i in node_a_triangles:
                     if i >= len(navmesh.data.polygons):
                         continue  # invalid
                     face = navmesh.data.polygons[i]
                     for vert_index in face.vertices:
                         vert = navmesh.data.vertices[vert_index]
                         world_coord = navmesh.matrix_world @ vert.co
-                        start_triangles_coords.append(world_coord)
-                for i in end_triangle_indices:
+                        node_a_triangles_coords.append(world_coord)
+                if node_b["Navmesh A Name"] == navmesh.name:
+                    node_b_triangles = node_b["Navmesh A Triangles"]
+                elif node_b["Navmesh B Name"] == navmesh.name:
+                    node_b_triangles = node_b["Navmesh B Triangles"]
+                else:
+                    node_b_triangles = []  # can't find
+                for i in node_b_triangles:
                     if i >= len(navmesh.data.polygons):
                         continue  # invalid
                     face = navmesh.data.polygons[i]
                     for vert_index in face.vertices:
                         vert = navmesh.data.vertices[vert_index]
                         world_coord = navmesh.matrix_world @ vert.co
-                        end_triangles_coords.append(world_coord)
-                selected_start_node = start_node
-                selected_end_node = end_node
+                        node_b_triangles_coords.append(world_coord)
+                selected_node_a = node_a
+                selected_node_b = node_b
 
     if settings.mcg_graph_draw_enabled and all_edge_vertex_pairs:
         batch = batch_for_shader(shader, "LINES", {"pos": all_edge_vertex_pairs})
@@ -235,29 +275,29 @@ def draw_mcg_edges():
         batch.draw(shader)
 
     if settings.mcg_edge_triangles_highlight_enabled:
-        if start_triangles_coords:
-            batch = batch_for_shader(shader, "TRIS", {"pos": start_triangles_coords})
+        if node_a_triangles_coords:
+            batch = batch_for_shader(shader, "TRIS", {"pos": node_a_triangles_coords})
             shader.bind()
             shader.uniform_float("color", (1.0, 0.3, 0.3, 0.2))  # red
             batch.draw(shader)
-        if end_triangles_coords:
-            batch = batch_for_shader(shader, "TRIS", {"pos": end_triangles_coords})
+        if node_b_triangles_coords:
+            batch = batch_for_shader(shader, "TRIS", {"pos": node_b_triangles_coords})
             shader.bind()
             shader.uniform_float("color", (0.3, 0.3, 1.0, 0.2))  # blue
             batch.draw(shader)
 
     # Highlight nodes of selected edge.
-    if selected_start_node:
+    if selected_node_a:
         gpu.state.depth_test_set("LESS_EQUAL")
         gpu.state.point_size_set(30)
-        batch_sphere = batch_for_shader(shader, 'POINTS', {"pos": [selected_start_node.location]})
+        batch_sphere = batch_for_shader(shader, 'POINTS', {"pos": [selected_node_a.location]})
         shader.bind()
         shader.uniform_float("color", (1.0, 0.1, 0.1, 0.5))  # red
         batch_sphere.draw(shader)
-    if selected_end_node:
+    if selected_node_b:
         gpu.state.depth_test_set("LESS_EQUAL")
         gpu.state.point_size_set(30)
-        batch_sphere = batch_for_shader(shader, 'POINTS', {"pos": [selected_end_node.location]})
+        batch_sphere = batch_for_shader(shader, 'POINTS', {"pos": [selected_node_b.location]})
         shader.bind()
         shader.uniform_float("color", (0.1, 0.1, 1.0, 0.5))  # blue
         batch_sphere.draw(shader)

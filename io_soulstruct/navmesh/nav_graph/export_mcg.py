@@ -10,7 +10,7 @@ from bpy_extras.io_utils import ExportHelper
 
 from soulstruct.containers import DCXType
 from soulstruct.darksouls1r.maps import MSB
-from soulstruct.darksouls1r.maps.navmesh.mcg import MCG, GateNode, GateEdge
+from soulstruct.darksouls1r.maps.navmesh.mcg import MCG, MCGNode, MCGEdge
 from soulstruct.darksouls1r.maps.navmesh.mcp import MCP
 
 from io_soulstruct.utilities import *
@@ -168,21 +168,6 @@ class MCGExporter:
         self.operator = operator
         self.context = context
 
-        self.props = BlenderPropertyManager({
-            "GateNode": {
-                "dead_end_navmesh_name": BlenderProp(str, do_not_assign=True),
-                "unknown_offset": BlenderProp(int, 0),
-            },
-            "GateEdge": {
-                "cost": BlenderProp(float),
-                "end_node_triangle_indices": BlenderProp(tuple, callback=list),
-                "end_node_name": BlenderProp(str, do_not_assign=True),
-                "navmesh_name": BlenderProp(str, do_not_assign=True),
-                "start_node_triangle_indices": BlenderProp(tuple, callback=list),
-                "start_node_name": BlenderProp(str, do_not_assign=True),
-            },
-        })
-
     def warning(self, msg: str):
         self.operator.report({"WARNING"}, msg)
         print(f"# WARNING: {msg}")
@@ -213,49 +198,79 @@ class MCGExporter:
                 raise MCGExportError(f"Node '{bl_node.name}' does not start with '{node_prefix}'.")
 
         nodes = []
+        node_navmesh_triangles = []  # list of dicts that map EXACTLY two navmesh names to triangles for edges to write
         for bl_node in bl_nodes:
-            node = GateNode(translate=BL_TO_GAME_VECTOR3(bl_node.location))
-            node_extra = self.props.get_all(bl_node, node, "GateNode")
-            if node_extra["dead_end_navmesh_name"]:
+            node = MCGNode(
+                translate=BL_TO_GAME_VECTOR3(bl_node.location),
+                unknown_offset=get_bl_prop(bl_node, "Unk Offset", int, default=0),
+            )
+            node_navmesh_info = {}
+            for navmesh_key in ("A", "B"):
+                navmesh_name = get_bl_prop(bl_node, f"Navmesh {navmesh_key} Name", str)
+                navmesh_triangles = get_bl_prop(bl_node, f"Navmesh {navmesh_key} Triangles", tuple, callback=list)
+                node_navmesh_info[navmesh_name] = navmesh_triangles
+            if dead_end_navmesh_name := get_bl_prop(bl_node, "Dead End Navmesh Name", str):
                 try:
-                    node._dead_end_navmesh_index = navmesh_part_indices[node_extra["dead_end_navmesh_name"]]
+                    node.dead_end_navmesh_index = navmesh_part_indices[dead_end_navmesh_name]
                 except KeyError:
                     raise MCGExportError(
-                        f"Cannot find '{bl_node.name}' dead end navmesh: {node_extra['dead_end_navmesh_name']}"
+                        f"Cannot find '{bl_node.name}' dead end navmesh: {dead_end_navmesh_name}"
                     )
             else:
-                node._dead_end_navmesh_index = -1
+                node.dead_end_navmesh_index = -1
+
             nodes.append(node)
+            node_navmesh_triangles.append(node_navmesh_info)
 
         self.operator.info(f"Exporting {len(nodes)} MCG nodes...")
 
         edges = []
         for i, bl_edge in enumerate(bl_edges):
-            edge = GateEdge(map_id=map_id)
-            edge_extra = self.props.get_all(bl_edge, edge, "GateEdge")
+            edge = MCGEdge(
+                map_id=map_id,
+                cost=get_bl_prop(bl_edge, "Cost", float),
+            )
+            navmesh_name = get_bl_prop(bl_edge, "Navmesh Name", str)
             try:
-                navmesh_index = navmesh_part_indices[edge_extra["navmesh_name"]]
+                navmesh_index = navmesh_part_indices[navmesh_name]
             except KeyError:
-                raise MCGExportError(f"Cannot find '{bl_edge.name}' navmesh: {edge_extra['navmesh_name']}")
-            edge._navmesh_part_index = navmesh_index
+                raise MCGExportError(f"Cannot find '{bl_edge.name}' navmesh: {navmesh_name}")
+            edge.navmesh_index = navmesh_index
+
+            node_a_name = get_bl_prop(bl_edge, "Node A", str)
+            node_b_name = get_bl_prop(bl_edge, "Node B", str)
+            try:
+                node_a_index = node_dict[node_a_name]
+            except KeyError:
+                raise MCGExportError(f"Cannot find '{bl_edge.name}' start node: {node_a_name}")
+            try:
+                node_b_index = node_dict[node_b_name]
+            except KeyError:
+                raise MCGExportError(f"Cannot find '{bl_edge.name}' end node: {node_b_name}")
+
+            node_a = nodes[node_a_index]
+            node_b = nodes[node_b_index]
+            edge.node_a = node_a
+            edge.node_b = node_b
+            node_a.connected_nodes.append(node_b)
+            node_a.connected_edges.append(edge)
+            node_b.connected_nodes.append(node_a)
+            node_b.connected_edges.append(edge)
 
             try:
-                start_node_index = node_dict[edge_extra["start_node_name"]]
+                edge.node_a_triangles = node_navmesh_triangles[node_a_index][navmesh_name]
             except KeyError:
-                raise MCGExportError(f"Cannot find '{bl_edge.name}' start node: {edge_extra['start_node_name']}")
+                raise MCGExportError(
+                    f"Node {node_a_name} does not specify triangles for navmesh {navmesh_name} (edge {bl_edge.name}). "
+                    "You must fix your navmeshes and navmesh graph in Blender first."
+                )
             try:
-                end_node_index = node_dict[edge_extra["end_node_name"]]
+                edge.node_b_triangles = node_navmesh_triangles[node_b_index][navmesh_name]
             except KeyError:
-                raise MCGExportError(f"Cannot find '{bl_edge.name}' end node: {edge_extra['end_node_name']}")
-
-            start_node = nodes[start_node_index]
-            end_node = nodes[end_node_index]
-            edge.start_node = start_node
-            edge.end_node = end_node
-            start_node.connected_nodes.append(end_node)
-            start_node.connected_edges.append(edge)
-            end_node.connected_nodes.append(start_node)
-            end_node.connected_edges.append(edge)
+                raise MCGExportError(
+                    f"Node {node_b_name} does not specify triangles for navmesh {navmesh_name} (edge {bl_edge.name}). "
+                    "You must fix your navmeshes and navmesh graph in Blender first."
+                )
 
             edges.append(edge)
 
