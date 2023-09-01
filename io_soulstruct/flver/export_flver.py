@@ -535,6 +535,10 @@ class FLVERExporter:
 
         # Process mesh vertices, faces, and bones.
         if USE_MULTIPROCESSING:
+            # TODO: Doesn't work, as Blender `BMesh` creation is not pickle-able, I believe.
+            #  Would need to convert all the triangles/faces/loops/UVs etc. to Python data first. Might still be
+            #  worthwhile. However, since I plan to move to a one-mesh version soon anyway (and eventually C++ accel)
+            #  probably not worth it.
             queue = Queue()  # type: Queue[MeshBuildResult]
 
             worker_args = [
@@ -617,6 +621,7 @@ class FLVERExporter:
             child_name = edit_bone.get("child_name", None)
             if child_name is not None:
                 # TODO: Check if this is set IFF bone has exactly one child, which can be auto-detected.
+                #  (I don't think this is the case - will just index first child among many.)
                 try:
                     game_bone.child_index = edit_bone_names.index(child_name)
                 except IndexError:
@@ -940,7 +945,7 @@ def build_game_mesh(
     mesh_local_bone_indices = []
     no_bone_warning_done = False
 
-    # Create defaults once to reuse. Though mutable, these will never be modified here.
+    # Create defaults for reuse. Though mutable, these will never be modified here.
     empty = []
     v3_zero = [0.0] * 3
     v4_zero = [0.0] * 4
@@ -1043,7 +1048,7 @@ def build_game_mesh(
                             f"Expected {mesh_builder.uv_count} UVs for mesh, but could not find 'UVMap{uv_index}'."
                         )
                     bl_uv = uv_layer.data[loop.index].uv
-                    uvs.append((bl_uv[0], 1 - bl_uv[1], 0.0))  # FLVER UV always has Z coordinate (usually 0)
+                    uvs.append((bl_uv[0], 1 - bl_uv[1], 0.0))  # V inverted and zero Z coordinate
             else:
                 uvs = empty
 

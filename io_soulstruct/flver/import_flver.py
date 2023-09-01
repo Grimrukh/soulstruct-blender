@@ -571,10 +571,14 @@ class FLVERImporter:
             for i, flver_material in enumerate(self.flver.materials)
         }
 
-        for i, flver_mesh in enumerate(self.flver.meshes):
-            mesh_name = f"{self.name} Mesh {i}"
-            bl_mesh_obj = self.create_mesh_obj(flver_mesh, mesh_name)
-            bl_mesh_obj["face_set_count"] = len(flver_mesh.face_sets)  # custom property
+        # TODO: Testing combined mesh.
+        # Create a single combined mesh for all submeshes.
+        self.create_combined_mesh_obj(self.flver, self.name)
+
+        # for i, flver_mesh in enumerate(self.flver.meshes):
+        #     mesh_name = f"{self.name} Mesh {i}"
+        #     bl_mesh_obj = self.create_sub_mesh_obj(flver_mesh, mesh_name)
+        #     bl_mesh_obj["face_set_count"] = len(flver_mesh.face_sets)  # custom property
 
         self.create_dummies(dummy_prefix)
 
@@ -642,20 +646,20 @@ class FLVERImporter:
                 if isinstance(texture_source, BinderEntry):
                     # Source is a BinderEntry, so it's a TPF inside a Binder.
                     tpf = self.loose_tpf_sources[texture_path.stem].to_binary_file(TPF)
-                    if tpf.textures[0].stem != texture_path.stem:
+                    if tpf.textures[0].name != texture_path.stem:
                         self.warning(
                             f"Loose TPF '{texture_path.stem}' contained first texture with non-matching name "
-                            f"'{tpf.textures[0].stem}'. Ignoring."
+                            f"'{tpf.textures[0].name}'. Ignoring."
                         )
                     else:
                         textures_to_load[texture_stem] = tpf.textures[0]
                     continue
                 elif isinstance(texture_source, TPFTexture):
                     # Source is a TPFTexture loaded from a loose TPF file, not a Binder.
-                    if texture_source.stem != texture_path.stem:
+                    if texture_source.name != texture_path.stem:
                         self.warning(
                             f"Loose TPFTexture keyed under '{texture_stem}' has non-matching name "
-                            f"'{texture_source.stem}'. Ignoring."
+                            f"'{texture_source.name}'. Ignoring."
                         )
                     else:
                         textures_to_load[texture_stem] = texture_source
@@ -678,18 +682,197 @@ class FLVERImporter:
                 self.bl_images[texture_stem] = bl_image
                 # Note that the full interroot path is stored in material custom properties.
 
-    def create_mesh_obj(
+    def create_combined_mesh_obj(self, flver: FLVER, name: str):
+        """Create a single Blender mesh that combines all FLVER sub-meshes, using multiple material slots.
+
+        EXPERIMENTAL. Have not yet confirmed (but suspect) that this will preserve all data. Breakdown:
+            - Blender stores POSITION, BONE WEIGHTS, and BONE INDICES on vertices. Any differences here will require
+            genuine vertex duplication in Blender.
+            - Blender stores MATERIAL SLOT INDEX on faces. This is how different FLVER sub-meshes are stored.
+            - Blender stores UV COORDINATES, VERTEX COLORS, and NORMALS on face loops ('vertex instances'). This gels
+            with what FLVER meshes want to do.
+
+        We iterate over every FLVER mesh and every face set in that mesh, and treat the face vertices as 'FLVER loops':
+            - If a Blender vertex has not been created with the exact same position, bone weights, and GLOBAL
+            (FLVER-wide) bone indices, we create it and store its index in a dictionary under the hash of those three
+            members.
+            - Otherwise, we use the existing Blender vertex index in the new Blender face loop.
+            - We assign the FLVER UVs, vertex color(s), and normal data to the loop (normals are accumulated in a list
+            the same size as the loop count and applied with `mesh.normals_split_custom_set(normals)` afterward).
+        """
+        # TODO: should enforce OBJECT mode
+
+        bl_mesh = bpy.data.meshes.new(name=name)
+
+        for material in self.materials.values():
+            bl_mesh.materials.append(material)
+
+        if any(mesh.invalid_vertex_size for mesh in flver.meshes):
+            # Corrupted sub-meshes. Leave empty.
+            return self.create_obj(f"{name} <INVALID>", bl_mesh)
+
+        max_uv_count = max(
+            self.flver.buffer_layouts[flver_mesh.vertex_buffers[0].layout_index].get_uv_count()
+            for flver_mesh in flver.meshes
+        )  # not every face loop will use all these layers (depends on material)
+
+        verts = {}  # maps hashed (position, bone_indices, bone_weights) to Blender vertex index
+        bl_verts = []  # final vertex list (positions) to pass to Mesh in one batch
+        bl_vert_bone_indices = []
+        bl_vert_bone_weights = []
+
+        bl_faces = []  # final face list (vertex index triples) to pass to Mesh in one batch
+
+        # Data to set to Mesh/BMesh loops afterward:
+        bl_loop_uvs = []  # type: list[list[list[float]]]  # list of UV lists per loop
+        bl_loop_colors = []  # vertex colors for each loop (BMesh layer)
+        bl_loop_normals = []  # normals for each loop (passed to `mesh.normals_split_custom_set()`)
+        bl_mesh_face_materials = {i: [] for i in self.materials}  # maps material indices to Blender face indices
+        # NOTE: We don't import vertex tangents or bitangents. These are computable from the normals and normal UV.
+
+        for flver_mesh in flver.meshes:
+
+            material_face_indices = []
+
+            for triangle in flver_mesh.face_sets[0].get_triangles(allow_primitive_restarts=False):
+                bl_face = []  # vertex indices for this face
+                material_face_indices.append(len(bl_faces))  # new face index for material
+                for v_i in triangle:
+                    v = flver_mesh.vertices[v_i]
+                    # Convert local mesh bones to FLVER bones. Vertices with the same global bone indices (and weights),
+                    # even across different submeshes, will be merged in Blender.
+                    if flver_mesh.bone_indices:
+                        global_bone_indices = tuple(flver_mesh.bone_indices[i] for i in v.bone_indices)
+                    else:
+                        # TODO: I *believe* that vertex bone indices are global IFF `mesh.bone_indices` is empty.
+                        #  Need to check with non-DS1 games (which always have local indices).
+                        global_bone_indices = tuple(v.bone_indices)
+                    bl_v_key = (tuple(v.position), global_bone_indices, tuple(v.bone_weights))  # hashable
+                    if bl_v_key not in verts:
+                        # New Blender vert.
+                        bl_v_i = verts[bl_v_key] = len(bl_verts)
+                        bl_verts.append(GAME_TO_BL_VECTOR(v.position))
+                        bl_vert_bone_indices.append(global_bone_indices)
+                        bl_vert_bone_weights.append(v.bone_weights)
+                    else:
+                        bl_v_i = verts[bl_v_key]
+
+                    bl_face.append(bl_v_i)  # 'new loop' using new or existing vertex
+                    bl_loop_uvs.append([
+                        [uv[0], 1.0 - uv[1]]  # Z axis discarded, Y axis inverted
+                        for uv in v.uvs
+                    ])
+                    # TODO: Enforce single color, or warn about lost additional color layers. Or just support them.
+                    bl_loop_colors.append(v.colors[0])  # FLVER supports multiple colors but never observed (in DS1)
+                    bl_loop_normals.append(GAME_TO_BL_VECTOR(v.normal))
+
+                bl_faces.append(bl_face)
+
+            bl_mesh_face_materials[flver_mesh.material_index] = material_face_indices
+
+        bl_mesh.from_pydata(bl_verts, [], bl_faces)
+        bl_mesh.update()
+
+        # Assign face materials (submeshes).
+        for material_index, faces in bl_mesh_face_materials.items():
+            for face_index in faces:
+                bl_mesh.polygons[face_index].material_index = material_index
+
+        # Create UV and vertex color data layers.
+        for uv_index in range(max_uv_count):
+            bl_mesh.uv_layers.new(name=f"UVMap{uv_index + 1}", do_init=False)
+        bl_mesh.vertex_colors.new(name="VertexColors")
+
+        # Access layers at their final addresses.
+        uv_layers = []
+        for uv_index in range(max_uv_count):
+            uv_layers.append(bl_mesh.uv_layers[f"UVMap{uv_index + 1}"])
+        vertex_color_layer = bl_mesh.vertex_colors["VertexColors"]
+
+        # Set UVs and vertex colors on loops.
+        for loop_index, (loop_uvs, loop_color) in enumerate(zip(bl_loop_uvs, bl_loop_colors)):
+            for uv_index, uv in enumerate(loop_uvs):
+                uv_layer = uv_layers[uv_index]
+                uv_layer.data[loop_index].uv[:] = uv
+            vertex_color_layer.data[loop_index].color[:] = loop_color
+
+        # Enable custom split normals and assign them.
+        bl_mesh.create_normals_split()
+        bl_mesh.normals_split_custom_set(bl_loop_normals)  # one normal per loop
+        # TODO: apparently necessary to SEE the effects of split normals, but my notes claim that it will overwrite
+        #  the split normals on export?
+        bl_mesh.use_auto_smooth = True
+
+        bl_mesh_obj = self.create_obj(name, bl_mesh)
+        self.context.view_layer.objects.active = bl_mesh_obj
+
+        # Naming a vertex group after a Blender bone will automatically link it in the Armature modifier below.
+        bone_vertex_groups = [
+            bl_mesh_obj.vertex_groups.new(name=bone_name)
+            for bone_name in self.bl_bone_names.values()
+        ]  # type: list[bpy.types.VertexGroup]
+
+        # Awkwardly, we need a separate call to `VertexGroups[bone_index].add(indices, weight)` for each combination
+        # of `bone_index` and `weight`, so the dictionary keys constructed above are a tuple of those two to minimize
+        # the number of `add()` calls needed below.
+        bone_vertex_group_indices = {}  # type: dict[tuple[int, float], list[int]]
+
+        for v_i, (bone_indices, bone_weights) in enumerate(zip(bl_vert_bone_indices, bl_vert_bone_weights)):
+            if all(weight == 0.0 for weight in bone_weights) and len(set(bone_indices)) == 1:
+                # Map Piece FLVERs use a single duplicated index and no weights.
+                # TODO: May be able to assert that this is ALWAYS true for ALL vertices in map pieces.
+                v_bone_index = bone_indices[0]
+                bone_vertex_group_indices.setdefault((v_bone_index, 1.0), []).append(v_i)
+            else:
+                # Standard multi-bone weighting.
+                for v_bone_index, v_bone_weight in zip(bone_indices, bone_weights):
+                    if v_bone_weight == 0.0:
+                        continue
+                    bone_vertex_group_indices.setdefault((v_bone_index, v_bone_weight), []).append(v_i)
+
+        for (bone_index, bone_weight), bone_vertices in bone_vertex_group_indices.items():
+            bone_vertex_groups[bone_index].add(bone_vertices, bone_weight, "ADD")
+
+        bpy.ops.object.modifier_add(type="ARMATURE")
+        armature_mod = bl_mesh_obj.modifiers["Armature"]
+        armature_mod.object = self.armature
+        armature_mod.show_in_editmode = True
+        armature_mod.show_on_cage = True
+
+        # Custom properties with mesh data.
+
+        # Bool array.
+        bl_mesh_obj["Material Submesh Bind Pose"] = [flver_mesh.is_bind_pose for flver_mesh in flver.meshes]
+
+        # Bool array. We only store this setting for the first `FaceSet`.
+        bl_mesh_obj["Material Submesh Cull Back Faces"] = [
+            flver_mesh.face_sets[0].cull_back_faces for flver_mesh in flver.meshes
+        ]
+
+        # Int array. NOTE: This index is sometimes invalid for vanilla map FLVERs (e.g., 1 when there is only one bone).
+        bl_mesh_obj["Material Submesh Default Bone Index"] = [
+            flver_mesh.default_bone_index for flver_mesh in flver.meshes
+        ]
+
+        # Int array. Main face set is copied to all additional face sets on export.
+        bl_mesh_obj["Face Set Count"] = [
+            len(flver_mesh.face_sets) for flver_mesh in flver.meshes
+        ]
+
+        return bl_mesh_obj
+
+    def create_sub_mesh_obj(
         self,
         flver_mesh: FLVER.Mesh,
         mesh_name: str,
     ):
-        """Create a Blender mesh object.
+        """Create a Blender mesh object from a single FLVER sub-mesh.
 
         Data is stored in the following ways:
-            vertices are simply `vertex.position` remapped as (x, y, z)
+            vertices are simply `vertex.position` transformed into Blender space
             edges are not used
             faces are `face_set.get_triangles()`; only index 0 (maximum detail face set) is used
-            normals are simply `vertex.normal` remapped as (-x, y, z)
+            normals are simply `vertex.normal` transformed into Blender space
                 - note that normals are stored under loops, e.g. `mesh.loops[i].normal`
                 - can iterate over loops and copy each normal to vertex `loop.vertex_index`
 
@@ -788,8 +971,7 @@ class FLVERImporter:
         # noinspection PyTypeChecker
         bone_vertex_group_indices = {}  # type: dict[tuple[int, float], list[int]]
 
-        # TODO: I *believe* that vertex bone indices are global if and only if `mesh.bone_indices` is empty. (In DSR,
-        #  it's never empty.)
+        # TODO: I *believe* that vertex bone indices are global IFF `mesh.bone_indices` is empty. (Never in DSR.)
         if flver_mesh.bone_indices:
             for mesh_bone_index in flver_mesh.bone_indices:
                 group = bl_mesh_obj.vertex_groups.new(name=self.bl_bone_names[mesh_bone_index])
