@@ -76,7 +76,9 @@ def menu_func_view3d_mt(self, context):
 
 # Classes to register.
 CLASSES = (
+    MeshMoveSettings,
     CopyMeshSelectionOperator,
+    CutMeshSelectionOperator,
 
     ImportFLVER,
     ImportFLVERWithMSBChoice,
@@ -91,6 +93,12 @@ CLASSES = (
     ExportFLVERToMapDirectory,
     ExportMapDirectorySettings,
 
+    FLVERSettings,
+    SetVertexAlpha,
+    ActivateUVMap1,
+    ActivateUVMap2,
+    ActivateUVMap3,
+
     ImportDDS,
     ExportTexturesIntoBinder,
     LightmapBakeProperties,
@@ -99,6 +107,7 @@ CLASSES = (
 
     FLVER_PT_flver_tools,
     FLVER_PT_bake_subpanel,
+    FLVER_PT_uv_maps,
 
     ImportNVM,
     ImportNVMWithBinderChoice,
@@ -179,6 +188,8 @@ def register():
     bpy.types.Scene.export_map_directory_settings = bpy.props.PointerProperty(type=ExportMapDirectorySettings)
     bpy.types.Scene.navmesh_face_settings = bpy.props.PointerProperty(type=NavmeshFaceSettings)
     bpy.types.Scene.mcg_draw_settings = bpy.props.PointerProperty(type=MCGDrawSettings)
+    bpy.types.Scene.mesh_move_settings = bpy.props.PointerProperty(type=MeshMoveSettings)
+    bpy.types.Scene.flver_settings = bpy.props.PointerProperty(type=FLVERSettings)
 
     HANDLERS.append(bpy.types.SpaceView3D.draw_handler_add(draw_mcg_nodes, (), "WINDOW", "POST_VIEW"))
     HANDLERS.append(bpy.types.SpaceView3D.draw_handler_add(draw_mcg_node_labels, (), "WINDOW", "POST_PIXEL"))
@@ -208,6 +219,8 @@ def unregister():
     del bpy.types.Scene.export_map_directory_settings
     del bpy.types.Scene.navmesh_face_settings
     del bpy.types.Scene.mcg_draw_settings
+    del bpy.types.Scene.mesh_move_settings
+    del bpy.types.Scene.flver_settings
 
     for handler in HANDLERS:
         bpy.types.SpaceView3D.draw_handler_remove(handler, "WINDOW")

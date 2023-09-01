@@ -11,6 +11,11 @@ __all__ = [
     "ExportFLVERIntoBinder",
     "ExportFLVERToMapDirectory",
     "ExportMapDirectorySettings",
+    "FLVERSettings",
+    "SetVertexAlpha",
+    "ActivateUVMap1",
+    "ActivateUVMap2",
+    "ActivateUVMap3",
     "ImportDDS",
     "ExportTexturesIntoBinder",
     "LightmapBakeProperties",
@@ -18,16 +23,20 @@ __all__ = [
     "ExportLightmapTextures",
     "FLVER_PT_flver_tools",
     "FLVER_PT_bake_subpanel",
+    "FLVER_PT_uv_maps",
 ]
 
 import bpy
 
-from io_soulstruct.flver.import_flver import ImportFLVER, ImportFLVERWithMSBChoice, ImportEquipmentFLVER
-from io_soulstruct.flver.export_flver import (
+from io_soulstruct.misc_operators import CutMeshSelectionOperator
+
+from .import_flver import ImportFLVER, ImportFLVERWithMSBChoice, ImportEquipmentFLVER
+from .export_flver import (
     ExportFLVER, ExportFLVERIntoBinder, ExportFLVERToMapDirectory, ExportMapDirectorySettings
 )
-from io_soulstruct.flver.textures import *
-from io_soulstruct.flver.utilities import HideAllDummiesOperator, ShowAllDummiesOperator, PrintGameTransform
+from .misc_operators import *
+from .textures import *
+from .utilities import HideAllDummiesOperator, ShowAllDummiesOperator, PrintGameTransform
 
 
 def CUSTOM_ENUM(choices):
@@ -72,6 +81,14 @@ class FLVER_PT_flver_tools(bpy.types.Panel):
         textures_box.operator(ImportDDS.bl_idname)
         textures_box.operator(ExportTexturesIntoBinder.bl_idname)
 
+        misc_operators_box = self.layout.box()
+        misc_operators_box.label(text="Move Mesh Selection:")
+        misc_operators_box.prop(context.scene.mesh_move_settings, "new_material_index")
+        misc_operators_box.operator(CutMeshSelectionOperator.bl_idname)
+        misc_operators_box.label(text="Set Vertex Alpha:")
+        misc_operators_box.prop(context.scene.flver_settings, "vertex_alpha")
+        misc_operators_box.operator(SetVertexAlpha.bl_idname)
+
 
 class FLVER_PT_bake_subpanel(bpy.types.Panel):
     """Panel for Soulstruct FLVER lightmap texture baking."""
@@ -89,3 +106,17 @@ class FLVER_PT_bake_subpanel(bpy.types.Panel):
         self.layout.row().operator(BakeLightmapTextures.bl_idname)
 
         self.layout.box().operator(ExportLightmapTextures.bl_idname)
+
+
+class FLVER_PT_uv_maps(bpy.types.Panel):
+    """Panel for Soulstruct FLVER UV map operators."""
+    bl_label = "FLVER UV Maps"
+    bl_idname = "FLVER_PT_uv_maps"
+    bl_space_type = "IMAGE_EDITOR"
+    bl_region_type = "UI"
+    bl_category = "FLVER"
+
+    def draw(self, context):
+        self.layout.row().operator(ActivateUVMap1.bl_idname)
+        self.layout.row().operator(ActivateUVMap2.bl_idname)
+        self.layout.row().operator(ActivateUVMap3.bl_idname)
