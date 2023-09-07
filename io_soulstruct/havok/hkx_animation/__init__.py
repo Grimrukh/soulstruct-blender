@@ -29,11 +29,11 @@ from .select_hkx_animation import ArmatureActionChoiceOperator, SelectArmatureAc
 
 
 class HKX_ANIMATION_PT_hkx_animation_tools(bpy.types.Panel):
-    bl_label = "HKX Animation Tools"
+    bl_label = "Animations"
     bl_idname = "HKX_ANIMATION_PT_hkx_tools"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "HKX Animation"
+    bl_category = "Soulstruct Havok"
 
     # noinspection PyUnusedLocal
     def draw(self, context):

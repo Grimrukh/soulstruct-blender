@@ -118,7 +118,7 @@ CLASSES = (
     ImportMCG,
     ExportMCG,
     CreateMCGEdgeOperator,
-    NVM_PT_navmesh_tools,
+    NVM_PT_ds1_navmesh_tools,
     NavmeshFaceSettings,
     AddNVMFaceFlags,
     RemoveNVMFaceFlags,

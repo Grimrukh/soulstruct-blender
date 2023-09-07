@@ -518,24 +518,23 @@ def export_hkx_to_binder(
 
 class HKXMapCollisionExporter:
 
-    props: BlenderPropertyManager
     operator: LoggingOperator
 
     def __init__(self, operator: LoggingOperator, context):
         self.operator = operator
         self.context = context
-        self.props = BlenderPropertyManager({
-            "HKX": {"material_index": BlenderProp(int, 0)},
-        })
 
     def warning(self, msg: str):
         self.operator.report({"WARNING"}, msg)
         print(f"# WARNING: {msg}")
 
-    def export_hkx_map_collision(self, bl_meshes, name: str) -> MapCollisionHKX:
+    @staticmethod
+    def export_hkx_map_collision(bl_meshes, name: str) -> MapCollisionHKX:
         """Create HKX from Blender meshes (subparts).
 
         TODO: Currently only supported for DSR and Havok 2015.
+
+        TODO: Update to use single mesh (per hi/lo).
         """
         if not bl_meshes:
             raise ValueError("No meshes given to export to HKX.")
@@ -545,7 +544,7 @@ class HKXMapCollisionExporter:
 
         for bl_mesh in bl_meshes:
 
-            material_index = self.props.get(bl_mesh, "HKX", "material_index")
+            material_index = get_bl_prop(bl_mesh, "material_index", int, default=0)
             hkx_material_indices.append(material_index)
 
             hkx_verts = [BL_TO_GAME_VECTOR3_LIST(vert.co) for vert in bl_mesh.data.vertices]

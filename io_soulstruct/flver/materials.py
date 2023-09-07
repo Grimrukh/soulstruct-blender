@@ -78,14 +78,14 @@ class MaterialNodeCreator:
         )
 
         # Critical `Material` information stored in custom properties.
-        bl_material["material_mtd_path"] = flver_material.mtd_path  # str
-        bl_material["material_flags"] = flver_material.flags  # int
-        bl_material["material_gx_index"] = flver_material.gx_index  # int
-        bl_material["material_unk_x18"] = flver_material.unk_x18  # int
-        bl_material["material_texture_count"] = len(flver_material.textures)  # int
-        bl_material["material_texture_path_prefix"] = shared_texture_path_prefix  # str
+        bl_material["mtd_path"] = flver_material.mtd_path  # str
+        bl_material["flags"] = flver_material.flags  # int
+        bl_material["gx_index"] = flver_material.gx_index  # int
+        bl_material["unk_x18"] = flver_material.unk_x18  # int
+        bl_material["texture_count"] = len(flver_material.textures)  # int
+        bl_material["texture_path_prefix"] = shared_texture_path_prefix  # str
 
-        # Texture information is also stored here.
+        # Texture information is also stored here, using an index 'texture[i]_' prefix.
         for i, game_tex in enumerate(flver_material.textures):
             bl_material[f"texture[{i}]_path_suffix"] = game_tex.path.removeprefix(shared_texture_path_prefix)  # str
             bl_material[f"texture[{i}]_texture_type"] = game_tex.texture_type  # str

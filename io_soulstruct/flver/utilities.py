@@ -12,6 +12,7 @@ __all__ = [
     "game_forward_up_vectors_to_bl_euler",
     "bl_euler_to_game_forward_up_vectors",
     "bl_rotmat_to_game_forward_up_vectors",
+    "BufferLayoutFactory",
 ]
 
 import re
@@ -22,6 +23,7 @@ from mathutils import Euler, Matrix
 from soulstruct import Binder, FLVER
 from soulstruct.utilities.maths import Vector3, Matrix3
 from soulstruct.darksouls1r.maps import MSB, get_map
+from soulstruct.base.models.flver.vertex import MemberType, MemberFormat, LayoutMember, BufferLayout
 
 from io_soulstruct.utilities import (
     Transform, BlenderTransform, GAME_TO_BL_EULER, BL_TO_GAME_EULER, BL_TO_GAME_MAT3, LoggingOperator
@@ -51,10 +53,8 @@ class HideAllDummiesOperator(LoggingOperator):
 
     @classmethod
     def poll(cls, context):
-        try:
-            return context.selected_objects[0].type == "ARMATURE"
-        except IndexError:
-            return False
+        """At least one Blender Mesh selected."""
+        return len(context.selected_objects) > 0 and all(obj.type == "MESH" for obj in context.selected_objects)
 
     # noinspection PyMethodMayBeStatic
     def execute(self, context):
@@ -194,3 +194,90 @@ def bl_rotmat_to_game_forward_up_vectors(bl_rotmat: Matrix) -> tuple[Vector3, Ve
     forward = Vector3((game_mat[0][2], game_mat[1][2], game_mat[2][2]))  # third column (Z)
     up = Vector3((game_mat[0][1], game_mat[1][1], game_mat[2][1]))  # second column (Y)
     return forward, up
+
+
+class BufferLayoutFactory:
+
+    member_unkx_00: int
+
+    def __init__(self, unkx_00: int):
+        self.member_unkx_00 = unkx_00
+
+    def member(self, member_type: MemberType, member_format: MemberFormat, index=0):
+        return LayoutMember(
+            member_type=member_type,
+            member_format=member_format,
+            index=index,
+            unk_x00=self.member_unkx_00,
+        )
+
+    def get_ds1_map_buffer_layout(
+        self, is_multiple=False, is_lightmap=False, extra_uv_maps: tuple[int, int] = None, no_tangents=False
+    ) -> BufferLayout:
+        members = [  # always present
+            self.member(MemberType.Position, MemberFormat.Float3),
+            self.member(MemberType.BoneIndices, MemberFormat.Byte4B),
+            self.member(MemberType.Normal, MemberFormat.Byte4C),
+            # Tangent/Bitangent will be inserted here if needed.
+            self.member(MemberType.VertexColor, MemberFormat.Byte4C),
+            # UV/UVPair will be appended here if needed.
+        ]
+
+        if not no_tangents:
+            members.insert(3, self.member(MemberType.Tangent, MemberFormat.Byte4C))
+            if is_multiple:  # has Bitangent
+                members.insert(4, self.member(MemberType.Bitangent, MemberFormat.Byte4C))
+        elif is_multiple:  # has Bitangent but not Tangent (probably never happens)
+            members.insert(3, self.member(MemberType.Bitangent, MemberFormat.Byte4C))
+
+        # Calculate total UV map count and use a combination of UVPair and UV format members below.
+        if is_multiple and is_lightmap:  # three UVs
+            uv_count = 3
+        elif is_multiple or is_lightmap:  # two UVs
+            uv_count = 2
+        else:  # one UV
+            uv_count = 1
+
+        if extra_uv_maps:
+            extra_count, first_index = extra_uv_maps
+            if first_index > uv_count:
+                raise ValueError(
+                    f"Material already has {uv_count} UV maps, but extra UV maps start at index {first_index}."
+                )
+            uv_count = first_index + extra_count  # will add 'dummy' UVs for some shaders (e.g. 'M_3Ivy[DSB].mtd')
+
+        if uv_count > 4:
+            raise ValueError(f"Cannot have more than 4 UV maps in a vertex buffer (got {uv_count}).")
+
+        uv_member_index = 0
+        while uv_count > 0:  # extra UVs
+            # For odd counts, single UV member is added first.
+            if uv_count % 2:
+                members.append(self.member(MemberType.UV, MemberFormat.UV, index=uv_member_index))
+                uv_count -= 1
+                uv_member_index += 1
+            else:  # must be a non-zero even number remaining
+                # Use a UVPair member.
+                members.append(self.member(MemberType.UV, MemberFormat.UVPair, index=uv_member_index))
+                uv_count -= 2
+                uv_member_index += 1
+
+        return BufferLayout(members)
+
+    def get_ds1_chr_buffer_layout(self, is_multiple=False) -> BufferLayout:
+        """Default buffer layout for character (and probably object) materials in DS1R."""
+        members = [
+            self.member(MemberType.Position, MemberFormat.Float3),
+            self.member(MemberType.BoneIndices, MemberFormat.Byte4B),
+            self.member(MemberType.BoneWeights, MemberFormat.Short4ToFloat4A),
+            self.member(MemberType.Normal, MemberFormat.Byte4C),
+            self.member(MemberType.Tangent, MemberFormat.Byte4C),
+            self.member(MemberType.VertexColor, MemberFormat.Byte4C),
+        ]
+        if is_multiple:  # has Bitangent and UVPair
+            members.insert(5, self.member(MemberType.Bitangent, MemberFormat.Byte4C))
+            members.append(self.member(MemberType.UV, MemberFormat.UVPair))
+        else:  # one UV
+            members.append(self.member(MemberType.UV, MemberFormat.UV))
+
+        return BufferLayout(members)

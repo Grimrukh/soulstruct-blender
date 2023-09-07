@@ -30,6 +30,11 @@ from .utilities import HKXCutsceneImportError
 REMOBND_RE = re.compile(r"^.*?\.remobnd(\.dcx)?$")
 
 
+_SETTINGS = read_settings()
+_GAME_DIRECTORY = _SETTINGS.get("GameDirectory", "")
+_PNG_CACHE_DIR = _SETTINGS.get("PNGCacheDirectory", "")
+
+
 class ImportHKXCutscene(LoggingOperator, ImportHelper):
     bl_idname = "import_scene.hkx_cutscene"
     bl_label = "Import HKX Cutscene"
@@ -47,7 +52,7 @@ class ImportHKXCutscene(LoggingOperator, ImportHelper):
     game_directory: bpy.props.StringProperty(
         name="Game Directory",
         description="Directory of game files to load MSBs and missing cutscene parts from",
-        default=get_last_game_directory(),
+        default=_GAME_DIRECTORY,
     )
 
     to_60_fps: bpy.props.BoolProperty(
@@ -77,7 +82,7 @@ class ImportHKXCutscene(LoggingOperator, ImportHelper):
     png_cache_path: bpy.props.StringProperty(
         name="Cached PNG path",
         description="Directory to use for reading/writing cached texture PNGs",
-        default="D:\\blender_png_cache",
+        default=_PNG_CACHE_DIR,
     )
 
     read_from_png_cache: bpy.props.BoolProperty(

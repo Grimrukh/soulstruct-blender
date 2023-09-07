@@ -47,11 +47,11 @@ from io_soulstruct.misc_operators import CopyMeshSelectionOperator
 
 
 class HKX_COLLISION_PT_hkx_map_collision_tools(bpy.types.Panel):
-    bl_label = "HKX Map Collision Tools"
+    bl_label = "HKX Map Collisions"
     bl_idname = "HKX_PT_hkx_map_collision_tools"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "HKX Map Collision"
+    bl_category = "Soulstruct Havok"
 
     # noinspection PyUnusedLocal
     def draw(self, context):

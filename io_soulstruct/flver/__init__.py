@@ -48,11 +48,11 @@ CUSTOM_ENUM.choices = []
 
 class FLVER_PT_flver_tools(bpy.types.Panel):
     """Panel for Soulstruct FLVER operators."""
-    bl_label = "FLVER Tools"
+    bl_label = "FLVER"
     bl_idname = "FLVER_PT_flver_tools"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "FLVER"
+    bl_category = "Soulstruct"
 
     def draw(self, context):
         import_box = self.layout.box()
@@ -92,11 +92,11 @@ class FLVER_PT_flver_tools(bpy.types.Panel):
 
 class FLVER_PT_bake_subpanel(bpy.types.Panel):
     """Panel for Soulstruct FLVER lightmap texture baking."""
-    bl_label = "Lightmaps"
+    bl_label = "FLVER Lightmaps"
     bl_idname = "FLVER_PT_bake_subpanel"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "FLVER"
+    bl_category = "Soulstruct"
     bl_parent_id = "FLVER_PT_flver_tools"
 
     def draw(self, context):
@@ -114,7 +114,7 @@ class FLVER_PT_uv_maps(bpy.types.Panel):
     bl_idname = "FLVER_PT_uv_maps"
     bl_space_type = "IMAGE_EDITOR"
     bl_region_type = "UI"
-    bl_category = "FLVER"
+    bl_category = "Soulstruct"
 
     def draw(self, context):
         self.layout.row().operator(ActivateUVMap1.bl_idname)

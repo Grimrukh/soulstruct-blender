@@ -4,6 +4,7 @@ The Blender script (`io_flver.py`) will ensure that the mini-Soulstruct module i
 you will have to restart Blender to see any changes to this mini-module, as `Reload Scripts` in Blender will not
 re-import it.
 """
+import json
 import shutil
 import sys
 from pathlib import Path
@@ -58,8 +59,19 @@ def install(blender_scripts_dir: str | Path, update_soulstruct_module=False, upd
     blender_addons_dir = blender_scripts_dir / "addons"
     blender_module_dir = blender_addons_dir / "io_soulstruct"
     blender_module_dir.mkdir(exist_ok=True, parents=True)
+
+    settings_path = blender_module_dir / "UserSettings.json"
+    if settings_path.is_file():
+        settings_data = settings_path.read_bytes()
+    else:
+        # Default settings.
+        settings_data = json.dumps({
+            "GameDirectory": "",
+            "PNGCacheDirectory": "D:\\blender_png_cache",
+        }, indent=4).encode()
     shutil.rmtree(blender_module_dir, ignore_errors=True)
     shutil.copytree(this_dir / "io_soulstruct", blender_module_dir)
+    settings_path.write_bytes(settings_data)
     print(f"# Blender addon `io_soulstruct` installed to '{blender_addons_dir}'.")
 
 

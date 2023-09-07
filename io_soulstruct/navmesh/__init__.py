@@ -9,7 +9,7 @@ __all__ = [
     "ImportMCP",
     "ImportMCG",
     "ExportMCG",
-    "NVM_PT_navmesh_tools",
+    "NVM_PT_ds1_navmesh_tools",
     "NavmeshFaceSettings",
     "AddNVMFaceFlags",
     "RemoveNVMFaceFlags",
@@ -155,12 +155,12 @@ class SetNVMFaceObstacleCount(bpy.types.Operator):
         return {"FINISHED"}
 
 
-class NVM_PT_navmesh_tools(bpy.types.Panel):
-    bl_label = "DS1 Navmesh Tools"
-    bl_idname = "NVM_PT_navmesh_tools"
+class NVM_PT_ds1_navmesh_tools(bpy.types.Panel):
+    bl_label = "Navmeshes (DS1)"
+    bl_idname = "NVM_PT_ds1_navmesh_tools"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "Navmesh"
+    bl_category = "Soulstruct"
 
     # noinspection PyUnusedLocal
     def draw(self, context):
@@ -202,6 +202,7 @@ class NVM_PT_navmesh_tools(bpy.types.Panel):
             layout_selected_faces(bm, self.layout, context, selected_faces_box)
         else:
             selected_faces_box.label(text="Select navmesh faces in Edit Mode")
+
 
 def layout_selected_faces(bm: bmesh.types.BMesh, layout, context, selected_faces_box):
     flags_layer = bm.faces.layers.int.get("nvm_face_flags")

@@ -15,15 +15,13 @@ __all__ = [
     "BL_EDIT_BONE_DEFAULT_QUAT_INV",
     "Transform",
     "BlenderTransform",
-    "BlenderProp",
-    "BlenderPropertyManager",
     "get_bl_prop",
     "is_uniform",
     "natural_keys",
     "LoggingOperator",
     "get_dcx_enum_property",
-    "get_last_game_directory",
-    "set_last_game_directory",
+    "read_settings",
+    "write_settings",
     "profile_execute",
     "hsv_color",
     "create_basic_material",
@@ -45,10 +43,13 @@ from bpy.types import Operator
 from mathutils import Color, Euler, Vector, Matrix
 
 from soulstruct.containers import DCXType
+from soulstruct.utilities.files import read_json, write_json
 from soulstruct.utilities.maths import Vector3, Vector4, Matrix3
 
 
 MAP_STEM_RE = re.compile(r"^m(?P<area>\d\d)_(?P<block>\d\d)_(?P<cc>\d\d)_(?P<dd>\d\d)$")
+
+_SETTINGS_PATH = Path(__file__).parent / "UserSettings.json"
 
 
 def GAME_TO_BL_VECTOR(game_vector: Vector3 | tp.Sequence[float, float, float]) -> Vector:
@@ -198,60 +199,6 @@ class BlenderTransform:
         return BlenderTransform(new_translate, new_rotate, new_scale)
 
 
-class BlenderProp(tp.NamedTuple):
-    bl_type: tp.Type
-    default: tp.Any = None
-    callback: tp.Callable = None
-    do_not_assign: bool = False
-
-
-class BlenderPropertyManager:
-
-    properties: dict[str, dict[str, BlenderProp]]
-
-    def __init__(self, property_dict: dict[str, dict[str, BlenderProp]]):
-        self.properties = property_dict
-
-    def get(self, bl_obj, prop_class: str, bl_prop_name: str, py_prop_name: str = None):
-        if py_prop_name is None:
-            py_prop_name = bl_prop_name
-        try:
-            prop = self.properties[prop_class][py_prop_name]
-        except KeyError:
-            raise KeyError(f"Invalid Blender object property class/name: {prop_class}, {bl_prop_name}")
-
-        prop_value = bl_obj.get(bl_prop_name, prop.default)
-
-        if prop_value is None:
-            raise KeyError(f"Object '{bl_obj.name}' does not have required `{prop_class}` property '{bl_prop_name}'.")
-        if prop.bl_type is tuple:
-            # Blender type is an `IDPropertyArray` with `typecode = 'i'` or `'d'`.
-            if type(prop_value).__name__ != "IDPropertyArray":
-                raise KeyError(
-                    f"Object '{bl_obj.name}' property '{bl_prop_name}' does not have type `IDPropertyArray`."
-                )
-            if not prop.callback:
-                prop_value = tuple(prop_value)  # convert `IDPropertyArray` to `tuple` by default
-        elif not isinstance(prop_value, prop.bl_type):
-            raise KeyError(f"Object '{bl_obj.name}' property '{bl_prop_name}' does not have type `{prop.bl_type}`.")
-
-        if prop.callback:
-            prop_value = prop.callback(prop_value)
-
-        return prop_value
-
-    def get_all(self, bl_obj, py_obj, prop_class: str, bl_prop_prefix: str = "") -> dict[str, tp.Any]:
-        """Assign all class properties from Blender object `bl_obj` as attributes of Soulstruct object `py_obj`."""
-        unassigned = {}
-        for prop_name, prop in self.properties[prop_class].items():
-            prop_value = self.get(bl_obj, prop_class, bl_prop_prefix + prop_name, py_prop_name=prop_name)
-            if prop.do_not_assign:
-                unassigned[prop_name] = prop_value
-            else:
-                setattr(py_obj, prop_name, prop_value)
-        return unassigned
-
-
 def get_bl_prop(bl_obj, name: str, prop_type: tp.Type, default=None, callback: tp.Callable = None):
     """Try to get custom property `name` from Blender object `bl_obj`, with type `prop_type`.
 
@@ -346,20 +293,17 @@ def get_dcx_enum_property(
     )
 
 
-def get_last_game_directory():
-    """Load last `game_directory` from text file."""
-    last_game_directory_path = Path(__file__).parent / "game_directory.txt"
-    if last_game_directory_path.is_file():
-        game_directory = last_game_directory_path.read_text()
-        if Path(game_directory).is_dir():
-            return game_directory
-    return ""
+def read_settings() -> dict[str, tp.Any]:
+    try:
+        return read_json(_SETTINGS_PATH)
+    except FileNotFoundError:
+        return {}
 
 
-def set_last_game_directory(game_directory: str):
-    """Save last `game_directory` to text file."""
-    last_game_directory_path = Path(__file__).parent / "game_directory.txt"
-    last_game_directory_path.write_text(game_directory)
+def write_settings(**settings):
+    settings = read_settings()
+    settings.update(settings)
+    write_json(_SETTINGS_PATH, settings)
 
 
 def profile_execute(execute_method: tp.Callable):
