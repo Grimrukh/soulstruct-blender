@@ -13,9 +13,12 @@ __all__ = [
     "bl_euler_to_game_forward_up_vectors",
     "bl_rotmat_to_game_forward_up_vectors",
     "BufferLayoutFactory",
+    "MTDInfo",
 ]
 
 import re
+import typing as tp
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from mathutils import Euler, Matrix
@@ -24,6 +27,7 @@ from soulstruct import Binder, FLVER
 from soulstruct.utilities.maths import Vector3, Matrix3
 from soulstruct.darksouls1r.maps import MSB, get_map
 from soulstruct.base.models.flver.vertex import MemberType, MemberFormat, LayoutMember, BufferLayout
+from soulstruct.base.models.mtd import MTD
 
 from io_soulstruct.utilities import (
     Transform, BlenderTransform, GAME_TO_BL_EULER, BL_TO_GAME_EULER, BL_TO_GAME_MAT3, LoggingOperator
@@ -281,3 +285,131 @@ class BufferLayoutFactory:
             members.append(self.member(MemberType.UV, MemberFormat.UV))
 
         return BufferLayout(members)
+
+
+@dataclass(slots=True)
+class MTDInfo:
+    """Various booleans that indicate required textures for a specific MTD shader."""
+
+    MTD_DSBH_RE: tp.ClassVar[re.Pattern] = re.compile(r".*\[(D)?(S)?(B)?(H)?\].*")  # TODO: support 'T" (translucency)
+    MTD_M_RE: tp.ClassVar[re.Pattern] = re.compile(r".*\[(M|ML|LM)\].*")
+    MTD_L_RE: tp.ClassVar[re.Pattern] = re.compile(r".*\[(L|ML|LM)\].*")
+    # Checked separately: [Dn] (g_Diffuse only), [We] (g_Bumpmap only)
+
+    # MTD name prefixes that indicate two extra UV slots, and the required index of their first UV data.
+    # TODO: Why are these different, when both can use M and/or L?
+    MTD_FOLIAGE_PREFIXES: tp.ClassVar[str, int] = {
+        "M_2Foliage": 1,
+        "M_3Ivy": 2,
+    }
+
+    # TODO: Hardcoding a set of 'water' shader names I've encountered in DSR.
+    WATER_NAMES: tp.ClassVar[set[str]] = {
+        "A14_numa.mtd",  # Blighttown swamp
+        "A12_DarkRiver.mtd",
+        "A12_DarkWater.mtd",
+    }
+
+    # Ordered dict mapping texture type names like 'g_Diffuse' to their FLVER vertex UV index/Blender layer (1-indexed).
+    texture_types: dict[str, int] = field(default_factory=list)
+    # TODO: Some shaders simply don't use the always-empty 'g_DetailBumpmap', but I can find no reliable way to detect
+    #  this from their MTD names alone. I may have to guess that they do unless the MTD file is provided.
+
+    alpha: bool = False
+    edge: bool = False
+    spec: bool = False
+    detb: bool = False  # I don't think these shaders are used in DS1. Also `g_EnvSpcSlotNo = 2`...
+    is_water: bool = False
+    no_tangents: bool = False  # True for unshaded (flag) FLVERs like skybox textures
+    extra_uv_maps: None | tuple[int, int] = None  # extra UV slots and first index of them
+
+    @classmethod
+    def from_mtd_file(cls, mtd: MTD):
+        mtd_info = cls()
+
+        # MTD UV indices are consistent in the sense that lightmap index is always 3, whereas it could actually be
+        # FLVER vertex index 2 if only one texture slot is present. So we remove 'UV index gaps' from this.
+        remapped_uv_values = {}
+        for texture in mtd.textures:
+            uv_index = remapped_uv_values.setdefault(texture.uv_index, len(remapped_uv_values) + 1)
+            mtd_info.texture_types[texture.texture_type] = uv_index
+
+        blend_mode = mtd.get_param("g_BlendMode", default=0)
+        if blend_mode == 1:
+            mtd_info.edge = True
+        elif blend_mode == 2:
+            mtd_info.alpha = True
+
+        env_spc_slot_no = mtd.get_param("g_EnvSpcSlotNo", default=0)
+        if env_spc_slot_no == 1:
+            mtd_info.spec = True
+
+        detail_bump_power = mtd.get_param("g_DetailBump_BumpPower", default=0.0)
+        if detail_bump_power > 0.0:
+            mtd_info.detb = True
+
+        lighting_type = mtd.get_param("g_LightingType", default=1)
+        if lighting_type == 0:
+            mtd_info.no_tangents = True  # e.g. skybox
+
+        return mtd_info
+
+    @classmethod
+    def from_mtd_name(cls, mtd_name):
+        mtd_info = cls()
+
+        if dsbh_match := cls.MTD_DSBH_RE.match(mtd_name):
+            if dsbh_match.group(1):
+                mtd_info.texture_types["g_Diffuse"] = 1
+            if dsbh_match.group(2):
+                mtd_info.texture_types["g_Specular"] = 1
+            if dsbh_match.group(3):
+                mtd_info.texture_types["g_Bumpmap"] = 1
+            if dsbh_match.group(4):
+                mtd_info.texture_types["g_Height"] = 1
+        elif "[Dn]" in mtd_name:
+            mtd_info.texture_types["g_Diffuse"] = 1
+            mtd_info.no_tangents = True  # TODO: A few [D] shaders also don't use tangents...
+        elif "[We]" in mtd_name or mtd_name in cls.WATER_NAMES:
+            mtd_info.texture_types["g_Bumpmap"] = 1
+            mtd_info.is_water = True
+        else:
+            print(f"# ERROR: Shader name '{mtd_name}' could not be parsed for its textures.")
+
+        if cls.MTD_M_RE.match(mtd_name):
+            for texture_type, _ in mtd_info.texture_types:
+                mtd_info.texture_types[texture_type + "_2"] = 2
+            lightmap_uv_index = 3
+        else:
+            lightmap_uv_index = 2
+
+        if cls.MTD_L_RE.match(mtd_name):
+            mtd_info.texture_types["g_Lightmap"] = lightmap_uv_index
+
+        for prefix, first_uv_index in cls.MTD_FOLIAGE_PREFIXES.items():
+            if mtd_name.startswith(prefix):
+                mtd_info.extra_uv_maps = (2, first_uv_index)
+                break  # can't match more than one
+
+        mtd_info.alpha = "_Alp" in mtd_name
+        mtd_info.edge = "_Edge" in mtd_name
+        mtd_info.spec = "_Spec" in mtd_name
+        mtd_info.detb = "_DetB" in mtd_name
+
+        if "g_Bumpmap" in mtd_info.texture_types:
+            # Add useless 'g_DetailBumpmap' for completion. TODO: Some shaders, even with 'g_Bumpmap', do not have this.
+            mtd_info.texture_types["g_DetailBumpmap"] = 1  # always
+
+        return mtd_info
+
+    @property
+    def has_two_slots(self):
+        return any(texture_type.endswith("_2") for texture_type, _ in self.texture_types)
+
+    @property
+    def has_lightmap(self):
+        return any(texture_type == "g_Lightmap" for texture_type, _ in self.texture_types)
+
+    @property
+    def has_detail_bumpmap(self):
+        return "g_DetailBumpmap" in self.texture_types
