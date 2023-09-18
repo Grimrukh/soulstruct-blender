@@ -15,6 +15,7 @@ from soulstruct.containers import Binder, BinderEntry
 
 from soulstruct_havok.wrappers.hkx2015 import MapCollisionHKX
 
+from io_soulstruct.general import GlobalSettings
 from io_soulstruct.utilities import *
 from .utilities import *
 
@@ -286,7 +287,12 @@ class ExportHKXMapCollisionToMapDirectoryBHD(LoggingOperator):
 
     @classmethod
     def poll(cls, context):
-        """Must select a single empty parent of only (and at least one) child meshes."""
+        """Must select a single empty parent of only (and at least one) child meshes.
+
+        TODO: Also currently for DS1R only.
+        """
+        if GlobalSettings.get_scene_settings(context).game != "DS1R":
+            return False
         is_empty_selected = len(context.selected_objects) == 1 and context.selected_objects[0].type == "EMPTY"
         if not is_empty_selected:
             return False
@@ -294,16 +300,18 @@ class ExportHKXMapCollisionToMapDirectoryBHD(LoggingOperator):
         return len(children) >= 1 and all(child.type == "MESH" for child in children)
 
     def execute(self, context):
-        game_directory = context.scene.export_map_directory_settings.game_directory
-        map_stem = context.scene.export_map_directory_settings.map_stem
+
+        settings = GlobalSettings.get_scene_settings(context)
+        game_directory = settings.game_directory
+        map_stem = settings.map_stem
         # NOTE: Always uses DSR DCX.
 
-        # Save last `game_directory` (even if this function fails).
-        last_game_directory_path = Path(__file__).parent / "../game_directory.txt"
-        last_game_directory_path.write_text(game_directory)
+        if not game_directory or not map_stem:
+            return self.error("Game directory and map stem must be set in Blender's Soulstruct global settings.")
 
-        map_dir_path = Path(game_directory) / f"map/{map_stem}"
+        settings.save_settings()
 
+        map_dir_path = Path(game_directory, "map", map_stem)
         if not map_dir_path.is_dir():
             return self.error(f"Invalid game map directory: {map_dir_path}")
 
@@ -318,7 +326,7 @@ class ExportHKXMapCollisionToMapDirectoryBHD(LoggingOperator):
         if name_match is None:
             return self.error(
                 f"Selected object '{hkx_parent.name}' does not match the expected name pattern for "
-                f"a HKX collision parent object: 'hXXXXAXBXX' or 'lXXXXAXBXX'."
+                f"a HKX collision parent object: 'h....A.B..' or 'l....A.B..'."
             )
 
         block, area = int(name_match.group(3)), int(name_match.group(4))

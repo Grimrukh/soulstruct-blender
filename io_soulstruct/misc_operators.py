@@ -39,7 +39,10 @@ class CopyMeshSelectionOperator(LoggingOperator):
 
         # Identify edited and non-edited meshes
         edited_mesh_obj = context.edit_object
-        dest_msh_obj = [obj for obj in context.selected_objects if obj != edited_mesh_obj][0]
+        # noinspection PyTypeChecker
+        dest_msh_obj = [
+            obj for obj in context.selected_objects if obj != edited_mesh_obj
+        ][0]  # type: bpy.types.MeshObject
 
         # Check if both are mesh objects
         if edited_mesh_obj.type != "MESH" or dest_msh_obj.type != "MESH":
@@ -55,10 +58,11 @@ class CopyMeshSelectionOperator(LoggingOperator):
         # Switch to OBJECT mode and identify the newly created object
         bpy.ops.object.mode_set(mode="OBJECT")
         try:
+            # noinspection PyTypeChecker
             temp_obj = [
                 obj for obj in context.selected_objects
                 if obj != edited_mesh_obj and obj != dest_msh_obj
-            ][0]
+            ][0]  # type: bpy.types.MeshObject
         except IndexError:
             return self.error("Could not identify temporary mesh object used for copy operation.")
 
@@ -70,8 +74,8 @@ class CopyMeshSelectionOperator(LoggingOperator):
             for poly in temp_obj.data.polygons:
                 poly.material_index = 0
 
-        # Join the newly created mesh to the non-edited mesh
-        bpy.ops.object.select_all(action="DESELECT")
+        # Join the newly created mesh to the non-edited mesh.
+        self.deselect_all()
         dest_msh_obj.select_set(True)
         temp_obj.select_set(True)
         context.view_layer.objects.active = dest_msh_obj  # copy target
@@ -118,7 +122,7 @@ class CutMeshSelectionOperator(LoggingOperator):
             temp_obj = [
                 obj for obj in context.selected_objects
                 if obj != edited_mesh_obj and obj != dest_msh_obj
-            ][0]
+            ][0]  # type: bpy.types.MeshObject
         except IndexError:
             return self.error("Could not identify temporary mesh object used for copy operation.")
 

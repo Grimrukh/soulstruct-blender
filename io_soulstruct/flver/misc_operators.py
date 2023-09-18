@@ -42,7 +42,8 @@ class SetVertexAlpha(LoggingOperator):
         # Go to OBJECT mode
         bpy.ops.object.mode_set(mode="OBJECT")
 
-        mesh = context.active_object
+        # noinspection PyTypeChecker
+        mesh = context.active_object  # type: bpy.types.MeshObject
         if mesh is None or mesh.type != "MESH":
             return self.error("Please select a Mesh object.")
 

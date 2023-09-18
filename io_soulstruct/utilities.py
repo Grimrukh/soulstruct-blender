@@ -20,8 +20,6 @@ __all__ = [
     "natural_keys",
     "LoggingOperator",
     "get_dcx_enum_property",
-    "read_settings",
-    "write_settings",
     "profile_execute",
     "hsv_color",
     "create_basic_material",
@@ -34,22 +32,17 @@ import pstats
 import re
 import typing as tp
 from dataclasses import dataclass
-from pathlib import Path
 
 import bpy
 from bpy.props import EnumProperty
-# noinspection PyUnresolvedReferences
 from bpy.types import Operator
 from mathutils import Color, Euler, Vector, Matrix
 
 from soulstruct.containers import DCXType
-from soulstruct.utilities.files import read_json, write_json
 from soulstruct.utilities.maths import Vector3, Vector4, Matrix3
 
 
 MAP_STEM_RE = re.compile(r"^m(?P<area>\d\d)_(?P<block>\d\d)_(?P<cc>\d\d)_(?P<dd>\d\d)$")
-
-_SETTINGS_PATH = Path(__file__).parent / "UserSettings.json"
 
 
 def GAME_TO_BL_VECTOR(game_vector: Vector3 | tp.Sequence[float, float, float]) -> Vector:
@@ -211,7 +204,7 @@ def get_bl_prop(bl_obj, name: str, prop_type: tp.Type, default=None, callback: t
         raise KeyError(f"Object '{bl_obj.name}' does not have required `{prop_type}` property '{name}'.")
     if prop_type is tuple:
         # Blender type is an `IDPropertyArray` with `typecode = 'i'` or `'d'`.
-        if type(prop_value).__name__ != "IDPropertyArray":
+        if default is None and type(prop_value).__name__ != "IDPropertyArray":
             raise KeyError(
                 f"Object '{bl_obj.name}' property '{name}' does not have type `IDPropertyArray`."
             )
@@ -267,11 +260,32 @@ class LoggingOperator(Operator):
         self.report({"ERROR"}, msg)
         return {"CANCELLED"}
 
+    @staticmethod
+    def to_object_mode():
+        if bpy.ops.object.mode_set.poll():
+            bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
+
+    @staticmethod
+    def to_edit_mode():
+        if bpy.ops.object.mode_set.poll():
+            bpy.ops.object.mode_set(mode="EDIT", toggle=False)
+
+    @staticmethod
+    def deselect_all():
+        if bpy.ops.object.select_all.poll():
+            bpy.ops.object.select_all(action="DESELECT")
+
+    @staticmethod
+    def set_active_obj(obj: bpy.types.Object):
+        LoggingOperator.deselect_all()
+        obj.select_set(True)
+        bpy.context.view_layer.objects.active = obj
+
 
 def get_dcx_enum_property(
-    default: str | DCXType = "Null",
+    default: str | DCXType = "Auto",
     name="Compression",
-    description="Type of DCX compression to apply to exported file (typically not used in Binder)",
+    description="Type of DCX compression to apply to exported file or Binder entry",
 ):
     """Create a Blender `EnumProperty` for selecting DCX compression type.
 
@@ -281,6 +295,7 @@ def get_dcx_enum_property(
     return EnumProperty(
         name=name,
         items=[
+            ("Auto", "Auto", "Use Soulstruct default DCX for this game, file type, and export target"),
             ("Null", "None", "Export without any DCX compression"),
             ("DCX_EDGE", "DES", "Demon's Souls compression"),
             ("DCX_DFLT_10000_24_9", "DS1/DS2", "Dark Souls 1/2 compression"),
@@ -291,19 +306,6 @@ def get_dcx_enum_property(
         description=description,
         default=default if isinstance(default, str) else default.name,
     )
-
-
-def read_settings() -> dict[str, tp.Any]:
-    try:
-        return read_json(_SETTINGS_PATH)
-    except FileNotFoundError:
-        return {}
-
-
-def write_settings(**settings):
-    settings = read_settings()
-    settings.update(settings)
-    write_json(_SETTINGS_PATH, settings)
 
 
 def profile_execute(execute_method: tp.Callable):

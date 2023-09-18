@@ -61,12 +61,7 @@ class HKX_COLLISION_PT_hkx_map_collision_tools(bpy.types.Panel):
         export_box = self.layout.box()
         export_box.operator(ExportHKXMapCollision.bl_idname)
         export_box.operator(ExportHKXMapCollisionIntoBinder.bl_idname)
-
-        export_map_settings = context.scene.export_map_directory_settings
-        export_to_map_box = self.layout.box()
-        export_to_map_box.prop(export_map_settings, "game_directory")
-        export_to_map_box.prop(export_map_settings, "map_stem")  # TODO: must match Blender collision name (for now)
-        export_to_map_box.operator(ExportHKXMapCollisionToMapDirectoryBHD.bl_idname)
+        export_box.operator(ExportHKXMapCollisionToMapDirectoryBHD.bl_idname)
 
         misc_operators_box = self.layout.box()
         # Useful in particular for creating HKX map collisions (e.g. from FLVER or high <> low res).

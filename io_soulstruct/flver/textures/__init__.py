@@ -1,7 +1,7 @@
 __all__ = [
     "ImportDDS",
     "ExportTexturesIntoBinder",
-    "LightmapBakeProperties",
+    "BakeLightmapSettings",
     "BakeLightmapTextures",
     "ExportLightmapTextures",
 ]

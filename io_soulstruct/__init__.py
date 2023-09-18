@@ -29,6 +29,7 @@ for module_name in list(sys.modules.keys()):
 from io_soulstruct.flver import *
 from io_soulstruct.navmesh import *
 from io_soulstruct.misc_operators import *
+from io_soulstruct.general import *
 
 # TODO: Currently asserting that `soulstruct_havok` is installed, but this is not necessary for all add-ons.
 import soulstruct_havok
@@ -76,12 +77,24 @@ def menu_func_view3d_mt(self, context):
 
 # Classes to register.
 CLASSES = (
+    GlobalSettings,
+    GameFiles,
+    GlobalSettingsPanel,
+    GlobalSettingsPanel_View,
+    SelectGameDirectory,
+    SelectMapDirectory,
+    SelectPNGCacheDirectory,
+    SelectCustomMTDBNDFile,
+
     MeshMoveSettings,
     CopyMeshSelectionOperator,
     CutMeshSelectionOperator,
 
     ImportFLVER,
     ImportFLVERWithMSBChoice,
+    ImportMapPieceFLVER,
+    ImportCharacterFLVER,
+    ImportObjectFLVER,
     ImportEquipmentFLVER,
 
     HideAllDummiesOperator,
@@ -91,7 +104,6 @@ CLASSES = (
     ExportFLVER,
     ExportFLVERIntoBinder,
     ExportFLVERToMapDirectory,
-    ExportMapDirectorySettings,
 
     FLVERSettings,
     SetVertexAlpha,
@@ -101,13 +113,15 @@ CLASSES = (
 
     ImportDDS,
     ExportTexturesIntoBinder,
-    LightmapBakeProperties,
+    BakeLightmapSettings,
     BakeLightmapTextures,
     ExportLightmapTextures,
 
-    FLVER_PT_flver_tools,
-    FLVER_PT_bake_subpanel,
-    FLVER_PT_uv_maps,
+    FLVERImportPanel,
+    FLVERExportPanel,
+    FLVERLightmapsPanel,
+    FLVERToolsPanel,
+    FLVERUVMapsPanel,
 
     ImportNVM,
     ImportNVMWithBinderChoice,
@@ -174,26 +188,41 @@ else:
     havok_menu_func_export = None
 
 
-HANDLERS = []
+LOAD_POST_HANDLERS = []
+SPACE_VIEW_3D_HANDLERS = []
+
+
+@bpy.app.handlers.persistent
+def load_handler(_):
+    GlobalSettings.load_settings()
 
 
 def register():
     for cls in CLASSES:
-        bpy.utils.register_class(cls)
+        try:
+            bpy.utils.register_class(cls)
+        except Exception as ex:
+            print(f"Failed to register class {cls.__name__}: {ex}")
+            raise
+
     bpy.types.TOPBAR_MT_file_import.append(menu_func_import)
     bpy.types.TOPBAR_MT_file_export.append(menu_func_export)
     bpy.types.VIEW3D_MT_object.append(menu_func_view3d_mt)
 
-    bpy.types.Scene.lightmap_bake_props = bpy.props.PointerProperty(type=LightmapBakeProperties)
-    bpy.types.Scene.export_map_directory_settings = bpy.props.PointerProperty(type=ExportMapDirectorySettings)
+    bpy.types.Scene.soulstruct_global_settings = bpy.props.PointerProperty(type=GlobalSettings)
+    bpy.types.Scene.game_files = bpy.props.PointerProperty(type=GameFiles)
+    bpy.types.Scene.bake_lightmap_settings = bpy.props.PointerProperty(type=BakeLightmapSettings)
     bpy.types.Scene.navmesh_face_settings = bpy.props.PointerProperty(type=NavmeshFaceSettings)
     bpy.types.Scene.mcg_draw_settings = bpy.props.PointerProperty(type=MCGDrawSettings)
     bpy.types.Scene.mesh_move_settings = bpy.props.PointerProperty(type=MeshMoveSettings)
     bpy.types.Scene.flver_settings = bpy.props.PointerProperty(type=FLVERSettings)
 
-    HANDLERS.append(bpy.types.SpaceView3D.draw_handler_add(draw_mcg_nodes, (), "WINDOW", "POST_VIEW"))
-    HANDLERS.append(bpy.types.SpaceView3D.draw_handler_add(draw_mcg_node_labels, (), "WINDOW", "POST_PIXEL"))
-    HANDLERS.append(bpy.types.SpaceView3D.draw_handler_add(draw_mcg_edges, (), "WINDOW", "POST_VIEW"))
+    bpy.app.handlers.load_post.append(load_handler)
+    LOAD_POST_HANDLERS.append(load_handler)
+
+    SPACE_VIEW_3D_HANDLERS.append(bpy.types.SpaceView3D.draw_handler_add(draw_mcg_nodes, (), "WINDOW", "POST_VIEW"))
+    SPACE_VIEW_3D_HANDLERS.append(bpy.types.SpaceView3D.draw_handler_add(draw_mcg_node_labels, (), "WINDOW", "POST_PIXEL"))
+    SPACE_VIEW_3D_HANDLERS.append(bpy.types.SpaceView3D.draw_handler_add(draw_mcg_edges, (), "WINDOW", "POST_VIEW"))
 
     if HAVOK_CLASSES:
         for cls in HAVOK_CLASSES:
@@ -203,28 +232,32 @@ def register():
 
 
 def unregister():
-    for cls in CLASSES:
+    for cls in reversed(CLASSES):
         bpy.utils.unregister_class(cls)
     bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)
     bpy.types.TOPBAR_MT_file_export.remove(menu_func_export)
     bpy.types.VIEW3D_MT_object.remove(menu_func_view3d_mt)
 
     if HAVOK_CLASSES:
-        for cls in HAVOK_CLASSES:
+        for cls in reversed(HAVOK_CLASSES):
             bpy.utils.unregister_class(cls)
         bpy.types.TOPBAR_MT_file_import.remove(havok_menu_func_import)
         bpy.types.TOPBAR_MT_file_export.remove(havok_menu_func_export)
 
-    del bpy.types.Scene.lightmap_bake_props
-    del bpy.types.Scene.export_map_directory_settings
+    del bpy.types.Scene.soulstruct_global_settings
+    del bpy.types.Scene.game_files
+    del bpy.types.Scene.bake_lightmap_settings
     del bpy.types.Scene.navmesh_face_settings
     del bpy.types.Scene.mcg_draw_settings
     del bpy.types.Scene.mesh_move_settings
     del bpy.types.Scene.flver_settings
 
-    for handler in HANDLERS:
+    for handler in LOAD_POST_HANDLERS:
+        bpy.app.handlers.load_post.remove(handler)
+    LOAD_POST_HANDLERS.clear()
+    for handler in SPACE_VIEW_3D_HANDLERS:
         bpy.types.SpaceView3D.draw_handler_remove(handler, "WINDOW")
-    HANDLERS.clear()
+    SPACE_VIEW_3D_HANDLERS.clear()
 
 
 if __name__ == "__main__":

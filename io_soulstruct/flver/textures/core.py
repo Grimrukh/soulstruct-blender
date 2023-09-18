@@ -3,7 +3,7 @@ from __future__ import annotations
 __all__ = [
     "ImportDDS",
     "ExportTexturesIntoBinder",
-    "LightmapBakeProperties",
+    "BakeLightmapSettings",
     "BakeLightmapTextures",
     "ExportLightmapTextures",
 ]
@@ -18,6 +18,7 @@ from soulstruct.base.textures.dds import texconv
 from soulstruct.containers import BinderEntry, DCXType, TPF
 
 from io_soulstruct.utilities import *
+from io_soulstruct.flver.utilities import MTDInfo
 from .utilities import *
 
 
@@ -169,7 +170,7 @@ class ExportTexturesIntoBinder(LoggingOperator, ImportHelper):
             return False
 
     def execute(self, context):
-        print("Executing texture export...")
+        self.info("Executing texture export...")
 
         # TODO: Should this operator really support export to multiple binders simultaneously (and they'd have to be in
         #  the same folder)?
@@ -241,7 +242,20 @@ class ExportTexturesIntoBinder(LoggingOperator, ImportHelper):
         return {"FINISHED"}
 
 
-class LightmapBakeProperties(bpy.types.PropertyGroup):
+class BakeLightmapSettings(bpy.types.PropertyGroup):
+
+    bake_image_name: bpy.props.StringProperty(
+        name="Bake Image Name",
+        description="Name of image texture to bake into (leave empty to use single existing 'g_Lightmap' texture of "
+                    "selected meshes)",
+        default="",
+    )
+
+    bake_image_size: bpy.props.IntProperty(
+        name="Bake Image Size",
+        description="Size of image texture to bake into (leave at 0 to use existing texture size)",
+        default=512,  # NOTE: twice the original DS1 lightmap size of 256x256
+    )
 
     bake_device: bpy.props.EnumProperty(
         name="Bake Device",
@@ -267,7 +281,7 @@ class LightmapBakeProperties(bpy.types.PropertyGroup):
 
     bake_edge_shaders: bpy.props.BoolProperty(
         name="Bake Edge Shaders",
-        description="If enabled, meshes with 'Edge'-type materials (eg decals) will not affect the bake render (but "
+        description="If disabled, meshes with 'Edge'-type materials (e.g. decals) will not affect the bake render (but "
                     "may still use them in their materials)",
         default=False,
     )
@@ -278,7 +292,7 @@ class LightmapBakeProperties(bpy.types.PropertyGroup):
         default=False,
     )
 
-    # NOTE: [We] water shaders are NEVER baked.
+    # TODO: Option to auto-export lightmap as DDS into the appropriate map's TPFBHD binder.
 
 
 class BakeLightmapTextures(LoggingOperator):
@@ -289,32 +303,22 @@ class BakeLightmapTextures(LoggingOperator):
 
     @classmethod
     def poll(cls, context):
-        """FLVER armature(s) must be selected."""
-        return context.selected_objects and all(obj.type == "ARMATURE" for obj in context.selected_objects)
+        """FLVER meshes must be selected."""
+        return context.selected_objects and all(obj.type == "MESH" for obj in context.selected_objects)
 
     def execute(self, context):
-        print("Executing lightmap texture bake...")
+        self.info("Baking FLVER lightmap textures...")
 
-        try:
-            options = context.scene.lightmap_bake_props
-        except AttributeError:
-            return self.error(
-                "Could not retrieve Bake Lightmap property options. The FLVER add-on may not be installed correctly."
-            )
+        bake_settings = context.scene.bake_lightmap_settings  # type: BakeLightmapSettings
 
-        # Get active materials of all submeshes of all selected objects.
-        flver_submeshes = []
-        for sel_flver_armature in context.selected_objects:
-            submeshes = [
-                obj for obj in bpy.data.objects
-                if obj.parent is sel_flver_armature
-                and obj.type == "MESH"
-            ]
-            if not submeshes:
-                return self.error(f"Selected object '{sel_flver_armature.name}' has no submesh children.")
-            flver_submeshes += submeshes
+        # Get all selected FLVER meshes.
+        flver_meshes = []
+        for flver_mesh in context.selected_objects:
+            if flver_mesh.type != "MESH":
+                return self.error(f"Selected object '{flver_mesh.name}' is not a mesh.")
+            flver_meshes.append(flver_mesh)
 
-        # Find texture nodes and set them to active, and get UV layer names.
+        # Set up variables/function to restore original state after bake.
         original_lightmap_strengths = []  # pairs of `(node, value)`
         render_settings = {}
 
@@ -333,86 +337,91 @@ class BakeLightmapTextures(LoggingOperator):
 
         self.cleanup_callback = restore_originals
 
-        texture_names = []
-        submeshes_to_bake = []
-        for submesh in flver_submeshes:
-            if not submesh.active_material:
-                return self.error(f"Submesh '{submesh.name}' has no active material.")
+        # Find all 'g_Lightmap' texture nodes on all materials of all selected meshes.
+        lightmap_texture_name = None  # type: str | None
+        meshes_to_bake = []
 
-            bl_material = submesh.active_material
-            if "material_mtd_path" not in bl_material.__dict__:
-                return self.error(
-                    f"Submesh '{submesh.name}' material '{bl_material.name}' has no 'material_mtd_path' custom prop "
-                    f"(required by FLVER plugin)."
-                )
+        for mesh in flver_meshes:
+            mesh: bpy.types.MeshObject
+            for material_slot in mesh.material_slots:
+                bl_material = material_slot.material
+                try:
+                    mtd_name = Path(bl_material["MTD Path"]).name
+                except KeyError:
+                    return self.error(f"Material '{bl_material.name}' of mesh {mesh.name} has no 'MTD Path' property.")
+                mtd_info = MTDInfo.from_mtd_name(mtd_name)
 
-            # Find Image Texture node of lightmap and its UV layer input.
-            for node in bl_material.node_tree.nodes:
-                if node.bl_idname == "ShaderNodeTexImage" and node.name.startswith("g_Lightmap |"):
-                    # Found Image Texture node.
-                    if node.image.name not in texture_names:
-                        texture_names.append(node.image.name)
-                    try:
-                        uv_name = node.inputs["Vector"].links[0].from_node.attribute_name
-                    except (AttributeError, IndexError):
-                        return self.error(
-                            f"Could not find UVMap attribute for image texture node '{node.name}' in material of "
-                            f"submesh {submesh.name}."
-                        )
-                    # Activate texture (for bake target).
-                    submesh.active_material.node_tree.nodes.active = node
-                    node.select = True
-                    submesh.data.uv_layers[uv_name].active = True  # active UV layer
+                try:
+                    lightmap_node = bl_material.node_tree.nodes["g_Lightmap"]
+                except KeyError:
+                    continue
 
-                    # Set overlay values to zero while baking.
-                    try:
-                        overlay_node_fac = node.outputs["Color"].links[0].to_node.inputs["Fac"]
-                    except (AttributeError, IndexError):
-                        return self.error(
-                            f"Could not find `MixRGB` node connected to output of image texture node '{node.name}' "
-                            f"in material of submesh {submesh.name}. Aborting for safety; please fix node tree."
-                        )
-                    overlay_node = node.outputs["Color"].links[0].to_node
+                if lightmap_texture_name is not None and lightmap_node.image.name != lightmap_texture_name:
+                    return self.error(
+                        f"Found multiple 'g_Lightmap' texture nodes across materials of selected meshes. All of them "
+                        f"must use the same lightmap texture."
+                    )
+                lightmap_texture_name = lightmap_node.image.name
+
+                # Activate lightmap texture for bake target of this mesh/material.
+                bl_material.node_tree.nodes.active = lightmap_node
+                lightmap_node.select = True
+
+                # Activate UV layer used by lightmap.
+                try:
+                    uv_name = lightmap_node.inputs["Vector"].links[0].from_node.attribute_name
+                except (AttributeError, IndexError):
+                    return self.error(
+                        f"Could not find UVMap attribute for 'g_Lightmap' texture node '{lightmap_node.name}' in "
+                        f"material '{bl_material.name}' of mesh {mesh.name}."
+                    )
+                mesh.data.uv_layers[uv_name].active = True
+
+                # Set overlay values to zero while baking - we don't want the existing lightmap to affect the bake!
+                try:
+                    overlay_node = lightmap_node.outputs["Color"].links[0].to_node
+                    overlay_node_fac = overlay_node.inputs["Fac"]
+                except (AttributeError, IndexError):
+                    self.warning(
+                        f"Could not find `MixRGB` node connected to output of 'g_Lightmap' node '{lightmap_node.name}' "
+                        f"in material '{bl_material.name}' of mesh {mesh.name}."
+                    )
+                else:
                     original_lightmap_strengths.append((overlay_node, overlay_node_fac.default_value))
                     # Detect which mix slot lightmap is using and set factor to disable lightmap while baking.
-                    if overlay_node.inputs[1].links[0].from_node == node:  # input 1
+                    if overlay_node.inputs[1].links[0].from_node == lightmap_node:  # input 1
                         overlay_node_fac.default_value = 1.0
-                    else:  # input 2
+                    else:  # input 2 (expected)
                         overlay_node_fac.default_value = 0.0
 
-                    mtd_name = Path(bl_material["material_mtd_path"]).name
-                    if options.bake_rendered_only and submesh.hide_render:
-                        self.info(
-                            f"Bake will NOT include material '{bl_material.name}' of submesh '{submesh.name}' that "
-                            f"is hidden from rendering."
-                        )
-                    if "[We]" in mtd_name:
-                        self.info(
-                            f"Bake will NOT include material '{bl_material.name}' of submesh '{submesh.name}' with "
-                            f"[We] water shader: {mtd_name}."
-                        )
-                    elif not options.bake_edge_shaders and "_Edge" in mtd_name:
-                        self.info(
-                            f"Bake will NOT include material '{bl_material.name}' of submesh '{submesh.name}' with "
-                            f"'Edge' type shader: {mtd_name}."
-                        )
-                    else:
-                        submeshes_to_bake.append(submesh)
-                    break
-            else:
-                self.warning(
-                    f"Could not find a `g_Lightmap` texture in active material of mesh '{submesh.name}'. "
-                    f"Ignoring submesh."
-                )
+                if bake_settings.bake_rendered_only and mesh.hide_render:
+                    self.info(
+                        f"Bake will NOT include material '{bl_material.name}' of mesh {mesh.name} that "
+                        f"is hidden from rendering."
+                    )
+                if mtd_info.is_water:
+                    self.info(
+                        f"Bake will NOT include material '{bl_material.name}' of mesh {mesh.name} with "
+                        f"water MTD shader: {mtd_name}"
+                    )
+                elif not bake_settings.bake_edge_shaders and mtd_info.edge:
+                    self.info(
+                        f"Bake will NOT include material '{bl_material.name}' of mesh {mesh.name} with "
+                        f"'Edge' MTD shader: {mtd_name}"
+                    )
+                else:
+                    meshes_to_bake.append(mesh)
 
-        if not texture_names or not submeshes_to_bake:
+        if not lightmap_texture_names:
             return self.error("No lightmap textures found to bake into.")
+        if not meshes_to_bake:
+            return self.error("No valid meshes found to bake lightmaps from.")
 
-        # Select all submeshes to be baked (and only them).
+        # Select ONLY the meshes to be baked.
         bpy.ops.object.select_all(action="DESELECT")
-        bpy.context.view_layer.objects.active = submeshes_to_bake[0]  # just in case
-        for submesh in submeshes_to_bake:
-            submesh.select_set(True)
+        bpy.context.view_layer.objects.active = meshes_to_bake[0]  # just in case
+        for mesh in meshes_to_bake:
+            mesh.select_set(True)
 
         # Bake with Cycles.
         render_settings = {
@@ -423,14 +432,14 @@ class BakeLightmapTextures(LoggingOperator):
             "device": bpy.context.scene.cycles.device,
             "samples": bpy.context.scene.cycles.samples,
         }
-        bpy.context.scene.cycles.device = options.bake_device
-        bpy.context.scene.cycles.samples = options.bake_samples
-        bpy.ops.object.bake(type="SHADOW", margin=options.bake_margin, use_selected_to_active=False)
-        self.info(f"Baked {len(texture_names)} lightmap textures: {', '.join(texture_names)}")
+        bpy.context.scene.cycles.device = bake_settings.bake_device
+        bpy.context.scene.cycles.samples = bake_settings.bake_samples
+        bpy.ops.object.bake(type="SHADOW", margin=bake_settings.bake_margin, use_selected_to_active=False)
+        self.info(f"Baked {len(lightmap_texture_names)} lightmap textures: {', '.join(lightmap_texture_names)}")
         try:
             self.cleanup_callback()
         except Exception as ex:
-            self.warning(f"Error during cleanup callback after operation finished: {ex}")
+            self.warning(f"Error during cleanup callback after Bake Lightmap operation finished: {ex}")
         return {"FINISHED"}
 
 

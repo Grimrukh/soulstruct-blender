@@ -20,19 +20,15 @@ from soulstruct.darksouls1r.maps.parts import *
 from soulstruct_havok.utilities.maths import TRSTransform
 from soulstruct_havok.wrappers.hkx2015 import RemoBND
 
+from io_soulstruct.general import GlobalSettings
 from io_soulstruct.utilities import *
-from io_soulstruct.flver.import_flver import FLVERImporter
+from io_soulstruct.flver.import_flver import FLVERImportSettings, FLVERImporter
 from io_soulstruct.flver.textures.utilities import collect_binder_tpfs, collect_map_tpfs
 from io_soulstruct.havok.utilities import GAME_TRS_TO_BL_MATRIX, get_basis_matrix
 from .utilities import HKXCutsceneImportError
 
 
 REMOBND_RE = re.compile(r"^.*?\.remobnd(\.dcx)?$")
-
-
-_SETTINGS = read_settings()
-_GAME_DIRECTORY = _SETTINGS.get("GameDirectory", "")
-_PNG_CACHE_DIR = _SETTINGS.get("PNGCacheDirectory", "")
 
 
 class ImportHKXCutscene(LoggingOperator, ImportHelper):
@@ -47,12 +43,6 @@ class ImportHKXCutscene(LoggingOperator, ImportHelper):
         default="*.remobnd;*.remobnd.dcx",
         options={'HIDDEN'},
         maxlen=255,  # Max internal buffer length, longer would be clamped.
-    )
-
-    game_directory: bpy.props.StringProperty(
-        name="Game Directory",
-        description="Directory of game files to load MSBs and missing cutscene parts from",
-        default=_GAME_DIRECTORY,
     )
 
     to_60_fps: bpy.props.BoolProperty(
@@ -79,12 +69,6 @@ class ImportHKXCutscene(LoggingOperator, ImportHelper):
         default=True,
     )
 
-    png_cache_path: bpy.props.StringProperty(
-        name="Cached PNG path",
-        description="Directory to use for reading/writing cached texture PNGs",
-        default=_PNG_CACHE_DIR,
-    )
-
     read_from_png_cache: bpy.props.BoolProperty(
         name="Read from PNG Cache",
         description="Read cached PNGs (instead of DDS files) from the above directory if available",
@@ -94,6 +78,12 @@ class ImportHKXCutscene(LoggingOperator, ImportHelper):
     write_to_png_cache: bpy.props.BoolProperty(
         name="Write to PNG Cache",
         description="Write PNGs of any loaded textures (DDS files) to the above directory for future use",
+        default=True,
+    )
+
+    use_mtd_binder: bpy.props.BoolProperty(
+        name="Use MTD Binder",
+        description="Try to find MTD shaders in game 'mtd' folder to improve Blender shader accuracy",
         default=True,
     )
 
@@ -107,6 +97,13 @@ class ImportHKXCutscene(LoggingOperator, ImportHelper):
             ('BLEND', "Blend", "Sorted Blend Mode"),
         ],
         default="HASHED",
+    )
+
+    base_edit_bone_length: bpy.props.FloatProperty(
+        name="Base Edit Bone Length",
+        description="Length of edit bones corresponding to bone scale 1",
+        default=0.2,
+        min=0.01,
     )
 
     def execute(self, context):
@@ -134,12 +131,13 @@ class ImportHKXCutscene(LoggingOperator, ImportHelper):
             return {"FINISHED"}
 
         loaded_map_studio_directories = {}  # type: dict[Path, MapStudioDirectory]
+        settings = GlobalSettings.get_scene_settings(context)
 
-        if not self.game_directory:
+        if not settings.game_directory:
             # Assume RemoBND is in the appropriate game `remo` folder.
             game_directory = remobnd_path.parent.parent
         else:
-            game_directory = Path(self.game_directory)
+            game_directory = Path(settings.game_directory)
 
         map_studio_path = Path(game_directory, "map/MapStudio")
         map_studio_directory = loaded_map_studio_directories.setdefault(
@@ -200,16 +198,19 @@ class ImportHKXCutscene(LoggingOperator, ImportHelper):
 
         # Load FLVERs.
         if flvers_to_import:
-            flver_importer = FLVERImporter(
-                self,
-                context,
+
+            flver_import_settings = FLVERImportSettings(
                 texture_sources=attached_texture_sources,
                 loose_tpf_sources=loose_tpf_sources,
-                png_cache_path=Path(self.png_cache_path),
                 read_from_png_cache=self.read_from_png_cache,
                 write_to_png_cache=self.write_to_png_cache,
                 material_blend_mode=self.material_blend_mode,
+                base_edit_bone_length=self.base_edit_bone_length,
+                mtd_dict=settings.get_mtd_dict(context) if self.use_mtd_binder else None,
             )
+
+            flver_importer = FLVERImporter(self, context, flver_import_settings)
+
             for part_name, flver in flvers_to_import.items():
                 msb_part = remobnd.remo_parts[part_name]
                 if isinstance(msb_part, MSBMapPiece):
@@ -277,7 +278,7 @@ class ImportHKXCutscene(LoggingOperator, ImportHelper):
 
         return {"FINISHED"}
 
-    def create_camera(self, context, remobnd: RemoBND, importer: HKXCutsceneImporter) -> bpy.types.Camera:
+    def create_camera(self, context, remobnd: RemoBND, importer: HKXCutsceneImporter) -> bpy.types.Object:
         # Create a new Blender camera.
         camera_name = self.camera_name.format(CutsceneName=remobnd.cutscene_name)
         camera_data = bpy.data.cameras.new(self.camera_name.format(CutsceneName=remobnd.cutscene_name) + " Data")

@@ -35,7 +35,7 @@ from io_soulstruct.utilities import (
 
 
 DUMMY_NAME_RE = re.compile(  # accepts and ignore Blender '.001' suffix, etc.
-    r"^(?P<other_model>\[\w+])? *Dummy<(?P<index>\d+)> *(?P<reference_id>\[\d+]) *(\.\d+)?$"
+    r"^(?P<other_model>\[\w+])? +(?P<flver_name>.+) +Dummy<(?P<index>\d+)> *(?P<reference_id>\[\d+]) *(\.\d+)?$"
 )
 
 
@@ -116,9 +116,10 @@ class PrintGameTransform(LoggingOperator):
 
 
 def parse_dummy_name(dummy_name: str) -> dict[str, str | int]:
-    """Parse a FLVER dummy name into its component parts: `other_model`, `index`, and `reference_id`.
+    """Parse a FLVER dummy name into its component parts: `other_model`, `flver_name`, `index`, and `reference_id`.
 
-    Returns a dictionary with keys `other_model` (str, optional), `index` (int), and `reference_id` (int).
+    Returns a dictionary with keys `other_model` (str, optional), `flver_name` (str), `index` (int), and
+    (most importantly) `reference_id` (int).
 
     If the dummy name is invalid, an empty dictionary is returned.
     """
@@ -128,6 +129,7 @@ def parse_dummy_name(dummy_name: str) -> dict[str, str | int]:
     other_model = match.group("other_model")
     return {
         "other_model": other_model[1:-1] if other_model else "",  # exclude brackets
+        "flver_name": match.group("flver_name"),
         "index": int(match.group("index")),
         "reference_id": int(match.group("reference_id")[1:-1]),  # exclude brackets
     }
@@ -268,7 +270,7 @@ class BufferLayoutFactory:
 
         return BufferLayout(members)
 
-    def get_ds1_chr_buffer_layout(self, is_multiple=False) -> BufferLayout:
+    def get_ds1_chr_buffer_layout(self, has_two_texture_slots=False) -> BufferLayout:
         """Default buffer layout for character (and probably object) materials in DS1R."""
         members = [
             self.member(MemberType.Position, MemberFormat.Float3),
@@ -278,7 +280,7 @@ class BufferLayoutFactory:
             self.member(MemberType.Tangent, MemberFormat.Byte4C),
             self.member(MemberType.VertexColor, MemberFormat.Byte4C),
         ]
-        if is_multiple:  # has Bitangent and UVPair
+        if has_two_texture_slots:  # has Bitangent and UVPair
             members.insert(5, self.member(MemberType.Bitangent, MemberFormat.Byte4C))
             members.append(self.member(MemberType.UV, MemberFormat.UVPair))
         else:  # one UV
@@ -291,27 +293,68 @@ class BufferLayoutFactory:
 class MTDInfo:
     """Various booleans that indicate required textures for a specific MTD shader."""
 
-    MTD_DSBH_RE: tp.ClassVar[re.Pattern] = re.compile(r".*\[(D)?(S)?(B)?(H)?\].*")  # TODO: support 'T" (translucency)
+    MTD_DSBH_RE: tp.ClassVar[re.Pattern] = re.compile(r".*\[(D)?(S)?(B)?(H)?\].*")  # TODO: support 'T' (translucency)
     MTD_M_RE: tp.ClassVar[re.Pattern] = re.compile(r".*\[(M|ML|LM)\].*")
     MTD_L_RE: tp.ClassVar[re.Pattern] = re.compile(r".*\[(L|ML|LM)\].*")
     # Checked separately: [Dn] (g_Diffuse only), [We] (g_Bumpmap only)
 
-    # MTD name prefixes that indicate two extra UV slots, and the required index of their first UV data.
-    # TODO: Why are these different, when both can use M and/or L?
-    MTD_FOLIAGE_PREFIXES: tp.ClassVar[str, int] = {
-        "M_2Foliage": 1,
-        "M_3Ivy": 2,
+    # TODO: Hardcoding a set of 'foliage' shader prefixes I've encountered in DSR.
+    MTD_FOLIAGE_PREFIXES: tp.ClassVar[set[str]] = {
+        "M_2Foliage",
+        "M_3Ivy",
     }
 
-    # TODO: Hardcoding a set of 'water' shader names I've encountered in DSR.
-    WATER_NAMES: tp.ClassVar[set[str]] = {
-        "A14_numa.mtd",  # Blighttown swamp
-        "A12_DarkRiver.mtd",
-        "A12_DarkWater.mtd",
+    # All MTD stems in DSR that use a 'FRPG_Water*' SPX shader but don't have [We] in their name.
+    WATER_STEMS: tp.ClassVar[set[str]] = {
+        "M_5Water[B]",  # FRPG_Water_Reflect
+        "A10_00_Water_drainage",  # FRPG_Water_Reflect
+        "A10_01_Water[B]",  # FRPG_Water_Reflect
+        "A11_Water[W]",  # FRPG_Water_Reflect
+        "A12_Little River",  # FRPG_Water_Reflect
+        "A12_River",  # FRPG_Water_Reflect
+        "A12_River_No reflect",  # FRPG_Water_Reflect
+        "A12_Water",  # FRPG_Water_Reflect
+        "A12_Water_lake",  # FRPG_Water_Reflect
+        "A14Water[B]",  # FRPG_Water_Reflect
+        "S[DB]_Alp_water",  # FRPG_WaterWaveSfx
+        "A12_DarkRiver",  # FRPG_Water_Reflect
+        "A12_DarkWater",  # FRPG_Water_Reflect
+        "A12_NewWater",  # FRPG_Water_Reflect
+        "A12_Water_boss",  # FRPG_Water_Reflect
+    }
+
+    SNOW_STEMS: tp.ClassVar[set[str]] = {
+        "M_8Snow",  # FRPG_Snow
+        "A10_slime[D][L]",  # FRPG_Snow_Lit
+        "A11_Snow",  # FRPG_Snow
+        "A11_Snow[L]",  # FRPG_Snow_Lit
+        "A11_Snow_stair",  # FRPG_Snow
+        "A11_Snow_stair[L]",  # FRPG_Snow_Lit
+        "A14_numa",  # FRPG_Snow (Blighttown swamp)
+        "A14_numa2",  # FRPG_Snow (Blighttown swamp)
+        "A15_Tar",  # FRPG_Snow
+        "A18_ash",  # FRPG_Snow
+        "A19_Snow",  # FRPG_Snow
+        "A19_Snow[L]",  # FRPG_Snow_Lit
+    }
+
+    # Subset of `SNOW_STEMS` that use a 'FRPG_Snow*' SPX shader and also have a 'g_SnowMetalMask' param and an extra
+    # 'g_Bumpmap_3' texture type.
+    SNOW_METAL_MASK_STEMS: tp.ClassVar[set[str]] = {
+        "A10_slime[D][L]",  # FRPG_Snow_Lit
+        "A11_Snow",  # FRPG_Snow
+        "A11_Snow[L]",  # FRPG_Snow_Lit
+        "A11_Snow_stair",  # FRPG_Snow
+        "A11_Snow_stair[L]",  # FRPG_Snow_Lit
+        "A14_numa",  # FRPG_Snow (Blighttown swamp)
+        "A14_numa2",  # FRPG_Snow (Blighttown swamp)
+        "A15_Tar",  # FRPG_Snow
+        "A19_Snow",  # FRPG_Snow
+        "A19_Snow[L]",  # FRPG_Snow_Lit
     }
 
     # Ordered dict mapping texture type names like 'g_Diffuse' to their FLVER vertex UV index/Blender layer (1-indexed).
-    texture_types: dict[str, int] = field(default_factory=list)
+    texture_types: dict[str, int] = field(default_factory=dict)
     # TODO: Some shaders simply don't use the always-empty 'g_DetailBumpmap', but I can find no reliable way to detect
     #  this from their MTD names alone. I may have to guess that they do unless the MTD file is provided.
 
@@ -320,19 +363,20 @@ class MTDInfo:
     spec: bool = False
     detb: bool = False  # I don't think these shaders are used in DS1. Also `g_EnvSpcSlotNo = 2`...
     is_water: bool = False
+    is_foliage: bool = False  # has 'g_Wind*' params and two extra UV slots for wind animation control
+    is_snow: bool = False  # has 'g_SnowColor', 'g_SnowHeight', and other 'g_Snow*' params
+    has_snow_roughness: bool = False  # has 'g_Bumpmap_3' texture and 'g_Snow[Roughness/MetalMask/DiffuseF0]' params
     no_tangents: bool = False  # True for unshaded (flag) FLVERs like skybox textures
-    extra_uv_maps: None | tuple[int, int] = None  # extra UV slots and first index of them
 
     @classmethod
-    def from_mtd_file(cls, mtd: MTD):
+    def from_mtd(cls, mtd: MTD):
         mtd_info = cls()
 
-        # MTD UV indices are consistent in the sense that lightmap index is always 3, whereas it could actually be
-        # FLVER vertex index 2 if only one texture slot is present. So we remove 'UV index gaps' from this.
-        remapped_uv_values = {}
         for texture in mtd.textures:
-            uv_index = remapped_uv_values.setdefault(texture.uv_index, len(remapped_uv_values) + 1)
-            mtd_info.texture_types[texture.texture_type] = uv_index
+            # NOTE: Each MTD may not use certain UV indices -- e.g. 'g_Lightmap' always uses 3, even if there is no
+            # second texture slot to use UV index 2. This is obviously desirable to keep the same UV layouts together
+            # and we do the same in Blender.
+            mtd_info.texture_types[texture.texture_type] = texture.uv_index  # 1-indexed!
 
         blend_mode = mtd.get_param("g_BlendMode", default=0)
         if blend_mode == 1:
@@ -352,13 +396,24 @@ class MTDInfo:
         if lighting_type == 0:
             mtd_info.no_tangents = True  # e.g. skybox
 
+        mtd_info.is_water = mtd.shader_stem.startswith("FRPG_Water")
+        mtd_info.is_foliage = mtd.has_param("g_IsFoliage")
+        mtd_info.is_snow = mtd.shader_stem.startswith("FRPG_Snow")
+        mtd_info.has_snow_roughness = mtd.has_param("g_SnowRoughness")  # only present in some Snow shaders
+
         return mtd_info
 
     @classmethod
     def from_mtd_name(cls, mtd_name):
-        mtd_info = cls()
+        """Guess as much information about the shader as possible purely from its name.
 
-        if dsbh_match := cls.MTD_DSBH_RE.match(mtd_name):
+        Obviously, getting the texture names right is the most important part, but we can also guess whether the shader
+        uses a lightmap (L), two texture slots (M), or has extra features like alpha (Alp/Edge).
+        """
+        mtd_info = cls()
+        mtd_stem = Path(mtd_name).stem
+
+        if dsbh_match := cls.MTD_DSBH_RE.match(mtd_stem):
             if dsbh_match.group(1):
                 mtd_info.texture_types["g_Diffuse"] = 1
             if dsbh_match.group(2):
@@ -367,29 +422,27 @@ class MTDInfo:
                 mtd_info.texture_types["g_Bumpmap"] = 1
             if dsbh_match.group(4):
                 mtd_info.texture_types["g_Height"] = 1
-        elif "[Dn]" in mtd_name:
+        elif "[Dn]" in mtd_stem:
             mtd_info.texture_types["g_Diffuse"] = 1
             mtd_info.no_tangents = True  # TODO: A few [D] shaders also don't use tangents...
-        elif "[We]" in mtd_name or mtd_name in cls.WATER_NAMES:
+        elif "[We]" in mtd_stem or mtd_stem in cls.WATER_STEMS:
             mtd_info.texture_types["g_Bumpmap"] = 1
             mtd_info.is_water = True
         else:
             print(f"# ERROR: Shader name '{mtd_name}' could not be parsed for its textures.")
 
-        if cls.MTD_M_RE.match(mtd_name):
+        if cls.MTD_M_RE.match(mtd_stem):
             for texture_type, _ in mtd_info.texture_types:
                 mtd_info.texture_types[texture_type + "_2"] = 2
-            lightmap_uv_index = 3
-        else:
-            lightmap_uv_index = 2
 
-        if cls.MTD_L_RE.match(mtd_name):
-            mtd_info.texture_types["g_Lightmap"] = lightmap_uv_index
+        if cls.MTD_L_RE.match(mtd_stem):
+            mtd_info.texture_types["g_Lightmap"] = 3  # even if there is no second texture slot
 
-        for prefix, first_uv_index in cls.MTD_FOLIAGE_PREFIXES.items():
-            if mtd_name.startswith(prefix):
-                mtd_info.extra_uv_maps = (2, first_uv_index)
-                break  # can't match more than one
+        # Has two extra UV slots.
+        mtd_info.is_foliage = any(mtd_name.startswith(prefix) for prefix in cls.MTD_FOLIAGE_PREFIXES)
+        mtd_info.is_snow = mtd_stem in cls.SNOW_STEMS
+        # Has an extra 'g_Bumpmap_3' texture type.
+        mtd_info.has_snow_roughness = mtd_stem in cls.SNOW_METAL_MASK_STEMS
 
         mtd_info.alpha = "_Alp" in mtd_name
         mtd_info.edge = "_Edge" in mtd_name
@@ -397,18 +450,37 @@ class MTDInfo:
         mtd_info.detb = "_DetB" in mtd_name
 
         if "g_Bumpmap" in mtd_info.texture_types:
-            # Add useless 'g_DetailBumpmap' for completion. TODO: Some shaders, even with 'g_Bumpmap', do not have this.
+            # Add useless 'g_DetailBumpmap' for completion.
+            # TODO: Some shaders, even with 'g_Bumpmap', do not have this. I have no way to detect from the name.
+            #  Currently assuming that it doesn't matter at all if FLVERs have an (empty) texture definition for it.
             mtd_info.texture_types["g_DetailBumpmap"] = 1  # always
 
         return mtd_info
 
+    def get_uv_layer_names(self) -> list[str]:
+        """Determine Blender UV layer names, which should correspond with the length of each vertex UV list."""
+        uv_layer_names = []
+        sorted_texture_types = sorted(self.texture_types.items(), key=lambda x: x[1])  # sort by UV index (value)
+        for texture_type, uv_index in sorted_texture_types:
+            name = f"UVMap{uv_index}"
+            if name not in uv_layer_names:
+                uv_layer_names.append(name)
+        if self.is_foliage:
+            uv_layer_names.extend(["UVMapWindA", "UVMapWindB"])
+        return uv_layer_names
+
     @property
     def has_two_slots(self):
-        return any(texture_type.endswith("_2") for texture_type, _ in self.texture_types)
+        return any(texture_type.endswith("_2") for texture_type in self.texture_types)
+
+    @property
+    def has_bumpmap_3(self):
+        """Snow shaders with roughness have this (and no other shaders in DSR at least)."""
+        return "g_Bumpmap_3" in self.texture_types
 
     @property
     def has_lightmap(self):
-        return any(texture_type == "g_Lightmap" for texture_type, _ in self.texture_types)
+        return "g_Lightmap" in self.texture_types
 
     @property
     def has_detail_bumpmap(self):

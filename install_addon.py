@@ -60,7 +60,7 @@ def install(blender_scripts_dir: str | Path, update_soulstruct_module=False, upd
     blender_module_dir = blender_addons_dir / "io_soulstruct"
     blender_module_dir.mkdir(exist_ok=True, parents=True)
 
-    settings_path = blender_module_dir / "UserSettings.json"
+    settings_path = blender_module_dir / "GlobalSettings.json"
     if settings_path.is_file():
         settings_data = settings_path.read_bytes()
     else:

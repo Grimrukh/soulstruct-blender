@@ -1,44 +1,29 @@
 from __future__ import annotations
 
-__all__ = ["ExportFLVER", "ExportFLVERIntoBinder", "ExportFLVERToMapDirectory", "ExportMapDirectorySettings"]
+__all__ = ["ExportFLVER", "ExportFLVERIntoBinder", "ExportFLVERToMapDirectory"]
 
 import traceback
 import typing as tp
+from dataclasses import dataclass
 from pathlib import Path
 
 import bpy
 from bpy.props import StringProperty, FloatProperty, BoolProperty, IntProperty
-from bpy_extras.io_utils import ImportHelper, ExportHelper
-from soulstruct.containers.dcx import DCXType
+from bpy_extras.io_utils import ExportHelper
 
 from soulstruct.containers import Binder, BinderEntry
 from soulstruct.base.models.flver import FLVER, Version
+from soulstruct.base.models.flver.material import Material, Texture
 from soulstruct.base.models.flver.vertex import VertexBuffer, BufferLayout, MemberType
-from soulstruct.base.models.flver.material import MTDInfo
-from soulstruct.utilities.maths import Vector2, Vector3, Matrix3
+from soulstruct.base.models.mtd import MTD
+from soulstruct.utilities.maths import Vector3, Matrix3
 
 from io_soulstruct.utilities import *
+from io_soulstruct.general import GlobalSettings
 from .utilities import *
 
 DEBUG_MESH_INDEX = None
 DEBUG_VERTEX_INDICES = []
-
-_SETTINGS = read_settings()
-_GAME_DIRECTORY = _SETTINGS.get("GameDirectory", "")
-
-
-TEXTURE_TYPES = (
-    "g_Diffuse",
-    "g_Specular",
-    "g_Bumpmap",
-    "g_Diffuse_2",
-    "g_Specular_2",
-    "g_Bumpmap_2",
-    "g_Bumpmap_3",
-    "g_Height",
-    "g_Lightmap",
-    "g_DetailBumpmap",
-)
 
 
 class MeshBuilder(tp.NamedTuple):
@@ -59,31 +44,14 @@ class MeshBuildResult(tp.NamedTuple):
     local_bone_indices: list[int]
 
 
-class ExportMapDirectorySettings(bpy.types.PropertyGroup):
-    """Manages settings for quickly exporting Map Piece FLVERs into a game's `map` directory."""
+class ExportFLVERMixin:
 
-    game_directory: bpy.props.StringProperty(
-        name="Game Directory",
-        description="Directory of FromSoftware game files",
-        subtype="DIR_PATH",
-        default=_GAME_DIRECTORY,
-    )
+    # Type hints for `LoggingOperator`.
+    error: tp.Callable[[str], set[str]]
+    warning: tp.Callable[[str], set[str]]
+    info: tp.Callable[[str], set[str]]
 
-    map_stem: bpy.props.StringProperty(
-        name="Map Stem",
-        description="Stem of FromSoftware game map name (e.g. 'm10_00_00_00')",
-    )
-
-    dcx_type: get_dcx_enum_property(DCXType.DS1_DS2)  # map FLVERs in DS1 are compressed
-
-
-class ExportFLVERToMapDirectory(LoggingOperator):
-    """Export FLVER model from a Blender Armature parent to an auto-named map piece file in the given map directory."""
-    bl_idname = "export_scene_map.flver"
-    bl_label = "Export FLVER to Map Directory"
-    bl_description = (
-        "Export selected Blender meshes to FLVER model files in a given `map` directory"
-    )
+    dcx_type: get_dcx_enum_property()
 
     base_edit_bone_length: FloatProperty(
         name="Base Edit Bone Length",
@@ -92,57 +60,45 @@ class ExportFLVERToMapDirectory(LoggingOperator):
         min=0.01,
     )
 
-    @classmethod
-    def poll(cls, context):
-        """One or more Meshes selected."""
-        return len(context.selected_objects) > 0 and all(obj.type == "MESH" for obj in context.selected_objects)
+    use_mtd_binder: BoolProperty(
+        name="Use MTD Binder",
+        description="Try to find MTD shaders in game 'mtd' folder to validate node texture names",
+        default=True,
+    )
 
-    def execute(self, context):
-        settings = context.scene.export_map_directory_settings  # type: ExportMapDirectorySettings
-        game_directory = settings.game_directory
-        map_stem = settings.map_stem
-        dcx_type = DCXType[settings.dcx_type]
+    allow_missing_textures: BoolProperty(
+        name="Allow Missing Textures",
+        description="Allow MTD-defined textures to have no node image data in Blender",
+        default=False,
+    )
 
-        # Save last `game_directory` (even if this function fails).
-        write_settings(GameDirectory=game_directory)
+    allow_unknown_texture_types: BoolProperty(
+        name="Allow Unknown Texture Types",
+        description="Allow and export Blender texture nodes that have non-MTD-defined texture types",
+        default=False,
+    )
 
-        map_dir_path = Path(game_directory) / f"map/{map_stem}"
+    def get_single_selected_flver(self, context):
+        if not context.selected_objects:
+            return self.error("No FLVER mesh selected.")
+        elif len(context.selected_objects) > 1:
+            return self.error("Multiple objects selected. Exactly one FLVER mesh object must be selected.")
+        bl_flver_root = context.selected_objects[0]
+        if bl_flver_root.type != "MESH":
+            return self.error(f"Selected object '{bl_flver_root.name}' is not a Mesh.")
+        return bl_flver_root
 
-        if not map_dir_path.is_dir():
-            return self.error(f"Invalid game map directory: {map_dir_path}")
-
-        selected_objs = [obj for obj in context.selected_objects]
-        if not selected_objs:
-            return self.error("No FLVER parent object selected.")
-        elif len(selected_objs) > 1:
-            return self.error("Multiple objects selected. Exactly one FLVER parent object must be selected.")
-        flver_parent_obj = selected_objs[0]
-        flver_name = flver_parent_obj.name.split(" ")[0] + ".flver"  # DCX will be added automatically below if needed
-        if bpy.ops.object.mode_set.poll():
-            # Must be in OBJECT mode for export, as some data (e.g. UVs) is not accessible in EDIT mode.
-            bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
-
-        exporter = FLVERExporter(self, context, base_edit_bone_length=self.base_edit_bone_length)
-
-        try:
-            flver = exporter.export_flver(flver_parent_obj)
-        except Exception as ex:
-            traceback.print_exc()
-            return self.error(f"Cannot get exported FLVER. Error: {ex}")
-        else:
-            flver.dcx_type = dcx_type
-            try:
-                # Will create a `.bak` file automatically if absent, and add `.dcx` extension if necessary.
-                flver.write(map_dir_path / flver_name)
-            except Exception as ex:
-                traceback.print_exc()
-                return self.error(f"Cannot write exported FLVER. Error: {ex}")
-            self.info(f"Exported FLVER to: {map_dir_path / flver_name}")
-
-        return {"FINISHED"}
+    def get_export_settings(self, context):
+        settings = GlobalSettings.get_scene_settings(context)
+        return FLVERExportSettings(
+            base_edit_bone_length=self.base_edit_bone_length,
+            mtd_dict=settings.get_mtd_dict(context) if self.use_mtd_binder else None,
+            allow_missing_textures=self.allow_missing_textures,
+            allow_unknown_texture_types=self.allow_unknown_texture_types,
+        )
 
 
-class ExportFLVER(LoggingOperator, ExportHelper):
+class ExportFLVER(LoggingOperator, ExportHelper, ExportFLVERMixin):
     """Export one FLVER model from a Blender Armature parent to a file."""
     bl_idname = "export_scene.flver"
     bl_label = "Export FLVER"
@@ -157,33 +113,18 @@ class ExportFLVER(LoggingOperator, ExportHelper):
         maxlen=255,  # Max internal buffer length, longer would be clamped.
     )
 
-    dcx_type: get_dcx_enum_property(DCXType.DS1_DS2)  # standalone DSR FLVERs are compressed
-
-    base_edit_bone_length: FloatProperty(
-        name="Base Edit Bone Length",
-        description="Length of edit bones corresponding to bone scale 1",
-        default=0.2,
-        min=0.01,
-    )
-
     @classmethod
     def poll(cls, context):
         """One FLVER mesh root object selected."""
         return len(context.selected_objects) == 1 and context.selected_objects[0].type == "MESH"
 
     def execute(self, context):
-        selected_objs = [obj for obj in context.selected_objects]
-        if not selected_objs:
-            return self.error("No FLVER parent object selected.")
-        elif len(selected_objs) > 1:
-            return self.error("Multiple objects selected. Exactly one FLVER parent object must be selected.")
+        bl_flver_root = self.get_single_selected_flver(context)
+        dcx_type = GlobalSettings.resolve_dcx_type(self.dcx_type, "FLVER", False, context)
 
-        bl_flver_root = selected_objs[0]
-        if bpy.ops.object.mode_set.poll():
-            # Must be in OBJECT mode for export, as UV/vertex color data layers are not accessible in EDIT mode.
-            bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
-
-        exporter = FLVERExporter(self, context, base_edit_bone_length=self.base_edit_bone_length)
+        flver_file_path = Path(self.filepath)
+        self.to_object_mode()
+        exporter = FLVERExporter(self, context, self.get_export_settings(context))
 
         try:
             flver = exporter.export_flver(bl_flver_root)
@@ -191,20 +132,20 @@ class ExportFLVER(LoggingOperator, ExportHelper):
             traceback.print_exc()
             return self.error(f"Cannot get exported FLVER. Error: {ex}")
 
-        flver.dcx_type = DCXType[self.dcx_type]
+        flver.dcx_type = dcx_type
         try:
             # Will create a `.bak` file automatically if absent.
-            flver.write(Path(self.filepath))
+            flver.write(flver_file_path)
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Cannot write exported FLVER. Error: {ex}")
-        self.info(f"Exported FLVER to: {self.filepath}")
+        self.info(f"Exported FLVER to: {flver_file_path}")
 
         return {"FINISHED"}
 
 
-class ExportFLVERIntoBinder(LoggingOperator, ImportHelper):
-    """Export one or more FLVER models from Blender meshes into a chosen game binder (BND/BHD)."""
+class ExportFLVERIntoBinder(LoggingOperator, ExportHelper, ExportFLVERMixin):
+    """Export a single FLVER model from a Blender mesh into a chosen game binder (BND/BHD)."""
     bl_idname = "export_scene.flver_binder"
     bl_label = "Export FLVER Into Binder"
     bl_description = "Export a FLVER model file into a FromSoftware Binder (BND/BHD)"
@@ -216,15 +157,6 @@ class ExportFLVERIntoBinder(LoggingOperator, ImportHelper):
         default="*.chrbnd;*.chrbnd.dcx;*.objbnd;*.objbnd.dcx;*.partsbnd;*.partsbnd.dcx",
         options={'HIDDEN'},
         maxlen=255,
-    )
-
-    dcx_type: get_dcx_enum_property(DCXType.Null)  # no compression in DSR binders
-
-    base_edit_bone_length: FloatProperty(
-        name="Base Edit Bone Length",
-        description="Length of edit bones corresponding to bone scale 1",
-        default=0.2,
-        min=0.01,
     )
 
     overwrite_existing: BoolProperty(
@@ -257,33 +189,27 @@ class ExportFLVERIntoBinder(LoggingOperator, ImportHelper):
     @classmethod
     def poll(cls, context):
         """At least one Blender mesh selected."""
-        return len(context.selected_objects) > 0 and all(obj.type == "MESH" for obj in context.selected_objects)
+        return len(context.selected_objects) == 1 and all(obj.type == "MESH" for obj in context.selected_objects)
 
     def execute(self, context):
-        print("Executing export...")
+        bl_flver_root = self.get_single_selected_flver(context)
 
-        selected_objs = [obj for obj in context.selected_objects]
-        if not selected_objs:
-            return self.error("No FLVER parent object selected.")
-        elif len(selected_objs) > 1:
-            return self.error("Multiple objects selected. Exactly one FLVER parent object must be selected.")
-        flver_parent_obj = selected_objs[0]
-        if bpy.ops.object.mode_set.poll():
-            # Must be in OBJECT mode for export, as some data (e.g. UVs) is not accessible in EDIT mode.
-            bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
+        dcx_type = GlobalSettings.resolve_dcx_type(self.dcx_type, "FLVER", True, context)
 
-        exporter = FLVERExporter(self, context, base_edit_bone_length=self.base_edit_bone_length)
+        self.to_object_mode()
+        binder_file_path = Path(self.filepath)
+        try:
+            binder = Binder.from_path(binder_file_path)
+        except Exception as ex:
+            return self.error(f"Could not load Binder file '{binder_file_path}'. Error: {ex}.")
+
+        exporter = FLVERExporter(self, context, self.get_export_settings(context))
 
         try:
-            flver = exporter.export_flver(flver_parent_obj)
+            flver = exporter.export_flver(bl_flver_root)
         except Exception as ex:
             traceback.print_exc()
-            return self.error(f"Cannot get exported FLVER. Error: {ex}")
-
-        try:
-            binder = Binder.from_path(self.filepath)
-        except Exception as ex:
-            return self.error(f"Could not load Binder file. Error: {ex}.")
+            return self.error(f"Cannot create exported FLVER from Blender object '{bl_flver_root}'. Error: {ex}")
 
         flver_entries = binder.find_entries_matching_name(r".*\.flver(\.dcx)?")
         if not flver_entries:
@@ -297,7 +223,7 @@ class ExportFLVERIntoBinder(LoggingOperator, ImportHelper):
                 flver_entry = binder.entries_by_id[self.default_entry_id]
             else:
                 # Create new entry.
-                entry_path = self.default_entry_path.format(name=flver_parent_obj.name)
+                entry_path = self.default_entry_path.format(name=bl_flver_root.name)
                 flver_entry = BinderEntry(
                     b"", entry_id=self.default_entry_id, path=entry_path, flags=self.default_entry_flags
                 )
@@ -309,7 +235,6 @@ class ExportFLVERIntoBinder(LoggingOperator, ImportHelper):
                 self.warning(f"Multiple FLVER files found in Binder. Replacing first: {flver_entries[0].name}")
             flver_entry = flver_entries[0]
 
-        dcx_type = DCXType[self.dcx_type]
         flver.dcx_type = dcx_type
 
         try:
@@ -328,34 +253,109 @@ class ExportFLVERIntoBinder(LoggingOperator, ImportHelper):
         return {"FINISHED"}
 
 
+class ExportFLVERToMapDirectory(LoggingOperator, ExportHelper, ExportFLVERMixin):
+    bl_idname = "export_scene_map.flver"
+    bl_label = "Export Map Piece"
+    bl_description = (
+        "Export selected Blender meshes to same-named FLVER map piece model files in game `map` directory"
+    )
+
+    @classmethod
+    def poll(cls, context):
+        """One or more Meshes selected."""
+        return (
+            len(context.selected_objects) > 0
+            and all(obj.type == "MESH" and obj.name[0] == "m" for obj in context.selected_objects)
+        )
+
+    def execute(self, context):
+        if not context.selected_objects:
+            return self.error("No FLVER mesh objects selected.")
+        for flver_obj in context.selected_objects:
+            if flver_obj.type != "MESH":
+                return self.error(f"Selected object '{flver_obj.name}' is not a Mesh.")
+
+        settings = GlobalSettings.get_scene_settings(context)
+        game_directory = settings.game_directory
+        map_stem = settings.map_stem
+        dcx_type = settings.resolve_dcx_type(self.dcx_type, "FLVER", False, context)
+
+        if not game_directory or not map_stem:
+            return self.error("Game directory and map stem must be set in Blender's Soulstruct global settings.")
+
+        settings.save_settings()
+
+        if not (map_dir_path := Path(game_directory, "map", map_stem)).is_dir():
+            return self.error(f"Invalid game map directory: {map_dir_path}")
+
+        if not context.selected_objects:
+            return self.error("No FLVER mesh objects selected.")
+
+        self.to_object_mode()
+
+        exporter = FLVERExporter(self, context, self.get_export_settings(context))
+
+        for flver_obj in context.selected_objects:
+            if flver_obj.type != "MESH":
+                return self.error(f"Selected object '{flver_obj.name}' is not a Mesh.")
+            flver_obj: bpy.types.MeshObject
+            flver_name = flver_obj.name.split(" ")[0] + ".flver"  # DCX will be added automatically below if needed
+            try:
+                flver = exporter.export_flver(flver_obj)
+            except Exception as ex:
+                traceback.print_exc()
+                return self.error(f"Cannot get exported FLVER. Error: {ex}")
+            flver.dcx_type = dcx_type
+            try:
+                # Will create a `.bak` file automatically if absent, and add `.dcx` extension if necessary.
+                flver.write(map_dir_path / flver_name)
+            except Exception as ex:
+                traceback.print_exc()
+                return self.error(f"Cannot write exported FLVER. Error: {ex}")
+            self.info(f"Exported FLVER to: {map_dir_path / flver_name}")
+
+        return {"FINISHED"}
+
+
+# TODO: 'Export FLVER To CHRBND' auto operator
+
+
+@dataclass(slots=True)
+class FLVERExportSettings:
+    base_edit_bone_length: float = 0.2
+    mtd_dict: dict[str, MTD] | None = None
+    allow_missing_textures: bool = False
+    allow_unknown_texture_types: bool = False
+
+
+@dataclass(slots=True)
 class FLVERExporter:
 
     operator: LoggingOperator
-    layout_member_unk_x00: int
-    base_edit_bone_length: float
+    context: bpy.types.Context
+    settings: FLVERExportSettings
 
     @staticmethod
     def get_flver_props(bl_flver: bpy.types.Object) -> dict[str, tp.Any]:
         # TODO: Fields and defaults are tailored to DS1 map pieces.
         return dict(
-            big_endian=get_bl_prop(bl_flver, "big_endian", bool, default=False),
-            version=get_bl_prop(bl_flver, "version", str, default="DarkSouls_A", callback=Version.__getitem__),
-            unicode=get_bl_prop(bl_flver, "unicode", bool, default=True),
-            unk_x4a=get_bl_prop(bl_flver, "unk_x4a", int, default=False, callback=bool),
-            unk_x4c=get_bl_prop(bl_flver, "unk_x4c", int, default=0),
-            unk_x5c=get_bl_prop(bl_flver, "unk_x5c", int, default=0),
-            unk_x5d=get_bl_prop(bl_flver, "unk_x5d", int, default=0),
-            unk_x68=get_bl_prop(bl_flver, "unk_x68", int, default=0),
+            big_endian=get_bl_prop(bl_flver, "Is Big Endian", bool, default=False),
+            version=get_bl_prop(bl_flver, "Version", str, default="DarkSouls_A", callback=Version.__getitem__),
+            unicode=get_bl_prop(bl_flver, "Unicode", bool, default=True),
+            unk_x4a=get_bl_prop(bl_flver, "Unk x4a", int, default=False, callback=bool),
+            unk_x4c=get_bl_prop(bl_flver, "Unk x4c", int, default=0),
+            unk_x5c=get_bl_prop(bl_flver, "Unk x5c", int, default=0),
+            unk_x5d=get_bl_prop(bl_flver, "Unk x5d", int, default=0),
+            unk_x68=get_bl_prop(bl_flver, "Unk x68", int, default=0),
         )
-
-    def __init__(self, operator: LoggingOperator, context, base_edit_bone_length=0.2):
-        self.operator = operator
-        self.context = context
-        self.base_edit_bone_length = base_edit_bone_length
 
     def warning(self, msg: str):
         self.operator.report({"WARNING"}, msg)
         print(f"# WARNING: {msg}")
+
+    def info(self, msg: str):
+        self.operator.report({"INFO"}, msg)
+        print(f"# INFO: {msg}")
 
     def detect_is_bind_pose(self, bl_meshes) -> str:
         """Detect whether bone data should be read from EditBones or PoseBones."""
@@ -383,7 +383,7 @@ class FLVERExporter:
             )
         return read_bone_type
 
-    def export_flver(self, bl_flver_root) -> tp.Optional[FLVER]:
+    def export_flver(self, bl_flver_root: bpy.types.MeshObject) -> tp.Optional[FLVER]:
         """Create an entire FLVER from a Blender object.
 
         Exporter will recursively collect all meshes (1+), armatures (exactly 1), and 'dummy' empties (0+) for export.
@@ -396,14 +396,14 @@ class FLVERExporter:
             raise FLVERExportError("Root FLVER object in Blender must be a Mesh.")
 
         flver = FLVER(**self.get_flver_props(bl_flver_root))
-        self.layout_member_unk_x00 = get_bl_prop(bl_flver_root, "layout_member_unk_x00", int, default=0)
+        layout_member_unk_x00 = get_bl_prop(bl_flver_root, "Layout Member Unk x00", int, default=0)
 
-        bl_armature = None  # type: tp.Optional[bpy.types.Object]
-        bl_meshes = [bl_flver_root]  # type: list[bpy.types.Object]
+        bl_meshes = [bl_flver_root]  # type: list[bpy.types.MeshObject]
+        bl_armature = None  # type: bpy.types.ArmatureObject | None
         bl_dummies = []  # type: list[tuple[bpy.types.Object, dict[str, tp.Any]]]
 
         for obj in bl_flver_root.children_recursive:
-            obj: bpy.types.Object
+            obj: bpy.types.ArmatureObject | bpy.types.MeshObject | bpy.types.Object
             if obj.type == "ARMATURE":
                 if bl_armature is not None:
                     self.warning(f"Multiple Armature objects found under FLVER root. Ignoring: {obj.name}")
@@ -412,10 +412,11 @@ class FLVERExporter:
                 bl_armature = obj
             elif obj.type == "MESH":
                 # Manually-separated submeshes found.
+                # TODO: Maybe remove support for this, as it prevents genuine convenient nesting of meshes (e.g. Parts).
                 bl_meshes.append(obj)
             elif obj.type == "EMPTY":
                 # Check for required 'unk_x30' custom property to detect dummies.
-                if obj.get("unk_x30") is None:
+                if obj.get("Unk x30") is None:
                     self.warning(
                         f"Empty child of FLVER '{obj.name}' ignored. (Missing 'unk_x30' Dummy property and possibly "
                         f"other required properties and proper Dummy name; see docs.)"
@@ -426,13 +427,17 @@ class FLVERExporter:
                 if dummy_dict is None:
                     self.warning(
                         f"Could not interpret Dummy name: '{obj.name}'. Ignoring it. Format should be: \n"
-                        f"    `[other_model] Dummy<index> [reference_id]` "
+                        f"    `[other_model] {{Name}} Dummy<index> [reference_id]` "
                         f"    where `[other_model]` is an optional prefix used only for attached equipment FLVERs"
                     )
                 # TODO: exclude dummies with wrong 'other_model' prefix, depending on whether c0000 or that equipment
                 #  is being exported. Currently excluding all dummies with any 'other_model'.
                 if not dummy_dict["other_model"]:
                     bl_dummies.append((obj, dummy_dict))
+                if dummy_dict["name"] != bl_flver_root.name:
+                    self.warning(
+                        f"Dummy '{obj.name}' has unexpected FLVER name prefix '{dummy_dict['name']}. Exporting anyway."
+                    )
             else:
                 self.warning(f"Non-Mesh, non-Empty Child object '{obj.name}' of FLVER ignored.")
 
@@ -445,7 +450,7 @@ class FLVERExporter:
         bl_meshes.sort(key=lambda o: natural_keys(o.name))
 
         read_bone_type = self.detect_is_bind_pose(bl_meshes)
-        self.operator.info(
+        self.info(
             f"Exporting FLVER '{bl_flver_root.name}' with bone data from {read_bone_type.capitalize()}Bones."
         )
         flver.bones, bl_bone_names, bone_arma_transforms = self.create_bones(bl_armature, read_bone_type)
@@ -455,7 +460,7 @@ class FLVERExporter:
         self.context.view_layer.objects.active = bl_flver_root
 
         # noinspection PyUnresolvedReferences
-        bl_bone_data = bl_armature.data.bones  # type: tp.Sequence[bpy.types.Bone]
+        bl_bone_data = bl_armature.data.bones  # type: bpy.types.ArmatureBones
         for bl_dummy, dummy_dict in bl_dummies:
             game_dummy = self.create_dummy(bl_dummy, dummy_dict["reference_id"], bl_bone_names, bl_bone_data)
             flver.dummies.append(game_dummy)
@@ -468,6 +473,7 @@ class FLVERExporter:
             bl_bone_names,
             use_chr_layout=read_bone_type == "EDIT",
             material_prefix=bl_flver_root.name,
+            layout_member_unk_x00=layout_member_unk_x00,
         )
 
         flver.sort_mesh_bone_indices()
@@ -490,6 +496,7 @@ class FLVERExporter:
         bl_bone_names: list[str],
         use_chr_layout: bool,
         material_prefix: str,
+        layout_member_unk_x00: int,
     ):
         """Iterate over all FLVER meshes (usually just one), split them based on material, and create those materials
         if necessary.
@@ -516,7 +523,7 @@ class FLVERExporter:
         v4_zero = [0.0] * 4
         v4_int_zero = [0] * 4
 
-        print(f"Exporting {len(bl_meshes)} Blender meshes to FLVER model...")
+        self.info(f"Exporting {len(bl_meshes)} Blender meshes to FLVER model...")
 
         for bl_mesh in bl_meshes:
             bl_mesh_data = bl_mesh.data  # type: bpy.types.Mesh
@@ -531,15 +538,15 @@ class FLVERExporter:
                     continue  # material already created
                 flver_material, mtd_info = self.create_material(bl_material, prefix=material_prefix)
                 # TODO: Choose default layout factory with an export enum.
-                layout_factory = BufferLayoutFactory(self.layout_member_unk_x00)
+                layout_factory = BufferLayoutFactory(layout_member_unk_x00)
                 if use_chr_layout:
                     buffer_layout = layout_factory.get_ds1_chr_buffer_layout(
-                        is_multiple=mtd_info.multiple,
+                        has_two_texture_slots=mtd_info.has_two_slots,
                     )
                 else:
                     buffer_layout = layout_factory.get_ds1_map_buffer_layout(
-                        is_multiple=mtd_info.multiple,
-                        is_lightmap=mtd_info.lightmap,
+                        is_multiple=mtd_info.has_two_slots,
+                        is_lightmap=mtd_info.has_lightmap,
                         extra_uv_maps=mtd_info.extra_uv_maps,
                         no_tangents=mtd_info.no_tangents,
                     )
@@ -560,7 +567,7 @@ class FLVERExporter:
                 )
                 flver.materials.append(flver_material)
                 uv_counts.append(uv_count)
-                print(f"Created FLVER material: {bl_material.name} (UV count: {uv_count})")
+                self.operator.info(f"Created FLVER material: {bl_material.name} (UV count: {uv_count})")
 
             # Maps Blender face material index to FLVER mesh and buffer layout instances (for this Blender mesh).
             flver_mesh_data = {}  # type: dict[int, tuple[FLVER.Mesh, dict[int, FLVER.Mesh.Vertex], BufferLayout]]
@@ -620,17 +627,17 @@ class FLVERExporter:
                     flver.meshes.append(mesh)
                     bl_material = bl_mesh_data.materials[face.material_index]
                     mesh.material_index, buffer_layout_index, uv_count = bl_to_flver_materials[bl_material.name]
-                    mesh.default_bone_index = bl_mesh_props["default_bone_index"][face.material_index]
+                    mesh.default_bone_index = bl_mesh_props["Default Bone Index"][face.material_index]
                     mesh.vertex_buffers = [VertexBuffer(layout_index=buffer_layout_index)]
                     mesh.face_sets = [
                         FLVER.Mesh.FaceSet(
                             flags=i,
                             unk_x06=0,  # TODO: define default in 'game-specific' dict?
                             triangle_strip=False,  # triangle strips are too hard to compute
-                            cull_back_faces=bl_mesh_props["cull_back_faces"][face.material_index],
+                            cull_back_faces=bl_mesh_props["Cull Back Faces"][face.material_index],
                             vertex_indices=[],
                         )
-                        for i in range(bl_mesh_props["face_set_count"][face.material_index])
+                        for i in range(bl_mesh_props["Face Set Count"][face.material_index])
                     ]
 
                     layout = flver.buffer_layouts[buffer_layout_index]
@@ -800,40 +807,29 @@ class FLVERExporter:
 
         return flver
 
-    def get_mesh_props(self, bl_mesh):
+    def get_mesh_props(self, bl_mesh_obj: bpy.types.MeshObject) -> dict[str, list[bool | int]]:
         """Each property can be a single value (all materials) or an array matching the mesh material count."""
-        material_count = len(bl_mesh.material_slots)
+        material_count = len(bl_mesh_obj.material_slots)
         props = {}
 
         for prop_name, prop_type, default_value in (
-            ("face_set_count", int, 1),
-            ("cull_back_faces", bool, False),
-            ("default_bone_index", int, 0),
-            ("is_bind_pose", bool, False),  # default suitable for Map Pieces
+            ("Is Bind Pose", bool, False),  # NOTE: default is suitable for Map Pieces but not Characters
+            ("Cull Back Faces", bool, False),
+            ("Default Bone Index", int, 0),
+            ("Face Set Count", int, 1),
         ):
-            try:
-                prop_value = bl_mesh[prop_name]
-            except KeyError:
-                self.operator.info(
-                    f"Setting FLVER mesh field '{prop_name}' to default {default_value} for all submeshes."
-                )
-                prop_value = [default_value] * material_count
-            else:
-                if isinstance(prop_value, prop_type):
-                    prop_value = [prop_value] * material_count
-                elif not hasattr(prop_value, "__len__"):
-                    raise FLVERExportError(
-                        f"Invalid '{prop_name}' property value type: {prop_value}. "
-                        f"Must be '{prop_type.__name__}' or an array thereof."
+            material_prop_values = []
+            for material_index in range(material_count):
+                try:
+                    material_prop_value = bl_mesh_obj[f"Material[{material_index}] {prop_name}"]
+                except KeyError:
+                    self.info(
+                        f"Setting FLVER Mesh '{prop_name}' to default {default_value} for material {material_index}."
                     )
-                elif len(prop_value) != material_count:
-                    raise FLVERExportError(
-                        f"Length of '{prop_value}' property {len(prop_value)} != mesh material count {material_count}."
-                    )
+                    material_prop_values.append(default_value)
                 else:
-                    prop_value = list(prop_value)
-            props[prop_name] = prop_value
-
+                    material_prop_values.append(prop_type(material_prop_value))
+            props[prop_name] = material_prop_values
         return props
 
     def create_bones(
@@ -863,7 +859,7 @@ class FLVERExporter:
 
             game_bone = FLVER.Bone(
                 name=game_bone_name,
-                unk_x3c=get_bl_prop(edit_bone, "unk_x3c", int, default=0),
+                unk_x3c=get_bl_prop(edit_bone, "Unk x3c", int, default=0),
             )
 
             if edit_bone.parent:
@@ -871,17 +867,15 @@ class FLVERExporter:
                 game_bone.parent_index = edit_bone_names.index(parent_bone_name)
             else:
                 game_bone.parent_index = -1
-            child_name = edit_bone.get("child_name", None)
+            child_name = edit_bone.get("Child Name", None)
             if child_name is not None:
-                # TODO: Check if this is set IFF bone has exactly one child, which can be auto-detected.
-                #  (I don't think this is the case - will just index first child among many.)
                 try:
                     game_bone.child_index = edit_bone_names.index(child_name)
                 except IndexError:
                     raise ValueError(f"Cannot find child '{child_name}' of bone '{edit_bone.name}'.")
             else:
                 game_bone.child_index = -1
-            next_sibling_name = edit_bone.get("next_sibling_name", None)
+            next_sibling_name = edit_bone.get("Next Sibling Name", None)
             if next_sibling_name is not None:
                 try:
                     game_bone.next_sibling_index = edit_bone_names.index(next_sibling_name)
@@ -889,7 +883,7 @@ class FLVERExporter:
                     raise ValueError(f"Cannot find next sibling '{next_sibling_name}' of bone '{edit_bone.name}'.")
             else:
                 game_bone.next_sibling_index = -1
-            prev_sibling_name = edit_bone.get("previous_sibling_name", None)
+            prev_sibling_name = edit_bone.get("Previous Sibling Name", None)
             if prev_sibling_name is not None:
                 try:
                     game_bone.previous_sibling_index = edit_bone_names.index(prev_sibling_name)
@@ -904,15 +898,14 @@ class FLVERExporter:
                 bl_rotmat = edit_bone.matrix.to_3x3()  # get rotation submatrix
                 game_arma_translate = BL_TO_GAME_VECTOR3(bl_translate)
                 game_arma_rotmat = BL_TO_GAME_MAT3(bl_rotmat)
-                s = edit_bone.length / self.base_edit_bone_length
+                s = edit_bone.length / self.settings.base_edit_bone_length
                 # NOTE: only uniform scale is supported for these "is_bind_pose" mesh bones
                 game_arma_scale = s * Vector3.one()
                 game_arma_transforms.append((game_arma_translate, game_arma_rotmat, game_arma_scale))
 
             game_bones.append(game_bone)
 
-        if bpy.ops.object.mode_set.poll():
-            bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
+        self.operator.to_object_mode()
 
         if read_bone_type == "POSE":
             # Get armature-space bone transform from PoseBone (map pieces).
@@ -949,16 +942,16 @@ class FLVERExporter:
         bl_dummy: bpy.types.Object,
         reference_id: int,
         bl_bone_names: list[str],
-        bl_bone_data: tp.Sequence[bpy.types.Bone],
+        bl_bone_data: bpy.types.ArmatureBones,
     ) -> FLVER.Dummy:
         """Create a single `FLVER.Dummy` from a Blender Dummy empty."""
         game_dummy = FLVER.Dummy(
             reference_id=reference_id,  # stored in dummy name for editing convenience
-            color_rgba=get_bl_prop(bl_dummy, "color_rgba", tuple, default=(255, 255, 255, 255), callback=list),
-            flag_1=get_bl_prop(bl_dummy, "flag_1", int, default=True, callback=bool),
-            use_upward_vector=get_bl_prop(bl_dummy, "use_upward_vector", int, default=True, callback=bool),
-            unk_x30=get_bl_prop(bl_dummy, "unk_x30", int, default=0),
-            unk_x34=get_bl_prop(bl_dummy, "unk_x34", int, default=0),
+            color_rgba=get_bl_prop(bl_dummy, "Color RGBA", tuple, default=(255, 255, 255, 255), callback=list),
+            flag_1=get_bl_prop(bl_dummy, "Flag 1", int, default=True, callback=bool),
+            use_upward_vector=get_bl_prop(bl_dummy, "Use Upward Vector", int, default=True, callback=bool),
+            unk_x30=get_bl_prop(bl_dummy, "Unk x30", int, default=0),
+            unk_x34=get_bl_prop(bl_dummy, "Unk x34", int, default=0),
 
         )
         parent_bone_name = get_bl_prop(bl_dummy, "parent_bone_name", str, default="")
@@ -998,64 +991,91 @@ class FLVERExporter:
 
         return game_dummy
 
-    def create_material(self, bl_material: bpy.types.Material, prefix: str) -> tuple[FLVER.Material, MTDInfo]:
+    def create_material(self, bl_material: bpy.types.Material, prefix: str) -> tuple[Material, MTDInfo]:
+        """Create a FLVER material from Blender material custom properties and texture nodes.
+
+        Texture nodes are validated against the provided MTD shader (by name or, preferably, direct MTD inspection). By
+        default, the exporter will not permit any missing MTD textures (except 'g_DetailBumpmap') or any unknown texture
+        nodes in the Blender shader. No other Blender shader information is used.
+
+        Texture paths are taken from the 'Path[]' custom property on the Blender material, if it exists. Otherwise, the
+        texture name is used as the path, with '.tga' appended.
+        """
         name = bl_material.name.removeprefix(prefix).strip() if prefix else bl_material.name
 
-        game_material = FLVER.Material(
+        flver_material = Material(
             name=name,
-            flags=get_bl_prop(bl_material, "flags", int),
-            mtd_path=get_bl_prop(bl_material, "mtd_path", str),  # TODO: validate against `mtd` game folder?
-            gx_index=get_bl_prop(bl_material, "gx_index", int, default=-1),  # TODO: not yet supported
-            unk_x18=get_bl_prop(bl_material, "unk_x18", int, default=0),
+            flags=get_bl_prop(bl_material, "Flags", int),
+            gx_index=get_bl_prop(bl_material, "GX Index", int, default=-1),  # TODO: not yet supported
+            mtd_path=get_bl_prop(bl_material, "MTD Path", str),
+            unk_x18=get_bl_prop(bl_material, "Unk x18", int, default=0),
         )
 
-        texture_count = get_bl_prop(bl_material, "texture_count", int)  # TODO: look up from shader
-        texture_path_prefix = get_bl_prop(bl_material, "texture_path_prefix", str, default="")
-
-        found_texture_types = set()
-        for i in range(texture_count):
-            tex = f"texture[{i}]"
-            game_texture = FLVER.Material.Texture(
-                texture_type=get_bl_prop(bl_material, f"{tex}_texture_type", str),
-                unk_x10=get_bl_prop(bl_material, f"{tex}_unk_x10", int, default=1),
-                unk_x11=get_bl_prop(bl_material, f"{tex}_unk_x11", int, default=True, callback=bool),
-                unk_x14=get_bl_prop(bl_material, f"{tex}_unk_x14", float, default=0.0),
-                unk_x18=get_bl_prop(bl_material, f"{tex}_unk_x18", float, default=0.0),
-                unk_x1C=get_bl_prop(bl_material, f"{tex}_unk_x1C", float, default=0.0),
-                scale=get_bl_prop(bl_material, f"{tex}_scale", tuple, default=(1.0, 1.0), callback=Vector2)
-            )
-
-            path_suffix = get_bl_prop(bl_material, f"{tex}_path_suffix", str)  # added to material prefix
-            if path_suffix:
-                game_texture.path = texture_path_prefix + path_suffix
-            else:  # empty suffix means entire path is empty
-                game_texture.path = ""
-            if game_texture.texture_type not in TEXTURE_TYPES:
-                self.warning(f"Unrecognized FLVER Texture type: {game_texture.texture_type}")
-            if game_texture.texture_type in found_texture_types:
-                self.warning(
-                    f"Ignoring duplicate texture type '{game_texture.texture_type}' in Material {game_material.name}."
-                )
+        mtd_info = None  # type: MTDInfo | None
+        if self.settings.mtd_dict:
+            if flver_material.mtd_name in self.settings.mtd_dict:
+                mtd_info = MTDInfo.from_mtd(self.settings.mtd_dict[flver_material.mtd_name])
             else:
-                found_texture_types.add(game_texture.texture_type)
-                game_material.textures.append(game_texture)
+                self.warning(f"MTD '{flver_material.mtd_name}' not found in MTD dict. Guessing textures from name...")
+        if mtd_info is None:
+            mtd_info = MTDInfo.from_mtd_name(flver_material.mtd_name)
 
-        # NOTE: Extra textures not required by this shader (e.g., 'g_DetailBumpmap' for most of them) are still
-        # written, but missing required textures will raise an error here.
-        mtd_name = game_material.mtd_name
-        mtd_info = game_material.get_mtd_info()
-        self.validate_found_textures(mtd_info, found_texture_types, mtd_name)
+        node_textures = {node.name: node for node in bl_material.node_tree.nodes if node.type == "TEX_IMAGE"}
+        flver_textures = []
+        for texture_type in mtd_info.texture_types:
+            if texture_type not in node_textures:
+                # Only 'g_DetailBumpmap' can always be omitted from node tree entirely, as it's always empty (in DS1).
+                if texture_type != "g_DetailBumpmap":
+                    raise FLVERExportError(
+                        f"Could not find a shader node for required texture type '{texture_type}' in material "
+                        f"'{bl_material}'."
+                    )
+                else:
+                    texture_path = ""  # missing
+            else:
+                tex_node = node_textures.pop(texture_type)
+                if tex_node.image is None:
+                    if texture_type != "g_DetailBumpmap" and not self.settings.allow_missing_textures:
+                        raise FLVERExportError(
+                            f"Texture node '{tex_node.name}' in material '{bl_material}' has no image assigned."
+                        )
+                    texture_path = ""  # missing
+                else:
+                    texture_stem = Path(tex_node.image.name).stem
+                    # Look for a custom 'Path[]' property on material, or default to lone texture name.
+                    # Note that DS1, at least, works fine when full texture paths are omitted.
+                    texture_path = bl_material.get(f"Path[{texture_stem}]", f"{texture_stem}.tga")
+            flver_texture = Texture(
+                path=texture_path,
+                texture_type=texture_type,
+            )
+            flver_textures.append(flver_texture)
 
-        return game_material, mtd_info
+        if node_textures:
+            # Unknown node textures remain.
+            if not self.settings.allow_unknown_texture_types:
+                raise FLVERExportError(
+                    f"Unknown texture types (node names) in material '{bl_material}': {list(node_textures.keys())}"
+                )
+            # TODO: Currently assuming that FLVER material texture order doesn't matter (due to texture type).
+            #  If it does, we'll need to sort them here, probably based on node location Y.
+            for unk_texture_type, tex_node in node_textures.items():
+                texture_type = tex_node.name
+                if not tex_node.image:
+                    if not self.settings.allow_missing_textures:
+                        raise FLVERExportError(
+                            f"Unknown texture node '{texture_type}' in material '{bl_material}' has no image assigned."
+                        )
+                    texture_path = ""  # missing
+                else:
+                    texture_stem = Path(tex_node.image.name).stem
+                    texture_path = bl_material.get(f"Path[{texture_stem}]", f"{texture_stem}.tga")
+                flver_texture = Texture(
+                    path=texture_path,
+                    texture_type=texture_type,
+                )
+                flver_textures.append(flver_texture)
 
-    @staticmethod
-    def validate_found_textures(mtd_info: MTDInfo, found_texture_types: set[str], mtd_name: str):
-        for tex_type in ("Diffuse", "Specular", "Bumpmap"):
-            if getattr(mtd_info, tex_type.lower()):
-                if f"g_{tex_type}" not in found_texture_types:
-                    raise ValueError(f"Texture type 'g_{tex_type}' required for material with MTD '{mtd_name}'.")
-                if mtd_info.multiple and f"g_{tex_type}_2" not in found_texture_types:
-                    raise ValueError(f"Texture type 'g_{tex_type}_2' required for material with MTD '{mtd_name}'.")
-        for tex_type in ("Lightmap", "Height"):
-            if getattr(mtd_info, tex_type.lower()) and f"g_{tex_type}" not in found_texture_types:
-                raise ValueError(f"Texture type 'g_{tex_type}' required for material with MTD '{mtd_name}'.")
+        flver_material.textures = flver_textures
+
+        return flver_material, mtd_info

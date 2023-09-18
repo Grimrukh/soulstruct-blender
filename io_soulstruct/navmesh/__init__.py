@@ -161,6 +161,7 @@ class NVM_PT_ds1_navmesh_tools(bpy.types.Panel):
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "Soulstruct"
+    bl_options = {'DEFAULT_CLOSED'}
 
     # noinspection PyUnusedLocal
     def draw(self, context):
@@ -182,21 +183,22 @@ class NVM_PT_ds1_navmesh_tools(bpy.types.Panel):
 
         self.layout.label(text="MCG Draw Settings:")
         mcg_draw_settings_box = self.layout.box()
-        mcg_draw_settings_box.prop(context.scene.mcg_draw_settings, "mcg_parent_name")
-        mcg_draw_settings_box.prop(context.scene.mcg_draw_settings, "mcg_graph_draw_enabled")
-        mcg_draw_settings_box.prop(context.scene.mcg_draw_settings, "mcg_graph_draw_selected_nodes_only")
-        mcg_draw_settings_box.prop(context.scene.mcg_draw_settings, "mcg_graph_color")
-        mcg_draw_settings_box.prop(context.scene.mcg_draw_settings, "mcg_node_label_draw_enabled")
-        mcg_draw_settings_box.prop(context.scene.mcg_draw_settings, "mcg_node_label_font_size")
-        mcg_draw_settings_box.prop(context.scene.mcg_draw_settings, "mcg_node_label_font_color")
-        mcg_draw_settings_box.prop(context.scene.mcg_draw_settings, "mcg_edge_triangles_highlight_enabled")
+        mcg_draw_settings = context.scene.mcg_draw_settings
+        mcg_draw_settings_box.prop(mcg_draw_settings, "mcg_parent_name")
+        mcg_draw_settings_box.prop(mcg_draw_settings, "mcg_graph_draw_enabled")
+        mcg_draw_settings_box.prop(mcg_draw_settings, "mcg_graph_draw_selected_nodes_only")
+        mcg_draw_settings_box.prop(mcg_draw_settings, "mcg_graph_color")
+        mcg_draw_settings_box.prop(mcg_draw_settings, "mcg_node_label_draw_enabled")
+        mcg_draw_settings_box.prop(mcg_draw_settings, "mcg_node_label_font_size")
+        mcg_draw_settings_box.prop(mcg_draw_settings, "mcg_node_label_font_color")
+        mcg_draw_settings_box.prop(mcg_draw_settings, "mcg_edge_triangles_highlight_enabled")
 
         mcg_edit_box = self.layout.box()
         mcg_edit_box.operator(CreateMCGEdgeOperator.bl_idname, text="Create MCG Edge")
 
         self.layout.label(text="Selected Face Indices:")
         selected_faces_box = self.layout.box()
-        obj = bpy.context.edit_object
+        obj = context.edit_object
         if obj and obj.type == 'MESH' and bpy.context.mode == 'EDIT_MESH':
             bm = bmesh.from_edit_mesh(obj.data)
             layout_selected_faces(bm, self.layout, context, selected_faces_box)
