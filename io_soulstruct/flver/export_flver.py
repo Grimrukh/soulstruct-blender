@@ -16,7 +16,7 @@ from soulstruct.base.models.flver import FLVER, Version
 from soulstruct.base.models.flver.bone import FLVERBone
 from soulstruct.base.models.flver.material import Material, Texture
 from soulstruct.base.models.flver.mesh import Mesh, FaceSet
-from soulstruct.base.models.flver.vertex import Vertex, VertexBuffer, BufferLayout, MemberType
+from soulstruct.base.models.flver.vertex import VertexBuffer, BufferLayout, MemberType
 from soulstruct.utilities.maths import Vector3, Matrix3
 
 from io_soulstruct.utilities import *
