@@ -540,7 +540,7 @@ class ExportLightmapTextures(LoggingOperator, ImportHelper):
                 self.info(f"Exported texture '{image_stem}' into '{self.filepath}' with DDS format {dds_format}")
             elif self.create_new_if_missing:
                 if isinstance(texture_export_info, SplitBinderTPFTextureExport):
-                    new_tpf = get_lightmap_tpf(bl_image, dds_format=self.new_texture_dds_format)
+                    new_tpf = create_lightmap_tpf(bl_image, dds_format=self.new_texture_dds_format)
                     new_tpf.dcx_type = DCXType[self.new_tpf_dcx_type]
                     new_tpf_entry_path = new_tpf.dcx_type.process_path(Path(bl_image.name).name + ".tpf")
                     texture_export_info.chrtpfbxf.add_entry(

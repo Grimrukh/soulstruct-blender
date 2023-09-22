@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 __all__ = [
-    "flver_to_blender_material",
+    "get_submesh_blender_material",
 ]
 
 import typing as tp
@@ -9,16 +9,18 @@ import typing as tp
 import bpy
 
 from soulstruct.base.models.flver.material import Material
+from soulstruct.base.models.flver.mesh import Mesh
 
 from io_soulstruct.utilities import LoggingOperator
 from .utilities import MTDInfo
 
 
-def flver_to_blender_material(
+def get_submesh_blender_material(
     operator: LoggingOperator,
     material: Material,
     material_name: str,
     mtd_info: MTDInfo,
+    mesh: Mesh,
     blend_mode="HASHED",
 ) -> bpy.types.Material:
     """Create a new material in the current Blender scene from a FLVER material.
@@ -46,7 +48,6 @@ def flver_to_blender_material(
     node_tree.links.clear()
     output_node = node_tree.nodes["Material Output"]
     builder = NodeTreeBuilder(node_tree)
-
 
     vertex_colors_node = builder.add_vertex_colors_node()
     uv_nodes = {}
@@ -185,18 +186,25 @@ def flver_to_blender_material(
         builder.link(displace_node.outputs["Displacement"], output_node.inputs["Displacement"])
 
     for texture_type, bsdf_node in zip(("g_Bumpmap", "g_Bumpmap_2"), bsdf_nodes):
-        if texture_type not in tex_image_nodes:
+        if texture_type not in tex_image_nodes or texture_type not in mtd_info.texture_types:
             continue
         if bsdf_node is None:
             continue  # TODO: bad state
         # Create normal map node.
         bumpmap_node = tex_image_nodes[texture_type]
-        # TODO: Texture may not have a UV index if not expected from MTD shader.
         uv_index = mtd_info.texture_types[texture_type]
         uv_map_name = f"UVMap{uv_index}"
         normal_map_node = builder.add_normal_map_node(uv_map_name, bumpmap_node.location[1])
         builder.link(bumpmap_node.outputs["Color"], normal_map_node.inputs["Color"])
         builder.link(normal_map_node.outputs["Normal"], bsdf_node.inputs["Normal"])
+
+    # Set additional real and custom properties from FLVER submesh.
+    bl_material["Is Bind Pose"] = mesh.is_bind_pose
+    # NOTE: This index is sometimes invalid for vanilla map FLVERs (e.g., 1 when there is only one bone).
+    bl_material["Default Bone Index"] = mesh.default_bone_index
+    # Currently, main face set is simply copied to all additional face sets on export.
+    bl_material["Face Set Count"] = len(mesh.face_sets)
+    bl_material.use_backface_culling = mesh.cull_back_faces
 
     return bl_material
 
@@ -288,22 +296,3 @@ class NodeTreeBuilder:
             uv_map=uv_map_name,
             input_defaults={"Strength": 0.4},
         )
-
-
-def blender_to_flver_material(bl_material: bpy.types.Material) -> Material:
-    """Create a FLVER material from a Blender material.
-
-    Surprisingly straightforward, as most of the Blender materials imported from FLVER materials are set up to replicate
-    the appearance of the material's MTD shader. The only actual FLVER data contained in Blender materials is the stems
-    of the image textures, the MTD name/path, and a few other flags/fields stored in Blender custom properties.
-
-    NOTE: The full paths of FLVER material textures are NOT exported by default - just the names. DS1, at the very
-    least, is absolutely fine with this (i.e. only uses the texture name to find the loaded texture). Use custom
-    material properties to map texture stems to their full paths (including the TGA name itself) to be exported:
-
-        'Path[m10_wood_01]' -> 'N:\FRPG\data\model\map\m10\tex\m10_wood_01.tga'
-
-    This function will check for those names and replace them with the full paths before exporting.
-    TODO: Create a FLVER panel button to create these path props (and just have the TGA names in there by default).
-    """
-    node_tree = bl_material.node_tree

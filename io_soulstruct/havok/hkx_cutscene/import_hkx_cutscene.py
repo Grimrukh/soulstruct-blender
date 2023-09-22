@@ -23,7 +23,7 @@ from soulstruct_havok.wrappers.hkx2015 import RemoBND
 from io_soulstruct.general import GlobalSettings
 from io_soulstruct.utilities import *
 from io_soulstruct.flver.import_flver import FLVERImportSettings, FLVERImporter
-from io_soulstruct.flver.textures.utilities import collect_binder_tpfs, collect_map_tpfs
+from io_soulstruct.flver.textures.utilities import TextureManager
 from io_soulstruct.havok.utilities import GAME_TRS_TO_BL_MATRIX, get_basis_matrix
 from .utilities import HKXCutsceneImportError
 
@@ -151,8 +151,7 @@ class ImportHKXCutscene(LoggingOperator, ImportHelper):
 
         part_armatures = {}  # type: dict[str, tp.Any]
         flvers_to_import = {}  # type: dict[str, FLVER]
-        attached_texture_sources = {}  # from multi-texture TPFs directly linked to FLVER
-        loose_tpf_sources = {}  # one-texture TPFs that we only read if needed by FLVER
+        texture_manager = TextureManager()
 
         for part_name, remo_part in remobnd.remo_parts.items():
             if remo_part.part is None:
@@ -170,25 +169,25 @@ class ImportHKXCutscene(LoggingOperator, ImportHelper):
                     # Map piece FLVERs are always in map version `mAA_BB_CC_00`.
                     area, block = remo_part.map_area_block
                     map_path = game_directory / f"map/m{area:02d}_{block:02d}_00_00"
-                    flver = FLVER.from_path(map_path / f"{remo_part.part.model.name}A{area:02d}.flver.dcx")
-                    loose_tpf_sources |= collect_map_tpfs(map_path)
+                    flver_path = map_path / f"{remo_part.part.model.name}A{area:02d}.flver.dcx"
+                    flver = FLVER.from_path(flver_path)
+                    texture_manager.find_flver_textures(flver_path)
                 elif isinstance(remo_part.part, MSBCharacter):
                     chrbnd_path = game_directory / f"chr/{remo_part.part.model.name}.chrbnd.dcx"
                     if not chrbnd_path.is_file():
                         self.warning(f"Could not find CHRBND to import for cutscene: {chrbnd_path}")
                         continue
                     chrbnd = Binder.from_path(chrbnd_path)
-                    # TODO: This doesn't seem to be finding the right TPFs for characters.
-                    attached_texture_sources |= collect_binder_tpfs(chrbnd, chrbnd_path)
                     flver = chrbnd.find_entry_matching_name(r".*\.flver$").to_binary_file(FLVER)
+                    texture_manager.find_flver_textures(chrbnd_path, chrbnd)
                 elif isinstance(remo_part.part, MSBObject):
                     objbnd_path = game_directory / f"obj/{remo_part.part.model.name}.objbnd.dcx"
                     if not objbnd_path.is_file():
                         self.warning(f"Could not find CHRBND to import for cutscene: {objbnd_path}")
                         continue
                     objbnd = Binder.from_path(objbnd_path)
-                    attached_texture_sources |= collect_binder_tpfs(objbnd, objbnd_path)
                     flver = objbnd.find_entry_matching_name(r".*\.flver$").to_binary_file(FLVER)
+                    texture_manager.find_flver_textures(objbnd_path, objbnd)
                 else:
                     self.warning(
                         f"Cannot load FLVER model for unknown part type: {type(remo_part.part).__name__}"
@@ -200,13 +199,12 @@ class ImportHKXCutscene(LoggingOperator, ImportHelper):
         if flvers_to_import:
 
             flver_import_settings = FLVERImportSettings(
-                texture_sources=attached_texture_sources,
-                loose_tpf_sources=loose_tpf_sources,
+                texture_manager=texture_manager,
                 read_from_png_cache=self.read_from_png_cache,
                 write_to_png_cache=self.write_to_png_cache,
                 material_blend_mode=self.material_blend_mode,
                 base_edit_bone_length=self.base_edit_bone_length,
-                mtd_dict=settings.get_mtd_dict(context) if self.use_mtd_binder else None,
+                mtd_manager=settings.get_mtd_manager(context) if self.use_mtd_binder else None,
             )
 
             flver_importer = FLVERImporter(self, context, flver_import_settings)

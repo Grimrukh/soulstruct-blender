@@ -35,6 +35,7 @@ import typing as tp
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import bmesh
 import bpy
 import bpy.ops
 from bpy.props import StringProperty, FloatProperty, BoolProperty, EnumProperty, CollectionProperty
@@ -42,17 +43,17 @@ from bpy_extras.io_utils import ImportHelper
 from mathutils import Vector, Matrix
 
 from soulstruct.base.models.flver import FLVER
+from soulstruct.base.models.flver.mesh import Mesh
 from soulstruct.base.models.flver.dummy import Dummy
-from soulstruct.base.models.mtd import MTD
-from soulstruct.containers import Binder, BinderEntry, DCXType
-from soulstruct.containers.tpf import TPF, TPFTexture, batch_get_tpf_texture_png_data
+from soulstruct.containers import Binder, DCXType
+from soulstruct.containers.tpf import TPFTexture, batch_get_tpf_texture_png_data
 from soulstruct.utilities.maths import Vector3
 
 from io_soulstruct.general import GlobalSettings, GameFiles
 from io_soulstruct.utilities import *
 from .utilities import *
-from .materials import flver_to_blender_material
-from .textures.utilities import png_to_bl_image, collect_binder_tpfs, collect_map_tpfs
+from .materials import get_submesh_blender_material
+from .textures.utilities import png_to_bl_image, TextureManager
 
 FLVER_BINDER_RE = re.compile(r"^.*?\.(chr|obj|parts)bnd(\.dcx)?$")
 MAP_NAME_RE = re.compile(r"^(m\d\d)_\d\d_\d\d_\d\d$")
@@ -77,9 +78,9 @@ class ImportFLVERMixin:
         default=True,
     )
 
-    load_map_piece_tpfs: BoolProperty(
-        name="Load Map Piece TPF Files",
-        description="Look for TPF (DDS) textures in adjacent 'mAA' folder for map piece FLVERs",
+    find_game_tpfs: BoolProperty(
+        name="Find Game TPF Files",
+        description="Look for TPF (DDS) textures in known game locations for FLVER source type",
         default=True,
     )
 
@@ -108,6 +109,17 @@ class ImportFLVERMixin:
         min=0.01,
     )
 
+    def get_import_settings(self, context, texture_manager: TextureManager):
+        settings = GlobalSettings.get_scene_settings(context)
+        return FLVERImportSettings(
+            texture_manager=texture_manager,
+            read_from_png_cache=self.read_from_png_cache,
+            write_to_png_cache=self.write_to_png_cache,
+            material_blend_mode=self.material_blend_mode,
+            base_edit_bone_length=self.base_edit_bone_length,
+            mtd_manager=settings.get_mtd_manager(context) if self.use_mtd_binder else None,
+        )
+
 
 class ImportFLVER(LoggingOperator, ImportHelper, ImportFLVERMixin):
     """This appears in the tooltip of the operator and in the generated docs."""
@@ -115,11 +127,11 @@ class ImportFLVER(LoggingOperator, ImportHelper, ImportFLVERMixin):
     bl_label = "Import FLVER"
     bl_description = "Import a FromSoftware FLVER model file. Can import from BNDs and supports DCX-compressed files."
 
-    # ImportHelper mixin class uses this
     filename_ext = ".flver"
 
     filter_glob: StringProperty(
-        default="*.flver;*.flver.dcx;*.chrbnd;*.chrbnd.dcx;*.objbnd;*.objbnd.dcx;*.partsbnd;*.partsbnd.dcx",
+        default="*.flver;*.flver.dcx;*.chrbnd;*.chrbnd.dcx;*.objbnd;*.objbnd.dcx;"
+                "*.partsbnd;*.partsbnd.dcx;*.mapbnd;*.mapbnd.dcx;*.geombnd;*.geombnd.dcx",
         options={'HIDDEN'},
         maxlen=255,  # Max internal buffer length, longer would be clamped.
     )
@@ -140,7 +152,7 @@ class ImportFLVER(LoggingOperator, ImportHelper, ImportFLVERMixin):
     )
 
     def invoke(self, context, _event):
-        """Set the initial directory."""
+        """Set the initial directory based on Global Settings."""
         game_directory = GlobalSettings.get_scene_settings(context).game_directory
         if game_directory and Path(game_directory).is_dir():
             self.filepath = game_directory
@@ -151,36 +163,24 @@ class ImportFLVER(LoggingOperator, ImportHelper, ImportFLVERMixin):
 
         file_paths = [Path(self.directory, file.name) for file in self.files]
         flvers = []
-        attached_texture_sources = {}  # from multi-texture TPFs directly linked to FLVER
-        loose_tpf_sources = {}  # one-texture TPFs that we only read if needed by FLVER
+        texture_manager = TextureManager()
 
         for file_path in file_paths:
 
             if FLVER_BINDER_RE.match(file_path.name):
                 binder = Binder.from_path(file_path)
                 flver = get_flver_from_binder(binder, file_path)
-                attached_texture_sources |= collect_binder_tpfs(binder, file_path)
+                if self.find_game_tpfs:
+                    texture_manager.find_flver_textures(file_path, binder)
             else:  # e.g. loose Map Piece FLVER
                 flver = FLVER.from_path(file_path)
-                if self.load_map_piece_tpfs:
-                    # Find map piece TPFs in adjacent `mXX` directory.
-                    loose_tpf_sources |= collect_map_tpfs(map_dir_path=file_path.parent)
+                if self.find_game_tpfs:
+                    texture_manager.find_flver_textures(file_path)
             flvers.append((file_path, flver))
 
         settings = bpy.context.scene.soulstruct_global_settings  # type: GlobalSettings
         settings.save_settings()
-
-        flver_import_settings = FLVERImportSettings(
-            texture_sources=attached_texture_sources,
-            loose_tpf_sources=loose_tpf_sources,
-            read_from_png_cache=self.read_from_png_cache,
-            write_to_png_cache=self.write_to_png_cache,
-            material_blend_mode=self.material_blend_mode,
-            base_edit_bone_length=self.base_edit_bone_length,
-            mtd_dict=settings.get_mtd_dict(context) if self.use_mtd_binder else None,
-        )
-
-        importer = FLVERImporter(self, context, flver_import_settings)
+        importer = FLVERImporter(self, context, self.get_import_settings(context, texture_manager))
 
         for file_path, flver in flvers:
 
@@ -325,28 +325,16 @@ class ImportMapPieceFLVER(LoggingOperator, ImportFLVERMixin):
 
         self.info(f"Importing map piece FLVER: {flver_path}")
 
-        attached_texture_sources = {}  # from multi-texture TPFs directly linked to FLVER
-        loose_tpf_sources = {}  # one-texture TPFs that we only read if needed by FLVER
+        texture_manager = TextureManager()
 
         flver = FLVER.from_path(flver_path)
-        if self.load_map_piece_tpfs:
-            # Find map piece TPFs in adjacent `mXX` directory.
-            loose_tpf_sources |= collect_map_tpfs(map_dir_path=flver_path.parent)
+        if self.find_game_tpfs:
+            texture_manager.find_flver_textures(flver_path)
 
         settings = bpy.context.scene.soulstruct_global_settings  # type: GlobalSettings
         settings.save_settings()
 
-        flver_import_settings = FLVERImportSettings(
-            texture_sources=attached_texture_sources,
-            loose_tpf_sources=loose_tpf_sources,
-            read_from_png_cache=self.read_from_png_cache,
-            write_to_png_cache=self.write_to_png_cache,
-            material_blend_mode=self.material_blend_mode,
-            base_edit_bone_length=self.base_edit_bone_length,
-            mtd_dict=settings.get_mtd_dict(context) if self.use_mtd_binder else None,
-        )
-
-        importer = FLVERImporter(self, context, flver_import_settings)
+        importer = FLVERImporter(self, context, self.get_import_settings(context, texture_manager))
 
         transform = None  # type: Transform | None
 
@@ -416,22 +404,14 @@ class ImportCharacterFLVER(LoggingOperator, ImportFLVERMixin):
 
         chrbnd = Binder.from_path(chrbnd_path)
         flver = get_flver_from_binder(chrbnd, chrbnd_path)
-        attached_texture_sources = collect_binder_tpfs(chrbnd, chrbnd_path)
+        texture_manager = TextureManager()
+        if self.find_game_tpfs:
+            texture_manager.find_flver_textures(chrbnd_path, chrbnd)
 
         settings = bpy.context.scene.soulstruct_global_settings  # type: GlobalSettings
         settings.save_settings()
 
-        flver_import_settings = FLVERImportSettings(
-            texture_sources=attached_texture_sources,
-            loose_tpf_sources={},
-            read_from_png_cache=self.read_from_png_cache,
-            write_to_png_cache=self.write_to_png_cache,
-            material_blend_mode=self.material_blend_mode,
-            base_edit_bone_length=self.base_edit_bone_length,
-            mtd_dict=settings.get_mtd_dict(context) if self.use_mtd_binder else None,
-        )
-
-        importer = FLVERImporter(self, context, flver_import_settings)
+        importer = FLVERImporter(self, context, self.get_import_settings(context, texture_manager))
 
         transform = None  # type: Transform | None
 
@@ -491,22 +471,14 @@ class ImportObjectFLVER(LoggingOperator, ImportFLVERMixin):
         flvers = [
             (entry.minimal_stem, FLVER.from_binder_entry(entry)) for entry in flver_entries
         ]
-        attached_texture_sources = collect_binder_tpfs(objbnd, objbnd_path)
+        texture_manager = TextureManager()
+        if self.find_game_tpfs:
+            texture_manager.find_flver_textures(objbnd_path, objbnd)
 
         settings = bpy.context.scene.soulstruct_global_settings  # type: GlobalSettings
         settings.save_settings()
 
-        flver_import_settings = FLVERImportSettings(
-            texture_sources=attached_texture_sources,
-            loose_tpf_sources={},
-            read_from_png_cache=self.read_from_png_cache,
-            write_to_png_cache=self.write_to_png_cache,
-            material_blend_mode=self.material_blend_mode,
-            base_edit_bone_length=self.base_edit_bone_length,
-            mtd_dict=settings.get_mtd_dict(context) if self.use_mtd_binder else None,
-        )
-
-        importer = FLVERImporter(self, context, flver_import_settings)
+        importer = FLVERImporter(self, context, self.get_import_settings(context, texture_manager))
 
         for name, flver in flvers:
             try:
@@ -590,30 +562,23 @@ class ImportEquipmentFLVER(LoggingOperator, ImportHelper, ImportFLVERMixin):
 
         file_paths = [Path(self.directory, file.name) for file in self.files]
         flvers = []
-        attached_texture_sources = {}  # from multi-texture TPFs directly linked to FLVER
+        texture_manager = TextureManager()
 
         for file_path in file_paths:
 
             if FLVER_BINDER_RE.match(file_path.name):
                 binder = Binder.from_path(file_path)
                 flver = get_flver_from_binder(binder, file_path)
-                attached_texture_sources |= collect_binder_tpfs(binder, file_path)
+                if self.find_game_tpfs:
+                    texture_manager.find_flver_textures(file_path, binder)
             else:  # loose equipment FLVER is unusual but supported, but TPFs may not be found
                 flver = FLVER.from_path(file_path)
+                if self.find_game_tpfs:
+                    texture_manager.find_flver_textures(file_path)
                 # No loose TPF sources (nowhere to look).
             flvers.append((file_path, flver))
 
-        flver_import_settings = FLVERImportSettings(
-            texture_sources=attached_texture_sources,
-            loose_tpf_sources={},
-            read_from_png_cache=self.read_from_png_cache,
-            write_to_png_cache=self.write_to_png_cache,
-            material_blend_mode=self.material_blend_mode,
-            base_edit_bone_length=self.base_edit_bone_length,
-            mtd_dict=settings.get_mtd_dict(context) if self.use_mtd_binder else None,
-        )
-
-        importer = FLVERImporter(self, context, flver_import_settings)
+        importer = FLVERImporter(self, context, self.get_import_settings(context, texture_manager))
 
         for file_path, flver in flvers:
             name = file_path.name.split(".")[0]  # drop all extensions
@@ -635,13 +600,12 @@ class ImportEquipmentFLVER(LoggingOperator, ImportHelper, ImportFLVERMixin):
 class FLVERImportSettings:
     """Settings for a batch of FLVER imports."""
 
-    texture_sources: dict[str, TPFTexture] = field(default_factory=dict)
-    loose_tpf_sources: dict[str, BinderEntry | TPFTexture] = field(default_factory=dict)
+    texture_manager: TextureManager = None
     read_from_png_cache: bool = True
     write_to_png_cache: bool = True
     material_blend_mode: str = "HASHED"
     base_edit_bone_length: float = 0.2
-    mtd_dict: dict[str, MTD] | None = None
+    mtd_manager: MTDBinderManager | None = None
 
 
 @dataclass(slots=True)
@@ -719,32 +683,88 @@ class FLVERImporter:
             )
 
         png_cache_directory = GlobalSettings.get_scene_settings(self.context).png_cache_directory
-        if settings.texture_sources or settings.loose_tpf_sources or png_cache_directory:
+        if settings.texture_manager or png_cache_directory:
             self.new_images = self.load_texture_images()
         else:
             self.warning("No TPF files or DDS dump folder given. No textures loaded for FLVER.")
 
-        mtd_infos = self.get_mtd_infos(flver, settings.mtd_dict)
+        mtd_infos = self.get_mtd_infos(flver, settings.mtd_manager)
 
-        # Vanilla material names are unused and essentially worthless. They can also be the same for materials that
-        # actually use different lightmaps, EVEN INSIDE the same FLVER model. Names are changed here to just reflect the
-        # index. The original name is NOT kept to avoid stacking up formatting on export/import and because it is so
-        # useless anyway.
-        self.new_materials = [
-            flver_to_blender_material(
-                self.operator,
-                flver_material,
-                material_name=f"{self.name} Material {i}",
-                mtd_info=mtd_infos[i],
-                blend_mode=settings.material_blend_mode,
-            )
-            for i, flver_material in enumerate(flver.materials)
-        ]
 
-        material_uv_layer_names = [mtd_info.get_uv_layer_names() for mtd_info in mtd_infos]
+        # TODO:
+        #     - The FLVER exporter will start by creating a FLVER material for every Blender material, then
+        #     merge any FLVER materials with the same hash (after storing the four Mesh properties above), and
+        #     point all submeshes to the same single FLVER material.
+        #     - It will also automatically create a new FLVER submesh every time the current one exceeds 38
+        #     total weighted bones across its vertices. These split submeshes will have the same FLVER material
+        #     and the same Mesh properties, as per each Blender material.
 
-        # Create a single combined mesh for all submeshes.
-        bl_flver_mesh = self.create_flver_mesh(flver, self.name, material_uv_layer_names)
+        flver_to_blender_material_indices = {}  # maps FLVER mesh material index to existing Blender material index
+        flver_submesh_blender_material_indices = []  # Blender material slot index for every FLVER submesh
+        flver_material_variant_index = {}
+        self.new_materials = []
+        for mesh in flver.meshes:
+            material = flver.materials[mesh.material_index]
+            if mesh.material_index not in flver_to_blender_material_indices:
+                # First time this FLVER material has been encountered. Create it in Blender now.
+                # NOTE: Vanilla material names are unused and essentially worthless. They can also be the same for
+                #  materials that actually use different lightmaps, EVEN INSIDE the same FLVER model. Names are changed
+                #  here to just reflect the index. The original name is NOT kept to avoid stacking up formatting on
+                #  export/import and because it is so useless anyway.
+                bl_material_index = len(self.new_materials)
+                bl_material = get_submesh_blender_material(
+                    self.operator,
+                    material,
+                    material_name=f"{self.name} Material {mesh.material_index}",  # no Variant suffix
+                    mtd_info=mtd_infos[mesh.material_index],
+                    mesh=mesh,
+                    blend_mode=settings.material_blend_mode,
+                )  # type: bpy.types.Material
+
+                flver_submesh_blender_material_indices.append(bl_material_index)
+                flver_to_blender_material_indices[mesh.material_index] = bl_material_index
+                self.new_materials.append(bl_material)
+            else:
+                bl_material_index = flver_to_blender_material_indices[mesh.material_index]  # original non-variant
+                existing_bl_material = self.new_materials[bl_material_index]
+                # Check if Blender material needs to be duplicated as a variant with different Mesh properties.
+                if (
+                    existing_bl_material["Is Bind Pose"] != mesh.is_bind_pose
+                    or existing_bl_material["Default Bone Index"] != mesh.default_bone_index
+                    or existing_bl_material["Face Set Count"] != len(mesh.face_sets)
+                    or existing_bl_material.use_backface_culling != mesh.face_sets[0].cull_back_faces
+                ):
+                    # New Blender material variant is needed for this submesh.
+                    variant_index = flver_material_variant_index.setdefault(mesh.material_index, 1)
+                    flver_material_variant_index[mesh.material_index] += 1
+
+                    bl_material = get_submesh_blender_material(
+                        self.operator,
+                        material,
+                        material_name=f"{self.name} Material {mesh.material_index} <Variant {variant_index}>",
+                        mtd_info=mtd_infos[mesh.material_index],
+                        mesh=mesh,
+                        blend_mode=settings.material_blend_mode,
+                    )  # type: bpy.types.Material
+
+                    new_bl_material_index = len(self.new_materials)
+                    flver_submesh_blender_material_indices.append(new_bl_material_index)
+                    # Original non-variant Blender material index already in `flver_to_blender_material_indices`.
+                    self.new_materials.append(bl_material)
+                else:
+                    # Re-use existing Blender material. FLVER submeshes will be 'merged' in Blender.
+                    flver_submesh_blender_material_indices.append(bl_material_index)
+
+        flver_material_uv_layer_names = [mtd_info.get_uv_layer_names() for mtd_info in mtd_infos]
+
+        # Create a single combined mesh for all submesh materials.
+
+        # from soulstruct.utilities.inspection import profile_function
+        # decorated_create_flver_mesh = profile_function(20)(self.create_flver_mesh)
+
+        bl_flver_mesh = self.create_flver_mesh(
+            flver, self.name, flver_material_uv_layer_names, flver_to_blender_material_indices
+        )
         # Assign basic FLVER header information as custom props.
         # TODO: Configure a full-exporter dropdown/choice of game version that defaults as many of these as possible.
         bl_flver_mesh["Is Big Endian"] = flver.big_endian  # bool
@@ -791,29 +811,25 @@ class FLVERImporter:
 
         return bl_flver_mesh  # might be used by other importers
 
-    def get_mtd_infos(self, flver: FLVER, mtd_dict: dict[str, MTD] = None) -> list[MTDInfo]:
-        """Get `MTDInfo` for each mesh material, which is needed for both material creation and assignment of vertex UV
+    def get_mtd_infos(self, flver: FLVER, mtd_manager: MTDBinderManager = None) -> list[MTDInfo]:
+        """Get `MTDInfo` for each FLVER material, which is needed for both material creation and assignment of vertex UV
         data to the correct Blender UV data layer during mesh creation.
         """
-        # Get `MTDInfo` for each mesh material, which is needed for both material creation and assignment of vertex UV
-        # data to the correct Blender UV data layer during mesh creation.
-        if mtd_dict:
-            # Use real MTD files (much less guesswork).
-            mtd_infos = []  # type: list[MTDInfo]
-            for material in flver.materials:
-                try:
-                    mtd = mtd_dict[material.mtd_name]
-                except KeyError:
-                    self.warning(f"Could not find MTD '{material.mtd_name}' in MTD dict. Guessing info from name.")
-                    mtd_info = MTDInfo.from_mtd_name(material.mtd_name)
-                else:
-                    mtd_info = MTDInfo.from_mtd(mtd)
-                mtd_infos.append(mtd_info)
-            return mtd_infos
-        return [
-            MTDInfo.from_mtd_name(material.mtd_name)
-            for material in flver.materials
-        ]
+        if not mtd_manager:
+            return [MTDInfo.from_mtd_name(material.mtd_name) for material in flver.materials]
+
+        # Use real MTD files (much less guesswork).
+        mtd_infos = []  # type: list[MTDInfo]
+        for material in flver.materials:
+            try:
+                mtd = mtd_manager[material.mtd_name]
+            except KeyError:
+                self.warning(f"Could not find MTD '{material.mtd_name}' in MTD dict. Guessing info from name.")
+                mtd_info = MTDInfo.from_mtd_name(material.mtd_name)
+            else:
+                mtd_info = MTDInfo.from_mtd(mtd)
+            mtd_infos.append(mtd_info)
+        return mtd_infos
 
     def create_armature(self, base_edit_bone_length: float) -> bpy.types.Object:
         """Create a new Blender armature to serve as the parent object for the entire FLVER."""
@@ -827,7 +843,7 @@ class FLVERImporter:
 
         return bl_armature_obj
 
-    def load_texture_images(self) -> list[bpy.types.Image]:
+    def load_texture_images(self, texture_manager: TextureManager = None) -> list[bpy.types.Image]:
         """Load texture images from either `png_cache` folder, TPFs found with the FLVER, or found loose (map) TPFs.
 
         Will NEVER load an image that is already in Blender's data (identified by stem only).
@@ -849,42 +865,18 @@ class FLVERImporter:
                 png_path = Path(png_cache_directory, f"{texture_stem}.png")
                 if png_path.is_file():
                     bl_image = bpy.data.images.load(str(png_path))
-                    new_loaded_images.append(bl_image.name)
+                    new_loaded_images.append(bl_image)
                     bl_image_stems.add(texture_stem)
                     continue
 
-            if texture_stem in settings.texture_sources:
-                # Found in already-unpacked textures.
-                texture = settings.texture_sources[texture_path.stem]
-                textures_to_load[texture_stem] = texture
-                continue
-
-            if texture_stem in settings.loose_tpf_sources:
-                # Found in loose TPF.
-                texture_source = settings.loose_tpf_sources[texture_path.stem]
-                if isinstance(texture_source, BinderEntry):
-                    # Source is a BinderEntry, so it's a TPF inside a Binder.
-                    tpf = settings.loose_tpf_sources[texture_path.stem].to_binary_file(TPF)
-                    if tpf.textures[0].name != texture_path.stem:
-                        self.warning(
-                            f"Loose TPF '{texture_path.stem}' contained first texture with non-matching name "
-                            f"'{tpf.textures[0].name}'. Ignoring."
-                        )
-                    else:
-                        textures_to_load[texture_stem] = tpf.textures[0]
-                    continue
-                elif isinstance(texture_source, TPFTexture):
-                    # Source is a TPFTexture loaded from a loose TPF file, not a Binder.
-                    if texture_source.name != texture_path.stem:
-                        self.warning(
-                            f"Loose TPFTexture keyed under '{texture_stem}' has non-matching name "
-                            f"'{texture_source.name}'. Ignoring."
-                        )
-                    else:
-                        textures_to_load[texture_stem] = texture_source
-                    continue
+            if texture_manager:
+                try:
+                    texture = texture_manager.get_flver_texture(texture_stem)
+                except KeyError as ex:
+                    self.warning(str(ex))
                 else:
-                    self.warning(f"Unexpected loose TPF source type for '{texture_stem}': {type(texture_source)}")
+                    textures_to_load[texture_stem] = texture
+                    continue
 
             self.warning(f"Could not find TPF or cached PNG '{texture_path.stem}' for FLVER '{self.name}'.")
 
@@ -900,16 +892,33 @@ class FLVERImporter:
             print(f"# INFO: Converted PNG images in {perf_counter() - t} s (cached = {settings.write_to_png_cache})")
             for texture_stem, png_data in zip(textures_to_load.keys(), all_png_data):
                 bl_image = png_to_bl_image(texture_stem, png_data, write_png_directory)
-                new_loaded_images.append(bl_image.name)
+                new_loaded_images.append(bl_image)
 
         return new_loaded_images
 
-    def create_flver_mesh(self, flver: FLVER, name: str, material_uv_layer_names: list[list[str]]):
+    def create_flver_mesh(
+        self,
+        flver: FLVER,
+        name: str,
+        flver_material_uv_layer_names: list[list[str]],
+        flver_to_blender_material_indices: dict[int, int],
+    ):
         """Create a single Blender mesh that combines all FLVER sub-meshes, using multiple material slots.
 
-        EXPERIMENTAL. Have not yet confirmed (but suspect) that this will preserve all data. Breakdown:
+        NOTE: FLVER (for DS1 at least) supports a maximum of 38 bones per sub-mesh. When this maximum is reached, a new
+        FLVER sub-mesh is created. All of these sub-meshes are unified in Blender under the same material slot, and will
+        be re-partitioned on export.
+
+        Some FLVER sub-meshes also use the same material, but have different `Mesh` or `FaceSet` properties such as
+        `cull_back_faces`. Backface culling is a material option in Blender, so these sub-meshes will use different
+        Blender materials even though the use the same FLVER material. The FLVER exporter will start by creating a
+        FLVER material for every Blender material slot, then unify any identical FLVER material instances and assign
+        any differences like `cull_back_faces` or `is_bind_pose` to the FLVER mesh.
+
+        Breakdown:
             - Blender stores POSITION, BONE WEIGHTS, and BONE INDICES on vertices. Any differences here will require
-            genuine vertex duplication in Blender.
+            genuine vertex duplication in Blender. (Of course, vertices at the same position in the same sub-mesh should
+            essentially ALWAYS have the same bone weights and indices.)
             - Blender stores MATERIAL SLOT INDEX on faces. This is how different FLVER sub-meshes are stored.
             - Blender stores UV COORDINATES, VERTEX COLORS, and NORMALS on face loops ('vertex instances'). This gels
             with what FLVER meshes want to do.
@@ -930,38 +939,78 @@ class FLVERImporter:
         for material in self.new_materials:
             bl_mesh.materials.append(material)
 
-        if len(self.new_materials) != len(material_uv_layer_names):
-            # Should never happen.
-            raise FLVERImportError(f"Number of imported FLVER materials does not match number of material UV layers.")
-
         if any(mesh.invalid_vertex_size for mesh in flver.meshes):
             # Corrupted sub-meshes. Leave empty.
+            # TODO: Should be able to handle known cases of this by redirecting to the correct vertex buffers.
             return self.create_obj(f"{name} <INVALID>", bl_mesh, parent_to_flver_root=False)
 
-        verts = {}  # maps hashed (position, bone_indices, bone_weights) to Blender vertex index
-        bl_verts = []  # final vertex list (positions) to pass to Mesh in one batch
+        # Create UV and vertex color data layers.
+        all_uv_layer_names_set = set()
+        for uv_layer_names in flver_material_uv_layer_names:
+            all_uv_layer_names_set |= set(uv_layer_names)
+        all_uv_layer_names = sorted(all_uv_layer_names_set)
+        for uv_layer_name in all_uv_layer_names:
+            bl_mesh.uv_layers.new(name=uv_layer_name, do_init=False)
+        bl_mesh.vertex_colors.new(name="VertexColors")
+
+        bl_vert_bone_indices, bl_vert_bone_weights = self.create_bm_mesh(
+            bl_mesh,
+            flver.meshes,
+            flver_material_uv_layer_names,
+            flver_to_blender_material_indices,
+            all_uv_layer_names,
+        )
+
+        bl_mesh_obj = self.create_obj(name, bl_mesh, parent_to_flver_root=False)
+
+        self.create_bone_vertex_groups(bl_mesh_obj, bl_vert_bone_indices, bl_vert_bone_weights)
+
+        return bl_mesh_obj
+
+    def create_bm_mesh(
+        self,
+        bl_mesh: bpy.types.Mesh,
+        flver_meshes: list[Mesh],
+        flver_material_uv_layer_names: list[list[str]],
+        flver_to_blender_material_indices: dict[int, int],
+        all_uv_layer_names: list[str],
+    ) -> tuple[list[tuple[int, ...]], list[list[float]]]:
+        """BMesh is more efficient for mesh construction and loop data layer assignment."""
+        bm = bmesh.new()
+        bm.from_mesh(bl_mesh)  # bring over UV and vertex color data layers
+
+        # Get data layer accessors.
+        loop_uv_layers = {uv_layer_name: bm.loops.layers.uv[uv_layer_name] for uv_layer_name in all_uv_layer_names}
+        loop_colors = bm.loops.layers.color["VertexColors"]
+
         bl_vert_bone_indices = []
         bl_vert_bone_weights = []
 
-        bl_faces = []  # final face list (vertex index triples) to pass to Mesh in one batch
-
-        # Data to set to Mesh/BMesh loops afterward:
-        bl_loop_uvs = []  # type: list[tuple[int, list[list[float]]]]  # maps material slots to lists of per-loop UV lists
-        bl_loop_colors = []  # vertex colors for each loop (BMesh layer)
-        bl_loop_normals = []  # normals for each loop (passed to `mesh.normals_split_custom_set()`)
-        bl_mesh_face_materials = {i: [] for i in range(len(self.new_materials))}  # maps material indices to face indices
+        # Normals for each loop (passed to `mesh.normals_split_custom_set()`)
+        bl_loop_normals = []
         # NOTE: We don't import vertex tangents or bitangents. These are computable from the normals and normal UV.
 
-        for material_slot_index, flver_mesh in enumerate(flver.meshes):
+        bm_verts = {}  # maps hashed (position, bone_indices, bone_weights) to Blender vertex index
+        for flver_mesh_index, flver_mesh in enumerate(flver_meshes):
 
-            material_face_indices = []
-            material_loop_uvs = []  # type: list[list[list[float]]]
+            bl_material_index = flver_to_blender_material_indices[flver_mesh.material_index]
+            uv_layer_names = flver_material_uv_layer_names[flver_mesh.material_index]  # should match all `v.uvs` length
+            degenerate_face_count = 0
 
-            for triangle in flver_mesh.face_sets[0].get_triangles(allow_primitive_restarts=False):
-                bl_face = []  # vertex indices for this face
-                material_face_indices.append(len(bl_faces))  # new face index for material
-                for v_i in triangle:
-                    v = flver_mesh.vertices[v_i]
+            for triangle_index, triangle in enumerate(flver_mesh.face_sets[0].get_triangles(allow_primitive_restarts=False)):
+
+                triangle_verts = [flver_mesh.vertices[i] for i in triangle]
+
+                if len({tuple(v.position) for v in triangle_verts}) != 3:
+                    # Degenerate FLVER face (e.g. a line or point). These are not supported by Blender.
+                    degenerate_face_count += 1
+                    continue
+
+                bm_face_verts = []
+                loop_data = []  # uvs, color
+
+                for v in triangle_verts:
+
                     # Convert local mesh bones to FLVER bones. Vertices with the same global bone indices (and weights),
                     # even across different submeshes, will be merged in Blender.
                     if flver_mesh.bone_indices:
@@ -971,73 +1020,71 @@ class FLVERImporter:
                         #  Need to check with non-DS1 games (as DS1 always uses local indices).
                         global_bone_indices = tuple(v.bone_indices)
                     bl_v_key = (tuple(v.position), global_bone_indices, tuple(v.bone_weights))  # hashable
-                    if bl_v_key not in verts:
+                    try:
+                        # Get existing Blender vert with same position and bone indices/weights.
+                        bm_vert = bm_verts[bl_v_key]
+                    except KeyError:
                         # New Blender vert.
-                        bl_v_i = verts[bl_v_key] = len(bl_verts)
-                        bl_verts.append(GAME_TO_BL_VECTOR(v.position))
+                        bm_vert = bm_verts[bl_v_key] = bm.verts.new(GAME_TO_BL_VECTOR(v.position))
                         bl_vert_bone_indices.append(global_bone_indices)
                         bl_vert_bone_weights.append(v.bone_weights)
-                    else:
-                        bl_v_i = verts[bl_v_key]
 
-                    bl_face.append(bl_v_i)  # 'new loop' using new or existing vertex
-                    bl_loop_uvs.append(
-                        (material_slot_index, [
-                            [uv[0], 1.0 - uv[1]]  # Z axis discarded, Y axis inverted
-                            for uv in v.uvs
-                        ])
-                    )
+                    bm_face_verts.append(bm_vert)  # 'new loop' using new or existing vertex
+                    loop_uvs = [[uv[0], 1.0 - uv[1]] for uv in v.uvs]  # Z axis discarded, Y axis inverted
                     # TODO: Enforce single color, or warn about lost additional color layers. Or just support them.
-                    bl_loop_colors.append(v.colors[0])  # FLVER supports multiple colors but never observed (in DS1)
-                    bl_loop_normals.append(GAME_TO_BL_VECTOR(v.normal))
+                    loop_color = v.colors[0]  # FLVER supports multiple colors but never observed in DS1
+                    # WARNING: If FLVER uses severe normal compression, importing/exporting normals will be lossy!
+                    loop_normal = GAME_TO_BL_VECTOR(v.normal)
+                    loop_normal.normalize()
+                    bl_loop_normals.append(loop_normal)  # per loop
 
-                bl_faces.append(bl_face)
+                    loop_data.append((loop_uvs, loop_color))
 
-            bl_mesh_face_materials[flver_mesh.material_index] = material_face_indices
+                try:
+                    bm_face = bm.faces.new(bm_face_verts)
+                except ValueError as ex:
+                    if "face already exists" in str(ex):
+                        # This is a duplicate face (happens rarely in vanilla FLVERs). We can ignore it.
+                        # No lasting harm done as, by assertion, no new BMesh vertices were created above. We just need
+                        # to remove the last three normals.
+                        bl_loop_normals = bl_loop_normals[:-3]
+                        degenerate_face_count += 1
+                        continue
+                    print(triangle_index, triangle, [v.co for v in bm_face_verts])
+                    raise ex
 
-        bl_mesh.from_pydata(bl_verts, [], bl_faces)
-        bl_mesh.update()
+                bm_face.material_index = bl_material_index
 
-        # Assign face materials (submeshes).
-        for material_index, faces in bl_mesh_face_materials.items():
-            for face_index in faces:
-                bl_mesh.polygons[face_index].material_index = material_index
+                # Assign UVs and color to the loops of the new face.
+                for loop, (uvs, color) in zip(bm_face.loops, loop_data, strict=True):
+                    for uv_layer_name, uv in zip(uv_layer_names, uvs):
+                        uv_layer = loop_uv_layers[uv_layer_name]
+                        loop[uv_layer].uv = uv
+                    loop[loop_colors] = color
 
-        # Create UV and vertex color data layers.
-        all_uv_layer_names = set()  # ordered
-        for uv_layer_names in material_uv_layer_names:
-            all_uv_layer_names |= set(uv_layer_names)
-        for uv_layer_name in sorted(all_uv_layer_names):
-            bl_mesh.uv_layers.new(name=uv_layer_name, do_init=False)
-        bl_mesh.vertex_colors.new(name="VertexColors")
-        vertex_color_layer = bl_mesh.vertex_colors["VertexColors"]  # access at final address
+            if degenerate_face_count:
+                self.warning(
+                    f"{degenerate_face_count} degenerate/duplicate faces ignored in FLVER submesh {flver_mesh_index}."
+                )
 
-        # Set per-material, per-loop UV data.
-        # TODO: Feels like this could be made more efficient, even in Python. Surely I can assign all UVs to each layer
-        #  at once?
-        for loop_index, (material_slot_index, loop_uvs) in enumerate(bl_loop_uvs):
-            uv_layers = [
-                bl_mesh.uv_layers[uv_layer_name] for uv_layer_name in material_uv_layer_names[material_slot_index]
-            ]
-            for uv_index, uv in enumerate(loop_uvs):
-                uv_layer = uv_layers[uv_index]
-                uv_layer.data[loop_index].uv[:] = uv
-
-        # Set per-loop vertex color data.
-        for loop_index, loop_color in enumerate(bl_loop_colors):
-            vertex_color_layer.data[loop_index].color[:] = loop_color
+        bm.to_mesh(bl_mesh)
+        bm.free()
 
         # Enable custom split normals and assign them.
-        for v in bl_loop_normals:
-            v.normalize()  # WARNING: If FLVER uses byte or short compression, importing/exporting will be lossy!
         bl_mesh.create_normals_split()
         bl_mesh.normals_split_custom_set(bl_loop_normals)  # one normal per loop
         bl_mesh.use_auto_smooth = True  # required for custom split normals to actually be used (rather than just face)
         bl_mesh.calc_normals_split()  # copy custom split normal data into API mesh loops
         bl_mesh.update()
 
-        bl_mesh_obj = self.create_obj(name, bl_mesh, parent_to_flver_root=False)
+        return bl_vert_bone_indices, bl_vert_bone_weights
 
+    def create_bone_vertex_groups(
+        self,
+        bl_mesh_obj: bpy.types.Object,
+        bl_vert_bone_indices: list[tuple[int, ...]],
+        bl_vert_bone_weights: list[list[float]],
+    ):
         # Naming a vertex group after a Blender bone will automatically link it in the Armature modifier below.
         bone_vertex_groups = [
             bl_mesh_obj.vertex_groups.new(name=bone_name)
@@ -1064,17 +1111,6 @@ class FLVERImporter:
 
         for (bone_index, bone_weight), bone_vertices in bone_vertex_group_indices.items():
             bone_vertex_groups[bone_index].add(bone_vertices, bone_weight, "ADD")
-
-        # Custom properties with mesh data.
-        for i, flver_mesh in enumerate(flver.meshes):
-            bl_mesh_obj[f"Material[{i}] Is Bind Pose"] = flver_mesh.is_bind_pose
-            bl_mesh_obj[f"Material[{i}] Cull Back Faces"] = flver_mesh.face_sets[0].cull_back_faces  # FaceSet 0 only
-            # NOTE: This index is sometimes invalid for vanilla map FLVERs (e.g., 1 when there is only one bone).
-            bl_mesh_obj[f"Material[{i}] Default Bone Index"] = flver_mesh.default_bone_index
-            # Currently, main face set is simply copied to all additional face sets on export.
-            bl_mesh_obj[f"Material[{i}] Face Set Count"] = len(flver_mesh.face_sets)
-
-        return bl_mesh_obj
 
     def create_bones(self, bl_armature_obj: bpy.types.Object, base_edit_bone_length: float):
         """Create FLVER bones on given `bl_armature` in Blender.
@@ -1297,10 +1333,10 @@ class FLVERImporter:
 
         # NOTE: Reference ID not included as a property.
         # bl_dummy["reference_id"] = dummy.reference_id  # int
-        bl_dummy["Color RGBA"] = game_dummy.color_rgba  # RGBA
+        bl_dummy["Color RGBA"] = game_dummy.color_rgba  # RGBA  # TODO: Use in actual display somehow?
         bl_dummy["Flag 1"] = game_dummy.flag_1  # bool
         bl_dummy["Use Upward Vector"] = game_dummy.use_upward_vector  # bool
-        # NOTE: These two properties are only non-zero in Sekiro (and probably Elden Ring).
+        # NOTE: These two properties are only ever non-zero in Sekiro (and probably Elden Ring).
         bl_dummy["Unk x30"] = game_dummy.unk_x30  # int
         bl_dummy["Unk x34"] = game_dummy.unk_x34  # int
 

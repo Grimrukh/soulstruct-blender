@@ -17,11 +17,10 @@ from pathlib import Path
 import bpy
 from bpy.props import StringProperty
 from bpy_extras.io_utils import ImportHelper
-from soulstruct.base.models.mtd import MTD
 from soulstruct.containers import Binder, DCXType
 from soulstruct.utilities.files import read_json, write_json
 
-from .utilities import LoggingOperator
+from .utilities import LoggingOperator, MTDBinderManager
 
 
 _SETTINGS_PATH = Path(__file__).parent / "GlobalSettings.json"
@@ -41,7 +40,7 @@ class GlobalSettings(bpy.types.PropertyGroup):
 
     game_directory: bpy.props.StringProperty(
         name="Game Directory",
-        description="Path of game directory (e.g. '{...}/Steam/steamapps/common/DARK SOULS REMASTERED')",
+        description="Path of game directory",
         default="",
     )
 
@@ -90,8 +89,8 @@ class GlobalSettings(bpy.types.PropertyGroup):
         raise ValueError(f"Default DCX compression for class name '{class_name}' and game '{_game}' is unknown.")
 
     @staticmethod
-    def get_mtd_dict(context: bpy.types.Context = None) -> dict[str, MTD] | None:
-        """Find MTDBND and return dictionary mapping MTD names to the LAST MTD file in the binder."""
+    def get_mtd_manager(context: bpy.types.Context = None) -> MTDBinderManager | None:
+        """Find MTDBND and return a manager that grants on-demand MTD access to the LAST MTD file in the binder."""
         settings = GlobalSettings.get_scene_settings(context)
         mtdbnd_path = settings.mtdbnd_path
         if not mtdbnd_path:
@@ -105,11 +104,7 @@ class GlobalSettings(bpy.types.PropertyGroup):
                 return None
 
         mtdbnd = Binder.from_path(mtdbnd_path)
-        mtd_dict = {
-            mtd_entry.name: MTD.from_binder_entry(mtd_entry)
-            for mtd_entry in mtdbnd.entries
-        }  # later files will override earlier duplicates (e.g. 'P_DullLeather[DSB].mtd' in DS1R)
-        return mtd_dict
+        return MTDBinderManager(mtdbnd)
 
     @staticmethod
     def load_settings():

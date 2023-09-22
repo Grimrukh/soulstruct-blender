@@ -23,6 +23,7 @@ __all__ = [
     "profile_execute",
     "hsv_color",
     "create_basic_material",
+    "MTDBinderManager",
 ]
 
 import cProfile
@@ -38,7 +39,8 @@ from bpy.props import EnumProperty
 from bpy.types import Operator
 from mathutils import Color, Euler, Vector, Matrix
 
-from soulstruct.containers import DCXType
+from soulstruct.containers import Binder, DCXType
+from soulstruct.base.models.mtd import MTD
 from soulstruct.utilities.maths import Vector3, Vector4, Matrix3
 
 
@@ -260,6 +262,15 @@ class LoggingOperator(Operator):
         self.report({"ERROR"}, msg)
         return {"CANCELLED"}
 
+    def execute(self, context):
+        try:
+            execute = getattr(self, "_execute")
+        except AttributeError:
+            return self.error(f"Operator {self.bl_idname} does not have an `_execute` method to wrap with profiler.")
+        from soulstruct.utilities.inspection import profile_function
+        decorated_execute = profile_function(20, sort="cumtime")(execute)
+        return decorated_execute(context)
+
     @staticmethod
     def to_object_mode():
         if bpy.ops.object.mode_set.poll():
@@ -373,3 +384,27 @@ def create_basic_material(material_name: str, color: tuple[float, float, float, 
     links.new(mix_shader.outputs["Shader"], material_output.inputs["Surface"])
 
     return bl_material
+
+
+class MTDBinderManager:
+    """Holds an opened `MTDBND` Binder and reads/caches `MTD` contents only as requested."""
+
+    mtdbnd: Binder
+    _mtds: dict[str, MTD]
+
+    def __init__(self, mtdbnd: Binder):
+        self.mtdbnd = mtdbnd
+        self._mtds = {}
+
+    def __getitem__(self, mtd_name: str) -> MTD:
+        try:
+            return self._mtds[mtd_name]
+        except KeyError:
+            try:
+                # Uses LAST MTD found in Binder, as there are a few duplicates.
+                mtd_entry = self.mtdbnd.find_entries_matching_name(mtd_name, escape=True)[-1]
+            except IndexError:
+                raise KeyError(f"Cannot find MTD '{mtd_name}' in MTD Binder '{self.mtdbnd.path}'.")
+            mtd = mtd_entry.to_binary_file(MTD)
+            self._mtds[mtd_name] = mtd
+            return mtd

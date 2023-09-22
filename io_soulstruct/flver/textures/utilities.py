@@ -11,9 +11,8 @@ __all__ = [
     "load_tpf_texture_as_png",
     "png_to_bl_image",
     "bl_image_to_dds",
-    "get_lightmap_tpf",
-    "collect_binder_tpfs",
-    "collect_map_tpfs",
+    "create_lightmap_tpf",
+    "TextureManager",
 ]
 
 import abc
@@ -21,16 +20,19 @@ import logging
 import os
 import re
 import tempfile
+from dataclasses import dataclass, field
 from pathlib import Path
 
+import bpy
 from soulstruct.containers import Binder, BinderEntry, BinderEntryNotFoundError
 from soulstruct.containers.tpf import TPF, TPFTexture, TPFPlatform
 from soulstruct.base.textures.dds import texconv
 
-import bpy
+from io_soulstruct.utilities import MAP_STEM_RE
 
 TPF_RE = re.compile(rf"^(.*)\.tpf(\.dcx)?$")
 CHRBND_RE = re.compile(rf"^(.*)\.chrbnd(\.dcx)?$")
+AEG_STEM_RE = re.compile(r"^aeg(?P<aeg>\d\d\d)$")
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -375,7 +377,7 @@ def bl_image_to_dds(
     return dds_data, dds_format
 
 
-def get_lightmap_tpf(bl_lightmap_image, dds_format="BC7_UNORM"):
+def create_lightmap_tpf(bl_lightmap_image, dds_format="BC7_UNORM"):
     """Construct a new TPF containing the given lightmap image in the given DDS format.
 
     Any DCX compression for the TPF is left to the caller.
@@ -397,52 +399,160 @@ def get_lightmap_tpf(bl_lightmap_image, dds_format="BC7_UNORM"):
     return tpf
 
 
-def collect_binder_tpfs(binder: Binder, binder_path: Path = None) -> dict[str, TPFTexture]:
-    """Find TPFs or CHRTPFBHDs inside binder, potentially using `chrtpfbdt` file if it exists (in which case
-    `binder_path` must be given)."""
-    textures = {}  # type: dict[str, TPFTexture]
+@dataclass(slots=True)
+class TextureManager:
+    """Manages various texture sources across some import context, ensuring that Binders and TPFs are only loaded
+    when requested for the first time during the operation.
 
-    for tpf_entry in binder.find_entries_matching_name(TPF_RE):  # generally only one
-        tpf = tpf_entry.to_binary_file(TPF)
+    Uses selected game, FLVER name, and FLVER texture paths to determine where to find TPFs.
+    """
+
+    # Maps Binder stems to Binder file paths we are aware of, but haven't yet opened and scanned for TPFs.
+    _binder_paths: dict[str, Path] = field(default_factory=dict)
+
+    # Maps TPF stems to file paths or Binder entries we are aware of, but haven't yet opened.
+    _pending_tpf_sources: dict[str, Path | BinderEntry] = field(default_factory=dict)
+
+    # Maps TPF stems to opened TPF textures.
+    _tpf_textures: dict[str, TPFTexture] = field(default_factory=dict)
+
+    def find_flver_textures(self, flver_source_path: Path, flver_binder: Binder = None):
+        """Register known game Binders/TPFs to be opened as needed."""
+        source_name = Path(flver_source_path).name.removesuffix(".dcx")
+        source_dir = flver_source_path.parent
+
+        if source_name.endswith(".flver"):
+            # Loose FLVER file. Likely a map piece in an older game like DS1. We look in adjacent `mXX` directory.
+            self._find_map_tpfbhds(source_dir)
+        elif source_name.endswith(".chrbnd"):
+            # CHRBND should have been given as an initial Binder. We also look in adjacent `chrtpfbdt` file.
+            if flver_binder:
+                self.scan_binder_textures(flver_binder)
+                self._find_chr_tpfbdts(source_dir, flver_binder)
+            else:
+                _LOGGER.warning(
+                    f"Opened CHRBND '{flver_source_path}' should have been passed to TextureManager! Will not be able "
+                    f"to load attached character textures."
+                )
+        elif source_name.endswith("bnd"):
+            # Miscellaneous Binder already scanned for TPFs above. Warn if it wasn't passed in.
+            if not flver_binder:
+                _LOGGER.warning(
+                    f"Opened Binder '{flver_source_path}' should have been passed to TextureManager! Will not be able "
+                    f"to load FLVER textures from the same Binder."
+                )
+            else:
+                self.scan_binder_textures(flver_binder)
+        elif source_name.endswith(".geombnd"):
+            # Likely an AEG asset FLVER from Elden Ring onwards. We look in nearby `aet` directory.
+            self._find_aeg_tpfs(source_dir)
+
+    def scan_binder_textures(self, binder: Binder):
+        """Register all TPFs in an arbitrary opened Binder (usually the one containing the FLVER) as pending sources."""
+        for tpf_entry in binder.find_entries_matching_name(TPF_RE):
+            self._pending_tpf_sources[tpf_entry.name.split(".")[0]] = tpf_entry
+
+    def get_flver_texture(self, texture_stem: str) -> TPFTexture:
+        """Find texture from its stem across all registered/loaded texture file sources."""
+        if texture_stem in self._tpf_textures:
+            # Already found and loaded.
+            return self._tpf_textures[texture_stem]
+
+        if texture_stem in self._pending_tpf_sources:
+            # Found a pending TPF with the exact same stem as the requested texture (should have only one DDS).
+            self._load_tpf(texture_stem)
+            try:
+                return self._tpf_textures[texture_stem]
+            except KeyError:
+                _LOGGER.warning(
+                    f"TPF named '{texture_stem}' does not actually contain a DDS texture called '{texture_stem}'."
+                )
+                raise
+
+        # Search for a multi-DDS TPF whose stem is a prefix of the requested texture.
+        for tpf_stem in self._pending_tpf_sources:
+            if texture_stem.startswith(tpf_stem):
+                # TODO: Could also enforce that the texture stem only has two extra characters (e.g. '_n' or '_s').
+                self._load_tpf(tpf_stem)
+                try:
+                    return self._tpf_textures[texture_stem]
+                except KeyError:
+                    # TODO: Not sure if this should ever be allowed to happen (conflicting texture prefixes??).
+                    continue
+
+        if self._binder_paths:
+            # Last resort: scan all pending Binders for new TPFs. We typically cannot tell which Binder has the texture.
+            # TODO: I could at least check JUST the BHD headers of TPFBHD split Binders before loading them.
+
+            for binder_stem in self._binder_paths:
+                self._load_binder(binder_stem)
+
+            # Recursive call with all Binder TPFs now loaded.
+            return self.get_flver_texture(texture_stem)
+
+        raise KeyError(f"Could not find texture '{texture_stem}' in any registered Binders or TPFs.")
+
+    def _load_binder(self, binder_stem):
+        binder_path = self._binder_paths.pop(binder_stem)
+        binder = Binder.from_path(binder_path)
+        for tpf_entry in binder.find_entries_matching_name(TPF_RE):
+            self._pending_tpf_sources[tpf_entry.name.split(".")[0]] = tpf_entry
+
+    def _load_tpf(self, tpf_stem):
+        tpf_path_or_entry = self._pending_tpf_sources.pop(tpf_stem)
+        if isinstance(tpf_path_or_entry, BinderEntry):
+            tpf = TPF.from_binder_entry(tpf_path_or_entry)
+        else:
+            tpf = TPF.from_path(tpf_path_or_entry)
         for texture in tpf.textures:
-            textures[texture.name] = texture
+            # TODO: Handle duplicate textures/overwrites.
+            self._tpf_textures[texture.name] = texture
 
-    if binder_path is None:
-        binder_path = binder.path
-    if binder_path is None:
-        return textures
+    def _find_map_tpfbhds(self, source_dir: Path):
+        map_directory_match = MAP_STEM_RE.match(source_dir.name)
+        if not map_directory_match:
+            _LOGGER.warning("Loose FLVER not located in a map folder (`mAA_BB_CC_DD`). Cannot find map TPFs.")
+            return
+        tpfbhd_directory = source_dir / f"../m{map_directory_match.group(1)}"
+        if not tpfbhd_directory.is_dir():
+            _LOGGER.warning(f"`mXX` TPFBHD folder does not exist: {tpfbhd_directory}. Cannot find map TPFs.")
+            return
 
-    try:
-        tpfbhd_entry = binder.find_entry_matching_name(r".*\.chrtpfbhd")
-    except (BinderEntryNotFoundError, ValueError):
-        return textures
+        for tpf_or_tpfbhd_path in tpfbhd_directory.glob("*.tpf*"):
+            if tpf_or_tpfbhd_path.name.endswith(".tpfbhd"):
+                self._binder_paths[tpf_or_tpfbhd_path.name.split(".")[0]] = tpf_or_tpfbhd_path
+            elif TPF_RE.match(tpf_or_tpfbhd_path.name):
+                # Loose map TPF (usually 'mXX_9999.tpf').
+                self._pending_tpf_sources[tpf_or_tpfbhd_path.name.split(".")[0]] = tpf_or_tpfbhd_path
 
-    # Search for BDT.
-    tpfbdt_path = binder_path.parent / f"{tpfbhd_entry.name.split('.')[0]}.chrtpfbdt"
-    if tpfbdt_path.is_file():
+    def _find_chr_tpfbdts(self, source_dir: Path, chrbnd: Binder):
+        try:
+            tpfbhd_entry = chrbnd.find_entry_matching_name(r".*\.chrtpfbhd")
+        except (BinderEntryNotFoundError, ValueError):
+            # Optional, so we don't complain.
+            return
+
+        # Search for BDT.
+        tpfbdt_stem = tpfbhd_entry.name.split(".")[0]
+        tpfbdt_path = source_dir / f"{tpfbdt_stem}.chrtpfbdt"
+        if not tpfbdt_path.is_file():
+            _LOGGER.warning(f"Could not find expected CHRTPFBDT file for '{chrbnd.path}' at {tpfbdt_path}.")
+            return
+
         tpfbxf = Binder.from_bytes(tpfbhd_entry.data, bdt_data=tpfbdt_path.read_bytes())
-        for tpf_entry in tpfbxf.entries:
-            match = TPF_RE.match(tpf_entry.name)
-            if match:
-                tpf = tpf_entry.to_binary_file(TPF)
-                tpf.convert_dds_formats("DX10", "DXT1")
-                for texture in tpf.textures:
-                    textures[texture.name] = texture
-    else:
-        _LOGGER.warning(f"Could not find expected CHRTPFBDT file for '{binder_path.name}' at {tpfbdt_path}.")
-    return textures
+        for tpf_entry in tpfbxf.find_entries_matching_name(TPF_RE):
+            # These are very likely to be used by the FLVER, but we still queue them up rather than open them now.
+            self._pending_tpf_sources[tpf_entry.name.split(".")[0]] = tpf_entry
 
+    def _find_aeg_tpfs(self, source_dir: Path):
+        aeg_directory_match = AEG_STEM_RE.match(source_dir.name)
+        if not aeg_directory_match:
+            _LOGGER.warning("GEOMBND not located in an AEG folder (`aegXXX`). Cannot find AEG TPFs.")
+            return
+        aet_directory = source_dir / "../../aet"
+        if not aet_directory.is_dir():
+            _LOGGER.warning(f"`aet` directory does not exist: {aet_directory}. Cannot find AEG TPFs.")
+            return
 
-def collect_map_tpfs(map_dir_path: Path) -> dict[str, BinderEntry | TPFTexture]:
-    """Find map piece TPFs in adjacent `mXX` directory."""
-    textures = {}
-    map_directory_match = re.match(r"^(m\d\d)_\d\d_\d\d_\d\d$", map_dir_path.name)
-    if not map_directory_match:
-        _LOGGER.warning("FLVER not located in a map folder (`mAA_BB_CC_DD`). Cannot load TPFs.")
-        return textures
-    tpf_directory = map_dir_path.parent / map_directory_match.group(1)
-    if not tpf_directory.is_dir():
-        _LOGGER.warning(f"`mXX` TPF folder does not exist: {tpf_directory}. Cannot load TPFs.")
-        return textures
-
-    return TPF.collect_tpf_entries(tpf_directory)
+        for tpf_path in aet_directory.glob("*.tpf"):
+            self._pending_tpf_sources[tpf_path.name.split(".")[0]] = tpf_path
