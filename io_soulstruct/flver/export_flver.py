@@ -802,6 +802,7 @@ class FLVERExporter:
                     mesh_vertex_index = mesh_hashed_verts[v_key]
                 except KeyError:
                     # Create new `Vertex`.
+                    # TODO: NumPy overhaul: build vertex array instead of list of `Vertex` instances.
                     mesh_vertex_index = mesh_hashed_verts[v_key] = len(mesh_hashed_verts)
                     mesh.vertices.append(
                         Vertex(
