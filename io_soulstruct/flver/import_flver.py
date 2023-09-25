@@ -49,6 +49,7 @@ from soulstruct.base.models.flver.vertex_array import *
 from soulstruct.containers import Binder, DCXType
 from soulstruct.containers.tpf import TPFTexture, batch_get_tpf_texture_png_data
 from soulstruct.utilities.maths import Vector3
+from soulstruct.utilities.inspection import profile_function
 
 from io_soulstruct.general import GlobalSettings, GameFiles
 from io_soulstruct.utilities import *
@@ -319,7 +320,10 @@ class ImportMapPieceFLVER(LoggingOperator, ImportFLVERMixin):
         game_lists = context.scene.game_files  # type: GameFiles
         return game_lists.map_piece_flver not in {"", "0"}
 
-    def _execute(self, context):
+    def execute(self, context):
+
+        start_time = time.perf_counter()
+
         game_lists = context.scene.game_files  # type: GameFiles
         flver_path = game_lists.map_piece_flver
         if not flver_path:
@@ -371,6 +375,7 @@ class ImportMapPieceFLVER(LoggingOperator, ImportFLVERMixin):
         try:
             name = flver_path.name.split(".")[0]  # drop all extensions
             bl_flver_mesh = importer.import_flver(flver, name=name, transform=transform)
+
         except Exception as ex:
             # Delete any objects created prior to exception.
             importer.abort_import()
@@ -380,6 +385,8 @@ class ImportMapPieceFLVER(LoggingOperator, ImportFLVERMixin):
         # Select newly imported mesh.
         if bl_flver_mesh:
             self.set_active_obj(bl_flver_mesh)
+
+        self.info(f"Imported map piece FLVER in {time.perf_counter() - start_time:.3f} seconds.")
 
         return {"FINISHED"}
 
@@ -665,6 +672,8 @@ class FLVERImporter:
         not be present in these FLVERs, but if they do exist, they will also be parented to the armature with their
         original FLVER name as a prefix to distinguish them from the dummies of `existing_armature`.
         """
+        start_time = time.perf_counter()
+
         self.flver = flver
         self.name = name
         self.bl_bone_names.clear()
@@ -694,7 +703,6 @@ class FLVERImporter:
             self.warning("No TPF files or DDS dump folder given. No textures loaded for FLVER.")
 
         mtd_infos = self.get_mtd_infos(flver, settings.mtd_manager)
-
 
         # TODO:
         #     - The FLVER exporter will start by creating a FLVER material for every Blender material, then
@@ -813,6 +821,8 @@ class FLVERImporter:
 
         for i, dummy in enumerate(flver.dummies):
             self.create_dummy(dummy, index=i, bl_armature=bl_armature_obj, dummy_prefix=dummy_prefix)
+
+        self.operator.info(f"Created FLVER Blender mesh '{name}' in {time.perf_counter() - start_time:.3f} seconds.")
 
         return bl_flver_mesh  # might be used by other importers
 
@@ -979,7 +989,7 @@ class FLVERImporter:
         flver_material_uv_layer_names: list[list[str]],
         flver_to_blender_material_indices: dict[int, int],
         all_uv_layer_names: list[str],
-    ) -> tuple[list, list]:
+    ) -> tuple[np.ndarray, np.ndarray]:
         """BMesh is more efficient for mesh construction and loop data layer assignment.
 
         Returns two arrays of bone indices and bone weights for the created Blender vertices.
@@ -991,36 +1001,34 @@ class FLVERImporter:
         loop_uv_layers = {uv_layer_name: bm.loops.layers.uv[uv_layer_name] for uv_layer_name in all_uv_layer_names}
         loop_colors_layer = bm.loops.layers.color["VertexColors"]
 
-        # NOTE: We don't import vertex tangents or bitangents. These are computable from the normals and normal UV.
-
         for mesh in flver.meshes:
             if mesh.bone_indices:
                 mesh.local_to_global_bone_indices(clear_mesh_bone_indices=True)
+            # TODO: These are all in-place transformations for Blender. Don't use this FLVER elsewhere!
+            self.swap_vertex_yz(mesh.vertices)
+            self.invert_vertex_uv_v(mesh.vertices)
+            self.normalize_normals(mesh.vertices)
 
-        combined_vertex_array, submesh_loop_offsets = flver.get_combined_vertex_array()
+        all_vertices, submesh_loop_offsets = flver.get_combined_vertex_array()
 
-        # TODO: These are all in-place transformations for Blender. Don't use this FLVER elsewhere!
-        self.swap_vertex_yz(combined_vertex_array)
-        self.invert_vertex_uv_v(combined_vertex_array)
-        self.normalize_normals(combined_vertex_array)
-
-        # NOTE: `flver_to_bl_vertex_indices` is a list of indices into `combined_vertex_array`, not `mesh.vertices`.
+        # NOTE: `flver_to_bl_vertex_indices` is a list of indices into `all_vertices`, not each `mesh.vertices`.
         # `submesh_loop_offset` will be added to the actual FLVER face vertex indices to find the Blender vertex.
-        bl_vertex_array, flver_to_bl_vertex_indices = self.get_unique_blender_vertices(combined_vertex_array)
-
-        # GET FLVER LOOP DATA
-        loop_uvs = [view.tolist() for view in get_vertex_all_uvs(combined_vertex_array)]  # V already inverted
-        loop_colors = get_vertex_colors(combined_vertex_array, color_index=0).tolist()  # TODO: only importing 0
-        loop_normals = get_vertex_normals(combined_vertex_array).tolist()  # YZ already swapped; normalized
-        bl_loop_normals = []
+        bl_vertex_array, flver_to_bl_vertex_indices = np.unique(all_vertices, return_inverse=True, axis=0)
 
         # CREATE BLENDER VERTICES
-        for bl_v_pos in get_vertex_positions(bl_vertex_array):
+        for bl_v_pos in get_vertex_positions(bl_vertex_array).tolist():
             bm.verts.new(bl_v_pos)
         bm.verts.ensure_lookup_table()
 
+        bl_loop_normals = []  # collected for one single custom split normal assignment
+
         for flver_mesh_index, (submesh, submesh_loop_offset) in enumerate(zip(flver.meshes, submesh_loop_offsets)):
             submesh: Mesh
+
+            # GET FLVER LOOP DATA
+            loop_uvs = [view.tolist() for view in get_vertex_all_uvs(submesh.vertices)]  # `uv_v` already inverted
+            loop_color_0 = get_vertex_colors(submesh.vertices, color_index=0).tolist()
+            loop_normals = get_vertex_normals(submesh.vertices).tolist()
 
             # Blender material index assigned to all faces created for this submesh.
             bl_material_index = flver_to_blender_material_indices[submesh.material_index]
@@ -1030,19 +1038,12 @@ class FLVERImporter:
             degenerate_face_count = 0
 
             # Only imports face set 0.
-            mesh_triangles = submesh.face_sets[0].get_triangles(
-                allow_primitive_restarts=False, vertex_index_offset=submesh_loop_offset
-            )
+            mesh_triangles = submesh.face_sets[0].get_triangles(allow_primitive_restarts=False)
 
             for triangle_index, triangle in enumerate(mesh_triangles):
 
-                bl_v_indices = [flver_to_bl_vertex_indices[i] for i in triangle]
+                bl_v_indices = [flver_to_bl_vertex_indices[submesh_loop_offset + i] for i in triangle]
                 bm_verts = [bm.verts[bl_v_i] for bl_v_i in bl_v_indices]
-                if len({tuple(v.co) for v in bm_verts}) != 3:
-                    # Degenerate FLVER face (e.g. a line or point). These are not supported by Blender.
-                    # TODO: Maybe better to just handle the error this causes below (EAFP).
-                    degenerate_face_count += 1
-                    continue
 
                 try:
                     bm_face = bm.faces.new(bm_verts)
@@ -1053,6 +1054,11 @@ class FLVERImporter:
                         # to remove the last three normals.
                         degenerate_face_count += 1
                         continue
+                    if "found the same (BMVert) used multiple times" in str(ex):
+                        # Degenerate FLVER face (e.g. a line or point). These are not supported by Blender.
+                        degenerate_face_count += 1
+                        continue
+
                     print(f"Unhandled error for BM face: {triangle_index=}, {triangle=}, {[v.co for v in bm_verts]}")
                     raise ex
 
@@ -1062,7 +1068,7 @@ class FLVERImporter:
                     for uv_layer_name, uv_list in zip(uv_layer_names, loop_uvs):
                         uv_layer = loop_uv_layers[uv_layer_name]
                         bm_loop[uv_layer].uv = uv_list[flver_v_i]
-                    bm_loop[loop_colors_layer] = loop_colors[flver_v_i]
+                    bm_loop[loop_colors_layer] = loop_color_0[flver_v_i]
                     bl_loop_normals.append(loop_normals[flver_v_i])
 
             if degenerate_face_count:
@@ -1083,20 +1089,16 @@ class FLVERImporter:
 
         bl_mesh.update()
 
-        # TODO: I believe EVERY material has bone indices.
-        bl_bone_indices = get_vertex_bone_indices(bl_vertex_array).tolist() if "bone_index_a" in bl_vertex_array.dtype.names else []
-        if "bone_weight_a" in bl_vertex_array.dtype.names:
-            bl_bone_weights = get_vertex_bone_weights(bl_vertex_array).tolist()
-        else:
-            bl_bone_weights = [(0.0, 0.0, 0.0, 0.0)] * len(bl_bone_indices)
+        bl_bone_indices = get_vertex_bone_indices(bl_vertex_array)
+        bl_bone_weights = get_vertex_bone_weights(bl_vertex_array)
 
         return bl_bone_weights, bl_bone_indices
 
     def create_bone_vertex_groups(
         self,
         bl_mesh_obj: bpy.types.Object,
-        bl_vert_bone_weights: list,
-        bl_vert_bone_indices: list,
+        bl_vert_bone_weights: np.ndarray,
+        bl_vert_bone_indices: np.ndarray,
     ):
         # Naming a vertex group after a Blender bone will automatically link it in the Armature modifier below.
         bone_vertex_groups = [
@@ -1374,17 +1376,7 @@ class FLVERImporter:
         return self.new_objs[0]
 
     @staticmethod
-    def get_unique_blender_vertices(vertex_array: np.recarray):
-        vertex_view = (
-            [f"position_{c}" for c in "xyz"] + [f"bone_weight_{c}" for c in "abcd"] + [f"bone_index_{c}" for c in "abcd"]
-        )
-        vertex_view = [name for name in vertex_view if name in vertex_array.dtype.names]  # `bone_weight` is optional
-        vertex_data = vertex_array[vertex_view]
-        u, bl_vertex_indices = np.unique(vertex_data, return_inverse=True, axis=0)
-        return u, bl_vertex_indices
-
-    @staticmethod
-    def swap_vertex_yz(vertex_array: np.recarray, tangents=False, bitangents=False):
+    def swap_vertex_yz(vertex_array: np.ndarray, tangents=False, bitangents=False):
         """Transform `vertex_array` in-place from game to Blender coordinates (or back) by swapping '_y' and '_z'
         columns for 'position' and 'normal' data.
 
@@ -1411,14 +1403,14 @@ class FLVERImporter:
             vertex_array["bitangent_z"] = bitangent_y
 
     @staticmethod
-    def invert_vertex_uv_v(vertex_array: np.recarray):
+    def invert_vertex_uv_v(vertex_array: np.ndarray):
         """Transform `vertex_array` in-place by inverting the 'v' component of all UVs."""
         uv_v_fields = [name for name in vertex_array.dtype.names if name.startswith("uv_v_")]
-        for uv_v_field in uv_v_fields:  # can't access all at once, it seems
+        for uv_v_field in uv_v_fields:  # can't modify all at once, it seems
             vertex_array[uv_v_field] = 1.0 - vertex_array[uv_v_field]
 
     @staticmethod
-    def normalize_normals(vertex_array: np.recarray):
+    def normalize_normals(vertex_array: np.ndarray):
         """Transform `vertex_array` in-place by normalizing the 'normal_{c}' columns."""
         normal_x = vertex_array["normal_x"]
         normal_y = vertex_array["normal_y"]
