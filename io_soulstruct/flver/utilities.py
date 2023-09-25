@@ -30,10 +30,11 @@ from soulstruct.base.models.mtd import MTDInfo
 from io_soulstruct.utilities import (
     Transform, BlenderTransform, GAME_TO_BL_EULER, BL_TO_GAME_EULER, BL_TO_GAME_MAT3, LoggingOperator
 )
+from io_soulstruct.general import get_cached_file
 
 
-DUMMY_NAME_RE = re.compile(  # accepts and ignore Blender '.001' suffix, etc.
-    r"^(?P<other_model>\[\w+])? +(?P<flver_name>.+) +Dummy<(?P<index>\d+)> *(?P<reference_id>\[\d+]) *(\.\d+)?$"
+DUMMY_NAME_RE = re.compile(  # accepts and ignores Blender '.001' suffix and anything else after the `[ref_id]` in name
+    r"^(?P<other_model>\[\w+\])? +(?P<flver_name>.+) +Dummy<(?P<index>\d+)> *(?P<reference_id>\[\d+\]) *(\.\d+)?$"
 )
 
 
@@ -144,7 +145,12 @@ def get_flver_from_binder(binder: Binder, file_path: Path) -> FLVER:
 
 def get_map_piece_msb_transforms(flver_path: Path, msb_path: Path = None) -> list[tuple[str, Transform]]:
     """Search MSB at `msb_path` (autodetected from `flver_path.parent` by default) and return
-    `(map_piece_name, Transform)` pairs for all Map Piece entries using the `flver_path` model."""
+    `(map_piece_name, Transform)` pairs for all Map Piece entries using the `flver_path` model.
+
+    Uses cached MSB if possible.
+
+    TODO: Use settings game directory rather than guessing from FLVER path, if possible.
+    """
     if msb_path is None:
         flver_parent_dir = flver_path.parent
         flver_map = get_map(flver_parent_dir.name)
@@ -152,7 +158,7 @@ def get_map_piece_msb_transforms(flver_path: Path, msb_path: Path = None) -> lis
     if not msb_path.is_file():
         raise FileNotFoundError(f"Cannot find MSB file '{msb_path}'.")
     try:
-        msb = MSB.from_path(msb_path)
+        msb = get_cached_file(msb_path, MSB)
     except Exception as ex:
         raise RuntimeError(
             f"Cannot open MSB: {ex}.\n"
@@ -198,5 +204,3 @@ def bl_rotmat_to_game_forward_up_vectors(bl_rotmat: Matrix) -> tuple[Vector3, Ve
     forward = Vector3((game_mat[0][2], game_mat[1][2], game_mat[2][2]))  # third column (Z)
     up = Vector3((game_mat[0][1], game_mat[1][1], game_mat[2][1]))  # second column (Y)
     return forward, up
-
-

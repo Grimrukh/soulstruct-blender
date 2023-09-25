@@ -15,7 +15,7 @@ from soulstruct.containers import Binder, BinderEntry
 from soulstruct.base.models.flver import FLVER, Version
 from soulstruct.base.models.flver.bone import FLVERBone
 from soulstruct.base.models.flver.material import Material, Texture
-from soulstruct.base.models.flver.mesh import Mesh, FaceSet
+from soulstruct.base.models.flver.submesh import Submesh, FaceSet
 from soulstruct.base.models.flver.vertex import VertexBuffer, BufferLayout, MemberType
 from soulstruct.utilities.maths import Vector3, Matrix3
 
@@ -452,16 +452,16 @@ class FLVERExporter:
             mtd_infos=mtd_infos,
         )
 
-        flver.sort_mesh_bone_indices()
+        flver.sort_submesh_bone_indices()
 
         # TODO: Bone bounding box space seems to be always local to the bone for characters and always in armature space
         #  for map pieces. Not sure about objects, could be some of each (haven't found any non-origin bones that any
         #  vertices are weighted to with `is_bind_pose=True`). This is my temporary hack since we are already using
         #  'read_bone_type == POSE' as a marker for map pieces.
-        flver.refresh_bounding_boxes(
-            refresh_bone_bounding_boxes=True,
-            bone_bounding_boxes_in_armature_space=read_bone_type == "POSE",
-        )
+
+        # TODO: Better heuristic is likely to use the bone weights themselves (missing or all zero -> armature space).
+        flver.refresh_bounding_boxes()
+        flver.refresh_bone_bounding_boxes(in_armature_space=read_bone_type == "POSE")
 
         return flver
 
@@ -595,7 +595,7 @@ class FLVERExporter:
         bl_mesh_props = self.get_mesh_props(bl_mesh)
 
         # Maps Blender face material index to FLVER mesh, vertex hash -> index dict, and buffer layout instances.
-        flver_mesh_data = {}  # type: dict[int, tuple[Mesh, dict[int, int], BufferLayout]]
+        flver_mesh_data = {}  # type: dict[int, tuple[Submesh, dict[int, int], BufferLayout]]
 
         try:
             vertex_colors_layer = bl_mesh_data.vertex_colors["VertexColors"]
@@ -645,8 +645,8 @@ class FLVERExporter:
             if face.material_index not in flver_mesh_data:
                 # We only create each FLVER submesh after encountering the first Blender face that actually uses that
                 # material slot. (Other materials will simply sit unused in the FLVER file.)
-                mesh = Mesh()
-                flver.meshes.append(mesh)
+                mesh = Submesh()
+                flver.submeshes.append(mesh)
                 mesh.material_index = face.material_index
                 buffer_layout_index = material_buffer_layout_indices[face.material_index]
                 mesh.default_bone_index = bl_mesh_props["Default Bone Index"][face.material_index]
@@ -823,7 +823,7 @@ class FLVERExporter:
         # All LOD face sets are duplicated from the first.
         # TODO: Setting up actual face sets (which share vertices but are decimated) in Blender would be very annoying.
         #  Would basically need a 'mesh decimating' algorithm that ONLY removes vertices. Not outrageous...
-        for mesh in flver.meshes:
+        for mesh in flver.submeshes:
             for lod_face_set in mesh.face_sets[1:]:
                 lod_face_set.vertex_indices = mesh.face_sets[0].vertex_indices.copy()
 

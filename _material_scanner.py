@@ -741,7 +741,7 @@ def scan_chr_layouts():
         chrbnd = Binder.from_path(chrbnd_path)
         print(f"Reading FLVER in {chrbnd_path.name}...")
         flver = chrbnd[200].to_binary_file(FLVER)
-        for mesh in flver.meshes:
+        for mesh in flver.submeshes:
             if mesh.material_index < 0:
                 raise ValueError(f"Invalid material index: {mesh.material_index}")
             material = flver.materials[mesh.material_index]
@@ -804,7 +804,7 @@ def scan_map_layouts():
             continue  # skip duplicate DLC directory (models are still read from _00 folder)
         print(f"Reading FLVER {flver_path.name}...")
         flver = FLVER.from_path(flver_path)
-        for mesh in flver.meshes:
+        for mesh in flver.submeshes:
             if mesh.material_index < 0:
                 raise ValueError(f"Invalid material index: {mesh.material_index}")
             material = flver.materials[mesh.material_index]

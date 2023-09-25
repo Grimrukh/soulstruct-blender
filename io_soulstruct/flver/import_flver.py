@@ -44,12 +44,11 @@ from bpy.props import StringProperty, FloatProperty, BoolProperty, EnumProperty,
 from bpy_extras.io_utils import ImportHelper
 from mathutils import Vector, Matrix
 
-from soulstruct.base.models.flver import FLVER, Mesh, Dummy
-from soulstruct.base.models.flver.vertex_array import *
+from soulstruct.base.models.flver import FLVER, Dummy
+from soulstruct.base.models.flver.mesh_tools import MergedMesh
 from soulstruct.containers import Binder, DCXType
 from soulstruct.containers.tpf import TPFTexture, batch_get_tpf_texture_png_data
 from soulstruct.utilities.maths import Vector3
-from soulstruct.utilities.inspection import profile_function
 
 from io_soulstruct.general import GlobalSettings, GameFiles
 from io_soulstruct.utilities import *
@@ -309,6 +308,7 @@ class ImportMapPieceFLVER(LoggingOperator, ImportFLVERMixin):
     bl_label = "Import Map Piece"
     bl_description = "Import selected map piece FLVER from game map directory"
 
+    # TODO: Currently no way to disable this in GUI.
     read_msb_transform: BoolProperty(
         name="Read MSB Transform",
         description="Look for matching MSB file in adjacent `MapStudio` folder and set transform of map piece FLVER",
@@ -712,13 +712,14 @@ class FLVERImporter:
         #     total weighted bones across its vertices. These split submeshes will have the same FLVER material
         #     and the same Mesh properties, as per each Blender material.
 
-        flver_to_blender_material_indices = {}  # maps FLVER mesh material index to existing Blender material index
-        flver_submesh_blender_material_indices = []  # Blender material slot index for every FLVER submesh
-        flver_material_variant_index = {}
+        # Maps FLVER mesh material index to Blender material index, which may be a variant of the same FLVER material.
+        bl_material_indices = np.empty(len(flver.materials), dtype=np.int32)
+
+        flver_material_variants = {}  # maps FLVER material indices to Blender material indices
         self.new_materials = []
-        for mesh in flver.meshes:
+        for mesh in flver.submeshes:
             material = flver.materials[mesh.material_index]
-            if mesh.material_index not in flver_to_blender_material_indices:
+            if mesh.material_index not in flver_material_variants:
                 # First time this FLVER material has been encountered. Create it in Blender now.
                 # NOTE: Vanilla material names are unused and essentially worthless. They can also be the same for
                 #  materials that actually use different lightmaps, EVEN INSIDE the same FLVER model. Names are changed
@@ -734,50 +735,45 @@ class FLVERImporter:
                     blend_mode=settings.material_blend_mode,
                 )  # type: bpy.types.Material
 
-                flver_submesh_blender_material_indices.append(bl_material_index)
-                flver_to_blender_material_indices[mesh.material_index] = bl_material_index
+                bl_material_indices[mesh.material_index] = bl_material_index
+                flver_material_variants[mesh.material_index] = [bl_material_index]
                 self.new_materials.append(bl_material)
             else:
-                bl_material_index = flver_to_blender_material_indices[mesh.material_index]  # original non-variant
-                existing_bl_material = self.new_materials[bl_material_index]
                 # Check if Blender material needs to be duplicated as a variant with different Mesh properties.
-                if (
-                    existing_bl_material["Is Bind Pose"] != mesh.is_bind_pose
-                    or existing_bl_material["Default Bone Index"] != mesh.default_bone_index
-                    or existing_bl_material["Face Set Count"] != len(mesh.face_sets)
-                    or existing_bl_material.use_backface_culling != mesh.face_sets[0].cull_back_faces
-                ):
-                    # New Blender material variant is needed for this submesh.
-                    variant_index = flver_material_variant_index.setdefault(mesh.material_index, 1)
-                    flver_material_variant_index[mesh.material_index] += 1
+                for existing_bl_material_index in flver_material_variants[mesh.material_index]:
+                    # NOTE: We do not care about enforcing any maximum submesh local bone count in Blender. The FLVER
+                    # exporter will create additional split submeshes as necessary for that.
+                    existing_bl_material = self.new_materials[existing_bl_material_index]
+                    if (
+                        existing_bl_material["Is Bind Pose"] == mesh.is_bind_pose
+                        and existing_bl_material["Default Bone Index"] == mesh.default_bone_index
+                        and existing_bl_material["Face Set Count"] == len(mesh.face_sets)
+                        and existing_bl_material.use_backface_culling == mesh.face_sets[0].cull_back_faces
+                    ):
+                        # Blender material already exists with the same Mesh properties.
+                        bl_material_indices[mesh.material_index] = existing_bl_material_index
+                        continue
 
-                    bl_material = get_submesh_blender_material(
-                        self.operator,
-                        material,
-                        material_name=f"{self.name} Material {mesh.material_index} <Variant {variant_index}>",
-                        mtd_info=mtd_infos[mesh.material_index],
-                        mesh=mesh,
-                        blend_mode=settings.material_blend_mode,
-                    )  # type: bpy.types.Material
+                # No match found. New Blender material variant is needed to hold unique submesh data.
+                variant_index = len(flver_material_variants[mesh.material_index])
+                bl_material = get_submesh_blender_material(
+                    self.operator,
+                    material,
+                    material_name=f"{self.name} Material {mesh.material_index} <Variant {variant_index}>",
+                    mtd_info=mtd_infos[mesh.material_index],
+                    mesh=mesh,
+                    blend_mode=settings.material_blend_mode,
+                )  # type: bpy.types.Material
 
-                    new_bl_material_index = len(self.new_materials)
-                    flver_submesh_blender_material_indices.append(new_bl_material_index)
-                    # Original non-variant Blender material index already in `flver_to_blender_material_indices`.
-                    self.new_materials.append(bl_material)
-                else:
-                    # Re-use existing Blender material. FLVER submeshes will be 'merged' in Blender.
-                    flver_submesh_blender_material_indices.append(bl_material_index)
+                new_bl_material_index = len(self.new_materials)
+                bl_material_indices[mesh.material_index] = new_bl_material_index
+                flver_material_variants[mesh.material_index].append(new_bl_material_index)
+                self.new_materials.append(bl_material)
 
         flver_material_uv_layer_names = [mtd_info.get_uv_layer_names() for mtd_info in mtd_infos]
 
-        # Create a single combined mesh for all submesh materials.
+        bl_flver_mesh = self.create_flver_mesh(flver, self.name, flver_material_uv_layer_names, bl_material_indices)
 
-        # from soulstruct.utilities.inspection import profile_function
-        # decorated_create_flver_mesh = profile_function(20)(self.create_flver_mesh)
-
-        bl_flver_mesh = self.create_flver_mesh(
-            flver, self.name, flver_material_uv_layer_names, flver_to_blender_material_indices
-        )
         # Assign basic FLVER header information as custom props.
         # TODO: Configure a full-exporter dropdown/choice of game version that defaults as many of these as possible.
         bl_flver_mesh["Is Big Endian"] = flver.big_endian  # bool
@@ -916,35 +912,28 @@ class FLVERImporter:
         flver: FLVER,
         name: str,
         flver_material_uv_layer_names: list[list[str]],
-        flver_to_blender_material_indices: dict[int, int],
+        bl_material_indices: np.ndarray,
     ):
-        """Create a single Blender mesh that combines all FLVER sub-meshes, using multiple material slots.
+        """Create a single Blender mesh that combines all FLVER submeshes, using multiple material slots.
 
         NOTE: FLVER (for DS1 at least) supports a maximum of 38 bones per sub-mesh. When this maximum is reached, a new
-        FLVER sub-mesh is created. All of these sub-meshes are unified in Blender under the same material slot, and will
-        be re-partitioned on export.
+        FLVER submesh is created. All of these sub-meshes are unified in Blender under the same material slot, and will
+        be split again on export as needed.
 
-        Some FLVER sub-meshes also use the same material, but have different `Mesh` or `FaceSet` properties such as
-        `cull_back_faces`. Backface culling is a material option in Blender, so these sub-meshes will use different
-        Blender materials even though the use the same FLVER material. The FLVER exporter will start by creating a
-        FLVER material for every Blender material slot, then unify any identical FLVER material instances and assign
-        any differences like `cull_back_faces` or `is_bind_pose` to the FLVER mesh.
+        Some FLVER submeshes also use the same material, but have different `Mesh` or `FaceSet` properties such as
+        `cull_back_faces`. Backface culling is a material option in Blender, so these submeshes will use different
+        Blender material 'variants' even though they use the same FLVER material. The FLVER exporter will start by
+        creating a FLVER material for every Blender material slot, then unify any identical FLVER material instances and
+        redirect any differences like `cull_back_faces` or `is_bind_pose` to the FLVER mesh.
 
         Breakdown:
             - Blender stores POSITION, BONE WEIGHTS, and BONE INDICES on vertices. Any differences here will require
             genuine vertex duplication in Blender. (Of course, vertices at the same position in the same sub-mesh should
             essentially ALWAYS have the same bone weights and indices.)
-            - Blender stores MATERIAL SLOT INDEX on faces. This is how different FLVER sub-meshes are stored.
+            - Blender stores MATERIAL SLOT INDEX on faces. This is how different FLVER submeshes are represented.
             - Blender stores UV COORDINATES, VERTEX COLORS, and NORMALS on face loops ('vertex instances'). This gels
             with what FLVER meshes want to do.
-
-        We iterate over every FLVER mesh and every face set in that mesh, and treat the face vertices as 'FLVER loops':
-            - If a Blender vertex has not been created with the exact same position, bone weights, and GLOBAL
-            (FLVER-wide) bone indices, we create it and store its index in a dictionary under the hash of those three
-            members.
-            - Otherwise, we use the existing Blender vertex index in the new Blender face loop.
-            - We assign the FLVER UVs, vertex color(s), and normal data to the loop (normals are accumulated in a list
-            the same size as the loop count and applied with `mesh.normals_split_custom_set(normals)` afterward).
+            - Blender does not import tangents or bitangents. These are calculated on export.
         """
         if bpy.ops.object.mode_set.poll():
             bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
@@ -954,26 +943,19 @@ class FLVERImporter:
         for material in self.new_materials:
             bl_mesh.materials.append(material)
 
-        if any(mesh.invalid_vertex_size for mesh in flver.meshes):
+        if any(mesh.invalid_layout_size for mesh in flver.submeshes):
             # Corrupted sub-meshes. Leave empty.
             # TODO: Should be able to handle known cases of this by redirecting to the correct vertex buffers.
             return self.create_obj(f"{name} <INVALID>", bl_mesh, parent_to_flver_root=False)
 
-        # Create UV and vertex color data layers.
-        all_uv_layer_names_set = set()
-        for uv_layer_names in flver_material_uv_layer_names:
-            all_uv_layer_names_set |= set(uv_layer_names)
-        all_uv_layer_names = sorted(all_uv_layer_names_set)
-        for uv_layer_name in all_uv_layer_names:
-            bl_mesh.uv_layers.new(name=uv_layer_name, do_init=False)
-        bl_mesh.vertex_colors.new(name="VertexColors")
+        # from soulstruct.utilities.inspection import profile_function
 
+        # bl_vert_bone_weights, bl_vert_bone_indices = profile_function(20)(self.create_bm_mesh)(
         bl_vert_bone_weights, bl_vert_bone_indices = self.create_bm_mesh(
             bl_mesh,
             flver,
             flver_material_uv_layer_names,
-            flver_to_blender_material_indices,
-            all_uv_layer_names,
+            bl_material_indices,
         )
 
         bl_mesh_obj = self.create_obj(name, bl_mesh, parent_to_flver_root=False)
@@ -987,112 +969,110 @@ class FLVERImporter:
         bl_mesh: bpy.types.Mesh,
         flver: FLVER,
         flver_material_uv_layer_names: list[list[str]],
-        flver_to_blender_material_indices: dict[int, int],
-        all_uv_layer_names: list[str],
+        bl_material_indices: np.ndarray,
     ) -> tuple[np.ndarray, np.ndarray]:
         """BMesh is more efficient for mesh construction and loop data layer assignment.
 
         Returns two arrays of bone indices and bone weights for the created Blender vertices.
         """
+
+        import time
+
+        p = time.perf_counter()
+        # Create merged mesh. Degenerate/duplicate faces are left for Blender to handle.
+        merged_mesh = MergedMesh(
+            flver,
+            discard_degenerate_faces=False,
+            discard_duplicate_faces=False,
+            material_uv_layers=flver_material_uv_layer_names,
+        )
+
+        merged_mesh.swap_vertex_yz(tangents=False, bitangents=False)
+        merged_mesh.invert_vertex_uv(invert_u=False, invert_v=True)
+        merged_mesh.normalize_normals()
+        merged_mesh.reassign_face_materials(bl_material_indices)
+        print(f"# INFO: Merged FLVER submeshes in {time.perf_counter() - p} s")
+
+        # Create UV and vertex color data layers.
+        for uv_layer_name in merged_mesh.uv_layers:
+            bl_mesh.uv_layers.new(name=uv_layer_name, do_init=False)
+        # TODO: Support multiple colors.
+        bl_mesh.vertex_colors.new(name="VertexColors")
+
         bm = bmesh.new()
         bm.from_mesh(bl_mesh)  # bring over UV and vertex color data layers
 
         # Get data layer accessors.
-        loop_uv_layers = {uv_layer_name: bm.loops.layers.uv[uv_layer_name] for uv_layer_name in all_uv_layer_names}
+        loop_uv_layers = [bm.loops.layers.uv[uv_layer_name] for uv_layer_name in merged_mesh.uv_layers]
         loop_colors_layer = bm.loops.layers.color["VertexColors"]
 
-        for mesh in flver.meshes:
-            if mesh.bone_indices:
-                mesh.local_to_global_bone_indices(clear_mesh_bone_indices=True)
-            # TODO: These are all in-place transformations for Blender. Don't use this FLVER elsewhere!
-            self.swap_vertex_yz(mesh.vertices)
-            self.invert_vertex_uv_v(mesh.vertices)
-            self.normalize_normals(mesh.vertices)
-
-        all_vertices, submesh_loop_offsets = flver.get_combined_vertex_array()
-
-        # NOTE: `flver_to_bl_vertex_indices` is a list of indices into `all_vertices`, not each `mesh.vertices`.
-        # `submesh_loop_offset` will be added to the actual FLVER face vertex indices to find the Blender vertex.
-        bl_vertex_array, flver_to_bl_vertex_indices = np.unique(all_vertices, return_inverse=True, axis=0)
+        # Unfortunately, we have to assign UV and color data per loop object in BMesh, so there's no way to take
+        # advantage of NumPy vectorization here. It's therefore faster to get our loop UV and color data now as lists
+        # rather than repeatedly index the NumPy array.
+        # TODO: Maybe worth a little performance test to see if it's better to assign all this data after all faces are
+        #  created, rather than in loop triplets after each face.
+        loop_uvs_list = [uv_array.tolist() for uv_array in merged_mesh.loop_uvs]
+        loop_colors_list = merged_mesh.loop_vertex_colors[0].tolist()  # TODO: support multiple colors
 
         # CREATE BLENDER VERTICES
-        for bl_v_pos in get_vertex_positions(bl_vertex_array).tolist():
-            bm.verts.new(bl_v_pos)
+        for vertex in merged_mesh.vertex_positions:
+            bm.verts.new(vertex)
         bm.verts.ensure_lookup_table()
 
-        bl_loop_normals = []  # collected for one single custom split normal assignment
+        bl_loop_normal_indices = []  # need to filter out loops of degenerate faces
+        degenerate_face_count = 0  # TODO: keep per-submesh?
 
-        for flver_mesh_index, (submesh, submesh_loop_offset) in enumerate(zip(flver.meshes, submesh_loop_offsets)):
-            submesh: Mesh
+        p = time.perf_counter()
+        for face in merged_mesh.faces:
 
-            # GET FLVER LOOP DATA
-            loop_uvs = [view.tolist() for view in get_vertex_all_uvs(submesh.vertices)]  # `uv_v` already inverted
-            loop_color_0 = get_vertex_colors(submesh.vertices, color_index=0).tolist()
-            loop_normals = get_vertex_normals(submesh.vertices).tolist()
+            loop_indices = face[:3]
+            vertex_indices = merged_mesh.loop_vertex_indices[loop_indices]
+            bm_verts = [bm.verts[v_i] for v_i in vertex_indices]
 
-            # Blender material index assigned to all faces created for this submesh.
-            bl_material_index = flver_to_blender_material_indices[submesh.material_index]
+            try:
+                bm_face = bm.faces.new(bm_verts)
+            except ValueError as ex:
+                if "face already exists" in str(ex):
+                    # This is a duplicate face (happens rarely in vanilla FLVERs). We can ignore it.
+                    # No lasting harm done as, by assertion, no new BMesh vertices were created above. We just need
+                    # to remove the last three normals.
+                    degenerate_face_count += 1
+                    continue
+                if "found the same (BMVert) used multiple times" in str(ex):
+                    # Degenerate FLVER face (e.g. a line or point). These are not supported by Blender.
+                    degenerate_face_count += 1
+                    continue
 
-            # UV layer names for this submesh's material (should match number of UV indices in vertex data).
-            uv_layer_names = flver_material_uv_layer_names[submesh.material_index]
-            degenerate_face_count = 0
+                print(f"Unhandled error for BMFace. Vertices: {[v.co for v in bm_verts]}")
+                raise ex
 
-            # Only imports face set 0.
-            mesh_triangles = submesh.face_sets[0].get_triangles(allow_primitive_restarts=False)
+            bm_face.material_index = face[3]
 
-            for triangle_index, triangle in enumerate(mesh_triangles):
+            for bm_loop, loop_index in zip(bm_face.loops, loop_indices):
+                for uv_i, (uv_list, uv_layer) in enumerate(zip(loop_uvs_list, loop_uv_layers)):
+                    bm_loop[uv_layer].uv = uv_list[loop_index]
+                bm_loop[loop_colors_layer] = loop_colors_list[loop_index]  # TODO: more colors
+                bl_loop_normal_indices.append(loop_index)
 
-                bl_v_indices = [flver_to_bl_vertex_indices[submesh_loop_offset + i] for i in triangle]
-                bm_verts = [bm.verts[bl_v_i] for bl_v_i in bl_v_indices]
+        print(f"# INFO: Created BMFaces in {time.perf_counter() - p} s")
 
-                try:
-                    bm_face = bm.faces.new(bm_verts)
-                except ValueError as ex:
-                    if "face already exists" in str(ex):
-                        # This is a duplicate face (happens rarely in vanilla FLVERs). We can ignore it.
-                        # No lasting harm done as, by assertion, no new BMesh vertices were created above. We just need
-                        # to remove the last three normals.
-                        degenerate_face_count += 1
-                        continue
-                    if "found the same (BMVert) used multiple times" in str(ex):
-                        # Degenerate FLVER face (e.g. a line or point). These are not supported by Blender.
-                        degenerate_face_count += 1
-                        continue
+        if degenerate_face_count:
+            self.warning(f"{degenerate_face_count} degenerate/duplicate faces ignored when importing FLVER.")
 
-                    print(f"Unhandled error for BM face: {triangle_index=}, {triangle=}, {[v.co for v in bm_verts]}")
-                    raise ex
-
-                bm_face.material_index = bl_material_index
-
-                for bm_loop, flver_v_i in zip(bm_face.loops, triangle):
-                    for uv_layer_name, uv_list in zip(uv_layer_names, loop_uvs):
-                        uv_layer = loop_uv_layers[uv_layer_name]
-                        bm_loop[uv_layer].uv = uv_list[flver_v_i]
-                    bm_loop[loop_colors_layer] = loop_color_0[flver_v_i]
-                    bl_loop_normals.append(loop_normals[flver_v_i])
-
-            if degenerate_face_count:
-                self.warning(
-                    f"{degenerate_face_count} degenerate/duplicate faces ignored in FLVER submesh {flver_mesh_index}."
-                )
-
-        # TODO: I think I need to delete all unused vertices at this point?
+        # TODO: Delete all unused vertices at this point?
 
         bm.to_mesh(bl_mesh)
         bm.free()
 
         # Enable custom split normals and assign them.
         bl_mesh.create_normals_split()
-        bl_mesh.normals_split_custom_set(bl_loop_normals)  # one normal per loop
+        bl_mesh.normals_split_custom_set(merged_mesh.loop_normals[bl_loop_normal_indices])  # one normal per loop
         bl_mesh.use_auto_smooth = True  # required for custom split normals to actually be used (rather than just face)
         bl_mesh.calc_normals_split()  # copy custom split normal data into API mesh loops
 
         bl_mesh.update()
 
-        bl_bone_indices = get_vertex_bone_indices(bl_vertex_array)
-        bl_bone_weights = get_vertex_bone_weights(bl_vertex_array)
-
-        return bl_bone_weights, bl_bone_indices
+        return merged_mesh.vertex_bone_weights, merged_mesh.vertex_bone_indices
 
     def create_bone_vertex_groups(
         self,
@@ -1158,7 +1138,7 @@ class FLVERImporter:
 
         write_bone_type = ""
         warn_partial_bind_pose = False
-        for mesh in self.flver.meshes:
+        for mesh in self.flver.submeshes:
             if mesh.is_bind_pose:  # characters, objects, parts
                 if not write_bone_type:
                     write_bone_type = "EDIT"  # write bone transforms to EditBones
@@ -1374,48 +1354,3 @@ class FLVERImporter:
     def flver_root(self):
         """Always the first object created."""
         return self.new_objs[0]
-
-    @staticmethod
-    def swap_vertex_yz(vertex_array: np.ndarray, tangents=False, bitangents=False):
-        """Transform `vertex_array` in-place from game to Blender coordinates (or back) by swapping '_y' and '_z'
-        columns for 'position' and 'normal' data.
-
-        Note that an intermediate copied column array needs to be created for each swap.
-
-        Does NOT touch 'tangent' or 'bitangent' data by default. These are only needed on export.
-        """
-        position_y = vertex_array["position_y"].copy()
-        vertex_array["position_y"] = vertex_array["position_z"]
-        vertex_array["position_z"] = position_y
-
-        normal_y = vertex_array["normal_y"].copy()
-        vertex_array["normal_y"] = vertex_array["normal_z"]
-        vertex_array["normal_z"] = normal_y
-
-        if tangents:
-            tangent_y = vertex_array["tangent_y"].copy()
-            vertex_array["tangent_y"] = vertex_array["tangent_z"]
-            vertex_array["tangent_z"] = tangent_y
-
-        if bitangents:
-            bitangent_y = vertex_array["bitangent_y"].copy()
-            vertex_array["bitangent_y"] = vertex_array["bitangent_z"]
-            vertex_array["bitangent_z"] = bitangent_y
-
-    @staticmethod
-    def invert_vertex_uv_v(vertex_array: np.ndarray):
-        """Transform `vertex_array` in-place by inverting the 'v' component of all UVs."""
-        uv_v_fields = [name for name in vertex_array.dtype.names if name.startswith("uv_v_")]
-        for uv_v_field in uv_v_fields:  # can't modify all at once, it seems
-            vertex_array[uv_v_field] = 1.0 - vertex_array[uv_v_field]
-
-    @staticmethod
-    def normalize_normals(vertex_array: np.ndarray):
-        """Transform `vertex_array` in-place by normalizing the 'normal_{c}' columns."""
-        normal_x = vertex_array["normal_x"]
-        normal_y = vertex_array["normal_y"]
-        normal_z = vertex_array["normal_z"]
-        norms = np.sqrt(normal_x ** 2 + normal_y ** 2 + normal_z ** 2)
-        vertex_array["normal_x"] /= norms
-        vertex_array["normal_y"] /= norms
-        vertex_array["normal_z"] /= norms

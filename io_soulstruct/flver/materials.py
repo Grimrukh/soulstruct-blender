@@ -9,7 +9,7 @@ import typing as tp
 import bpy
 
 from soulstruct.base.models.flver.material import Material
-from soulstruct.base.models.flver.mesh import Mesh
+from soulstruct.base.models.flver.submesh import Submesh
 
 from io_soulstruct.utilities import LoggingOperator
 from .utilities import MTDInfo
@@ -20,7 +20,7 @@ def get_submesh_blender_material(
     material: Material,
     material_name: str,
     mtd_info: MTDInfo,
-    mesh: Mesh,
+    mesh: Submesh,
     blend_mode="HASHED",
 ) -> bpy.types.Material:
     """Create a new material in the current Blender scene from a FLVER material.
