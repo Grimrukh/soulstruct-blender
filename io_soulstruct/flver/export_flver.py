@@ -11,7 +11,7 @@ import bpy
 from bpy.props import StringProperty, FloatProperty, BoolProperty, IntProperty
 from bpy_extras.io_utils import ExportHelper
 
-from soulstruct.containers import Binder, BinderEntry
+from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
 from soulstruct.base.models.flver import FLVER, Version
 from soulstruct.base.models.flver.bone import FLVERBone
 from soulstruct.base.models.flver.material import Material, Texture
@@ -20,7 +20,7 @@ from soulstruct.base.models.flver.vertex import VertexBuffer, BufferLayout, Memb
 from soulstruct.utilities.maths import Vector3, Matrix3
 
 from io_soulstruct.utilities import *
-from io_soulstruct.general import GlobalSettings
+from io_soulstruct.general import GameNames, GlobalSettings
 from .utilities import *
 
 DEBUG_MESH_INDEX = None
@@ -197,18 +197,19 @@ class ExportFLVERIntoBinder(LoggingOperator, ExportHelper, ExportFLVERMixin):
         if not flver_entries:
             if self.default_entry_id == -1:
                 return self.error("No FLVER files found in Binder and default entry ID was left as -1.")
-            if self.default_entry_id in binder.entries_by_id:
-                if not self.overwrite_existing:
-                    return self.error(
-                        f"Binder entry {self.default_entry_id} already exists in Binder and overwrite is disabled."
-                    )
-                flver_entry = binder.entries_by_id[self.default_entry_id]
-            else:
+            try:
+                flver_entry = binder.find_entry_id(self.default_entry_id)
+            except EntryNotFoundError:
                 # Create new entry.
                 entry_path = self.default_entry_path.format(name=bl_flver_root.name)
                 flver_entry = BinderEntry(
                     b"", entry_id=self.default_entry_id, path=entry_path, flags=self.default_entry_flags
                 )
+            else:
+                if not self.overwrite_existing:
+                    return self.error(
+                        f"Binder entry {self.default_entry_id} already exists in Binder and overwrite is disabled."
+                    )
         else:
             if not self.overwrite_existing:
                 return self.error("FLVER file already exists in Binder and overwrite is disabled.")
@@ -321,7 +322,19 @@ class FLVERExporter:
     settings: FLVERExportSettings
 
     @staticmethod
-    def get_flver_props(bl_flver: bpy.types.Object) -> dict[str, tp.Any]:
+    def get_flver_props(bl_flver: bpy.types.Object, game: str) -> dict[str, tp.Any]:
+
+        try:
+            version_str = bl_flver["Version"]
+        except KeyError:
+            # Default is game-dependent.
+            match game:
+                case GameNames.PTDE:
+                    version = Version.DarkSouls_A
+                case GameNames.DS1R:
+                    version = Version.DarkSouls_A
+        get_bl_prop(bl_flver, "Version", str, default="DarkSouls_A", callback=Version.__getitem__)
+
         # TODO: Fields and defaults are tailored to DS1 map pieces.
         return dict(
             big_endian=get_bl_prop(bl_flver, "Is Big Endian", bool, default=False),
@@ -372,10 +385,16 @@ class FLVERExporter:
     def export_flver(self, bl_flver_mesh: bpy.types.MeshObject) -> tp.Optional[FLVER]:
         """Create an entire FLVER from a Blender object.
 
-        Exporter will use selected MESH, one ARMATURE child (will create one with a single default bone if missing), and 
-        any number of EMPTY children of that ARMATURE ('Dummy' or 'Dmy' points).
+        The Blender object should be a MESH object with one ARMATURE child (skeleton) and any number of EMPTY children
+        (dummies). The dummies should generally be parented to the armature so that they can attach to its bones; the
+        importer will create dummies this way, but any empties with the require dummy properties found on the same level
+        as the armature will also be exported (with no attached bone index).
 
-        Mesh object must have certain 'FLVER' custom properties (see above).
+        If the mesh has no armature, a default skeleton with a single bone at the model's origin (named after the model)
+        will be created. This is fine for 99% of map pieces, for example.
+
+        If the mesh object is missing certain 'FLVER' custom properties (see `get_flver_props`), they will be exported
+        with default values based on the current selected game.
 
         TODO: Currently only really tested for DS1 FLVERs.
         """

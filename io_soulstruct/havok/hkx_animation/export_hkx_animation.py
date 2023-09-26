@@ -10,7 +10,7 @@ import bpy
 from bpy.props import StringProperty, BoolProperty, IntProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 
-from soulstruct.containers import Binder, BinderFlags, DCXType
+from soulstruct.containers import Binder, DCXType
 from soulstruct_havok.wrappers.hkx2015 import SkeletonHKX, AnimationHKX
 from soulstruct_havok.utilities.maths import Vector4, TRSTransform
 
@@ -159,7 +159,7 @@ class ExportHKXAnimationIntoBinder(LoggingOperator, ImportHelper):
 
         binder = Binder.from_path(Path(self.filepath))
 
-        if not self.overwrite_existing and self.animation_id in binder.entries_by_id:
+        if not self.overwrite_existing and self.animation_id in binder.get_entry_ids():
             return self.error(f"Animation ID {self.animation_id} already exists in Binder and overwrite is disabled")
 
         skeleton_entry = binder.find_entry_matching_name(r"skeleton\.hkx", re.IGNORECASE)
@@ -186,7 +186,7 @@ class ExportHKXAnimationIntoBinder(LoggingOperator, ImportHelper):
         entry_path = self.default_entry_path + animation_name + (".hkx" if self.dcx_type == "Null" else ".hkx.dcx")
 
         # Update or create binder entry.
-        binder.add_or_replace_entry_id(self.animation_id, animation_hkx, entry_path, BinderFlags(0x2))
+        binder.add_or_replace_entry_data(self.animation_id, animation_hkx, new_path=entry_path)
 
         # Write modified binder back.
         binder.write()

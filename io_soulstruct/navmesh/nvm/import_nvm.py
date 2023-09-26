@@ -21,7 +21,7 @@ import bmesh
 from bpy_extras.io_utils import ImportHelper
 from mathutils import Vector
 
-from soulstruct.containers import Binder, BinderEntry, BinderEntryNotFoundError
+from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
 from soulstruct.darksouls1r.maps import MSB
 from soulstruct.darksouls1r.maps.navmesh.nvm import NVM, NVMBox, NVMEventEntity
 
@@ -283,7 +283,7 @@ class ImportNVM(LoggingOperator, ImportHelper):
             model_file_name = navmesh_part.model.name + f"A{map_area}.nvm"
             try:
                 entry = binder.find_entry_matching_name(model_file_name)
-            except BinderEntryNotFoundError:
+            except EntryNotFoundError:
                 raise NVMImportError(
                     f"Could not find NVMBND model file '{model_file_name}' for MSB navmesh '{navmesh_part.name}'."
                 )

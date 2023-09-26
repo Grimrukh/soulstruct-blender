@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 __all__ = [
+    "GameNames",
     "GlobalSettings",
     "GameFiles",
     "GlobalSettingsPanel",
@@ -32,6 +33,15 @@ if tp.TYPE_CHECKING:
 _SETTINGS_PATH = Path(__file__).parent / "GlobalSettings.json"
 
 
+class GameNames:
+    # TODO: Should probably make use of my `games` module here to avoid repetition.
+
+    PTDE = "PTDE"  # Dark Souls: Prepare to Die Edition
+    DS1R = "DS1R"  # Dark Souls: Remastered
+    # TODO: More to add, obviously.
+    ER = "ER"  # Elden Ring
+
+
 class GlobalSettings(bpy.types.PropertyGroup):
     """Global settings for the Soulstruct Blender plugin."""
 
@@ -39,9 +49,9 @@ class GlobalSettings(bpy.types.PropertyGroup):
         name="Game",
         description="Game to use when choosing default values, DCX compression, file paths/extensions, etc",
         items=[
-            ("DS1R", "DS1R", "Dark Souls: Remastered"),
+            (GameNames.DS1R, GameNames.DS1R, "Dark Souls: Remastered"),
         ],
-        default="DS1R",
+        default=GameNames.DS1R,
     )
 
     game_directory: bpy.props.StringProperty(

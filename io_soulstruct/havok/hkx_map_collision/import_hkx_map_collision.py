@@ -18,7 +18,7 @@ from pathlib import Path
 import bpy
 from bpy_extras.io_utils import ImportHelper
 
-from soulstruct.containers import Binder, BinderEntry
+from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
 
 from soulstruct_havok.wrappers.hkx2015 import MapCollisionHKX
 
@@ -295,8 +295,8 @@ def load_other_res_hkx(
         other_res_binder = Binder.from_path(other_res_binder_path)
         other_hkx_name = f"{other_res}{import_info.hkx_name[1:]}"
         try:
-            other_res_hkx_entry = other_res_binder.entries_by_name[other_hkx_name]
-        except KeyError:
+            other_res_hkx_entry = other_res_binder.find_entry_name(other_hkx_name)
+        except EntryNotFoundError:
             operator.warning(
                 f"Found corresponding '{other_res}' collision binder, but could not find corresponding "
                 f"HKX entry '{other_hkx_name}' inside it."
@@ -630,7 +630,7 @@ class HKXMapCollisionImporter:
         hkx_mesh: tuple[list[tuple[float, float, float]], list[tuple[int, ...]]],
         material_index: int,
         mesh_name: str,
-    ):
+    ) -> bpy.types.MeshObject:
         """Create a Blender mesh object. The only custom property for HKX is material index."""
         bl_mesh = bpy.data.meshes.new(name=mesh_name)
 
@@ -642,6 +642,7 @@ class HKXMapCollisionImporter:
         bl_mesh_obj = self.create_obj(mesh_name, bl_mesh)
         bl_mesh_obj["material_index"] = material_index
 
+        # noinspection PyTypeChecker
         return bl_mesh_obj
 
     def create_obj(self, name: str, data=None):

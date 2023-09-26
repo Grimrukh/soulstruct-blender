@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import bpy
-from soulstruct.containers import Binder, BinderEntry, BinderEntryNotFoundError
+from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
 from soulstruct.containers.tpf import TPF, TPFTexture, TPFPlatform
 from soulstruct.base.textures.dds import texconv
 
@@ -273,7 +273,7 @@ def get_texture_export_info(file_path: str) -> TextureExportInfo:
         chrbnd_name = match.group(1)
         try:
             chrtpfbhd_entry = binder[f"{chrbnd_name}.chrtpfbhd"]
-        except BinderEntryNotFoundError:
+        except EntryNotFoundError:
             pass
         else:
             if tpf_entries:
@@ -528,7 +528,7 @@ class TextureManager:
     def _find_chr_tpfbdts(self, source_dir: Path, chrbnd: Binder):
         try:
             tpfbhd_entry = chrbnd.find_entry_matching_name(r".*\.chrtpfbhd")
-        except (BinderEntryNotFoundError, ValueError):
+        except (EntryNotFoundError, ValueError):
             # Optional, so we don't complain.
             return
 
