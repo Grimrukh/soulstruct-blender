@@ -38,6 +38,8 @@ class GameNames:
 
     PTDE = "PTDE"  # Dark Souls: Prepare to Die Edition
     DS1R = "DS1R"  # Dark Souls: Remastered
+    BB = "BB"
+    DS3 = "DS3"
     # TODO: More to add, obviously.
     ER = "ER"  # Elden Ring
 

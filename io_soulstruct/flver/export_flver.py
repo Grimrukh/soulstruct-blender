@@ -321,8 +321,7 @@ class FLVERExporter:
     context: bpy.types.Context
     settings: FLVERExportSettings
 
-    @staticmethod
-    def get_flver_props(bl_flver: bpy.types.Object, game: str) -> dict[str, tp.Any]:
+    def get_flver_props(self, bl_flver: bpy.types.Object, game: str) -> dict[str, tp.Any]:
 
         try:
             version_str = bl_flver["Version"]
@@ -333,12 +332,20 @@ class FLVERExporter:
                     version = Version.DarkSouls_A
                 case GameNames.DS1R:
                     version = Version.DarkSouls_A
-        get_bl_prop(bl_flver, "Version", str, default="DarkSouls_A", callback=Version.__getitem__)
+                case GameNames.BB:
+                    version = Version.Bloodborne_DS3_A
+                case GameNames.DS3:
+                    version = Version.Bloodborne_DS3_A
+                case _:
+                    self.warning(f"Unknown game '{game}' for FLVER '{bl_flver.name}'. Assuming DS1.")
+                    version = Version.DarkSouls_A
+        else:
+            version = Version[version_str]
 
-        # TODO: Fields and defaults are tailored to DS1 map pieces.
+        # TODO: Any other-game-specific fields?.
         return dict(
             big_endian=get_bl_prop(bl_flver, "Is Big Endian", bool, default=False),
-            version=get_bl_prop(bl_flver, "Version", str, default="DarkSouls_A", callback=Version.__getitem__),
+            version=version,
             unicode=get_bl_prop(bl_flver, "Unicode", bool, default=True),
             unk_x4a=get_bl_prop(bl_flver, "Unk x4a", int, default=False, callback=bool),
             unk_x4c=get_bl_prop(bl_flver, "Unk x4c", int, default=0),
