@@ -943,7 +943,7 @@ class FLVERImporter:
         for material in self.new_materials:
             bl_mesh.materials.append(material)
 
-        if any(mesh.invalid_layout_size for mesh in flver.submeshes):
+        if any(mesh.invalid_layout for mesh in flver.submeshes):
             # Corrupted sub-meshes. Leave empty.
             # TODO: Should be able to handle known cases of this by redirecting to the correct vertex buffers.
             return self.create_obj(f"{name} <INVALID>", bl_mesh, parent_to_flver_root=False)

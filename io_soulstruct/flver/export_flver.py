@@ -16,7 +16,7 @@ from soulstruct.base.models.flver import FLVER, Version
 from soulstruct.base.models.flver.bone import FLVERBone
 from soulstruct.base.models.flver.material import Material, Texture
 from soulstruct.base.models.flver.submesh import Submesh, FaceSet
-from soulstruct.base.models.flver.vertex import VertexBuffer, BufferLayout, MemberType
+from soulstruct.base.models.flver.vertex_array import *
 from soulstruct.utilities.maths import Vector3, Matrix3
 
 from io_soulstruct.utilities import *
@@ -582,7 +582,7 @@ class FLVERExporter:
             material = self.create_material(bl_material, mtd_info=mtd_info, prefix=material_prefix)
 
             # TODO: Choose default layout factory with an export enum.
-            layout_factory = BufferLayoutFactory(layout_member_unk_x00)
+            layout_factory = VertexDataLayoutFactory(layout_member_unk_x00)
             if use_chr_layout:
                 buffer_layout = layout_factory.get_ds1_chr_buffer_layout(mtd_info)
             else:
