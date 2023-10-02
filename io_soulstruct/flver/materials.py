@@ -20,7 +20,7 @@ def get_submesh_blender_material(
     material: Material,
     material_name: str,
     mtd_info: MTDInfo,
-    mesh: Submesh,
+    submesh: Submesh,
     blend_mode="HASHED",
 ) -> bpy.types.Material:
     """Create a new material in the current Blender scene from a FLVER material.
@@ -199,12 +199,12 @@ def get_submesh_blender_material(
         builder.link(normal_map_node.outputs["Normal"], bsdf_node.inputs["Normal"])
 
     # Set additional real and custom properties from FLVER submesh.
-    bl_material["Is Bind Pose"] = mesh.is_bind_pose
+    bl_material["Is Bind Pose"] = submesh.is_bind_pose
     # NOTE: This index is sometimes invalid for vanilla map FLVERs (e.g., 1 when there is only one bone).
-    bl_material["Default Bone Index"] = mesh.default_bone_index
+    bl_material["Default Bone Index"] = submesh.default_bone_index
     # Currently, main face set is simply copied to all additional face sets on export.
-    bl_material["Face Set Count"] = len(mesh.face_sets)
-    bl_material.use_backface_culling = mesh.cull_back_faces
+    bl_material["Face Set Count"] = len(submesh.face_sets)
+    bl_material.use_backface_culling = submesh.cull_back_faces
 
     return bl_material
 

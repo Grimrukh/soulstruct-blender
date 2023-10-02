@@ -44,7 +44,7 @@ from bpy.props import StringProperty, FloatProperty, BoolProperty, EnumProperty,
 from bpy_extras.io_utils import ImportHelper
 from mathutils import Vector, Matrix
 
-from soulstruct.base.models.flver import FLVER, Dummy
+from soulstruct.base.models.flver import FLVER, Dummy, Material
 from soulstruct.base.models.flver.mesh_tools import MergedMesh
 from soulstruct.containers import Binder, DCXType
 from soulstruct.containers.tpf import TPFTexture, batch_get_tpf_texture_png_data
@@ -702,8 +702,6 @@ class FLVERImporter:
         else:
             self.warning("No TPF files or DDS dump folder given. No textures loaded for FLVER.")
 
-        mtd_infos = self.get_mtd_infos(flver, settings.mtd_manager)
-
         # TODO:
         #     - The FLVER exporter will start by creating a FLVER material for every Blender material, then
         #     merge any FLVER materials with the same hash (after storing the four Mesh properties above), and
@@ -712,63 +710,76 @@ class FLVERImporter:
         #     total weighted bones across its vertices. These split submeshes will have the same FLVER material
         #     and the same Mesh properties, as per each Blender material.
 
-        # Maps FLVER mesh material index to Blender material index, which may be a variant of the same FLVER material.
-        bl_material_indices = np.empty(len(flver.materials), dtype=np.int32)
+        # Maps FLVER submeshes to their Blender material index to store per-face in the merged mesh. (Submeshes that
+        # originally indexed the same FLVER material may have different Blender 'variant' materials that hold certain
+        # Submesh/FaceSet properties like `cull_back_faces`).
+        submesh_bl_material_indices = []
 
-        flver_material_variants = {}  # maps FLVER material indices to Blender material indices
+        # Hashes FLVER materials and maps them to the indices of variant Blender materials sourced from them, which hold
+        # distinct Submesh/FaceSet properties.
+        flver_material_hash_variants = {}
+
         self.new_materials = []
-        for mesh in flver.submeshes:
-            material = flver.materials[mesh.material_index]
-            if mesh.material_index not in flver_material_variants:
+        for submesh in flver.submeshes:
+            material = submesh.material
+            material_hash = hash(material)  # NOTE: if there are duplicate FLVER materials, this will combine them
+            if material_hash not in flver_material_hash_variants:
                 # First time this FLVER material has been encountered. Create it in Blender now.
                 # NOTE: Vanilla material names are unused and essentially worthless. They can also be the same for
                 #  materials that actually use different lightmaps, EVEN INSIDE the same FLVER model. Names are changed
                 #  here to just reflect the index. The original name is NOT kept to avoid stacking up formatting on
                 #  export/import and because it is so useless anyway.
+                flver_material_index = len(flver_material_hash_variants)
                 bl_material_index = len(self.new_materials)
                 bl_material = get_submesh_blender_material(
                     self.operator,
                     material,
-                    material_name=f"{self.name} Material {mesh.material_index}",  # no Variant suffix
-                    mtd_info=mtd_infos[mesh.material_index],
-                    mesh=mesh,
+                    material_name=f"{self.name} Material {flver_material_index}",  # no Variant suffix
+                    mtd_info=self.get_mtd_info(material, settings.mtd_manager),
+                    submesh=submesh,
                     blend_mode=settings.material_blend_mode,
                 )  # type: bpy.types.Material
 
-                bl_material_indices[mesh.material_index] = bl_material_index
-                flver_material_variants[mesh.material_index] = [bl_material_index]
+                submesh_bl_material_indices.append(bl_material_index)
+                flver_material_hash_variants[material_hash] = [bl_material_index]
                 self.new_materials.append(bl_material)
-            else:
-                # Check if Blender material needs to be duplicated as a variant with different Mesh properties.
-                for existing_bl_material_index in flver_material_variants[mesh.material_index]:
-                    # NOTE: We do not care about enforcing any maximum submesh local bone count in Blender. The FLVER
-                    # exporter will create additional split submeshes as necessary for that.
-                    existing_bl_material = self.new_materials[existing_bl_material_index]
-                    if (
-                        existing_bl_material["Is Bind Pose"] == mesh.is_bind_pose
-                        and existing_bl_material["Default Bone Index"] == mesh.default_bone_index
-                        and existing_bl_material["Face Set Count"] == len(mesh.face_sets)
-                        and existing_bl_material.use_backface_culling == mesh.face_sets[0].cull_back_faces
-                    ):
-                        # Blender material already exists with the same Mesh properties.
-                        bl_material_indices[mesh.material_index] = existing_bl_material_index
-                        continue
 
-                # No match found. New Blender material variant is needed to hold unique submesh data.
-                variant_index = len(flver_material_variants[mesh.material_index])
-                bl_material = get_submesh_blender_material(
-                    self.operator,
-                    material,
-                    material_name=f"{self.name} Material {mesh.material_index} <Variant {variant_index}>",
-                    mtd_info=mtd_infos[mesh.material_index],
-                    mesh=mesh,
-                    blend_mode=settings.material_blend_mode,
-                )  # type: bpy.types.Material
+                continue
 
-                new_bl_material_index = len(self.new_materials)
-                bl_material_indices[mesh.material_index] = new_bl_material_index
-                flver_material_variants[mesh.material_index].append(new_bl_material_index)
-                self.new_materials.append(bl_material)
+            existing_variant_bl_indices = flver_material_hash_variants[material_hash]
+
+            # Check if Blender material needs to be duplicated as a variant with different Mesh properties.
+            for existing_bl_material_index in existing_variant_bl_indices:
+                # NOTE: We do not care about enforcing any maximum submesh local bone count in Blender. The FLVER
+                # exporter will create additional split submeshes as necessary for that.
+                existing_bl_material = self.new_materials[existing_bl_material_index]
+                if (
+                    existing_bl_material["Is Bind Pose"] == submesh.is_bind_pose
+                    and existing_bl_material["Default Bone Index"] == submesh.default_bone_index
+                    and existing_bl_material["Face Set Count"] == len(submesh.face_sets)
+                    and existing_bl_material.use_backface_culling == submesh.cull_back_faces
+                ):
+                    # Blender material already exists with the same Mesh properties. No new variant neeed.
+                    submesh_bl_material_indices.append(existing_bl_material_index)
+                    continue
+
+            # No match found. New Blender material variant is needed to hold unique submesh data.
+            variant_index = len(existing_variant_bl_indices)
+            first_material = self.new_materials[existing_variant_bl_indices[0]]
+            variant_name = first_material.name + f" <Variant {variant_index}>"
+            bl_material = get_submesh_blender_material(
+                self.operator,
+                material,
+                material_name=variant_name,
+                mtd_info=self.get_mtd_info(material, settings.mtd_manager),
+                submesh=submesh,
+                blend_mode=settings.material_blend_mode,
+            )  # type: bpy.types.Material
+
+            new_bl_material_index = len(self.new_materials)
+            submesh_bl_material_indices.append(new_bl_material_index)
+            flver_material_hash_variants[material_hash].append(new_bl_material_index)
+            self.new_materials.append(bl_material)
 
         flver_material_uv_layer_names = [mtd_info.get_uv_layer_names() for mtd_info in mtd_infos]
 
@@ -822,25 +833,21 @@ class FLVERImporter:
 
         return bl_flver_mesh  # might be used by other importers
 
-    def get_mtd_infos(self, flver: FLVER, mtd_manager: MTDBinderManager = None) -> list[MTDInfo]:
-        """Get `MTDInfo` for each FLVER material, which is needed for both material creation and assignment of vertex UV
+    def get_mtd_info(self, material: Material, mtd_manager: MTDBinderManager = None) -> MTDInfo:
+        """Get `MTDInfo` for a FLVER material, which is needed for both material creation and assignment of vertex UV
         data to the correct Blender UV data layer during mesh creation.
         """
         if not mtd_manager:
-            return [MTDInfo.from_mtd_name(material.mtd_name) for material in flver.materials]
+            return MTDInfo.from_mtd_name(material.mtd_name)
 
-        # Use real MTD files (much less guesswork).
-        mtd_infos = []  # type: list[MTDInfo]
-        for material in flver.materials:
-            try:
-                mtd = mtd_manager[material.mtd_name]
-            except KeyError:
-                self.warning(f"Could not find MTD '{material.mtd_name}' in MTD dict. Guessing info from name.")
-                mtd_info = MTDInfo.from_mtd_name(material.mtd_name)
-            else:
-                mtd_info = MTDInfo.from_mtd(mtd)
-            mtd_infos.append(mtd_info)
-        return mtd_infos
+        # Use real MTD file (much less guesswork).
+        try:
+            mtd = mtd_manager[material.mtd_name]
+        except KeyError:
+            self.warning(f"Could not find MTD '{material.mtd_name}' in MTD dict. Guessing info from name.")
+            return MTDInfo.from_mtd_name(material.mtd_name)
+        else:
+            return MTDInfo.from_mtd(mtd)
 
     def create_armature(self, base_edit_bone_length: float) -> bpy.types.Object:
         """Create a new Blender armature to serve as the parent object for the entire FLVER."""
