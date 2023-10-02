@@ -16,7 +16,7 @@ from soulstruct.containers.dcx import DCXType
 
 from soulstruct.containers import Binder, BinderEntry
 from soulstruct.base.models.flver import FLVER, Version
-from soulstruct.base.models.flver.vertex import VertexBuffer, BufferLayout, LayoutMember, MemberType, MemberFormat
+from soulstruct.base.models.flver.vertex_array import VertexArrayLayout, VertexArray
 from soulstruct.utilities.maths import Vector3
 
 from io_soulstruct.utilities import *
