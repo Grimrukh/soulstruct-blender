@@ -245,15 +245,15 @@ class LoggingOperator(Operator):
     cleanup_callback: tp.Callable = None
 
     def info(self, msg: str):
-        print(f"# INFO: {msg}")
+        # print(f"# INFO: {msg}")
         self.report({"INFO"}, msg)
 
     def warning(self, msg: str):
-        print(f"# WARNING: {msg}")
+        # print(f"# WARNING: {msg}")
         self.report({"WARNING"}, msg)
 
     def error(self, msg: str) -> set[str]:
-        print(f"# ERROR: {msg}")
+        # print(f"# ERROR: {msg}")
         if self.cleanup_callback:
             try:
                 self.cleanup_callback()

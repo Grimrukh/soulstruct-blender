@@ -30,9 +30,10 @@ from soulstruct.base.textures.dds import texconv
 
 from io_soulstruct.utilities import MAP_STEM_RE
 
-TPF_RE = re.compile(rf"^(.*)\.tpf(\.dcx)?$")
-CHRBND_RE = re.compile(rf"^(.*)\.chrbnd(\.dcx)?$")
-AEG_STEM_RE = re.compile(r"^aeg(?P<aeg>\d\d\d)$")
+TPF_RE = re.compile(rf"^(?P<stem>.*)\.tpf(?P<dcx>\.dcx)?$")
+CHRBND_RE = re.compile(rf"^(?P<stem>.*)\.chrbnd(?P<dcx>\.dcx)?$")
+CHRTPFBHD_RE = re.compile(r"(?P<stem>.*)\.chrtpfbhd?$")  # never has DCX
+AEG_STEM_RE = re.compile(r"^aeg(?P<aeg>\d\d\d)$")  # checks stem only
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -527,7 +528,7 @@ class TextureManager:
 
     def _find_chr_tpfbdts(self, source_dir: Path, chrbnd: Binder):
         try:
-            tpfbhd_entry = chrbnd.find_entry_matching_name(r".*\.chrtpfbhd")
+            tpfbhd_entry = chrbnd.find_entry_matching_name(CHRTPFBHD_RE)
         except (EntryNotFoundError, ValueError):
             # Optional, so we don't complain.
             return

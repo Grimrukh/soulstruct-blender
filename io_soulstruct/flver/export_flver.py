@@ -356,11 +356,9 @@ class FLVERExporter:
 
     def warning(self, msg: str):
         self.operator.report({"WARNING"}, msg)
-        print(f"# WARNING: {msg}")
 
     def info(self, msg: str):
         self.operator.report({"INFO"}, msg)
-        print(f"# INFO: {msg}")
 
     def detect_is_bind_pose(self, bl_flver_mesh: bpy.types.MeshObject) -> str:
         """Detect whether bone data should be read from EditBones or PoseBones."""

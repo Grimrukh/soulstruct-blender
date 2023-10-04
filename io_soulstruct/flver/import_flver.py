@@ -699,22 +699,16 @@ class FLVERImporter:
         png_cache_directory = GlobalSettings.get_scene_settings(self.context).png_cache_directory
         if settings.texture_manager or png_cache_directory:
             p = time.perf_counter()
-            self.new_images = self.load_texture_images()
+            self.new_images = self.load_texture_images(settings.texture_manager)
             self.operator.info(f"Loaded {len(self.new_images)} textures in {time.perf_counter() - p:.3f} seconds.")
         else:
             self.warning("No TPF files or DDS dump folder given. No textures loaded for FLVER.")
 
-        # TODO:
-        #     - The FLVER exporter will start by creating a FLVER material for every Blender material, then
-        #     merge any FLVER materials with the same hash (after storing the four Mesh properties above), and
-        #     point all submeshes to the same single FLVER material.
-        #     - It will also automatically create a new FLVER submesh every time the current one exceeds 38
-        #     total weighted bones across its vertices. These split submeshes will have the same FLVER material
-        #     and the same Mesh properties, as per each Blender material.
-
-        # Maps FLVER submeshes to their Blender material index to store per-face in the merged mesh. (Submeshes that
-        # originally indexed the same FLVER material may have different Blender 'variant' materials that hold certain
-        # Submesh/FaceSet properties like `cull_back_faces`).
+        # Maps FLVER submeshes to their Blender material index to store per-face in the merged mesh.
+        # Submeshes that originally indexed the same FLVER material may have different Blender 'variant' materials that
+        # hold certain Submesh/FaceSet properties like `cull_back_faces`.
+        # Conversely, Submeshes that only serve to handle per-submesh bone maximums (e.g. 38 in DS1) will use the same
+        # Blender material and be split again automatically on export (but likely not in an indentical way!).
         submesh_bl_material_indices = []
 
         # Map FLVER material hashes to the indices of variant Blender materials sourced from them, which hold distinct
@@ -731,7 +725,7 @@ class FLVERImporter:
             flver_material_mtd_infos[material_hash] = mtd_info
 
         self.new_materials = []
-        for submesh in flver.submeshes:
+        for s_i, submesh in enumerate(flver.submeshes):
             material = submesh.material
             material_hash = hash(material)  # NOTE: if there are duplicate FLVER materials, this will combine them
             if material_hash not in flver_material_hash_variants:
@@ -760,19 +754,24 @@ class FLVERImporter:
             existing_variant_bl_indices = flver_material_hash_variants[material_hash]
 
             # Check if Blender material needs to be duplicated as a variant with different Mesh properties.
+            found_existing_material = False
             for existing_bl_material_index in existing_variant_bl_indices:
                 # NOTE: We do not care about enforcing any maximum submesh local bone count in Blender! The FLVER
                 # exporter will create additional split submeshes as necessary for that.
                 existing_bl_material = self.new_materials[existing_bl_material_index]
                 if (
-                    existing_bl_material["Is Bind Pose"] == submesh.is_bind_pose
+                    bool(existing_bl_material["Is Bind Pose"]) == submesh.is_bind_pose
                     and existing_bl_material["Default Bone Index"] == submesh.default_bone_index
                     and existing_bl_material["Face Set Count"] == len(submesh.face_sets)
                     and existing_bl_material.use_backface_culling == submesh.cull_back_faces
                 ):
                     # Blender material already exists with the same Mesh properties. No new variant neeed.
                     submesh_bl_material_indices.append(existing_bl_material_index)
-                    continue
+                    found_existing_material = True
+                    break
+
+            if found_existing_material:
+                continue
 
             # No match found. New Blender material variant is needed to hold unique submesh data.
             variant_index = len(existing_variant_bl_indices)
@@ -1378,7 +1377,6 @@ class FLVERImporter:
         return obj
 
     def warning(self, warning: str):
-        print(f"# WARNING: {warning}")
         self.operator.report({"WARNING"}, warning)
 
     @property
