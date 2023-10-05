@@ -3,6 +3,7 @@ from __future__ import annotations
 
 __all__ = [
     "GameNames",
+    "GAME_DEFAULTS",
     "GlobalSettings",
     "GameFiles",
     "GlobalSettingsPanel",
@@ -42,6 +43,14 @@ class GameNames:
     DS3 = "DS3"
     # TODO: More to add, obviously.
     ER = "ER"  # Elden Ring
+
+
+GAME_DEFAULTS = {
+    GameNames.DS1R: {
+        "chrbnd_flver_id": 200,
+        "chrbnd_flver_path": "N:\\FRPG\\data\\INTERROOT_x64\\chr\\{stem}\\{stem}.flver",
+    },
+}
 
 
 class GlobalSettings(bpy.types.PropertyGroup):

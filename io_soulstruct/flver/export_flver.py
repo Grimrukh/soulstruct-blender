@@ -1,26 +1,26 @@
 from __future__ import annotations
 
-__all__ = ["ExportFLVER", "ExportFLVERIntoBinder", "ExportFLVERToMapDirectory"]
+__all__ = ["ExportFLVER", "ExportFLVERIntoBinder", "ExportMapPieceFLVERs", "ExportCharacterFLVER"]
 
 import traceback
 import typing as tp
 from dataclasses import dataclass
 from pathlib import Path
 
+import numpy as np
+
 import bpy
 from bpy.props import StringProperty, FloatProperty, BoolProperty, IntProperty
 from bpy_extras.io_utils import ExportHelper
 
 from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
-from soulstruct.base.models.flver import FLVER, Version
-from soulstruct.base.models.flver.bone import FLVERBone
-from soulstruct.base.models.flver.material import Material, Texture
-from soulstruct.base.models.flver.submesh import Submesh, FaceSet
+from soulstruct.base.models.flver import FLVER, Version, FLVERBone, Material, Texture, Dummy
 from soulstruct.base.models.flver.vertex_array import *
+from soulstruct.base.models.flver.mesh_tools import MergedMesh
 from soulstruct.utilities.maths import Vector3, Matrix3
 
 from io_soulstruct.utilities import *
-from io_soulstruct.general import GameNames, GlobalSettings
+from io_soulstruct.general import *
 from .utilities import *
 
 DEBUG_MESH_INDEX = None
@@ -64,15 +64,58 @@ class ExportFLVERMixin:
         default=False,
     )
 
-    def get_single_selected_bl_mesh(self, context):
+    @staticmethod
+    def parse_flver_obj(obj: bpy.types.Object) -> tuple[bpy.types.MeshObject, tp.Optional[bpy.types.ArmatureObject]]:
+        """Parse a Blender object into a Mesh and (optional) Armature object."""
+        if obj.type == "MESH":
+            mesh = obj
+            armature = mesh.parent if mesh.parent is not None and mesh.parent.type == "ARMATURE" else None
+        elif obj.type == "ARMATURE":
+            armature = obj
+            mesh_children = [child for child in armature.children if child.type == "MESH"]
+            if not mesh_children:
+                raise FLVERExportError(f"Armature '{armature.name}' has no Mesh children.")
+            elif len(mesh_children) > 1:
+                raise FLVERExportError(
+                    f"Armature '{armature.name}' has multiple Mesh children. You must select the exact Mesh you want "
+                    f"to export; this parent Armature will be used automatically."
+                )
+            mesh = mesh_children[0]
+        else:
+            raise FLVERExportError(f"Selected object '{obj.name}' is not a Mesh or Armature.")
+
+        return mesh, armature
+
+    @staticmethod
+    def get_selected_flver(context) -> tuple[bpy.types.MeshObject, tp.Optional[bpy.types.ArmatureObject]]:
+        """Get the Mesh and (optional) Armature components of a single selected FLVER object of either type."""
         if not context.selected_objects:
-            return self.error("No FLVER mesh selected.")
+            raise FLVERExportError("No FLVER Mesh or Armature selected.")
         elif len(context.selected_objects) > 1:
-            return self.error("Multiple objects selected. Exactly one FLVER mesh object must be selected.")
-        bl_flver_root = context.selected_objects[0]
-        if bl_flver_root.type != "MESH":
-            return self.error(f"Selected object '{bl_flver_root.name}' is not a Mesh.")
-        return bl_flver_root
+            raise FLVERExportError("Multiple objects selected. Exactly one FLVER Mesh or Armature must be selected.")
+        obj = context.selected_objects[0]
+        return ExportFLVERMixin.parse_flver_obj(obj)
+
+    @staticmethod
+    def get_selected_flvers(context) -> list[tuple[bpy.types.MeshObject, tp.Optional[bpy.types.ArmatureObject]]]:
+        """Get the Mesh and (optional) Armature components of ALL selected FLVER objects of either type."""
+        if not context.selected_objects:
+            raise FLVERExportError("No FLVER Meshes or Armatures selectesd.")
+        return [
+            ExportFLVERMixin.parse_flver_obj(obj)
+            for obj in context.selected_objects
+        ]
+
+    def get_default_flver_stem(self, mesh, armature) -> str:
+        """Returns the name that should be used (by default) for the exported FLVER, warning if the Mesh and Armature
+        objects have different names."""
+        name = mesh.name.split(" ")[0]
+        if armature and (armature_name := armature.name.split(" ")[0]) != name:
+            self.warning(
+                f"Mesh '{name}' and Armature '{armature_name}' do not use the same FLVER name. Using Armature name."
+            )
+            return armature_name
+        return name
 
     def get_export_settings(self, context):
         settings = GlobalSettings.get_scene_settings(context)
@@ -98,19 +141,28 @@ class ExportFLVER(LoggingOperator, ExportHelper, ExportFLVERMixin):
 
     @classmethod
     def poll(cls, context):
-        """One FLVER mesh object selected. Armature child is optional (absent -> a single FLVER bone at origin)."""
-        return len(context.selected_objects) == 1 and context.selected_objects[0].type == "MESH"
+        """One FLVER Armature or Mesh object must be selected.
+
+        If a Mesh is selected, it does not need an Armature parent - if it doesn't, a default FLVER skeleton with a
+        single eponymous bone at the origin will be exported
+        """
+        return len(context.selected_objects) == 1 and context.selected_objects[0].type in {"MESH", "ARMATURE"}
 
     def execute(self, context):
-        bl_flver_root = self.get_single_selected_bl_mesh(context)
+        try:
+            mesh, armature = self.get_selected_flver(context)
+        except FLVERExportError as ex:
+            return self.error(str(ex))
+
         dcx_type = GlobalSettings.resolve_dcx_type(self.dcx_type, "FLVER", False, context)
 
         flver_file_path = Path(self.filepath)
         self.to_object_mode()
         exporter = FLVERExporter(self, context, self.get_export_settings(context))
+        name = flver_file_path.name.split(".")[0]
 
         try:
-            flver = exporter.export_flver(bl_flver_root)
+            flver = exporter.export_flver(mesh, armature, name=name)
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Cannot get exported FLVER. Error: {ex}")
@@ -128,7 +180,10 @@ class ExportFLVER(LoggingOperator, ExportHelper, ExportFLVERMixin):
 
 
 class ExportFLVERIntoBinder(LoggingOperator, ExportHelper, ExportFLVERMixin):
-    """Export a single FLVER model from a Blender mesh into a chosen game binder (BND/BHD)."""
+    """Export a single FLVER model from a Blender mesh into a chosen game binder (BND/BHD).
+
+    TODO: Does not support multiple FLVERs yet, but some objects do have more than one.
+    """
     bl_idname = "export_scene.flver_binder"
     bl_label = "Export FLVER Into Binder"
     bl_description = "Export a FLVER model file into a FromSoftware Binder (BND/BHD)"
@@ -151,7 +206,7 @@ class ExportFLVERIntoBinder(LoggingOperator, ExportHelper, ExportFLVERMixin):
         name="Default ID",
         description="Binder entry ID to use if a '.flver{.dcx}' entry does not already exist in Binder. If left as -1, "
                     "an existing entry MUST be found for export to proceed",
-        default=-1,
+        default=-1,  # TODO: default can very likely be set to 200 across all games
         min=-1,
     )
 
@@ -171,10 +226,15 @@ class ExportFLVERIntoBinder(LoggingOperator, ExportHelper, ExportFLVERMixin):
     @classmethod
     def poll(cls, context):
         """At least one Blender mesh selected."""
-        return len(context.selected_objects) == 1 and context.selected_objects[0].type == "MESH"
+        return len(context.selected_objects) == 1 and context.selected_objects[0].type in {"MESH", "ARMATURE"}
 
     def execute(self, context):
-        bl_flver_root = self.get_single_selected_bl_mesh(context)
+        try:
+            mesh, armature = self.get_selected_flver(context)
+        except FLVERExportError as ex:
+            return self.error(str(ex))
+
+        flver_stem = self.get_default_flver_stem(mesh, armature)
 
         dcx_type = GlobalSettings.resolve_dcx_type(self.dcx_type, "FLVER", True, context)
 
@@ -188,10 +248,10 @@ class ExportFLVERIntoBinder(LoggingOperator, ExportHelper, ExportFLVERMixin):
         exporter = FLVERExporter(self, context, self.get_export_settings(context))
 
         try:
-            flver = exporter.export_flver(bl_flver_root)
+            flver = exporter.export_flver(mesh, armature, name=flver_stem)
         except Exception as ex:
             traceback.print_exc()
-            return self.error(f"Cannot create exported FLVER from Blender object '{bl_flver_root}'. Error: {ex}")
+            return self.error(f"Cannot create exported FLVER from Blender Mesh '{flver_stem}'. Error: {ex}")
 
         flver_entries = binder.find_entries_matching_name(r".*\.flver(\.dcx)?")
         if not flver_entries:
@@ -201,7 +261,7 @@ class ExportFLVERIntoBinder(LoggingOperator, ExportHelper, ExportFLVERMixin):
                 flver_entry = binder.find_entry_id(self.default_entry_id)
             except EntryNotFoundError:
                 # Create new entry.
-                entry_path = self.default_entry_path.format(name=bl_flver_root.name)
+                entry_path = self.default_entry_path.format(name=flver_stem)
                 flver_entry = BinderEntry(
                     b"", entry_id=self.default_entry_id, path=entry_path, flags=self.default_entry_flags
                 )
@@ -221,7 +281,7 @@ class ExportFLVERIntoBinder(LoggingOperator, ExportHelper, ExportFLVERMixin):
         flver.dcx_type = dcx_type
 
         try:
-            flver_entry.set_from_binary_file(flver)  # DCX will default to None here from exporter function
+            flver_entry.set_from_binary_file(flver)  # DCX will default to `None` here from exporter function
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Cannot write exported FLVER. Error: {ex}")
@@ -238,7 +298,7 @@ class ExportFLVERIntoBinder(LoggingOperator, ExportHelper, ExportFLVERMixin):
         return {"FINISHED"}
 
 
-class ExportFLVERToMapDirectory(LoggingOperator, ExportFLVERMixin):
+class ExportMapPieceFLVERs(LoggingOperator, ExportFLVERMixin):
     bl_idname = "export_scene_map.flver"
     bl_label = "Export Map Piece"
     bl_description = (
@@ -247,19 +307,17 @@ class ExportFLVERToMapDirectory(LoggingOperator, ExportFLVERMixin):
 
     @classmethod
     def poll(cls, context):
-        """One or more 'm*' Meshes selected."""
+        """One or more 'm*' Armatures or Meshes selected."""
         return (
             len(context.selected_objects) > 0
-            and all(obj.type == "MESH" and obj.name[0] == "m" for obj in context.selected_objects)
+            and all(obj.type in {"MESH", "ARMATURE"} and obj.name[0] == "m" for obj in context.selected_objects)
         )
 
     def execute(self, context):
-        if not context.selected_objects:
-            
-            return self.error("No FLVER mesh objects selected.")
-        for flver_obj in context.selected_objects:
-            if flver_obj.type != "MESH":
-                return self.error(f"Selected object '{flver_obj.name}' is not a Mesh.")
+        try:
+            meshes_armatures = self.get_selected_flvers(context)
+        except FLVERExportError as ex:
+            return self.error(str(ex))
 
         settings = GlobalSettings.get_scene_settings(context)
         game_directory = settings.game_directory
@@ -274,36 +332,123 @@ class ExportFLVERToMapDirectory(LoggingOperator, ExportFLVERMixin):
         if not (map_dir_path := Path(game_directory, "map", map_stem)).is_dir():
             return self.error(f"Invalid game map directory: {map_dir_path}")
 
-        if not context.selected_objects:
-            return self.error("No FLVER mesh objects selected.")
-
         self.to_object_mode()
 
         exporter = FLVERExporter(self, context, self.get_export_settings(context))
 
-        for flver_obj in context.selected_objects:
-            if flver_obj.type != "MESH":
-                return self.error(f"Selected object '{flver_obj.name}' is not a Mesh.")
-            flver_obj: bpy.types.MeshObject
-            flver_name = flver_obj.name.split(" ")[0] + ".flver"  # DCX will be added automatically below if needed
+        for mesh, armature in meshes_armatures:
+            flver_stem = self.get_default_flver_stem(mesh, armature)
+
             try:
-                flver = exporter.export_flver(flver_obj)
+                flver = exporter.export_flver(mesh, armature, name=flver_stem)
             except Exception as ex:
                 traceback.print_exc()
-                return self.error(f"Cannot get exported FLVER. Error: {ex}")
+                return self.error(f"Cannot get exported FLVER '{flver_stem}'. Error: {ex}")
+
             flver.dcx_type = dcx_type
             try:
                 # Will create a `.bak` file automatically if absent, and add `.dcx` extension if necessary.
-                written_path = flver.write(map_dir_path / flver_name)
+                written_path = flver.write(map_dir_path / f"{flver_stem}.flver")
             except Exception as ex:
                 traceback.print_exc()
-                return self.error(f"Cannot write exported FLVER. Error: {ex}")
+                return self.error(f"Cannot write exported FLVER '{flver_stem}'. Error: {ex}")
             self.info(f"Exported FLVER to: {written_path}")
 
         return {"FINISHED"}
 
 
-# TODO: 'Export FLVER To CHRBND' auto operator that uses a set CHRBND name like `c1234` (can be existing or new).
+class ExportCharacterFLVER(LoggingOperator, ExportFLVERMixin):
+    """Export a single FLVER model from a Blender mesh into a pre-selected CHRBND in the game directory."""
+    bl_idname = "export_scene.chrbnd_flver"
+    bl_label = "Export Character FLVER"
+    bl_description = "Export a FLVER model file into chosen CHRBND binder"
+
+    # NOTE: Always overwrites existing entry. DCX type and `BinderEntry` defaults are game-dependent.
+
+    @classmethod
+    def poll(cls, context):
+        """Must select an Armature parent for a character FLVER. No chance of a default skeleton!"""
+        game_lists = context.scene.game_files  # type: GameFiles
+        if game_lists.chrbnd in {"", "0"}:
+            return False
+        return len(context.selected_objects) == 1 and context.selected_objects[0].type == "ARMATURE"
+
+    def execute(self, context):
+        try:
+            mesh, armature = self.get_selected_flver(context)
+        except FLVERExportError as ex:
+            return self.error(str(ex))
+        if armature is None:
+            return self.error("Must select an Armature parent to auto-export a character FLVER.")
+
+        settings = GlobalSettings.get_scene_settings(context)
+        game_lists = context.scene.game_files  # type: GameFiles
+
+        chrbnd_path = game_lists.chrbnd
+        if not chrbnd_path:
+            return self.error("No CHRBND selected.")
+        chrbnd_path = Path(chrbnd_path)
+        if not chrbnd_path.is_file():
+            return self.error(f"CHRBND path is not a file: {chrbnd_path}.")
+
+        self.info(f"Exporting FLVER into CHRBND: {chrbnd_path}")
+
+        chrbnd = Binder.from_path(chrbnd_path)
+        flver_stem = chrbnd_path.name.split(".")[0]
+
+        # We replace an existing FLVER entry if it exists, or use the game default ID otherwise.
+        flver_entries = chrbnd.find_entries_matching_name(r".*\.flver(\.dcx)?")
+        if not flver_entries:
+            try:
+                entry_id = GAME_DEFAULTS[settings.game]["chrbnd_flver_id"]
+            except KeyError:
+                return self.error(f"No FLVER files found in CHRBND and don't know default ID for game {settings.game}.")
+
+            try:
+                flver_entry = chrbnd.find_entry_id(entry_id)
+            except EntryNotFoundError:
+                # Create new entry.
+                try:
+                    default_entry_path = GAME_DEFAULTS[settings.game]["chrbnd_flver_path"].format(stem=flver_stem)
+                except KeyError:
+                    return self.error(
+                        f"Entry {entry_id} not found in CHRBND and don't know default path for game {settings.game}."
+                    )
+
+                flver_entry = BinderEntry(b"", entry_id=entry_id, path=default_entry_path, flags=0x2)
+        else:
+            if len(flver_entries) > 1:
+                self.warning(f"Multiple FLVER files found in CHRBND. Replacing first: {flver_entries[0].name}")
+            flver_entry = flver_entries[0]
+
+        dcx_type = GlobalSettings.resolve_dcx_type(self.dcx_type, "FLVER", True, context)
+
+        self.to_object_mode()
+        exporter = FLVERExporter(self, context, self.get_export_settings(context))
+        try:
+            flver = exporter.export_flver(mesh, armature, name=flver_stem)
+        except Exception as ex:
+            traceback.print_exc()
+            return self.error(f"Cannot create exported FLVER from Blender Mesh '{flver_stem}'. Error: {ex}")
+
+        flver.dcx_type = dcx_type
+
+        try:
+            flver_entry.set_from_binary_file(flver)  # DCX will default to `None` here from exporter function
+        except Exception as ex:
+            traceback.print_exc()
+            return self.error(f"Cannot write exported FLVER. Error: {ex}")
+
+        try:
+            # Will create a `.bak` file automatically if absent.
+            written_path = chrbnd.write()
+        except Exception as ex:
+            traceback.print_exc()
+            return self.error(f"Cannot write Binder with new FLVER. Error: {ex}")
+
+        self.info(f"Exported FLVER into Binder file: {written_path}")
+
+        return {"FINISHED"}
 
 
 @dataclass(slots=True)
@@ -321,7 +466,7 @@ class FLVERExporter:
     context: bpy.types.Context
     settings: FLVERExportSettings
 
-    def get_flver_props(self, bl_flver: bpy.types.Object, game: str) -> dict[str, tp.Any]:
+    def get_flver_props(self, bl_flver: bpy.types.MeshObject, game: str) -> dict[str, tp.Any]:
 
         try:
             version_str = bl_flver["Version"]
@@ -342,7 +487,7 @@ class FLVERExporter:
         else:
             version = Version[version_str]
 
-        # TODO: Any other-game-specific fields?.
+        # TODO: Any other game-specific fields?
         return dict(
             big_endian=get_bl_prop(bl_flver, "Is Big Endian", bool, default=False),
             version=version,
@@ -361,7 +506,12 @@ class FLVERExporter:
         self.operator.report({"INFO"}, msg)
 
     def detect_is_bind_pose(self, bl_flver_mesh: bpy.types.MeshObject) -> str:
-        """Detect whether bone data should be read from EditBones or PoseBones."""
+        """Detect whether bone data should be read from EditBones or PoseBones.
+
+        TODO: Best hack I can come up with, currently. I'm still not 100% sure if it's safe to assume that Submesh
+         `is_bind_pose` is consistent (or SHOULD be consistent) across all submeshes in a single FLVER. Objects in
+         particular could possibly lie somewhere between map pieces (False) and characters (True).
+        """
         read_bone_type = ""
         warn_partial_bind_pose = False
         for i in range(len(bl_flver_mesh.material_slots)):
@@ -381,116 +531,125 @@ class FLVERExporter:
                     break  # keep EDIT default
         if warn_partial_bind_pose:
             self.warning(
-                "Some materials in FLVER use `Is Bind Pose` (bone data written to EditBones in Blender; typical for "
-                "characters) and some do not (bone data written to PoseBones in Blender; typical for older map "
-                "pieces). Soulstruct will read all bone data from EditBones for export."
+                "Some materials in FLVER use `Is Bind Pose = True` (bone data written to EditBones in Blender; typical "
+                "for characters) and some do not (bone data written to PoseBones in Blender; typical for map pieces ). "
+                "Soulstruct will read all bone data from EditBones for export."
             )
         return read_bone_type
 
-    def export_flver(self, bl_flver_mesh: bpy.types.MeshObject) -> tp.Optional[FLVER]:
-        """Create an entire FLVER from a Blender object.
+    def export_flver(
+        self, mesh: bpy.types.MeshObject, armature: bpy.types.ArmatureObject | None, name: str
+    ) -> FLVER | None:
+        """Create an entire FLVER from Blender Mesh and (optional) Armature objects.
 
-        The Blender object should be a MESH object with one ARMATURE child (skeleton) and any number of EMPTY children
-        (dummies). The dummies should generally be parented to the armature so that they can attach to its bones; the
-        importer will create dummies this way, but any empties with the require dummy properties found on the same level
-        as the armature will also be exported (with no attached bone index).
+        The Mesh and Armature can have any number of Empty children, which are exported as dummies provided they have
+        the appropriate custom data (created upon Soulstruct import). Note that only dummies parented to the Armature
+        can be attached to Armature bones (which most will, realistically).
 
-        If the mesh has no armature, a default skeleton with a single bone at the model's origin (named after the model)
-        will be created. This is fine for 99% of map pieces, for example.
+        If `armature` is None, a default skeleton with a single bone at the model's origin will be created (which is why
+        `name` must be passed in). This is fine for 99% of map pieces, for example.
 
-        If the mesh object is missing certain 'FLVER' custom properties (see `get_flver_props`), they will be exported
-        with default values based on the current selected game.
+        If the Mesh object is missing certain 'FLVER' custom properties (see `get_flver_props`), they will be exported
+        with default values based on the current selected game, if able.
 
         TODO: Currently only really tested for DS1 FLVERs.
         """
-        if bl_flver_mesh.type != "MESH":
-            raise FLVERExportError("Selected object in Blender for FLVER export must be a Mesh.")
+        if mesh.type != "MESH":
+            raise FLVERExportError("`mesh` object passed to FLVER exporter must be a Mesh.")
+        if armature and armature.type != "ARMATURE":
+            raise FLVERExportError("`armature` object passed to FLVER exporter must be an Armature or `None`.")
 
-        flver = FLVER(**self.get_flver_props(bl_flver_mesh))
-        layout_member_unk_x00 = get_bl_prop(bl_flver_mesh, "Layout Member Unk x00", int, default=0)
+        scene_settings = GlobalSettings.get_scene_settings(self.context)
 
-        bl_armature = None  # type: bpy.types.ArmatureObject | None
-        bl_dummies = []  # type: list[tuple[bpy.types.Object, dict[str, tp.Any]]]
+        flver = FLVER(**self.get_flver_props(mesh, scene_settings.game))
 
-        for child_obj in bl_flver_mesh.children:
-            child_obj: bpy.types.ArmatureObject
-            if child_obj.type == "ARMATURE":
-                if bl_armature is not None:
-                    self.warning(f"Multiple Armature objects found under FLVER root. Ignoring: {child_obj.name}")
-                    continue
-                # noinspection PyTypeChecker
-                bl_armature = child_obj
-                for armature_child in child_obj.children:
-                    if armature_child.type == "EMPTY":
-                        if dummy_dict := self.parse_dummy_empty(armature_child, bl_flver_mesh.name):
-                            bl_dummies.append((armature_child, dummy_dict))
-                    else:
-                        self.warning(f"Non-Empty child object '{armature_child.name}' of Armature ignored.")
-            elif child_obj.type == "EMPTY":
-                if dummy_dict := self.parse_dummy_empty(child_obj, bl_flver_mesh.name):
-                    bl_dummies.append((child_obj, dummy_dict))
-            else:
-                self.warning(f"Non-Armature, non-Empty Child object '{child_obj.name}' of FLVER ignored.")
+        # TODO: Default can surely be auto-set from game.
+        layout_data_type_unk_x00 = get_bl_prop(mesh, "Layout Member Unk x00", int, default=0)
 
-        # NOTE: There do not have to be any dummies.
+        bl_dummies = self.collect_dummies(mesh, armature)
 
-        # Sort dummies and meshes by 'human sorting' on Blender name (should match order in Blender hierarchy view).
-        bl_dummies.sort(key=lambda o: natural_keys(o[0].name))
-
-        read_bone_type = self.detect_is_bind_pose(bl_flver_mesh)
-        self.info(f"Exporting FLVER '{bl_flver_mesh.name}' with bone data from {read_bone_type.capitalize()}Bones.")
-        if not bl_armature:
-            self.warning(
-                f"No Armature child of {bl_flver_mesh.name} found to export. "
-                f"Creating a single default bone at origin named '{bl_flver_mesh.name}'."
+        read_bone_type = self.detect_is_bind_pose(mesh)
+        self.info(f"Exporting FLVER '{mesh.name}' with bone data from {read_bone_type.capitalize()}Bones.")
+        if not armature:
+            self.info(  # not a warning
+                f"No Armature to export. Creating FLVER skeleton with a single origin bone named '{name}'."
             )
-            default_bone = FLVERBone(name=bl_flver_mesh.name)  # default transform and other fields
+            default_bone = FLVERBone(name=name)  # default transform and other fields
             flver.bones = [default_bone]
             bl_bone_names = [default_bone.name]
             bl_bone_data = None
         else:
-            flver.bones, bl_bone_names, bone_arma_transforms = self.create_bones(bl_armature, read_bone_type)
+            flver.bones, bl_bone_names, bone_arma_transforms = self.create_bones(armature, read_bone_type)
             flver.set_bone_armature_space_transforms(bone_arma_transforms)
-            bl_bone_data = bl_armature.data.bones
+            bl_bone_data = armature.data.bones
 
-        # Make FLVER root active object again.
-        self.context.view_layer.objects.active = bl_flver_mesh
+        # Make `mesh` the active object again.
+        self.context.view_layer.objects.active = mesh
 
         # noinspection PyUnresolvedReferences
         for bl_dummy, dummy_dict in bl_dummies:
-            game_dummy = self.create_dummy(bl_dummy, dummy_dict["reference_id"], bl_bone_names, bl_bone_data)
-            flver.dummies.append(game_dummy)
-            
-        # Create MTD Infos from materials, so we know which UV layers to use for which vertices.
-        mtd_infos = self.get_mtd_infos(bl_flver_mesh, self.settings.mtd_manager)
+            flver_dummy = self.export_dummy(bl_dummy, dummy_dict["reference_id"], bl_bone_names, bl_bone_data)
+            flver.dummies.append(flver_dummy)
 
-        # TODO: Current choosing default vertex buffer layout (CHR vs. MAP PIECE) based on read bone type, which in 
+        # `MTDInfo` for each Blender material is needed to determine which BLender UV layers to read for which loops.
+        mtd_infos = [
+            self.get_mtd_info(bl_material, self.settings.mtd_manager)
+            for bl_material in mesh.data.materials
+        ]
+
+        # TODO: Current choosing default vertex buffer layout (CHR vs. MAP PIECE) based on read bone type, which in
         #  turn depends on `mesh.is_bind_pose` at FLVER import. All a bit messily wired together...
-        self.create_meshes_materials_layouts(
+        self.export_submeshes(
             flver,
-            bl_flver_mesh,
+            mesh,
             bl_bone_names,
             use_chr_layout=read_bone_type == "EDIT",
-            material_prefix=bl_flver_mesh.name,
-            layout_member_unk_x00=layout_member_unk_x00,
+            strip_bl_material_prefix=name,
+            layout_data_type_unk_x00=layout_data_type_unk_x00,
             mtd_infos=mtd_infos,
         )
-
-        flver.sort_submesh_bone_indices()
 
         # TODO: Bone bounding box space seems to be always local to the bone for characters and always in armature space
         #  for map pieces. Not sure about objects, could be some of each (haven't found any non-origin bones that any
         #  vertices are weighted to with `is_bind_pose=True`). This is my temporary hack since we are already using
         #  'read_bone_type == POSE' as a marker for map pieces.
-
         # TODO: Better heuristic is likely to use the bone weights themselves (missing or all zero -> armature space).
+        flver.refresh_bone_bounding_boxes(in_local_space=read_bone_type == "EDIT")
+        
+        # Refresh `Submesh` and FLVER-wide bounding boxes.
+        # TODO: Partially redundant since splitter does this for submeshes automatically. Only need FLVER-wide bounds.
         flver.refresh_bounding_boxes()
-        flver.refresh_bone_bounding_boxes(in_armature_space=read_bone_type == "POSE")
 
         return flver
 
+    def collect_dummies(
+        self, mesh: bpy.types.MeshObject, armature: bpy.types.ArmatureObject | None
+    ) -> list[tuple[bpy.types.Object, dict[str, tp.Any]]]:
+        """Collect all Empty children of the Mesh and Armature objects, and return them as a list of tuples of the
+        form `(bl_empty, dummy_dict)`, where `dummy_dict` is the result of `parse_dummy_name` on the empty's name.
+
+        Dummies parented to the Mesh, rather than the Armature, will NOT be attached to any bones (though may still have
+        custom `Parent Bone Name` data).
+
+        Note that no dummies need exist in a FLVER (e.g. map pieces).
+        """
+        bl_dummies = []  # type: list[tuple[bpy.types.Object, dict[str, tp.Any]]]
+        children = list(mesh.children)
+        if armature:
+            children.extend(armature.children)
+        for child in children:
+            if child.type == "EMPTY":
+                if dummy_dict := self.parse_dummy_empty(child, mesh.name):
+                    bl_dummies.append((child, dummy_dict))
+            else:
+                self.warning(f"Non-Empty child object '{child.name}' of Mesh/Armature ignored.")
+
+        # Sort dummies and meshes by 'human sorting' on Blender name (should match order in Blender hierarchy view).
+        bl_dummies.sort(key=lambda o: natural_keys(o[0].name))
+        return bl_dummies
+
     def parse_dummy_empty(self, bl_empty: bpy.types.Object, expected_prefix: str) -> dict[str, tp.Any] | None:
-        """Check for required 'unk_x30' custom property to detect dummies."""
+        """Check for required 'Unk x30' custom property to detect dummies."""
         if bl_empty.get("Unk x30") is None:
             self.warning(
                 f"Empty child of FLVER '{bl_empty.name}' ignored. (Missing 'unk_x30' Dummy property and possibly "
@@ -509,139 +668,119 @@ class FLVERExporter:
         #  is being exported. Currently excluding all dummies with any 'other_model'.
         if dummy_dict["Other Model"]:
             return  # do not export
-        
-        if dummy_dict["name"] != expected_prefix:
+
+        if dummy_dict["flver_name"] != expected_prefix:
             self.warning(
-                f"Dummy '{bl_empty.name}' has unexpected FLVER name prefix '{dummy_dict['name']}. Exporting anyway."
+                f"Dummy '{bl_empty.name}' has unexpected FLVER name prefix '{dummy_dict['flver_name']}. Exporting it "
+                f"anyway."
             )
         return dummy_dict
 
-    def get_mtd_infos(self, bl_mesh: bpy.types.MeshObject, mtd_manager: MTDBinderManager = None) -> list[MTDInfo]:
-        """Get `MTDInfo` for each mesh material, which is needed to determine which UV layers are written for each 
-        vertex during FLVER mesh creation.
+    def get_mtd_info(self, bl_material: bpy.types.Material, mtd_manager: MTDBinderManager = None) -> MTDInfo:
+        """Get `MTDInfo` for a FLVER material, which is needed for both material creation and assignment of vertex UV
+        data to the correct Blender UV data layer during mesh creation.
         """
-        mtd_names = []
-        for bl_material in bl_mesh.data.materials:
-            try:
-                mtd_names.append(Path(bl_material["MTD Path"]).name)
-            except KeyError:
-                raise FLVERExportError(
-                    f"FLVER material '{bl_material.name}' has no 'MTD Path' custom property. This is required by "
-                    f"the game AND required by Soulstruct upon export to determine which UV layers to export."
-                )
-
+        mtd_name = Path(bl_material["MTD Name"]).name
         if not mtd_manager:
-            return [MTDInfo.from_mtd_name(mtd_name) for mtd_name in mtd_names]
+            return MTDInfo.from_mtd_name(mtd_name)
 
-        # Try to look up real MTD files (much less guesswork).
-        mtd_infos = []  # type: list[MTDInfo]
-        for mtd_name in mtd_names:
-            try:
-                mtd = mtd_manager[mtd_name]
-            except KeyError:
-                self.warning(f"Could not find MTD '{mtd_name}' in MTD dict. Guessing info from name.")
-                mtd_info = MTDInfo.from_mtd_name(mtd_name)
-            else:
-                mtd_info = MTDInfo.from_mtd(mtd)
-            mtd_infos.append(mtd_info)
-        return mtd_infos        
+        # Use real MTD file (much less guesswork).
+        try:
+            mtd = mtd_manager[mtd_name]
+        except KeyError:
+            self.warning(
+                f"Could not find MTD '{mtd_name}' from Blender material '{bl_material.name}' in MTD dict. "
+                f"Guessing info from name."
+            )
+            return MTDInfo.from_mtd_name(mtd_name)
+        return MTDInfo.from_mtd(mtd)
 
-    def create_meshes_materials_layouts(
+    def export_submeshes(
         self,
         flver: FLVER,
         bl_mesh: bpy.types.MeshObject,
         bl_bone_names: list[str],
         use_chr_layout: bool,
-        material_prefix: str,
-        layout_member_unk_x00: int,
+        strip_bl_material_prefix: str,
+        layout_data_type_unk_x00: int,
         mtd_infos: list[MTDInfo],
     ):
-        """Iterate over all FLVER meshes (usually just one), split them based on material, and create those materials
-        if necessary.
-
-        NOTE: Separately Blender mesh objects will ALWAYS be split in the FLVER (possibly with the same `Material`).
-        That is, only split your Blender meshes up to manually split the FLVER meshes up. (This is generally not
-        necessary or recommended!)
-
-        NOTE: Does NOT check if two materials are identical. Every Blender material that is actually used by at least
-        one Blender mesh face will be exported as a separate FLVER material. The string `material_prefix` (plus a space)
-        will be removed from these Blender material names if applicable (as material names are NOT unique identifiers
-        across FromSoft models and may co-exist in one Blend file).
         """
-        
-        # Create materials and buffer layouts. Note that multiple materials may re-use the same buffer layout; we hold
-        # both indices for FLVER submeshes to use, and also track the Blender UV layer names we require for the
-        # vertices in each submesh.
-        material_buffer_layout_indices = []  # type: list[int]  # one per Material
-        bl_uv_data_lists = {}  # type: dict[str, list]
-        material_uv_layers = []  # type: list[list[list[bpy.types.MeshUVLoop]]]  # indices: material, loop, UV index
-        for i, bl_material in enumerate(bl_mesh.data.materials):
-            mtd_info = mtd_infos[i]
-            material = self.create_material(bl_material, mtd_info=mtd_info, prefix=material_prefix)
+        TODO:
+            - First, we iterate over each Blender material slot used by `bl_mesh`.
+            - Each of these will be mapped (via simple same-length lists) to a split submesh index (to be written into
+              the `faces[:, 3]` of a `MergedMesh` for splitting), a FLVER `Material` and `VertexArrayLayout` (simply
+              created and stored with the matching `Material`), and miscellaneous kwargs for `Submesh` and `FaceSet`.
+            - NOTE: the Soulstruct `FLVER` writer automatically merges identical `Material` and `VertexArrayLayout`
+              instances, based on their hash, and remaps the indices used by `Submesh` to access them. We therefore
+              don't bother doing the same thing here, and creating duplicates wastes essentially no time at all compared
+              to creating and checking hashes again (we'd still need to traverse the Blender node tree).
+            - With this done, we can simply stack up all the Blender vertex and loop data into a new `MergedMesh` and
+              split it to get our ready-made `Submeshes` with their materials and layouts already attached.
+        """
 
-            # TODO: Choose default layout factory with an export enum.
-            layout_factory = VertexArrayLayoutFactory(layout_member_unk_x00)
+        # 1. Create per-submesh info. Note that every Blender material index is guaranteed to be mapped to AT LEAST ONE
+        #    split `Submesh` in the exported FLVER (more if submesh bone maximum is exceeded). This allows the user to
+        #    also split their submeshes manually in Blender, if they wish.
+        submesh_info = []  # type: list[tuple[Material, VertexArrayLayout, dict[str, tp.Any]]]
+        layout_factory = VertexArrayLayoutFactory(layout_data_type_unk_x00)
+        for mtd_info, bl_material in zip(mtd_infos, bl_mesh.data.materials):
+            # Some Blender materials may be variants representing distinct Submesh/FaceSet properties; these will be
+            # mapped to the same FLVER `Material`/`VertexArrayLayout` combo (created here).
+            flver_material = self.export_material(bl_material, mtd_info, strip_bl_material_prefix)
             if use_chr_layout:
-                buffer_layout = layout_factory.get_ds1_chr_buffer_layout(mtd_info)
+                array_layout = layout_factory.get_ds1_chr_array_layout(mtd_info)
             else:
-                buffer_layout = layout_factory.get_ds1_map_buffer_layout(mtd_info)
-            # Check if the same layout has already been defined to support another material. Layouts can be freely 
-            # re-used across different materials if they are identical.
-            try:  # dataclass equality check
-                buffer_layout_index = flver.buffer_layouts.index(buffer_layout)
-            except ValueError:
-                buffer_layout_index = len(flver.buffer_layouts)
-                flver.buffer_layouts.append(buffer_layout)
-            material_buffer_layout_indices.append(buffer_layout_index)
+                array_layout = layout_factory.get_ds1_map_array_layout(mtd_info)
+            submesh_kwargs = {
+                "is_bind_pose": get_bl_prop(bl_material, "Is Bind Pose", int, default=use_chr_layout, callback=bool),
+                "default_bone_index": get_bl_prop(bl_material, "Default Bone Index", int, default=0),
+                "backface_culling": bl_material.backface_culling,
+                "uses_bounding_box": True,  # TODO: assumption (DS1 and likely all later games)
+            }
 
-            # Get actual Blender UV layers. We extract them as Python lists now to avoid some weird address issue in
-            # Blender, but will want this for eventual NumPy accel anyway.
-            uv_layers = []
-            for uv_layer_name in mtd_info.get_uv_layer_names():
-                uv_data_list = bl_uv_data_lists.setdefault(
-                    uv_layer_name, list(bl_mesh.data.uv_layers[uv_layer_name].data)
-                )
-                uv_layers.append(uv_data_list)  # reference to same list
-            material_uv_layers.append(uv_layers)
-            
-            flver.materials.append(material)
-            self.operator.info(f"Created FLVER material: {material.name}")
+            submesh_info.append((flver_material, array_layout, submesh_kwargs))
+            flver.materials.append(flver_material)
+            self.operator.info(f"Created FLVER material: {flver_material.name}")
 
-        # Create vertex member defaults for re-use. Though mutable, these will never be modified here.
-        # TODO: If the FLVER returned by the exporter ever becomes modifiable by the user before writing, these defaults
-        #  will all need to be copied per vertex to avoid complete catastrophe!
-        empty = []
-        v3_zero = [0.0] * 3
-        v4_zero = [0.0] * 4
-        v4_int_zero = [0] * 4
+        # 2. Extract UV layers. (Yes, we iterate over Blender materials again, but it's worth the clarity of purpose.)
+        # Maps UV layer names to lists of `MeshUVLoop` instances (so they're converted only once across all materials).
+        
+        # TODO: Just using a list of all layers for now (removing the `material` index).
+        # Nested lists with indexing order: material, loop, UV index
+        # bl_uv_data_lists = {}  # type: dict[str, list]  # very annoying that we can't just grab the whole UV array!
+        # material_uv_layers = []  # type: list[list[list[bpy.types.MeshUVLoop]]]
+        # for mtd_info, bl_material in zip(mtd_infos, bl_mesh.data.materials, strict=True):
+        #     uv_layers = []
+        #     for uv_layer_name in mtd_info.get_uv_layer_names():
+        #         uv_data_list = bl_uv_data_lists.setdefault(
+        #             uv_layer_name, list(bl_mesh.data.uv_layers[uv_layer_name].data)
+        #         )
+        #         uv_layers.append(uv_data_list)  # reference to same list
+        #     material_uv_layers.append(uv_layers)
 
-        bl_mesh_data = bl_mesh.data  # type: bpy.types.Mesh
-        bl_mesh_props = self.get_mesh_props(bl_mesh)
+        all_uv_layer_names_set = set()
+        for mtd_info in mtd_infos:
+            all_uv_layer_names_set |= set(mtd_info.get_uv_layer_names())
+        uv_layers = sorted(all_uv_layer_names_set)  # e.g. ["UVMap1", "UVMap2", "UVMap3", "UVMapWindA", "UVMapWindB"]
+        uv_layer_data = [
+            list(bl_mesh.data.uv_layers[uv_layer_name].data)
+            for uv_layer_name in uv_layers
+        ]
 
-        # Maps Blender face material index to FLVER mesh, vertex hash -> index dict, and buffer layout instances.
-        flver_mesh_data = {}  # type: dict[int, tuple[Submesh, dict[int, int], BufferLayout]]
-
-        try:
-            vertex_colors_layer = bl_mesh_data.vertex_colors["VertexColors"]
-        except KeyError:
-            self.warning(f"FLVER mesh '{bl_mesh.name}' has no 'VertexColors' vertex colors data layer. Using black.")
-            loop_vertex_colors = [v4_zero] * len(bl_mesh_data.loops)
-        else:
-            loop_vertex_colors = [loop_color.color for loop_color in vertex_colors_layer.data]
-
-        vertex_groups = bl_mesh.vertex_groups  # for bone indices/weights
-
+        # 3. Prepare Mesh data.
+        mesh_data = bl_mesh.data  # type: bpy.types.Mesh
         # TODO: The tangent and bitangent of each vertex should be calculated from the UV map that is effectively
         #  serving as the normal map ('_n' displacement texture) for that vertex. However, for multi-texture mesh
         #  materials, vertex alpha blends two normal maps together, so the UV map for (bi)tangents will vary across
         #  the mesh and would require external calculation here. Working on that...
         #  For now, just calculating tangents from the first UV map.
-        #  Also note that FLVER only has Bitangent data for materials with two textures. Suspicious?
+        #  Also note that map piece FLVERs only have Bitangent data for materials with two textures. Suspicious?
         try:
             # TODO: This function calls the required `calc_normals_split()` automatically, but if it was replaced,
             #  a separate call of that would be needed to write the (rather inaccessible) custom split per-loop normal
             #  data (pink lines in 3D View overlay) and writes them to `loop.normal`.
-            bl_mesh_data.calc_tangents(uvmap="UVMap1")
+            mesh_data.calc_tangents(uvmap="UVMap1")
             # bl_mesh_data.calc_normals_split()
         except RuntimeError:
             raise RuntimeError(
@@ -649,237 +788,168 @@ class FLVERExporter:
                 "empty (delete any empty mesh)."
             )
 
-        bl_loop_normals = [loop.normal for loop in bl_mesh_data.loops]
+        # 4. Construct arrays from Blender data and pass into a new `MergedMesh`.
 
+        # Slow part number 1: iterating over every Blender vertex to retrieve its position and bone weights/indices.
+        # We at least know the size of the array in advance.
+        vertex_count = len(mesh_data.vertices)
+        vertex_data_dtype = [
+            ("position", "f", 3),  # TODO: support 4D position
+            ("bone_weights", "f", 4),
+            ("bone_indices", "i", 4),
+        ]
+        vertex_data = np.empty(vertex_count, dtype=vertex_data_dtype)
+        vertex_positions = np.empty((vertex_count, 3), dtype=np.float32)
+        vertex_bone_weights = np.zeros((vertex_count, 4), dtype=np.float32)  # default: 0.0
+        vertex_bone_indices = np.full((vertex_count, 4), -1, dtype=np.int32)  # default: -1
+
+        vertex_groups = bl_mesh.vertex_groups  # for bone indices/weights
         no_bone_warning_done = False
 
-        # TODO: This is the slow part: iterating over every face, and every loop of each face.
-        #  If the faces, loops, and relevant data layers can be retrieved in bulk and passed to a C++ module, that
-        #  could be a big boost. C++ could take a list of complete loop info - with each element containing essentially
-        #  the entire FLVER vertex key - and return a list of unique vertex keys and a list of indices into that list
-        #  to serve as the final FLVER face definitions. However, I'd then have to iterate over the near-full data set
-        #  twice (once to construct the lists to pass to C++ and again in C++ to find unique vertices), so it may not
-        #  be worth it.
-        for face in bl_mesh_data.polygons:
-            if len(face.loop_indices) != 3:
+        # TODO: Due to the unfortunate need to access Python attributes one by one, we need a `for` loop. Given the
+        #  retrieval of vertex bones, though, it's unlikely a simple `position` array assignment would remove the need.
+        for i, vertex in enumerate(mesh_data.vertices):
+            vertex_positions[i] = vertex.co
+            # for j, (bone_weight, bone_name) in enumerate(zip(vertex.groups, vertex_bone_weights[i])):
+
+            bone_indices = []  # global (splitter will make them local to submesh if appropriate)
+            bone_weights = []
+            for vertex_group in vertex.groups:  # only one for map pieces; max of 4 for other FLVER types
+                # Find mesh vertex group with this index.
+                for mesh_group in vertex_groups:
+                    if vertex_group.group == mesh_group.index:
+                        try:
+                            bone_index = bl_bone_names.index(mesh_group.name)
+                        except ValueError:
+                            raise FLVERExportError(
+                                f"Vertex is weighted to invalid bone name: '{mesh_group.name}'."
+                            )
+                        bone_indices.append(bone_index)
+                        # don't waste time calling `weight()` for map pieces
+                        if use_chr_layout:
+                            bone_weights.append(mesh_group.weight(i))
+                        break
+
+            if len(bone_indices) > 4:
                 raise FLVERExportError(
-                    f"Cannot export FLVER mesh '{bl_mesh.name}' with non-triangular faces (face index {face.index})."
+                    f"Vertex cannot be weighted to more than 4 bones ({len(bone_indices)} is too many)."
+                )
+            elif len(bone_indices) == 0:
+                if len(bl_bone_names) == 1 and not use_chr_layout:
+                    # Omitted bone indices can be assumed to be the only bone in the skeleton.
+                    if not no_bone_warning_done:
+                        self.warning(
+                            f"WARNING: At least one vertex in mesh '{bl_mesh.name}' is not weighted to any bones. "
+                            f"Weighting in 'map piece' mode to only bone in skeleton: '{bl_bone_names[0]}'"
+                        )
+                        no_bone_warning_done = True
+                    bone_indices = [0]  # padded out below
+                    # Leave weights as zero.
+                else:
+                    # Can't guess which bone to weight to. Raise error.
+                    raise FLVERExportError("Vertex is not weighted to any bones (cannot guess from multiple).")
+
+            if use_chr_layout:
+                # Pad out bone weights and (unused) indices for rigged meshes.
+                while len(bone_weights) < 4:
+                    bone_weights.append(0.0)
+                while len(bone_indices) < 4:
+                    bone_indices.append(-1)
+            else:  # map pieces
+                if len(bone_indices) == 1:
+                    bone_indices *= 4  # duplicate single-element list to four-element list
+                else:
+                    raise FLVERExportError(f"Non-CHR FLVER vertices must be weighted to exactly one bone (vertex {i}).")
+
+            vertex_bone_indices[i] = bone_indices
+            if bone_weights:  # rigged only
+                vertex_bone_weights[i] = bone_weights
+
+        vertex_data["position"] = vertex_positions
+        vertex_data["bone_weights"] = vertex_bone_weights
+        vertex_data["bone_indices"] = vertex_bone_indices
+
+        # TODO: Again, due to the unfortunate need to access Python attributes one by one, we need a `for` loop.
+        faces = np.empty((len(mesh_data.polygons), 4), dtype=np.int32)
+        for i, face in enumerate(mesh_data.polygons):
+            try:
+                faces[i] = [*face.loop_indices, face.material_index]
+            except ValueError:
+                raise FLVERExportError(
+                    f"Cannot export FLVER mesh '{bl_mesh.name}' with any non-triangle faces. "
+                    f"Face index {i} has {len(face.loop_indices)} sides)."
                 )
 
-            if face.material_index not in flver_mesh_data:
-                # We only create each FLVER submesh after encountering the first Blender face that actually uses that
-                # material slot. (Other materials will simply sit unused in the FLVER file.)
-                mesh = Submesh()
-                flver.submeshes.append(mesh)
-                mesh.material_index = face.material_index
-                buffer_layout_index = material_buffer_layout_indices[face.material_index]
-                mesh.default_bone_index = bl_mesh_props["Default Bone Index"][face.material_index]
-                mesh.vertex_buffers = [VertexBuffer(layout_index=buffer_layout_index)]
-                mesh.face_sets = [
-                    FaceSet(
-                        flags=i,
-                        unk_x06=0,  # TODO: define default in 'game-specific' dict?
-                        triangle_strip=False,  # triangle strips are too hard to compute
-                        cull_back_faces=bl_mesh_props["Cull Back Faces"][face.material_index],
-                        vertex_indices=[],
-                    )
-                    for i in range(bl_mesh_props["Face Set Count"][face.material_index])
-                ]
+        # Finally, we iterate over loops and construct their arrays.
+        loop_count = len(mesh_data.loops)
+        loop_vertex_indices = np.empty(loop_count, dtype=np.int32)
+        loop_normals = np.empty((loop_count, 3), dtype=np.float32)
+        loop_normals_w = np.full((loop_count, 1), 127, dtype=np.uint8)
+        # TODO: could check combined `dtype` now to skip these if not needed by any materials.
+        #  (Related: mark these arrays as optional attributes in `MergedMesh`.)
+        loop_tangents = np.empty((loop_count, 3), dtype=np.float32)
+        loop_bitangents = np.empty((loop_count, 3), dtype=np.float32)
 
-                layout = flver.buffer_layouts[buffer_layout_index]
-                mesh_hashed_verts = {}  # type: dict[int, int]
-                flver_mesh_data[face.material_index] = (mesh, mesh_hashed_verts, layout)
+        # UV arrays correspond to FLVER-wide sorted UV layer names.
+        loop_uvs = [
+            np.zeros((loop_count, 2), dtype=np.float32)  # default: 0.0 (each material may only use a subset of UVs)
+            for _ in uv_layers
+        ]
 
-            else:
-                # Add face to an existing FLVER mesh already created for this Blender submesh and this material.
-                mesh, mesh_hashed_verts, layout = flver_mesh_data[face.material_index]
+        try:
+            loop_colors_layer = mesh_data.vertex_colors["VertexColors"]
+        except KeyError:
+            self.warning(f"FLVER mesh '{bl_mesh.name}' has no 'VertexColors' data layer. Using black.")
+            loop_colors_layer = None
+            # Default to black with alpha 1.
+            black = np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32)
+            loop_vertex_color = np.tile(black, (loop_count, 1))
+        else:
+            # Prepare for loop filling.
+            loop_vertex_color = np.empty((loop_count, 4), dtype=np.float32)
+        
+        for i, loop in enumerate(mesh_data.loops):
+            loop_vertex_indices[i] = loop.vertex_index
+            loop_normals[i] = loop.normal
+            loop_tangents[i] = loop.tangent
+            # TODO: Use a `MergedMesh` method to construct all bitangents at once with `np.cross`? Maybe not.
+            loop_bitangents[i] = loop.bitangent
 
-            flver_face = []
+            if loop_colors_layer:
+                loop_vertex_color[i] = loop_colors_layer.data[i].color
 
-            for loop_index in face.loop_indices:
-                loop = bl_mesh_data.loops[loop_index]
-                v_i = loop.vertex_index
-                bl_v = bl_mesh_data.vertices[v_i]
+            # TODO: Technically it's a waste of time writing the data from UV layers that aren't even used by a certain
+            #  submesh (and will hence be discarded during split submesh creation), but I'd need to go back and retrieve
+            #  the material index of this loop's parent face to know which UV layer names to export. Not worth it.
+            for uv_i, uv_layer_data in enumerate(uv_layer_data):
+                loop_uvs[uv_i][i] = uv_layer_data[i].uv
 
-                # We construct the hashable 'unique vertex key' and only re-use an existing FLVER vertex if
-                # it has the same key (which will usually be the case). In FLVER files, a change in essentially ANY
-                # vertex member (position, normal, UV, color, bone weights, etc.) will create a new vertex, as the
-                # FLVER file has no concept of 'loops' (per-face vertex 'instances').
-
-                if layout.has_member_type(MemberType.Position):
-                    position = BL_TO_GAME_VECTOR3_LIST(bl_v.co)
-                else:
-                    position = v3_zero  # should never happen
-
-                if layout.has_member_type(MemberType.BoneIndices):
-
-                    has_weights = layout.has_member_type(MemberType.BoneWeights)
-
-                    global_bone_indices = []
-                    bone_weights = []
-                    for vertex_group in bl_v.groups:  # only one for map pieces; max of 4 for other FLVER types
-                        # Find mesh vertex group with this index.
-                        for mesh_group in vertex_groups:
-                            if vertex_group.group == mesh_group.index:
-                                try:
-                                    bone_index = bl_bone_names.index(mesh_group.name)
-                                except ValueError:
-                                    raise ValueError(
-                                        f"Vertex is weighted to invalid bone name: '{mesh_group.name}'."
-                                        )
-                                global_bone_indices.append(bone_index)
-                                # don't waste time calling `weight()` for non-weight layouts (map pieces)
-                                if has_weights:
-                                    bone_weights.append(mesh_group.weight(v_i))
-                                break
-                    if len(global_bone_indices) > 4:
-                        raise ValueError(
-                            f"Vertex cannot be weighted to >4 bones ({len(global_bone_indices)} is too many)."
-                        )
-                    elif len(global_bone_indices) == 0:
-                        if len(bl_bone_names) == 1:
-                            # Omitted bone indices can be assumed to be the only bone in the skeleton.
-                            if not no_bone_warning_done:
-                                print(
-                                    f"WARNING: Vertex in mesh '{bl_mesh.name}' is not weighted to any bones. "
-                                    f"Weighting in 'map piece' mode to only bone in skeleton: '{bl_bone_names[0]}'"
-                                )
-                                no_bone_warning_done = True
-                            global_bone_indices = v4_int_zero
-                            bone_weights = v4_zero
-                        else:
-                            # Can't guess which bone to weight to. Raise error.
-                            raise ValueError(
-                                "Vertex is not weighted to any bones, and there are >1 bones to choose from."
-                            )
-
-                    bone_indices = []  # local
-                    for global_bone_index in global_bone_indices:
-                        try:
-                            # Check if mesh already has this bone index from a previous vertex.
-                            bone_indices.append(mesh.bone_indices.index(global_bone_index))
-                        except ValueError:
-                            # First vertex to be weighted to this bone index in mesh.
-                            # NOTE: Unfortunately, to sort the mesh bone indices, we would have to iterate over all
-                            # vertices a second time, so we just append them in the order they appear. There is an
-                            # optional `FLVER` method that sorts them, but the user must call it themselves.
-                            bone_indices.append(len(mesh.bone_indices))
-                            mesh.bone_indices.append(global_bone_index)
-
-                    while len(bone_weights) < 4:
-                        bone_weights.append(0.0)
-
-                    if has_weights:
-                        while len(bone_indices) < 4:
-                            bone_indices.append(0)  # zero-weight indices are zero
-                    elif len(bone_indices) == 1:
-                        bone_indices *= 4  # duplicate single-element list to four-element list
-                    else:  # vertex (likely new) with no bone indices
-                        bone_indices = v4_int_zero
-                else:
-                    bone_indices = v4_int_zero
-                    bone_weights = v4_zero
-
-                if not bone_indices:
-                    raise FLVERExportError(
-                        f"Vertex with position {position} has no bone indices. Every vertex must have at least one."
-                    )
-
-                if layout.has_member_type(MemberType.Normal):
-                    # TODO: 127 is the only value seen in DS1 models thus far for `normal[3]`. Will need to store as
-                    #  a custom vertex property for other games that use it.
-                    normal = [*BL_TO_GAME_VECTOR3_LIST(bl_loop_normals[loop_index]), 127.0]
-                else:
-                    normal = v4_zero
-
-                if layout.has_member_type(MemberType.UV):
-                    uvs = []
-                    for uv_layer_data in material_uv_layers[face.material_index]:
-                        bl_uv = uv_layer_data[loop_index].uv
-                        uvs.append((bl_uv[0], 1 - bl_uv[1], 0.0))  # V inverted and zero Z coordinate
-                else:
-                    uvs = empty
-
-                if layout.has_member_type(MemberType.Tangent):
-                    # TODO: Only supports one tangent (DS1). (I'm surprised multi-texture materials don't use 2+?)
-                    tangents = [[*BL_TO_GAME_VECTOR3_LIST(loop.tangent), -1.0]]
-                else:
-                    tangents = empty  # happens very rarely (e.g. `[Dn]` shaders)
-
-                if layout.has_member_type(MemberType.Bitangent):
-                    bitangent = [*BL_TO_GAME_VECTOR3_LIST(loop.bitangent), -1.0]
-                else:
-                    bitangent = v4_zero
-
-                if layout.has_member_type(MemberType.VertexColor):
-                    # TODO: Only supports one color (DS1).
-                    colors = [tuple(loop_vertex_colors[loop_index])]
-                else:
-                    colors = empty  # not yet observed (all DS1 materials use vertex colors)
-
-                # Hashable vertex key, to find if a suitable vertex already exists for this face.
-                v_key = hash(tuple((tuple(x) for x in (
-                    position, bone_indices, bone_weights, uvs, colors, normal, tangents[0], bitangent
-                ))))
-
-                try:
-                    mesh_vertex_index = mesh_hashed_verts[v_key]
-                except KeyError:
-                    # Create new `Vertex`.
-                    # TODO: NumPy overhaul: build vertex array instead of list of `Vertex` instances.
-                    mesh_vertex_index = mesh_hashed_verts[v_key] = len(mesh_hashed_verts)
-                    mesh.vertices.append(
-                        Vertex(
-                            position=position,
-                            bone_weights=bone_weights,
-                            bone_indices=bone_indices,
-                            normal=normal,
-                            uvs=uvs,
-                            tangents=tangents,
-                            bitangent=bitangent,
-                            colors=colors,
-                        )
-                    )
-                flver_face.append(mesh_vertex_index)
-
-            mesh.face_sets[0].vertex_indices += flver_face
-
-        # All LOD face sets are duplicated from the first.
-        # TODO: Setting up actual face sets (which share vertices but are decimated) in Blender would be very annoying.
-        #  Would basically need a 'mesh decimating' algorithm that ONLY removes vertices. Not outrageous...
-        for mesh in flver.submeshes:
-            for lod_face_set in mesh.face_sets[1:]:
-                lod_face_set.vertex_indices = mesh.face_sets[0].vertex_indices.copy()
+        merged_mesh = MergedMesh(
+            vertex_data=vertex_data,
+            loop_vertex_indices=loop_vertex_indices,
+            loop_normals=loop_normals,
+            loop_normals_w=loop_normals_w,
+            loop_tangents=loop_tangents,
+            loop_bitangents=loop_bitangents,
+            loop_vertex_colors=[loop_vertex_color],
+            loop_uvs=loop_uvs,
+            faces=faces,
+        )
+        
+        merged_mesh.swap_vertex_yz(tangents=True, bitangents=True)
+        merged_mesh.invert_vertex_uv(invert_u=False, invert_v=True)
+        
+        flver.submeshes = merged_mesh.split_mesh(
+            submesh_info,
+            use_submesh_bone_indices=True,  # TODO: for DS1
+            max_bones_per_submesh=38,  # TODO: for DS1
+            unused_bone_indices_are_minus_one=True,
+        )
 
         return flver
 
-    def get_mesh_props(self, bl_mesh_obj: bpy.types.MeshObject) -> dict[str, list[bool | int]]:
-        """Each property can be a single value (all materials) or an array matching the mesh material count."""
-        material_count = len(bl_mesh_obj.material_slots)
-        props = {}
-
-        for prop_name, prop_type, default_value in (
-            ("Is Bind Pose", bool, False),  # NOTE: default is suitable for Map Pieces but not Characters
-            ("Cull Back Faces", bool, False),
-            ("Default Bone Index", int, 0),
-            ("Face Set Count", int, 1),
-        ):
-            material_prop_values = []
-            for material_index in range(material_count):
-                try:
-                    material_prop_value = bl_mesh_obj[f"Material[{material_index}] {prop_name}"]
-                except KeyError:
-                    self.info(
-                        f"Setting FLVER Mesh '{prop_name}' to default {default_value} for material {material_index}."
-                    )
-                    material_prop_values.append(default_value)
-                else:
-                    material_prop_values.append(prop_type(material_prop_value))
-            props[prop_name] = material_prop_values
-        return props
-
     def create_bones(
-        self, bl_armature_obj, read_bone_type: str
+        self, armature_obj, read_bone_type: str
     ) -> tuple[list[FLVERBone], list[str], list[tuple[Vector3, Matrix3, Vector3]]]:
         """Create `FLVER` bones from Blender armature bones and get their armature space transforms.
 
@@ -888,17 +958,17 @@ class FLVERExporter:
         """
 
         # We need `EditBone` mode to retrieve custom properties, even if reading the actual transforms from pose later.
-        self.context.view_layer.objects.active = bl_armature_obj
+        self.context.view_layer.objects.active = armature_obj
         if bpy.ops.object.mode_set.poll():
             bpy.ops.object.mode_set(mode="EDIT", toggle=False)
 
         game_bones = []
         game_arma_transforms = []  # type: list[tuple[Vector3, Matrix3, Vector3]]  # translate, rotate matrix, scale
-        edit_bone_names = [edit_bone.name for edit_bone in bl_armature_obj.data.edit_bones]
+        edit_bone_names = [edit_bone.name for edit_bone in armature_obj.data.edit_bones]
         if len(set(edit_bone_names)) != len(edit_bone_names):
             raise FLVERExportError("Bone names of armature are not all unique.")
 
-        for edit_bone in bl_armature_obj.data.edit_bones:
+        for edit_bone in armature_obj.data.edit_bones:
             game_bone_name = edit_bone.name
             while game_bone_name.endswith(" <DUPE>"):
                 game_bone_name = game_bone_name.removesuffix(" <DUPE>")
@@ -956,7 +1026,7 @@ class FLVERExporter:
         if read_bone_type == "POSE":
             # Get armature-space bone transform from PoseBone (map pieces).
             # Note that non-uniform bone scale is supported here (and is actually used in some old vanilla map pieces).
-            for game_bone, pose_bone in zip(game_bones, bl_armature_obj.pose.bones):
+            for game_bone, pose_bone in zip(game_bones, armature_obj.pose.bones):
 
                 game_arma_translate = BL_TO_GAME_VECTOR3(pose_bone.location)
                 if pose_bone.rotation_mode == "QUATERNION":
@@ -983,15 +1053,15 @@ class FLVERExporter:
 
         return game_bones, edit_bone_names, game_arma_transforms
 
-    def create_dummy(
+    def export_dummy(
         self,
         bl_dummy: bpy.types.Object,
         reference_id: int,
         bl_bone_names: list[str],
         bl_bone_data: bpy.types.ArmatureBones,
-    ) -> FLVER.Dummy:
+    ) -> Dummy:
         """Create a single `FLVER.Dummy` from a Blender Dummy empty."""
-        game_dummy = FLVER.Dummy(
+        game_dummy = Dummy(
             reference_id=reference_id,  # stored in dummy name for editing convenience
             color_rgba=get_bl_prop(bl_dummy, "Color RGBA", tuple, default=(255, 255, 255, 255), callback=list),
             flag_1=get_bl_prop(bl_dummy, "Flag 1", int, default=True, callback=bool),
@@ -1043,7 +1113,7 @@ class FLVERExporter:
 
         return game_dummy
 
-    def create_material(
+    def export_material(
         self,
         bl_material: bpy.types.Material,
         mtd_info: MTDInfo,

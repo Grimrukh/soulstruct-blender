@@ -103,7 +103,8 @@ CLASSES = (
 
     ExportFLVER,
     ExportFLVERIntoBinder,
-    ExportFLVERToMapDirectory,
+    ExportMapPieceFLVERs,
+    ExportCharacterFLVER,
 
     FLVERSettings,
     SetVertexAlpha,

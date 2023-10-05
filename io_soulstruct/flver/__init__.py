@@ -14,7 +14,8 @@ __all__ = [
 
     "ExportFLVER",
     "ExportFLVERIntoBinder",
-    "ExportFLVERToMapDirectory",
+    "ExportMapPieceFLVERs",
+    "ExportCharacterFLVER",
 
     "FLVERSettings",
     "SetVertexAlpha",
@@ -97,7 +98,7 @@ class FLVERExportPanel(bpy.types.Panel):
         layout.operator(ExportFLVERIntoBinder.bl_idname)
 
         layout.label(text="To Game Directory:")
-        layout.operator(ExportFLVERToMapDirectory.bl_idname)
+        layout.operator(ExportMapPieceFLVERs.bl_idname)
 
 
 class FLVERLightmapsPanel(bpy.types.Panel):

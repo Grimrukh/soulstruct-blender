@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import time
 import traceback
 import typing as tp
 from pathlib import Path
@@ -19,11 +20,6 @@ from soulstruct_havok.wrappers.hkx2015 import AnimationHKX, SkeletonHKX
 from io_soulstruct.utilities import *
 from io_soulstruct.havok.utilities import GAME_TRS_TO_BL_MATRIX, get_basis_matrix
 from .utilities import *
-
-
-def FL_TO_BL_VECTOR(sequence) -> Vector:
-    """Simply swaps Y and Z axes."""
-    return Vector((sequence[0], sequence[2], sequence[1]))
 
 
 ANIBND_RE = re.compile(r"^.*?\.anibnd(\.dcx)?$")
@@ -52,7 +48,7 @@ class ImportHKXAnimation(LoggingOperator, ImportHelper):
 
     to_60_fps: bpy.props.BoolProperty(
         name="To 60 FPS",
-        description="Scale animation keyframes to 60 FPS (from 30 FPS)",
+        description="Scale animation keyframes to 60 FPS (from 30 FPS) by spacing them two frames apart",
         default=True,
     )
 
@@ -139,7 +135,7 @@ class ImportHKXAnimation(LoggingOperator, ImportHelper):
 
         importer = HKXAnimationImporter(self, context, bl_armature, bl_armature.name, self.to_60_fps)
 
-        for (file_path, skeleton_hkx, hkx_or_entries) in hkxs_with_paths:
+        for file_path, skeleton_hkx, hkx_or_entries in hkxs_with_paths:
 
             if isinstance(hkx_or_entries, list):
                 # Defer through entry selection operator.
@@ -157,7 +153,9 @@ class ImportHKXAnimation(LoggingOperator, ImportHelper):
 
             self.info(f"Importing HKX animation for {bl_armature.name}: {anim_name}")
 
+            p = time.perf_counter()
             animation_hkx.animation_container.spline_to_interleaved()
+            self.info(f"Converted spline animation to interleaved in {time.perf_counter() - p:.4f} seconds.")
 
             track_bone_names = [
                 annotation.trackName for annotation in animation_hkx.animation_container.animation.annotationTracks
@@ -167,15 +165,19 @@ class ImportHKXAnimation(LoggingOperator, ImportHelper):
                 if bone_name not in bl_bone_names:
                     raise ValueError(f"Animation bone name '{bone_name}' is missing from selected Blender Armature.")
 
+            p = time.perf_counter()
             arma_frames = get_armature_frames(animation_hkx, skeleton_hkx, track_bone_names)
             root_motion = get_root_motion(animation_hkx)
+            self.info(f"Constructed armature animation frames in {time.perf_counter() - p:.4f} seconds.")
 
             # Import single animation HKX.
+            p = time.perf_counter()
             try:
                 importer.create_action(anim_name, arma_frames, root_motion)
             except Exception as ex:
                 traceback.print_exc()
                 return self.error(f"Cannot import HKX animation: {file_path.name}. Error: {ex}")
+            self.info(f"Created animation action in {time.perf_counter() - p:.4f} seconds.")
 
         return {"FINISHED"}
 
@@ -225,7 +227,9 @@ class ImportHKXAnimationWithBinderChoice(LoggingOperator):
 
         self.info(f"Importing HKX animation for {self.bl_armature.name}: {anim_name}")
 
+        p = time.perf_counter()
         animation_hkx.animation_container.spline_to_interleaved()
+        self.info(f"Converted spline animation to interleaved in {time.perf_counter() - p:.4f} seconds.")
 
         track_bone_names = [
             annotation.trackName for annotation in animation_hkx.animation_container.animation.annotationTracks
@@ -235,9 +239,12 @@ class ImportHKXAnimationWithBinderChoice(LoggingOperator):
             if bone_name not in bl_bone_names:
                 raise ValueError(f"Animation bone name '{bone_name}' is missing from selected Blender Armature.")
 
+        p = time.perf_counter()
         arma_frames = get_armature_frames(animation_hkx, self.skeleton_hkx, track_bone_names)
         root_motion = get_root_motion(animation_hkx)
+        self.info(f"Constructed armature animation frames in {time.perf_counter() - p:.4f} seconds.")
 
+        p = time.perf_counter()
         try:
             self.importer.create_action(anim_name, arma_frames, root_motion)
         except Exception as ex:
@@ -245,6 +252,7 @@ class ImportHKXAnimationWithBinderChoice(LoggingOperator):
             return self.error(
                 f"Cannot import HKX animation {anim_name} from '{self.binder_file_path.name}'. Error: {ex}"
             )
+        self.info(f"Created animation action in {time.perf_counter() - p:.4f} seconds.")
 
         return {"FINISHED"}
 

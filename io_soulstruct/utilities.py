@@ -47,7 +47,7 @@ from soulstruct.utilities.maths import Vector3, Vector4, Matrix3
 MAP_STEM_RE = re.compile(r"^m(?P<area>\d\d)_(?P<block>\d\d)_(?P<cc>\d\d)_(?P<dd>\d\d)$")
 
 
-def GAME_TO_BL_VECTOR(game_vector: Vector3 | tp.Sequence[float, float, float]) -> Vector:
+def GAME_TO_BL_VECTOR(game_vector: Vector3 | Vector4 | tp.Sequence[float, float, float]) -> Vector:
     """Just swaps Y and Z axes. X increases to the right in both systems; the game is left-handed and Blender is
     right-handed.
 

@@ -216,7 +216,7 @@ class ImportFLVER(LoggingOperator, ImportHelper, ImportFLVERMixin):
                     self.warning(f"Cannot read MSB transform for FLVER in unknown directory: {file_path}.")
             try:
                 name = file_path.name.split(".")[0]  # drop all extensions
-                bl_flver_mesh = importer.import_flver(flver, name=name, transform=transform)
+                bl_armature, bl_mesh = importer.import_flver(flver, name=name, transform=transform)
             except Exception as ex:
                 # Delete any objects created prior to exception.
                 importer.abort_import()
@@ -224,8 +224,8 @@ class ImportFLVER(LoggingOperator, ImportHelper, ImportFLVERMixin):
                 return self.error(f"Cannot import FLVER: {file_path.name}. Error: {ex}")
 
             # Select newly imported mesh.
-            if bl_flver_mesh:
-                self.set_active_obj(bl_flver_mesh)
+            if bl_mesh:
+                self.set_active_obj(bl_mesh)
 
         self.info(f"Imported {len(flvers)} FLVERs in {time.perf_counter() - start_time:.3f} seconds.")
 
@@ -273,15 +273,15 @@ class ImportFLVERWithMSBChoice(LoggingOperator):
 
         try:
             name = self.file_path.name.split(".")[0]  # drop all extensions
-            bl_flver_mesh = self.importer.import_flver(self.flver, name=name, transform=transform)
+            bl_armature, bl_mesh = self.importer.import_flver(self.flver, name=name, transform=transform)
         except Exception as ex:
             self.importer.abort_import()
             traceback.print_exc()
             return self.error(f"Cannot import FLVER '{self.file_path.name}'. Error: {ex}")
 
         # Select newly imported mesh.
-        if bl_flver_mesh:
-            self.set_active_obj(bl_flver_mesh)
+        if bl_mesh:
+            self.set_active_obj(bl_mesh)
 
         return {"FINISHED"}
 
@@ -374,7 +374,7 @@ class ImportMapPieceFLVER(LoggingOperator, ImportFLVERMixin):
 
         try:
             name = flver_path.name.split(".")[0]  # drop all extensions
-            bl_flver_mesh = importer.import_flver(flver, name=name, transform=transform)
+            bl_armature, bl_mesh = importer.import_flver(flver, name=name, transform=transform)
 
         except Exception as ex:
             # Delete any objects created prior to exception.
@@ -383,8 +383,8 @@ class ImportMapPieceFLVER(LoggingOperator, ImportFLVERMixin):
             return self.error(f"Cannot import FLVER: {flver_path.name}. Error: {ex}")
 
         # Select newly imported mesh.
-        if bl_flver_mesh:
-            self.set_active_obj(bl_flver_mesh)
+        if bl_mesh:
+            self.set_active_obj(bl_mesh)
 
         self.info(f"Imported map piece FLVER in {time.perf_counter() - start_time:.3f} seconds.")
 
@@ -429,7 +429,7 @@ class ImportCharacterFLVER(LoggingOperator, ImportFLVERMixin):
 
         try:
             name = chrbnd_path.name.split(".")[0]  # drop all extensions
-            bl_flver_mesh = importer.import_flver(flver, name=name, transform=transform)
+            bl_armature, bl_mesh = importer.import_flver(flver, name=name, transform=transform)
         except Exception as ex:
             # Delete any objects created prior to exception.
             importer.abort_import()
@@ -437,8 +437,8 @@ class ImportCharacterFLVER(LoggingOperator, ImportFLVERMixin):
             return self.error(f"Cannot import FLVER from CHRBND: {chrbnd_path.name}. Error: {ex}")
 
         # Select newly imported mesh.
-        if bl_flver_mesh:
-            self.set_active_obj(bl_flver_mesh)
+        if bl_mesh:
+            self.set_active_obj(bl_mesh)
 
         return {"FINISHED"}
 
@@ -494,7 +494,7 @@ class ImportObjectFLVER(LoggingOperator, ImportFLVERMixin):
 
         for name, flver in flvers:
             try:
-                bl_flver_mesh = importer.import_flver(flver, name=name)
+                bl_armature, bl_mesh = importer.import_flver(flver, name=name)
             except Exception as ex:
                 # Delete any objects created prior to exception.
                 importer.abort_import()
@@ -502,8 +502,8 @@ class ImportObjectFLVER(LoggingOperator, ImportFLVERMixin):
                 return self.error(f"Cannot import FLVER from CHRBND: {objbnd_path.name}. Error: {ex}")
 
             # Select newly imported mesh.
-            if bl_flver_mesh:
-                self.set_active_obj(bl_flver_mesh)
+            if bl_mesh:
+                self.set_active_obj(bl_mesh)
 
         return {"FINISHED"}
 
@@ -538,12 +538,6 @@ class ImportEquipmentFLVER(LoggingOperator, ImportHelper, ImportFLVERMixin):
             return False
         # TODO: Could check for c0000 bones specifically.
         obj = context.selected_objects[0]
-        if obj.type == "MESH":
-            # Look for Armature child object.
-            for child in obj.children:
-                if child.type == "ARMATURE":
-                    return True
-        # Otherwise, Armature must be selected.
         return obj.type == "ARMATURE"
 
     def invoke(self, context, _event):
@@ -595,15 +589,15 @@ class ImportEquipmentFLVER(LoggingOperator, ImportHelper, ImportFLVERMixin):
         for file_path, flver in flvers:
             name = file_path.name.split(".")[0]  # drop all extensions
             try:
-                bl_flver_mesh = importer.import_flver(flver, name=name, existing_armature=c0000_armature)
+                bl_armature, bl_mesh = importer.import_flver(flver, name=name, existing_armature=c0000_armature)
             except Exception as ex:
                 importer.abort_import()
                 traceback.print_exc()  # for inspection in Blender console
                 return self.error(f"Cannot import equipment FLVER: {file_path.name}. Error: {ex}")
 
             # Select newly imported mesh.
-            if bl_flver_mesh:
-                self.set_active_obj(bl_flver_mesh)
+            if bl_mesh:
+                self.set_active_obj(bl_mesh)
 
         return {"FINISHED"}
 
@@ -639,7 +633,7 @@ class FLVERImporter:
     new_materials: list[bpy.types.Material] = field(default_factory=list)  # all new materials created during import
 
     def abort_import(self):
-        """Delete all objects, images, and materials created during this import."""
+        """Delete all Blender objects, images, and materials created during this import."""
         for obj in self.new_objs:
             try:
                 bpy.data.objects.remove(obj)
@@ -664,7 +658,7 @@ class FLVERImporter:
 
     def import_flver(
         self, flver: FLVER, name: str, transform: tp.Optional[Transform] = None, existing_armature=None
-    ):
+    ) -> tuple[bpy.types.ArmatureObject, bpy.types.MeshObject] | None:
         """Read a FLVER into a Blender mesh and Armature.
 
         If `existing_armature` is passed, the skeleton of `flver` will be ignored, and its mesh will be rigged to the
@@ -706,7 +700,7 @@ class FLVERImporter:
 
         # Maps FLVER submeshes to their Blender material index to store per-face in the merged mesh.
         # Submeshes that originally indexed the same FLVER material may have different Blender 'variant' materials that
-        # hold certain Submesh/FaceSet properties like `cull_back_faces`.
+        # hold certain Submesh/FaceSet properties like `backface_culling`.
         # Conversely, Submeshes that only serve to handle per-submesh bone maximums (e.g. 38 in DS1) will use the same
         # Blender material and be split again automatically on export (but likely not in an indentical way!).
         submesh_bl_material_indices = []
@@ -721,11 +715,11 @@ class FLVERImporter:
             material_hash = hash(material)
             if material_hash in flver_material_mtd_infos:
                 continue
-            mtd_info = self.get_mtd_info(material, settings.mtd_manager)
+            mtd_info = self.get_mtd_info(material.mtd_name, settings.mtd_manager)
             flver_material_mtd_infos[material_hash] = mtd_info
 
         self.new_materials = []
-        for s_i, submesh in enumerate(flver.submeshes):
+        for submesh in flver.submeshes:
             material = submesh.material
             material_hash = hash(material)  # NOTE: if there are duplicate FLVER materials, this will combine them
             if material_hash not in flver_material_hash_variants:
@@ -763,7 +757,7 @@ class FLVERImporter:
                     bool(existing_bl_material["Is Bind Pose"]) == submesh.is_bind_pose
                     and existing_bl_material["Default Bone Index"] == submesh.default_bone_index
                     and existing_bl_material["Face Set Count"] == len(submesh.face_sets)
-                    and existing_bl_material.use_backface_culling == submesh.cull_back_faces
+                    and existing_bl_material.use_backface_culling == submesh.backface_culling
                 ):
                     # Blender material already exists with the same Mesh properties. No new variant neeed.
                     submesh_bl_material_indices.append(existing_bl_material_index)
@@ -820,8 +814,6 @@ class FLVERImporter:
             bl_flver_mesh.rotation_euler = transform.bl_rotate
             bl_flver_mesh.scale = transform.bl_scale
 
-        self.new_objs.append(bl_flver_mesh)
-
         if existing_armature:
             # Do not create an armature for this FLVER; use `existing_armature` instead.
             bl_armature_obj = existing_armature
@@ -838,6 +830,9 @@ class FLVERImporter:
             dummy_prefix = ""
             self.new_objs.append(bl_armature_obj)
 
+        # Parent mesh to armature. This is critical for proper animation behavior (especially with root motion).
+        bl_armature_obj.parent = bl_flver_mesh
+
         self.operator.set_active_obj(bl_flver_mesh)
         bpy.ops.object.modifier_add(type="ARMATURE")
         armature_mod = bl_flver_mesh.modifiers["Armature"]
@@ -850,23 +845,22 @@ class FLVERImporter:
 
         self.operator.info(f"Created FLVER Blender mesh '{name}' in {time.perf_counter() - start_time:.3f} seconds.")
 
-        return bl_flver_mesh  # might be used by other importers
+        return bl_armature_obj, bl_flver_mesh  # might be used by other importers
 
-    def get_mtd_info(self, material: Material, mtd_manager: MTDBinderManager = None) -> MTDInfo:
+    def get_mtd_info(self, mtd_name: str, mtd_manager: MTDBinderManager = None) -> MTDInfo:
         """Get `MTDInfo` for a FLVER material, which is needed for both material creation and assignment of vertex UV
         data to the correct Blender UV data layer during mesh creation.
         """
         if not mtd_manager:
-            return MTDInfo.from_mtd_name(material.mtd_name)
+            return MTDInfo.from_mtd_name(mtd_name)
 
         # Use real MTD file (much less guesswork).
         try:
-            mtd = mtd_manager[material.mtd_name]
+            mtd = mtd_manager[mtd_name]
         except KeyError:
-            self.warning(f"Could not find MTD '{material.mtd_name}' in MTD dict. Guessing info from name.")
-            return MTDInfo.from_mtd_name(material.mtd_name)
-        else:
-            return MTDInfo.from_mtd(mtd)
+            self.warning(f"Could not find MTD '{mtd_name}' in MTD dict. Guessing info from name.")
+            return MTDInfo.from_mtd_name(mtd_name)
+        return MTDInfo.from_mtd(mtd)
 
     def create_armature(self, base_edit_bone_length: float) -> bpy.types.Object:
         """Create a new Blender armature to serve as the parent object for the entire FLVER."""
@@ -939,7 +933,7 @@ class FLVERImporter:
         name: str,
         submesh_bl_material_indices: list[int],
         submesh_uv_layer_names: list[list[str]],
-    ):
+    ) -> bpy.types.MeshObject:
         """Create a single Blender mesh that combines all FLVER submeshes, using multiple material slots.
 
         NOTE: FLVER (for DS1 at least) supports a maximum of 38 bones per sub-mesh. When this maximum is reached, a new
@@ -947,10 +941,10 @@ class FLVERImporter:
         be split again on export as needed.
 
         Some FLVER submeshes also use the same material, but have different `Mesh` or `FaceSet` properties such as
-        `cull_back_faces`. Backface culling is a material option in Blender, so these submeshes will use different
+        `backface_culling`. Backface culling is a material option in Blender, so these submeshes will use different
         Blender material 'variants' even though they use the same FLVER material. The FLVER exporter will start by
         creating a FLVER material for every Blender material slot, then unify any identical FLVER material instances and
-        redirect any differences like `cull_back_faces` or `is_bind_pose` to the FLVER mesh.
+        redirect any differences like `backface_culling` or `is_bind_pose` to the FLVER mesh.
 
         Breakdown:
             - Blender stores POSITION, BONE WEIGHTS, and BONE INDICES on vertices. Any differences here will require
@@ -972,7 +966,8 @@ class FLVERImporter:
         if any(mesh.invalid_layout for mesh in flver.submeshes):
             # Corrupted sub-meshes. Leave empty.
             # TODO: Should be able to handle known cases of this by redirecting to the correct vertex buffers.
-            return self.create_obj(f"{name} <INVALID>", bl_mesh, parent_to_flver_root=False)
+            # noinspection PyTypeChecker
+            return self.create_obj(f"{name} <INVALID>", bl_mesh)
 
         # from soulstruct.utilities.inspection import profile_function
 
@@ -984,7 +979,8 @@ class FLVERImporter:
             submesh_uv_layer_names,
         )
 
-        bl_mesh_obj = self.create_obj(name, bl_mesh, parent_to_flver_root=False)
+        # noinspection PyTypeChecker
+        bl_mesh_obj = self.create_obj(name, bl_mesh)  # type: bpy.types.MeshObject
 
         self.create_bone_vertex_groups(bl_mesh_obj, bl_vert_bone_weights, bl_vert_bone_indices)
 
@@ -1041,12 +1037,15 @@ class FLVERImporter:
             self.warning("More than one vertex color layer detected. Only the first will be imported into Blender!")
 
         # CREATE BLENDER VERTICES
-        for vertex in merged_mesh.vertex_positions:
-            bm.verts.new(vertex)
+        for position in merged_mesh.vertex_data["position"]:
+            bm.verts.new(position)
         bm.verts.ensure_lookup_table()
 
         bl_loop_normal_indices = []  # need to filter out loops of degenerate faces
-        degenerate_face_count = 0  # TODO: go back to reporting occurrences per-submesh (`faces[:, 3]`)?
+
+        # TODO: go back to reporting occurrences per-submesh (`faces[:, 3]`)?
+        duplicate_face_count = 0
+        degenerate_face_count = 0
 
         p = time.perf_counter()
         for face in merged_mesh.faces:
@@ -1062,7 +1061,7 @@ class FLVERImporter:
                     # This is a duplicate face (happens rarely in vanilla FLVERs). We can ignore it.
                     # No lasting harm done as, by assertion, no new BMesh vertices were created above. We just need
                     # to remove the last three normals.
-                    degenerate_face_count += 1
+                    duplicate_face_count += 1
                     continue
                 if "found the same (BMVert) used multiple times" in str(ex):
                     # Degenerate FLVER face (e.g. a line or point). These are not supported by Blender.
@@ -1082,8 +1081,11 @@ class FLVERImporter:
 
         self.operator.info(f"Created Blender mesh faces in {time.perf_counter() - p} s")
 
-        if degenerate_face_count:
-            self.warning(f"{degenerate_face_count} degenerate/duplicate faces ignored when importing FLVER.")
+        if degenerate_face_count or duplicate_face_count:
+            self.warning(
+                f"{degenerate_face_count} degenerate and {duplicate_face_count} duplicate faces were ignored during "
+                f"FLVER import."
+            )
 
         # TODO: Delete all unused vertices at this point?
 
@@ -1098,7 +1100,7 @@ class FLVERImporter:
 
         bl_mesh.update()
 
-        return merged_mesh.vertex_bone_weights, merged_mesh.vertex_bone_indices
+        return merged_mesh.vertex_data["bone_weights"], merged_mesh.vertex_data["bone_indices"]
 
     def create_bone_vertex_groups(
         self,
@@ -1324,7 +1326,7 @@ class FLVERImporter:
             name = f"[{dummy_prefix}] {self.name} Dummy<{index}> [{game_dummy.reference_id}]"
         else:
             name = f"{self.name} Dummy<{index}> [{game_dummy.reference_id}]"
-        bl_dummy = self.create_obj(name, parent_to_flver_root=False)
+        bl_dummy = self.create_obj(name)  # no data (Empty)
         bl_dummy.parent = bl_armature
         bl_dummy.empty_display_type = "ARROWS"  # best display type/size I've found (single arrow not sufficient)
         bl_dummy.empty_display_size = 0.05
@@ -1339,12 +1341,12 @@ class FLVERImporter:
             # NOTE: This is NOT the same as the 'attach' bone, which is used as the actual Blender parent and
             # controls how the dummy moves during armature animations.
             bl_bone_name = self.bl_bone_names[game_dummy.parent_bone_index]
-            bl_dummy["parent_bone_name"] = bl_bone_name
+            bl_dummy["Parent Bone Name"] = bl_bone_name
             bl_parent_bone_matrix = bl_armature.data.bones[bl_bone_name].matrix_local
             bl_location = bl_parent_bone_matrix @ GAME_TO_BL_VECTOR(game_dummy.translate)
         else:
             # Bone's location is in armature space.
-            bl_dummy["parent_bone_name"] = ""
+            bl_dummy["Parent Bone Name"] = ""
             bl_location = GAME_TO_BL_VECTOR(game_dummy.translate)
 
         # Dummy moves with this bone during animations.
@@ -1367,13 +1369,11 @@ class FLVERImporter:
 
         return bl_dummy
 
-    def create_obj(self, name: str, data=None, parent_to_flver_root=True):
-        """Create a new Blender object. By default, will be parented to the FLVER's armature object."""
+    def create_obj(self, name: str, data=None):
+        """Create a new Blender object with given `data` and link it to the scene's object collection."""
         obj = bpy.data.objects.new(name, data)
-        self.context.scene.collection.objects.link(obj)  # add to scene's object collection
+        self.context.scene.collection.objects.link(obj)
         self.new_objs.append(obj)
-        if parent_to_flver_root:
-            obj.parent = self.flver_root
         return obj
 
     def warning(self, warning: str):
