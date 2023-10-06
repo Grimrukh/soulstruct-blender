@@ -369,11 +369,18 @@ class ExportCharacterFLVER(LoggingOperator, ExportFLVERMixin):
 
     @classmethod
     def poll(cls, context):
-        """Must select an Armature parent for a character FLVER. No chance of a default skeleton!"""
+        """Must select an Armature parent for a character FLVER. No chance of a default skeleton!
+
+        Name of character must also start with 'c'.
+        """
         game_lists = context.scene.game_files  # type: GameFiles
         if game_lists.chrbnd in {"", "0"}:
             return False
-        return len(context.selected_objects) == 1 and context.selected_objects[0].type == "ARMATURE"
+        return (
+            len(context.selected_objects) == 1
+            and context.selected_objects[0].type == "ARMATURE"
+            and context.selected_objects[0].name.startswith("c")  # TODO: could require 'c####' template also
+        )
 
     def execute(self, context):
         try:

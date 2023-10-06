@@ -1,6 +1,12 @@
 """VERY early/experimental system for importing/exporting DSR animations into Blender."""
 from __future__ import annotations
 
+__all__ = [
+    "ImportHKXAnimation",
+    "ImportHKXAnimationWithBinderChoice",
+    "ImportCharacterHKXAnimation",
+]
+
 import re
 import time
 import traceback
@@ -12,12 +18,14 @@ from bpy_extras.io_utils import ImportHelper
 from mathutils import Vector, Quaternion as BlenderQuaternion
 
 from soulstruct.containers import Binder, BinderEntry
+from soulstruct.dcx import DCXType
 from soulstruct.utilities.maths import Vector4
 
 from soulstruct_havok.utilities.maths import TRSTransform
 from soulstruct_havok.wrappers.hkx2015 import AnimationHKX, SkeletonHKX
 
 from io_soulstruct.utilities import *
+from io_soulstruct.general import *
 from io_soulstruct.havok.utilities import GAME_TRS_TO_BL_MATRIX, get_basis_matrix
 from .utilities import *
 
@@ -30,7 +38,7 @@ OBJBND_RE = re.compile(r"^.*?\.objbnd(\.dcx)?$")
 class ImportHKXAnimation(LoggingOperator, ImportHelper):
     bl_idname = "import_scene.hkx_animation"
     bl_label = "Import HKX Animation"
-    bl_description = "Import a HKX animation file. Can import from BNDs and supports DCX-compressed files"
+    bl_description = "Import a HKX animation file. Can import from ANIBNDs/OBJBNDs and supports DCX-compressed files"
 
     filename_ext = ".hkx"
 
@@ -219,7 +227,11 @@ class ImportHKXAnimationWithBinderChoice(LoggingOperator):
     def execute(self, context):
         choice = int(self.choices_enum)
         entry = self.hkx_entries[choice]
+
+        p = time.perf_counter()
         animation_hkx = entry.to_binary_file(AnimationHKX)
+        self.info(f"Read `AnimationHKX` Binder entry '{entry.name}' in {time.perf_counter() - p:.4f} seconds.")
+
         anim_name = entry.name.split(".")[0]
 
         self.importer.operator = self
@@ -275,8 +287,162 @@ class ImportHKXAnimationWithBinderChoice(LoggingOperator):
         bpy.ops.wm.hkx_animation_binder_choice_operator("INVOKE_DEFAULT")
 
 
+class ImportCharacterHKXAnimation(LoggingOperator):
+    """Detects name of selected character FLVER Armature and finds their ANIBND in the game directory."""
+    bl_idname = "import_scene.hkx_character_animation"
+    bl_label = "Import Character HKX Animation"
+    bl_description = "Import a HKX animation file from the selected character's ANIBND"
+
+    # TODO: Support import all?
+    import_all_from_anibnd: bpy.props.BoolProperty(
+        name="Import All From ANIBND",
+        description="Import all HKX anim files rather than being prompted to select one (slow!)",
+        default=False,
+    )
+
+    # TODO: Enabled by default. Maybe try to detect from frame timing...
+    to_60_fps: bpy.props.BoolProperty(
+        name="To 60 FPS",
+        description="Scale animation keyframes to 60 FPS (from 30 FPS) by spacing them two frames apart",
+        default=True,
+    )
+
+    @classmethod
+    def poll(cls, context):
+        """Armature of a character must be selected."""
+        return (
+            len(context.selected_objects) == 1
+            and context.selected_objects[0].type == "ARMATURE"
+            and context.selected_objects[0].name.startswith("c")  # TODO: could require 'c####' template also
+        )
+
+    def execute(self, context):
+        if not self.poll(context):
+            return self.error("Must select a single Armature of a character (name starting with 'c').")
+
+        settings = GlobalSettings.get_scene_settings(context)
+        game_directory = settings.game_directory
+        if not game_directory:
+            return self.error("No game directory set in global Soulstruct Settings.")
+
+        bl_armature = context.selected_objects[0]
+        # noinspection PyTypeChecker
+        armature_data = bl_armature.data  # type: bpy.types.Armature
+
+        character_name = bl_armature.name.split(" ")[0]
+        if character_name == "c0000":
+            return self.error("Automatic ANIBND import is not yet supported for c0000 (player model).")
+
+        dcx = ".dcx" if settings.resolve_dcx_type("Auto", "BINDER") != DCXType.Null else ""
+        anibnd_path = Path(game_directory, "chr", f"{character_name}.anibnd{dcx}")
+
+        if not anibnd_path.is_file():
+            return self.error(f"Cannot find ANIBND for character '{character_name}' in game directory.")
+
+        skeleton_anibnd = anibnd = Binder.from_path(anibnd_path)
+        # TODO: Support c0000 automatic import. Combine all sub-ANIBND entries into one big choice list?
+
+        # Find skeleton entry.
+        skeleton_entry = skeleton_anibnd.find_entry_matching_name(r"[Ss]keleton\.[Hh][Kk][Xx](\.dcx)?")
+        if not skeleton_entry:
+            raise HKXAnimationImportError(
+                "Must import animation from an ANIBND containing a skeleton HKX file."
+            )
+        skeleton_hkx = SkeletonHKX.from_binder_entry(skeleton_entry)
+
+        # Find animation HKX entry/entries.
+        anim_hkx_entries = anibnd.find_entries_matching_name(r"a.*\.hkx(\.dcx)?")
+        if not anim_hkx_entries:
+            raise HKXAnimationImportError(f"Cannot find any HKX animation files in binder {anibnd_path}.")
+
+        hkxs_with_paths = []
+
+        if len(anim_hkx_entries) > 1:
+            if self.import_all_from_anibnd:
+                for entry in anim_hkx_entries:
+                    try:
+                        animation_hkx = entry.to_binary_file(AnimationHKX)
+                    except Exception as ex:
+                        self.warning(f"Error occurred while reading HKX Binder entry '{entry.name}': {ex}")
+                    else:
+                        hkxs_with_paths.append((anibnd_path, skeleton_hkx, animation_hkx))
+            else:
+                # Queue up all ANIBND entries; user will be prompted to choose entry below.
+                hkxs_with_paths.append((anibnd_path, skeleton_hkx, anim_hkx_entries))
+        else:
+            try:
+                animation_hkx = anim_hkx_entries[0].to_binary_file(AnimationHKX)
+            except Exception as ex:
+                self.warning(
+                    f"Error occurred while reading HKX Binder entry '{anim_hkx_entries[0].name}': {ex}"
+                )
+            else:
+                hkxs_with_paths.append((anibnd_path, skeleton_hkx, animation_hkx))
+
+        importer = HKXAnimationImporter(self, context, bl_armature, bl_armature.name, self.to_60_fps)
+
+        for file_path, skeleton_hkx, hkx_or_entries in hkxs_with_paths:
+
+            if isinstance(hkx_or_entries, list):
+                # Defer through entry selection operator.
+                ImportHKXAnimationWithBinderChoice.run(
+                    importer=importer,
+                    binder_file_path=Path(file_path),
+                    hkx_entries=hkx_or_entries,
+                    bl_armature=bl_armature,
+                    skeleton_hkx=skeleton_hkx,
+                )
+                continue
+
+            animation_hkx = hkx_or_entries
+            anim_name = animation_hkx.path.name.split(".")[0]
+
+            self.info(f"Importing HKX animation for {bl_armature.name}: {anim_name}")
+
+            p = time.perf_counter()
+            animation_hkx.animation_container.spline_to_interleaved()
+            self.info(f"Converted spline animation to interleaved in {time.perf_counter() - p:.4f} seconds.")
+
+            track_bone_names = [
+                annotation.trackName for annotation in animation_hkx.animation_container.animation.annotationTracks
+            ]
+            bl_bone_names = [b.name for b in armature_data.bones]
+            for bone_name in track_bone_names:
+                if bone_name not in bl_bone_names:
+                    raise ValueError(
+                        f"Animation bone name '{bone_name}' is missing from selected Blender Armature."
+                    )
+
+            p = time.perf_counter()
+            arma_frames = get_armature_frames(animation_hkx, skeleton_hkx, track_bone_names)
+            root_motion = get_root_motion(animation_hkx)
+            self.info(f"Constructed armature animation frames in {time.perf_counter() - p:.4f} seconds.")
+
+            # Import single animation HKX.
+            p = time.perf_counter()
+            try:
+                importer.create_action(anim_name, arma_frames, root_motion)
+            except Exception as ex:
+                traceback.print_exc()
+                return self.error(f"Cannot import HKX animation: {file_path.name}. Error: {ex}")
+            self.info(f"Created animation action in {time.perf_counter() - p:.4f} seconds.")
+
+        return {"FINISHED"}
+
+
 class HKXAnimationImporter:
-    """Manages imports for a batch of HKX files imported simultaneously."""
+    """Manages imports for a batch of HKX files imported simultaneously.
+
+    TODO: Currently very slow. Takes ~1 second to load c2240 (Capra) idle, and ~8 seconds to load c5280 (Quelaag) idle.
+     This step is responsible for ~90% of that time. Notes/ideas:
+        - At bare minimum, we're iterating over every frame, over every bone, doing 2-3 matrix multiplications and a
+        matrix inversion to get the Blender basis matrix, decomposing it into TRS, doing a dot product with the previous
+        frame's rotation to avoid quat flipping, then iterating over every frame and every bone AGAIN to actually record
+        the keyframes.
+        - Obvious speed boost #1: I'm calculating the inverse of `bone.matrix_local` - which does NOT change at all -
+        on every single frame.
+        - Well, that made barely any difference.
+    """
 
     FAST = {"FAST"}
 
@@ -285,7 +451,7 @@ class HKXAnimationImporter:
 
     def __init__(
         self,
-        operator: ImportHKXAnimation,
+        operator: LoggingOperator,
         context,
         bl_armature,
         model_name: str,
@@ -305,13 +471,31 @@ class HKXAnimationImporter:
         root_motion: None | list[Vector4] = None,
     ):
         """Import single animation HKX."""
+
+        if root_motion is not None:
+            if len(root_motion) != len(arma_frames):
+                raise ValueError(
+                    f"Number of animation root motion frames ({len(root_motion)}) does not match number of bone "
+                    f"animation frames ({len(arma_frames)})."
+                )
+            root_motion_samples = [[] for _ in range(3)]
+            for vector in root_motion:
+                root_motion_samples[0].append(vector.x)
+                root_motion_samples[1].append(vector.y)
+                root_motion_samples[2].append(vector.z)
+        else:
+            root_motion_samples = None
+
         action_name = f"{self.model_name}|{animation_name}"
         action = None
         original_location = self.bl_armature.location.copy()
+        frame_scaling = 2 if self.to_60_fps else 1
         try:
             self.bl_armature.animation_data_create()
             self.bl_armature.animation_data.action = action = bpy.data.actions.new(name=action_name)
-            self._add_armature_keyframes(arma_frames, root_motion)
+            bone_basis_samples = self._get_bone_basis_samples(arma_frames)
+            # self._add_keyframes_legacy(basis_frames, root_motion, frame_scaling)
+            self._add_keyframes_batch(bone_basis_samples, root_motion_samples, frame_scaling)
         except Exception:
             if action:
                 bpy.data.actions.remove(action)
@@ -330,11 +514,9 @@ class HKXAnimationImporter:
         bpy.context.scene.frame_end = int(action.frame_range[1])
         bpy.context.scene.frame_set(bpy.context.scene.frame_start)
 
-    def _add_armature_keyframes(
-        self,
-        arma_frames: list[dict[str, TRSTransform]],
-        root_motion: None | list[Vector4] = None,
-    ):
+    def _get_bone_basis_samples(
+        self, arma_frames: list[dict[str, TRSTransform]]
+    ) -> dict[str, list[list[float]]]:
         """Convert a Havok HKX animation file to a Blender action (with fully-sampled keyframes).
 
         The action to add keyframes to should already be the active action on `self.bl_armature`. This is required to
@@ -345,55 +527,146 @@ class HKXAnimationImporter:
         We also use `self.bl_armature` to properly set the `matrix_basis` of each pose bone relative to the bone resting
         positions (set to the edit bones).
 
-        `skeleton_hkx` is required to compute animation frame transforms in object coordinates, as the bone hierarchy
-        can differ for HKX skeletons versus the FLVER skeleton in `bl_armature`.
-
         TODO: Does not support changes in Blender bone names (e.g. '<DUPE>' suffix).
         """
-        if root_motion is not None:
-            if len(root_motion) != len(arma_frames):
-                raise ValueError(
-                    f"Number of animation root motion frames ({len(root_motion)}) does not match number of bone "
-                    f"animation frames ({len(arma_frames)})."
-                )
-
-        # FIRST: Convert armature-space frame data to Blender `(location, rotation_quaternion, scale)` tuples.
+        # Convert armature-space frame data to Blender `(location, rotation_quaternion, scale)` tuples.
         # Note that we decompose the basis matrices so that quaternion discontinuities are handled properly.
         last_frame_rotations = {}  # type: dict[str, BlenderQuaternion]
-        basis_frames = []  # type: list[dict[str, tuple[Vector, BlenderQuaternion, Vector]]]
+
+        bone_basis_samples = {
+            bone_name: [[] for _ in range(10)] for bone_name in arma_frames[0].keys()
+        }  # type: dict[str, list[list[float]]]
+
+        # We'll be using the inverted local matrices of each bone on every frame to calculate their basis matrices.
+        cached_local_inv_matrices = {
+            bone.name: bone.matrix_local.inverted()
+            for bone in self.bl_armature.data.bones
+        }
 
         for frame in arma_frames:
             bl_arma_matrices = {
                 bone_name: GAME_TRS_TO_BL_MATRIX(transform) for bone_name, transform in frame.items()
             }
-            bl_arma_inv_matrices = {}  # cached for frame as needed
-
-            basis_frame = {}
+            cached_arma_inv_matrices = {}  # cached for frame as needed
 
             for bone_name, bl_arma_matrix in bl_arma_matrices.items():
+                basis_samples = bone_basis_samples[bone_name]
+
                 bl_edit_bone = self.bl_armature.data.bones[bone_name]
-                if bl_edit_bone.parent is not None and bl_edit_bone.parent.name not in bl_arma_inv_matrices:
+
+                if bl_edit_bone.parent is not None and bl_edit_bone.parent.name not in cached_arma_inv_matrices:
                     # Cache parent's inverted armature matrix (may be needed by other sibling bones this frame).
                     parent_name = bl_edit_bone.parent.name
-                    bl_arma_inv_matrices[parent_name] = bl_arma_matrices[parent_name].inverted()
+                    cached_arma_inv_matrices[parent_name] = bl_arma_matrices[parent_name].inverted()
 
-                bl_basis_matrix = get_basis_matrix(self.bl_armature, bone_name, bl_arma_matrix, bl_arma_inv_matrices)
+                bl_basis_matrix = get_basis_matrix(
+                    self.bl_armature,
+                    bone_name,
+                    bl_arma_matrix,
+                    cached_local_inv_matrices,
+                    cached_arma_inv_matrices,
+                )
+
                 t, r, s = bl_basis_matrix.decompose()
 
                 if bone_name in last_frame_rotations:
                     if last_frame_rotations[bone_name].dot(r) < 0:
                         r.negate()  # negate quaternion to avoid discontinuity (reverse direction of rotation)
 
-                basis_frame[bone_name] = (t, r, s)
+                for samples, sample_float in zip(basis_samples, [t.x, t.y, t.z, r.w, r.x, r.y, r.z, s.x, s.y, s.z]):
+                    samples.append(sample_float)
+
                 last_frame_rotations[bone_name] = r
 
-            basis_frames.append(basis_frame)
+        return bone_basis_samples
+
+    def _add_keyframes_batch(
+        self,
+        bone_basis_samples: dict[str, list[list[float]]],
+        root_motion_samples: list[list[float], list[float], list[float]] | None,
+        frame_scaling: int,
+    ):
+        """
+        Faster method of adding all bone and (optional) root keyframe data.
+
+        Constructs `FCurves` with known length and uses `foreach_set` to batch-set all the `.co` attributes of the
+        curve keyframe points at once.
+
+        `bone_basis_samples` maps bone names to ten lists of floats (location_x, location_y, etc.).
+        """
+        p = time.perf_counter()
+        action = self.bl_armature.animation_data.action
+
+        # Initialize FCurves for root motion and bones
+        if root_motion_samples is not None:
+            root_loc_fcurves = [action.fcurves.new(data_path="location", index=i) for i in range(3)]
+        else:
+            root_loc_fcurves = []
+
+        bone_fcurves = {}
+        for bone_name in bone_basis_samples.keys():
+            bone_fcurves[bone_name] = []  # ten FCurves per bone
+            bone_fcurves[bone_name] += [
+                action.fcurves.new(data_path=f"pose.bones[\"{bone_name}\"].location", index=i)
+                for i in range(3)
+            ]
+            bone_fcurves[bone_name] += [
+                action.fcurves.new(data_path=f"pose.bones[\"{bone_name}\"].rotation_quaternion", index=i)
+                for i in range(4)
+            ]
+            bone_fcurves[bone_name] += [
+                action.fcurves.new(data_path=f"pose.bones[\"{bone_name}\"].scale", index=i)
+                for i in range(3)
+            ]
+
+        # Build lists of FCurve keyframe points by initializing their size and using `foreach_set`.
+        # Each keyframe point has a `.co` attribute to which we set `(bl_frame_index, value)` (per dimension).
+        # `foreach_set` requires that we flatten the list of tuples to be assigned, a la:
+        #    `[bl_frame_index_0, value_0, bl_frame_index_1, value_1, ...]`
+        # which we do with a list comprehension.
+        if root_loc_fcurves:
+            for dim_samples, fcurve in zip(root_motion_samples, root_loc_fcurves, strict=True):
+                fcurve.keyframe_points.add(count=len(dim_samples))
+                root_dim_flat = [
+                    x
+                    for frame_index, sample_float in enumerate(dim_samples)
+                    for x in [frame_index * frame_scaling, sample_float]
+                ]
+                fcurve.keyframe_points.foreach_set("co", root_dim_flat)
+
+        for bone_name, bone_transform_fcurves in bone_fcurves.items():
+            basis_samples = bone_basis_samples[bone_name]
+            for bone_fcurve, samples in zip(bone_transform_fcurves, basis_samples, strict=True):
+                bone_fcurve.keyframe_points.add(count=len(samples))
+                bone_dim_flat = [
+                    x
+                    for frame_index, sample_float in enumerate(samples)
+                    for x in [frame_index * frame_scaling, sample_float]
+                ]
+                bone_fcurve.keyframe_points.foreach_set("co", bone_dim_flat)
+
+        print(f"batch keyframe_time: {time.perf_counter() - p:.4f}")
+
+    def _add_keyframes_legacy(
+        self,
+        basis_frames: list[dict[str, tuple[Vector, BlenderQuaternion, Vector]]],
+        root_motion: None | list[Vector4],
+        frame_scaling: int,
+    ):
+        """
+        Slow `keyframe_insert()`-based method of adding all bone and (optional) root keyframes.
+
+        The action to add keyframes to should already be the active action on `self.bl_armature`. This is required to
+        use the `keyframe_insert()` method, which allows full-Vector and full-Quaternion keyframes to be inserted and
+        have Blender properly interpolate (e.g. Quaternion slerp) between them, which it cannot do if we use FCurves and
+        set the `keyframe_points` directly for each coordinate.
+        """
+
+        p = time.perf_counter()
 
         for frame_index, frame in enumerate(basis_frames):
 
-            # TODO: Make this a more general 'frame scaling' option, e.g. by having importer take input/output FPS.
-            #  (Should be able to read/infer input FPS from HKX file, actually.)
-            bl_frame_index = frame_index * 2 if self.to_60_fps else frame_index
+            bl_frame_index = frame_scaling * frame_index
 
             if root_motion is not None:
                 self.bl_armature.location = GAME_TO_BL_VECTOR(root_motion[frame_index])  # drop useless fourth element
@@ -406,6 +679,9 @@ class HKXAnimationImporter:
                 bl_pose_bone.scale = s
 
                 # Insert keyframes for location, rotation, scale.
+                p = time.perf_counter()
                 bl_pose_bone.keyframe_insert(data_path="location", frame=bl_frame_index)
                 bl_pose_bone.keyframe_insert(data_path="rotation_quaternion", frame=bl_frame_index)
                 bl_pose_bone.keyframe_insert(data_path="scale", frame=bl_frame_index)
+
+        print(f"legacy keyframe_time: {time.perf_counter() - p:.4f}")

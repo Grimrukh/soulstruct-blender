@@ -75,20 +75,24 @@ def get_basis_matrix(
     armature,
     bone_name: str,
     armature_matrix: Matrix,
+    local_inv_matrices: dict[str, Matrix],
     armature_inv_matrices: dict[str, Matrix],
 ):
     """Get `pose_bone.matrix_basis` from `armature_matrix` by inverting Blender's process.
 
-    Accepts `armature_inv_matrices`, indexed by bone names, to avoid recalculating the inverted matrices of multi-child
-    bones.
+    Accepts `local_inv_matrix` and `armature_inv_matrices`, both indexed by bone name, to avoid recalculating the
+    inverted matrices of multi-child bones.
 
     Inverse of `get_armature_matrix()`.
     """
-    local = armature.data.bones[bone_name].matrix_local
+    local_inv = local_inv_matrices.setdefault(
+        bone_name,
+        armature.data.bones[bone_name].matrix_local.inverted(),
+    )
     parent_bone = armature.pose.bones[bone_name].parent
 
     if parent_bone is None:
-        return local.inverted() @ armature_matrix
+        return local_inv @ armature_matrix
     else:
         parent_removed = armature_inv_matrices[parent_bone.name] @ armature_matrix
-        return local.inverted() @ armature.data.bones[parent_bone.name].matrix_local @ parent_removed
+        return local_inv @ armature.data.bones[parent_bone.name].matrix_local @ parent_removed

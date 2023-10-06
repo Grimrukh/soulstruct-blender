@@ -3,6 +3,7 @@ from __future__ import annotations
 __all__ = [
     "ImportHKXAnimation",
     "ImportHKXAnimationWithBinderChoice",
+    "ImportCharacterHKXAnimation",
 
     "ExportHKXAnimation",
     "ExportHKXAnimationIntoBinder",
@@ -23,7 +24,7 @@ if "HKX_ANIMATION_PT_hkx_tools" in locals():
     importlib.reload(sys.modules["io_soulstruct.hkx_animation.select_hkx_animation"])
     importlib.reload(sys.modules["io_soulstruct.hkx_animation.export_hkx_animation"])
 
-from .import_hkx_animation import ImportHKXAnimation, ImportHKXAnimationWithBinderChoice
+from .import_hkx_animation import ImportHKXAnimation, ImportHKXAnimationWithBinderChoice, ImportCharacterHKXAnimation
 from .export_hkx_animation import ExportHKXAnimation, ExportHKXAnimationIntoBinder
 from .select_hkx_animation import ArmatureActionChoiceOperator, SelectArmatureActionOperator
 
@@ -39,6 +40,7 @@ class HKX_ANIMATION_PT_hkx_animation_tools(bpy.types.Panel):
     def draw(self, context):
         import_box = self.layout.box()
         import_box.operator(ImportHKXAnimation.bl_idname)
+        import_box.operator(ImportCharacterHKXAnimation.bl_idname)
 
         export_box = self.layout.box()
         export_box.operator(ExportHKXAnimation.bl_idname)
