@@ -10,7 +10,8 @@ from bpy.props import StringProperty, BoolProperty, IntProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 import bmesh
 
-from soulstruct.containers import Binder, BinderEntry, DCXType
+from soulstruct.containers import Binder, BinderEntry
+from soulstruct.dcx import DCXType
 from soulstruct.darksouls1r.maps.navmesh.nvm import NVM, NVMTriangle, NVMEventEntity
 
 from io_soulstruct.utilities import *

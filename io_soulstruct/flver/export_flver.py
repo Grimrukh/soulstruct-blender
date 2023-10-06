@@ -2,6 +2,8 @@ from __future__ import annotations
 
 __all__ = ["ExportFLVER", "ExportFLVERIntoBinder", "ExportMapPieceFLVERs", "ExportCharacterFLVER"]
 
+import time
+
 import traceback
 import typing as tp
 from dataclasses import dataclass
@@ -501,9 +503,11 @@ class FLVERExporter:
 
     def warning(self, msg: str):
         self.operator.report({"WARNING"}, msg)
+        print(f"# WARNING: {msg}")
 
     def info(self, msg: str):
         self.operator.report({"INFO"}, msg)
+        print(f"# INFO: {msg}")
 
     def detect_is_bind_pose(self, bl_flver_mesh: bpy.types.MeshObject) -> str:
         """Detect whether bone data should be read from EditBones or PoseBones.
@@ -514,8 +518,8 @@ class FLVERExporter:
         """
         read_bone_type = ""
         warn_partial_bind_pose = False
-        for i in range(len(bl_flver_mesh.material_slots)):
-            is_bind_pose = bool(bl_flver_mesh.get(f"Material[{i}] Is Bind Pose", False))
+        for bl_material in bl_flver_mesh.data.materials:
+            is_bind_pose = get_bl_prop(bl_material, "Is Bind Pose", int, callback=bool)
             if is_bind_pose:  # typically: characters, objects, parts
                 if not read_bone_type:
                     read_bone_type = "EDIT"  # write bone transforms from EditBones
@@ -641,7 +645,7 @@ class FLVERExporter:
             if child.type == "EMPTY":
                 if dummy_dict := self.parse_dummy_empty(child, mesh.name):
                     bl_dummies.append((child, dummy_dict))
-            else:
+            elif child is not mesh and child is not armature:
                 self.warning(f"Non-Empty child object '{child.name}' of Mesh/Armature ignored.")
 
         # Sort dummies and meshes by 'human sorting' on Blender name (should match order in Blender hierarchy view).
@@ -658,15 +662,15 @@ class FLVERExporter:
             return None
 
         dummy_dict = parse_dummy_name(bl_empty.name)
-        if dummy_dict is None:
+        if not dummy_dict:
             self.warning(
                 f"Could not interpret Dummy name: '{bl_empty.name}'. Ignoring it. Format should be: \n"
                 f"    `[other_model] {{Name}} Dummy<index> [reference_id]` "
                 f"    where `[other_model]` is an optional prefix used only for attached equipment FLVERs"
             )
-        # TODO: exclude dummies with wrong 'other_model' prefix, depending on whether c0000 or that equipment
-        #  is being exported. Currently excluding all dummies with any 'other_model'.
-        if dummy_dict["Other Model"]:
+        # TODO: exclude dummies with WRONG 'other_model' prefix, depending on whether c0000 or that equipment
+        #  is being exported. Currently excluding all dummies with any 'other_model' defined.
+        if dummy_dict.get("other_model", False):
             return  # do not export
 
         if dummy_dict["flver_name"] != expected_prefix:
@@ -680,7 +684,7 @@ class FLVERExporter:
         """Get `MTDInfo` for a FLVER material, which is needed for both material creation and assignment of vertex UV
         data to the correct Blender UV data layer during mesh creation.
         """
-        mtd_name = Path(bl_material["MTD Name"]).name
+        mtd_name = Path(bl_material["MTD Path"]).name
         if not mtd_manager:
             return MTDInfo.from_mtd_name(mtd_name)
 
@@ -706,17 +710,11 @@ class FLVERExporter:
         mtd_infos: list[MTDInfo],
     ):
         """
-        TODO:
-            - First, we iterate over each Blender material slot used by `bl_mesh`.
-            - Each of these will be mapped (via simple same-length lists) to a split submesh index (to be written into
-              the `faces[:, 3]` of a `MergedMesh` for splitting), a FLVER `Material` and `VertexArrayLayout` (simply
-              created and stored with the matching `Material`), and miscellaneous kwargs for `Submesh` and `FaceSet`.
-            - NOTE: the Soulstruct `FLVER` writer automatically merges identical `Material` and `VertexArrayLayout`
-              instances, based on their hash, and remaps the indices used by `Submesh` to access them. We therefore
-              don't bother doing the same thing here, and creating duplicates wastes essentially no time at all compared
-              to creating and checking hashes again (we'd still need to traverse the Blender node tree).
-            - With this done, we can simply stack up all the Blender vertex and loop data into a new `MergedMesh` and
-              split it to get our ready-made `Submeshes` with their materials and layouts already attached.
+        Construct a `MergedMesh` from Blender data, in a straightforward way (unfortunately using `for` loops over
+        vertices, faces, and loops), then split it into `Submesh` instances based on Blender materials.
+
+        Also creates `Material` and `VertexArrayLayout` instances for each Blender material, and assigns them to the
+        appropriate `Submesh` instances. Any duplicate instances here will be merged when FLVER is packed.
         """
 
         # 1. Create per-submesh info. Note that every Blender material index is guaranteed to be mapped to AT LEAST ONE
@@ -735,7 +733,7 @@ class FLVERExporter:
             submesh_kwargs = {
                 "is_bind_pose": get_bl_prop(bl_material, "Is Bind Pose", int, default=use_chr_layout, callback=bool),
                 "default_bone_index": get_bl_prop(bl_material, "Default Bone Index", int, default=0),
-                "backface_culling": bl_material.backface_culling,
+                "use_backface_culling": bl_material.use_backface_culling,
                 "uses_bounding_box": True,  # TODO: assumption (DS1 and likely all later games)
             }
 
@@ -745,20 +743,6 @@ class FLVERExporter:
 
         # 2. Extract UV layers. (Yes, we iterate over Blender materials again, but it's worth the clarity of purpose.)
         # Maps UV layer names to lists of `MeshUVLoop` instances (so they're converted only once across all materials).
-        
-        # TODO: Just using a list of all layers for now (removing the `material` index).
-        # Nested lists with indexing order: material, loop, UV index
-        # bl_uv_data_lists = {}  # type: dict[str, list]  # very annoying that we can't just grab the whole UV array!
-        # material_uv_layers = []  # type: list[list[list[bpy.types.MeshUVLoop]]]
-        # for mtd_info, bl_material in zip(mtd_infos, bl_mesh.data.materials, strict=True):
-        #     uv_layers = []
-        #     for uv_layer_name in mtd_info.get_uv_layer_names():
-        #         uv_data_list = bl_uv_data_lists.setdefault(
-        #             uv_layer_name, list(bl_mesh.data.uv_layers[uv_layer_name].data)
-        #         )
-        #         uv_layers.append(uv_data_list)  # reference to same list
-        #     material_uv_layers.append(uv_layers)
-
         all_uv_layer_names_set = set()
         for mtd_info in mtd_infos:
             all_uv_layer_names_set |= set(mtd_info.get_uv_layer_names())
@@ -808,6 +792,7 @@ class FLVERExporter:
 
         # TODO: Due to the unfortunate need to access Python attributes one by one, we need a `for` loop. Given the
         #  retrieval of vertex bones, though, it's unlikely a simple `position` array assignment would remove the need.
+        p = time.perf_counter()
         for i, vertex in enumerate(mesh_data.vertices):
             vertex_positions[i] = vertex.co
             # for j, (bone_weight, bone_name) in enumerate(zip(vertex.groups, vertex_bone_weights[i])):
@@ -869,7 +854,10 @@ class FLVERExporter:
         vertex_data["bone_weights"] = vertex_bone_weights
         vertex_data["bone_indices"] = vertex_bone_indices
 
+        self.info(f"Constructed combined vertex array in {time.perf_counter() - p} s.")
+
         # TODO: Again, due to the unfortunate need to access Python attributes one by one, we need a `for` loop.
+        p = time.perf_counter()
         faces = np.empty((len(mesh_data.polygons), 4), dtype=np.int32)
         for i, face in enumerate(mesh_data.polygons):
             try:
@@ -879,8 +867,10 @@ class FLVERExporter:
                     f"Cannot export FLVER mesh '{bl_mesh.name}' with any non-triangle faces. "
                     f"Face index {i} has {len(face.loop_indices)} sides)."
                 )
+        self.info(f"Constructed combined face array in {time.perf_counter() - p} s.")
 
         # Finally, we iterate over loops and construct their arrays.
+        p = time.perf_counter()
         loop_count = len(mesh_data.loops)
         loop_vertex_indices = np.empty(loop_count, dtype=np.int32)
         loop_normals = np.empty((loop_count, 3), dtype=np.float32)
@@ -921,8 +911,15 @@ class FLVERExporter:
             # TODO: Technically it's a waste of time writing the data from UV layers that aren't even used by a certain
             #  submesh (and will hence be discarded during split submesh creation), but I'd need to go back and retrieve
             #  the material index of this loop's parent face to know which UV layer names to export. Not worth it.
-            for uv_i, uv_layer_data in enumerate(uv_layer_data):
-                loop_uvs[uv_i][i] = uv_layer_data[i].uv
+            for uv_i, uv_data in enumerate(uv_layer_data):
+                loop_uvs[uv_i][i] = uv_data[i].uv
+
+        # Add `w` components to tangents and bitangents (-1).
+        minus_one = np.full((loop_count, 1), -1, dtype=np.float32)
+        loop_tangents = np.concatenate((loop_tangents, minus_one), axis=1)
+        loop_bitangents = np.concatenate((loop_bitangents, minus_one), axis=1)
+
+        self.info(f"Constructed combined loop array in {time.perf_counter() - p} s.")
 
         merged_mesh = MergedMesh(
             vertex_data=vertex_data,
@@ -939,12 +936,14 @@ class FLVERExporter:
         merged_mesh.swap_vertex_yz(tangents=True, bitangents=True)
         merged_mesh.invert_vertex_uv(invert_u=False, invert_v=True)
         
+        p = time.perf_counter()
         flver.submeshes = merged_mesh.split_mesh(
             submesh_info,
             use_submesh_bone_indices=True,  # TODO: for DS1
             max_bones_per_submesh=38,  # TODO: for DS1
             unused_bone_indices_are_minus_one=True,
         )
+        self.info(f"Split mesh into {len(flver.submeshes)} submeshes in {time.perf_counter() - p} s.")
 
         return flver
 

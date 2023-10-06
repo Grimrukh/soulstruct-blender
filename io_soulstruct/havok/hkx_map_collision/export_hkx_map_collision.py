@@ -9,7 +9,7 @@ from pathlib import Path
 import bpy
 from bpy.props import StringProperty, BoolProperty, IntProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
-from soulstruct.containers.dcx import DCXType
+from soulstruct.dcx import DCXType
 
 from soulstruct.containers import Binder, BinderEntry
 

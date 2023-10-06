@@ -44,9 +44,10 @@ from bpy.props import StringProperty, FloatProperty, BoolProperty, EnumProperty,
 from bpy_extras.io_utils import ImportHelper
 from mathutils import Vector, Matrix
 
-from soulstruct.base.models.flver import FLVER, Dummy, Material
+from soulstruct.base.models.flver import FLVER, Dummy
 from soulstruct.base.models.flver.mesh_tools import MergedMesh
-from soulstruct.containers import Binder, DCXType
+from soulstruct.containers import Binder
+from soulstruct.dcx import DCXType
 from soulstruct.containers.tpf import TPFTexture, batch_get_tpf_texture_png_data
 from soulstruct.utilities.maths import Vector3
 
@@ -700,7 +701,7 @@ class FLVERImporter:
 
         # Maps FLVER submeshes to their Blender material index to store per-face in the merged mesh.
         # Submeshes that originally indexed the same FLVER material may have different Blender 'variant' materials that
-        # hold certain Submesh/FaceSet properties like `backface_culling`.
+        # hold certain Submesh/FaceSet properties like `use_backface_culling`.
         # Conversely, Submeshes that only serve to handle per-submesh bone maximums (e.g. 38 in DS1) will use the same
         # Blender material and be split again automatically on export (but likely not in an indentical way!).
         submesh_bl_material_indices = []
@@ -757,7 +758,7 @@ class FLVERImporter:
                     bool(existing_bl_material["Is Bind Pose"]) == submesh.is_bind_pose
                     and existing_bl_material["Default Bone Index"] == submesh.default_bone_index
                     and existing_bl_material["Face Set Count"] == len(submesh.face_sets)
-                    and existing_bl_material.use_backface_culling == submesh.backface_culling
+                    and existing_bl_material.use_backface_culling == submesh.use_backface_culling
                 ):
                     # Blender material already exists with the same Mesh properties. No new variant neeed.
                     submesh_bl_material_indices.append(existing_bl_material_index)
@@ -831,7 +832,7 @@ class FLVERImporter:
             self.new_objs.append(bl_armature_obj)
 
         # Parent mesh to armature. This is critical for proper animation behavior (especially with root motion).
-        bl_armature_obj.parent = bl_flver_mesh
+        bl_flver_mesh.parent = bl_armature_obj
 
         self.operator.set_active_obj(bl_flver_mesh)
         bpy.ops.object.modifier_add(type="ARMATURE")
@@ -941,10 +942,10 @@ class FLVERImporter:
         be split again on export as needed.
 
         Some FLVER submeshes also use the same material, but have different `Mesh` or `FaceSet` properties such as
-        `backface_culling`. Backface culling is a material option in Blender, so these submeshes will use different
+        `use_backface_culling`. Backface culling is a material option in Blender, so these submeshes will use different
         Blender material 'variants' even though they use the same FLVER material. The FLVER exporter will start by
         creating a FLVER material for every Blender material slot, then unify any identical FLVER material instances and
-        redirect any differences like `backface_culling` or `is_bind_pose` to the FLVER mesh.
+        redirect any differences like `use_backface_culling` or `is_bind_pose` to the FLVER mesh.
 
         Breakdown:
             - Blender stores POSITION, BONE WEIGHTS, and BONE INDICES on vertices. Any differences here will require

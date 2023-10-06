@@ -34,7 +34,7 @@ from io_soulstruct.general import get_cached_file
 
 
 DUMMY_NAME_RE = re.compile(  # accepts and ignores Blender '.001' suffix and anything else after the `[ref_id]` in name
-    r"^(?P<other_model>\[\w+\])? +(?P<flver_name>.+) +Dummy<(?P<index>\d+)> *(?P<reference_id>\[\d+\]) *(\.\d+)?$"
+    r"^(?P<other_model>\[\w+\] +)?(?P<flver_name>.+) +Dummy<(?P<index>\d+)> *(?P<reference_id>\[\d+\]) *(\.\d+)?$"
 )
 
 
@@ -127,7 +127,7 @@ def parse_dummy_name(dummy_name: str) -> dict[str, str | int]:
         return {}  # invalid name
     other_model = match.group("other_model")
     return {
-        "other_model": other_model[1:-1] if other_model else "",  # exclude brackets
+        "other_model": other_model.strip()[1:-1] if other_model else "",  # exclude brackets
         "flver_name": match.group("flver_name"),
         "index": int(match.group("index")),
         "reference_id": int(match.group("reference_id")[1:-1]),  # exclude brackets

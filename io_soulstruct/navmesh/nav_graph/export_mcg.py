@@ -8,7 +8,7 @@ from pathlib import Path
 from bpy.props import StringProperty, BoolProperty
 from bpy_extras.io_utils import ExportHelper
 
-from soulstruct.containers import DCXType
+from soulstruct.dcx import DCXType
 from soulstruct.darksouls1r.maps import MSB
 from soulstruct.darksouls1r.maps.navmesh.mcg import MCG, MCGNode, MCGEdge
 from soulstruct.darksouls1r.maps.navmesh.mcp import MCP

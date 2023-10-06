@@ -39,7 +39,8 @@ from bpy.props import EnumProperty
 from bpy.types import Operator
 from mathutils import Color, Euler, Vector, Matrix
 
-from soulstruct.containers import Binder, DCXType
+from soulstruct.containers import Binder
+from soulstruct.dcx import DCXType
 from soulstruct.base.models.mtd import MTD
 from soulstruct.utilities.maths import Vector3, Vector4, Matrix3
 

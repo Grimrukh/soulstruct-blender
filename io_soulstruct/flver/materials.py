@@ -204,7 +204,7 @@ def get_submesh_blender_material(
     bl_material["Default Bone Index"] = submesh.default_bone_index
     # Currently, main face set is simply copied to all additional face sets on export.
     bl_material["Face Set Count"] = len(submesh.face_sets)
-    bl_material.use_backface_culling = submesh.backface_culling
+    bl_material.use_backface_culling = submesh.use_backface_culling
 
     return bl_material
 

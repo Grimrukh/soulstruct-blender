@@ -10,7 +10,8 @@ import bpy
 from bpy.props import StringProperty, BoolProperty, IntProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 
-from soulstruct.containers import Binder, DCXType
+from soulstruct.containers import Binder
+from soulstruct.dcx import DCXType
 from soulstruct_havok.wrappers.hkx2015 import SkeletonHKX, AnimationHKX
 from soulstruct_havok.utilities.maths import Vector4, TRSTransform
 

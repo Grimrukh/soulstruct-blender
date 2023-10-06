@@ -15,7 +15,8 @@ import bpy
 from bpy_extras.io_utils import ImportHelper
 
 from soulstruct.base.textures.dds import texconv
-from soulstruct.containers import BinderEntry, DCXType, TPF
+from soulstruct.containers import BinderEntry, TPF
+from soulstruct.dcx import DCXType
 
 from io_soulstruct.utilities import *
 from io_soulstruct.flver.utilities import MTDInfo

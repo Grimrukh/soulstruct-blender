@@ -21,7 +21,8 @@ from pathlib import Path
 import bpy
 from bpy.props import StringProperty
 from bpy_extras.io_utils import ImportHelper
-from soulstruct.containers import Binder, DCXType
+from soulstruct.containers import Binder
+from soulstruct.dcx import DCXType
 from soulstruct.utilities.files import read_json, write_json
 from soulstruct.utilities.binary import get_blake2b_hash
 

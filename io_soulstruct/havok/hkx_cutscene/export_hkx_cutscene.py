@@ -12,7 +12,7 @@ import bpy
 from bpy.props import StringProperty, BoolProperty, IntProperty, EnumProperty
 from mathutils import Euler, Matrix, Vector
 from bpy_extras.io_utils import ExportHelper
-from soulstruct.containers.dcx import DCXType
+from soulstruct.dcx import DCXType
 
 from soulstruct.containers import Binder, BinderEntry
 from soulstruct.base.models.flver import FLVER, Version
