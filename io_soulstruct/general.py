@@ -114,6 +114,10 @@ class GlobalSettings(bpy.types.PropertyGroup):
                 match _game:
                     case "DS1R":
                         return DCXType.Null if is_binder_entry else DCXType.DS1_DS2
+            case "HKX":
+                match _game:
+                    case "DS1R":
+                        return DCXType.Null
         raise ValueError(f"Default DCX compression for class name '{class_name}' and game '{_game}' is unknown.")
 
     @staticmethod

@@ -15,7 +15,7 @@ from pathlib import Path
 
 import bpy
 from bpy_extras.io_utils import ImportHelper
-from mathutils import Vector, Quaternion as BlenderQuaternion
+from mathutils import Quaternion as BlenderQuaternion
 
 from soulstruct.containers import Binder, BinderEntry
 from soulstruct.dcx import DCXType
@@ -480,9 +480,10 @@ class HKXAnimationImporter:
                 )
             root_motion_samples = [[] for _ in range(3)]
             for vector in root_motion:
+                # Y and Z swapped.
                 root_motion_samples[0].append(vector.x)
-                root_motion_samples[1].append(vector.y)
-                root_motion_samples[2].append(vector.z)
+                root_motion_samples[1].append(vector.z)
+                root_motion_samples[2].append(vector.y)
         else:
             root_motion_samples = None
 
@@ -494,7 +495,6 @@ class HKXAnimationImporter:
             self.bl_armature.animation_data_create()
             self.bl_armature.animation_data.action = action = bpy.data.actions.new(name=action_name)
             bone_basis_samples = self._get_bone_basis_samples(arma_frames)
-            # self._add_keyframes_legacy(basis_frames, root_motion, frame_scaling)
             self._add_keyframes_batch(bone_basis_samples, root_motion_samples, frame_scaling)
         except Exception:
             if action:
@@ -594,7 +594,6 @@ class HKXAnimationImporter:
 
         `bone_basis_samples` maps bone names to ten lists of floats (location_x, location_y, etc.).
         """
-        p = time.perf_counter()
         action = self.bl_armature.animation_data.action
 
         # Initialize FCurves for root motion and bones
@@ -644,44 +643,3 @@ class HKXAnimationImporter:
                     for x in [frame_index * frame_scaling, sample_float]
                 ]
                 bone_fcurve.keyframe_points.foreach_set("co", bone_dim_flat)
-
-        print(f"batch keyframe_time: {time.perf_counter() - p:.4f}")
-
-    def _add_keyframes_legacy(
-        self,
-        basis_frames: list[dict[str, tuple[Vector, BlenderQuaternion, Vector]]],
-        root_motion: None | list[Vector4],
-        frame_scaling: int,
-    ):
-        """
-        Slow `keyframe_insert()`-based method of adding all bone and (optional) root keyframes.
-
-        The action to add keyframes to should already be the active action on `self.bl_armature`. This is required to
-        use the `keyframe_insert()` method, which allows full-Vector and full-Quaternion keyframes to be inserted and
-        have Blender properly interpolate (e.g. Quaternion slerp) between them, which it cannot do if we use FCurves and
-        set the `keyframe_points` directly for each coordinate.
-        """
-
-        p = time.perf_counter()
-
-        for frame_index, frame in enumerate(basis_frames):
-
-            bl_frame_index = frame_scaling * frame_index
-
-            if root_motion is not None:
-                self.bl_armature.location = GAME_TO_BL_VECTOR(root_motion[frame_index])  # drop useless fourth element
-                self.bl_armature.keyframe_insert(data_path="location", frame=bl_frame_index)
-
-            for bone_name, (t, r, s) in frame.items():
-                bl_pose_bone = self.bl_armature.pose.bones[bone_name]
-                bl_pose_bone.location = t
-                bl_pose_bone.rotation_quaternion = r
-                bl_pose_bone.scale = s
-
-                # Insert keyframes for location, rotation, scale.
-                p = time.perf_counter()
-                bl_pose_bone.keyframe_insert(data_path="location", frame=bl_frame_index)
-                bl_pose_bone.keyframe_insert(data_path="rotation_quaternion", frame=bl_frame_index)
-                bl_pose_bone.keyframe_insert(data_path="scale", frame=bl_frame_index)
-
-        print(f"legacy keyframe_time: {time.perf_counter() - p:.4f}")

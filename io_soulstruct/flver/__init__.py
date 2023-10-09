@@ -99,6 +99,7 @@ class FLVERExportPanel(bpy.types.Panel):
 
         layout.label(text="To Game Directory:")
         layout.operator(ExportMapPieceFLVERs.bl_idname)
+        layout.operator(ExportCharacterFLVER.bl_idname)
 
 
 class FLVERLightmapsPanel(bpy.types.Panel):

@@ -7,6 +7,7 @@ __all__ = [
 
     "ExportHKXAnimation",
     "ExportHKXAnimationIntoBinder",
+    "ExportCharacterHKXAnimation",
 
     "ArmatureActionChoiceOperator",
     "SelectArmatureActionOperator",
@@ -25,7 +26,7 @@ if "HKX_ANIMATION_PT_hkx_tools" in locals():
     importlib.reload(sys.modules["io_soulstruct.hkx_animation.export_hkx_animation"])
 
 from .import_hkx_animation import ImportHKXAnimation, ImportHKXAnimationWithBinderChoice, ImportCharacterHKXAnimation
-from .export_hkx_animation import ExportHKXAnimation, ExportHKXAnimationIntoBinder
+from .export_hkx_animation import ExportHKXAnimation, ExportHKXAnimationIntoBinder, ExportCharacterHKXAnimation
 from .select_hkx_animation import ArmatureActionChoiceOperator, SelectArmatureActionOperator
 
 
@@ -45,6 +46,9 @@ class HKX_ANIMATION_PT_hkx_animation_tools(bpy.types.Panel):
         export_box = self.layout.box()
         export_box.operator(ExportHKXAnimation.bl_idname)
         export_box.operator(ExportHKXAnimationIntoBinder.bl_idname)
+        export_box.operator(ExportCharacterHKXAnimation.bl_idname)
 
         select_box = self.layout.box()
         select_box.operator(SelectArmatureActionOperator.bl_idname)
+
+        game_box = self.layout.box()

@@ -1074,6 +1074,9 @@ class FLVERImporter:
 
             bm_face.material_index = face[3]
 
+            # TODO: Could potentially speed this up with `foreach_set` on `bm.loops` afterward, but would still need
+            #  to record all FLVER loop indices that actually made it into BM faces (to filter out degenerate faces).
+            #  Very minor optimization though (if at all).
             for bm_loop, loop_index in zip(bm_face.loops, loop_indices):
                 for uv_i, (uv_list, uv_layer) in enumerate(zip(loop_uvs_list, loop_uv_layers)):
                     bm_loop[uv_layer].uv = uv_list[loop_index]

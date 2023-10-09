@@ -46,10 +46,15 @@ def get_root_motion(animation_hkx: AnimationHKX):
 
 
 def get_animation_name(animation_id: int, template: str, prefix="a"):
-    """Takes a template like '##_###' and converts `animation_id` (e.g. 10000) to a string like 'a01_0000'."""
+    """Takes a template like '##_####' and converts `animation_id` int (e.g. 13000) to a string (e.g. 'a01_3000')."""
     parts = template.split('_')
     string_parts = []
     animation_id = str(animation_id)
+
+    if len(template.replace("_", "")) < len(animation_id):
+        raise ValueError(
+            f"Animation ID '{animation_id}' is too long for template '{template}'."
+        )
 
     for part in reversed(parts):
         length = len(part)  # number of digits we want to take from the end of the animation ID
