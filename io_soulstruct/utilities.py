@@ -245,12 +245,14 @@ class LoggingOperator(Operator):
 
     cleanup_callback: tp.Callable = None
 
+    # TODO: `report` seems to log to console for FLVER operators, but not HKX?
+
     def info(self, msg: str):
-        # print(f"# INFO: {msg}")
+        print(f"# INFO: {msg}")
         self.report({"INFO"}, msg)
 
     def warning(self, msg: str):
-        # print(f"# WARNING: {msg}")
+        print(f"# WARNING: {msg}")
         self.report({"WARNING"}, msg)
 
     def error(self, msg: str) -> set[str]:

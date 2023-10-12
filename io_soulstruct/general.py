@@ -90,11 +90,25 @@ class GlobalSettings(bpy.types.PropertyGroup):
         default="",
     )
 
+    use_bak_file: bpy.props.BoolProperty(
+        name="Use BAK File",
+        description="Use BAK file when importing from game directory (and fail if missing)",
+        default=False,
+    )
+
     @staticmethod
     def get_scene_settings(context: bpy.types.Context = None) -> GlobalSettings:
         if context is None:
             context = bpy.context
         return context.scene.soulstruct_global_settings
+
+    @staticmethod
+    def get_selected_map_path(context: bpy.types.Context = None) -> Path | None:
+        """Get the `map_stem` path in its game directory."""
+        settings = GlobalSettings.get_scene_settings(context)
+        if not settings.game_directory or not settings.map_stem:
+            return None
+        return Path(settings.game_directory, "map", settings.map_stem)
 
     @staticmethod
     def resolve_dcx_type(
@@ -170,6 +184,7 @@ CHRBNDS = [("0", "None", "None")]
 OBJBNDS = [("0", "None", "None")]
 
 
+# noinspection PyUnusedLocal
 def collect_map_piece_flvers(self, context):
     settings = GlobalSettings.get_scene_settings(context)
     game_directory = settings.game_directory
@@ -189,6 +204,7 @@ def collect_map_piece_flvers(self, context):
     return MAP_PIECE_FLVERS
 
 
+# noinspection PyUnusedLocal
 def collect_chrbnds(self, context):
     settings = GlobalSettings.get_scene_settings(context)
     game_directory = settings.game_directory
@@ -322,6 +338,12 @@ class GlobalSettingsPanel_View(bpy.types.Panel):
         split.column().operator(SelectCustomMTDBNDFile.bl_idname, text="Browse")
 
 
+STEAM_COMMON_LOCATIONS = [
+    Path(f"{drive}:/Program Files (x86)/Steam/steamapps/common")
+    for drive in "CDEFGH"
+]
+
+
 class SelectGameDirectory(LoggingOperator, ImportHelper):
     """Browse for global game directory."""
     bl_idname = "soulstruct.select_game_directory"
@@ -337,14 +359,16 @@ class SelectGameDirectory(LoggingOperator, ImportHelper):
     )
 
     def invoke(self, context, _event):
-        """Set the initial directory."""
-        steam_common = Path("C:/Program Files (x86)/Steam/steamapps/common")
-        if steam_common.is_dir():
-            self.filepath = steam_common
+        """Set the initial directory to browse in, if it exists."""
+        for steam_common_location in STEAM_COMMON_LOCATIONS:
+            if steam_common_location.is_dir():
+                self.filepath = str(steam_common_location)
+                break
         return super().invoke(context, _event)
 
     def execute(self, context):
         if self.filepath:
+            # We use browser's current `directory`, not `filepath` itself.
             game_directory = Path(self.directory).resolve()
             GlobalSettings.get_scene_settings(context).game_directory = str(game_directory)
 
@@ -371,9 +395,10 @@ class SelectMapDirectory(LoggingOperator, ImportHelper):
         if game_directory:
             self.filepath = game_directory
         else:
-            steam_common = Path("C:/Program Files (x86)/Steam/steamapps/common")
-            if steam_common.is_dir():
-                self.filepath = steam_common
+            for steam_common_location in STEAM_COMMON_LOCATIONS:
+                if steam_common_location.is_dir():
+                    self.filepath = str(steam_common_location)
+                    break
         return super().invoke(context, _event)
 
     def execute(self, context):

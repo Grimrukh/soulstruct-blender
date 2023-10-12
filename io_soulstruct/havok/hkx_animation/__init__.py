@@ -31,7 +31,7 @@ from .select_hkx_animation import ArmatureActionChoiceOperator, SelectArmatureAc
 
 
 class HKX_ANIMATION_PT_hkx_animation_tools(bpy.types.Panel):
-    bl_label = "Animations"
+    bl_label = "HKX Animations"
     bl_idname = "HKX_ANIMATION_PT_hkx_tools"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
@@ -41,14 +41,17 @@ class HKX_ANIMATION_PT_hkx_animation_tools(bpy.types.Panel):
     def draw(self, context):
         import_box = self.layout.box()
         import_box.operator(ImportHKXAnimation.bl_idname)
-        import_box.operator(ImportCharacterHKXAnimation.bl_idname)
 
         export_box = self.layout.box()
         export_box.operator(ExportHKXAnimation.bl_idname)
         export_box.operator(ExportHKXAnimationIntoBinder.bl_idname)
-        export_box.operator(ExportCharacterHKXAnimation.bl_idname)
+
+        game_box = self.layout.box()
+        game_box.label(text="From Game Directory:")
+        game_box.prop(context.scene.soulstruct_global_settings, "use_bak_file", text="From .BAK File")
+        game_box.operator(ImportCharacterHKXAnimation.bl_idname)
+        game_box.label(text="To Game Directory:")
+        game_box.operator(ExportCharacterHKXAnimation.bl_idname)
 
         select_box = self.layout.box()
         select_box.operator(SelectArmatureActionOperator.bl_idname)
-
-        game_box = self.layout.box()

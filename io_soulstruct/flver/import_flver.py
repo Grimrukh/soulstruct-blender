@@ -395,7 +395,7 @@ class ImportMapPieceFLVER(LoggingOperator, ImportFLVERMixin):
 class ImportCharacterFLVER(LoggingOperator, ImportFLVERMixin):
     """Import a character FLVER from the current selected value of listed game map CHRBNDs."""
     bl_idname = "import_scene.chrbnd_flver"
-    bl_label = "Import CHRBND Flver"
+    bl_label = "Import CHRBND FLVER"
     bl_description = "Import selected character's FLVER from game map directory"
 
     @classmethod
@@ -447,7 +447,7 @@ class ImportCharacterFLVER(LoggingOperator, ImportFLVERMixin):
 class ImportObjectFLVER(LoggingOperator, ImportFLVERMixin):
     """Import all object FLVERs from the current selected value of listed game map OBJBNDs."""
     bl_idname = "import_scene.objbnd_flver"
-    bl_label = "Import OBJBND Flver"
+    bl_label = "Import OBJBND FLVER"
     bl_description = "Import selected object's FLVERs from game map directory"
 
     @classmethod

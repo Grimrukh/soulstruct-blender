@@ -290,7 +290,7 @@ class ImportHKXAnimationWithBinderChoice(LoggingOperator):
 class ImportCharacterHKXAnimation(LoggingOperator):
     """Detects name of selected character FLVER Armature and finds their ANIBND in the game directory."""
     bl_idname = "import_scene.hkx_character_animation"
-    bl_label = "Import Character HKX Animation"
+    bl_label = "Import Character Animation"
     bl_description = "Import a HKX animation file from the selected character's ANIBND"
 
     # TODO: Support import all?
@@ -335,8 +335,11 @@ class ImportCharacterHKXAnimation(LoggingOperator):
 
         dcx = ".dcx" if settings.resolve_dcx_type("Auto", "BINDER") != DCXType.Null else ""
         anibnd_path = Path(game_directory, "chr", f"{character_name}.anibnd{dcx}")
-
-        if not anibnd_path.is_file():
+        if settings.use_bak_file:
+            anibnd_path = anibnd_path.with_name(anibnd_path.name + ".bak")
+            if not anibnd_path.is_file():
+                return self.error(f"Cannot find ANIBND '.bak' for character '{character_name}' in game directory.")
+        elif not anibnd_path.is_file():
             return self.error(f"Cannot find ANIBND for character '{character_name}' in game directory.")
 
         skeleton_anibnd = anibnd = Binder.from_path(anibnd_path)

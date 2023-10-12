@@ -69,6 +69,7 @@ class FLVERImportPanel(bpy.types.Panel):
 
         layout.separator()
         layout.label(text="From Game Directory:")
+        layout.prop(context.scene.soulstruct_global_settings, "use_bak_file", text="From .BAK File")
 
         map_piece_import_box = layout.box()
         map_piece_import_box.prop(context.scene.game_files, "map_piece_flver")

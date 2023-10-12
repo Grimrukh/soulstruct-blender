@@ -33,7 +33,7 @@ class ExportHKXAnimation(LoggingOperator, ExportHelper):
     """Export HKX animation from an Action attached to a FLVER armature."""
     bl_idname = "export_scene.hkx_animation"
     bl_label = "Export HKX Animation"
-    bl_description = "Export a Blender action to a standalone HKX animation file"
+    bl_description = "Export a Blender action to a standalone HKX animation file with manual HKX skeleton source"
 
     # ExportHelper mixin class uses this
     filename_ext = ".hkx"
@@ -302,7 +302,9 @@ class ExportCharacterHKXAnimation(LoggingOperator):
             context.scene.frame_set(current_frame)
 
         animation_hkx.dcx_type = settings.resolve_dcx_type("Auto", "HKX")
-        entry_path = game_hkx_settings["hkx_entry_path"].format(name=character_name, animation_stem=animation_name)
+        entry_path = game_hkx_settings["hkx_entry_path"].format(
+            character_name=character_name, animation_stem=animation_name
+        )
         if animation_hkx.dcx_type != DCXType.Null:
             entry_path += ".dcx"
 

@@ -10,8 +10,9 @@ This file format is only used in DeS and DS1 (PTDE/DSR).
 """
 from __future__ import annotations
 
-__all__ = ["ImportNVM", "ImportNVMWithBinderChoice", "ImportNVMWithMSBChoice"]
+__all__ = ["ImportNVM", "ImportNVMWithBinderChoice", "ImportNVMWithMSBChoice", "ImportGameNVM"]
 
+import time
 import traceback
 import typing as tp
 from pathlib import Path
@@ -26,6 +27,7 @@ from soulstruct.darksouls1r.maps import MSB
 from soulstruct.darksouls1r.maps.navmesh.nvm import NVM, NVMBox, NVMEventEntity
 
 from io_soulstruct.utilities import *
+from io_soulstruct.general import *
 from .utilities import *
 
 
@@ -44,7 +46,106 @@ class NVMImportChoiceInfo(tp.NamedTuple):
     entries: list[BinderEntry]  # entries from which user must choose
 
 
-class ImportNVM(LoggingOperator, ImportHelper):
+class ImportNVMMixin:
+
+    # Type hints for `LoggingOperator`.
+    error: tp.Callable[[str], set[str]]
+    warning: tp.Callable[[str], set[str]]
+    info: tp.Callable[[str], set[str]]
+
+    navmesh_model_id: int
+    import_all_from_binder: bool
+
+    def load_from_binder(self, binder: Binder, file_path: Path) -> list[NVMImportInfo | NVMImportChoiceInfo]:
+        """Load one or more `NVM` files from a `Binder` and queue them for import.
+
+        Will queue up a list of Binder entries if `self.import_all_from_binder` is False and `navmesh_model_id`
+        import setting is -1.
+
+        Returns a list of `NVMImportInfo` or `NVMImportChoiceInfo` objects, depending on whether the Binder contains
+        multiple entries that the user may need to choose from.
+        """
+        nvm_entries = binder.find_entries_matching_name(ANY_NVM_NAME_RE)
+        if not nvm_entries:
+            raise NVMImportError(f"Cannot find any '.nvm{{.dcx}}' files in binder {file_path}.")
+
+        # Filter by `navmesh_model_id` if needed.
+        if self.navmesh_model_id != -1:
+            nvm_entries = [entry for entry in nvm_entries if self.check_nvm_entry_model_id(entry)]
+        if not nvm_entries:
+            raise NVMImportError(
+                f"Found '.nvm{{.dcx}}' files, but none with model ID {self.navmesh_model_id} in binder {file_path}."
+            )
+
+        if len(nvm_entries) > 1:
+            # Binder contains multiple (matching) entries.
+            if self.import_all_from_binder:
+                # Load all detected/matching KX entries in binder and queue them for import.
+                new_import_infos = []  # type: list[NVMImportInfo]
+                for entry in nvm_entries:
+                    try:
+                        nvm = entry.to_binary_file(NVM)
+                    except Exception as ex:
+                        self.warning(f"Error occurred while reading NVM Binder entry '{entry.name}': {ex}")
+                    else:
+                        nvm.path = Path(entry.name)  # also done in `GameFile`, but explicitly needed below
+                        new_import_infos.append(NVMImportInfo(file_path, entry.minimal_stem, entry.minimal_stem, nvm))
+                return new_import_infos
+
+            # Queue up all matching Binder entries instead of loaded NVM instances; user will choose entry in pop-up.
+            return [NVMImportChoiceInfo(file_path, nvm_entries)]
+
+        # Binder only contains one (matching) NVM.
+        try:
+            nvm = nvm_entries[0].to_binary_file(NVM)
+        except Exception as ex:
+            self.warning(f"Error occurred while reading NVM Binder entry '{nvm_entries[0].name}': {ex}")
+            return []
+
+        return [NVMImportInfo(file_path, nvm_entries[0].minimal_stem, nvm_entries[0].minimal_stem, nvm)]
+
+    def load_msb_part_models_from_binder(
+        self, binder: Binder, file_path: Path, msb: MSB, map_area: str
+    ) -> list[NVMImportInfo | NVMImportChoiceInfo]:
+        """Load each `NVM` file from a `Binder` used in the given MSB and queue them for import.
+
+        NOTE: Requires that each model file exists only once in the NVMBND. Sets model file stem as `model_name` custom
+        property in Blender so it can be used for exporting models.
+        """
+        # Load all models used by MSB parts.
+        new_import_infos = []  # type: list[NVMImportInfo]
+        for navmesh_part in msb.navmeshes:
+            model_file_name = navmesh_part.model.name + f"A{map_area}.nvm"
+            try:
+                entry = binder.find_entry_matching_name(model_file_name)
+            except EntryNotFoundError:
+                raise NVMImportError(
+                    f"Could not find NVMBND model file '{model_file_name}' for MSB navmesh '{navmesh_part.name}'."
+                )
+            except ValueError:
+                raise NVMImportError(
+                    f"Found multiple matches for NVMBND model file '{model_file_name}' in NVMBND."
+                )
+            try:
+                nvm = entry.to_binary_file(NVM)
+            except Exception as ex:
+                self.warning(f"Error occurred while reading NVMBND entry '{entry.name}': {ex}")
+            else:
+                nvm.path = Path(entry.name)  # also done in `GameFile`, but explicitly needed below
+                # May involve duplicate models, which will be handled by importer.
+                new_import_infos.append(NVMImportInfo(file_path, entry.minimal_stem, navmesh_part.name, nvm, True))
+        return new_import_infos
+
+    def check_nvm_entry_model_id(self, nvm_entry: BinderEntry) -> bool:
+        """Checks if the given NVM Binder entry matches the given navmesh model ID."""
+        try:
+            entry_model_id = int(nvm_entry.name[1:5])  # e.g. 'n1234' -> 1234
+        except ValueError:
+            return False  # not a match (weird NVM name)
+        return entry_model_id == self.navmesh_model_id
+
+
+class ImportNVM(LoggingOperator, ImportHelper, ImportNVMMixin):
     bl_idname = "import_scene.nvm"
     bl_label = "Import NVM"
     bl_description = "Import a NVM navmesh file. Can import from BNDs and supports DCX-compressed files"
@@ -220,94 +321,6 @@ class ImportNVM(LoggingOperator, ImportHelper):
                 nvm_obj.scale = transform.bl_scale
 
         return {"FINISHED"}
-
-    def load_from_binder(self, binder: Binder, file_path: Path) -> list[NVMImportInfo | NVMImportChoiceInfo]:
-        """Load one or more `NVM` files from a `Binder` and queue them for import.
-
-        Will queue up a list of Binder entries if `self.import_all_from_binder` is False and `navmesh_model_id`
-        import setting is -1.
-
-        Returns a list of `NVMImportInfo` or `NVMImportChoiceInfo` objects, depending on whether the Binder contains
-        multiple entries that the user may need to choose from.
-        """
-        nvm_entries = binder.find_entries_matching_name(ANY_NVM_NAME_RE)
-        if not nvm_entries:
-            raise NVMImportError(f"Cannot find any '.nvm{{.dcx}}' files in binder {file_path}.")
-
-        # Filter by `navmesh_model_id` if needed.
-        if self.navmesh_model_id != -1:
-            nvm_entries = [entry for entry in nvm_entries if self.check_nvm_entry_model_id(entry)]
-        if not nvm_entries:
-            raise NVMImportError(
-                f"Found '.nvm{{.dcx}}' files, but none with model ID {self.navmesh_model_id} in binder {file_path}."
-            )
-
-        if len(nvm_entries) > 1:
-            # Binder contains multiple (matching) entries.
-            if self.import_all_from_binder:
-                # Load all detected/matching KX entries in binder and queue them for import.
-                new_import_infos = []  # type: list[NVMImportInfo]
-                for entry in nvm_entries:
-                    try:
-                        nvm = entry.to_binary_file(NVM)
-                    except Exception as ex:
-                        self.warning(f"Error occurred while reading NVM Binder entry '{entry.name}': {ex}")
-                    else:
-                        nvm.path = Path(entry.name)  # also done in `GameFile`, but explicitly needed below
-                        new_import_infos.append(NVMImportInfo(file_path, entry.minimal_stem, entry.minimal_stem, nvm))
-                return new_import_infos
-
-            # Queue up all matching Binder entries instead of loaded NVM instances; user will choose entry in pop-up.
-            return [NVMImportChoiceInfo(file_path, nvm_entries)]
-
-        # Binder only contains one (matching) NVM.
-        try:
-            nvm = nvm_entries[0].to_binary_file(NVM)
-        except Exception as ex:
-            self.warning(f"Error occurred while reading NVM Binder entry '{nvm_entries[0].name}': {ex}")
-            return []
-
-        return [NVMImportInfo(file_path, nvm_entries[0].minimal_stem, nvm_entries[0].minimal_stem, nvm)]
-
-    def load_msb_part_models_from_binder(
-        self, binder: Binder, file_path: Path, msb: MSB, map_area: str
-    ) -> list[NVMImportInfo | NVMImportChoiceInfo]:
-        """Load each `NVM` file from a `Binder` used in the given MSB and queue them for import.
-
-        NOTE: Requires that each model file exists only once in the NVMBND. Sets model file stem as `model_name` custom
-        property in Blender so it can be used for exporting models.
-        """
-        # Load all models used by MSB parts.
-        new_import_infos = []  # type: list[NVMImportInfo]
-        for navmesh_part in msb.navmeshes:
-            model_file_name = navmesh_part.model.name + f"A{map_area}.nvm"
-            try:
-                entry = binder.find_entry_matching_name(model_file_name)
-            except EntryNotFoundError:
-                raise NVMImportError(
-                    f"Could not find NVMBND model file '{model_file_name}' for MSB navmesh '{navmesh_part.name}'."
-                )
-            except ValueError:
-                raise NVMImportError(
-                    f"Found multiple matches for NVMBND model file '{model_file_name}' in NVMBND."
-                )
-            try:
-                nvm = entry.to_binary_file(NVM)
-            except Exception as ex:
-                self.warning(f"Error occurred while reading NVMBND entry '{entry.name}': {ex}")
-            else:
-                nvm.path = Path(entry.name)  # also done in `GameFile`, but explicitly needed below
-                # May involve duplicate models, which will be handled by importer.
-                new_import_infos.append(NVMImportInfo(file_path, entry.minimal_stem, navmesh_part.name, nvm, True))
-        return new_import_infos
-
-    def check_nvm_entry_model_id(self, nvm_entry: BinderEntry) -> bool:
-        """Checks if the given NVM Binder entry matches the given navmesh model ID."""
-        try:
-            entry_model_id = int(nvm_entry.name[1:5])  # e.g. 'n1234' -> 1234
-        except ValueError:
-            return False  # not a match (weird NVM name)
-        return entry_model_id == self.navmesh_model_id
 
 
 # noinspection PyUnusedLocal
@@ -498,6 +511,172 @@ class ImportNVMWithMSBChoice(LoggingOperator):
         bpy.ops.wm.nvm_msb_choice_operator("INVOKE_DEFAULT")
 
 
+class ImportGameNVM(LoggingOperator, ImportNVMMixin):
+    """Import a map piece FLVER from the current selected value of listed game map piece FLVERs."""
+    bl_idname = "import_scene.nvm_game"
+    bl_label = "Import Game NVM"
+    bl_description = "Import selected NVM from game map directory's NVMBND binder"
+
+    # TODO: Currently no way to disable this in GUI.
+    read_msb_transform: bpy.props.BoolProperty(
+        name="Read MSB Transform",
+        description="Look for matching MSB file in adjacent `MapStudio` folder and set transform of imported NVM model",
+        default=True,
+    )
+
+    # TODO: Currently no way to enable this in GUI.
+    import_all_msb_parts: bpy.props.BoolProperty(
+        name="Import All MSB Parts",
+        description="Import every NVM model used by an MSB Navmesh part",
+        default=False,
+    )
+
+    import_all_from_binder: bpy.props.BoolProperty(
+        name="Import All From NVMBND",
+        description="Import all NVM files from game map NVMBND rather than being prompted to select one",
+        default=False,
+    )
+
+    use_material: bpy.props.BoolProperty(
+        name="Use Material",
+        description="If enabled, 'NVM' material will be assigned or created for all imported navmeshes",
+        default=True,
+    )
+
+    create_quadtree_boxes: bpy.props.BoolProperty(
+        name="Create Quadtree Boxes",
+        description="If enabled, create quadtree boxes for all imported navmeshes",
+        default=False,
+    )
+
+    navmesh_model_id = -1  # not an option here
+
+    @classmethod
+    def poll(cls, context):
+        settings = GlobalSettings.get_scene_settings(context)
+        if not settings.game_directory or not settings.map_stem:
+            return False  # no game/map directory selected
+        return Path(settings.game_directory, "map", settings.map_stem).is_dir()
+
+    def execute(self, context):
+
+        start_time = time.perf_counter()
+
+        settings = GlobalSettings.get_scene_settings(context)
+        map_path = GlobalSettings.get_selected_map_path(context)
+        # NOTE: Always uses DSR DCX for NVMBND.
+
+        if not map_path:
+            return self.error("Game directory and map stem must be set in Blender's Soulstruct global settings.")
+
+        settings.save_settings()
+
+        nvmbnd_path = map_path / f"{settings.map_stem}.nvmbnd.dcx"
+        if settings.use_bak_file:
+            nvmbnd_path = nvmbnd_path.with_name(nvmbnd_path.name + ".bak")
+            if not nvmbnd_path.is_file():
+                return self.error(f"Could not find NVMBND '.bak' file for map '{settings.map_stem}'.")
+        if not nvmbnd_path.is_file():
+            return self.error(f"Could not find NVMBND file for map '{settings.map_stem}': {nvmbnd_path}")
+
+        nvmbnd = Binder.from_path(nvmbnd_path)
+
+        import_infos = []  # type: list[NVMImportInfo | NVMImportChoiceInfo]
+
+        if self.import_all_msb_parts:
+            nvmbnd_stem = nvmbnd_path.name.split(".")[0]
+            msb_path = (nvmbnd_path.parent / f"../MapStudio/{nvmbnd_stem}.msb").resolve()
+            if not msb_path.is_file():
+                return self.error(f"Could not find matching MSB file for NVMBND file '{nvmbnd_path.name}': {msb_path}.")
+        else:
+            msb_path = None
+
+        msb = None
+
+        if msb_path:
+            map_area = msb_path.stem[1:3]
+            msb = MSB.from_path(msb_path)
+            new_import_infos = self.load_msb_part_models_from_binder(nvmbnd, nvmbnd_path, msb, map_area)
+        else:
+            new_import_infos = self.load_from_binder(nvmbnd, nvmbnd_path)
+        import_infos.extend(new_import_infos)
+
+        importer = NVMImporter(
+            self,
+            context,
+            use_linked_duplicates=self.import_all_msb_parts,
+            parent_obj_name=f"{msb_path.stem} Navmeshes" if msb_path else "",
+        )
+
+        for import_info in import_infos:
+
+            if isinstance(import_info, NVMImportChoiceInfo):
+                # Defer through entry selection operator.
+                ImportNVMWithBinderChoice.run(
+                    importer=importer,
+                    binder_file_path=import_info.path,
+                    read_msb_transform=self.read_msb_transform,
+                    use_material=self.use_material,
+                    create_quadtree_boxes=self.create_quadtree_boxes,
+                    nvm_entries=import_info.entries,
+                )
+                continue
+
+            self.info(f"Importing NVM model {import_info.model_file_stem} as '{import_info.bl_name}'.")
+
+            transform = None  # type: tp.Optional[Transform]
+            if self.read_msb_transform:
+                if msb is not None:
+                    # Already have MSB source of binder NVM.
+                    msb_navmesh = msb.navmeshes.find_entry_name(import_info.bl_name)
+                    transform = Transform.from_msb_part(msb_navmesh)
+                elif MAP_STEM_RE.match(import_info.path.parent.name):
+                    # NOTE: It's unlikely that this MSB search will work for a loose NVM, but we can try.
+                    msb_model_name = import_info.model_file_stem[:7]
+                    try:
+                        transforms = get_navmesh_msb_transforms(msb_model_name, nvm_path=import_info.path)
+                    except Exception as ex:
+                        self.warning(f"Could not get MSB transform for '{import_info.model_file_stem}'. Error: {ex}")
+                    else:
+                        if len(transforms) > 1:
+                            importer.context = context
+                            ImportNVMWithMSBChoice.run(
+                                importer=importer,
+                                import_info=import_info,
+                                use_material=self.use_material,
+                                create_quadtree_boxes=self.create_quadtree_boxes,
+                                transforms=transforms,
+                            )
+                            continue
+                        transform = transforms[0][1]
+                else:
+                    self.warning(f"Cannot read MSB transform for NVM in unknown directory: {import_info.path}.")
+
+            # Import single NVM.
+            try:
+                nvm_obj = importer.import_nvm(
+                    import_info,
+                    use_material=self.use_material,
+                    create_quadtree_boxes=self.create_quadtree_boxes,
+                )
+            except Exception as ex:
+                # Delete any objects created prior to exception.
+                for obj in importer.all_bl_objs:
+                    bpy.data.objects.remove(obj)
+                traceback.print_exc()  # for inspection in Blender console
+                return self.error(f"Cannot import NVM: {import_info.path}. Error: {ex}")
+
+            if transform is not None:
+                # Assign detected MSB transform to navmesh.
+                nvm_obj.location = transform.bl_translate
+                nvm_obj.rotation_euler = transform.bl_rotate
+                nvm_obj.scale = transform.bl_scale
+
+        self.info(f"Finished importing NVMs from {nvmbnd_path.name} in {time.perf_counter() - start_time} seconds.")
+
+        return {"FINISHED"}
+
+
 class NVMImporter:
     """Manages imports for a batch of NVM files imported simultaneously."""
 
@@ -510,7 +689,7 @@ class NVMImporter:
 
     def __init__(
         self,
-        operator: ImportNVM,
+        operator: LoggingOperator,
         context,
         use_linked_duplicates=False,
         parent_obj_name: str = None,
@@ -640,7 +819,9 @@ class NVMImporter:
         return bl_box
 
     @staticmethod
-    def create_event_entity(nvm_event_entity: NVMEventEntity, bm_faces: list[bmesh.types.BMFace], bl_nvm_name: str):
+    def create_event_entity(
+        nvm_event_entity: NVMEventEntity, bm_faces: bmesh.types.BMFaceSeq | list[bmesh.types.BMFace], bl_nvm_name: str
+    ):
         """Create an Empty child that just holds the ID and triangle indices of a NVM event entity.
 
         Object is placed at the centroid of the faces it references, but this is just for convenience, and does not

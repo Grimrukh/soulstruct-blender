@@ -87,7 +87,7 @@ class CopyMeshSelectionOperator(LoggingOperator):
 class CutMeshSelectionOperator(LoggingOperator):
     bl_idname = "object.cut_mesh_selection"
     bl_label = "Cut Edit Mesh Selection to Mesh"
-    bl_description = "Copy the selected vertices, edges, and faces from the edited mesh to the other selected mesh"
+    bl_description = "Move the selected vertices/edges/faces from a mesh being edited to another selected mesh"
 
     @classmethod
     def poll(cls, context):
@@ -105,6 +105,7 @@ class CutMeshSelectionOperator(LoggingOperator):
         # Identify edited and non-edited meshes
         edited_mesh_obj = context.edit_object
         dest_msh_obj = [obj for obj in context.selected_objects if obj != edited_mesh_obj][0]
+        dest_msh_obj: bpy.types.MeshObject
 
         # Check if both are mesh objects
         if edited_mesh_obj.type != "MESH" or dest_msh_obj.type != "MESH":

@@ -21,7 +21,7 @@ from .export_hkx_cutscene import ExportHKXCutscene
 
 
 class HKX_CUTSCENE_PT_hkx_cutscene_tools(bpy.types.Panel):
-    bl_label = "Cutscenes"
+    bl_label = "HKX Cutscenes"
     bl_idname = "HKX_CUTSCENE_PT_hkx_tools"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"

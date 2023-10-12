@@ -4,11 +4,14 @@ __all__ = [
     "ImportNVM",
     "ImportNVMWithBinderChoice",
     "ImportNVMWithMSBChoice",
+    "ImportGameNVM",
     "ExportNVM",
     "ExportNVMIntoBinder",
     "ImportMCP",
     "ImportMCG",
     "ExportMCG",
+    "NVM_PT_ds1_navmesh_import",
+    "NVM_PT_ds1_navmesh_export",
     "NVM_PT_ds1_navmesh_tools",
     "NavmeshFaceSettings",
     "AddNVMFaceFlags",
@@ -33,7 +36,7 @@ if "NVM_PT_nvm_tools" in locals():
     importlib.reload(sys.modules["io_soulstruct.navmesh.export_nvm"])
     importlib.reload(sys.modules["io_soulstruct.navmesh.import_nvm"])
 
-from .nvm import ImportNVM, ImportNVMWithBinderChoice, ImportNVMWithMSBChoice, ExportNVM, ExportNVMIntoBinder
+from .nvm import *
 from .nvm.utilities import set_face_material
 from .nav_graph import *
 
@@ -82,6 +85,10 @@ class AddNVMFaceFlags(bpy.types.Operator):
     # noinspection PyMethodMayBeStatic
     def execute(self, context):
         obj = context.edit_object
+        if obj is None or obj.type != "MESH":
+            return {"CANCELLED"}
+
+        obj: bpy.types.MeshObject
         bm = bmesh.from_edit_mesh(obj.data)
 
         props = context.scene.navmesh_face_settings  # type: NavmeshFaceSettings
@@ -111,6 +118,10 @@ class RemoveNVMFaceFlags(bpy.types.Operator):
     # noinspection PyMethodMayBeStatic
     def execute(self, context):
         obj = context.edit_object
+        if obj is None or obj.type != "MESH":
+            return {"CANCELLED"}
+
+        obj: bpy.types.MeshObject
         bm = bmesh.from_edit_mesh(obj.data)
 
         props = context.scene.navmesh_face_settings  # type: NavmeshFaceSettings
@@ -140,6 +151,10 @@ class SetNVMFaceObstacleCount(bpy.types.Operator):
     # noinspection PyMethodMayBeStatic
     def execute(self, context):
         obj = context.edit_object
+        if obj is None or obj.type != "MESH":
+            return {"CANCELLED"}
+
+        obj: bpy.types.MeshObject
         bm = bmesh.from_edit_mesh(obj.data)
 
         props = context.scene.navmesh_face_settings  # type: NavmeshFaceSettings
@@ -155,8 +170,50 @@ class SetNVMFaceObstacleCount(bpy.types.Operator):
         return {"FINISHED"}
 
 
+class NVM_PT_ds1_navmesh_import(bpy.types.Panel):
+    bl_label = "DS1 Navmesh Import"
+    bl_idname = "NVM_PT_ds1_navmesh_import"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "Soulstruct"
+    bl_options = {'DEFAULT_CLOSED'}
+
+    # noinspection PyUnusedLocal
+    def draw(self, context):
+        import_nvm = self.layout.box()
+        import_nvm.operator(ImportNVM.bl_idname)
+
+        game_box = self.layout.box()
+        game_box.prop(context.scene.soulstruct_global_settings, "use_bak_file", text="From .BAK File")
+        game_box.operator(ImportGameNVM.bl_idname)
+
+        import_navgraph_box = self.layout.box()
+        import_navgraph_box.operator(ImportMCG.bl_idname)
+        import_navgraph_box.operator(ImportMCP.bl_idname)
+
+
+class NVM_PT_ds1_navmesh_export(bpy.types.Panel):
+    bl_label = "DS1 Navmesh Export"
+    bl_idname = "NVM_PT_ds1_navmesh_export"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "Soulstruct"
+    bl_options = {'DEFAULT_CLOSED'}
+
+    # noinspection PyUnusedLocal
+    def draw(self, context):
+        export_nvm = self.layout.box()
+        export_nvm.operator(ExportNVM.bl_idname)
+        export_nvm.operator(ExportNVMIntoBinder.bl_idname)
+
+        export_navgraph_box = self.layout.box()
+        export_navgraph_box.operator(ExportMCG.bl_idname, text="Export MCG + MCP")
+
+        # NOTE: No plans for MCP/MCG export yet. Preferring to edit manually and use Blender just to inspect.
+
+
 class NVM_PT_ds1_navmesh_tools(bpy.types.Panel):
-    bl_label = "Navmeshes (DS1)"
+    bl_label = "DS1 Navmesh Tools"
     bl_idname = "NVM_PT_ds1_navmesh_tools"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
@@ -165,21 +222,6 @@ class NVM_PT_ds1_navmesh_tools(bpy.types.Panel):
 
     # noinspection PyUnusedLocal
     def draw(self, context):
-        import_box = self.layout.box()
-        import_box.operator(ImportNVM.bl_idname)
-
-        export_box = self.layout.box()
-        export_box.operator(ExportNVM.bl_idname)
-        export_box.operator(ExportNVMIntoBinder.bl_idname)
-
-        import_navgraph_box = self.layout.box()
-        import_navgraph_box.operator(ImportMCG.bl_idname)
-        import_navgraph_box.operator(ImportMCP.bl_idname)
-
-        export_navgraph_box = self.layout.box()
-        export_navgraph_box.operator(ExportMCG.bl_idname, text="Export MCG + MCP")
-
-        # NOTE: No plans for MCP/MCG export yet. Preferring to edit manually and use Blender just to inspect.
 
         self.layout.label(text="MCG Draw Settings:")
         mcg_draw_settings_box = self.layout.box()
@@ -200,6 +242,7 @@ class NVM_PT_ds1_navmesh_tools(bpy.types.Panel):
         selected_faces_box = self.layout.box()
         obj = context.edit_object
         if obj and obj.type == 'MESH' and bpy.context.mode == 'EDIT_MESH':
+            obj: bpy.types.MeshObject
             bm = bmesh.from_edit_mesh(obj.data)
             layout_selected_faces(bm, self.layout, context, selected_faces_box)
         else:
