@@ -51,7 +51,7 @@ from soulstruct.dcx import DCXType
 from soulstruct.containers.tpf import TPFTexture, batch_get_tpf_texture_png_data
 from soulstruct.utilities.maths import Vector3
 
-from io_soulstruct.general import GlobalSettings, GameFiles
+from io_soulstruct.general import GlobalSettings, GameFiles, MTDBinderManager
 from io_soulstruct.utilities import *
 from .utilities import *
 from .materials import get_submesh_blender_material

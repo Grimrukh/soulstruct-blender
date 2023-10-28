@@ -5,6 +5,8 @@ __all__ = ["ExportNVM", "ExportNVMIntoBinder"]
 import traceback
 from pathlib import Path
 
+import numpy as np
+
 import bpy
 from bpy.props import StringProperty, BoolProperty, IntProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
@@ -14,7 +16,8 @@ from soulstruct.containers import Binder, BinderEntry
 from soulstruct.dcx import DCXType
 from soulstruct.darksouls1r.maps.navmesh.nvm import NVM, NVMTriangle, NVMEventEntity
 
-from io_soulstruct.utilities import *
+from io_soulstruct.utilities.operators import LoggingOperator, get_dcx_enum_property
+from io_soulstruct.utilities.misc import MAP_STEM_RE
 
 
 DEBUG_MESH_INDEX = None
@@ -214,13 +217,16 @@ class NVMExporter:
         self.operator.report({"WARNING"}, msg)
         print(f"# WARNING: {msg}")
 
-    def export_nvm(self, bl_mesh_obj) -> NVM:
-        """Create NVM from Blender meshes (subparts).
+    def export_nvm(self, bl_mesh_obj: bpy.types.MeshObject) -> NVM:
+        """Create `NVM` from a Blender mesh object.
 
         This is much simpler than FLVER or HKX map collision mesh export. Note that the navmesh name is not needed, as
         it appears nowhere in the NVM binary file.
         """
-        nvm_verts = [BL_TO_GAME_VECTOR3_LIST(vert.co) for vert in bl_mesh_obj.data.vertices]  # type: list[list[float]]
+        nvm_verts = np.array([vert.co for vert in bl_mesh_obj.data.vertices])
+        # Swap Y and Z coordinates.
+        nvm_verts[:, [1, 2]] = nvm_verts[:, [2, 1]]
+
         nvm_faces = []  # type: list[tuple[int, int, int]]
         for face in bl_mesh_obj.data.polygons:
             if len(face.vertices) != 3:

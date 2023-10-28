@@ -6,13 +6,14 @@ import re
 import traceback
 from pathlib import Path
 
+import numpy as np
+
 import bpy
 from bpy.props import StringProperty, BoolProperty, IntProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
+
 from soulstruct.dcx import DCXType
-
 from soulstruct.containers import Binder, BinderEntry
-
 from soulstruct_havok.wrappers.hkx2015 import MapCollisionHKX
 
 from io_soulstruct.general import GlobalSettings
@@ -547,7 +548,7 @@ class HKXMapCollisionExporter:
         if not bl_meshes:
             raise ValueError("No meshes given to export to HKX.")
 
-        hkx_meshes = []  # type: list[HKX_MESH_TYPING]
+        hkx_meshes = []  # type: list[tuple[np.ndarray, np.ndarray]]
         hkx_material_indices = []  # type: list[int]
 
         for bl_mesh in bl_meshes:
@@ -555,12 +556,15 @@ class HKXMapCollisionExporter:
             material_index = get_bl_prop(bl_mesh, "material_index", int, default=0)
             hkx_material_indices.append(material_index)
 
-            hkx_verts = [BL_TO_GAME_VECTOR3_LIST(vert.co) for vert in bl_mesh.data.vertices]
-            hkx_faces = []
-            for face in bl_mesh.data.polygons:
+            # Swap Y and Z coordinates.
+            hkx_verts = np.array([[vert.co.x, vert.co.z, vert.co.y] for vert in bl_mesh.data.vertices])
+            hkx_faces = np.empty((len(bl_mesh.data.polygons), 3), dtype=np.uint32)
+            for i, face in enumerate(bl_mesh.data.polygons):
                 if len(face.vertices) != 3:
-                    raise ValueError(f"Found a non-triangular mesh face in HKX. Mesh must be triangulated first.")
-                hkx_faces.append(tuple(face.vertices))
+                    raise ValueError(
+                        f"Found a non-triangular mesh face in HKX (index {i}). Mesh must be triangulated first."
+                    )
+                hkx_faces[i] = face.vertices
 
             hkx_meshes.append((hkx_verts, hkx_faces))
 

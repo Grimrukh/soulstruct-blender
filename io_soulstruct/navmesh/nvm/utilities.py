@@ -22,7 +22,8 @@ import bpy
 from soulstruct.darksouls1r.maps import MSB, get_map
 from soulstruct.darksouls1r.maps.navmesh import NavmeshType
 
-from io_soulstruct.utilities import Transform, hsv_color, create_basic_material
+from io_soulstruct.utilities import Transform
+from io_soulstruct.utilities.materials import hsv_color, create_basic_material
 
 
 class NVMImportError(Exception):

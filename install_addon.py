@@ -11,7 +11,7 @@ from pathlib import Path
 
 from soulstruct.utilities.files import PACKAGE_PATH
 
-from soulstruct_havok.utilities import PACKAGE_PATH as HAVOK_PACKAGE_PATH
+from soulstruct_havok.utilities.files import HAVOK_PACKAGE_PATH
 
 
 def install(blender_scripts_dir: str | Path, update_soulstruct_module=False, update_third_party_modules=False):

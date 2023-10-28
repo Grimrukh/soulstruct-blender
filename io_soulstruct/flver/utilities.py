@@ -30,7 +30,7 @@ from soulstruct.base.models.mtd import MTDInfo
 from io_soulstruct.utilities import (
     Transform, BlenderTransform, GAME_TO_BL_EULER, BL_TO_GAME_EULER, BL_TO_GAME_MAT3, LoggingOperator
 )
-from io_soulstruct.general import get_cached_file
+from io_soulstruct.general.cached import get_cached_file
 
 
 DUMMY_NAME_RE = re.compile(  # accepts and ignores Blender '.001' suffix and anything else after the `[ref_id]` in name

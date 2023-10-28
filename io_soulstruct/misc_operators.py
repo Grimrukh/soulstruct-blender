@@ -8,7 +8,7 @@ __all__ = [
 
 import bpy
 
-from io_soulstruct.utilities import LoggingOperator
+from io_soulstruct.utilities.operators import LoggingOperator
 
 
 class MeshMoveSettings(bpy.types.PropertyGroup):

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 __all__ = ["ImportHKXMapCollision", "ImportHKXMapCollisionWithBinderChoice", "ImportHKXMapCollisionWithMSBChoice"]
 
+import numpy as np
 import re
 import traceback
 import typing as tp
@@ -23,6 +24,7 @@ from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
 from soulstruct_havok.wrappers.hkx2015 import MapCollisionHKX
 
 from io_soulstruct.utilities import *
+from io_soulstruct.utilities.materials import *
 from .utilities import *
 
 
@@ -570,7 +572,10 @@ class HKXMapCollisionImporter:
         self.all_bl_objs = []
 
     def import_hkx(self, hkx: MapCollisionHKX, bl_name: str, use_material=True, existing_parent=None):
-        """Read a HKX into a collection of Blender mesh objects."""
+        """Read a HKX into a collection of Blender mesh objects.
+
+        TODO: Create only one mesh and use material slots? Unsure.
+        """
         self.hkx = hkx
         self.bl_name = bl_name  # should not have extensions (e.g. `h0100B0A10`)
 
@@ -604,9 +609,12 @@ class HKXMapCollisionImporter:
         # distinguish them across collisions (which could be a problem even if we just leave off the map indicator).
         # However, on export, only the first (lower-cased) letter of each submesh is used to check its resolution.
         submesh_name_prefix = f"{bl_name} Submesh"
-        for i, hkx_subpart in enumerate(meshes):
+        for i, (vertices, faces) in enumerate(meshes):
+
+            # Swap vertex Y and Z coordinates.
+            vertices[:, [1, 2]] = vertices[:, [2, 1]]
             mesh_name = f"{submesh_name_prefix} {i}"
-            bl_mesh = self.create_mesh_obj(hkx_subpart, material_indices[i], mesh_name)
+            bl_mesh = self.create_mesh_obj(vertices, faces, material_indices[i], mesh_name)
             if use_material:
                 material_name = "HKX Hi" if is_hi_res else "HKX Lo"
                 material_name += " (Mat 1)" if material_indices[i] == 1 else " (Not Mat 1)"
@@ -627,16 +635,15 @@ class HKXMapCollisionImporter:
 
     def create_mesh_obj(
         self,
-        hkx_mesh: tuple[list[tuple[float, float, float]], list[tuple[int, ...]]],
+        vertices: np.ndarray,
+        faces: np.ndarray,
         material_index: int,
         mesh_name: str,
     ) -> bpy.types.MeshObject:
         """Create a Blender mesh object. The only custom property for HKX is material index."""
         bl_mesh = bpy.data.meshes.new(name=mesh_name)
 
-        vertices = [GAME_TO_BL_VECTOR(v) for v in hkx_mesh[0]]
         edges = []  # no edges in HKX
-        faces = hkx_mesh[1]
         bl_mesh.from_pydata(vertices, edges, faces)
 
         bl_mesh_obj = self.create_obj(mesh_name, bl_mesh)

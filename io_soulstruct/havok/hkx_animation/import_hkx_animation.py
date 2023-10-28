@@ -5,6 +5,7 @@ __all__ = [
     "ImportHKXAnimation",
     "ImportHKXAnimationWithBinderChoice",
     "ImportCharacterHKXAnimation",
+    "ImportObjectHKXAnimation",
 ]
 
 import re
@@ -17,7 +18,7 @@ import bpy
 from bpy_extras.io_utils import ImportHelper
 from mathutils import Quaternion as BlenderQuaternion
 
-from soulstruct.containers import Binder, BinderEntry
+from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
 from soulstruct.dcx import DCXType
 from soulstruct.utilities.maths import Vector4
 
@@ -33,115 +34,55 @@ from .utilities import *
 ANIBND_RE = re.compile(r"^.*?\.anibnd(\.dcx)?$")
 c0000_ANIBND_RE = re.compile(r"^c0000_.*\.anibnd(\.dcx)?$")
 OBJBND_RE = re.compile(r"^.*?\.objbnd(\.dcx)?$")
+SKELETON_ENTRY_RE = re.compile(r"skeleton\.hkx(\.dcx)?", flags=re.IGNORECASE)
 
 
-class ImportHKXAnimation(LoggingOperator, ImportHelper):
-    bl_idname = "import_scene.hkx_animation"
-    bl_label = "Import HKX Animation"
-    bl_description = "Import a HKX animation file. Can import from ANIBNDs/OBJBNDs and supports DCX-compressed files"
+class ImportHKXAnimationMixin:
 
-    filename_ext = ".hkx"
+    info: tp.Callable[[str], None]
+    warning: tp.Callable[[str], None]
 
-    filter_glob: bpy.props.StringProperty(
-        default="*.hkx;*.hkx.dcx;*.anibnd;*.anibnd.dcx;*.objbnd;*.objbnd.dcx",
-        options={'HIDDEN'},
-        maxlen=255,  # Max internal buffer length, longer would be clamped.
-    )
-
-    import_all_from_binder: bpy.props.BoolProperty(
-        name="Import All From Binder",
-        description="If a Binder file is opened, import all HKX anim files rather than being prompted to select one",
+    # TODO: Support import all?
+    import_all_animations: bpy.props.BoolProperty(
+        name="Import All Animations",
+        description="Import all HKX anim files rather than being prompted to select one (slow!)",
         default=False,
     )
 
+    # TODO: Enabled by default. Maybe try to detect from frame timing...
     to_60_fps: bpy.props.BoolProperty(
         name="To 60 FPS",
         description="Scale animation keyframes to 60 FPS (from 30 FPS) by spacing them two frames apart",
         default=True,
     )
 
-    files: bpy.props.CollectionProperty(
-        type=bpy.types.OperatorFileListElement,
-        options={'HIDDEN', 'SKIP_SAVE'},
-    )
+    def scan_entries(
+        self, anim_hkx_entries: list[BinderEntry], file_path: Path, skeleton_hkx: SkeletonHKX
+    ) -> list[tuple[Path, SkeletonHKX, AnimationHKX | list[BinderEntry]]]:
+        if len(anim_hkx_entries) > 1:
+            if self.import_all_animations:
+                hkxs_with_paths = []
+                for entry in anim_hkx_entries:
+                    try:
+                        animation_hkx = entry.to_binary_file(AnimationHKX)
+                    except Exception as ex:
+                        self.warning(f"Error occurred while reading HKX Binder entry '{entry.name}': {ex}")
+                    else:
+                        hkxs_with_paths.append((file_path, skeleton_hkx, animation_hkx))
+                return hkxs_with_paths
 
-    directory: bpy.props.StringProperty(
-        options={'HIDDEN'},
-    )
+            # Queue up all Binder entries; user will be prompted to choose entry below.
+            return [(file_path, skeleton_hkx, anim_hkx_entries)]
 
-    @classmethod
-    def poll(cls, context):
-        """Animation's rigged armature must be selected (to extract bone names)."""
         try:
-            return context.selected_objects[0].type == "ARMATURE"
-        except IndexError:
-            return False
+            animation_hkx = anim_hkx_entries[0].to_binary_file(AnimationHKX)
+        except Exception as ex:
+            self.warning(f"Error occurred while reading HKX Binder entry '{anim_hkx_entries[0].name}': {ex}")
+            return []
 
-    def execute(self, context):
+        return [(file_path, skeleton_hkx, animation_hkx)]
 
-        bl_armature = context.selected_objects[0]
-        # noinspection PyTypeChecker
-        armature_data = bl_armature.data  # type: bpy.types.Armature
-
-        file_paths = [Path(self.directory, file.name) for file in self.files]
-        hkxs_with_paths = []  # type: list[tuple[Path, SkeletonHKX, AnimationHKX | list[BinderEntry]]]
-
-        for file_path in file_paths:
-
-            if OBJBND_RE.match(file_path.name):
-                # Get ANIBND from OBJBND.
-                objbnd = Binder.from_path(file_path)
-                anibnd_entry = objbnd.find_entry_matching_name(r".*\.anibnd(\.dcx)?")
-                if not anibnd_entry:
-                    raise HKXAnimationImportError("OBJBND binder does not contain an ANIBND binder.")
-                skeleton_anibnd = anibnd = Binder.from_binder_entry(anibnd_entry)
-            elif ANIBND_RE.match(file_path.name):
-                anibnd = Binder.from_path(file_path)
-                if c0000_match := c0000_ANIBND_RE.match(file_path.name):
-                    # c0000 skeleton is in base `c0000.anibnd{.dcx}` file.
-                    skeleton_anibnd = Binder.from_path(file_path.parent / f"c0000.anibnd{c0000_match.group(1)}")
-                else:
-                    skeleton_anibnd = anibnd
-            else:
-                # TODO: Currently require Skeleton.HKX, so have to use ANIBND.
-                #  Have another deferred operator that lets you choose a loose Skeleton file after a loose animation.
-                raise HKXAnimationImportError(
-                    "Must import animation from an ANIBND containing a skeleton HKX file or an OBJBND containing an "
-                    "ANIBND."
-                )
-
-            # Find skeleton entry.
-            skeleton_entry = skeleton_anibnd.find_entry_matching_name(r"[Ss]keleton\.[Hh][Kk][Xx](\.dcx)?")
-            if not skeleton_entry:
-                raise HKXAnimationImportError("Must import animation from an ANIBND containing a skeleton HKX file.")
-            skeleton_hkx = SkeletonHKX.from_binder_entry(skeleton_entry)
-
-            # Find animation HKX entry/entries.
-            anim_hkx_entries = anibnd.find_entries_matching_name(r"a.*\.hkx(\.dcx)?")
-            if not anim_hkx_entries:
-                raise HKXAnimationImportError(f"Cannot find any HKX animation files in binder {file_path}.")
-
-            if len(anim_hkx_entries) > 1:
-                if self.import_all_from_binder:
-                    for entry in anim_hkx_entries:
-                        try:
-                            animation_hkx = entry.to_binary_file(AnimationHKX)
-                        except Exception as ex:
-                            self.warning(f"Error occurred while reading HKX Binder entry '{entry.name}': {ex}")
-                        else:
-                            hkxs_with_paths.append((file_path, skeleton_hkx, animation_hkx))
-                else:
-                    # Queue up all Binder entries; user will be prompted to choose entry below.
-                    hkxs_with_paths.append((file_path, skeleton_hkx, anim_hkx_entries))
-            else:
-                try:
-                    animation_hkx = anim_hkx_entries[0].to_binary_file(AnimationHKX)
-                except Exception as ex:
-                    self.warning(f"Error occurred while reading HKX Binder entry '{anim_hkx_entries[0].name}': {ex}")
-                else:
-                    hkxs_with_paths.append((file_path, skeleton_hkx, animation_hkx))
-
-        importer = HKXAnimationImporter(self, context, bl_armature, bl_armature.name, self.to_60_fps)
+    def import_hkxs_with_paths(self, bl_armature, hkxs_with_paths, importer: HKXAnimationImporter):
 
         for file_path, skeleton_hkx, hkx_or_entries in hkxs_with_paths:
 
@@ -168,10 +109,12 @@ class ImportHKXAnimation(LoggingOperator, ImportHelper):
             track_bone_names = [
                 annotation.trackName for annotation in animation_hkx.animation_container.animation.annotationTracks
             ]
-            bl_bone_names = [b.name for b in armature_data.bones]
+            bl_bone_names = [b.name for b in bl_armature.data.bones]
             for bone_name in track_bone_names:
                 if bone_name not in bl_bone_names:
-                    raise ValueError(f"Animation bone name '{bone_name}' is missing from selected Blender Armature.")
+                    raise ValueError(
+                        f"Animation bone name '{bone_name}' is missing from selected Blender Armature."
+                    )
 
             p = time.perf_counter()
             arma_frames = get_armature_frames(animation_hkx, skeleton_hkx, track_bone_names)
@@ -184,8 +127,89 @@ class ImportHKXAnimation(LoggingOperator, ImportHelper):
                 importer.create_action(anim_name, arma_frames, root_motion)
             except Exception as ex:
                 traceback.print_exc()
-                return self.error(f"Cannot import HKX animation: {file_path.name}. Error: {ex}")
+                raise HKXAnimationImportError(f"Cannot import HKX animation: {file_path.name}. Error: {ex}")
             self.info(f"Created animation action in {time.perf_counter() - p:.4f} seconds.")
+
+
+class ImportHKXAnimation(LoggingOperator, ImportHelper, ImportHKXAnimationMixin):
+    bl_idname = "import_scene.hkx_animation"
+    bl_label = "Import HKX Animation"
+    bl_description = "Import a HKX animation file. Can import from ANIBNDs/OBJBNDs and supports DCX-compressed files"
+
+    filename_ext = ".hkx"
+
+    filter_glob: bpy.props.StringProperty(
+        default="*.hkx;*.hkx.dcx;*.anibnd;*.anibnd.dcx;*.objbnd;*.objbnd.dcx",
+        options={'HIDDEN'},
+        maxlen=255,  # Max internal buffer length, longer would be clamped.
+    )
+
+    files: bpy.props.CollectionProperty(
+        type=bpy.types.OperatorFileListElement,
+        options={'HIDDEN', 'SKIP_SAVE'},
+    )
+
+    directory: bpy.props.StringProperty(
+        options={'HIDDEN'},
+    )
+
+    @classmethod
+    def poll(cls, context):
+        """Animation's rigged armature must be selected (to extract bone names)."""
+        try:
+            return context.selected_objects[0].type == "ARMATURE"
+        except IndexError:
+            return False
+
+    def execute(self, context):
+
+        bl_armature = context.selected_objects[0]
+
+        file_paths = [Path(self.directory, file.name) for file in self.files]
+        hkxs_with_paths = []  # type: list[tuple[Path, SkeletonHKX, AnimationHKX | list[BinderEntry]]]
+
+        for file_path in file_paths:
+
+            if OBJBND_RE.match(file_path.name):
+                # Get ANIBND from OBJBND.
+                objbnd = Binder.from_path(file_path)
+                anibnd_entry = objbnd.find_entry_matching_name(r".*\.anibnd(\.dcx)?")
+                if not anibnd_entry:
+                    return self.error("OBJBND binder does not contain an ANIBND binder.")
+                skeleton_anibnd = anibnd = Binder.from_binder_entry(anibnd_entry)
+            elif ANIBND_RE.match(file_path.name):
+                anibnd = Binder.from_path(file_path)
+                if c0000_match := c0000_ANIBND_RE.match(file_path.name):
+                    # c0000 skeleton is in base `c0000.anibnd{.dcx}` file.
+                    skeleton_anibnd = Binder.from_path(file_path.parent / f"c0000.anibnd{c0000_match.group(1)}")
+                else:
+                    skeleton_anibnd = anibnd
+            else:
+                # TODO: Currently require Skeleton.HKX, so have to use ANIBND.
+                #  Have another deferred operator that lets you choose a loose Skeleton file after a loose animation.
+                return self.error(
+                    "Must import animation from an ANIBND containing a skeleton HKX file or an OBJBND with an ANIBND."
+                )
+
+            # Find skeleton entry.
+            skeleton_entry = skeleton_anibnd[SKELETON_ENTRY_RE]
+            if not skeleton_entry:
+                return self.error("Must import animation from an ANIBND containing a skeleton HKX file.")
+            skeleton_hkx = SkeletonHKX.from_binder_entry(skeleton_entry)
+
+            # Find animation HKX entry/entries.
+            anim_hkx_entries = anibnd.find_entries_matching_name(r"a.*\.hkx(\.dcx)?")
+            if not anim_hkx_entries:
+                return self.error(f"Cannot find any HKX animation files in binder {file_path}.")
+
+            hkxs_with_paths += self.scan_entries(anim_hkx_entries, file_path, skeleton_hkx)
+
+        importer = HKXAnimationImporter(self, context, bl_armature, bl_armature.name, self.to_60_fps)
+
+        try:
+            self.import_hkxs_with_paths(bl_armature, hkxs_with_paths, importer)
+        except Exception as ex:
+            return self.error(f"Error occurred while importing HKX animation(s). Error: {ex}")
 
         return {"FINISHED"}
 
@@ -287,25 +311,11 @@ class ImportHKXAnimationWithBinderChoice(LoggingOperator):
         bpy.ops.wm.hkx_animation_binder_choice_operator("INVOKE_DEFAULT")
 
 
-class ImportCharacterHKXAnimation(LoggingOperator):
+class ImportCharacterHKXAnimation(LoggingOperator, ImportHKXAnimationMixin):
     """Detects name of selected character FLVER Armature and finds their ANIBND in the game directory."""
     bl_idname = "import_scene.hkx_character_animation"
     bl_label = "Import Character Animation"
     bl_description = "Import a HKX animation file from the selected character's ANIBND"
-
-    # TODO: Support import all?
-    import_all_from_anibnd: bpy.props.BoolProperty(
-        name="Import All From ANIBND",
-        description="Import all HKX anim files rather than being prompted to select one (slow!)",
-        default=False,
-    )
-
-    # TODO: Enabled by default. Maybe try to detect from frame timing...
-    to_60_fps: bpy.props.BoolProperty(
-        name="To 60 FPS",
-        description="Scale animation keyframes to 60 FPS (from 30 FPS) by spacing them two frames apart",
-        default=True,
-    )
 
     @classmethod
     def poll(cls, context):
@@ -326,8 +336,6 @@ class ImportCharacterHKXAnimation(LoggingOperator):
             return self.error("No game directory set in global Soulstruct Settings.")
 
         bl_armature = context.selected_objects[0]
-        # noinspection PyTypeChecker
-        armature_data = bl_armature.data  # type: bpy.types.Armature
 
         character_name = bl_armature.name.split(" ")[0]
         if character_name == "c0000":
@@ -346,11 +354,10 @@ class ImportCharacterHKXAnimation(LoggingOperator):
         # TODO: Support c0000 automatic import. Combine all sub-ANIBND entries into one big choice list?
 
         # Find skeleton entry.
-        skeleton_entry = skeleton_anibnd.find_entry_matching_name(r"[Ss]keleton\.[Hh][Kk][Xx](\.dcx)?")
-        if not skeleton_entry:
-            raise HKXAnimationImportError(
-                "Must import animation from an ANIBND containing a skeleton HKX file."
-            )
+        try:
+            skeleton_entry = skeleton_anibnd[SKELETON_ENTRY_RE]
+        except EntryNotFoundError:
+            raise HKXAnimationImportError(f"ANIBND of character '{character_name}' has no skeleton HKX file.")
         skeleton_hkx = SkeletonHKX.from_binder_entry(skeleton_entry)
 
         # Find animation HKX entry/entries.
@@ -358,94 +365,89 @@ class ImportCharacterHKXAnimation(LoggingOperator):
         if not anim_hkx_entries:
             raise HKXAnimationImportError(f"Cannot find any HKX animation files in binder {anibnd_path}.")
 
-        hkxs_with_paths = []
-
-        if len(anim_hkx_entries) > 1:
-            if self.import_all_from_anibnd:
-                for entry in anim_hkx_entries:
-                    try:
-                        animation_hkx = entry.to_binary_file(AnimationHKX)
-                    except Exception as ex:
-                        self.warning(f"Error occurred while reading HKX Binder entry '{entry.name}': {ex}")
-                    else:
-                        hkxs_with_paths.append((anibnd_path, skeleton_hkx, animation_hkx))
-            else:
-                # Queue up all ANIBND entries; user will be prompted to choose entry below.
-                hkxs_with_paths.append((anibnd_path, skeleton_hkx, anim_hkx_entries))
-        else:
-            try:
-                animation_hkx = anim_hkx_entries[0].to_binary_file(AnimationHKX)
-            except Exception as ex:
-                self.warning(
-                    f"Error occurred while reading HKX Binder entry '{anim_hkx_entries[0].name}': {ex}"
-                )
-            else:
-                hkxs_with_paths.append((anibnd_path, skeleton_hkx, animation_hkx))
+        hkxs_with_paths = self.scan_entries(anim_hkx_entries, anibnd_path, skeleton_hkx)
 
         importer = HKXAnimationImporter(self, context, bl_armature, bl_armature.name, self.to_60_fps)
 
-        for file_path, skeleton_hkx, hkx_or_entries in hkxs_with_paths:
+        try:
+            self.import_hkxs_with_paths(bl_armature, hkxs_with_paths, importer)
+        except Exception as ex:
+            return self.error(f"Error occurred while importing HKX animation(s). Error: {ex}")
 
-            if isinstance(hkx_or_entries, list):
-                # Defer through entry selection operator.
-                ImportHKXAnimationWithBinderChoice.run(
-                    importer=importer,
-                    binder_file_path=Path(file_path),
-                    hkx_entries=hkx_or_entries,
-                    bl_armature=bl_armature,
-                    skeleton_hkx=skeleton_hkx,
-                )
-                continue
+        return {"FINISHED"}
 
-            animation_hkx = hkx_or_entries
-            anim_name = animation_hkx.path.name.split(".")[0]
 
-            self.info(f"Importing HKX animation for {bl_armature.name}: {anim_name}")
+class ImportObjectHKXAnimation(LoggingOperator, ImportHKXAnimationMixin):
+    """Detects name of selected object FLVER Armature and finds their OBJBND in the game directory."""
+    bl_idname = "import_scene.hkx_object_animation"
+    bl_label = "Import Object Animation"
+    bl_description = "Import a HKX animation file from the selected object's OBJBND"
 
-            p = time.perf_counter()
-            animation_hkx.animation_container.spline_to_interleaved()
-            self.info(f"Converted spline animation to interleaved in {time.perf_counter() - p:.4f} seconds.")
+    @classmethod
+    def poll(cls, context):
+        """Armature of an object (o) must be selected."""
+        return (
+            len(context.selected_objects) == 1
+            and context.selected_objects[0].type == "ARMATURE"
+            and context.selected_objects[0].name.startswith("o")  # TODO: could require 'o####' template also
+        )
 
-            track_bone_names = [
-                annotation.trackName for annotation in animation_hkx.animation_container.animation.annotationTracks
-            ]
-            bl_bone_names = [b.name for b in armature_data.bones]
-            for bone_name in track_bone_names:
-                if bone_name not in bl_bone_names:
-                    raise ValueError(
-                        f"Animation bone name '{bone_name}' is missing from selected Blender Armature."
-                    )
+    def execute(self, context):
+        if not self.poll(context):
+            return self.error("Must select a single Armature of a object (name starting with 'o').")
 
-            p = time.perf_counter()
-            arma_frames = get_armature_frames(animation_hkx, skeleton_hkx, track_bone_names)
-            root_motion = get_root_motion(animation_hkx)
-            self.info(f"Constructed armature animation frames in {time.perf_counter() - p:.4f} seconds.")
+        settings = GlobalSettings.get_scene_settings(context)
+        game_directory = settings.game_directory
+        if not game_directory:
+            return self.error("No game directory set in global Soulstruct Settings.")
 
-            # Import single animation HKX.
-            p = time.perf_counter()
-            try:
-                importer.create_action(anim_name, arma_frames, root_motion)
-            except Exception as ex:
-                traceback.print_exc()
-                return self.error(f"Cannot import HKX animation: {file_path.name}. Error: {ex}")
-            self.info(f"Created animation action in {time.perf_counter() - p:.4f} seconds.")
+        bl_armature = context.selected_objects[0]
+        object_name = bl_armature.name.split(" ")[0]
+
+        dcx = ".dcx" if settings.resolve_dcx_type("Auto", "BINDER") != DCXType.Null else ""
+        objbnd_path = Path(game_directory, "obj", f"{object_name}.objbnd{dcx}")
+        if settings.use_bak_file:
+            objbnd_path = objbnd_path.with_name(objbnd_path.name + ".bak")
+            if not objbnd_path.is_file():
+                return self.error(f"Cannot find OBJBND '.bak' for object '{object_name}' in game directory.")
+        elif not objbnd_path.is_file():
+            return self.error(f"Cannot find OBJBND for object '{object_name}' in game directory.")
+
+        objbnd = Binder.from_path(objbnd_path)
+
+        # Find ANIBND entry.
+        try:
+            anibnd_entry = objbnd[f"{object_name}.anibnd"]
+        except EntryNotFoundError:
+            return self.error(f"OBJBND of object '{object_name}' has no ANIBND.")
+        skeleton_anibnd = anibnd = Binder.from_binder_entry(anibnd_entry)
+
+        # Find skeleton entry.
+        try:
+            skeleton_entry = skeleton_anibnd[SKELETON_ENTRY_RE]
+        except EntryNotFoundError:
+            return self.error(f"ANIBND of object '{object_name}' has no skeleton HKX file.")
+        skeleton_hkx = SkeletonHKX.from_binder_entry(skeleton_entry)
+
+        # Find animation HKX entry/entries.
+        anim_hkx_entries = anibnd.find_entries_matching_name(r"a.*\.hkx(\.dcx)?")
+        if not anim_hkx_entries:
+            return self.error(f"Cannot find any HKX animation files in binder {objbnd_path}.")
+
+        hkxs_with_paths = self.scan_entries(anim_hkx_entries, objbnd_path, skeleton_hkx)
+
+        importer = HKXAnimationImporter(self, context, bl_armature, bl_armature.name, self.to_60_fps)
+
+        try:
+            self.import_hkxs_with_paths(bl_armature, hkxs_with_paths, importer)
+        except Exception as ex:
+            return self.error(f"Error occurred while importing HKX animation(s). Error: {ex}")
 
         return {"FINISHED"}
 
 
 class HKXAnimationImporter:
-    """Manages imports for a batch of HKX files imported simultaneously.
-
-    TODO: Currently very slow. Takes ~1 second to load c2240 (Capra) idle, and ~8 seconds to load c5280 (Quelaag) idle.
-     This step is responsible for ~90% of that time. Notes/ideas:
-        - At bare minimum, we're iterating over every frame, over every bone, doing 2-3 matrix multiplications and a
-        matrix inversion to get the Blender basis matrix, decomposing it into TRS, doing a dot product with the previous
-        frame's rotation to avoid quat flipping, then iterating over every frame and every bone AGAIN to actually record
-        the keyframes.
-        - Obvious speed boost #1: I'm calculating the inverse of `bone.matrix_local` - which does NOT change at all -
-        on every single frame.
-        - Well, that made barely any difference.
-    """
+    """Manages imports for a batch of HKX animation files imported simultaneously."""
 
     FAST = {"FAST"}
 
@@ -456,7 +458,7 @@ class HKXAnimationImporter:
         self,
         operator: LoggingOperator,
         context,
-        bl_armature,
+        bl_armature: bpy.types.ArmatureObject,
         model_name: str,
         to_60_fps: bool,
     ):

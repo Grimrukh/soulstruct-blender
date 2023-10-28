@@ -162,9 +162,11 @@ if soulstruct_havok:
         ImportHKXAnimation,
         ImportHKXAnimationWithBinderChoice,
         ImportCharacterHKXAnimation,
+        ImportObjectHKXAnimation,
         ExportHKXAnimation,
         ExportHKXAnimationIntoBinder,
         ExportCharacterHKXAnimation,
+        ExportObjectHKXAnimation,
 
         ArmatureActionChoiceOperator,
         SelectArmatureActionOperator,

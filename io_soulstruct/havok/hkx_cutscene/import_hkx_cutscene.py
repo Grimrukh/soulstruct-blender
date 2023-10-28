@@ -21,7 +21,8 @@ from soulstruct_havok.utilities.maths import TRSTransform
 from soulstruct_havok.wrappers.hkx2015 import RemoBND
 
 from io_soulstruct.general import GlobalSettings
-from io_soulstruct.utilities import *
+from io_soulstruct.utilities.conversion import Transform, GAME_TO_BL_VECTOR, GAME_TO_BL_EULER
+from io_soulstruct.utilities.operators import LoggingOperator
 from io_soulstruct.flver.import_flver import FLVERImportSettings, FLVERImporter
 from io_soulstruct.flver.textures.utilities import TextureManager
 from io_soulstruct.havok.utilities import GAME_TRS_TO_BL_MATRIX, get_basis_matrix

@@ -485,7 +485,7 @@ class TextureManager:
             # Last resort: scan all pending Binders for new TPFs. We typically cannot tell which Binder has the texture.
             # TODO: I could at least check JUST the BHD headers of TPFBHD split Binders before loading them.
 
-            for binder_stem in self._binder_paths:
+            for binder_stem in tuple(self._binder_paths):  # binder keys may be popped when textures are loaded
                 self._load_binder(binder_stem)
 
             # Recursive call with all Binder TPFs now loaded.

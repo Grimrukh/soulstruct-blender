@@ -21,8 +21,8 @@ from soulstruct.base.models.flver.vertex_array import *
 from soulstruct.base.models.flver.mesh_tools import MergedMesh
 from soulstruct.utilities.maths import Vector3, Matrix3
 
-from io_soulstruct.utilities import *
 from io_soulstruct.general import *
+from io_soulstruct.utilities import *
 from .utilities import *
 
 DEBUG_MESH_INDEX = None

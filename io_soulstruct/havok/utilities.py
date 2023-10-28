@@ -11,7 +11,7 @@ from mathutils import Matrix, Euler, Quaternion as BlenderQuaternion
 
 from soulstruct_havok.utilities.maths import Matrix3, TRSTransform, Quaternion as GameQuaternion
 
-from io_soulstruct.utilities import GAME_TO_BL_VECTOR, BL_TO_GAME_VECTOR3
+from io_soulstruct.utilities.conversion import GAME_TO_BL_VECTOR, BL_TO_GAME_VECTOR3
 
 
 def GAME_TO_BL_QUAT(quaternion: GameQuaternion) -> BlenderQuaternion:
@@ -25,7 +25,6 @@ def GAME_TO_BL_QUAT(quaternion: GameQuaternion) -> BlenderQuaternion:
 
 def BL_TO_GAME_QUAT(quaternion: BlenderQuaternion) -> GameQuaternion:
     """NOTE: Blender Euler rotation mode should be 'XYZ' (corresponding to game 'XZY')."""
-    # TODO: Guessing for now, as the transformation (above) looks self-inverting.
     bl_euler = quaternion.to_euler("XYZ")
     game_rotmat3 = Matrix3.from_euler_angles((-bl_euler.x, -bl_euler.z, -bl_euler.y), radians=True)
     return GameQuaternion.from_matrix3(game_rotmat3)

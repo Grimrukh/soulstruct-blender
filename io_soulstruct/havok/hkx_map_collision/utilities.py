@@ -3,16 +3,15 @@ from __future__ import annotations
 __all__ = [
     "HKXMapCollisionImportError",
     "HKXMapCollisionExportError",
-    "HKX_MESH_TYPING",
     "get_collision_msb_transforms",
 ]
 
-import typing as tp
 from pathlib import Path
 
 from soulstruct.darksouls1r.maps import MSB, get_map
 
-from io_soulstruct.utilities import Transform
+from io_soulstruct.utilities.conversion import Transform
+
 
 class HKXMapCollisionImportError(Exception):
     """Exception raised during HKX map collision import."""
@@ -22,9 +21,6 @@ class HKXMapCollisionImportError(Exception):
 class HKXMapCollisionExportError(Exception):
     """Exception raised during HKX map collision export."""
     pass
-
-
-HKX_MESH_TYPING = tuple[list[tp.Sequence[float]], list[tp.Sequence[int]]]
 
 
 def get_collision_msb_transforms(

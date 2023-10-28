@@ -8,7 +8,7 @@ import typing as tp
 
 import bpy
 
-from io_soulstruct.utilities import LoggingOperator
+from io_soulstruct.utilities.operators import LoggingOperator
 
 
 class ArmatureActionChoiceOperator(LoggingOperator):

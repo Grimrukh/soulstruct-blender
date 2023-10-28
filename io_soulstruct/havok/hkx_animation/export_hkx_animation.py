@@ -4,6 +4,7 @@ __all__ = [
     "ExportHKXAnimation",
     "ExportHKXAnimationIntoBinder",
     "ExportCharacterHKXAnimation",
+    "ExportObjectHKXAnimation",
 ]
 
 import re
@@ -27,6 +28,7 @@ from .utilities import *
 
 ACTION_NAME_RE = re.compile(r"^(.*)\|(a[\d_]+)(\.\d+)?$")
 BONE_DATA_PATH_RE = re.compile(r"pose\.bones\[(\w+)]\.(location|rotation_quaterion|scale)")
+SKELETON_ENTRY_RE = re.compile(r"skeleton\.hkx", re.IGNORECASE)
 
 
 class ExportHKXAnimation(LoggingOperator, ExportHelper):
@@ -56,7 +58,7 @@ class ExportHKXAnimation(LoggingOperator, ExportHelper):
         default=True,
     )
 
-    dcx_type: get_dcx_enum_property(DCXType.Null)
+    dcx_type: get_dcx_enum_property()
 
     @classmethod
     def poll(cls, context):
@@ -67,6 +69,8 @@ class ExportHKXAnimation(LoggingOperator, ExportHelper):
 
     def execute(self, context):
         self.info("Executing HKX animation export...")
+
+        settings = GlobalSettings.get_scene_settings(context)  # type: GlobalSettings
 
         animation_file_path = Path(self.filepath)
 
@@ -81,14 +85,15 @@ class ExportHKXAnimation(LoggingOperator, ExportHelper):
                 skeleton_binder = Binder.from_path(skeleton_path)
             except ValueError:
                 return self.error(f"Could not load file as a `SkeletonHKX` or `Binder`: {skeleton_path}")
-            skeleton_entry = skeleton_binder.find_entry_matching_name(r"skeleton\.hkx", re.IGNORECASE)
-            if skeleton_entry is None:
-                return self.error(f"Could not find skeleton.hkx in binder: '{skeleton_path}'")
+            try:
+                skeleton_entry = skeleton_binder[SKELETON_ENTRY_RE]
+            except EntryNotFoundError:
+                return self.error(f"Could not find `skeleton.hkx` (case-insensitive) in binder: '{skeleton_path}'")
             skeleton_hkx = SkeletonHKX.from_binder_entry(skeleton_entry)
 
         bl_armature = context.selected_objects[0]
 
-        current_frame = context.scene.frame_current
+        current_frame = context.scene.frame_current  # store for resetting after export
         try:
             animation_hkx = create_animation_hkx(skeleton_hkx, bl_armature, self.from_60_fps)
         except Exception as ex:
@@ -97,8 +102,8 @@ class ExportHKXAnimation(LoggingOperator, ExportHelper):
         finally:
             context.scene.frame_set(current_frame)
 
-        animation_hkx.dcx_type = DCXType[self.dcx_type]
-
+        dcx_type = settings.resolve_dcx_type(self.dcx_type, "HKX", is_binder_entry=False)
+        animation_hkx.dcx_type = dcx_type
         animation_hkx.write(animation_file_path)
 
         return {"FINISHED"}
@@ -119,7 +124,7 @@ class ExportHKXAnimationIntoBinder(LoggingOperator, ImportHelper):
         maxlen=255,
     )
 
-    dcx_type: get_dcx_enum_property(DCXType.Null)  # typically no DCX compression inside Binder
+    dcx_type: get_dcx_enum_property()
 
     from_60_fps: bpy.props.BoolProperty(
         name="From 60 FPS",
@@ -152,19 +157,15 @@ class ExportHKXAnimationIntoBinder(LoggingOperator, ImportHelper):
         default="a##_####",  # default for DS1
     )
 
-    # TODO: Probably need a template for the 'aXX_XXXX' animation name (number of digits per chunk, etc.).
-
     @classmethod
     def poll(cls, context):
-        try:
-            return context.selected_objects[0].type == "ARMATURE"
-        except IndexError:
-            return False
+        return len(context.selected_objects) == 1 and context.selected_objects[0].type == "ARMATURE"
 
     def execute(self, context):
         print("Executing HKX animation export into Binder...")
 
-        binder = Binder.from_path(Path(self.filepath))
+        binder_path = Path(self.filepath)
+        binder = Binder.from_path(binder_path)
 
         if not self.overwrite_existing and self.animation_id in binder.get_entry_ids():
             return self.error(f"Animation ID {self.animation_id} already exists in Binder and overwrite is disabled")
@@ -214,7 +215,6 @@ class ExportCharacterHKXAnimation(LoggingOperator):
         default=True,
     )
 
-    # TODO: Probably need a template for the 'aXX_XXXX' animation name (number of digits per chunk, etc.).
     GAME_INFO = {
         GameNames.DS1R: {
             "animation_stem_template": "##_####",
@@ -263,11 +263,11 @@ class ExportCharacterHKXAnimation(LoggingOperator):
         if not anibnd_path.is_file():
             return self.error(f"Cannot find ANIBND for character '{character_name}' in game directory.")
 
-        anibnd = Binder.from_path(anibnd_path)
+        skeleton_anibnd = anibnd = Binder.from_path(anibnd_path)
         # TODO: Support c0000 automatic import. Combine all sub-ANIBND entries into one big choice list?
 
         try:
-            skeleton_entry = anibnd.find_entry_matching_name(r"skeleton\.hkx", re.IGNORECASE)
+            skeleton_entry = skeleton_anibnd[SKELETON_ENTRY_RE]
         except EntryNotFoundError:
             return self.error("Could not find 'skeleton.hkx' (case-insensitive) in ANIBND.")
         skeleton_hkx = SkeletonHKX.from_binder_entry(skeleton_entry)
@@ -285,7 +285,7 @@ class ExportCharacterHKXAnimation(LoggingOperator):
         try:
             animation_name = get_animation_name(animation_id, game_hkx_settings["animation_stem_template"], prefix="a")
         except ValueError:
-            max_digits = len(game_hkx_settings["animation_stem_template"].replace("#", ""))
+            max_digits = game_hkx_settings["animation_stem_template"].count("#")
             return self.error(
                 f"Animation ID {animation_id} is too large for game {settings.game}. Max is {'9' * max_digits}."
             )
@@ -313,6 +313,125 @@ class ExportCharacterHKXAnimation(LoggingOperator):
 
         # Write modified ANIBND back.
         anibnd.write()
+
+        return {"FINISHED"}
+
+
+class ExportObjectHKXAnimation(LoggingOperator):
+    """Export active animation from selected object Armature into that object's game OBJBND."""
+    bl_idname = "export_scene.object_animation"
+    bl_label = "Export Object Animation"
+    bl_description = "Export active Action into its object's OBJBND"
+
+    # TODO: expose somehow or auto-detect (from action + game)
+    from_60_fps: bpy.props.BoolProperty(
+        name="From 60 FPS",
+        description="Scale animation keyframes from 60 FPS in Blender down to 30 FPS",
+        default=True,
+    )
+
+    GAME_INFO = {
+        GameNames.DS1R: {
+            "animation_stem_template": "##_####",
+            "hkx_entry_path": "N:\\FRPG\\data\\Model\\obj\\{object_name}\\hkxx64\\{animation_stem}.hkx",
+            "hkx_dcx_type": DCXType.Null,
+        }
+    }
+
+    @classmethod
+    def poll(cls, context):
+        if len(context.selected_objects) != 1:
+            return False
+        obj = context.selected_objects[0]
+        if not obj.name.startswith("o"):
+            return False
+        if obj.type != "ARMATURE":
+            return False
+        if obj.animation_data is None:
+            return False
+        if obj.animation_data.action is None:
+            return False
+        return True
+
+    def execute(self, context):
+        if not self.poll(context):
+            return self.error("Must select a single Armature of a object (name starting with 'o') with an Action.")
+
+        settings = GlobalSettings.get_scene_settings(context)
+        game_directory = settings.game_directory
+        if not game_directory:
+            return self.error("No game directory set in global Soulstruct Settings.")
+        game_hkx_settings = self.GAME_INFO.get(settings.game, None)
+        if game_hkx_settings is None:
+            return self.error(f"Game '{settings.game}' not supported for automatic ANIBND export.")
+
+        bl_armature = context.selected_objects[0]
+
+        object_name = bl_armature.name.split(" ")[0]
+
+        # Get OBJBND.
+        dcx = ".dcx" if settings.resolve_dcx_type("Auto", "BINDER") != DCXType.Null else ""
+        objbnd_path = Path(game_directory, "obj", f"{object_name}.objbnd{dcx}")
+        if not objbnd_path.is_file():
+            return self.error(f"Cannot find OBJBND for object '{object_name}' in game directory.")
+        objbnd = Binder.from_path(objbnd_path)
+
+        # Find ANIBND entry.
+        try:
+            anibnd_entry = objbnd[f"{object_name}.anibnd"]
+        except EntryNotFoundError:
+            return self.error(f"OBJBND of object '{object_name}' has no ANIBND.")
+        skeleton_anibnd = anibnd = Binder.from_binder_entry(anibnd_entry)
+
+        # Find skeleton entry.
+        try:
+            skeleton_entry = skeleton_anibnd[SKELETON_ENTRY_RE]
+        except EntryNotFoundError:
+            return self.error("Could not find 'skeleton.hkx' (case-insensitive) in ANIBND.")
+        skeleton_hkx = SkeletonHKX.from_binder_entry(skeleton_entry)
+
+        # Get animation stem from action name. We will re-format its ID in the selected game's known format (e.g. to
+        # support cross-game conversion).
+        action = bl_armature.animation_data.action
+        animation_id_str = action.name.split("|")[-1].split(".")[0]  # e.g. from 'c1234|a00_0000.001' to 'a00_0000'
+        animation_id_str = animation_id_str.lstrip("a")
+        try:
+            animation_id = int(animation_id_str)
+        except ValueError:
+            return self.error(f"Could not parse animation ID from action name '{action.name}'.")
+
+        try:
+            animation_name = get_animation_name(animation_id, game_hkx_settings["animation_stem_template"], prefix="a")
+        except ValueError:
+            max_digits = game_hkx_settings["animation_stem_template"].count("#")
+            return self.error(
+                f"Animation ID {animation_id} is too large for game {settings.game}. Max is {'9' * max_digits}."
+            )
+
+        self.info(f"Exporting animation '{animation_name} into OBJBND '{objbnd_path.name}'...")
+
+        current_frame = context.scene.frame_current
+        try:
+            animation_hkx = create_animation_hkx(skeleton_hkx, bl_armature, self.from_60_fps)
+        except Exception as ex:
+            traceback.print_exc()
+            return self.error(f"Failed to create animation HKX. Error: {ex}")
+        finally:
+            context.scene.frame_set(current_frame)
+
+        animation_hkx.dcx_type = settings.resolve_dcx_type("Auto", "HKX")
+        entry_path = game_hkx_settings["hkx_entry_path"].format(object_name=object_name, animation_stem=animation_name)
+        if animation_hkx.dcx_type != DCXType.Null:
+            entry_path += ".dcx"
+
+        # Update or create binder entry.
+        anibnd.add_or_replace_entry_data(animation_id, animation_hkx, new_path=entry_path)
+
+        # Write modified ANIBND entry back.
+        anibnd_entry.set_from_binary_file(anibnd)
+
+        # Write modified OBJBND file back.
+        objbnd.write()
 
         return {"FINISHED"}
 

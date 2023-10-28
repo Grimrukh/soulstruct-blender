@@ -4,10 +4,12 @@ __all__ = [
     "ImportHKXAnimation",
     "ImportHKXAnimationWithBinderChoice",
     "ImportCharacterHKXAnimation",
+    "ImportObjectHKXAnimation",
 
     "ExportHKXAnimation",
     "ExportHKXAnimationIntoBinder",
     "ExportCharacterHKXAnimation",
+    "ExportObjectHKXAnimation",
 
     "ArmatureActionChoiceOperator",
     "SelectArmatureActionOperator",
@@ -25,9 +27,9 @@ if "HKX_ANIMATION_PT_hkx_tools" in locals():
     importlib.reload(sys.modules["io_soulstruct.hkx_animation.select_hkx_animation"])
     importlib.reload(sys.modules["io_soulstruct.hkx_animation.export_hkx_animation"])
 
-from .import_hkx_animation import ImportHKXAnimation, ImportHKXAnimationWithBinderChoice, ImportCharacterHKXAnimation
-from .export_hkx_animation import ExportHKXAnimation, ExportHKXAnimationIntoBinder, ExportCharacterHKXAnimation
-from .select_hkx_animation import ArmatureActionChoiceOperator, SelectArmatureActionOperator
+from .import_hkx_animation import *
+from .export_hkx_animation import *
+from .select_hkx_animation import *
 
 
 class HKX_ANIMATION_PT_hkx_animation_tools(bpy.types.Panel):
@@ -50,8 +52,10 @@ class HKX_ANIMATION_PT_hkx_animation_tools(bpy.types.Panel):
         game_box.label(text="From Game Directory:")
         game_box.prop(context.scene.soulstruct_global_settings, "use_bak_file", text="From .BAK File")
         game_box.operator(ImportCharacterHKXAnimation.bl_idname)
+        game_box.operator(ImportObjectHKXAnimation.bl_idname)
         game_box.label(text="To Game Directory:")
         game_box.operator(ExportCharacterHKXAnimation.bl_idname)
+        game_box.operator(ExportObjectHKXAnimation.bl_idname)
 
         select_box = self.layout.box()
         select_box.operator(SelectArmatureActionOperator.bl_idname)

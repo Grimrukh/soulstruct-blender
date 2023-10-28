@@ -7,3 +7,4 @@ __all__ = [
 ]
 
 from .core import *
+from .lightmaps import *

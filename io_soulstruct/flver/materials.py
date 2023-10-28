@@ -11,7 +11,7 @@ import bpy
 from soulstruct.base.models.flver.material import Material
 from soulstruct.base.models.flver.submesh import Submesh
 
-from io_soulstruct.utilities import LoggingOperator
+from io_soulstruct.utilities.operators import LoggingOperator
 from .utilities import MTDInfo
 
 
