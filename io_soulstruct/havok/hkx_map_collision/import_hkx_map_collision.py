@@ -8,13 +8,20 @@ TODO: Currently only supports map collision HKX files from Dark Souls Remastered
 """
 from __future__ import annotations
 
-__all__ = ["ImportHKXMapCollision", "ImportHKXMapCollisionWithBinderChoice", "ImportHKXMapCollisionWithMSBChoice"]
+__all__ = [
+    "ImportHKXMapCollision",
+    "ImportHKXMapCollisionWithBinderChoice",
+    "ImportHKXMapCollisionWithMSBChoice",
+    "QuickImportHKXMapCollision",
+]
 
-import numpy as np
+import time
 import re
 import traceback
 import typing as tp
 from pathlib import Path
+
+import numpy as np
 
 import bpy
 from bpy_extras.io_utils import ImportHelper
@@ -23,6 +30,7 @@ from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
 
 from soulstruct_havok.wrappers.hkx2015 import MapCollisionHKX
 
+from io_soulstruct.general import GlobalSettings, GameFiles
 from io_soulstruct.utilities import *
 from io_soulstruct.utilities.materials import *
 from .utilities import *
@@ -553,6 +561,164 @@ class ImportHKXMapCollisionWithMSBChoice(LoggingOperator):
         bpy.ops.wm.hkx_map_collision_msb_choice_operator("INVOKE_DEFAULT")
 
 
+class QuickImportHKXMapCollision(LoggingOperator):
+    bl_idname = "import_scene.quick_hkx_map_collision"
+    bl_label = "Quick Import Map Collision"
+    bl_description = "Import selected game HKX map collision"
+
+    # TODO: No way to change these properties.
+
+    read_msb_transform: bpy.props.BoolProperty(
+        name="Read MSB Transform",
+        description="Look for matching MSB file in adjacent `MapStudio` folder and set Blender transform from "
+                    "collision with this model. Will provide choice if multiple MSB model instances are found",
+        default=True,
+    )
+
+    import_all_from_binder: bpy.props.BoolProperty(
+        name="Import All From Binder",
+        description="If a Binder file is opened, import all HKX files rather than being prompted to select one. "
+                    "Will only import HKX files that match 'Collision Model ID' (if not -1)",
+        default=False,
+    )
+
+    load_other_resolution: bpy.props.BoolProperty(
+        name="Load Other Resolution",
+        description="Try to load the other resolution (Hi/Lo) of the selected HKX (possibly in another Binder) and "
+                    "parent them under the same empty object with optional MSB transform",
+        default=True,
+    )
+
+    use_material: bpy.props.BoolProperty(
+        name="Use Material",
+        description="If enabled, 'HKX Hi' or 'HKX Lo' material will be assigned or created for all collision meshes",
+        default=True,
+    )
+
+    @classmethod
+    def poll(cls, context):
+        game_lists = context.scene.game_files  # type: GameFiles
+        return game_lists.hkx_map_collision not in {"", "0"}
+
+    def execute(self, context):
+
+        start_time = time.perf_counter()
+
+        settings = GlobalSettings.get_scene_settings(context)
+        game_lists = context.scene.game_files  # type: GameFiles
+        map_path = GlobalSettings.get_selected_map_path(context)
+        if not map_path:
+            return self.error("Game directory and map stem must be set in Blender's Soulstruct global settings.")
+        settings.save_settings()
+
+        hkx_entry_name = game_lists.hkx_map_collision
+
+        # BXF file never has DCX.
+        hkxbhd_path = map_path / f"h{settings.map_stem[1:]}.hkxbhd"
+        hkxbdt_path = map_path / f"h{settings.map_stem[1:]}.hkxbdt"
+        if settings.use_bak_file:
+            hkxbhd_path = hkxbhd_path.with_name(hkxbhd_path.name + ".bak")
+            if not hkxbhd_path.is_file():
+                return self.error(f"Could not find HKXBHD '.bak' file for map '{settings.map_stem}'.")
+            hkxbdt_path = hkxbdt_path.with_name(hkxbdt_path.name + ".bak")
+            if not hkxbdt_path.is_file():
+                return self.error(f"Could not find HKXBDT '.bak' file for map '{settings.map_stem}'.")
+        if not hkxbhd_path.is_file():
+            return self.error(f"Could not find HKXBHD header file for map '{settings.map_stem}': {hkxbhd_path}")
+        if not hkxbdt_path.is_file():
+            return self.error(f"Could not find HKXBDT data file for map '{settings.map_stem}': {hkxbdt_path}")
+
+        hkxbxf = Binder.from_path(hkxbhd_path)
+        try:
+            hkx_entry = hkxbxf.find_entry_name(hkx_entry_name)
+        except EntryNotFoundError:
+            return self.error(
+                f"Could not find HKX map collision entry '{hkx_entry_name}' in HKXBHD file '{hkxbhd_path.name}'."
+            )
+
+        import_info = HKXImportInfo(hkxbhd_path, hkx_entry.name, hkx_entry.to_binary_file(MapCollisionHKX))
+
+        # If `load_other_resolutions = True`, this maps actual opened file paths to their other-res HKX files.
+        # NOTE: Does NOT handle paths that need an entry to be chosen by the user (with queued Binder entries).
+        # Those will be handled in the 'BinderChoice' operator.
+        other_res_hkxs = {
+            (import_info.path, import_info.hkx_name): load_other_res_hkx(
+                operator=self,
+                file_path=import_info.path,
+                import_info=import_info,
+                is_binder=True,
+            )
+        }  # type: dict[tuple[Path, str], MapCollisionHKX]
+
+        importer = HKXMapCollisionImporter(self, context)
+
+        hkx = import_info.hkx
+        hkx_model_name = import_info.hkx_name.split(".")[0]
+        other_res_hkx = other_res_hkxs.get((import_info.path, import_info.hkx_name), None)
+
+        self.info(f"Importing HKX: {hkx_model_name}")
+
+        transform = None  # type: tp.Optional[Transform]
+        if self.read_msb_transform:
+            try:
+                transforms = get_collision_msb_transforms(hkx_name=hkx_model_name, hkx_path=import_info.path)
+            except Exception as ex:
+                self.warning(f"Could not get MSB transform for '{hkx_model_name}'. Error: {ex}")
+            else:
+                if len(transforms) > 1:
+                    importer.context = context
+                    ImportHKXMapCollisionWithMSBChoice.run(
+                        importer=importer,
+                        import_info=import_info,
+                        other_res_hkx=other_res_hkx,
+                        use_material=self.use_material,
+                        transforms=transforms,
+                    )
+                    return {"FINISHED"}
+                transform = transforms[0][1]
+
+        # Import single HKX.
+        try:
+            hkx_parent = importer.import_hkx(hkx, bl_name=hkx_model_name, use_material=self.use_material)
+        except Exception as ex:
+            # Delete any objects created prior to exception.
+            for obj in importer.all_bl_objs:
+                bpy.data.objects.remove(obj)
+            traceback.print_exc()  # for inspection in Blender console
+            return self.error(f"Cannot import HKX: {import_info.path}. Error: {ex}")
+
+        if other_res_hkx is not None:
+            # Import other-res HKX.
+            other_res_hkx_model_name = other_res_hkx.path.name.split(".")[0]
+            try:
+                hkx_parent = importer.import_hkx(
+                    other_res_hkx,
+                    bl_name=other_res_hkx_model_name,
+                    use_material=self.use_material,
+                    existing_parent=hkx_parent,
+                )
+            except Exception as ex:
+                # Delete any objects created prior to exception.
+                for obj in importer.all_bl_objs:
+                    bpy.data.objects.remove(obj)
+                traceback.print_exc()  # for inspection in Blender console
+                return self.error(f"Cannot import other-res HKX for {import_info.path}. Error: {ex}")
+
+        if transform is not None:
+            # Assign detected MSB transform to collision mesh parent.
+            hkx_parent.location = transform.bl_translate
+            hkx_parent.rotation_euler = transform.bl_rotate
+            hkx_parent.scale = transform.bl_scale
+
+        map_parent = find_or_create_bl_empty(f"{settings.map_stem} Collisions", context)
+        hkx_parent.parent = map_parent
+
+        p = time.perf_counter() - start_time
+        self.info(f"Finished importing HKX map collision {hkx_entry_name} from {hkxbhd_path.name} in {p} s.")
+
+        return {"FINISHED"}
+
+
 class HKXMapCollisionImporter:
     """Manages imports for a batch of HKX files imported simultaneously."""
 
@@ -561,7 +727,7 @@ class HKXMapCollisionImporter:
 
     def __init__(
         self,
-        operator: ImportHKXMapCollision,
+        operator: LoggingOperator,
         context,
     ):
         self.operator = operator
@@ -612,7 +778,7 @@ class HKXMapCollisionImporter:
         for i, (vertices, faces) in enumerate(meshes):
 
             # Swap vertex Y and Z coordinates.
-            vertices[:, [1, 2]] = vertices[:, [2, 1]]
+            vertices = np.c_[vertices[:, 0], vertices[:, 2], vertices[:, 1]]
             mesh_name = f"{submesh_name_prefix} {i}"
             bl_mesh = self.create_mesh_obj(vertices, faces, material_indices[i], mesh_name)
             if use_material:

@@ -5,12 +5,14 @@ __all__ = [
     "get_bl_prop",
     "is_uniform",
     "natural_keys",
+    "find_or_create_bl_empty",
 ]
 
 import math
 import re
 import typing as tp
 
+import bpy
 from mathutils import Vector
 
 from soulstruct.utilities.maths import Vector3
@@ -63,3 +65,15 @@ def natural_keys(text):
         http://nedbatchelder.com/blog/200712/human_sorting.html
     """
     return [atoi(c) for c in re.split(r"(\d+)", text)]
+
+
+def find_or_create_bl_empty(name: str, context):
+    """Find Blender object `name` or create an Empty object with that name in the current scene."""
+    try:
+        obj = bpy.data.objects[name]
+    except KeyError:
+        obj = bpy.data.objects.new(name, None)
+        if context is None:
+            context = bpy.context
+        context.scene.collection.objects.link(obj)
+    return obj

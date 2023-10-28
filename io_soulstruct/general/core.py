@@ -3,9 +3,7 @@ from __future__ import annotations
 
 __all__ = [
     "GameNames",
-    "GAME_DEFAULTS",
     "GlobalSettings",
-    "GameFiles",
     "MTDBinderManager",
 ]
 
@@ -19,7 +17,7 @@ from soulstruct.base.models.mtd import MTD
 from soulstruct.utilities.files import read_json, write_json
 
 
-_SETTINGS_PATH = Path(__file__).parent / "GlobalSettings.json"
+_SETTINGS_PATH = Path(__file__).parent.parent / "GlobalSettings.json"
 
 
 class GameNames:
@@ -31,14 +29,6 @@ class GameNames:
     DS3 = "DS3"  # Dark Souls III
     ER = "ER"  # Elden Ring
     # TODO: A few more to add, obviously.
-
-
-GAME_DEFAULTS = {
-    GameNames.DS1R: {
-        "chrbnd_flver_id": 200,
-        "chrbnd_flver_path": "N:\\FRPG\\data\\INTERROOT_x64\\chr\\{stem}\\{stem}.flver",
-    },
-}
 
 
 class GlobalSettings(bpy.types.PropertyGroup):
@@ -80,7 +70,13 @@ class GlobalSettings(bpy.types.PropertyGroup):
 
     use_bak_file: bpy.props.BoolProperty(
         name="Use BAK File",
-        description="Use BAK file when importing from game directory (and fail if missing)",
+        description="Use BAK file when quick-importing from game directory (and fail if missing)",
+        default=False,
+    )
+
+    detect_map_from_parent: bpy.props.BoolProperty(
+        name="Detect Map from Parent",
+        description="Detect map stem from Blender parent when quick-exporting map assets",
         default=False,
     )
 
@@ -118,10 +114,14 @@ class GlobalSettings(bpy.types.PropertyGroup):
                 match _game:
                     case "DS1R":
                         return DCXType.Null if is_binder_entry else DCXType.DS1_DS2
+            case "NVM":
+                match _game:
+                    case "DS1R":
+                        return DCXType.Null  # never compressed in map BND
             case "HKX":
                 match _game:
                     case "DS1R":
-                        return DCXType.Null  # always in binder
+                        return DCXType.DS1_DS2  # compressed in map h/l BXF split binder
         raise ValueError(f"Default DCX compression for class name '{class_name}' and game '{_game}' is unknown.")
 
     @staticmethod
@@ -166,73 +166,6 @@ class GlobalSettings(bpy.types.PropertyGroup):
         }
         write_json(_SETTINGS_PATH, current_settings, indent=4)
         print(f"Saved settings to {_SETTINGS_PATH}")
-
-
-# Global variables to keep enum references alive.
-MAP_PIECE_FLVERS = [("0", "None", "None")]
-CHRBNDS = (("0", "None", "None"),)
-OBJBNDS = [("0", "None", "None")]
-
-
-# noinspection PyUnusedLocal
-def collect_map_piece_flvers(self, context):
-    settings = GlobalSettings.get_scene_settings(context)
-    game_directory = settings.game_directory
-    map_stem = settings.map_stem
-
-    MAP_PIECE_FLVERS.clear()
-    MAP_PIECE_FLVERS.append(("0", "None", "None"))
-
-    if game_directory and map_stem and (map_path := Path(game_directory, "map", map_stem)).is_dir():
-        flver_glob = "*.flver"
-        if settings.resolve_dcx_type("Auto", "FLVER", False, context) != DCXType.Null:
-            flver_glob += ".dcx"
-        MAP_PIECE_FLVERS.extend(
-            [(str(f), f.name.split(".")[0], f.name.split(".")[0]) for f in map_path.glob(flver_glob)]
-        )
-
-    return MAP_PIECE_FLVERS
-
-
-# noinspection PyUnusedLocal
-def collect_chrbnds(self, context):
-    settings = GlobalSettings.get_scene_settings(context)
-    game_directory = settings.game_directory
-
-    chrbnds_list = [("0", "None", "None")]
-
-    if game_directory and (chr_path := Path(game_directory, "chr")).is_dir():
-        chrbnd_glob = "*.chrbnd"
-        if settings.resolve_dcx_type("Auto", "BINDER", False, context) != DCXType.Null:
-            chrbnd_glob += ".dcx"
-        chrbnds_list += [
-            (str(f), f.name.split(".")[0], f.name.split(".")[0]) for f in chr_path.glob(chrbnd_glob)
-        ]
-
-    global CHRBNDS
-    CHRBNDS = tuple(chrbnds_list)
-
-    return CHRBNDS
-
-
-class GameFiles(bpy.types.PropertyGroup):
-    """Files of various types found in the game directory via scan."""
-
-    map_piece_flver: bpy.props.EnumProperty(
-        name="Map Piece FLVERs",
-        items=collect_map_piece_flvers,
-    )
-
-    chrbnd: bpy.props.EnumProperty(
-        name="Character Binders",
-        items=collect_chrbnds,
-    )
-
-    # NOTE: Too many objects for an enum to handle well.
-    objbnd_name: bpy.props.StringProperty(
-        name="Object Name",
-        description="Name of OBJBND object file to import",
-    )
 
 
 class MTDBinderManager:

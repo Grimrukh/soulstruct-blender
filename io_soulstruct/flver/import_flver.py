@@ -20,9 +20,9 @@ from __future__ import annotations
 __all__ = [
     "ImportFLVER",
     "ImportFLVERWithMSBChoice",
-    "ImportMapPieceFLVER",
-    "ImportCharacterFLVER",
-    "ImportObjectFLVER",
+    "QuickImportMapPieceFLVER",
+    "QuickImportCharacterFLVER",
+    "QuickImportObjectFLVER",
     "ImportEquipmentFLVER",
     "FLVERImportSettings",
     "FLVERImporter",
@@ -303,10 +303,10 @@ class ImportFLVERWithMSBChoice(LoggingOperator):
         bpy.ops.wm.flver_with_msb_choice("INVOKE_DEFAULT")
 
 
-class ImportMapPieceFLVER(LoggingOperator, ImportFLVERMixin):
+class QuickImportMapPieceFLVER(LoggingOperator, ImportFLVERMixin):
     """Import a map piece FLVER from the current selected value of listed game map piece FLVERs."""
-    bl_idname = "import_scene.map_piece_flver"
-    bl_label = "Import Map Piece"
+    bl_idname = "import_scene.quick_map_piece_flver"
+    bl_label = "Quick Import Map Piece"
     bl_description = "Import selected map piece FLVER from game map directory"
 
     # TODO: Currently no way to disable this in GUI.
@@ -341,7 +341,7 @@ class ImportMapPieceFLVER(LoggingOperator, ImportFLVERMixin):
         if self.find_game_tpfs:
             texture_manager.find_flver_textures(flver_path)
 
-        settings = bpy.context.scene.soulstruct_global_settings  # type: GlobalSettings
+        settings = GlobalSettings.get_scene_settings(context)
         settings.save_settings()
 
         importer = FLVERImporter(self, context, self.get_import_settings(context, texture_manager))
@@ -383,20 +383,24 @@ class ImportMapPieceFLVER(LoggingOperator, ImportFLVERMixin):
             traceback.print_exc()  # for inspection in Blender console
             return self.error(f"Cannot import FLVER: {flver_path.name}. Error: {ex}")
 
-        # Select newly imported mesh.
-        if bl_mesh:
-            self.set_active_obj(bl_mesh)
+        # Find or create Map Piece parent.
+        map_piece_parent = find_or_create_bl_empty(f"{settings.map_stem} Map Pieces", context)
+        bl_armature.parent = map_piece_parent
+
+        # Select newly imported armature.
+        if bl_armature:
+            self.set_active_obj(bl_armature)
 
         self.info(f"Imported map piece FLVER in {time.perf_counter() - start_time:.3f} seconds.")
 
         return {"FINISHED"}
 
 
-class ImportCharacterFLVER(LoggingOperator, ImportFLVERMixin):
+class QuickImportCharacterFLVER(LoggingOperator, ImportFLVERMixin):
     """Import a character FLVER from the current selected value of listed game map CHRBNDs."""
-    bl_idname = "import_scene.chrbnd_flver"
-    bl_label = "Import CHRBND FLVER"
-    bl_description = "Import selected character's FLVER from game map directory"
+    bl_idname = "import_scene.quick_character_flver"
+    bl_label = "Quick Import Character FLVER"
+    bl_description = "Import selected character's FLVER from game CHRBND"
 
     @classmethod
     def poll(cls, context):
@@ -444,11 +448,11 @@ class ImportCharacterFLVER(LoggingOperator, ImportFLVERMixin):
         return {"FINISHED"}
 
 
-class ImportObjectFLVER(LoggingOperator, ImportFLVERMixin):
+class QuickImportObjectFLVER(LoggingOperator, ImportFLVERMixin):
     """Import all object FLVERs from the current selected value of listed game map OBJBNDs."""
-    bl_idname = "import_scene.objbnd_flver"
-    bl_label = "Import OBJBND FLVER"
-    bl_description = "Import selected object's FLVERs from game map directory"
+    bl_idname = "import_scene.quick_objbnd_flver"
+    bl_label = "Quick Import Object FLVER"
+    bl_description = "Import selected object's FLVERs from game OBJBND"
 
     @classmethod
     def poll(cls, context):
@@ -810,11 +814,6 @@ class FLVERImporter:
         bl_flver_mesh["Unk x5d"] = flver.unk_x5d  # int
         bl_flver_mesh["Unk x68"] = flver.unk_x68  # int
 
-        if transform is not None:
-            bl_flver_mesh.location = transform.bl_translate
-            bl_flver_mesh.rotation_euler = transform.bl_rotate
-            bl_flver_mesh.scale = transform.bl_scale
-
         if existing_armature:
             # Do not create an armature for this FLVER; use `existing_armature` instead.
             bl_armature_obj = existing_armature
@@ -825,11 +824,17 @@ class FLVERImporter:
                 if bone_name not in armature_bone_names:
                     self.bl_bone_names.remove(bone_name)
             dummy_prefix = self.name  # we generally don't expect any dummies, but will distinguish them with this
+            # TODO: warn if `transform` is not None? invalid with existing armature?
         else:
             # Create a new armature for this FLVER.
             bl_armature_obj = self.create_armature(settings.base_edit_bone_length)
             dummy_prefix = ""
             self.new_objs.append(bl_armature_obj)
+
+            if transform is not None:
+                bl_armature_obj.location = transform.bl_translate
+                bl_armature_obj.rotation_euler = transform.bl_rotate
+                bl_armature_obj.scale = transform.bl_scale
 
         # Parent mesh to armature. This is critical for proper animation behavior (especially with root motion).
         bl_flver_mesh.parent = bl_armature_obj
@@ -870,7 +875,7 @@ class FLVERImporter:
         self.operator.deselect_all()
 
         bl_armature_data = bpy.data.armatures.new(f"{self.name} Armature")
-        bl_armature_obj = self.create_obj(f"{self.name} Armature", bl_armature_data)
+        bl_armature_obj = self.create_obj(f"{self.name}", bl_armature_data)
         self.create_bones(bl_armature_obj, base_edit_bone_length)
 
         return bl_armature_obj
@@ -959,7 +964,8 @@ class FLVERImporter:
         if bpy.ops.object.mode_set.poll():
             bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
 
-        bl_mesh = bpy.data.meshes.new(name=name)
+        # Armature parent object uses simply `name`. Mesh data/object has 'Mesh' suffix.
+        bl_mesh = bpy.data.meshes.new(name=f"{name} Mesh")
 
         for material in self.new_materials:
             bl_mesh.materials.append(material)
@@ -968,7 +974,7 @@ class FLVERImporter:
             # Corrupted sub-meshes. Leave empty.
             # TODO: Should be able to handle known cases of this by redirecting to the correct vertex buffers.
             # noinspection PyTypeChecker
-            return self.create_obj(f"{name} <INVALID>", bl_mesh)
+            return self.create_obj(f"{name} Mesh <INVALID>", bl_mesh)
 
         # from soulstruct.utilities.inspection import profile_function
 
@@ -981,7 +987,7 @@ class FLVERImporter:
         )
 
         # noinspection PyTypeChecker
-        bl_mesh_obj = self.create_obj(name, bl_mesh)  # type: bpy.types.MeshObject
+        bl_mesh_obj = self.create_obj(f"{name} Mesh", bl_mesh)  # type: bpy.types.MeshObject
 
         self.create_bone_vertex_groups(bl_mesh_obj, bl_vert_bone_weights, bl_vert_bone_indices)
 
@@ -1190,8 +1196,8 @@ class FLVERImporter:
                     break  # keep EDIT default
 
         if not write_bone_type:
-            # TODO: FLVER has no meshes?
-            self.warning(f"FLVER {self.name} has no meshes. Bones written to EditBones.")
+            # TODO: FLVER has no submeshes?
+            self.warning(f"FLVER {self.name} has no submeshes. Bones written to EditBones.")
             write_bone_type = "EDIT"
 
         if warn_partial_bind_pose:

@@ -3,9 +3,9 @@ from __future__ import annotations
 __all__ = [
     "ImportFLVER",
     "ImportFLVERWithMSBChoice",
-    "ImportMapPieceFLVER",
-    "ImportCharacterFLVER",
-    "ImportObjectFLVER",
+    "QuickImportMapPieceFLVER",
+    "QuickImportCharacterFLVER",
+    "QuickImportObjectFLVER",
     "ImportEquipmentFLVER",
 
     "HideAllDummiesOperator",
@@ -14,8 +14,8 @@ __all__ = [
 
     "ExportFLVER",
     "ExportFLVERIntoBinder",
-    "ExportMapPieceFLVERs",
-    "ExportCharacterFLVER",
+    "QuickExportMapPieceFLVERs",
+    "QuickExportCharacterFLVER",
 
     "FLVERSettings",
     "SetVertexAlpha",
@@ -73,15 +73,15 @@ class FLVERImportPanel(bpy.types.Panel):
 
         map_piece_import_box = layout.box()
         map_piece_import_box.prop(context.scene.game_files, "map_piece_flver")
-        map_piece_import_box.operator(ImportMapPieceFLVER.bl_idname)
+        map_piece_import_box.operator(QuickImportMapPieceFLVER.bl_idname)
 
         chrbnd_import_box = layout.box()
         chrbnd_import_box.prop(context.scene.game_files, "chrbnd")
-        chrbnd_import_box.operator(ImportCharacterFLVER.bl_idname)
+        chrbnd_import_box.operator(QuickImportCharacterFLVER.bl_idname)
 
         objbnd_import_box = layout.box()
         objbnd_import_box.prop(context.scene.game_files, "objbnd_name")
-        objbnd_import_box.operator(ImportObjectFLVER.bl_idname)
+        objbnd_import_box.operator(QuickImportObjectFLVER.bl_idname)
 
 
 class FLVERExportPanel(bpy.types.Panel):
@@ -98,9 +98,12 @@ class FLVERExportPanel(bpy.types.Panel):
         layout.operator(ExportFLVER.bl_idname)
         layout.operator(ExportFLVERIntoBinder.bl_idname)
 
-        layout.label(text="To Game Directory:")
-        layout.operator(ExportMapPieceFLVERs.bl_idname)
-        layout.operator(ExportCharacterFLVER.bl_idname)
+        quick_export_box = layout.box()
+        quick_export_box.prop(
+            context.scene.soulstruct_global_settings, "detect_map_from_parent", text="Detect Map from Parent"
+        )
+        quick_export_box.operator(QuickExportMapPieceFLVERs.bl_idname)
+        quick_export_box.operator(QuickExportCharacterFLVER.bl_idname)
 
 
 class FLVERLightmapsPanel(bpy.types.Panel):

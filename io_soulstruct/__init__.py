@@ -92,9 +92,9 @@ CLASSES = (
 
     ImportFLVER,
     ImportFLVERWithMSBChoice,
-    ImportMapPieceFLVER,
-    ImportCharacterFLVER,
-    ImportObjectFLVER,
+    QuickImportMapPieceFLVER,
+    QuickImportCharacterFLVER,
+    QuickImportObjectFLVER,
     ImportEquipmentFLVER,
 
     HideAllDummiesOperator,
@@ -103,8 +103,8 @@ CLASSES = (
 
     ExportFLVER,
     ExportFLVERIntoBinder,
-    ExportMapPieceFLVERs,
-    ExportCharacterFLVER,
+    QuickExportMapPieceFLVERs,
+    QuickExportCharacterFLVER,
 
     FLVERSettings,
     SetVertexAlpha,
@@ -127,11 +127,14 @@ CLASSES = (
     ImportNVM,
     ImportNVMWithBinderChoice,
     ImportNVMWithMSBChoice,
-    ImportGameNVM,
+    QuickImportNVM,
     ExportNVM,
     ExportNVMIntoBinder,
+    QuickExportNVM,
     ImportMCP,
+    QuickImportMCP,
     ImportMCG,
+    QuickImportMCG,
     ExportMCG,
     CreateMCGEdgeOperator,
     NVM_PT_ds1_navmesh_import,
@@ -151,9 +154,13 @@ if soulstruct_havok:
 
     # Extra Havok classes to register.
     HAVOK_CLASSES = (
+        GlobalSettingsPanel_HavokView,
+
         ImportHKXMapCollision,
         ImportHKXMapCollisionWithBinderChoice,
         ImportHKXMapCollisionWithMSBChoice,
+        QuickImportHKXMapCollision,
+
         ExportHKXMapCollision,
         ExportHKXMapCollisionIntoBinder,
         ExportHKXMapCollisionToMapDirectoryBHD,
@@ -229,9 +236,15 @@ def register():
     bpy.app.handlers.load_post.append(load_handler)
     LOAD_POST_HANDLERS.append(load_handler)
 
-    SPACE_VIEW_3D_HANDLERS.append(bpy.types.SpaceView3D.draw_handler_add(draw_mcg_nodes, (), "WINDOW", "POST_VIEW"))
-    SPACE_VIEW_3D_HANDLERS.append(bpy.types.SpaceView3D.draw_handler_add(draw_mcg_node_labels, (), "WINDOW", "POST_PIXEL"))
-    SPACE_VIEW_3D_HANDLERS.append(bpy.types.SpaceView3D.draw_handler_add(draw_mcg_edges, (), "WINDOW", "POST_VIEW"))
+    SPACE_VIEW_3D_HANDLERS.append(
+        bpy.types.SpaceView3D.draw_handler_add(draw_mcg_nodes, (), "WINDOW", "POST_VIEW")
+    )
+    SPACE_VIEW_3D_HANDLERS.append(
+        bpy.types.SpaceView3D.draw_handler_add(draw_mcg_node_labels, (), "WINDOW", "POST_PIXEL")
+    )
+    SPACE_VIEW_3D_HANDLERS.append(
+        bpy.types.SpaceView3D.draw_handler_add(draw_mcg_edges, (), "WINDOW", "POST_VIEW")
+    )
 
     if HAVOK_CLASSES:
         for cls in HAVOK_CLASSES:
@@ -264,6 +277,7 @@ def unregister():
     for handler in LOAD_POST_HANDLERS:
         bpy.app.handlers.load_post.remove(handler)
     LOAD_POST_HANDLERS.clear()
+
     for handler in SPACE_VIEW_3D_HANDLERS:
         bpy.types.SpaceView3D.draw_handler_remove(handler, "WINDOW")
     SPACE_VIEW_3D_HANDLERS.clear()

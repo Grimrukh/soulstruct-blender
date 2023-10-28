@@ -1,7 +1,5 @@
 """
-Import MCP/MCG files (with/without DCX) into Blender 3.3+ (Python 3.10+ scripting required).
-
-MCP files contain AABBs that match up to Navmesh part instances in the map's MSB.
+Import MCG files (with/without DCX) into Blender 3.3+ (Python 3.10+ scripting required).
 
 MCG files contain gate nodes and edges connecting them. Gate nodes lie on the boundaries between navmesh parts and edges
 cross through a particular navmesh to connect two gate nodes.
@@ -10,7 +8,7 @@ This file format is only used in DeS and DS1 (PTDE/DSR).
 """
 from __future__ import annotations
 
-__all__ = ["ImportMCG"]
+__all__ = ["ImportMCG", "QuickImportMCG"]
 
 import re
 from pathlib import Path
@@ -21,6 +19,7 @@ from bpy_extras.io_utils import ImportHelper
 from soulstruct.darksouls1r.maps import MSB
 from soulstruct.darksouls1r.maps.navmesh import MCG, MCGNode, MCGEdge
 
+from io_soulstruct.general import GlobalSettings
 from io_soulstruct.utilities import *
 from .utilities import MCGImportError
 
@@ -81,6 +80,7 @@ class ImportMCG(LoggingOperator, ImportHelper):
             except Exception as ex:
                 self.warning(f"Error occurred while reading MCG file '{file_path.name}': {ex}")
             else:
+                mcg.set_navmesh_references(msb.navmeshes)
                 mcgs.append(mcg)
 
         importer = MCGImporter(self, context)
@@ -91,11 +91,52 @@ class ImportMCG(LoggingOperator, ImportHelper):
         return {'FINISHED'}
 
 
+class QuickImportMCG(LoggingOperator):
+    bl_idname = "import_scene.quick_mcg"
+    bl_label = "Quick Import MCG"
+    bl_description = "Import MCG navmesh node/edge graph file from selected game map"
+
+    # MSB always auto-found.
+
+    def execute(self, context):
+
+        settings = GlobalSettings.get_scene_settings(context)
+        game_directory = settings.game_directory
+        map_stem = settings.map_stem
+        if not game_directory or not map_stem:
+            return self.error("Game directory or map stem not set in Soulstruct plugin settings.")
+        mcg_path = Path(game_directory, "map", map_stem, f"{map_stem}.mcg")
+        if not mcg_path.is_file():
+            return self.error(f"Could not find MCG file '{mcg_path}'.")
+        msb_path = Path(game_directory, "map", "MapStudio", f"{map_stem}.msb")
+        if not msb_path.is_file():
+            return self.error(f"Could not find MSB file '{msb_path}'.")
+        try:
+            msb = MSB.from_path(msb_path)
+        except Exception as ex:
+            return self.error(f"Could not load MSB file '{msb_path}'. Error: {ex}")
+
+        navmesh_part_names = [navmesh.name for navmesh in msb.navmeshes]
+
+        try:
+            mcg = MCG.from_path(mcg_path)
+        except Exception as ex:
+            return self.error(f"Error occurred while reading MCG file '{mcg_path}': {ex}")
+
+        # TODO: I don't think we want to set these?
+        # mcg.set_navmesh_references(msb.navmeshes)
+
+        importer = MCGImporter(self, context)
+        importer.import_mcg(mcg, map_stem=map_stem, navmesh_part_names=navmesh_part_names)
+
+        return {'FINISHED'}
+
+
 class MCGImporter:
 
     def __init__(
         self,
-        operator: ImportMCG,
+        operator: LoggingOperator,
         context,
     ):
         self.operator = operator

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-__all__ = ["ExportFLVER", "ExportFLVERIntoBinder", "ExportMapPieceFLVERs", "ExportCharacterFLVER"]
+__all__ = ["ExportFLVER", "ExportFLVERIntoBinder", "QuickExportMapPieceFLVERs", "QuickExportCharacterFLVER"]
 
 import time
 
@@ -132,8 +132,8 @@ class ExportFLVERMixin:
 class ExportFLVER(LoggingOperator, ExportHelper, ExportFLVERMixin):
     """Export one FLVER model from a Blender Armature parent to a file."""
     bl_idname = "export_scene.flver"
-    bl_label = "Export FLVER"
-    bl_description = "Export Blender object hierarchy to a FromSoftware FLVER model file"
+    bl_label = "Export Loose FLVER"
+    bl_description = "Export Blender object hierarchy to a loose FromSoftware FLVER model file"
 
     filter_glob: StringProperty(
         default="*.flver;*.flver.dcx",
@@ -300,11 +300,11 @@ class ExportFLVERIntoBinder(LoggingOperator, ExportHelper, ExportFLVERMixin):
         return {"FINISHED"}
 
 
-class ExportMapPieceFLVERs(LoggingOperator, ExportFLVERMixin):
-    bl_idname = "export_scene_map.flver"
-    bl_label = "Export Map Piece"
+class QuickExportMapPieceFLVERs(LoggingOperator, ExportFLVERMixin):
+    bl_idname = "export_scene.quick_map_piece_flver"
+    bl_label = "Quick Export Map Piece FLVERs"
     bl_description = (
-        "Export selected Blender meshes to same-named FLVER map piece model files in game `map` directory"
+        "Export selected Blender armatures/meshes to map piece FLVER model files in appropriate game map(s)"
     )
 
     @classmethod
@@ -323,22 +323,37 @@ class ExportMapPieceFLVERs(LoggingOperator, ExportFLVERMixin):
 
         settings = GlobalSettings.get_scene_settings(context)
         game_directory = settings.game_directory
-        map_stem = settings.map_stem
+        if not game_directory:
+            return self.error("Game directory must be set in Blender's Soulstruct global settings for quick export.")
+        if not settings.detect_map_from_parent and not settings.map_stem:
+            return self.error("Game map stem must be set in Blender's Soulstruct global settings for quick export.")
+
         dcx_type = settings.resolve_dcx_type(self.dcx_type, "FLVER", False, context)
 
-        if not game_directory or not map_stem:
-            return self.error("Game directory and map stem must be set in Blender's Soulstruct global settings.")
-
         settings.save_settings()
-
-        if not (map_dir_path := Path(game_directory, "map", map_stem)).is_dir():
-            return self.error(f"Invalid game map directory: {map_dir_path}")
 
         self.to_object_mode()
 
         exporter = FLVERExporter(self, context, self.get_export_settings(context))
 
         for mesh, armature in meshes_armatures:
+
+            if settings.detect_map_from_parent:
+                parent = armature.parent if armature else mesh.parent
+                if parent is None:
+                    return self.error(
+                        f"Object '{mesh.name}' has no parent. Deselect 'Detect Map from Parent' to use single "
+                        f"game map specified in Soulstruct plugin settings."
+                    )
+                map_stem = parent.name.split(" ")[0]
+                if not MAP_STEM_RE.match(map_stem):
+                    return self.error(f"Parent object '{parent.name}' does not start with a valid map stem.")
+            else:
+                map_stem = settings.map_stem
+
+            if not (map_dir_path := Path(game_directory, "map", map_stem)).is_dir():
+                return self.error(f"Invalid game map directory: {map_dir_path}")
+
             flver_stem = self.get_default_flver_stem(mesh, armature)
 
             try:
@@ -359,13 +374,20 @@ class ExportMapPieceFLVERs(LoggingOperator, ExportFLVERMixin):
         return {"FINISHED"}
 
 
-class ExportCharacterFLVER(LoggingOperator, ExportFLVERMixin):
+class QuickExportCharacterFLVER(LoggingOperator, ExportFLVERMixin):
     """Export a single FLVER model from a Blender mesh into a pre-selected CHRBND in the game directory."""
-    bl_idname = "export_scene.chrbnd_flver"
-    bl_label = "Export Character FLVER"
-    bl_description = "Export a FLVER model file into chosen CHRBND binder"
+    bl_idname = "export_scene.quick_character_flver"
+    bl_label = "Quick Export Character FLVER"
+    bl_description = "Export a FLVER model file into appropriate game CHRBND"
 
     # NOTE: Always overwrites existing entry. DCX type and `BinderEntry` defaults are game-dependent.
+
+    GAME_INFO = {
+        GameNames.DS1R: {
+            "chrbnd_flver_entry_id": 200,
+            "chrbnd_flver_entry_path": "N:\\FRPG\\data\\INTERROOT_x64\\chr\\{character_name}\\{character_name}.flver",
+        },
+    }
 
     @classmethod
     def poll(cls, context):
@@ -388,7 +410,7 @@ class ExportCharacterFLVER(LoggingOperator, ExportFLVERMixin):
         except FLVERExportError as ex:
             return self.error(str(ex))
         if armature is None:
-            return self.error("Must select an Armature parent to auto-export a character FLVER.")
+            return self.error("Must select an Armature parent to quick-export a character FLVER.")
 
         settings = GlobalSettings.get_scene_settings(context)
         game_lists = context.scene.game_files  # type: GameFiles
@@ -403,13 +425,13 @@ class ExportCharacterFLVER(LoggingOperator, ExportFLVERMixin):
         self.info(f"Exporting FLVER into CHRBND: {chrbnd_path}")
 
         chrbnd = Binder.from_path(chrbnd_path)
-        flver_stem = chrbnd_path.name.split(".")[0]
+        character_name = chrbnd_path.name.split(".")[0]
 
         # We replace an existing FLVER entry if it exists, or use the game default ID otherwise.
         flver_entries = chrbnd.find_entries_matching_name(r".*\.flver(\.dcx)?")
         if not flver_entries:
             try:
-                entry_id = GAME_DEFAULTS[settings.game]["chrbnd_flver_id"]
+                entry_id = self.GAME_INFO[settings.game]["chrbnd_flver_entry_id"]
             except KeyError:
                 return self.error(f"No FLVER files found in CHRBND and don't know default ID for game {settings.game}.")
 
@@ -418,7 +440,9 @@ class ExportCharacterFLVER(LoggingOperator, ExportFLVERMixin):
             except EntryNotFoundError:
                 # Create new entry.
                 try:
-                    default_entry_path = GAME_DEFAULTS[settings.game]["chrbnd_flver_path"].format(stem=flver_stem)
+                    default_entry_path = self.GAME_INFO[settings.game]["chrbnd_flver_entry_path"].format(
+                        character_name=character_name
+                    )
                 except KeyError:
                     return self.error(
                         f"Entry {entry_id} not found in CHRBND and don't know default path for game {settings.game}."
@@ -435,10 +459,10 @@ class ExportCharacterFLVER(LoggingOperator, ExportFLVERMixin):
         self.to_object_mode()
         exporter = FLVERExporter(self, context, self.get_export_settings(context))
         try:
-            flver = exporter.export_flver(mesh, armature, name=flver_stem)
+            flver = exporter.export_flver(mesh, armature, name=character_name)
         except Exception as ex:
             traceback.print_exc()
-            return self.error(f"Cannot create exported FLVER from Blender Mesh '{flver_stem}'. Error: {ex}")
+            return self.error(f"Cannot create exported FLVER from Blender Mesh '{character_name}'. Error: {ex}")
 
         flver.dcx_type = dcx_type
 
@@ -458,6 +482,9 @@ class ExportCharacterFLVER(LoggingOperator, ExportFLVERMixin):
         self.info(f"Exported FLVER into Binder file: {written_path}")
 
         return {"FINISHED"}
+
+
+# TODO: Quick export object FLVER. Need to guess FLVER instance suffix from name, e.g. 'c0100_1.flver' entry.
 
 
 @dataclass(slots=True)

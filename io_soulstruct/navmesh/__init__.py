@@ -4,11 +4,14 @@ __all__ = [
     "ImportNVM",
     "ImportNVMWithBinderChoice",
     "ImportNVMWithMSBChoice",
-    "ImportGameNVM",
+    "QuickImportNVM",
     "ExportNVM",
     "ExportNVMIntoBinder",
+    "QuickExportNVM",
     "ImportMCP",
+    "QuickImportMCP",
     "ImportMCG",
+    "QuickImportMCG",
     "ExportMCG",
     "NVM_PT_ds1_navmesh_import",
     "NVM_PT_ds1_navmesh_export",
@@ -84,6 +87,7 @@ class AddNVMFaceFlags(bpy.types.Operator):
 
     # noinspection PyMethodMayBeStatic
     def execute(self, context):
+        # noinspection PyTypeChecker
         obj = context.edit_object
         if obj is None or obj.type != "MESH":
             return {"CANCELLED"}
@@ -117,6 +121,7 @@ class RemoveNVMFaceFlags(bpy.types.Operator):
 
     # noinspection PyMethodMayBeStatic
     def execute(self, context):
+        # noinspection PyTypeChecker
         obj = context.edit_object
         if obj is None or obj.type != "MESH":
             return {"CANCELLED"}
@@ -150,6 +155,7 @@ class SetNVMFaceObstacleCount(bpy.types.Operator):
 
     # noinspection PyMethodMayBeStatic
     def execute(self, context):
+        # noinspection PyTypeChecker
         obj = context.edit_object
         if obj is None or obj.type != "MESH":
             return {"CANCELLED"}
@@ -180,16 +186,17 @@ class NVM_PT_ds1_navmesh_import(bpy.types.Panel):
 
     # noinspection PyUnusedLocal
     def draw(self, context):
-        import_nvm = self.layout.box()
-        import_nvm.operator(ImportNVM.bl_idname)
+        import_loose_box = self.layout.box()
+        import_loose_box.operator(ImportNVM.bl_idname)
+        import_loose_box.operator(ImportMCG.bl_idname)
+        import_loose_box.operator(ImportMCP.bl_idname)
 
         game_box = self.layout.box()
         game_box.prop(context.scene.soulstruct_global_settings, "use_bak_file", text="From .BAK File")
-        game_box.operator(ImportGameNVM.bl_idname)
-
-        import_navgraph_box = self.layout.box()
-        import_navgraph_box.operator(ImportMCG.bl_idname)
-        import_navgraph_box.operator(ImportMCP.bl_idname)
+        game_box.prop(context.scene.game_files, "nvm")
+        game_box.operator(QuickImportNVM.bl_idname)
+        game_box.operator(QuickImportMCG.bl_idname)
+        game_box.operator(QuickImportMCP.bl_idname)
 
 
 class NVM_PT_ds1_navmesh_export(bpy.types.Panel):
@@ -205,6 +212,11 @@ class NVM_PT_ds1_navmesh_export(bpy.types.Panel):
         export_nvm = self.layout.box()
         export_nvm.operator(ExportNVM.bl_idname)
         export_nvm.operator(ExportNVMIntoBinder.bl_idname)
+        quick_box = export_nvm.box()
+        quick_box.prop(
+            context.scene.soulstruct_global_settings, "detect_map_from_parent", text="Detect Map from Parent"
+        )
+        quick_box.operator(QuickExportNVM.bl_idname)
 
         export_navgraph_box = self.layout.box()
         export_navgraph_box.operator(ExportMCG.bl_idname, text="Export MCG + MCP")
@@ -240,6 +252,7 @@ class NVM_PT_ds1_navmesh_tools(bpy.types.Panel):
 
         self.layout.label(text="Selected Face Indices:")
         selected_faces_box = self.layout.box()
+        # noinspection PyTypeChecker
         obj = context.edit_object
         if obj and obj.type == 'MESH' and bpy.context.mode == 'EDIT_MESH':
             obj: bpy.types.MeshObject

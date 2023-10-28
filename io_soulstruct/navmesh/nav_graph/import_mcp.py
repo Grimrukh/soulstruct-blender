@@ -1,6 +1,13 @@
+"""
+Import MCP files (with/without DCX) into Blender 3.3+ (Python 3.10+ scripting required).
+
+MCP files contain AABBs that match up to Navmesh part instances in the map's MSB.
+
+This file format is only used in DeS and DS1 (PTDE/DSR).
+"""
 from __future__ import annotations
 
-__all__ = ["ImportMCP"]
+__all__ = ["ImportMCP", "QuickImportMCP"]
 
 import re
 from pathlib import Path
@@ -10,6 +17,7 @@ from bpy_extras.io_utils import ImportHelper
 
 from soulstruct.darksouls1r.maps.navmesh import MCP, NavmeshAABB
 
+from io_soulstruct.general import GlobalSettings
 from io_soulstruct.utilities import *
 
 MCP_NAME_RE = re.compile(r"(?P<stem>.*)\.mcp(?P<dcx>\.dcx)?")
@@ -59,11 +67,39 @@ class ImportMCP(LoggingOperator, ImportHelper):
         return {'FINISHED'}
 
 
+class QuickImportMCP(LoggingOperator):
+    bl_idname = "import_scene.quick_mcp"
+    bl_label = "Quick Import MCP"
+    bl_description = "Import MCP file containing MSB navmesh AABBs and connections from selected game map"
+
+    def execute(self, context):
+
+        settings = GlobalSettings.get_scene_settings(context)
+        game_directory = settings.game_directory
+        map_stem = settings.map_stem
+        if not game_directory or not map_stem:
+            return self.error("Game directory or map stem not set in Soulstruct plugin settings.")
+        mcp_path = Path(game_directory, "map", map_stem, f"{map_stem}.mcp")
+        if not mcp_path.is_file():
+            return self.error(f"Could not find MCP file '{mcp_path}'.")
+
+        try:
+            mcp = MCP.from_path(mcp_path)
+        except Exception as ex:
+            return self.error(f"Error occurred while reading MCP file '{mcp_path}': {ex}")
+
+        importer = MCPImporter(self, context)
+        # TODO: load navmesh part names from MSB (and check same count)
+        importer.import_mcp(mcp, f"{mcp_path.stem} MCP")
+
+        return {'FINISHED'}
+
+
 class MCPImporter:
 
     def __init__(
         self,
-        operator: ImportMCP,
+        operator: LoggingOperator,
         context,
     ):
         self.operator = operator
