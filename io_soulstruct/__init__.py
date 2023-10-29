@@ -161,23 +161,23 @@ if soulstruct_havok:
         ImportHKXMapCollisionWithMSBChoice,
         QuickImportHKXMapCollision,
 
-        ExportHKXMapCollision,
-        ExportHKXMapCollisionIntoBinder,
-        ExportHKXMapCollisionToMapDirectoryBHD,
-        HKX_COLLISION_PT_hkx_map_collision_tools,
-
         ImportHKXAnimation,
         ImportHKXAnimationWithBinderChoice,
         QuickImportCharacterHKXAnimation,
         QuickImportObjectHKXAnimation,
         ExportHKXAnimation,
         ExportHKXAnimationIntoBinder,
-        ExportCharacterHKXAnimation,
-        ExportObjectHKXAnimation,
+        QuickExportCharacterHKXAnimation,
+        QuickExportObjectHKXAnimation,
 
         ArmatureActionChoiceOperator,
         SelectArmatureActionOperator,
         HKX_ANIMATION_PT_hkx_animation_tools,
+
+        ExportHKXMapCollision,
+        ExportHKXMapCollisionIntoBinder,
+        ExportHKXMapCollisionToMapDirectoryBHD,
+        HKX_COLLISION_PT_hkx_map_collision_tools,
 
         ImportHKXCutscene,
         ExportHKXCutscene,

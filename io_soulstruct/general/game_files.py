@@ -10,7 +10,6 @@ from pathlib import Path
 import bpy
 
 from soulstruct.containers import Binder
-from soulstruct.dcx import DCXType
 from soulstruct.darksouls1ptde.constants import CHARACTER_MODELS as DS1_CHARACTER_MODELS
 
 from .core import GlobalSettings, GameNames
@@ -106,10 +105,8 @@ def get_hkx_map_collision_items(self, context):
     hkxbhd_path = map_path / f"h{map_stem[1:]}.hkxbhd"  # never DCX
     if not hkxbhd_path.is_file():
         return _clear_items("HKX_MAP_COLLISION")
-    if settings.resolve_dcx_type("Auto", "HKX", True, context) != DCXType.Null:
-        pattern = re.compile(r"h.*\.hkx\.dcx")
-    else:
-        pattern = re.compile(r"h.*\.hkx")
+    hkx_dcx_type = settings.resolve_dcx_type("Auto", "MapCollisionHKX", True, context)
+    pattern = re.compile(r"h.*\.hkx\.dcx") if hkx_dcx_type.has_dcx_extension() else re.compile(r"h.*\.hkx")
     return _scan_binder_entries("HKX_MAP_COLLISION", hkxbhd_path, pattern)
 
 

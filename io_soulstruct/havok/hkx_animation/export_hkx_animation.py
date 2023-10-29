@@ -3,13 +3,15 @@ from __future__ import annotations
 __all__ = [
     "ExportHKXAnimation",
     "ExportHKXAnimationIntoBinder",
-    "ExportCharacterHKXAnimation",
-    "ExportObjectHKXAnimation",
+    "QuickExportCharacterHKXAnimation",
+    "QuickExportObjectHKXAnimation",
 ]
 
 import re
 import traceback
 from pathlib import Path
+
+import numpy as np
 
 import bpy
 from bpy.props import StringProperty, BoolProperty, IntProperty
@@ -18,7 +20,7 @@ from bpy_extras.io_utils import ImportHelper, ExportHelper
 from soulstruct.containers import Binder, EntryNotFoundError
 from soulstruct.dcx import DCXType
 from soulstruct_havok.wrappers.hkx2015 import SkeletonHKX, AnimationHKX
-from soulstruct_havok.utilities.maths import Vector4, TRSTransform
+from soulstruct_havok.utilities.maths import TRSTransform
 
 from io_soulstruct.utilities import *
 from io_soulstruct.general import *
@@ -34,7 +36,7 @@ SKELETON_ENTRY_RE = re.compile(r"skeleton\.hkx", re.IGNORECASE)
 class ExportHKXAnimation(LoggingOperator, ExportHelper):
     """Export HKX animation from an Action attached to a FLVER armature."""
     bl_idname = "export_scene.hkx_animation"
-    bl_label = "Export HKX Animation"
+    bl_label = "Export Loose HKX Anim"
     bl_description = "Export a Blender action to a standalone HKX animation file with manual HKX skeleton source"
 
     # ExportHelper mixin class uses this
@@ -112,7 +114,7 @@ class ExportHKXAnimation(LoggingOperator, ExportHelper):
 class ExportHKXAnimationIntoBinder(LoggingOperator, ImportHelper):
     """Export HKX animation from an Action attached to a FLVER armature, into an existing BND."""
     bl_idname = "export_scene.hkx_animation_binder"
-    bl_label = "Export HKX Animation Into Binder"
+    bl_label = "Export HKX Anim Into Binder"
     bl_description = "Export a Blender action to a HKX animation file inside a FromSoftware Binder (BND/BHD)"
 
     # ImportHelper mixin class uses this
@@ -162,8 +164,6 @@ class ExportHKXAnimationIntoBinder(LoggingOperator, ImportHelper):
         return len(context.selected_objects) == 1 and context.selected_objects[0].type == "ARMATURE"
 
     def execute(self, context):
-        print("Executing HKX animation export into Binder...")
-
         binder_path = Path(self.filepath)
         binder = Binder.from_path(binder_path)
 
@@ -178,7 +178,7 @@ class ExportHKXAnimationIntoBinder(LoggingOperator, ImportHelper):
         bl_armature = context.selected_objects[0]
 
         animation_name = get_animation_name(self.animation_id, self.name_template[1:], prefix=self.name_template[0])
-        print(f"Animation name: {animation_name}")
+        self.info(f"Exporting animation '{animation_name}' into binder {binder_path.name}...")
 
         current_frame = context.scene.frame_current
         try:
@@ -202,10 +202,10 @@ class ExportHKXAnimationIntoBinder(LoggingOperator, ImportHelper):
         return {"FINISHED"}
 
 
-class ExportCharacterHKXAnimation(LoggingOperator):
+class QuickExportCharacterHKXAnimation(LoggingOperator):
     """Export active animation from selected character Armature into that character's game ANIBND."""
-    bl_idname = "export_scene.character_animation"
-    bl_label = "Export Character Animation"
+    bl_idname = "export_scene.quick_hkx_character_animation"
+    bl_label = "Export Character Anim"
     bl_description = "Export active Action into its character's ANIBND"
 
     # TODO: expose somehow or auto-detect (from action + game)
@@ -301,26 +301,26 @@ class ExportCharacterHKXAnimation(LoggingOperator):
         finally:
             context.scene.frame_set(current_frame)
 
-        animation_hkx.dcx_type = settings.resolve_dcx_type("Auto", "HKX")
-        entry_path = game_hkx_settings["hkx_entry_path"].format(
-            character_name=character_name, animation_stem=animation_name
+        animation_hkx.dcx_type = settings.resolve_dcx_type("Auto", "AnimationHKX")
+        entry_path = animation_hkx.dcx_type.process_path(
+            game_hkx_settings["hkx_entry_path"].format(character_name=character_name, animation_stem=animation_name)
         )
-        if animation_hkx.dcx_type != DCXType.Null:
-            entry_path += ".dcx"
 
         # Update or create binder entry.
         anibnd.add_or_replace_entry_data(animation_id, animation_hkx, new_path=entry_path)
+        self.info(f"Successfully exported animation '{animation_name}' to ANIBND '{anibnd_path.name}'.")
 
         # Write modified ANIBND back.
         anibnd.write()
+        self.info(f"Wrote modified ANIBND '{anibnd_path.name}' back to disk.")
 
         return {"FINISHED"}
 
 
-class ExportObjectHKXAnimation(LoggingOperator):
+class QuickExportObjectHKXAnimation(LoggingOperator):
     """Export active animation from selected object Armature into that object's game OBJBND."""
-    bl_idname = "export_scene.object_animation"
-    bl_label = "Export Object Animation"
+    bl_idname = "export_scene.quick_hkx_object_animation"
+    bl_label = "Export Object Anim"
     bl_description = "Export active Action into its object's OBJBND"
 
     # TODO: expose somehow or auto-detect (from action + game)
@@ -419,10 +419,10 @@ class ExportObjectHKXAnimation(LoggingOperator):
         finally:
             context.scene.frame_set(current_frame)
 
-        animation_hkx.dcx_type = settings.resolve_dcx_type("Auto", "HKX")
-        entry_path = game_hkx_settings["hkx_entry_path"].format(object_name=object_name, animation_stem=animation_name)
-        if animation_hkx.dcx_type != DCXType.Null:
-            entry_path += ".dcx"
+        animation_hkx.dcx_type = settings.resolve_dcx_type("Auto", "AnimationHKX")
+        entry_path = animation_hkx.dcx_type.process_path(
+            game_hkx_settings["hkx_entry_path"].format(object_name=object_name, animation_stem=animation_name)
+        )
 
         # Update or create binder entry.
         anibnd.add_or_replace_entry_data(animation_id, animation_hkx, new_path=entry_path)
@@ -452,7 +452,7 @@ def create_animation_hkx(skeleton_hkx: SkeletonHKX, bl_armature, from_60_fps: bo
     end_frame = int(max(fcurve.range()[1] for fcurve in action.fcurves))
 
     # All frame interleaved transforms, in armature space.
-    root_frames = []  # type: list[Vector4]
+    root_motion_samples = []  # type: list[tuple[float, float, float]]
     armature_space_frames = []  # type: list[list[TRSTransform]]
 
     has_root_motion = False
@@ -471,8 +471,8 @@ def create_animation_hkx(skeleton_hkx: SkeletonHKX, bl_armature, from_60_fps: bo
         armature_space_frame = []  # type: list[TRSTransform]
 
         # We collect root motion vectors, as we're not sure if any root motion exists yet.
-        root_frames.append(BL_TO_GAME_VECTOR4(bl_armature.location))
-        if len(root_frames) >= 2 and root_frames[-1] != root_frames[-2]:
+        root_motion_samples.append(bl_armature.location.copy())
+        if not has_root_motion and len(root_motion_samples) >= 2 and root_motion_samples[-1] != root_motion_samples[-2]:
             # Some actual root motion has appeared.
             has_root_motion = True
 
@@ -486,11 +486,20 @@ def create_animation_hkx(skeleton_hkx: SkeletonHKX, bl_armature, from_60_fps: bo
 
         armature_space_frames.append(armature_space_frame)
 
+    if has_root_motion:
+        root_motion = np.array(root_motion_samples, dtype=np.float32)
+        # Swap Y and Z and add fourth column of zeroes.
+        root_motion = np.c_[
+            root_motion[:, 0], root_motion[:, 2], root_motion[:, 1], np.zeros(len(root_motion), dtype=np.float32)
+        ]
+    else:
+        root_motion = None
+
     animation_hkx = AnimationHKX.from_dsr_interleaved_template(
         skeleton_hkx=skeleton_hkx,
         interleaved_data=armature_space_frames,
         transform_track_to_bone_indices=track_bone_mapping,
-        reference_frame_samples=root_frames if has_root_motion else None,
+        root_motion=root_motion,
         is_armature_space=True,
     )
 

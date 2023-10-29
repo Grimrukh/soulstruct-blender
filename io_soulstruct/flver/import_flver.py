@@ -306,7 +306,7 @@ class ImportFLVERWithMSBChoice(LoggingOperator):
 class QuickImportMapPieceFLVER(LoggingOperator, ImportFLVERMixin):
     """Import a map piece FLVER from the current selected value of listed game map piece FLVERs."""
     bl_idname = "import_scene.quick_map_piece_flver"
-    bl_label = "Quick Import Map Piece"
+    bl_label = "Import Map Piece"
     bl_description = "Import selected map piece FLVER from game map directory"
 
     # TODO: Currently no way to disable this in GUI.
@@ -399,7 +399,7 @@ class QuickImportMapPieceFLVER(LoggingOperator, ImportFLVERMixin):
 class QuickImportCharacterFLVER(LoggingOperator, ImportFLVERMixin):
     """Import a character FLVER from the current selected value of listed game map CHRBNDs."""
     bl_idname = "import_scene.quick_character_flver"
-    bl_label = "Quick Import Character FLVER"
+    bl_label = "Import Character"
     bl_description = "Import selected character's FLVER from game CHRBND"
 
     @classmethod
@@ -451,7 +451,7 @@ class QuickImportCharacterFLVER(LoggingOperator, ImportFLVERMixin):
 class QuickImportObjectFLVER(LoggingOperator, ImportFLVERMixin):
     """Import all object FLVERs from the current selected value of listed game map OBJBNDs."""
     bl_idname = "import_scene.quick_objbnd_flver"
-    bl_label = "Quick Import Object FLVER"
+    bl_label = "Import Object"
     bl_description = "Import selected object's FLVERs from game OBJBND"
 
     @classmethod
@@ -1250,6 +1250,9 @@ class FLVERImporter:
             # rather than in the 'rest pose space' of this bone. We don't want such behavior, particularly for FLVER
             # root bones like 'Pelvis'.
             edit_bone.use_local_location = True
+
+            # FLVER bones never inherit scale.
+            edit_bone.inherit_scale = "NONE"
 
             if game_bone.child_index != -1:
                 edit_bone["Child Name"] = self.bl_bone_names[game_bone.child_index]

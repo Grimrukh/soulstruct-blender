@@ -14,12 +14,13 @@ import traceback
 import typing as tp
 from pathlib import Path
 
+import numpy as np
+
 import bpy
 from bpy_extras.io_utils import ImportHelper
 from mathutils import Quaternion as BlenderQuaternion
 
 from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
-from soulstruct.utilities.maths import Vector4
 
 from soulstruct_havok.utilities.maths import TRSTransform
 from soulstruct_havok.wrappers.hkx2015 import AnimationHKX, SkeletonHKX
@@ -105,6 +106,7 @@ class ImportHKXAnimationMixin:
             animation_hkx.animation_container.spline_to_interleaved()
             self.info(f"Converted spline animation to interleaved in {time.perf_counter() - p:.4f} seconds.")
 
+            # We look up track bone names from annotations. TODO: Should just use `skeleton_hkx`?
             track_bone_names = [
                 annotation.trackName for annotation in animation_hkx.animation_container.animation.annotationTracks
             ]
@@ -132,7 +134,7 @@ class ImportHKXAnimationMixin:
 
 class ImportHKXAnimation(LoggingOperator, ImportHelper, ImportHKXAnimationMixin):
     bl_idname = "import_scene.hkx_animation"
-    bl_label = "Import HKX Animation"
+    bl_label = "Import HKX Anim"
     bl_description = "Import a HKX animation file. Can import from ANIBNDs/OBJBNDs and supports DCX-compressed files"
 
     filename_ext = ".hkx"
@@ -313,7 +315,7 @@ class ImportHKXAnimationWithBinderChoice(LoggingOperator):
 class QuickImportCharacterHKXAnimation(LoggingOperator, ImportHKXAnimationMixin):
     """Detects name of selected character FLVER Armature and finds their ANIBND in the game directory."""
     bl_idname = "import_scene.quick_hkx_character_animation"
-    bl_label = "Quick Import Character Animation"
+    bl_label = "Import Character Anim"
     bl_description = "Import a HKX animation file from the selected character's ANIBND"
 
     @classmethod
@@ -379,7 +381,7 @@ class QuickImportCharacterHKXAnimation(LoggingOperator, ImportHKXAnimationMixin)
 class QuickImportObjectHKXAnimation(LoggingOperator, ImportHKXAnimationMixin):
     """Detects name of selected object FLVER Armature and finds their OBJBND in the game directory."""
     bl_idname = "import_scene.quick_hkx_object_animation"
-    bl_label = "Quick Import Object Animation"
+    bl_label = "Import Object Anim"
     bl_description = "Import a HKX animation file from the selected object's OBJBND"
 
     @classmethod
@@ -472,24 +474,15 @@ class HKXAnimationImporter:
         self,
         animation_name: str,
         arma_frames: list[dict[str, TRSTransform]],
-        root_motion: None | list[Vector4] = None,
+        root_motion: None | np.ndarray = None,
     ):
         """Import single animation HKX."""
 
-        if root_motion is not None:
-            if len(root_motion) != len(arma_frames):
-                raise ValueError(
-                    f"Number of animation root motion frames ({len(root_motion)}) does not match number of bone "
-                    f"animation frames ({len(arma_frames)})."
-                )
-            root_motion_samples = [[] for _ in range(3)]
-            for vector in root_motion:
-                # Y and Z swapped.
-                root_motion_samples[0].append(vector.x)
-                root_motion_samples[1].append(vector.z)
-                root_motion_samples[2].append(vector.y)
-        else:
-            root_motion_samples = None
+        if root_motion is not None and len(root_motion) != len(arma_frames):
+            raise ValueError(
+                f"Number of animation root motion frames ({len(root_motion)}) does not match number of bone "
+                f"animation frames ({len(arma_frames)})."
+            )
 
         action_name = f"{self.model_name}|{animation_name}"
         action = None
@@ -499,7 +492,7 @@ class HKXAnimationImporter:
             self.bl_armature.animation_data_create()
             self.bl_armature.animation_data.action = action = bpy.data.actions.new(name=action_name)
             bone_basis_samples = self._get_bone_basis_samples(arma_frames)
-            self._add_keyframes_batch(bone_basis_samples, root_motion_samples, frame_scaling)
+            self._add_keyframes_batch(bone_basis_samples, root_motion, frame_scaling)
         except Exception:
             if action:
                 bpy.data.actions.remove(action)
@@ -587,7 +580,7 @@ class HKXAnimationImporter:
     def _add_keyframes_batch(
         self,
         bone_basis_samples: dict[str, list[list[float]]],
-        root_motion_samples: list[list[float], list[float], list[float]] | None,
+        root_motion: np.ndarray | None,
         frame_scaling: int,
     ):
         """
@@ -601,7 +594,7 @@ class HKXAnimationImporter:
         action = self.bl_armature.animation_data.action
 
         # Initialize FCurves for root motion and bones
-        if root_motion_samples is not None:
+        if root_motion is not None:
             root_loc_fcurves = [action.fcurves.new(data_path="location", index=i) for i in range(3)]
         else:
             root_loc_fcurves = []
@@ -628,7 +621,8 @@ class HKXAnimationImporter:
         #    `[bl_frame_index_0, value_0, bl_frame_index_1, value_1, ...]`
         # which we do with a list comprehension.
         if root_loc_fcurves:
-            for dim_samples, fcurve in zip(root_motion_samples, root_loc_fcurves, strict=True):
+            for col, fcurve in enumerate(root_loc_fcurves):
+                dim_samples = root_motion[:, col]
                 fcurve.keyframe_points.add(count=len(dim_samples))
                 root_dim_flat = [
                     x

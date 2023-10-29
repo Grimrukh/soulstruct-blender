@@ -8,8 +8,8 @@ __all__ = [
 
     "ExportHKXAnimation",
     "ExportHKXAnimationIntoBinder",
-    "ExportCharacterHKXAnimation",
-    "ExportObjectHKXAnimation",
+    "QuickExportCharacterHKXAnimation",
+    "QuickExportObjectHKXAnimation",
 
     "ArmatureActionChoiceOperator",
     "SelectArmatureActionOperator",
@@ -38,24 +38,27 @@ class HKX_ANIMATION_PT_hkx_animation_tools(bpy.types.Panel):
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "Soulstruct Havok"
+    bl_options = {'DEFAULT_CLOSED'}
 
     # noinspection PyUnusedLocal
     def draw(self, context):
         import_box = self.layout.box()
         import_box.operator(ImportHKXAnimation.bl_idname)
 
+        quick_import_box = import_box.box()
+        quick_import_box.label(text="Quick Game Import")
+        quick_import_box.prop(context.scene.soulstruct_global_settings, "use_bak_file", text="From .BAK File")
+        quick_import_box.operator(QuickImportCharacterHKXAnimation.bl_idname)
+        quick_import_box.operator(QuickImportObjectHKXAnimation.bl_idname)
+
         export_box = self.layout.box()
         export_box.operator(ExportHKXAnimation.bl_idname)
         export_box.operator(ExportHKXAnimationIntoBinder.bl_idname)
 
-        game_box = self.layout.box()
-        game_box.label(text="From Game Directory:")
-        game_box.prop(context.scene.soulstruct_global_settings, "use_bak_file", text="From .BAK File")
-        game_box.operator(QuickImportCharacterHKXAnimation.bl_idname)
-        game_box.operator(QuickImportObjectHKXAnimation.bl_idname)
-        game_box.label(text="To Game Directory:")
-        game_box.operator(ExportCharacterHKXAnimation.bl_idname)
-        game_box.operator(ExportObjectHKXAnimation.bl_idname)
+        quick_export_box = export_box.box()
+        quick_export_box.label(text="Quick Game Export")
+        quick_export_box.operator(QuickExportCharacterHKXAnimation.bl_idname)
+        quick_export_box.operator(QuickExportObjectHKXAnimation.bl_idname)
 
         select_box = self.layout.box()
         select_box.operator(SelectArmatureActionOperator.bl_idname)

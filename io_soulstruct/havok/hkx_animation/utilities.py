@@ -8,8 +8,9 @@ __all__ = [
     "get_animation_name",
 ]
 
-from soulstruct_havok.utilities.maths import TRSTransform
+import numpy as np
 
+from soulstruct_havok.utilities.maths import TRSTransform
 from soulstruct_havok.wrappers.hkx2015 import AnimationHKX, SkeletonHKX, ANIBND
 
 
@@ -38,11 +39,15 @@ def get_armature_frames(
     return arma_frames
 
 
-def get_root_motion(animation_hkx: AnimationHKX):
+def get_root_motion(animation_hkx: AnimationHKX, swap_yz=True) -> np.ndarray | None:
     try:
-        return animation_hkx.animation_container.get_reference_frame_samples()
+        root_motion = animation_hkx.animation_container.get_reference_frame_samples()
     except TypeError:
         return None
+
+    if swap_yz:
+        root_motion = np.c_[root_motion[:, 0], root_motion[:, 2], root_motion[:, 1]]
+    return root_motion
 
 
 def get_animation_name(animation_id: int, template: str, prefix="a"):

@@ -67,19 +67,16 @@ class FLVERImportPanel(bpy.types.Panel):
         layout.operator(ImportFLVER.bl_idname)
         layout.operator(ImportEquipmentFLVER.bl_idname)
 
-        layout.separator()
-        layout.label(text="From Game Directory:")
-        layout.prop(context.scene.soulstruct_global_settings, "use_bak_file", text="From .BAK File")
-
-        map_piece_import_box = layout.box()
+        quick_import_box = layout.box()
+        quick_import_box.label(text="Quick Game Import")
+        quick_import_box.prop(context.scene.soulstruct_global_settings, "use_bak_file", text="From .BAK File")
+        map_piece_import_box = quick_import_box.box()
         map_piece_import_box.prop(context.scene.game_files, "map_piece_flver")
         map_piece_import_box.operator(QuickImportMapPieceFLVER.bl_idname)
-
-        chrbnd_import_box = layout.box()
+        chrbnd_import_box = quick_import_box.box()
         chrbnd_import_box.prop(context.scene.game_files, "chrbnd")
         chrbnd_import_box.operator(QuickImportCharacterFLVER.bl_idname)
-
-        objbnd_import_box = layout.box()
+        objbnd_import_box = quick_import_box.box()
         objbnd_import_box.prop(context.scene.game_files, "objbnd_name")
         objbnd_import_box.operator(QuickImportObjectFLVER.bl_idname)
 
@@ -99,6 +96,7 @@ class FLVERExportPanel(bpy.types.Panel):
         layout.operator(ExportFLVERIntoBinder.bl_idname)
 
         quick_export_box = layout.box()
+        quick_export_box.label(text="Quick Game Export")
         quick_export_box.prop(
             context.scene.soulstruct_global_settings, "detect_map_from_parent", text="Detect Map from Parent"
         )

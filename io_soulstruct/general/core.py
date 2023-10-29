@@ -118,10 +118,14 @@ class GlobalSettings(bpy.types.PropertyGroup):
                 match _game:
                     case "DS1R":
                         return DCXType.Null  # never compressed in map BND
-            case "HKX":
+            case "MAPCOLLISIONHKX":
                 match _game:
                     case "DS1R":
                         return DCXType.DS1_DS2  # compressed in map h/l BXF split binder
+            case "ANIMATIONHKX":
+                match _game:
+                    case "DS1R":
+                        return DCXType.Null  # never compressed in ANIBND
         raise ValueError(f"Default DCX compression for class name '{class_name}' and game '{_game}' is unknown.")
 
     @staticmethod
