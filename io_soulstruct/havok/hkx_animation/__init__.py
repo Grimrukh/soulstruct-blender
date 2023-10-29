@@ -3,8 +3,8 @@ from __future__ import annotations
 __all__ = [
     "ImportHKXAnimation",
     "ImportHKXAnimationWithBinderChoice",
-    "ImportCharacterHKXAnimation",
-    "ImportObjectHKXAnimation",
+    "QuickImportCharacterHKXAnimation",
+    "QuickImportObjectHKXAnimation",
 
     "ExportHKXAnimation",
     "ExportHKXAnimationIntoBinder",
@@ -51,8 +51,8 @@ class HKX_ANIMATION_PT_hkx_animation_tools(bpy.types.Panel):
         game_box = self.layout.box()
         game_box.label(text="From Game Directory:")
         game_box.prop(context.scene.soulstruct_global_settings, "use_bak_file", text="From .BAK File")
-        game_box.operator(ImportCharacterHKXAnimation.bl_idname)
-        game_box.operator(ImportObjectHKXAnimation.bl_idname)
+        game_box.operator(QuickImportCharacterHKXAnimation.bl_idname)
+        game_box.operator(QuickImportObjectHKXAnimation.bl_idname)
         game_box.label(text="To Game Directory:")
         game_box.operator(ExportCharacterHKXAnimation.bl_idname)
         game_box.operator(ExportObjectHKXAnimation.bl_idname)

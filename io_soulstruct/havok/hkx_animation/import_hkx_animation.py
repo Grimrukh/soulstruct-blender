@@ -4,8 +4,8 @@ from __future__ import annotations
 __all__ = [
     "ImportHKXAnimation",
     "ImportHKXAnimationWithBinderChoice",
-    "ImportCharacterHKXAnimation",
-    "ImportObjectHKXAnimation",
+    "QuickImportCharacterHKXAnimation",
+    "QuickImportObjectHKXAnimation",
 ]
 
 import re
@@ -311,10 +311,10 @@ class ImportHKXAnimationWithBinderChoice(LoggingOperator):
         bpy.ops.wm.hkx_animation_binder_choice_operator("INVOKE_DEFAULT")
 
 
-class ImportCharacterHKXAnimation(LoggingOperator, ImportHKXAnimationMixin):
+class QuickImportCharacterHKXAnimation(LoggingOperator, ImportHKXAnimationMixin):
     """Detects name of selected character FLVER Armature and finds their ANIBND in the game directory."""
-    bl_idname = "import_scene.hkx_character_animation"
-    bl_label = "Import Character Animation"
+    bl_idname = "import_scene.quick_hkx_character_animation"
+    bl_label = "Quick Import Character Animation"
     bl_description = "Import a HKX animation file from the selected character's ANIBND"
 
     @classmethod
@@ -377,10 +377,10 @@ class ImportCharacterHKXAnimation(LoggingOperator, ImportHKXAnimationMixin):
         return {"FINISHED"}
 
 
-class ImportObjectHKXAnimation(LoggingOperator, ImportHKXAnimationMixin):
+class QuickImportObjectHKXAnimation(LoggingOperator, ImportHKXAnimationMixin):
     """Detects name of selected object FLVER Armature and finds their OBJBND in the game directory."""
-    bl_idname = "import_scene.hkx_object_animation"
-    bl_label = "Import Object Animation"
+    bl_idname = "import_scene.quick_hkx_object_animation"
+    bl_label = "Quick Import Object Animation"
     bl_description = "Import a HKX animation file from the selected object's OBJBND"
 
     @classmethod
