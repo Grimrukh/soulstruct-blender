@@ -47,7 +47,7 @@ bl_info = {
     "version": (1, 0, 0),
     "blender": (3, 5, 0),
     "location": "File > Import-Export",
-    "description": "Import/export FromSoftware game files: FLVER models, NVM navmeshes, HKX collisions, HKX animations",
+    "description": "Import, manipulate, and export FromSoftware/Havok assets",
     "warning": "",
     "doc_url": "https://github.com/Grimrukh/soulstruct-blender",
     "support": "COMMUNITY",

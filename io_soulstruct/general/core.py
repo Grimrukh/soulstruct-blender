@@ -133,9 +133,9 @@ class GlobalSettings(bpy.types.PropertyGroup):
             if not settings.game_directory:
                 return None  # cannot find MTDBND without game directory
             # Guess path.
-            binder_dcx = settings.resolve_dcx_type("Auto", "BINDER", False, context)
-            mtdbnd_name = "mtd.mtdbnd.dcx" if binder_dcx != DCXType.Null else "mtd.mtdbnd"
-            mtdbnd_path = Path(bpy.context.scene.soulstruct_global_settings.game_directory, "mtd", mtdbnd_name)
+            dcx_type = settings.resolve_dcx_type("Auto", "Binder", False, context)
+            mtdbnd_name = dcx_type.process_path("mtd.mtdbnd")
+            mtdbnd_path = Path(settings.game_directory, "mtd", mtdbnd_name)
             if not mtdbnd_path.is_file():
                 return None
 

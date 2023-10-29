@@ -2,6 +2,7 @@ from __future__ import annotations
 
 __all__ = ["ExportNVM", "ExportNVMIntoBinder", "QuickExportNVM"]
 
+import re
 import traceback
 from pathlib import Path
 
@@ -248,8 +249,8 @@ class QuickExportNVM(LoggingOperator):
             bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
 
         exporter = NVMExporter(self, context)
-        nvmbnd_dcx = ".dcx" if settings.resolve_dcx_type("Auto", "Binder", False, context) != DCXType.Null else ""
-        nvm_dcx = ".dcx" if settings.resolve_dcx_type("Auto", "NVM", True, context) != DCXType.Null else ""
+        nvmbnd_dcx_type = settings.resolve_dcx_type("Auto", "Binder", False, context)
+        nvm_dcx_type = settings.resolve_dcx_type("Auto", "NVM", True, context)
 
         opened_nvmbnds = {}  # type: dict[str, Binder]
         for bl_mesh_obj in context.selected_objects:
@@ -271,9 +272,8 @@ class QuickExportNVM(LoggingOperator):
                 map_stem = settings.map_stem
 
             try:
-                nvmbnd = opened_nvmbnds.setdefault(
-                    map_stem, Binder.from_path(Path(game_directory, "map", f"{map_stem}.nvmbnd{nvmbnd_dcx}"))
-                )
+                nvmbnd_path = nvmbnd_dcx_type.process_path(Path(game_directory, "map", f"{map_stem}.nvmbnd"))
+                nvmbnd = opened_nvmbnds.setdefault(map_stem, Binder.from_path(nvmbnd_path))
             except Exception as ex:
                 return self.error(f"Could not load NVMBND for map '{map_stem}'. Error: {ex}")
 
@@ -287,7 +287,10 @@ class QuickExportNVM(LoggingOperator):
             else:
                 nvm.dcx_type = DCXType.Null  # no DCX compression inside NVMBND
 
-            matching_entries = nvmbnd.find_entries_matching_name(rf"{model_file_stem}\.nvm{nvm_dcx}")
+            nvm_pattern = re.compile(
+                rf"{model_file_stem}\.nvm\.dcx" if nvm_dcx_type.has_dcx_extension() else rf"{model_file_stem}\.nvm"
+            )
+            matching_entries = nvmbnd.find_entries_matching_name(nvm_pattern)
             if not matching_entries:
                 # Create new entry.
                 try:

@@ -257,8 +257,8 @@ class ExportCharacterHKXAnimation(LoggingOperator):
             return self.error("Automatic ANIBND import is not yet supported for c0000 (player model).")
 
         # Get ANIBND.
-        dcx = ".dcx" if settings.resolve_dcx_type("Auto", "BINDER") != DCXType.Null else ""
-        anibnd_path = Path(game_directory, "chr", f"{character_name}.anibnd{dcx}")
+        dcx_type = settings.resolve_dcx_type("Auto", "Binder")
+        anibnd_path = dcx_type.process_path(Path(game_directory, "chr", f"{character_name}.anibnd"))
 
         if not anibnd_path.is_file():
             return self.error(f"Cannot find ANIBND for character '{character_name}' in game directory.")
@@ -370,8 +370,8 @@ class ExportObjectHKXAnimation(LoggingOperator):
         object_name = bl_armature.name.split(" ")[0]
 
         # Get OBJBND.
-        dcx = ".dcx" if settings.resolve_dcx_type("Auto", "BINDER") != DCXType.Null else ""
-        objbnd_path = Path(game_directory, "obj", f"{object_name}.objbnd{dcx}")
+        dcx_type = settings.resolve_dcx_type("Auto", "Binder")
+        objbnd_path = dcx_type.process_path(Path(game_directory, "obj", f"{object_name}.objbnd"))
         if not objbnd_path.is_file():
             return self.error(f"Cannot find OBJBND for object '{object_name}' in game directory.")
         objbnd = Binder.from_path(objbnd_path)

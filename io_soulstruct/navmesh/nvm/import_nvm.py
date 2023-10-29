@@ -23,7 +23,6 @@ from bpy_extras.io_utils import ImportHelper
 from mathutils import Vector
 
 from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
-from soulstruct.dcx import DCXType
 from soulstruct.darksouls1r.maps import MSB
 from soulstruct.darksouls1r.maps.navmesh.nvm import NVM, NVMBox, NVMEventEntity
 
@@ -573,8 +572,8 @@ class QuickImportNVM(LoggingOperator):
 
         nvm_entry_name = game_lists.nvm
 
-        dcx = ".dcx" if settings.resolve_dcx_type("Auto", "BINDER", False, context) != DCXType.Null else ""
-        nvmbnd_path = map_path / f"{settings.map_stem}.nvmbnd{dcx}"
+        nvmbnd_dcx_type = settings.resolve_dcx_type("Auto", "Binder", False, context)
+        nvmbnd_path = nvmbnd_dcx_type.process_path(map_path / f"{settings.map_stem}.nvmbnd")
         if settings.use_bak_file:
             nvmbnd_path = nvmbnd_path.with_name(nvmbnd_path.name + ".bak")
             if not nvmbnd_path.is_file():

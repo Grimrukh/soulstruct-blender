@@ -37,7 +37,7 @@ def get_map_piece_flver_items(self, context):
     if not scan_directory.is_dir():
         return _clear_items("MAP_PIECE")
     flver_glob = "*.flver"
-    if settings.resolve_dcx_type("Auto", "FLVER", False, context) != DCXType.Null:
+    if settings.resolve_dcx_type("Auto", "FLVER", False, context).has_dcx_extension():
         flver_glob += ".dcx"
     return _scan_loose_files("MAP_PIECE", scan_directory, flver_glob, lambda stem: f"{stem} in map {map_stem}")
 
@@ -53,7 +53,7 @@ def get_chrbnd_items(self, context):
     if not scan_directory.is_dir():
         return _clear_items("CHRBND")
     chrbnd_glob = "*.chrbnd"
-    if settings.resolve_dcx_type("Auto", "BINDER", False, context) != DCXType.Null:
+    if settings.resolve_dcx_type("Auto", "Binder", False, context).has_dcx_extension():
         chrbnd_glob += ".dcx"
 
     if settings.game in {GameNames.PTDE, GameNames.DS1R}:
@@ -81,11 +81,11 @@ def get_nvm_items(self, context):
     map_path = Path(game_directory, "map", map_stem)
     if not map_path.is_dir():
         return _clear_items("NVM")
-    dcx = ".dcx" if settings.resolve_dcx_type("Auto", "BINDER", False, context) != DCXType.Null else ""
-    nvmbnd_path = map_path / f"{map_stem}.nvmbnd{dcx}"
+    dcx_type = settings.resolve_dcx_type("Auto", "Binder", False, context)
+    nvmbnd_path = dcx_type.process_path(map_path / f"{map_stem}.nvmbnd")
     if not nvmbnd_path.is_file():
         return _clear_items("NVM")
-    if settings.resolve_dcx_type("Auto", "NVM", True, context) != DCXType.Null:
+    if settings.resolve_dcx_type("Auto", "NVM", True, context).has_dcx_extension():
         pattern = re.compile(r".*\.nvm\.dcx")
     else:
         pattern = re.compile(r".*\.nvm")

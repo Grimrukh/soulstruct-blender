@@ -19,7 +19,6 @@ from bpy_extras.io_utils import ImportHelper
 from mathutils import Quaternion as BlenderQuaternion
 
 from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
-from soulstruct.dcx import DCXType
 from soulstruct.utilities.maths import Vector4
 
 from soulstruct_havok.utilities.maths import TRSTransform
@@ -341,8 +340,8 @@ class QuickImportCharacterHKXAnimation(LoggingOperator, ImportHKXAnimationMixin)
         if character_name == "c0000":
             return self.error("Automatic ANIBND import is not yet supported for c0000 (player model).")
 
-        dcx = ".dcx" if settings.resolve_dcx_type("Auto", "BINDER") != DCXType.Null else ""
-        anibnd_path = Path(game_directory, "chr", f"{character_name}.anibnd{dcx}")
+        dcx_type = settings.resolve_dcx_type("Auto", "Binder")
+        anibnd_path = dcx_type.process_path(Path(game_directory, "chr", f"{character_name}.anibnd"))
         if settings.use_bak_file:
             anibnd_path = anibnd_path.with_name(anibnd_path.name + ".bak")
             if not anibnd_path.is_file():
@@ -404,8 +403,8 @@ class QuickImportObjectHKXAnimation(LoggingOperator, ImportHKXAnimationMixin):
         bl_armature = context.selected_objects[0]
         object_name = bl_armature.name.split(" ")[0]
 
-        dcx = ".dcx" if settings.resolve_dcx_type("Auto", "BINDER") != DCXType.Null else ""
-        objbnd_path = Path(game_directory, "obj", f"{object_name}.objbnd{dcx}")
+        dcx_type = settings.resolve_dcx_type("Auto", "Binder")
+        objbnd_path = dcx_type.process_path(Path(game_directory, "obj", f"{object_name}.objbnd"))
         if settings.use_bak_file:
             objbnd_path = objbnd_path.with_name(objbnd_path.name + ".bak")
             if not objbnd_path.is_file():
