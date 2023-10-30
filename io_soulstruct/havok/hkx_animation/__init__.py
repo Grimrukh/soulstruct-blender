@@ -62,3 +62,4 @@ class HKX_ANIMATION_PT_hkx_animation_tools(bpy.types.Panel):
 
         select_box = self.layout.box()
         select_box.operator(SelectArmatureActionOperator.bl_idname)
+        # TODO: decimate operator with ratio field

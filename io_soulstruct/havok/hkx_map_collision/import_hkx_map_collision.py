@@ -55,7 +55,7 @@ class HKXImportChoiceInfo(tp.NamedTuple):
 
 class ImportHKXMapCollision(LoggingOperator, ImportHelper):
     bl_idname = "import_scene.hkx_map_collision"
-    bl_label = "Import HKX Collision"
+    bl_label = "Import Map Collision"
     bl_description = "Import a HKX map collision file. Can import from BHD/BDT binders and handles DCX compression"
 
     filename_ext = ".hkx"

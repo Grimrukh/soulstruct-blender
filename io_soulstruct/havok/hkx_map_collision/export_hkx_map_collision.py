@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-__all__ = ["ExportHKXMapCollision", "ExportHKXMapCollisionIntoBinder", "ExportHKXMapCollisionToMapDirectoryBHD"]
+__all__ = ["ExportHKXMapCollision", "ExportHKXMapCollisionIntoBinder", "QuickExportHKXMapCollision"]
 
 import re
 import traceback
@@ -23,7 +23,8 @@ from .utilities import *
 
 DEBUG_MESH_INDEX = None
 DEBUG_VERTEX_INDICES = []
-HKX_COLLISION_NAME_RE = re.compile(r"^([hl])(\d\d\d\d)B(\d)A(\d\d)$")  # no extensions
+HKX_COLLISION_NAME_RE = re.compile(r"^([hl])(\d\d\d\d)B(\d)A(\d\d)$")  # standard name format; no extensions
+LOOSE_HKX_COLLISION_NAME_RE = re.compile(r"^([hl])(\w{6})A(\d\d)$")  # game-readable model name; no extensions
 
 
 def get_mesh_children(
@@ -76,7 +77,7 @@ def get_mesh_children(
 class ExportHKXMapCollision(LoggingOperator, ExportHelper):
     """Export HKX from a selection of Blender meshes."""
     bl_idname = "export_scene.hkx_map_collision"
-    bl_label = "Export HKX Collision"
+    bl_label = "Export Loose Map Collision"
     bl_description = "Export child meshes of selected Blender empty parent to a HKX collision file"
 
     # ExportHelper mixin class uses this
@@ -190,7 +191,7 @@ class ExportHKXMapCollision(LoggingOperator, ExportHelper):
 
 class ExportHKXMapCollisionIntoBinder(LoggingOperator, ImportHelper):
     bl_idname = "export_scene.hkx_map_collision_binder"
-    bl_label = "Export HKX Collision Into Binder"
+    bl_label = "Export Map Collision Into Binder"
     bl_description = "Export a HKX collision file into a FromSoftware Binder (BND/BHD)"
 
     # ImportHelper mixin class uses this
@@ -278,29 +279,36 @@ class ExportHKXMapCollisionIntoBinder(LoggingOperator, ImportHelper):
         return {"FINISHED"}
 
 
-class ExportHKXMapCollisionToMapDirectoryBHD(LoggingOperator):
+class QuickExportHKXMapCollision(LoggingOperator):
     """Export a HKX collision file into a FromSoftware DSR map directory BHD."""
-    bl_idname = "export_scene_map.hkx_map_collision"
-    bl_label = "Export HKX Collision to Map Directory BHD"
+    bl_idname = "export_scene_map.quick_hkx_map_collision"
+    bl_label = "Export Map Collision"
     bl_description = (
-        "Export a HKX collision file into a FromSoftware '.hkxbhd' Binder in a specific map directory in DSR"
+        "Export HKX map collisions into HKXBHD binder in appropriate game map (DS1R only)"
     )
 
     @classmethod
     def poll(cls, context):
-        """Must select a single empty parent of only (and at least one) child meshes.
+        """Must select empty parents of only (and at least one) child meshes.
 
         TODO: Also currently for DS1R only.
         """
         if GlobalSettings.get_scene_settings(context).game != "DS1R":
             return False
-        is_empty_selected = len(context.selected_objects) == 1 and context.selected_objects[0].type == "EMPTY"
-        if not is_empty_selected:
+        if not context.selected_objects:
             return False
-        children = context.selected_objects[0].children
-        return len(children) >= 1 and all(child.type == "MESH" for child in children)
+        for obj in context.selected_objects:
+            if obj.type != "EMPTY":
+                return False
+            if not obj.children:
+                return False
+            if not all(child.type == "MESH" for child in obj.children):
+                return False
+        return True
 
     def execute(self, context):
+        if not self.poll(context):
+            return self.error("Must select a parent of one or more collision submeshes.")
 
         settings = GlobalSettings.get_scene_settings(context)
         game_directory = settings.game_directory
@@ -316,50 +324,72 @@ class ExportHKXMapCollisionToMapDirectoryBHD(LoggingOperator):
         if not map_dir_path.is_dir():
             return self.error(f"Invalid game map directory: {map_dir_path}")
 
-        selected_objs = [obj for obj in context.selected_objects]
-        if not selected_objs:
-            return self.error("No Empty with child meshes selected for HKX export.")
-        if len(selected_objs) > 1:
-            return self.error("More than one object cannot be selected for HKX export.")
-        hkx_parent = selected_objs[0]
+        at_least_one_success = False
 
-        name_match = HKX_COLLISION_NAME_RE.match(hkx_parent.name[:10])
-        if name_match is None:
-            return self.error(
-                f"Selected object '{hkx_parent.name}' does not match the expected name pattern for "
-                f"a HKX collision parent object: 'h....A.B..' or 'l....A.B..'."
-            )
+        for hkx_parent in context.selected_objects:
 
-        block, area = int(name_match.group(3)), int(name_match.group(4))
-        name_map_stem = f"m{area:02d}_{block:02d}_00_00"  # TODO: 01 suffix for Darkroot collisions? Don't think so...
-        # TODO: could theoretically do some kind of name swizzling to quickly export to the 'wrong map', but just
-        #  enforcing a match between selected map stem and collision name for now.
-        if name_map_stem != map_stem:
-            return self.error(
-                f"Selected object '{hkx_parent.name}' does not match the expected map stem '{map_stem}'."
-            )
+            if settings.detect_map_from_parent:
+                if hkx_parent.parent is None:
+                    return self.error(
+                        f"Object '{hkx_parent.name}' has no parent. Deselect 'Detect Map from Parent' to use single "
+                        f"game map specified in Soulstruct plugin settings."
+                    )
+                map_stem = hkx_parent.parent.name.split(" ")[0]
+                if not MAP_STEM_RE.match(map_stem):
+                    return self.error(
+                        f"Parent object '{hkx_parent.parent.name}' does not start with a valid map stem."
+                    )
+            else:
+                map_stem = settings.map_stem
 
-        res = hkx_parent.name[0]
-        hkx_binder_path = map_dir_path / f"{res}{map_stem[1:]}.hkxbhd"  # drop 'm' from stem
+            loose_name_match = LOOSE_HKX_COLLISION_NAME_RE.match(hkx_parent.name[:10])
+            if loose_name_match is None:
+                return self.error(
+                    f"Selected object '{hkx_parent.name}' does not match the expected name pattern for "
+                    f"a HKX collision parent object: 'h......A..' or 'l......A..'."
+                )
 
-        try:
-            export_hkx_to_binder(
-                self,
-                context,
-                hkx_parent,
-                hkx_binder_path,
-                dcx_type=DCXType.DS1_DS2,
-                write_other_resolution=True,
-                allow_any_name=False,
-                default_entry_path="{map}\\{name}.hkx.dcx",
-                default_entry_flags=0x2,
-                overwrite_existing=True,
-            )
-        except Exception as ex:
-            traceback.print_exc()
-            return self.error(f"Could not execute HKX export to Binder. Error: {ex}")
+            # If HKX name is standard, check that it matches the selected map stem. Otherwise, warn for non-standard.
+            standard_name_match = HKX_COLLISION_NAME_RE.match(hkx_parent.name[:10])
+            if standard_name_match is None:
+                self.warning(
+                    f"Selected object '{hkx_parent.name}' does not match the standard name pattern for "
+                    f"a HKX map collision model: 'h####B#A##' or 'l####B#A##'. Exporting anyway."
+                )
+            else:
+                block, area = int(standard_name_match.group(3)), int(standard_name_match.group(4))
+                expected_map_stem = f"m{area:02d}_{block:02d}_00_00"
+                if expected_map_stem != map_stem:
+                    self.warning(
+                        f"Map area and/or block in name of selected object '{hkx_parent.name}' does not match the "
+                        f"export destination map '{map_stem}'. Exporting anyway."
+                    )
 
-        return {"FINISHED"}
+            res = hkx_parent.name[0]  # 'h' or 'l'
+            hkx_binder_path = map_dir_path / f"{res}{map_stem[1:]}.hkxbhd"  # drop 'm' from stem
+
+            try:
+                export_hkx_to_binder(
+                    self,
+                    context,
+                    hkx_parent,
+                    hkx_binder_path,
+                    dcx_type=DCXType.DS1_DS2,  # DS1R
+                    write_other_resolution=True,
+                    allow_any_name=False,
+                    default_entry_path="{map}\\{name}.hkx.dcx",  # DS1R
+                    default_entry_flags=0x2,
+                    overwrite_existing=True,
+                )
+                at_least_one_success = True
+            except Exception as ex:
+                traceback.print_exc()
+                # Do not return; keep trying other selected objects.
+                self.report(
+                    {"ERROR"}, f"Could not export object '{hkx_parent.name}' as HKX map collision. Error: {ex}"
+                )
+
+        return {"FINISHED"} if at_least_one_success else {"CANCELLED"}
 
 
 def find_binder_hkx_entry(
@@ -542,8 +572,6 @@ class HKXMapCollisionExporter:
         """Create HKX from Blender meshes (subparts).
 
         TODO: Currently only supported for DSR and Havok 2015.
-
-        TODO: Update to use single mesh (per hi/lo).
         """
         if not bl_meshes:
             raise ValueError("No meshes given to export to HKX.")
@@ -557,7 +585,8 @@ class HKXMapCollisionExporter:
             hkx_material_indices.append(material_index)
 
             # Swap Y and Z coordinates.
-            hkx_verts = np.array([[vert.co.x, vert.co.z, vert.co.y] for vert in bl_mesh.data.vertices])
+            hkx_verts_list = [[vert.co.x, vert.co.z, vert.co.y] for vert in bl_mesh.data.vertices]
+            hkx_verts = np.array(hkx_verts_list, dtype=np.float32)
             hkx_faces = np.empty((len(bl_mesh.data.polygons), 3), dtype=np.uint32)
             for i, face in enumerate(bl_mesh.data.polygons):
                 if len(face.vertices) != 3:

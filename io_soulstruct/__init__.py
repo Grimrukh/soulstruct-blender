@@ -176,7 +176,7 @@ if soulstruct_havok:
 
         ExportHKXMapCollision,
         ExportHKXMapCollisionIntoBinder,
-        ExportHKXMapCollisionToMapDirectoryBHD,
+        QuickExportHKXMapCollision,
         HKX_COLLISION_PT_hkx_map_collision_tools,
 
         ImportHKXCutscene,

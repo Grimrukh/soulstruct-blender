@@ -7,7 +7,7 @@ __all__ = [
     "QuickImportHKXMapCollision",
     "ExportHKXMapCollision",
     "ExportHKXMapCollisionIntoBinder",
-    "ExportHKXMapCollisionToMapDirectoryBHD",
+    "QuickExportHKXMapCollision",
     "HKX_COLLISION_PT_hkx_map_collision_tools",
 ]
 
@@ -63,8 +63,11 @@ class HKX_COLLISION_PT_hkx_map_collision_tools(bpy.types.Panel):
         export_box = self.layout.box()
         export_box.operator(ExportHKXMapCollision.bl_idname)
         export_box.operator(ExportHKXMapCollisionIntoBinder.bl_idname)
-        export_box.operator(ExportHKXMapCollisionToMapDirectoryBHD.bl_idname)
-        # TODO: game export operator
+        quick_export_box = export_box.box()
+        quick_export_box.prop(
+            context.scene.soulstruct_global_settings, "detect_map_from_parent", text="Detect Map from Parent"
+        )
+        quick_export_box.operator(QuickExportHKXMapCollision.bl_idname)
 
         misc_operators_box = self.layout.box()
         # Useful in particular for creating HKX map collisions (e.g. from FLVER or high <> low res).

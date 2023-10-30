@@ -233,7 +233,7 @@ class QuickExportNVM(LoggingOperator):
             and all(obj.type == "MESH" and obj.name[0] == "n" for obj in context.selected_objects)
         )
 
-    def execute(self, context):
+    def _execute(self, context):
         if not self.poll(context):
             return self.error("No valid 'n' meshes selected for quick NVM export.")
 
@@ -272,7 +272,7 @@ class QuickExportNVM(LoggingOperator):
                 map_stem = settings.map_stem
 
             try:
-                nvmbnd_path = nvmbnd_dcx_type.process_path(Path(game_directory, "map", f"{map_stem}.nvmbnd"))
+                nvmbnd_path = nvmbnd_dcx_type.process_path(Path(game_directory, "map", map_stem, f"{map_stem}.nvmbnd"))
                 nvmbnd = opened_nvmbnds.setdefault(map_stem, Binder.from_path(nvmbnd_path))
             except Exception as ex:
                 return self.error(f"Could not load NVMBND for map '{map_stem}'. Error: {ex}")
