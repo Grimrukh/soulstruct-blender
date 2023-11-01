@@ -120,7 +120,7 @@ CLASSES = (
 
     FLVERImportPanel,
     FLVERExportPanel,
-    FLVERLightmapsPanel,
+    # FLVERLightmapsPanel,  # TODO: not quite ready
     FLVERToolsPanel,
     FLVERUVMapsPanel,
 
