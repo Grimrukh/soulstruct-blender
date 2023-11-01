@@ -241,7 +241,7 @@ class QuickExportNVM(LoggingOperator):
         game_directory = settings.game_directory
         if not game_directory:
             return self.error("Game directory must be set in Blender's Soulstruct global settings for quick export.")
-        if not settings.detect_map_from_parent and not settings.map_stem:
+        if not settings.detect_map_from_parent and settings.map_stem in {"", "0"}:
             return self.error("Game map stem must be set in Blender's Soulstruct global settings for quick export.")
 
         # TODO: Not needed for meshes only?

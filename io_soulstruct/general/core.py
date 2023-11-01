@@ -31,6 +31,39 @@ class GameNames:
     # TODO: A few more to add, obviously.
 
 
+_MAP_STEM_ENUM_ITEMS = (None, [("0", "None", "None")])  # type: tuple[Path | None, list[tuple[str, str, str]]]
+
+
+# noinspection PyUnusedLocal
+def _get_map_stem_items(self, context: bpy.types.Context):
+    """Get list of map stems in game directory."""
+    settings = GlobalSettings.get_scene_settings(context)
+    game_directory = settings.game_directory
+    global _MAP_STEM_ENUM_ITEMS
+
+    if not game_directory:
+        _MAP_STEM_ENUM_ITEMS = (None, [("0", "None", "None")])
+        return _MAP_STEM_ENUM_ITEMS[1]
+
+    map_dir_path = Path(game_directory, "map")
+    if not map_dir_path.is_dir():
+        _MAP_STEM_ENUM_ITEMS = (None, [("0", "None", "None")])
+        return _MAP_STEM_ENUM_ITEMS[1]
+
+    if _MAP_STEM_ENUM_ITEMS[0] == map_dir_path:
+        return _MAP_STEM_ENUM_ITEMS[1]  # cached
+
+    _MAP_STEM_ENUM_ITEMS = (
+        map_dir_path, [("0", "None", "None")] + [
+            (map_stem.name, map_stem.name, f"Map {map_stem.name}")
+            for map_stem in sorted(map_dir_path.glob("m*_*_*_*"))
+            if map_stem.is_dir()
+        ]
+    )
+
+    return _MAP_STEM_ENUM_ITEMS[1]
+
+
 class GlobalSettings(bpy.types.PropertyGroup):
     """Global settings for the Soulstruct Blender plugin."""
 
@@ -49,10 +82,10 @@ class GlobalSettings(bpy.types.PropertyGroup):
         default="",
     )
 
-    map_stem: bpy.props.StringProperty(
+    map_stem: bpy.props.EnumProperty(
         name="Map Stem",
-        description="Stem of map name to use when auto-importing or exporting map assets (e.g. 'm10_00_00_00')",
-        default="",
+        description="Directory in game 'map' folder to use when auto-importing or exporting map assets",
+        items=_get_map_stem_items,
     )
 
     png_cache_directory: bpy.props.StringProperty(
@@ -90,7 +123,7 @@ class GlobalSettings(bpy.types.PropertyGroup):
     def get_selected_map_path(context: bpy.types.Context = None) -> Path | None:
         """Get the `map_stem` path in its game directory."""
         settings = GlobalSettings.get_scene_settings(context)
-        if not settings.game_directory or not settings.map_stem:
+        if not settings.game_directory or settings.map_stem in {"", "0"}:
             return None
         return Path(settings.game_directory, "map", settings.map_stem)
 
