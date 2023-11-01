@@ -3,7 +3,6 @@ from __future__ import annotations
 __all__ = [
     "ImportHKXMapCollision",
     "ImportHKXMapCollisionWithBinderChoice",
-    "ImportHKXMapCollisionWithMSBChoice",
     "QuickImportHKXMapCollision",
     "ExportLooseHKXMapCollision",
     "ExportHKXMapCollisionIntoBinder",

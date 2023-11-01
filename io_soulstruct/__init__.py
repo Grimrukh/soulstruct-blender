@@ -157,7 +157,6 @@ if soulstruct_havok:
 
         ImportHKXMapCollision,
         ImportHKXMapCollisionWithBinderChoice,
-        ImportHKXMapCollisionWithMSBChoice,
         QuickImportHKXMapCollision,
 
         ImportHKXAnimation,
