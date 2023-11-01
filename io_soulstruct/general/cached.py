@@ -19,7 +19,8 @@ _CACHED_FILES = {}
 def get_cached_file(file_path: Path | str, file_type: tp.Type[BASE_BINARY_FILE_T]) -> BASE_BINARY_FILE_T:
     """Load a `BaseBinaryFile` from disk and cache it in a global dictionary.
 
-    NOTE: Obviously, these cached `BaseBinaryFile` instances should be read-only, generally speaking!
+    NOTE: Obviously, these cached `BaseBinaryFile` instances should be read-only, generally speaking, unless they are
+     immediately written back to disk when modified!
     """
     file_path = Path(file_path)
     if not file_path.is_file():

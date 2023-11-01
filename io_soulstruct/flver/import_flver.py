@@ -19,7 +19,6 @@ from __future__ import annotations
 
 __all__ = [
     "ImportFLVER",
-    "ImportFLVERWithMSBChoice",
     "QuickImportMapPieceFLVER",
     "QuickImportCharacterFLVER",
     "QuickImportObjectFLVER",
@@ -52,10 +51,14 @@ from soulstruct.containers.tpf import TPFTexture, batch_get_tpf_texture_png_data
 from soulstruct.utilities.maths import Vector3
 
 from io_soulstruct.general import GlobalSettings, GameFiles, MTDBinderManager
+from io_soulstruct.general.cached import get_cached_file
 from io_soulstruct.utilities import *
 from .utilities import *
 from .materials import get_submesh_blender_material
 from .textures.utilities import png_to_bl_image, TextureManager
+
+if tp.TYPE_CHECKING:
+    from soulstruct.darksouls1r.maps import MSB
 
 FLVER_BINDER_RE = re.compile(r"^.*?\.(chr|obj|parts)bnd(\.dcx)?$")
 MAP_NAME_RE = re.compile(r"^(m\d\d)_\d\d_\d\d_\d\d$")
@@ -138,12 +141,6 @@ class ImportFLVER(LoggingOperator, ImportHelper, ImportFLVERMixin):
         maxlen=255,  # Max internal buffer length, longer would be clamped.
     )
 
-    read_msb_transform: BoolProperty(
-        name="Read MSB Transform",
-        description="Look for matching MSB file in adjacent `MapStudio` folder and set transform of map piece FLVER",
-        default=True,
-    )
-
     files: CollectionProperty(
         type=bpy.types.OperatorFileListElement,
         options={'HIDDEN', 'SKIP_SAVE'},
@@ -188,36 +185,9 @@ class ImportFLVER(LoggingOperator, ImportHelper, ImportFLVERMixin):
 
         for file_path, flver in flvers:
 
-            transform = None  # type: Transform | None
-
-            if not FLVER_BINDER_RE.match(file_path.name) and self.read_msb_transform:
-                if MAP_NAME_RE.match(file_path.parent.name):
-                    try:
-                        transforms = get_map_piece_msb_transforms(file_path)
-                    except Exception as ex:
-                        self.warning(f"Could not get MSB transform. Error: {ex}")
-                    else:
-                        if len(transforms) > 1:
-                            # Defer import through MSB choice operator's `run()` method.
-                            # Note that the same `importer` object is used -- this `execute()` function will NOT be
-                            # called again, TPFs will not be loaded again, etc.
-                            # TODO: When multiple FLVERs are imported, I think the MSB Choice operator's class members
-                            #  are being set to the final FLVER before ANY of the choice operators actually run. Need
-                            #  to stop this iterating loop from proceeding until each choice operator is done.
-                            importer.context = context
-                            ImportFLVERWithMSBChoice.run(
-                                importer=importer,
-                                flver=flver,
-                                file_path=file_path,
-                                transforms=transforms,
-                            )
-                            continue
-                        transform = transforms[0][1]
-                else:
-                    self.warning(f"Cannot read MSB transform for FLVER in unknown directory: {file_path}.")
             try:
                 name = file_path.name.split(".")[0]  # drop all extensions
-                bl_armature, bl_mesh = importer.import_flver(flver, name=name, transform=transform)
+                bl_armature, bl_mesh = importer.import_flver(flver, name=name)
             except Exception as ex:
                 # Delete any objects created prior to exception.
                 importer.abort_import()
@@ -233,105 +203,54 @@ class ImportFLVER(LoggingOperator, ImportHelper, ImportFLVERMixin):
         return {"FINISHED"}
 
 
-# noinspection PyUnusedLocal
-def get_msb_choices(self, context):
-    return ImportFLVERWithMSBChoice.enum_options
-
-
-class ImportFLVERWithMSBChoice(LoggingOperator):
-    """Presents user with a choice of enums from `enum_choices` class variable (set prior).
-
-    See: https://blender.stackexchange.com/questions/6512/how-to-call-invoke-popup
-    """
-    bl_idname = "wm.flver_with_msb_choice"
-    bl_label = "Choose MSB Entry"
-
-    # For deferred import in `execute()`.
-    importer: tp.Optional[FLVERImporter] = None
-    flver: tp.Optional[FLVER] = None
-    file_path: Path = Path()
-    enum_options: list[tuple[tp.Any, str, str]] = []
-    transforms: tp.Sequence[Transform] = []
-
-    choices_enum: EnumProperty(items=get_msb_choices)
-
-    # noinspection PyUnusedLocal
-    def invoke(self, context, event):
-        return context.window_manager.invoke_props_dialog(self)
-
-    # noinspection PyUnusedLocal
-    def draw(self, context):
-        layout = self.layout
-        col = layout.column()
-        col.prop(self, "choices_enum", expand=True)
-
-    def execute(self, context):
-        choice = int(self.choices_enum)
-        transform = self.transforms[choice]
-
-        self.importer.operator = self
-        self.importer.context = context
-
-        try:
-            name = self.file_path.name.split(".")[0]  # drop all extensions
-            bl_armature, bl_mesh = self.importer.import_flver(self.flver, name=name, transform=transform)
-        except Exception as ex:
-            self.importer.abort_import()
-            traceback.print_exc()
-            return self.error(f"Cannot import FLVER '{self.file_path.name}'. Error: {ex}")
-
-        # Select newly imported mesh.
-        if bl_mesh:
-            self.set_active_obj(bl_mesh)
-
-        return {"FINISHED"}
-
-    @classmethod
-    def run(
-        cls,
-        importer: FLVERImporter,
-        flver: FLVER,
-        file_path: Path,
-        transforms: list[tuple[str, Transform]],
-    ):
-        cls.importer = importer
-        cls.flver = flver
-        cls.file_path = file_path
-        cls.enum_options = [(str(i), name, "") for i, (name, _) in enumerate(transforms)]
-        cls.transforms = [tf for _, tf in transforms]
-        # noinspection PyUnresolvedReferences
-        bpy.ops.wm.flver_with_msb_choice("INVOKE_DEFAULT")
-
-
 class QuickImportMapPieceFLVER(LoggingOperator, ImportFLVERMixin):
     """Import a map piece FLVER from the current selected value of listed game map piece FLVERs."""
     bl_idname = "import_scene.quick_map_piece_flver"
     bl_label = "Import Map Piece"
     bl_description = "Import selected map piece FLVER from game map directory"
 
-    # TODO: Currently no way to disable this in GUI.
-    read_msb_transform: BoolProperty(
-        name="Read MSB Transform",
-        description="Look for matching MSB file in adjacent `MapStudio` folder and set transform of map piece FLVER",
-        default=True,
-    )
-
     @classmethod
     def poll(cls, context):
         game_lists = context.scene.game_files  # type: GameFiles
-        return game_lists.map_piece_flver not in {"", "0"}
+        return game_lists.map_piece not in {"", "0"}
 
     def execute(self, context):
 
         start_time = time.perf_counter()
 
         game_lists = context.scene.game_files  # type: GameFiles
-        flver_path = game_lists.map_piece_flver
-        if not flver_path:
-            return self.error("No map piece FLVER selected.")
-        flver_path = Path(flver_path)
-        if not flver_path.is_file():
-            return self.error(f"Map piece FLVER path is not a file: {flver_path}. Try refreshing game file lists.")
+
+        settings = GlobalSettings.get_scene_settings(context)
+        settings.save_settings()
+
+        transform = None  # type: Transform | None
+
+        if settings.msb_import_mode:
+            try:
+                part_name, flver_stem = game_lists.map_piece.split("|")
+            except ValueError:
+                return self.error("Invalid MSB map piece selection.")
+            msb_path = settings.get_selected_map_msb_path(context)
+
+            # Get MSB part transform.
+            msb = get_cached_file(msb_path, settings.get_game_msb_class(context))  # type: MSB
+            map_piece_part = msb.map_pieces.find_entry_name(part_name)
+            transform = Transform.from_msb_part(map_piece_part)
+
+            dcx_type = settings.resolve_dcx_type("Auto", "FLVER", False, context)
+            flver_path = Path(settings.game_directory, "map", settings.map_stem, f"{flver_stem}.flver")
+            flver_path = dcx_type.process_path(flver_path)
+
+            bl_name = part_name
+        else:
+            flver_path = game_lists.map_piece
+            flver_stem = Path(flver_path).name.split(".")[0]
+            if not flver_path:
+                return self.error("No map piece FLVER selected.")
+            flver_path = Path(flver_path)
+            if not flver_path.is_file():
+                return self.error(f"Map piece FLVER path is not a file: {flver_path}. Try refreshing game file lists.")
+            bl_name = flver_path.name.split(".")[0]  # drop all extensions
 
         self.info(f"Importing map piece FLVER: {flver_path}")
 
@@ -341,47 +260,20 @@ class QuickImportMapPieceFLVER(LoggingOperator, ImportFLVERMixin):
         if self.find_game_tpfs:
             texture_manager.find_flver_textures(flver_path)
 
-        settings = GlobalSettings.get_scene_settings(context)
-        settings.save_settings()
-
         importer = FLVERImporter(self, context, self.get_import_settings(context, texture_manager))
 
-        transform = None  # type: Transform | None
-
-        if self.read_msb_transform:
-            if MAP_NAME_RE.match(flver_path.parent.name):
-                try:
-                    transforms = get_map_piece_msb_transforms(flver_path)
-                except Exception as ex:
-                    self.warning(f"Could not get MSB transform. Error: {ex}")
-                else:
-                    if len(transforms) > 1:
-                        # Defer import through MSB choice operator's `run()` method.
-                        # Note that the same `importer` object is used -- this `execute()` function will NOT be
-                        # called again, TPFs will not be loaded again, etc.
-                        # TODO: When multiple FLVERs are imported, I think the MSB Choice operator's class members
-                        #  are being set to the final FLVER before ANY of the choice operators actually run. Need
-                        #  to stop this iterating loop from proceeding until each choice operator is done.
-                        importer.context = context
-                        ImportFLVERWithMSBChoice.run(
-                            importer=importer,
-                            flver=flver,
-                            file_path=flver_path,
-                            transforms=transforms,
-                        )
-                    transform = transforms[0][1]
-            else:
-                self.warning(f"Cannot read MSB transform for FLVER in unknown directory: {flver_path}.")
-
         try:
-            name = flver_path.name.split(".")[0]  # drop all extensions
-            bl_armature, bl_mesh = importer.import_flver(flver, name=name, transform=transform)
-
+            bl_armature, bl_mesh = importer.import_flver(flver, name=bl_name, transform=transform)
         except Exception as ex:
             # Delete any objects created prior to exception.
             importer.abort_import()
             traceback.print_exc()  # for inspection in Blender console
             return self.error(f"Cannot import FLVER: {flver_path.name}. Error: {ex}")
+
+        # Set 'Model File Stem' if in MSB Import Mode. (This isn't used in MSB Export Mode, which gets its model from
+        # the MSB part, but is a generally useful tracker of the FLVER file stem.)
+        if transform is not None:
+            bl_mesh["Model File Stem"] = flver_stem
 
         # Find or create Map Piece parent.
         map_piece_parent = find_or_create_bl_empty(f"{settings.map_stem} Map Pieces", context)

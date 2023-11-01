@@ -58,6 +58,7 @@ class HKX_COLLISION_PT_hkx_map_collision_tools(bpy.types.Panel):
         quick_import_box = import_box.box()
         quick_import_box.label(text="Quick Game Import")
         quick_import_box.prop(context.scene.soulstruct_global_settings, "use_bak_file", text="From .BAK File")
+        quick_import_box.prop(context.scene.soulstruct_global_settings, "msb_import_mode", text="MSB Import Mode")
         quick_import_box.prop(context.scene.game_files, "hkx_map_collision")
         quick_import_box.operator(QuickImportHKXMapCollision.bl_idname)
 
@@ -69,6 +70,7 @@ class HKX_COLLISION_PT_hkx_map_collision_tools(bpy.types.Panel):
         quick_export_box.prop(
             context.scene.soulstruct_global_settings, "detect_map_from_parent", text="Detect Map from Parent"
         )
+        quick_export_box.prop(context.scene.soulstruct_global_settings, "msb_export_mode", text="MSB Export Mode")
         quick_export_box.operator(QuickExportHKXMapCollision.bl_idname)
 
         misc_operators_box = self.layout.box()

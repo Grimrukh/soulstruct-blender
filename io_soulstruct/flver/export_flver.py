@@ -22,8 +22,12 @@ from soulstruct.base.models.flver.mesh_tools import MergedMesh
 from soulstruct.utilities.maths import Vector3, Matrix3
 
 from io_soulstruct.general import *
+from io_soulstruct.general.cached import get_cached_file
 from io_soulstruct.utilities import *
 from .utilities import *
+
+if tp.TYPE_CHECKING:
+    from soulstruct.darksouls1r.maps import MSB
 
 DEBUG_MESH_INDEX = None
 DEBUG_VERTEX_INDICES = []
@@ -348,6 +352,8 @@ class QuickExportMapPieceFLVERs(LoggingOperator, ExportFLVERMixin):
 
         exporter = FLVERExporter(self, context, self.get_export_settings(context))
 
+        active_object = context.active_object
+
         for mesh, armature in meshes_armatures:
 
             if settings.detect_map_from_parent:
@@ -366,7 +372,47 @@ class QuickExportMapPieceFLVERs(LoggingOperator, ExportFLVERMixin):
             if not (map_dir_path := Path(game_directory, "map", map_stem)).is_dir():
                 return self.error(f"Invalid game map directory: {map_dir_path}")
 
-            flver_stem = self.get_default_flver_stem(mesh, armature)
+            if settings.msb_export_mode:
+                # Get model file stem from MSB (must contain matching part).
+                map_piece_part_name = self.get_default_flver_stem(mesh, armature)  # could be the same as the file stem
+                msb_path = Path(game_directory, "map/MapStudio", f"{map_stem}.msb")
+                msb = get_cached_file(msb_path, settings.get_game_msb_class(context))  # type: MSB
+                try:
+                    msb_part = msb.map_pieces.find_entry_name(map_piece_part_name)
+                except KeyError:
+                    return self.error(
+                        f"Map piece part '{map_piece_part_name}' not found in MSB '{msb_path}'."
+                    )
+                if not msb_part.model.name:
+                    return self.error(
+                        f"Map piece part '{map_piece_part_name}' in MSB '{msb_path}' has no model name."
+                    )
+                flver_stem = msb_part.model.name + f"A{map_stem[1:3]}"
+
+                # Warn if FLVER stem is unexpected.
+                if (model_file_stem := mesh.get("Model File Stem", None)) is not None:
+                    if model_file_stem != flver_stem:
+                        self.warning(
+                            f"Map piece part '{map_piece_part_name}' in MSB '{msb_path}' has model name "
+                            f"'{msb_part.model.name}' but Blender mesh 'Model File Stem' is '{model_file_stem}'. "
+                            f"Using FLVER stem from MSB model name; you may want to update the Blender mesh."
+                        )
+
+                # Update part transform in MSB.
+                bl_transform = BlenderTransform.from_bl_obj(armature or mesh)
+                msb_part.translate = bl_transform.game_translate
+                msb_part.rotate = bl_transform.game_rotate_deg
+                msb_part.scale = bl_transform.game_scale
+
+                # Write MSB.
+                try:
+                    msb.write(msb_path)
+                except Exception as ex:
+                    self.warning(f"Could not write MSB '{msb_path}' with updated part transform. Error: {ex}")
+                else:
+                    self.info(f"Wrote MSB '{msb_path}' with updated part transform.")
+            else:
+                flver_stem = self.get_default_flver_stem(mesh, armature)
 
             try:
                 flver = exporter.export_flver(mesh, armature, name=flver_stem)
@@ -382,6 +428,10 @@ class QuickExportMapPieceFLVERs(LoggingOperator, ExportFLVERMixin):
                 traceback.print_exc()
                 return self.error(f"Cannot write exported FLVER '{flver_stem}'. Error: {ex}")
             self.info(f"Exported FLVER to: {written_path}")
+
+        # Select original active object.
+        if active_object:
+            context.view_layer.objects.active = active_object
 
         return {"FINISHED"}
 
@@ -665,7 +715,7 @@ class FLVERExporter:
         #  'read_bone_type == POSE' as a marker for map pieces.
         # TODO: Better heuristic is likely to use the bone weights themselves (missing or all zero -> armature space).
         flver.refresh_bone_bounding_boxes(in_local_space=read_bone_type == "EDIT")
-        
+
         # Refresh `Submesh` and FLVER-wide bounding boxes.
         # TODO: Partially redundant since splitter does this for submeshes automatically. Only need FLVER-wide bounds.
         flver.refresh_bounding_boxes()
@@ -943,7 +993,7 @@ class FLVERExporter:
         else:
             # Prepare for loop filling.
             loop_vertex_color = np.empty((loop_count, 4), dtype=np.float32)
-        
+
         for i, loop in enumerate(mesh_data.loops):
             loop_vertex_indices[i] = loop.vertex_index
             loop_normals[i] = loop.normal
@@ -978,10 +1028,10 @@ class FLVERExporter:
             loop_uvs=loop_uvs,
             faces=faces,
         )
-        
+
         merged_mesh.swap_vertex_yz(tangents=True, bitangents=True)
         merged_mesh.invert_vertex_uv(invert_u=False, invert_v=True)
-        
+
         p = time.perf_counter()
         flver.submeshes = merged_mesh.split_mesh(
             submesh_info,
@@ -1090,11 +1140,13 @@ class FLVERExporter:
                         f"'QUATERNION' or 'XYZ' (Euler)."
                     )
                 game_arma_scale = BL_TO_GAME_VECTOR3(pose_bone.scale)  # can be non-uniform
-                game_arma_transforms.append((
-                    game_arma_translate,
-                    game_arma_rotmat,
-                    game_arma_scale,
-                ))
+                game_arma_transforms.append(
+                    (
+                        game_arma_translate,
+                        game_arma_rotmat,
+                        game_arma_scale,
+                    )
+                )
 
         return game_bones, edit_bone_names, game_arma_transforms
 

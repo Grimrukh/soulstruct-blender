@@ -2,7 +2,6 @@ from __future__ import annotations
 
 __all__ = [
     "ImportFLVER",
-    "ImportFLVERWithMSBChoice",
     "QuickImportMapPieceFLVER",
     "QuickImportCharacterFLVER",
     "QuickImportObjectFLVER",
@@ -70,8 +69,9 @@ class FLVERImportPanel(bpy.types.Panel):
         quick_import_box = layout.box()
         quick_import_box.label(text="Quick Game Import")
         quick_import_box.prop(context.scene.soulstruct_global_settings, "use_bak_file", text="From .BAK File")
+        quick_import_box.prop(context.scene.soulstruct_global_settings, "msb_import_mode", text="MSB Import Mode")
         map_piece_import_box = quick_import_box.box()
-        map_piece_import_box.prop(context.scene.game_files, "map_piece_flver")
+        map_piece_import_box.prop(context.scene.game_files, "map_piece")
         map_piece_import_box.operator(QuickImportMapPieceFLVER.bl_idname)
         chrbnd_import_box = quick_import_box.box()
         chrbnd_import_box.prop(context.scene.game_files, "chrbnd")
@@ -100,6 +100,7 @@ class FLVERExportPanel(bpy.types.Panel):
         quick_export_box.prop(
             context.scene.soulstruct_global_settings, "detect_map_from_parent", text="Detect Map from Parent"
         )
+        quick_export_box.prop(context.scene.soulstruct_global_settings, "msb_export_mode", text="MSB Export Mode")
         quick_export_box.operator(QuickExportMapPieceFLVERs.bl_idname)
         quick_export_box.operator(QuickExportCharacterFLVER.bl_idname)
 

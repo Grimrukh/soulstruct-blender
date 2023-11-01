@@ -7,13 +7,15 @@ __all__ = [
     "MTDBinderManager",
 ]
 
+import typing as tp
 from pathlib import Path
 
 import bpy
 
+from soulstruct.base.models.mtd import MTD
+from soulstruct.base.maps.msb import MSB as BaseMSB
 from soulstruct.containers import Binder
 from soulstruct.dcx import DCXType
-from soulstruct.base.models.mtd import MTD
 from soulstruct.utilities.files import read_json, write_json
 
 
@@ -107,10 +109,22 @@ class GlobalSettings(bpy.types.PropertyGroup):
         default=False,
     )
 
+    msb_import_mode: bpy.props.BoolProperty(
+        name="MSB Import Mode",
+        description="Import map part names and transforms from appropriate MSB in addition to reading model file",
+        default=False,
+    )
+
     detect_map_from_parent: bpy.props.BoolProperty(
         name="Detect Map from Parent",
         description="Detect map stem from Blender parent when quick-exporting game map assets",
         default=True,
+    )
+
+    msb_export_mode: bpy.props.BoolProperty(
+        name="MSB Export Mode",
+        description="Export map part names and transforms to appropriate MSB in addition to writing model file",
+        default=False,
     )
 
     @staticmethod
@@ -126,6 +140,24 @@ class GlobalSettings(bpy.types.PropertyGroup):
         if not settings.game_directory or settings.map_stem in {"", "0"}:
             return None
         return Path(settings.game_directory, "map", settings.map_stem)
+
+    @staticmethod
+    def get_selected_map_msb_path(context: bpy.types.Context = None) -> Path | None:
+        """Get the `map_stem` MSB path in its game directory."""
+        settings = GlobalSettings.get_scene_settings(context)
+        if not settings.game_directory or settings.map_stem in {"", "0"}:
+            return None
+        return Path(settings.game_directory, "map/MapStudio", f"{settings.map_stem}.msb")
+
+    @staticmethod
+    def get_game_msb_class(context: bpy.types.Context = None) -> tp.Type[BaseMSB]:
+        """Get the `MSB` class associated with the selected game."""
+        settings = GlobalSettings.get_scene_settings(context)
+        match settings.game:
+            case GameNames.DS1R:
+                from soulstruct.darksouls1r.maps.msb import MSB
+                return MSB
+        raise ValueError(f"Game '{settings.game}' is not supported for MSB access.")
 
     @staticmethod
     def resolve_dcx_type(

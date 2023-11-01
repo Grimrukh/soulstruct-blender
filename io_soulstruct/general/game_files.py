@@ -11,7 +11,9 @@ import bpy
 
 from soulstruct.containers import Binder
 from soulstruct.darksouls1ptde.constants import CHARACTER_MODELS as DS1_CHARACTER_MODELS
+from soulstruct.darksouls1r.maps import MSB
 
+from .cached import get_cached_file
 from .core import GlobalSettings, GameNames
 
 # Global variable to keep enum references alive, and the paths used to cache them.
@@ -25,13 +27,49 @@ GAME_FILE_ENUMS = {
 
 
 # noinspection PyUnusedLocal
-def get_map_piece_flver_items(self, context):
-    """Collect map piece FLVERs in selected game's selected 'map/mAA_BB_CC_DD' directory."""
+def get_game_map_piece_items(self, context):
+    """Collect quick-importable map pieces, which could be:
+        - FLVERs in selected game's selected 'map/mAA_BB_CC_DD' directory
+        - or `MSBMapPiece` parts in the selected game's selected map MSB.
+    """
     settings = GlobalSettings.get_scene_settings(context)
     game_directory = settings.game_directory
     map_stem = settings.map_stem
-    if not game_directory or not map_stem:
+    if not game_directory or map_stem in {"", "0"}:
         return _clear_items("MAP_PIECE")
+
+    if settings.msb_import_mode:
+        # Open MSB and find all Map Piece parts. NOTE: We don't check here if the part's model is a valid file.
+        # It's up to the importer to handle and report that error case.
+        msb_path = Path(game_directory, "map/MapStudio", f"{map_stem}.msb")
+
+        if GAME_FILE_ENUMS["MAP_PIECE"][0] == msb_path:
+            # Use cached enum items.
+            # NOTE: Even if the MSB is written from Blender, Soulstruct cannot add or remove parts (yet).
+            return GAME_FILE_ENUMS["MAP_PIECE"][1]
+
+        try:
+            msb_class = GlobalSettings.get_game_msb_class(context)
+            msb = get_cached_file(msb_path, msb_class)
+        except (FileNotFoundError, ValueError) as ex:
+            return _clear_items("MAP_PIECE")
+        msb: MSB  # TODO: hack to get standard part lists
+
+        items = [("0", "None", "None")]
+        for map_piece_part in msb.map_pieces:
+            if not map_piece_part.model:
+                continue
+            full_model_name = map_piece_part.model.name + f"A{map_stem[1:3]}"
+            identifier = f"{map_piece_part.name}|{full_model_name}"
+            items.append(
+                (identifier, map_piece_part.name, f"{map_piece_part.name} (Model {full_model_name})")
+            )
+
+        # NOTE: The cache key is the MSB path.
+        GAME_FILE_ENUMS["MAP_PIECE"] = (msb_path, items)
+        return GAME_FILE_ENUMS["MAP_PIECE"][1]
+
+    # Find all map piece FLVER files in map directory.
     scan_directory = Path(game_directory, "map", map_stem)
     if not scan_directory.is_dir():
         return _clear_items("MAP_PIECE")
@@ -75,7 +113,7 @@ def get_nvm_items(self, context):
     settings = GlobalSettings.get_scene_settings(context)
     game_directory = settings.game_directory
     map_stem = settings.map_stem
-    if not game_directory or not map_stem:
+    if not game_directory or map_stem in {"", "0"}:
         return _clear_items("NVM")
     map_path = Path(game_directory, "map", map_stem)
     if not map_path.is_dir():
@@ -84,6 +122,39 @@ def get_nvm_items(self, context):
     nvmbnd_path = dcx_type.process_path(map_path / f"{map_stem}.nvmbnd")
     if not nvmbnd_path.is_file():
         return _clear_items("NVM")
+
+    if settings.msb_import_mode:
+        # Open MSB and find all Navmesh parts. NOTE: We don't check here if the part's model is a valid file.
+        # It's up to the importer to handle and report that error case.
+        msb_path = Path(game_directory, "map/MapStudio", f"{map_stem}.msb")
+
+        if GAME_FILE_ENUMS["NVM"][0] == msb_path:
+            # Use cached enum items.
+            # NOTE: Even if the MSB is written from Blender, Soulstruct cannot add or remove parts (yet).
+            return GAME_FILE_ENUMS["NVM"][1]
+
+        try:
+            msb_class = GlobalSettings.get_game_msb_class(context)
+            msb = get_cached_file(msb_path, msb_class)
+        except (FileNotFoundError, ValueError) as ex:
+            return _clear_items("NVM")
+        msb: MSB  # TODO: hack to get standard part lists
+
+        items = [("0", "None", "None")]
+        for navmesh_part in msb.navmeshes:
+            if not navmesh_part.model:
+                continue
+            full_model_name = navmesh_part.model.name + f"A{map_stem[1:3]}"
+            identifier = f"{navmesh_part.name}|{full_model_name}"
+            items.append(
+                (identifier, navmesh_part.name, f"{navmesh_part.name} (Model {full_model_name})")
+            )
+
+        # NOTE: The cache key is the MSB path.
+        GAME_FILE_ENUMS["NVM"] = (msb_path, items)
+        return GAME_FILE_ENUMS["NVM"][1]
+
+    # Find all NVM entries in map NVMBND.
     if settings.resolve_dcx_type("Auto", "NVM", True, context).has_dcx_extension():
         pattern = re.compile(r".*\.nvm\.dcx")
     else:
@@ -97,7 +168,7 @@ def get_hkx_map_collision_items(self, context):
     settings = GlobalSettings.get_scene_settings(context)
     game_directory = settings.game_directory
     map_stem = settings.map_stem
-    if not game_directory or not map_stem:
+    if not game_directory or map_stem in {"", "0"}:
         return _clear_items("HKX_MAP_COLLISION")
     map_path = Path(game_directory, "map", map_stem)
     if not map_path.is_dir():
@@ -105,6 +176,38 @@ def get_hkx_map_collision_items(self, context):
     hkxbhd_path = map_path / f"h{map_stem[1:]}.hkxbhd"  # never DCX
     if not hkxbhd_path.is_file():
         return _clear_items("HKX_MAP_COLLISION")
+
+    if settings.msb_import_mode:
+        # Open MSB and find all Collision parts. NOTE: We don't check here if the part's model is a valid file.
+        # It's up to the importer to handle and report that error case.
+        msb_path = Path(game_directory, "map/MapStudio", f"{map_stem}.msb")
+
+        if GAME_FILE_ENUMS["HKX_MAP_COLLISION"][0] == msb_path:
+            # Use cached enum items.
+            # NOTE: Even if the MSB is written from Blender, Soulstruct cannot add or remove parts (yet).
+            return GAME_FILE_ENUMS["HKX_MAP_COLLISION"][1]
+
+        try:
+            msb_class = GlobalSettings.get_game_msb_class(context)
+            msb = get_cached_file(msb_path, msb_class)
+        except (FileNotFoundError, ValueError) as ex:
+            return _clear_items("HKX_MAP_COLLISION")
+        msb: MSB  # TODO: hack to get standard part lists
+
+        items = [("0", "None", "None")]
+        for collision_part in msb.collisions:
+            if not collision_part.model:
+                continue
+            full_model_name = collision_part.model.name + f"A{map_stem[1:3]}"
+            identifier = f"{collision_part.name}|{full_model_name}"
+            items.append(
+                (identifier, collision_part.name, f"{collision_part.name} (Model {full_model_name})")
+            )
+
+        # NOTE: The cache key is the MSB path.
+        GAME_FILE_ENUMS["HKX_MAP_COLLISION"] = (msb_path, items)
+        return GAME_FILE_ENUMS["HKX_MAP_COLLISION"][1]
+
     hkx_dcx_type = settings.resolve_dcx_type("Auto", "MapCollisionHKX", True, context)
     pattern = re.compile(r"h.*\.hkx\.dcx") if hkx_dcx_type.has_dcx_extension() else re.compile(r"h.*\.hkx")
     return _scan_binder_entries("HKX_MAP_COLLISION", hkxbhd_path, pattern)
@@ -148,13 +251,13 @@ def _scan_binder_entries(
 class GameFiles(bpy.types.PropertyGroup):
     """Files of various types found in the game directory via on-demand scan."""
 
-    map_piece_flver: bpy.props.EnumProperty(
-        name="Map Piece FLVERs",
-        items=get_map_piece_flver_items,
+    map_piece: bpy.props.EnumProperty(
+        name="Map Piece",
+        items=get_game_map_piece_items,
     )
 
     chrbnd: bpy.props.EnumProperty(
-        name="Character Binders",
+        name="Character",
         items=get_chrbnd_items,
     )
 
@@ -165,7 +268,7 @@ class GameFiles(bpy.types.PropertyGroup):
     )
 
     nvm: bpy.props.EnumProperty(
-        name="DS1 Navmeshes",
+        name="DS1 Navmesh",
         items=get_nvm_items,
     )
 

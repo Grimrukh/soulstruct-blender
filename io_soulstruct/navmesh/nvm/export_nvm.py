@@ -7,6 +7,7 @@ import traceback
 from pathlib import Path
 
 import numpy as np
+import typing as tp
 
 import bpy
 from bpy.props import StringProperty, BoolProperty, IntProperty
@@ -18,8 +19,13 @@ from soulstruct.dcx import DCXType
 from soulstruct.darksouls1r.maps.navmesh.nvm import NVM, NVMTriangle, NVMEventEntity
 
 from io_soulstruct.general import GlobalSettings, GameNames
+from io_soulstruct.general.cached import get_cached_file
 from io_soulstruct.utilities.operators import LoggingOperator, get_dcx_enum_property
 from io_soulstruct.utilities.misc import MAP_STEM_RE
+from io_soulstruct.utilities.conversion import BlenderTransform
+
+if tp.TYPE_CHECKING:
+    from soulstruct.darksouls1r.maps import MSB
 
 
 DEBUG_MESH_INDEX = None
@@ -245,7 +251,7 @@ class QuickExportNVM(LoggingOperator):
             and all(obj.type == "MESH" and obj.name[0] == "n" for obj in context.selected_objects)
         )
 
-    def _execute(self, context):
+    def execute(self, context):
         if not self.poll(context):
             return self.error("No valid 'n' meshes selected for quick NVM export.")
 
@@ -289,7 +295,47 @@ class QuickExportNVM(LoggingOperator):
             except Exception as ex:
                 return self.error(f"Could not load NVMBND for map '{map_stem}'. Error: {ex}")
 
-            model_file_stem = bl_mesh_obj.get("Model File Stem", bl_mesh_obj.name)
+            if settings.msb_export_mode:
+                # Get model file stem from MSB (must contain matching part).
+                navmesh_part_name = bl_mesh_obj.name.split(" ")[0].split(".")[0]
+                msb_path = Path(game_directory, "map/MapStudio", f"{map_stem}.msb")
+                msb = get_cached_file(msb_path, settings.get_game_msb_class(context))  # type: MSB
+                try:
+                    msb_part = msb.navmeshes.find_entry_name(navmesh_part_name)
+                except KeyError:
+                    return self.error(
+                        f"Navmesh part '{navmesh_part_name}' not found in MSB '{msb_path}'."
+                    )
+                if not msb_part.model.name:
+                    return self.error(
+                        f"Navmesh part '{navmesh_part_name}' in MSB '{msb_path}' has no model name."
+                    )
+                nvm_entry_stem = msb_part.model.name + f"A{map_stem[1:3]}"
+
+                # Warn if NVM stem in MSB is unexpected.
+                if (model_file_stem := bl_mesh_obj.get("Model File Stem", None)) is not None:
+                    if model_file_stem != nvm_entry_stem:
+                        self.warning(
+                            f"Collision part '{nvm_entry_stem}' in MSB '{msb_path}' has model name "
+                            f"'{msb_part.model.name}' but Blender mesh 'Model File Stem' is '{model_file_stem}'. "
+                            f"Using HKX stem from MSB model name; you may want to update the Blender mesh."
+                        )
+
+                # Update part transform in MSB.
+                bl_transform = BlenderTransform.from_bl_obj(bl_mesh_obj)
+                msb_part.translate = bl_transform.game_translate
+                msb_part.rotate = bl_transform.game_rotate_deg
+                msb_part.scale = bl_transform.game_scale
+
+                # Write MSB.
+                try:
+                    msb.write(msb_path)
+                except Exception as ex:
+                    self.warning(f"Could not write MSB '{msb_path}' with updated part transform. Error: {ex}")
+                else:
+                    self.info(f"Wrote MSB '{msb_path}' with updated part transform.")
+            else:
+                model_file_stem = bl_mesh_obj.get("Model File Stem", bl_mesh_obj.name.split(" ")[0].split(".")[0])
 
             try:
                 nvm = exporter.export_nvm(bl_mesh_obj)

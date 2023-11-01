@@ -91,7 +91,6 @@ CLASSES = (
     CutMeshSelectionOperator,
 
     ImportFLVER,
-    ImportFLVERWithMSBChoice,
     QuickImportMapPieceFLVER,
     QuickImportCharacterFLVER,
     QuickImportObjectFLVER,
@@ -126,7 +125,6 @@ CLASSES = (
 
     ImportNVM,
     ImportNVMWithBinderChoice,
-    ImportNVMWithMSBChoice,
     QuickImportNVM,
     ExportLooseNVM,
     ExportNVMIntoBinder,
