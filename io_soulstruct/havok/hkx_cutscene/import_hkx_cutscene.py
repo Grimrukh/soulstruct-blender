@@ -440,8 +440,8 @@ class HKXCutsceneImporter:
     def create_part_action(
         self,
         cutscene_name: str,
-        part_armature,
-        all_cut_frames: list[list[dict[str, TRSTransform]]],
+        part_armature: bpy.types.ArmatureObject,
+        all_cut_arma_frames: list[list[dict[str, TRSTransform]]],
     ):
         """Import single animation HKX."""
         action_name = f"{cutscene_name}[{part_armature.name}]"
@@ -451,7 +451,7 @@ class HKXCutsceneImporter:
             part_armature.animation_data_create()
             part_armature.animation_data.action = action = bpy.data.actions.new(name=action_name)
             print(f"# INFO: Adding keyframes to action {action_name}...")
-            self._add_armature_keyframes(part_armature, all_cut_frames)
+            self._add_armature_keyframes(part_armature, all_cut_arma_frames)
         except Exception:
             if action:
                 bpy.data.actions.remove(action)
@@ -468,8 +468,8 @@ class HKXCutsceneImporter:
 
     def _add_armature_keyframes(
         self,
-        part_armature,
-        all_cut_frames: list[list[dict[str, TRSTransform]]],
+        part_armature: bpy.types.ArmatureObject,
+        all_cut_arma_frames: list[list[dict[str, TRSTransform]]],
     ):
         """Convert a Havok HKX animation file to a Blender action (with fully-sampled keyframes).
 
@@ -481,11 +481,13 @@ class HKXCutsceneImporter:
         We also use `self.bl_armature` to properly set the `matrix_basis` of each pose bone relative to the bone resting
         positions (set to the edit bones).
 
-        `skeleton_hkx` is required to compute animation frame transforms in object coordinates, as the bone hierarchy
-        can differ for HKX skeletons versus the FLVER skeleton in `bl_armature`.
+        `skeleton_hkx` is required to compute animation frame transforms in armature space, as the bone hierarchy can
+        differ for HKX skeletons versus the FLVER skeleton in `bl_armature`.
 
         TODO: Does not support changes in Blender bone names (e.g. '<DUPE>' suffix).
         """
+
+        # TODO: Overhaul a la HKX animation.
 
         # FIRST: Convert armature-space frame data to Blender `(location, rotation_quaternion, scale)` tuples.
         # Note that we decompose the basis matrices so that quaternion discontinuities are handled properly.
@@ -493,12 +495,12 @@ class HKXCutsceneImporter:
 
         cut_final_frame_indices = set()  # type: set[int]
 
-        for cut_frames in all_cut_frames:
+        for cut_arma_frames in all_cut_arma_frames:
 
             cut_basis_frames = []  # type: list[dict[str, tuple[Vector, BlenderQuaternion, Vector]]]
             last_frame_rotations = {}  # type: dict[str, BlenderQuaternion]
 
-            for cut_frame_index, frame in enumerate(cut_frames):
+            for cut_frame_index, frame in enumerate(cut_arma_frames):
 
                 bl_arma_matrices = {
                     bone_name: GAME_TRS_TO_BL_MATRIX(transform) for bone_name, transform in frame.items()
@@ -510,7 +512,8 @@ class HKXCutsceneImporter:
                 for bone_name, bl_arma_matrix in bl_arma_matrices.items():
 
                     if bone_name == "master":
-                        # TODO: Hack, because I don't know how to get the root bone name reliably.
+                        # TODO: Hack, because I don't know how to get the cutscene asset's root bone name reliably (as
+                        #  the root in the cutscene HKX file is the name of the asset).
                         #  Never seems to be animated anyway and FLVER hierarchy (in DS1) doesn't use it.
                         continue
 

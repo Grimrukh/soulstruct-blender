@@ -5,7 +5,7 @@ __all__ = [
     "ImportNVMWithBinderChoice",
     "ImportNVMWithMSBChoice",
     "QuickImportNVM",
-    "ExportNVM",
+    "ExportLooseNVM",
     "ExportNVMIntoBinder",
     "QuickExportNVM",
     "ImportMCP",
@@ -13,6 +13,7 @@ __all__ = [
     "ImportMCG",
     "QuickImportMCG",
     "ExportMCG",
+    "QuickExportMCGMCP",
     "NVM_PT_ds1_navmesh_import",
     "NVM_PT_ds1_navmesh_export",
     "NVM_PT_ds1_navmesh_tools",
@@ -191,12 +192,13 @@ class NVM_PT_ds1_navmesh_import(bpy.types.Panel):
         import_loose_box.operator(ImportMCG.bl_idname)
         import_loose_box.operator(ImportMCP.bl_idname)
 
-        game_box = self.layout.box()
-        game_box.prop(context.scene.soulstruct_global_settings, "use_bak_file", text="From .BAK File")
-        game_box.prop(context.scene.game_files, "nvm")
-        game_box.operator(QuickImportNVM.bl_idname)
-        game_box.operator(QuickImportMCG.bl_idname)
-        game_box.operator(QuickImportMCP.bl_idname)
+        quick_box = self.layout.box()
+        quick_box.label(text="Quick Game Import")
+        quick_box.prop(context.scene.soulstruct_global_settings, "use_bak_file", text="From .BAK File")
+        quick_box.prop(context.scene.game_files, "nvm")
+        quick_box.operator(QuickImportNVM.bl_idname)
+        quick_box.operator(QuickImportMCG.bl_idname)
+        quick_box.operator(QuickImportMCP.bl_idname)
 
 
 class NVM_PT_ds1_navmesh_export(bpy.types.Panel):
@@ -209,19 +211,18 @@ class NVM_PT_ds1_navmesh_export(bpy.types.Panel):
 
     # noinspection PyUnusedLocal
     def draw(self, context):
-        export_nvm = self.layout.box()
-        export_nvm.operator(ExportNVM.bl_idname)
-        export_nvm.operator(ExportNVMIntoBinder.bl_idname)
-        quick_box = export_nvm.box()
+        export_box = self.layout.box()
+        export_box.operator(ExportLooseNVM.bl_idname)
+        export_box.operator(ExportNVMIntoBinder.bl_idname)
+        export_box.operator(ExportMCG.bl_idname, text="Export MCG + MCP")
+
+        quick_box = export_box.box()
+        quick_box.label(text="Quick Game Export")
         quick_box.prop(
             context.scene.soulstruct_global_settings, "detect_map_from_parent", text="Detect Map from Parent"
         )
         quick_box.operator(QuickExportNVM.bl_idname)
-
-        export_navgraph_box = self.layout.box()
-        export_navgraph_box.operator(ExportMCG.bl_idname, text="Export MCG + MCP")
-
-        # NOTE: No plans for MCP/MCG export yet. Preferring to edit manually and use Blender just to inspect.
+        quick_box.operator(QuickExportMCGMCP.bl_idname)
 
 
 class NVM_PT_ds1_navmesh_tools(bpy.types.Panel):

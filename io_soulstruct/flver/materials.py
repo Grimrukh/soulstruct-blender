@@ -79,6 +79,7 @@ def get_submesh_blender_material(
             continue
 
         # Try to find texture in Blender image data as a PNG (preferred) or DDS.
+        # TODO: 'DetailBump_01_n' texture seems to always be missing from characters' `g_DetailBumpmap` slot. Handle?
         try:
             bl_image = bpy.data.images[texture.stem + ".png"]
         except KeyError:
@@ -87,7 +88,7 @@ def get_submesh_blender_material(
             except KeyError:
                 operator.warning(
                     f"Could not find texture '{texture.stem}' in Blender image data. "
-                    f"Creating FLVER material texture node anyway, but image will be unassigned.",
+                    f"Creating FLVER material `{texture_type}` texture node anyway, but image will be unassigned.",
                 )
                 bl_image = None
 

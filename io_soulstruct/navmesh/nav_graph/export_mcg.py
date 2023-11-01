@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-__all__ = ["ExportMCG"]
+__all__ = ["ExportMCG", "QuickExportMCGMCP"]
 
 import traceback
 from pathlib import Path
@@ -13,6 +13,7 @@ from soulstruct.darksouls1r.maps import MSB
 from soulstruct.darksouls1r.maps.navmesh.mcg import MCG, MCGNode, MCGEdge
 from soulstruct.darksouls1r.maps.navmesh.mcp import MCP
 
+from io_soulstruct.general import *
 from io_soulstruct.utilities import *
 from .utilities import MCGExportError
 
@@ -74,6 +75,16 @@ class ExportMCG(LoggingOperator, ExportHelper):
             return True
         return False
 
+    def invoke(self, context, _event):
+        """Set default export name to name of object (before first space and without Blender dupe suffix)."""
+        if not context.selected_objects:
+            return super().invoke(context, _event)
+
+        obj = context.selected_objects[0]
+        self.filepath = obj.name.split(" ")[0].split(".")[0] + ".mcg"
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
+
     def execute(self, context):
         selected_objs = [obj for obj in context.selected_objects]
         if not selected_objs:
@@ -126,38 +137,146 @@ class ExportMCG(LoggingOperator, ExportHelper):
         try:
             # Will create a `.bak` file automatically if absent.
             mcg.write(mcg_path)
-            self.info(f"Wrote MCG successfully: {mcg_path.name}")
+            self.info(f"Wrote MCG file successfully: {mcg_path.name}")
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Cannot write exported MCG. Error: {ex}")
 
         if self.auto_generate_mcp:
             # Any error here will not affect MCG write (already done above).
-            self.write_mcp(msb_path, mcg_path)
+            if not self.custom_nvmbnd_path:
+                nvmbnd_path = mcg_path.parent / f"{mcg_path.name.split('.')[0]}.nvmbnd.dcx"
+            else:
+                nvmbnd_path = Path(self.custom_nvmbnd_path)
+            try:
+                mcp_path = write_mcp(nvmbnd_path, msb_path, mcg_path)
+            except Exception as ex:
+                traceback.print_exc()
+                self.warning(f"Error occurred when attempting to auto-generate MCP. Error: {ex}")
+            else:
+                self.info(f"Wrote MCP file successfully: {mcp_path.name}")
 
         return {"FINISHED"}
 
-    def write_mcp(self, msb_path: Path, mcg_path: Path):
-        if not self.custom_nvmbnd_path:
-            nvmbnd_path = mcg_path.parent / f"{mcg_path.name.split('.')[0]}.nvmbnd.dcx"
+
+class QuickExportMCGMCP(LoggingOperator):
+    """Export MCG from a Blender object containing a Nodes parent and an Edges parent, and regenerate MCP.
+
+    Can optionally use MSB and NVMBND to auto-generate MCP file as well, as MCP connectivity is inferred from MCG nodes.
+    """
+    bl_idname = "export_scene.quick_mcg"
+    bl_label = "Export MCG + MCP"
+    bl_description = "Export Blender lists of nodes/edges to MCG graph file and refresh MCP file in selected game map"
+
+    @classmethod
+    def poll(cls, context):
+        """Requires a single selected Empty object with 'Edges' and 'Nodes children.
+        
+        Also requires `GlobalSettings` game.
+        """
+        settings = GlobalSettings.get_scene_settings(context)
+        if not settings.game_directory:
+            return False
+        if not settings.detect_map_from_parent and not settings.map_stem:
+            return False
+        if len(context.selected_objects) != 1:
+            return False
+        obj = context.selected_objects[0]
+        if obj.type != "EMPTY":
+            return False
+        if len(obj.children) != 2:
+            return False
+        if "Edges" in obj.children[0].name and "Nodes" in obj.children[1].name:
+            return True
+        if "Nodes" in obj.children[0].name and "Edges" in obj.children[1].name:
+            return True
+        return False
+
+    def execute(self, context):
+        selected_objs = [obj for obj in context.selected_objects]
+        if not selected_objs:
+            return self.error("No Empty with Edges and Nodes child Empties selected for MCG export.")
+        if len(selected_objs) > 1:
+            return self.error("More than one object cannot be selected for MCG export.")
+        
+        settings = GlobalSettings.get_scene_settings(context)
+        if settings.detect_map_from_parent:
+            map_stem = selected_objs[0].parent.name.split(" ")[0]
+        elif settings.map_stem:
+            map_stem = settings.map_stem
         else:
-            nvmbnd_path = Path(self.custom_nvmbnd_path)
+            return self.error("No map stem specified in settings.")
+        if not (match := MAP_STEM_RE.match(map_stem)):
+            raise ValueError(f"Invalid map stem: {map_stem}")
+        map_id = (int(match.group(1)), int(match.group(2)), int(match.group(3)), int(match.group(4)))
+
+        mcg_path = Path(settings.game_directory, "map", map_stem, f"{map_stem}.mcg")  # no DCX
+        msb_path = mcg_path.parent.parent / "MapStudio" / f"{mcg_path.name.split('.')[0]}.msb"
+        if not msb_path.is_file():
+            return self.error(f"Could not find MSB file '{msb_path}'.")
+        nvmbnd_path = mcg_path.parent / f"{mcg_path.name.split('.')[0]}.nvmbnd.dcx"
         if not nvmbnd_path.is_file():
-            self.warning(f"Could not find NVMBND file '{nvmbnd_path}'. MCP file not auto-generated.")
-        mcp_path = mcg_path.parent / f"{mcg_path.name.split('.')[0]}.mcp"
+            return self.error(f"Could not find NVMBND binder file '{nvmbnd_path}'.")
+        
+        node_parent = edge_parent = None
+        for child in selected_objs[0].children:
+            if "Nodes" in child.name:
+                node_parent = child
+            elif "Edges" in child.name:
+                edge_parent = child
+        if not node_parent or not edge_parent:
+            return self.error("Selected object must have 'Nodes' and 'Edges' child Empties.")
+
+        exporter = MCGExporter(self, context)
+        
         try:
-            mcp = MCP.from_msb_mcg_nvm_paths(mcp_path, msb_path, mcg_path, nvmbnd_path)
+            msb = MSB.from_path(msb_path)
+        except Exception as ex:
+            return self.error(f"Could not load MSB file '{msb_path}'. Error: {ex}")
+
+        navmesh_part_indices = {navmesh.name: i for i, navmesh in enumerate(msb.navmeshes)}
+
+        bl_nodes = [obj for obj in node_parent.children]
+        bl_nodes.sort(key=lambda obj: natural_keys(obj.name))
+        bl_edges = [obj for obj in edge_parent.children]
+        bl_edges.sort(key=lambda obj: natural_keys(obj.name))
+
+        try:
+            mcg = exporter.export_mcg(bl_nodes, bl_edges, navmesh_part_indices, map_id)
         except Exception as ex:
             traceback.print_exc()
-            self.warning(f"Error occurred when attempting to auto-generate MCP. Error: {ex}")
+            return self.error(f"Cannot get exported MCG. Error: {ex}")
         else:
-            try:
-                # Will create a `.bak` file automatically if absent.
-                mcp.write(mcp_path)
-                self.info(f"Wrote MCP successfully: {mcp_path.name}")
-            except Exception as ex:
-                traceback.print_exc()
-                self.warning(f"Cannot write auto-generated MCP. Error: {ex}")
+            mcg.dcx_type = DCXType.Null
+
+        try:
+            # Will create a `.bak` file automatically if absent.
+            mcg.write(mcg_path)
+            self.info(f"Wrote MCG file successfully: {mcg_path.name}")
+        except Exception as ex:
+            traceback.print_exc()
+            return self.error(f"Cannot write exported MCG. Error: {ex}")
+
+        # Any error here will not affect MCG write (already done above).
+        try:
+            mcp_path = write_mcp(nvmbnd_path, msb_path, mcg_path)
+        except Exception as ex:
+            traceback.print_exc()
+            self.warning(f"Error occurred when attempting to auto-generate MCP, but MCG still written. Error: {ex}")
+        else:
+            self.info(f"Wrote MCP file successfully: {mcp_path.name}")
+
+        return {"FINISHED"}
+
+
+def write_mcp(nvmbnd_path: Path, msb_path: Path, mcg_path: Path) -> Path:
+    if not nvmbnd_path.is_file():
+        raise FileNotFoundError(f"Could not find NVMBND file '{nvmbnd_path}'. MCP file not auto-generated.")
+    mcp_path = mcg_path.parent / f"{mcg_path.name.split('.')[0]}.mcp"
+    mcp = MCP.from_msb_mcg_nvm_paths(mcp_path, msb_path, mcg_path, nvmbnd_path)
+    # Will create a `.bak` file automatically if absent.
+    mcp.write(mcp_path)
+    return mcp_path
 
 
 class MCGExporter:

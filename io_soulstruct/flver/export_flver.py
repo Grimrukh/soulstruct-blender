@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-__all__ = ["ExportFLVER", "ExportFLVERIntoBinder", "QuickExportMapPieceFLVERs", "QuickExportCharacterFLVER"]
+__all__ = ["ExportLooseFLVER", "ExportFLVERIntoBinder", "QuickExportMapPieceFLVERs", "QuickExportCharacterFLVER"]
 
 import time
 
@@ -129,7 +129,7 @@ class ExportFLVERMixin:
         )
 
 
-class ExportFLVER(LoggingOperator, ExportHelper, ExportFLVERMixin):
+class ExportLooseFLVER(LoggingOperator, ExportHelper, ExportFLVERMixin):
     """Export one FLVER model from a Blender Armature parent to a file."""
     bl_idname = "export_scene.flver"
     bl_label = "Export Loose FLVER"
@@ -145,10 +145,22 @@ class ExportFLVER(LoggingOperator, ExportHelper, ExportFLVERMixin):
     def poll(cls, context):
         """One FLVER Armature or Mesh object must be selected.
 
-        If a Mesh is selected, it does not need an Armature parent - if it doesn't, a default FLVER skeleton with a
-        single eponymous bone at the origin will be exported
+        If a Mesh is selected and it does not have an Armature parent object, a default FLVER skeleton with a single
+        eponymous bone at the origin will be exported (which is fine for, e.g., most map pieces).
         """
         return len(context.selected_objects) == 1 and context.selected_objects[0].type in {"MESH", "ARMATURE"}
+
+    def invoke(self, context, _event):
+        """Set default export name to name of object (before first space and without Blender dupe suffix)."""
+        if not context.selected_objects:
+            return super().invoke(context, _event)
+
+        obj = context.selected_objects[0]
+        if obj.get("Model File Stem", None) is not None:
+            self.filepath = obj["Model File Stem"] + ".flver"
+        self.filepath = obj.name.split(" ")[0].split(".")[0] + ".flver"
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
 
     def execute(self, context):
         try:
@@ -302,7 +314,7 @@ class ExportFLVERIntoBinder(LoggingOperator, ExportHelper, ExportFLVERMixin):
 
 class QuickExportMapPieceFLVERs(LoggingOperator, ExportFLVERMixin):
     bl_idname = "export_scene.quick_map_piece_flver"
-    bl_label = "Quick Export Map Piece FLVERs"
+    bl_label = "Export Map Pieces"
     bl_description = (
         "Export selected Blender armatures/meshes to map piece FLVER model files in appropriate game map(s)"
     )
@@ -377,7 +389,7 @@ class QuickExportMapPieceFLVERs(LoggingOperator, ExportFLVERMixin):
 class QuickExportCharacterFLVER(LoggingOperator, ExportFLVERMixin):
     """Export a single FLVER model from a Blender mesh into a pre-selected CHRBND in the game directory."""
     bl_idname = "export_scene.quick_character_flver"
-    bl_label = "Quick Export Character FLVER"
+    bl_label = "Export Character"
     bl_description = "Export a FLVER model file into appropriate game CHRBND"
 
     # NOTE: Always overwrites existing entry. DCX type and `BinderEntry` defaults are game-dependent.

@@ -93,7 +93,7 @@ class ImportMCG(LoggingOperator, ImportHelper):
 
 class QuickImportMCG(LoggingOperator):
     bl_idname = "import_scene.quick_mcg"
-    bl_label = "Quick Import MCG"
+    bl_label = "Import MCG"
     bl_description = "Import MCG navmesh node/edge graph file from selected game map"
 
     # MSB always auto-found.

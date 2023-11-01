@@ -30,7 +30,6 @@ from io_soulstruct.general import *
 from io_soulstruct.havok.utilities import GAME_TRS_TO_BL_MATRIX, get_basis_matrix
 from .utilities import *
 
-
 ANIBND_RE = re.compile(r"^.*?\.anibnd(\.dcx)?$")
 c0000_ANIBND_RE = re.compile(r"^c0000_.*\.anibnd(\.dcx)?$")
 OBJBND_RE = re.compile(r"^.*?\.objbnd(\.dcx)?$")
@@ -164,7 +163,8 @@ class ImportHKXAnimation(LoggingOperator, ImportHelper, ImportHKXAnimationMixin)
 
     def execute(self, context):
 
-        bl_armature = context.selected_objects[0]
+        # noinspection PyTypeChecker
+        bl_armature = context.selected_objects[0]  # type: bpy.types.ArmatureObject
 
         file_paths = [Path(self.directory, file.name) for file in self.files]
         hkxs_with_paths = []  # type: list[tuple[Path, SkeletonHKX, AnimationHKX | list[BinderEntry]]]
@@ -336,7 +336,8 @@ class QuickImportCharacterHKXAnimation(LoggingOperator, ImportHKXAnimationMixin)
         if not game_directory:
             return self.error("No game directory set in global Soulstruct Settings.")
 
-        bl_armature = context.selected_objects[0]
+        # noinspection PyTypeChecker
+        bl_armature = context.selected_objects[0]  # type: bpy.types.ArmatureObject
 
         character_name = bl_armature.name.split(" ")[0]
         if character_name == "c0000":
@@ -402,7 +403,8 @@ class QuickImportObjectHKXAnimation(LoggingOperator, ImportHKXAnimationMixin):
         if not game_directory:
             return self.error("No game directory set in global Soulstruct Settings.")
 
-        bl_armature = context.selected_objects[0]
+        # noinspection PyTypeChecker
+        bl_armature = context.selected_objects[0]  # type: bpy.types.ArmatureObject
         object_name = bl_armature.name.split(" ")[0]
 
         dcx_type = settings.resolve_dcx_type("Auto", "Binder")

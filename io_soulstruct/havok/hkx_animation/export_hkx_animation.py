@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 __all__ = [
-    "ExportHKXAnimation",
+    "ExportLooseHKXAnimation",
     "ExportHKXAnimationIntoBinder",
     "QuickExportCharacterHKXAnimation",
     "QuickExportObjectHKXAnimation",
@@ -33,8 +33,8 @@ BONE_DATA_PATH_RE = re.compile(r"pose\.bones\[(\w+)]\.(location|rotation_quateri
 SKELETON_ENTRY_RE = re.compile(r"skeleton\.hkx", re.IGNORECASE)
 
 
-class ExportHKXAnimation(LoggingOperator, ExportHelper):
-    """Export HKX animation from an Action attached to a FLVER armature."""
+class ExportLooseHKXAnimation(LoggingOperator, ExportHelper):
+    """Export loose HKX animation file from an Action attached to a FLVER armature."""
     bl_idname = "export_scene.hkx_animation"
     bl_label = "Export Loose HKX Anim"
     bl_description = "Export a Blender action to a standalone HKX animation file with manual HKX skeleton source"
@@ -68,6 +68,19 @@ class ExportHKXAnimation(LoggingOperator, ExportHelper):
             return context.selected_objects[0].type == "ARMATURE"
         except IndexError:
             return False
+
+    def invoke(self, context, _event):
+        """Set default filepath to name of Action after '|' separator, before first space, and without extension."""
+        if not context.selected_objects:
+            return super().invoke(context, _event)
+
+        obj = context.selected_objects[0]
+        if not obj.type == "ARMATURE" or obj.animation_data is None or obj.animation_data.action is None:
+            return super().invoke(context, _event)
+        action = obj.animation_data.action
+        self.filepath = action.name.split("|")[-1].split(" ")[0].split(".")[0] + ".hkx"
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
 
     def execute(self, context):
         self.info("Executing HKX animation export...")

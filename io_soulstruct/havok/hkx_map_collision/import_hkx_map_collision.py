@@ -563,7 +563,7 @@ class ImportHKXMapCollisionWithMSBChoice(LoggingOperator):
 
 class QuickImportHKXMapCollision(LoggingOperator):
     bl_idname = "import_scene.quick_hkx_map_collision"
-    bl_label = "Quick Import Map Collision"
+    bl_label = "Import Map Collision"
     bl_description = "Import selected game HKX map collision"
 
     # TODO: No way to change these properties.

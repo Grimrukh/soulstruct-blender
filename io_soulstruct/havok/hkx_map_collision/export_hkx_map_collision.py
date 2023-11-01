@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-__all__ = ["ExportHKXMapCollision", "ExportHKXMapCollisionIntoBinder", "QuickExportHKXMapCollision"]
+__all__ = ["ExportLooseHKXMapCollision", "ExportHKXMapCollisionIntoBinder", "QuickExportHKXMapCollision"]
 
 import re
 import traceback
@@ -74,7 +74,7 @@ def get_mesh_children(
     return hkx_model_name, bl_meshes, other_res_model_name, other_res_bl_meshes
 
 
-class ExportHKXMapCollision(LoggingOperator, ExportHelper):
+class ExportLooseHKXMapCollision(LoggingOperator, ExportHelper):
     """Export HKX from a selection of Blender meshes."""
     bl_idname = "export_scene.hkx_map_collision"
     bl_label = "Export Loose Map Collision"
@@ -116,6 +116,18 @@ class ExportHKXMapCollision(LoggingOperator, ExportHelper):
             return False
         children = context.selected_objects[0].children
         return len(children) >= 1 and all(child.type == "MESH" for child in children)
+
+    def invoke(self, context, _event):
+        """Set default export name to name of object (before first space and without Blender dupe suffix)."""
+        if not context.selected_objects:
+            return super().invoke(context, _event)
+
+        obj = context.selected_objects[0]
+        if obj.get("Model File Stem", None) is not None:
+            self.filepath = obj["Model File Stem"] + ".hkx"
+        self.filepath = obj.name.split(" ")[0].split(".")[0] + ".hkx"
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
 
     def execute(self, context):
         selected_objs = [obj for obj in context.selected_objects]

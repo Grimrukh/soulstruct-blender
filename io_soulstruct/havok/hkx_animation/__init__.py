@@ -6,7 +6,7 @@ __all__ = [
     "QuickImportCharacterHKXAnimation",
     "QuickImportObjectHKXAnimation",
 
-    "ExportHKXAnimation",
+    "ExportLooseHKXAnimation",
     "ExportHKXAnimationIntoBinder",
     "QuickExportCharacterHKXAnimation",
     "QuickExportObjectHKXAnimation",
@@ -52,7 +52,7 @@ class HKX_ANIMATION_PT_hkx_animation_tools(bpy.types.Panel):
         quick_import_box.operator(QuickImportObjectHKXAnimation.bl_idname)
 
         export_box = self.layout.box()
-        export_box.operator(ExportHKXAnimation.bl_idname)
+        export_box.operator(ExportLooseHKXAnimation.bl_idname)
         export_box.operator(ExportHKXAnimationIntoBinder.bl_idname)
 
         quick_export_box = export_box.box()

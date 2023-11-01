@@ -109,8 +109,8 @@ class GlobalSettings(bpy.types.PropertyGroup):
 
     detect_map_from_parent: bpy.props.BoolProperty(
         name="Detect Map from Parent",
-        description="Detect map stem from Blender parent when quick-exporting map assets",
-        default=False,
+        description="Detect map stem from Blender parent when quick-exporting game map assets",
+        default=True,
     )
 
     @staticmethod

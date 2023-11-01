@@ -12,7 +12,7 @@ __all__ = [
     "ShowAllDummiesOperator",
     "PrintGameTransform",
 
-    "ExportFLVER",
+    "ExportLooseFLVER",
     "ExportFLVERIntoBinder",
     "QuickExportMapPieceFLVERs",
     "QuickExportCharacterFLVER",
@@ -92,7 +92,7 @@ class FLVERExportPanel(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-        layout.operator(ExportFLVER.bl_idname)
+        layout.operator(ExportLooseFLVER.bl_idname)
         layout.operator(ExportFLVERIntoBinder.bl_idname)
 
         quick_export_box = layout.box()

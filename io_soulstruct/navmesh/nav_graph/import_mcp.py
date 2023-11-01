@@ -69,7 +69,7 @@ class ImportMCP(LoggingOperator, ImportHelper):
 
 class QuickImportMCP(LoggingOperator):
     bl_idname = "import_scene.quick_mcp"
-    bl_label = "Quick Import MCP"
+    bl_label = "Import MCP"
     bl_description = "Import MCP file containing MSB navmesh AABBs and connections from selected game map"
 
     def execute(self, context):

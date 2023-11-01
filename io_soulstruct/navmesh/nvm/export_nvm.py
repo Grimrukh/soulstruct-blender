@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-__all__ = ["ExportNVM", "ExportNVMIntoBinder", "QuickExportNVM"]
+__all__ = ["ExportLooseNVM", "ExportNVMIntoBinder", "QuickExportNVM"]
 
 import re
 import traceback
@@ -26,7 +26,7 @@ DEBUG_MESH_INDEX = None
 DEBUG_VERTEX_INDICES = []
 
 
-class ExportNVM(LoggingOperator, ExportHelper):
+class ExportLooseNVM(LoggingOperator, ExportHelper):
     """Export loose NVM file from a Blender mesh.
 
     Mesh faces should be using materials named `Navmesh Flag {type}`
@@ -52,6 +52,18 @@ class ExportNVM(LoggingOperator, ExportHelper):
     def poll(cls, context):
         """Requires a single selected Mesh object."""
         return len(context.selected_objects) == 1 and context.selected_objects[0].type == "MESH"
+
+    def invoke(self, context, _event):
+        """Set default export name to name of object (before first space and without Blender dupe suffix)."""
+        if not context.selected_objects:
+            return super().invoke(context, _event)
+
+        obj = context.selected_objects[0]
+        if obj.get("Model File Stem", None) is not None:
+            self.filepath = obj["Model File Stem"] + ".nvm"
+        self.filepath = obj.name.split(" ")[0].split(".")[0] + ".nvm"
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
 
     def execute(self, context):
         if not self.poll(context):
@@ -145,7 +157,7 @@ class ExportNVMIntoBinder(LoggingOperator, ImportHelper):
         exporter = NVMExporter(self, context)
 
         for bl_mesh_obj in selected_objs:
-            model_file_stem = bl_mesh_obj.get("model_file_stem", bl_mesh_obj.name)
+            model_file_stem = bl_mesh_obj.get("Model File Stem", bl_mesh_obj.name)
 
             try:
                 nvm = exporter.export_nvm(bl_mesh_obj)
@@ -210,7 +222,7 @@ class ExportNVMIntoBinder(LoggingOperator, ImportHelper):
 class QuickExportNVM(LoggingOperator):
 
     bl_idname = "export_scene.quick_nvm"
-    bl_label = "Quick Export NVM"
+    bl_label = "Export NVM"
     bl_description = "Export selected meshes as NVM navmeshes into selected game map NVMBND"
 
     overwrite_existing: BoolProperty(
@@ -277,7 +289,7 @@ class QuickExportNVM(LoggingOperator):
             except Exception as ex:
                 return self.error(f"Could not load NVMBND for map '{map_stem}'. Error: {ex}")
 
-            model_file_stem = bl_mesh_obj.get("model_file_stem", bl_mesh_obj.name)
+            model_file_stem = bl_mesh_obj.get("Model File Stem", bl_mesh_obj.name)
 
             try:
                 nvm = exporter.export_nvm(bl_mesh_obj)

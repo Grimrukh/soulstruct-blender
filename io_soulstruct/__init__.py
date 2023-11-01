@@ -64,9 +64,9 @@ def menu_func_import(self, context):
 
 # noinspection PyUnusedLocal
 def menu_func_export(self, context):
-    self.layout.operator(ExportFLVER.bl_idname, text="FLVER (.flver)")
+    self.layout.operator(ExportLooseFLVER.bl_idname, text="FLVER (.flver)")
     self.layout.operator(ExportFLVERIntoBinder.bl_idname, text="FLVER to Binder (.*bnd)")
-    self.layout.operator(ExportNVM.bl_idname, text="NVM (.nvm)")
+    self.layout.operator(ExportLooseNVM.bl_idname, text="NVM (.nvm)")
     self.layout.operator(ExportNVMIntoBinder.bl_idname, text="NVM to Binder (.nvmbnd)")
 
 
@@ -101,7 +101,7 @@ CLASSES = (
     ShowAllDummiesOperator,
     PrintGameTransform,
 
-    ExportFLVER,
+    ExportLooseFLVER,
     ExportFLVERIntoBinder,
     QuickExportMapPieceFLVERs,
     QuickExportCharacterFLVER,
@@ -128,7 +128,7 @@ CLASSES = (
     ImportNVMWithBinderChoice,
     ImportNVMWithMSBChoice,
     QuickImportNVM,
-    ExportNVM,
+    ExportLooseNVM,
     ExportNVMIntoBinder,
     QuickExportNVM,
     ImportMCP,
@@ -136,6 +136,7 @@ CLASSES = (
     ImportMCG,
     QuickImportMCG,
     ExportMCG,
+    QuickExportMCGMCP,
     CreateMCGEdgeOperator,
     NVM_PT_ds1_navmesh_import,
     NVM_PT_ds1_navmesh_export,
@@ -165,7 +166,7 @@ if soulstruct_havok:
         ImportHKXAnimationWithBinderChoice,
         QuickImportCharacterHKXAnimation,
         QuickImportObjectHKXAnimation,
-        ExportHKXAnimation,
+        ExportLooseHKXAnimation,
         ExportHKXAnimationIntoBinder,
         QuickExportCharacterHKXAnimation,
         QuickExportObjectHKXAnimation,
@@ -174,14 +175,15 @@ if soulstruct_havok:
         SelectArmatureActionOperator,
         HKX_ANIMATION_PT_hkx_animation_tools,
 
-        ExportHKXMapCollision,
+        ExportLooseHKXMapCollision,
         ExportHKXMapCollisionIntoBinder,
         QuickExportHKXMapCollision,
         HKX_COLLISION_PT_hkx_map_collision_tools,
 
-        ImportHKXCutscene,
-        ExportHKXCutscene,
-        HKX_CUTSCENE_PT_hkx_cutscene_tools,
+        # TODO: Cutscene operators need a bit more work.
+        # ImportHKXCutscene,
+        # ExportHKXCutscene,
+        # HKX_CUTSCENE_PT_hkx_cutscene_tools,
     )
 
     # noinspection PyUnusedLocal
@@ -192,9 +194,9 @@ if soulstruct_havok:
 
     # noinspection PyUnusedLocal
     def havok_menu_func_export(self, context):
-        self.layout.operator(ExportHKXMapCollision.bl_idname, text="HKX Collision (.hkx)")
+        self.layout.operator(ExportLooseHKXMapCollision.bl_idname, text="HKX Collision (.hkx)")
         self.layout.operator(ExportHKXMapCollisionIntoBinder.bl_idname, text="HKX Collision to Binder (.hkxbhd)")
-        self.layout.operator(ExportHKXAnimation.bl_idname, text="HKX Animation (.hkx)")
+        self.layout.operator(ExportLooseHKXAnimation.bl_idname, text="HKX Animation (.hkx)")
         self.layout.operator(ExportHKXAnimationIntoBinder.bl_idname, text="HKX Animation to Binder (.hkxbhd)")
         self.layout.operator(ExportHKXCutscene.bl_idname, text="HKX Cutscene (.remobnd)")
 

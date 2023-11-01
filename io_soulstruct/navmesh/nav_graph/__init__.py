@@ -4,6 +4,7 @@ __all__ = [
     "ImportMCG",
     "QuickImportMCG",
     "ExportMCG",
+    "QuickExportMCGMCP",
     "MCGDrawSettings",
     "draw_mcg_nodes",
     "draw_mcg_node_labels",

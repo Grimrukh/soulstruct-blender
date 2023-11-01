@@ -519,7 +519,7 @@ class ImportNVMWithMSBChoice(LoggingOperator):
 class QuickImportNVM(LoggingOperator):
     """Import a NVM from the current selected value of listed game map NVMs."""
     bl_idname = "import_scene.quick_nvm"
-    bl_label = "Quick Import NVM"
+    bl_label = "Import NVM"
     bl_description = "Import selected NVM from game map directory's NVMBND binder"
 
     # TODO: Currently no way to change these property defaults in GUI.
@@ -743,7 +743,7 @@ class NVMImporter:
 
         # Assign `model_file_stem` property if requested (usually because Blender object names are parts, not models).
         if import_info.is_msb_part:
-            mesh_obj["model_file_stem"] = import_info.model_file_stem
+            mesh_obj["Model File Stem"] = import_info.model_file_stem
 
         self.imported_models[import_info.model_file_stem] = mesh_obj
 

@@ -3,7 +3,7 @@ __all__ = [
     "ImportNVMWithBinderChoice",
     "ImportNVMWithMSBChoice",
     "QuickImportNVM",
-    "ExportNVM",
+    "ExportLooseNVM",
     "ExportNVMIntoBinder",
     "QuickExportNVM",
 ]
