@@ -221,7 +221,10 @@ class GlobalSettings(bpy.types.PropertyGroup):
         settings = bpy.context.scene.soulstruct_global_settings
         settings.game = json_settings.get("game", "DS1R")
         settings.game_directory = json_settings.get("game_directory", "")
-        settings.map_stem = json_settings.get("map_stem", "")
+        map_stem = json_settings.get("map_stem", "0")
+        if not map_stem:
+            map_stem = "0"  # null enum value
+        settings.map_stem = map_stem
         settings.png_cache_directory = json_settings.get("png_cache_directory", "")
         settings.mtdbnd_path = json_settings.get("mtdbnd_path", "")
 
