@@ -34,15 +34,9 @@ from io_soulstruct.general import *
 # TODO: Currently asserting that `soulstruct_havok` is installed, but this is not necessary for all add-ons.
 import soulstruct_havok
 
-# try:
-#     import soulstruct_havok
-# except ModuleNotFoundError:
-#     # `soulstruct_havok` not installed. HKX add-ons not enabled.
-#     soulstruct_havok = None
-
 
 bl_info = {
-    "name": "Soulstruct (FromSoftware Formats)",
+    "name": "Soulstruct",
     "author": "Scott Mooney (Grimrukh)",
     "version": (1, 0, 0),
     "blender": (3, 5, 0),
