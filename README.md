@@ -45,12 +45,15 @@ the `Scene Properties` tab.
 - Set the `Game` setting to your game installation folder (the one containing the executable) by browsing or pasting it.
 - Ensure that your game files are unpacked, if relevant -- especially the `chr`, `map`, and `obj` data folders.
 - Use the `Map Stem` dropdown setting to choose a `map` subfolder for importing/exporting assets.
-- Use the appropriate dropdowns
+- Use the file dropdowns to choose auto-detected game/map files or Binder entries to import in one click.
 
 Finally, map assets (Map Pieces, Collisions, and Navmeshes) can be imported and exported with reference
 to part entries in the selected map's `MSB` file rather than the raw model files. When `MSB Import Mode` is
 enabled, the quick import dropdowns will show lists of MSB parts of that type, which will in turn be used to find
-the model files. When imported this way, the name of the Blender object wil
+the model files. When imported this way, the name of the Blender object will be the *part* name, not the model file name,
+and the MSB transform will be applied to the object. Similar when `MSB Export Mode` is enabled: this assumes
+that the Blender object name is the MSB part name, finds the model file, and writes both the model file and the
+MSB transform for that specific part.
 
 ## Object Structure
 
