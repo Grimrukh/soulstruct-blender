@@ -20,11 +20,11 @@ This is an experimental add-on that is not yet published to Blender. To install 
 
 1. Ensure you have **Blender 3.3 or later**, as Python 3.10 is required.
 2. Download the add-on `.zip` file from the GitHub repository (Releases).
-2. Unzip the contents into your Blender's `scripts/addons` directory. 
+3. Unzip the contents into your Blender's `scripts/addons` directory. 
     - Typically, the directory is located at `Blender Foundation/Blender/<version>/scripts/addons/`.
     - That directory may also be in `<User>/AppData/Roaming` on Windows, which may be easier to use than the actual Blender installation.
-3. Open Blender and go to `Edit > Preferences > Add-ons`.
-4. In the Add-ons tab, find `Import-Export: Soulstruct` and enable it by checking the box next to it.
+4. Open Blender and go to `Edit > Preferences > Add-ons`.
+5. In the Add-ons tab, find `Import-Export: Soulstruct` and enable it by checking the box next to it.
 
 ## Basic Usage
 
