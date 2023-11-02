@@ -408,14 +408,20 @@ class TextureManager:
     Uses selected game, FLVER name, and FLVER texture paths to determine where to find TPFs.
     """
 
-    # Maps Binder stems to Binder file paths we are aware of, but haven't yet opened and scanned for TPFs.
+    # Maps Binder stems to Binder file paths we are aware of, but have NOT yet opened and scanned for TPF sources.
     _binder_paths: dict[str, Path] = field(default_factory=dict)
 
-    # Maps TPF stems to file paths or Binder entries we are aware of, but haven't yet opened.
+    # Maps TPF stems to file paths or Binder entries we are aware of, but have NOT yet loaded into TPF textures (below).
     _pending_tpf_sources: dict[str, Path | BinderEntry] = field(default_factory=dict)
 
     # Maps TPF stems to opened TPF textures.
     _tpf_textures: dict[str, TPFTexture] = field(default_factory=dict)
+
+    # Holds Binder file paths that have already been opened and scanned, so they aren't checked again.
+    _scanned_binder_paths: set[Path] = field(default_factory=set)
+
+    # Holds TPF stems that have already been opened and scanned, so they aren't checked again.
+    _scanned_tpf_sources: set[str] = field(default_factory=set)
 
     def find_flver_textures(self, flver_source_path: Path, flver_binder: Binder = None):
         """Register known game Binders/TPFs to be opened as needed."""
@@ -448,13 +454,31 @@ class TextureManager:
             # Likely an AEG asset FLVER from Elden Ring onwards. We look in nearby `aet` directory.
             self._find_aeg_tpfs(source_dir)
 
+    def find_specific_map_textures(self, map_area_dir: Path):
+        """Register TPFBHD Binders in a specific `map_area_dir` 'mAA' map directory.
+
+        Some vanilla map pieces use textures from different maps, e.g. when the game expects the map piece to be loaded
+        while the source map is still active. This is especially common in DS1, which has a lot of shared textures.
+
+        A map piece FLVER importer can call this method as a backup if a texture is not found based on the initial
+        same-map TPFBHD scanning, using the texture's prefix to find the correct `map_area_dir`. For example, if a map
+        piece in m12 uses a texture named `m10_wall_01`, this method will be called with `map_area_dir` set to
+        `{game_directory}/map/m10`.
+        """
+        self._find_map_area_tpfbhds(map_area_dir)
+
     def scan_binder_textures(self, binder: Binder):
         """Register all TPFs in an arbitrary opened Binder (usually the one containing the FLVER) as pending sources."""
         for tpf_entry in binder.find_entries_matching_name(TPF_RE):
-            self._pending_tpf_sources[tpf_entry.name.split(".")[0]] = tpf_entry
+            tpf_entry_stem = tpf_entry.name.split(".")[0]
+            if tpf_entry_stem not in self._scanned_tpf_sources:
+                self._pending_tpf_sources.setdefault(tpf_entry_stem, tpf_entry)
 
     def get_flver_texture(self, texture_stem: str) -> TPFTexture:
         """Find texture from its stem across all registered/loaded texture file sources."""
+        # TODO: Add a 'hint' argument that helps efficiently find map piece textures in arbitrary maps, based on the
+        #  map prefix of `texture_stem`, so that
+
         if texture_stem in self._tpf_textures:
             # Already found and loaded.
             return self._tpf_textures[texture_stem]
@@ -495,36 +519,49 @@ class TextureManager:
 
     def _load_binder(self, binder_stem):
         binder_path = self._binder_paths.pop(binder_stem)
+        self._scanned_binder_paths.add(binder_path)
         binder = Binder.from_path(binder_path)
         for tpf_entry in binder.find_entries_matching_name(TPF_RE):
-            self._pending_tpf_sources[tpf_entry.name.split(".")[0]] = tpf_entry
+            tpf_entry_stem = tpf_entry.name.split(".")[0]
+            if tpf_entry_stem not in self._scanned_tpf_sources:
+                self._pending_tpf_sources.setdefault(tpf_entry_stem, tpf_entry)
 
     def _load_tpf(self, tpf_stem):
         tpf_path_or_entry = self._pending_tpf_sources.pop(tpf_stem)
+        self._scanned_tpf_sources.add(tpf_stem)
         if isinstance(tpf_path_or_entry, BinderEntry):
             tpf = TPF.from_binder_entry(tpf_path_or_entry)
         else:
             tpf = TPF.from_path(tpf_path_or_entry)
         for texture in tpf.textures:
-            # TODO: Handle duplicate textures/overwrites.
-            self._tpf_textures[texture.name] = texture
+            # TODO: Handle duplicate textures/overwrites. Currently ignoring duplicates.
+            self._tpf_textures.setdefault(texture.name, texture)
 
-    def _find_map_tpfbhds(self, source_dir: Path):
-        map_directory_match = MAP_STEM_RE.match(source_dir.name)
+    def _find_map_tpfbhds(self, map_area_block_dir: Path):
+        """Find 'mAA' directory adjacent to given 'mAA_BB_CC_DD' directory and find all TPFBHD split Binders in it."""
+        map_directory_match = MAP_STEM_RE.match(map_area_block_dir.name)
         if not map_directory_match:
             _LOGGER.warning("Loose FLVER not located in a map folder (`mAA_BB_CC_DD`). Cannot find map TPFs.")
             return
-        tpfbhd_directory = source_dir / f"../m{map_directory_match.group(1)}"
-        if not tpfbhd_directory.is_dir():
-            _LOGGER.warning(f"`mXX` TPFBHD folder does not exist: {tpfbhd_directory}. Cannot find map TPFs.")
+        area = map_directory_match.groupdict()["area"]
+        map_area_dir = map_area_block_dir / f"../m{area}"
+        self._find_map_area_tpfbhds(map_area_dir)
+
+    def _find_map_area_tpfbhds(self, map_area_dir: Path):
+        if not map_area_dir.is_dir():
+            _LOGGER.warning(f"`mXX` TPFBHD folder does not exist: {map_area_dir}. Cannot find map TPFs.")
             return
 
-        for tpf_or_tpfbhd_path in tpfbhd_directory.glob("*.tpf*"):
+        for tpf_or_tpfbhd_path in map_area_dir.glob("*.tpf*"):
             if tpf_or_tpfbhd_path.name.endswith(".tpfbhd"):
-                self._binder_paths[tpf_or_tpfbhd_path.name.split(".")[0]] = tpf_or_tpfbhd_path
+                binder_stem = tpf_or_tpfbhd_path.name.split(".")[0]
+                if tpf_or_tpfbhd_path not in self._scanned_binder_paths:
+                    self._binder_paths.setdefault(binder_stem, tpf_or_tpfbhd_path)
             elif TPF_RE.match(tpf_or_tpfbhd_path.name):
                 # Loose map TPF (usually 'mXX_9999.tpf').
-                self._pending_tpf_sources[tpf_or_tpfbhd_path.name.split(".")[0]] = tpf_or_tpfbhd_path
+                tpf_stem = tpf_or_tpfbhd_path.name.split(".")[0]
+                if tpf_stem not in self._scanned_tpf_sources:
+                    self._pending_tpf_sources.setdefault(tpf_stem, tpf_or_tpfbhd_path)
 
     def _find_chr_tpfbdts(self, source_dir: Path, chrbnd: Binder):
         try:
@@ -543,7 +580,9 @@ class TextureManager:
         tpfbxf = Binder.from_bytes(tpfbhd_entry.data, bdt_data=tpfbdt_path.read_bytes())
         for tpf_entry in tpfbxf.find_entries_matching_name(TPF_RE):
             # These are very likely to be used by the FLVER, but we still queue them up rather than open them now.
-            self._pending_tpf_sources[tpf_entry.name.split(".")[0]] = tpf_entry
+            tpf_stem = tpf_entry.name.split(".")[0]
+            if tpf_stem not in self._scanned_tpf_sources:
+                self._pending_tpf_sources.setdefault(tpf_stem, tpf_entry)
 
     def _find_aeg_tpfs(self, source_dir: Path):
         aeg_directory_match = AEG_STEM_RE.match(source_dir.name)
@@ -556,4 +595,6 @@ class TextureManager:
             return
 
         for tpf_path in aet_directory.glob("*.tpf"):
-            self._pending_tpf_sources[tpf_path.name.split(".")[0]] = tpf_path
+            tpf_stem = tpf_path.name.split(".")[0]
+            if tpf_stem not in self._scanned_tpf_sources:
+                self._pending_tpf_sources.setdefault(tpf_stem, tpf_path)

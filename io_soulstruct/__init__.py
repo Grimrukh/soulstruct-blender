@@ -14,7 +14,7 @@ from pathlib import Path
 import bpy
 
 # Add 'modules' subdirectory to Python path. We simply bundle them with the addon.
-addon_modules_path = str(Path(__file__).parent / "modules")
+addon_modules_path = str((Path(__file__).parent / "../io_soulstruct_lib").resolve())
 if addon_modules_path not in sys.path:
     sys.path.append(addon_modules_path)
 

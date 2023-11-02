@@ -27,6 +27,17 @@ This is an experimental add-on that is not yet published to Blender. To install 
 4. Open Blender and go to `Edit > Preferences > Add-ons`.
 5. In the Add-ons tab, find `Import-Export: Soulstruct` and enable it by checking the box next to it.
 
+If you would like to install or update the add-on directly from Git without an official GitHub
+release, clone and update (or just download) the repo, and update the contents of `scripts/addons/io_soulstruct`
+from the main `io_soulstruct` folder in the repo, *without* deleting the `scripts/addons/io_soulstruct/modules` folder
+that came with the zip. **Note that updated `io_soulstruct` versions without zip releases may also use
+newer versions of `soulstruct` and `soulstruct-havok`.** I'll soon add these as Git submodules to the repo. (You can
+update `modules/soulstruct` yourself using the [Soulstruct repo](https://github.com/Grimrukh/soulstruct), but as
+`soulstruct-havok` isn't public yet, this will be impossible to update yourself.)
+
+Whenever you update an add-on in Blender, you will need to either restart Blender (recommended) or call the 
+`Reload Scripts` function from Blender.
+
 ## Basic Usage
 
 The add-on implements many different operators for importing and exporting supported file types.
@@ -57,32 +68,50 @@ the model files. When imported this way, the name of the Blender object wil
 The add-on imports FLVER models as Blender objects with particular structures that can later be exported.
 If you want to create objects from scratch, I recommend simply inspecting and copying the structure of imported
 files. Very briefly, the structures are as follows:
-- **FLVER**: An `Armature` parent object with a `Mesh` child and any number of empty `Dummy` children.
-  - The `Mesh` object must have a handful of custom properties (look at an imported one).
-  - The `Mesh` object must have an `Armature` modifier pointing to the parent `Armature` object.
-  - The `Mesh` object must have vertex groups named after the bones in the parent `Armature`.
-    - Map piece vertices **must be weighted to exactly one bone** with weight 1 (used as a simple offset, e.g., for plants).
-    - Character/object vertices **must be weighted to between one and four bones**.
-  - The `Dummy` objects must have custom properties named after the bones in the parent `Armature`.
-  - Soulstruct automatically **merges all FLVER submeshes** and **splits them on export** based on face material slot.
-    - My splitter also handles the maximum per-submesh bone count for DS1 (38) automatically :)
-  - You can export a `Mesh` that does not have an `Armature` parent, in which case the FLVER skeleton will have one eponymous bone to which all vertices are weighted.
-    - This is fine for, e.g., most map pieces.
-  - Material node trees are automatically generated using the MTD parameters of each FLVER material.
-    - Soulstruct will attempt to find the `mtdbnd` Binder inside the selected game's `mtd` folder.
-      - You can supply a custom `mtdbnd` path in the `General Settings` panel.
-      - If the Binder is not found, Soulstruct will guess as much material information as possible just from the name of the MTD.
-    - The **names of the texture nodes** in each material are used on export, e.g. `g_Diffuse`.
-    - You can otherwise edit the shader to your heart's content; it will not affect export.
-- **HKX Map Collision**: An empty parent object with one or more `h*` (hi-res) submeshes and one or more `l*` (lo-res) submeshes.
-  - Aside from the mesh data, the only required data is the `material_index` of each submesh.
-  - Basic diffuse materials are created so you can distinguish collisions by res (lo/hi) and material index.
-  - The material index enum is largely unmapped. Look at examples (solid, water, metal, etc.) to judge.
-  - Select the empty parent object of the submeshes to export.
-- **NVM**: A single `Mesh` object with material slots used to represent per-face flags.
-  - The flag materials are colored for visual convenience.
-- **MCG**: A complicated navigation graph that accompanies the navmeshes for each map.
-  - TODO.
+
+### FLVER
+
+An `Armature` parent object with a `Mesh` child and any number of empty `Dummy` children.
+- The `Mesh` object must have a handful of custom properties (look at an imported one).
+- The `Mesh` object must have an `Armature` modifier pointing to the parent `Armature` object.
+- The `Mesh` object must have vertex groups named after the bones in the parent `Armature`.
+  - Map piece vertices **must be weighted to exactly one bone** with weight 1 (used as a simple offset, e.g., for plants).
+  - Character/object vertices **must be weighted to between one and four bones**.
+- The `Dummy` objects must have certain custom properties: `Color RGBA` (4-int array), `Flag 1` (bool), 
+`Parent Bone Name` (Armature bone name used to offset dummy; optional), `Unk x30` and `Unk x34` (both usually zero),
+and `Use Upward Vector` (bool, usually `True`).
+  - Each `Dummy` is usually *attached* to an Armature bone for animating, which is different to `Parent Bone Name`.
+  This is represented directly as a bone relation in Blender (see object `Relations` data).
+  - Note that the most important property of each Dummy -- its reference ID, used in params, events, TAE, etc. -- is 
+  **stored directly in its Blender object name in square brackets (e.g. `c1000 Dummy<0> [123]` has reference ID 123)**.
+- Soulstruct automatically **merges all FLVER submeshes** and **splits them on export** based on face material slot.
+  - My splitter also handles the maximum per-submesh bone count for DS1 (38) automatically :)
+- You can export a `Mesh` that does not have an `Armature` parent, in which case the FLVER skeleton will have one eponymous bone to which all vertices are weighted.
+  - This is fine for, e.g., most map pieces.
+- Material node trees are automatically generated using the MTD parameters of each FLVER material.
+  - Soulstruct will attempt to find the `mtdbnd` Binder inside the selected game's `mtd` folder.
+    - You can supply a custom `mtdbnd` path in the `General Settings` panel.
+    - If the Binder is not found, Soulstruct will guess as much material information as possible just from the name of the MTD.
+  - The **names of the texture nodes** in each material are used on export, e.g. `g_Diffuse`.
+  - You can otherwise edit the shader to your heart's content; it will not affect export.
+
+### HKX Map Collision
+
+An empty parent object with one or more `h*` (hi-res) submeshes and one or more `l*` (lo-res) submeshes.
+- Aside from the mesh data, the only required data is the `material_index` of each submesh.
+- Basic diffuse materials are created so you can distinguish collisions by res (lo/hi) and material index.
+- The material index enum is largely unmapped. Look at examples (solid, water, metal, etc.) to judge.
+- Select the empty parent object of the submeshes to export.
+
+### NVM
+
+A single `Mesh` object with material slots used to represent per-face flags.
+- The flag materials are colored for visual convenience.
+
+### MCG
+
+A complicated navigation graph that accompanies the navmeshes for each map.
+- **TODO**
 
 ## Game Support
 
@@ -99,6 +128,11 @@ be complete (mainly because of the lack of `GXList` support) and export may not 
 ## Known Issues
 
 Given the complexity of this add-on, bugs are likely. We appreciate your patience and encourage you to file bug reports.
+
+- **c4500 (Manus) in DS1R cannot be imported**. Manus appears to use some unique material types that aren't supported yet.
+- **Certain NVM files cannot be imported**. Some vanilla NVM files, such as `n0000B2A10.nvm` in Firelink Shrine, appear
+to contain invalid internal offsets that currently cause Soulstruct to raise an error. This is likely a harmless issue
+that will be more gracefully resolved in a future update.
 
 ## Bug Reporting
 

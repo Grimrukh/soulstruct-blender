@@ -227,6 +227,10 @@ class GlobalSettings(bpy.types.PropertyGroup):
         settings.map_stem = map_stem
         settings.png_cache_directory = json_settings.get("png_cache_directory", "")
         settings.mtdbnd_path = json_settings.get("mtdbnd_path", "")
+        settings.use_bak_file = json_settings.get("use_bak_file", False)
+        settings.detect_map_from_parent = json_settings.get("detect_map_from_parent", True)
+        settings.msb_import_mode = json_settings.get("msb_import_mode", False)
+        settings.msb_export_mode = json_settings.get("msb_export_mode", False)
 
     @staticmethod
     def save_settings():
@@ -234,7 +238,10 @@ class GlobalSettings(bpy.types.PropertyGroup):
         settings = bpy.context.scene.soulstruct_global_settings
         current_settings = {
             key: getattr(settings, key)
-            for key in ("game", "game_directory", "map_stem", "png_cache_directory", "mtdbnd_path")
+            for key in (
+                "game", "game_directory", "map_stem", "png_cache_directory", "mtdbnd_path",
+                "use_bak_file", "detect_map_from_parent", "msb_import_mode", "msb_export_mode",
+            )
         }
         write_json(_SETTINGS_PATH, current_settings, indent=4)
         print(f"Saved settings to {_SETTINGS_PATH}")

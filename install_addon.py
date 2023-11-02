@@ -32,9 +32,9 @@ def install(blender_scripts_dir: str | Path, update_soulstruct_module=False, upd
     blender_addons_dir = blender_scripts_dir / "addons"
     addon_dir = blender_addons_dir / "io_soulstruct"
     addon_dir.mkdir(exist_ok=True, parents=True)
-    modules_dir = addon_dir / "modules"
+    modules_dir = (addon_dir / "../io_soulstruct_lib").resolve()
 
-    # Install actual Blender scripts.
+    # Install actual Blender scripts, preserving existing 'GlobalSettings.json' only.
     settings_path = addon_dir / "GlobalSettings.json"
     if settings_path.is_file():
         settings_data = settings_path.read_bytes()
@@ -42,11 +42,18 @@ def install(blender_scripts_dir: str | Path, update_soulstruct_module=False, upd
         # Default settings.
         settings_data = json.dumps(
             {
-                "GameDirectory": "",
-                "PNGCacheDirectory": "D:\\blender_png_cache",
+                "game": "DS1R",
+                "game_directory": "",
+                "map_stem": "0",
+                "png_cache_directory": "",
+                "mtdbnd_path": "",
+                "use_bak_file": False,
+                "detect_map_from_parent": True,
+                "msb_import_mode": False,
+                "msb_export_mode": False,
             }, indent=4
         ).encode()
-    shutil.rmtree(addon_dir, ignore_errors=True)
+    shutil.rmtree(addon_dir, ignore_errors=False)
     shutil.copytree(
         this_dir / "io_soulstruct",
         addon_dir,

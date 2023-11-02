@@ -260,6 +260,17 @@ class QuickImportMapPieceFLVER(LoggingOperator, ImportFLVERMixin):
         if self.find_game_tpfs:
             texture_manager.find_flver_textures(flver_path)
 
+        # Check all textures in FLVER for specific map 'mAA_' prefix textures and register TPFBHDs in those maps.
+        area_re = re.compile(r"^m\d\d_")
+        texture_map_areas = {
+            texture_path.stem[:3]
+            for texture_path in flver.get_all_texture_paths()
+            if re.match(area_re, texture_path.stem)
+        }
+        for map_area in texture_map_areas:
+            map_area_dir = (flver_path.parent / f"../{map_area}").resolve()
+            texture_manager.find_specific_map_textures(map_area_dir)
+
         importer = FLVERImporter(self, context, self.get_import_settings(context, texture_manager))
 
         try:
@@ -584,7 +595,8 @@ class FLVERImporter:
 
         if flver.gx_lists:
             self.warning(
-                f"FLVER {self.name} has GX lists, which are not yet supported by the importer. They will be lost."
+                f"FLVER {self.name} has GX Lists, which are not yet supported by Soulstruct for Blender. "
+                f"They will be lost."
             )
 
         png_cache_directory = GlobalSettings.get_scene_settings(self.context).png_cache_directory
@@ -773,9 +785,9 @@ class FLVERImporter:
         return bl_armature_obj
 
     def load_texture_images(self, texture_manager: TextureManager = None) -> list[bpy.types.Image]:
-        """Load texture images from either `png_cache` folder, TPFs found with the FLVER, or found loose (map) TPFs.
+        """Load texture images from either `png_cache` folder or TPFs found with `texture_manager`.
 
-        Will NEVER load an image that is already in Blender's data (identified by stem only).
+        Will NEVER load an image that is already in Blender's data, regardless of image type (identified by stem only).
         """
         bl_image_stems = {Path(image.name).stem for image in bpy.data.images}
         new_loaded_images = []
@@ -868,9 +880,6 @@ class FLVERImporter:
             # noinspection PyTypeChecker
             return self.create_obj(f"{name} Mesh <INVALID>", bl_mesh)
 
-        # from soulstruct.utilities.inspection import profile_function
-
-        # bl_vert_bone_weights, bl_vert_bone_indices = profile_function(20)(self.create_bm_mesh)(
         bl_vert_bone_weights, bl_vert_bone_indices = self.create_bm_mesh(
             bl_mesh,
             flver,
