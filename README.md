@@ -9,6 +9,7 @@ I developed these tools over the years in parallel with the development of Dark 
 ## Table of Contents
 
 - [Installation](#installation)
+- [Basic Usage](#basic-usage)
 - [Game Support](#game-support)
 - [Upcoming Features](#upcoming-features)
 - [Known Issues](#known-issues)
