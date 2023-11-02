@@ -24,6 +24,7 @@ __all__ = [
     "draw_mcg_nodes",
     "draw_mcg_node_labels",
     "draw_mcg_edges",
+    "CreateMCGEdgeOperator",
 ]
 
 import importlib

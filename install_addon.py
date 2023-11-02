@@ -26,53 +26,56 @@ def install(blender_scripts_dir: str | Path, update_soulstruct_module=False, upd
             f"Expected Blender install directory to be called 'scripts'. Given path: {blender_scripts_dir}"
         )
 
+    this_dir = Path(__file__).parent
+    blender_addons_dir = blender_scripts_dir / "addons"
+    addon_dir = blender_addons_dir / "io_soulstruct"
+    addon_dir.mkdir(exist_ok=True, parents=True)
+    modules_dir = addon_dir / "modules"
+
+    # Install actual Blender scripts.
+    settings_path = addon_dir / "GlobalSettings.json"
+    if settings_path.is_file():
+        settings_data = settings_path.read_bytes()
+    else:
+        # Default settings.
+        settings_data = json.dumps(
+            {
+                "GameDirectory": "",
+                "PNGCacheDirectory": "D:\\blender_png_cache",
+            }, indent=4
+        ).encode()
+    shutil.rmtree(addon_dir, ignore_errors=True)
+    shutil.copytree(this_dir / "io_soulstruct", addon_dir)
+    settings_path.write_bytes(settings_data)
+    print(f"# Blender addon `io_soulstruct` installed to '{blender_addons_dir}'.")
+
     if update_soulstruct_module:
         # Full Soulstruct install, now that Blender 3.3 supports Python 3.10.
         print("# Installing Soulstruct module into Blender...")
-        shutil.rmtree(blender_scripts_dir / "modules/soulstruct", ignore_errors=True)
+        shutil.rmtree(modules_dir / "soulstruct", ignore_errors=True)
         # Removal may not be complete if Blender is open, particularly as `soulstruct.log` may not be deleted.
         shutil.copytree(
             PACKAGE_PATH(),
-            blender_scripts_dir / "modules/soulstruct",
+            modules_dir / "soulstruct",
             dirs_exist_ok=True,
             ignore=shutil.ignore_patterns("*.pyc", "__pycache__", "oo2core_6_win64.dll"),
         )
 
         # Copy over `oo2core_6_win64.dll` if it exists and isn't already in destination folder.
         oo2core_dll = PACKAGE_PATH("oo2core_6_win64.dll")
-        if oo2core_dll.is_file() and not (blender_scripts_dir / "modules/soulstruct/oo2core_6_win64.dll").is_file():
-            shutil.copy(oo2core_dll, blender_scripts_dir / "modules/soulstruct")
-
-        if update_third_party_modules:
-            install_site_package("colorama", blender_scripts_dir / "modules/colorama")
-            install_site_package("scipy", blender_scripts_dir / "modules/scipy")
-            install_site_package("scipy.libs", blender_scripts_dir / "modules/scipy.libs")
+        if oo2core_dll.is_file() and not (modules_dir / "soulstruct/oo2core_6_win64.dll").is_file():
+            shutil.copy(oo2core_dll, modules_dir / "soulstruct")
 
         if HAVOK_PACKAGE_PATH is not None:
             print("# Installing Soulstruct-Havok module into Blender...")
-            shutil.rmtree(blender_scripts_dir / "modules/soulstruct_havok", ignore_errors=True)
+            shutil.rmtree(modules_dir / "soulstruct_havok", ignore_errors=True)
             # Removal may not be complete if Blender is open, particularly as `soulstruct.log` may not be deleted.
-            shutil.copytree(HAVOK_PACKAGE_PATH(), blender_scripts_dir / "modules/soulstruct_havok", dirs_exist_ok=True)
+            shutil.copytree(HAVOK_PACKAGE_PATH(), modules_dir / "soulstruct_havok", dirs_exist_ok=True)
 
-    # Install actual Blender scripts.
-    this_dir = Path(__file__).parent
-    blender_addons_dir = blender_scripts_dir / "addons"
-    blender_module_dir = blender_addons_dir / "io_soulstruct"
-    blender_module_dir.mkdir(exist_ok=True, parents=True)
-
-    settings_path = blender_module_dir / "GlobalSettings.json"
-    if settings_path.is_file():
-        settings_data = settings_path.read_bytes()
-    else:
-        # Default settings.
-        settings_data = json.dumps({
-            "GameDirectory": "",
-            "PNGCacheDirectory": "D:\\blender_png_cache",
-        }, indent=4).encode()
-    shutil.rmtree(blender_module_dir, ignore_errors=True)
-    shutil.copytree(this_dir / "io_soulstruct", blender_module_dir)
-    settings_path.write_bytes(settings_data)
-    print(f"# Blender addon `io_soulstruct` installed to '{blender_addons_dir}'.")
+        if update_third_party_modules:
+            install_site_package("colorama", modules_dir / "colorama")
+            install_site_package("scipy", modules_dir / "scipy")
+            install_site_package("scipy.libs", modules_dir / "scipy.libs")
 
 
 def install_site_package(dir_name: str, destination_dir: Path):
@@ -91,7 +94,7 @@ def install_site_package(dir_name: str, destination_dir: Path):
 
 def main(args):
     match args:
-        case[blender_scripts_directory, "--updateSoulstruct", "--updateThirdParty"]:
+        case [blender_scripts_directory, "--updateSoulstruct", "--updateThirdParty"]:
             install(blender_scripts_directory, update_soulstruct_module=True, update_third_party_modules=True)
         case [blender_scripts_directory, "--updateSoulstruct"]:
             install(blender_scripts_directory, update_soulstruct_module=True)

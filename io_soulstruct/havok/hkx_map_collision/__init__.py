@@ -17,9 +17,6 @@ from pathlib import Path
 import bpy
 
 # Force reload of Soulstruct module (for easier updating).
-modules_path = str(Path(__file__).parent / "modules")
-if modules_path not in sys.path:
-    sys.path.append(modules_path)
 try:
     import soulstruct_havok
 except ImportError:

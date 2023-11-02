@@ -12,11 +12,11 @@ import sys
 from pathlib import Path
 
 import bpy
-from io_soulstruct.navmesh.nav_graph import CreateMCGEdgeOperator
 
-modules_path = str(Path(__file__).parent / "modules")
-if modules_path not in sys.path:
-    sys.path.append(modules_path)
+# Add 'modules' subdirectory to Python path. We simply bundle them with the addon.
+addon_modules_path = str(Path(__file__).parent / "modules")
+if addon_modules_path not in sys.path:
+    sys.path.append(addon_modules_path)
 
 # Reload all Soulstruct modules, then all modules in this add-on (except this script).
 for module_name in list(sys.modules.keys()):
