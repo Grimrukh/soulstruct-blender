@@ -25,10 +25,7 @@ class GlobalSettingsPanel_ViewMixin:
         split.column().prop(context.scene.soulstruct_global_settings, "game_directory")
         split.column().operator(SelectGameDirectory.bl_idname, text="Browse")
 
-        row = layout.row()
-        split = row.split(factor=0.75)
-        split.column().prop(context.scene.soulstruct_global_settings, "map_stem")
-        split.column().operator(SelectMapDirectory.bl_idname, text="Browse")
+        layout.row().prop(context.scene.soulstruct_global_settings, "map_stem")
 
         row = layout.row()
         split = row.split(factor=0.75)

@@ -26,6 +26,8 @@ def install(blender_scripts_dir: str | Path, update_soulstruct_module=False, upd
             f"Expected Blender install directory to be called 'scripts'. Given path: {blender_scripts_dir}"
         )
 
+    ignore_pycache = shutil.ignore_patterns("__pycache__", "*.pyc")
+
     this_dir = Path(__file__).parent
     blender_addons_dir = blender_scripts_dir / "addons"
     addon_dir = blender_addons_dir / "io_soulstruct"
@@ -45,7 +47,13 @@ def install(blender_scripts_dir: str | Path, update_soulstruct_module=False, upd
             }, indent=4
         ).encode()
     shutil.rmtree(addon_dir, ignore_errors=True)
-    shutil.copytree(this_dir / "io_soulstruct", addon_dir)
+    shutil.copytree(
+        this_dir / "io_soulstruct",
+        addon_dir,
+        ignore=shutil.ignore_patterns(
+            "__pycache__", "*.pyc", "__address_cache__", "soulstruct_config.json", "soulstruct.log"
+        ),
+    )
     settings_path.write_bytes(settings_data)
     print(f"# Blender addon `io_soulstruct` installed to '{blender_addons_dir}'.")
 
@@ -70,7 +78,12 @@ def install(blender_scripts_dir: str | Path, update_soulstruct_module=False, upd
             print("# Installing Soulstruct-Havok module into Blender...")
             shutil.rmtree(modules_dir / "soulstruct_havok", ignore_errors=True)
             # Removal may not be complete if Blender is open, particularly as `soulstruct.log` may not be deleted.
-            shutil.copytree(HAVOK_PACKAGE_PATH(), modules_dir / "soulstruct_havok", dirs_exist_ok=True)
+            shutil.copytree(
+                HAVOK_PACKAGE_PATH(),
+                modules_dir / "soulstruct_havok",
+                ignore=ignore_pycache,
+                dirs_exist_ok=True,
+            )
 
         if update_third_party_modules:
             install_site_package("colorama", modules_dir / "colorama")
@@ -89,7 +102,12 @@ def install_site_package(dir_name: str, destination_dir: Path):
     if not package_dir.is_dir():
         raise FileNotFoundError(f"Could not find site-package directory: {package_dir}.")
     print(f"# Installing site-package `{dir_name}` into Blender...")
-    shutil.copytree(package_dir, destination_dir, dirs_exist_ok=True)
+    shutil.copytree(
+        package_dir,
+        destination_dir,
+        ignore=shutil.ignore_patterns("*.pyc", "__pycache__"),
+        dirs_exist_ok=True,
+    )
 
 
 def main(args):
