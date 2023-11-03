@@ -21,11 +21,15 @@ This is an experimental add-on that is not yet published to Blender. To install 
 
 1. Ensure you have **Blender 3.3 or later**, as Python 3.10 is required.
 2. Download the add-on `.zip` file from the GitHub repository (Releases).
-3. Unzip the contents into your Blender's `scripts/addons` directory. 
-    - Typically, the directory is located at `Blender Foundation/Blender/<version>/scripts/addons/`.
-    - That directory may also be in `<User>/AppData/Roaming` on Windows, which may be easier to use than the actual Blender installation.
+3. Unzip the contents into your Blender's **user** `scripts/addons` directory.
+   - On Windows, the directory is typically at `C:/<User>/AppData/Roaming/Blender Foundation/Blender/<version>/scripts/addons/`.
+   - **Do not** unzip the contents into the Blender installation directory (e.g. in `Program Files`). The Soulstruct
+   module may not have write access there. If you see a `PermissionError` when trying to enable the add-on in Blender, 
+   check you haven't done this!
 4. Open Blender and go to `Edit > Preferences > Add-ons`.
 5. In the Add-ons tab, find `Import-Export: Soulstruct` and enable it by checking the box next to it.
+6. Press the N key in the 3D View window or click the little arrow in the top-right and you should see the `Soulstruct`
+   and `Soulstruct Havok` tabs, which is the main GUI for the add-on.
 
 If you would like to install or update the add-on directly from Git without an official GitHub
 release, clone and update (or just download) the repo, and update the contents of `scripts/addons/io_soulstruct`
@@ -126,6 +130,7 @@ be complete (mainly because of the lack of `GXList` support) and export may not 
 ## Upcoming Features
 
 - Support for other games like **Dark Souls: Prepare to Die Edition**, **Dark Souls III**, and **Elden Ring** is in development.
+- Support for at least Dark Souls 2 FLVER models is likely to come.
 - More comprehensive documentation and video tutorials are coming soon.
 
 ## Known Issues

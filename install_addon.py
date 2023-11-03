@@ -92,10 +92,10 @@ def install(blender_scripts_dir: str | Path, update_soulstruct_module=False, upd
                 dirs_exist_ok=True,
             )
 
-        if update_third_party_modules:
-            install_site_package("colorama", modules_dir / "colorama")
-            install_site_package("scipy", modules_dir / "scipy")
-            install_site_package("scipy.libs", modules_dir / "scipy.libs")
+    if update_third_party_modules:
+        install_site_package("colorama", modules_dir / "colorama")
+        install_site_package("scipy", modules_dir / "scipy")
+        install_site_package("scipy.libs", modules_dir / "scipy.libs")
 
 
 def install_site_package(dir_name: str, destination_dir: Path):

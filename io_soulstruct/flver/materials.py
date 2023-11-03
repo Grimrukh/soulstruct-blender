@@ -39,9 +39,7 @@ def get_submesh_blender_material(
     bl_material["GX Index"] = material.gx_index  # int
     bl_material["MTD Path"] = material.mtd_path  # str
     bl_material["Unk x18"] = material.unk_x18  # int
-    # TODO: How to handle texture path prefixes? Look up names in map TPFBHDs on export and copy path?
-    #  TPFBHD TPF contents don't actually have full paths, so maybe they're not even needed in the FLVER data.
-    #  Test if this is the case and just drop them if possible.
+    # NOTE: Texture path prefixes not stored, as they aren't actually needed in the TPFBHDs.
 
     node_tree = bl_material.node_tree
     node_tree.nodes.remove(node_tree.nodes["Principled BSDF"])

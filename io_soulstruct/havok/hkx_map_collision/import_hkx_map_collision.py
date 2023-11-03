@@ -648,7 +648,7 @@ class HKXMapCollisionImporter:
         bl_mesh.from_pydata(vertices, edges, faces)
 
         bl_mesh_obj = self.create_obj(mesh_name, bl_mesh)
-        bl_mesh_obj["material_index"] = material_index
+        bl_mesh_obj["Material Index"] = material_index
 
         # noinspection PyTypeChecker
         return bl_mesh_obj

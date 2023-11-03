@@ -640,7 +640,14 @@ class HKXMapCollisionExporter:
 
         for bl_mesh in bl_meshes:
 
-            material_index = get_bl_prop(bl_mesh, "material_index", int, default=0)
+            if bl_mesh.get("Material Index", None) is None and bl_mesh.get("material_index", None) is not None:
+                # NOTE: Legacy code for previous name of this property. TODO: Remove after a few releases.
+                material_index = get_bl_prop(bl_mesh, "material_index", int, default=0)
+                # Move property to new name.
+                bl_mesh["Material Index"] = material_index
+                del bl_mesh["material_index"]
+            else:
+                material_index = get_bl_prop(bl_mesh, "Material Index", int, default=0)
             hkx_material_indices.append(material_index)
 
             # Swap Y and Z coordinates.

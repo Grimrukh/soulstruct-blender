@@ -1243,7 +1243,8 @@ class FLVERExporter:
                 if texture_type != "g_DetailBumpmap":
                     raise FLVERExportError(
                         f"Could not find a shader node for required texture type '{texture_type}' in material "
-                        f"'{bl_material}'."
+                        f"'{bl_material}'. You must create an Image Texture node in the shader and give it this name, "
+                        f"then assign a Blender texture to it. (You do not have to connect the node to any others.)"
                     )
                 else:
                     texture_path = ""  # missing
@@ -1252,7 +1253,9 @@ class FLVERExporter:
                 if tex_node.image is None:
                     if texture_type != "g_DetailBumpmap" and not self.settings.allow_missing_textures:
                         raise FLVERExportError(
-                            f"Texture node '{tex_node.name}' in material '{bl_material}' has no image assigned."
+                            f"Texture node '{tex_node.name}' in material '{bl_material}' has no image assigned. "
+                            f"You must assign a Blender texture to this node, or enable 'Allow Missing Textures' in "
+                            f"the FLVER export options (standard export only)."
                         )
                     texture_path = ""  # missing
                 else:
@@ -1279,7 +1282,9 @@ class FLVERExporter:
                 if not tex_node.image:
                     if not self.settings.allow_missing_textures:
                         raise FLVERExportError(
-                            f"Unknown texture node '{texture_type}' in material '{bl_material}' has no image assigned."
+                            f"Unknown texture node '{texture_type}' in material '{bl_material}' has no image assigned. "
+                            f"You must assign a Blender texture to this node, or enable 'Allow Missing Textures' in "
+                            f"the FLVER export options (standard export only)."
                         )
                     texture_path = ""  # missing
                 else:
