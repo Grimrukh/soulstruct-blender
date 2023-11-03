@@ -700,6 +700,7 @@ class FLVERImporter:
             submesh_bl_material_indices.append(new_bl_material_index)
             flver_material_hash_variants[material_hash].append(new_bl_material_index)
             self.new_materials.append(bl_material)
+            bl_material_uv_layer_names.append(flver_material_uv_layer_names[material_hash])
 
         bl_flver_mesh = self.create_flver_mesh(
             flver, self.name, submesh_bl_material_indices, bl_material_uv_layer_names
