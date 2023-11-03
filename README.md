@@ -33,11 +33,10 @@ This is an experimental add-on that is not yet published to Blender. To install 
 
 If you would like to install or update the add-on directly from Git without an official GitHub
 release, clone and update (or just download) the repo, and update the contents of `scripts/addons/io_soulstruct`
-from the main `io_soulstruct` folder in the repo, *without* deleting the `scripts/addons/io_soulstruct/modules` folder
-that came with the zip. **Note that updated `io_soulstruct` versions without zip releases may also use
-newer versions of `soulstruct` and `soulstruct-havok`.** I'll soon add these as Git submodules to the repo. (You can
-update `modules/soulstruct` yourself using the [Soulstruct repo](https://github.com/Grimrukh/soulstruct), but as
-`soulstruct-havok` isn't public yet, this will be impossible to update yourself.)
+from the main `io_soulstruct` folder in the repo. **Note that updated `io_soulstruct` versions without zip releases
+may also use newer versions of `soulstruct` and `soulstruct-havok` that need to be installed into `scripts/addons/io_soulstruct_lib`.**
+I'll soon add these as Git submodules to the repo. (You can update `io_soulstruct_lib/soulstruct` yourself using the 
+[Soulstruct repo](https://github.com/Grimrukh/soulstruct), but as `soulstruct-havok` isn't public yet, this will be impossible to update.)
 
 Whenever you update an add-on in Blender, you will need to either restart Blender (recommended) or call the 
 `Reload Scripts` function from Blender.
