@@ -441,7 +441,7 @@ class ImportEquipmentFLVER(LoggingOperator, ImportHelper, ImportFLVERMixin):
 
     @classmethod
     def poll(cls, context):
-        """Animation's rigged armature must be selected (to extract bone names)."""
+        """Armature that equipment is rigged to (usually c0000) must be selected."""
         if len(context.selected_objects) != 1:
             return False
         # TODO: Could check for c0000 bones specifically.
@@ -464,15 +464,10 @@ class ImportEquipmentFLVER(LoggingOperator, ImportHelper, ImportFLVERMixin):
         settings = bpy.context.scene.soulstruct_global_settings  # type: GlobalSettings
         settings.save_settings()
 
-        c0000_armature = context.selected_objects[0]
-        if c0000_armature.type == "MESH":
-            # Search children for first armature.
-            for child in c0000_armature.children:
-                if child.type == "ARMATURE":
-                    c0000_armature = child
-                    break
-            else:
-                return self.error("Selected object is not an armature or does not have an armature child.")
+        # noinspection PyTypeChecker
+        rigged_armature = context.selected_objects[0]  # type: bpy.types.ArmatureObject
+        if rigged_armature.type != "ARMATURE":
+            return self.error("Selected object must be the Armature to which the equipment FLVER is rigged.")
 
         file_paths = [Path(self.directory, file.name) for file in self.files]
         flvers = []
@@ -497,7 +492,7 @@ class ImportEquipmentFLVER(LoggingOperator, ImportHelper, ImportFLVERMixin):
         for file_path, flver in flvers:
             name = file_path.name.split(".")[0]  # drop all extensions
             try:
-                bl_armature, bl_mesh = importer.import_flver(flver, name=name, existing_armature=c0000_armature)
+                bl_armature, bl_mesh = importer.import_flver(flver, name=name, existing_armature=rigged_armature)
             except Exception as ex:
                 importer.abort_import()
                 traceback.print_exc()  # for inspection in Blender console
@@ -565,14 +560,20 @@ class FLVERImporter:
         self.new_materials.clear()
 
     def import_flver(
-        self, flver: FLVER, name: str, transform: tp.Optional[Transform] = None, existing_armature=None
+        self,
+        flver: FLVER,
+        name: str,
+        transform: Transform = None,
+        existing_armature: bpy.types.ArmatureObject = None,
     ) -> tuple[bpy.types.ArmatureObject, bpy.types.MeshObject] | None:
         """Read a FLVER into a Blender mesh and Armature.
 
-        If `existing_armature` is passed, the skeleton of `flver` will be ignored, and its mesh will be rigged to the
-        bones of `existing_armature` instead (e.g. for parenting equipment models to c0000). Dummies should generally
-        not be present in these FLVERs, but if they do exist, they will also be parented to the armature with their
-        original FLVER name as a prefix to distinguish them from the dummies of `existing_armature`.
+        If `existing_armature` is passed, the skeleton of `flver` will not be imported as a new Armature, and the FLVER
+        mesh will be rigged to the bones of `existing_armature` instead (e.g. for parenting equipment models to c0000).
+        Dummies should generally not be present in these FLVERs, but if they do exist, they will also be parented to the
+        armature with their original FLVER name as a prefix to distinguish them from the dummies of `existing_armature`.
+        In this mode, if `flver` vertices are weighted to any bones not in `existing_armature`, they will be ignored and
+        a warning will be logged.
         """
         start_time = time.perf_counter()
 
@@ -599,10 +600,73 @@ class FLVERImporter:
                 f"They will be lost."
             )
 
+        if existing_armature:
+            # Do not create an armature for this FLVER; use `existing_armature` instead.
+            bl_armature_obj = existing_armature
+            # New FLVER mesh is only permitted to use bones in `existing_armature`. Other bone names (e.g. dummy root
+            # bones named after the PARTSBND equipment) will be removed and automatically added on export as needed.
+            armature_bone_names = [bone.name for bone in bl_armature_obj.data.bones]
+            self.bl_bone_names = [bone_name for bone_name in self.bl_bone_names if bone_name in armature_bone_names]
+            dummy_prefix = self.name  # we generally don't expect any dummies, but will distinguish them with this
+            # TODO: warn if `transform` is not None? invalid with existing armature, surely - but harmless?
+        else:
+            # Create a new armature for this FLVER.
+            bl_armature_obj = self.create_armature(settings.base_edit_bone_length)
+            dummy_prefix = ""
+            self.new_objs.append(bl_armature_obj)
+
+            if transform is not None:
+                bl_armature_obj.location = transform.bl_translate
+                bl_armature_obj.rotation_euler = transform.bl_rotate
+                bl_armature_obj.scale = transform.bl_scale
+
+        submesh_bl_material_indices, bl_material_uv_layer_names = self.create_materials(flver)
+
+        bl_flver_mesh = self.create_flver_mesh(
+            flver, self.name, submesh_bl_material_indices, bl_material_uv_layer_names
+        )
+
+        # Assign basic FLVER header information as custom props.
+        # TODO: Configure a full-exporter dropdown/choice of game version that defaults as many of these as possible.
+        #  - `Version` and `Unicode` can be detected from selected game, and possibly the other unknowns
+        #  - `Is Big Endian` can be a global settings bool
+        bl_flver_mesh["Is Big Endian"] = flver.big_endian  # bool
+        bl_flver_mesh["Version"] = flver.version.name  # str
+        bl_flver_mesh["Unicode"] = flver.unicode  # bool
+        bl_flver_mesh["Unk x4a"] = flver.unk_x4a  # bool
+        bl_flver_mesh["Unk x4c"] = flver.unk_x4c  # int
+        bl_flver_mesh["Unk x5c"] = flver.unk_x5c  # int
+        bl_flver_mesh["Unk x5d"] = flver.unk_x5d  # int
+        bl_flver_mesh["Unk x68"] = flver.unk_x68  # int
+
+        # Parent mesh to armature. This is critical for proper animation behavior (especially with root motion).
+        bl_flver_mesh.parent = bl_armature_obj
+
+        self.operator.set_active_obj(bl_flver_mesh)
+        bpy.ops.object.modifier_add(type="ARMATURE")
+        armature_mod = bl_flver_mesh.modifiers["Armature"]
+        armature_mod.object = bl_armature_obj
+        armature_mod.show_in_editmode = True
+        armature_mod.show_on_cage = True
+
+        for i, dummy in enumerate(flver.dummies):
+            self.create_dummy(dummy, index=i, bl_armature=bl_armature_obj, dummy_prefix=dummy_prefix)
+
+        self.operator.info(f"Created FLVER Blender mesh '{name}' in {time.perf_counter() - start_time:.3f} seconds.")
+
+        return bl_armature_obj, bl_flver_mesh  # might be used by other importers
+
+    def create_materials(self, flver: FLVER) -> tuple[list[int], list[list[str]]]:
+        """Create Blender materials needed for `flver`.
+
+        Returns a list of Blender material indices for each submesh, and a list of UV layer names for each Blender
+        material (NOT each submesh).
+        """
+
         png_cache_directory = GlobalSettings.get_scene_settings(self.context).png_cache_directory
-        if settings.texture_manager or png_cache_directory:
+        if self.settings.texture_manager or png_cache_directory:
             p = time.perf_counter()
-            self.new_images = self.load_texture_images(settings.texture_manager)
+            self.new_images = self.load_texture_images(self.settings.texture_manager)
             self.operator.info(f"Loaded {len(self.new_images)} textures in {time.perf_counter() - p:.3f} seconds.")
         else:
             self.warning("No TPF files or DDS dump folder given. No textures loaded for FLVER.")
@@ -627,7 +691,7 @@ class FLVERImporter:
             material_hash = hash(material)
             if material_hash in flver_material_mtd_infos:
                 continue
-            mtd_info = self.get_mtd_info(material.mtd_name, settings.mtd_manager)
+            mtd_info = self.get_mtd_info(material.mtd_name, self.settings.mtd_manager)
             flver_material_mtd_infos[material_hash] = mtd_info
             flver_material_uv_layer_names[material_hash] = flver_material_mtd_infos[material_hash].get_uv_layer_names()
 
@@ -650,7 +714,7 @@ class FLVERImporter:
                     material_name=f"{self.name} Material {flver_material_index}",  # no Variant suffix
                     mtd_info=flver_material_mtd_infos[material_hash],
                     submesh=submesh,
-                    blend_mode=settings.material_blend_mode,
+                    blend_mode=self.settings.material_blend_mode,
                 )  # type: bpy.types.Material
 
                 submesh_bl_material_indices.append(bl_material_index)
@@ -693,7 +757,7 @@ class FLVERImporter:
                 material_name=variant_name,
                 mtd_info=flver_material_mtd_infos[material_hash],
                 submesh=submesh,
-                blend_mode=settings.material_blend_mode,
+                blend_mode=self.settings.material_blend_mode,
             )  # type: bpy.types.Material
 
             new_bl_material_index = len(self.new_materials)
@@ -702,59 +766,7 @@ class FLVERImporter:
             self.new_materials.append(bl_material)
             bl_material_uv_layer_names.append(flver_material_uv_layer_names[material_hash])
 
-        bl_flver_mesh = self.create_flver_mesh(
-            flver, self.name, submesh_bl_material_indices, bl_material_uv_layer_names
-        )
-
-        # Assign basic FLVER header information as custom props.
-        # TODO: Configure a full-exporter dropdown/choice of game version that defaults as many of these as possible.
-        bl_flver_mesh["Is Big Endian"] = flver.big_endian  # bool
-        bl_flver_mesh["Version"] = flver.version.name  # str
-        bl_flver_mesh["Unicode"] = flver.unicode  # bool
-        bl_flver_mesh["Unk x4a"] = flver.unk_x4a  # bool
-        bl_flver_mesh["Unk x4c"] = flver.unk_x4c  # int
-        bl_flver_mesh["Unk x5c"] = flver.unk_x5c  # int
-        bl_flver_mesh["Unk x5d"] = flver.unk_x5d  # int
-        bl_flver_mesh["Unk x68"] = flver.unk_x68  # int
-
-        if existing_armature:
-            # Do not create an armature for this FLVER; use `existing_armature` instead.
-            bl_armature_obj = existing_armature
-            # Parts FLVERs sometimes have extra non-c0000 bones (e.g. multiple bones with their own name), which we will
-            # delete here, to ensure that any attempt to use them in the new meshes raises an error.
-            armature_bone_names = [bone.name for bone in bl_armature_obj.data.bones]
-            for bone_name in tuple(self.bl_bone_names):
-                if bone_name not in armature_bone_names:
-                    self.bl_bone_names.remove(bone_name)
-            dummy_prefix = self.name  # we generally don't expect any dummies, but will distinguish them with this
-            # TODO: warn if `transform` is not None? invalid with existing armature?
-        else:
-            # Create a new armature for this FLVER.
-            bl_armature_obj = self.create_armature(settings.base_edit_bone_length)
-            dummy_prefix = ""
-            self.new_objs.append(bl_armature_obj)
-
-            if transform is not None:
-                bl_armature_obj.location = transform.bl_translate
-                bl_armature_obj.rotation_euler = transform.bl_rotate
-                bl_armature_obj.scale = transform.bl_scale
-
-        # Parent mesh to armature. This is critical for proper animation behavior (especially with root motion).
-        bl_flver_mesh.parent = bl_armature_obj
-
-        self.operator.set_active_obj(bl_flver_mesh)
-        bpy.ops.object.modifier_add(type="ARMATURE")
-        armature_mod = bl_flver_mesh.modifiers["Armature"]
-        armature_mod.object = bl_armature_obj
-        armature_mod.show_in_editmode = True
-        armature_mod.show_on_cage = True
-
-        for i, dummy in enumerate(flver.dummies):
-            self.create_dummy(dummy, index=i, bl_armature=bl_armature_obj, dummy_prefix=dummy_prefix)
-
-        self.operator.info(f"Created FLVER Blender mesh '{name}' in {time.perf_counter() - start_time:.3f} seconds.")
-
-        return bl_armature_obj, bl_flver_mesh  # might be used by other importers
+        return submesh_bl_material_indices, bl_material_uv_layer_names
 
     def get_mtd_info(self, mtd_name: str, mtd_manager: MTDBinderManager = None) -> MTDInfo:
         """Get `MTDInfo` for a FLVER material, which is needed for both material creation and assignment of vertex UV
@@ -873,14 +885,18 @@ class FLVERImporter:
         for material in self.new_materials:
             bl_mesh.materials.append(material)
 
+        if not flver.submeshes:
+            # FLVER has no meshes (e.g. c0000). Leave empty.
+            # noinspection PyTypeChecker
+            return self.create_obj(f"{name} Mesh <EMPTY>", bl_mesh)
+
         if any(mesh.invalid_layout for mesh in flver.submeshes):
-            # Corrupted sub-meshes. Leave empty.
-            # TODO: Should be able to handle known cases of this by redirecting to the correct vertex buffers.
+            # Corrupted submeshes (e.g. some DS1R map pieces). Leave empty.
             # noinspection PyTypeChecker
             return self.create_obj(f"{name} Mesh <INVALID>", bl_mesh)
 
         p = time.perf_counter()
-        # Create merged mesh. Degenerate/duplicate faces are left for Blender to handle.
+        # Create merged mesh.
         merged_mesh = MergedMesh.from_flver(
             flver,
             submesh_bl_material_indices,
@@ -909,26 +925,9 @@ class FLVERImporter:
         merged_mesh.invert_vertex_uv(invert_u=False, invert_v=True)
         merged_mesh.normalize_normals()
 
-        # Create UV and vertex color data layers.
-        for uv_layer_name in merged_mesh.all_uv_layers:
-            bl_mesh.uv_layers.new(name=uv_layer_name, do_init=False)
-        # TODO: Support multiple colors.
-        bl_mesh.vertex_colors.new(name="VertexColors")
-
         bm = bmesh.new()
         bm.from_mesh(bl_mesh)  # bring over UV and vertex color data layers
 
-        # Get data layer accessors.
-        loop_uv_layers = [bm.loops.layers.uv[uv_layer_name] for uv_layer_name in merged_mesh.all_uv_layers]
-        loop_colors_layer = bm.loops.layers.color["VertexColors"]
-
-        # Unfortunately, we have to assign UV and color data per loop object in BMesh, so there's no way to take
-        # advantage of NumPy vectorization here. It's therefore faster to get our loop UV and color data now as lists
-        # rather than repeatedly index the NumPy array.
-        # TODO: Maybe worth a little performance test to see if it's better to assign all this data after all faces are
-        #  created, rather than in loop triplets after each face.
-        loop_uvs_list = [uv_array.tolist() for uv_array in merged_mesh.loop_uvs]
-        loop_colors_list = merged_mesh.loop_vertex_colors[0].tolist()  # TODO: support multiple colors
         if len(merged_mesh.loop_vertex_colors) > 1:
             self.warning("More than one vertex color layer detected. Only the first will be imported into Blender!")
 
@@ -937,8 +936,10 @@ class FLVERImporter:
             bm.verts.new(position)
         bm.verts.ensure_lookup_table()
 
-        bl_loop_normal_indices = []  # need to filter out loops of degenerate faces
-
+        # Loop indices of `merged_mesh` that actually make it into Blender, as degenerate/duplicate faces are ignored.
+        # TODO: I think `MergedMesh` already removes all duplicate faces now, so if I also used it to remove degenerate
+        #  faces, I wouldn't have to keep track here.
+        valid_loop_indices = []
         # TODO: go back to reporting occurrences per-submesh (`faces[:, 3]`)?
         duplicate_face_count = 0
         degenerate_face_count = 0
@@ -967,15 +968,7 @@ class FLVERImporter:
                 raise ex
 
             bm_face.material_index = face[3]
-
-            # TODO: Could potentially speed this up with `foreach_set` on `bm.loops` afterward, but would still need
-            #  to record all FLVER loop indices that actually made it into BM faces (to filter out degenerate faces).
-            #  Very minor optimization though (if at all).
-            for bm_loop, loop_index in zip(bm_face.loops, loop_indices):
-                for uv_i, (uv_list, uv_layer) in enumerate(zip(loop_uvs_list, loop_uv_layers)):
-                    bm_loop[uv_layer].uv = uv_list[loop_index]
-                bm_loop[loop_colors_layer] = loop_colors_list[loop_index]  # TODO: more colors
-                bl_loop_normal_indices.append(loop_index)
+            valid_loop_indices.extend(loop_indices)
 
         self.operator.info(f"Created Blender mesh in {time.perf_counter() - p} s")
 
@@ -990,9 +983,20 @@ class FLVERImporter:
         bm.to_mesh(bl_mesh)
         bm.free()
 
+        # Create and populate UV and vertex color data layers.
+        for i, uv_layer_name in enumerate(merged_mesh.all_uv_layers):
+            uv_layer = bl_mesh.uv_layers.new(name=uv_layer_name, do_init=False)
+            loop_uv_data = merged_mesh.loop_uvs[i][valid_loop_indices].ravel()
+            uv_layer.data.foreach_set("uv", loop_uv_data)
+        # TODO: Support multiple colors.
+        color_layer = bl_mesh.vertex_colors.new(name="VertexColors")
+        loop_color_data = merged_mesh.loop_vertex_colors[0][valid_loop_indices].ravel()
+        color_layer.data.foreach_set("color", loop_color_data)
+
         # Enable custom split normals and assign them.
+        loop_normal_data = merged_mesh.loop_normals[valid_loop_indices]  # NOT raveled
         bl_mesh.create_normals_split()
-        bl_mesh.normals_split_custom_set(merged_mesh.loop_normals[bl_loop_normal_indices])  # one normal per loop
+        bl_mesh.normals_split_custom_set(loop_normal_data)  # one normal per loop
         bl_mesh.use_auto_smooth = True  # required for custom split normals to actually be used (rather than just face)
         bl_mesh.calc_normals_split()  # copy custom split normal data into API mesh loops
 
@@ -1002,11 +1006,13 @@ class FLVERImporter:
 
     def create_bone_vertex_groups(
         self,
-        bl_mesh_obj: bpy.types.Object,
+        bl_mesh_obj: bpy.types.MeshObject,
         bl_vert_bone_weights: np.ndarray,
         bl_vert_bone_indices: np.ndarray,
     ):
         # Naming a vertex group after a Blender bone will automatically link it in the Armature modifier below.
+        # NOTE: For imports that use an existing Armature (e.g. equipment), invalid bone names such as the root dummy
+        # equipment bones have already been removed from `bl_bone_names` here.
         bone_vertex_groups = [
             bl_mesh_obj.vertex_groups.new(name=bone_name)
             for bone_name in self.bl_bone_names
@@ -1131,7 +1137,7 @@ class FLVERImporter:
             edit_bone = bl_armature_data.edit_bones.new(bl_bone_name)  # '<DUPE>' suffixes already added to names
             edit_bone: bpy.types.EditBone
 
-            edit_bone["Unk x3c"] = game_bone.unk_x3c  # TODO: seems to be 1 for root bones?
+            # NOTE: We do not need to store usage flags (formerly 'Unk x3c') on bones, as it can be detected on export.
 
             # If this is `False`, then a bone's rest pose rotation will NOT affect its relative pose basis translation.
             # That is, pose basis translation will be interpreted as being in parent space (or object for root bones)

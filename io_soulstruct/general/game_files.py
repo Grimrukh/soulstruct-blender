@@ -21,13 +21,14 @@ GAME_FILE_ENUMS = {
     "MAP_PIECE": (None, [("0", "None", "None")]),
     "CHRBND": (None, [("0", "None", "None")]),
     "OBJBND": (None, [("0", "None", "None")]),
+    "PARTSBND": (None, [("0", "None", "None")]),
     "NVM": (None, [("0", "None", "None")]),
     "HKX_MAP_COLLISION": (None, [("0", "None", "None")]),
 }  # type: dict[str, tuple[None | Path, list[tuple[str, str, str]]]]
 
 
 # noinspection PyUnusedLocal
-def get_game_map_piece_items(self, context):
+def get_map_piece_items(self, context):
     """Collect quick-importable map pieces, which could be:
         - FLVERs in selected game's selected 'map/mAA_BB_CC_DD' directory
         - or `MSBMapPiece` parts in the selected game's selected map MSB.
@@ -105,6 +106,26 @@ def get_chrbnd_items(self, context):
             return f"Character {stem}"
 
     return _scan_loose_files("CHRBND", scan_directory, chrbnd_glob, desc_callback)
+
+
+# noinspection PyUnusedLocal
+def get_partsbnd_items(self, context):
+    """Collect PARTSBNDs in selected game's s 'parts' directory."""
+    settings = GlobalSettings.get_scene_settings(context)
+    game_directory = settings.game_directory
+    if not game_directory:
+        return _clear_items("PARTSBND")
+    scan_directory = Path(game_directory, "parts")
+    if not scan_directory.is_dir():
+        return _clear_items("PARTSBND")
+    partsbnd_glob = "*.partsbnd"
+    if settings.resolve_dcx_type("Auto", "Binder", False, context).has_dcx_extension():
+        partsbnd_glob += ".dcx"
+
+    def desc_callback(stem: str):
+        return f"Equipment {stem}"
+
+    return _scan_loose_files("PARTSBND", scan_directory, partsbnd_glob, desc_callback)
 
 
 # noinspection PyUnusedLocal
@@ -253,7 +274,7 @@ class GameFiles(bpy.types.PropertyGroup):
 
     map_piece: bpy.props.EnumProperty(
         name="Map Piece",
-        items=get_game_map_piece_items,
+        items=get_map_piece_items,
     )
 
     chrbnd: bpy.props.EnumProperty(
@@ -265,6 +286,11 @@ class GameFiles(bpy.types.PropertyGroup):
     objbnd_name: bpy.props.StringProperty(
         name="Object Name",
         description="Name of OBJBND object file to import",
+    )
+
+    partsbnd: bpy.props.EnumProperty(
+        name="Equipment",
+        items=get_partsbnd_items,
     )
 
     nvm: bpy.props.EnumProperty(

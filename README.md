@@ -136,7 +136,6 @@ be complete (mainly because of the lack of `GXList` support) and export may not 
 
 Given the complexity of this add-on, bugs are likely. We appreciate your patience and encourage you to file bug reports.
 
-- **c4500 (Manus) in DS1R cannot be imported**. Manus appears to use some unique material types that aren't supported yet.
 - **Certain NVM files cannot be imported**. Some vanilla NVM files, such as `n0000B2A10.nvm` in Firelink Shrine, appear
 to contain invalid internal offsets that currently cause Soulstruct to raise an error. This is likely a harmless issue
 that will be more gracefully resolved in a future update.
