@@ -978,7 +978,7 @@ class FLVERImporter:
                 f"FLVER import."
             )
 
-        # TODO: Delete all unused vertices at this point?
+        # TODO: Delete all unused vertices at this point (i.e. vertices that were only used by degen faces)?
 
         bm.to_mesh(bl_mesh)
         bm.free()

@@ -230,6 +230,10 @@ def register():
     LOAD_POST_HANDLERS.append(load_handler)
 
     SPACE_VIEW_3D_HANDLERS.append(
+        bpy.types.SpaceView3D.draw_handler_add(draw_dummy_ids, (), "WINDOW", "POST_PIXEL")
+    )
+
+    SPACE_VIEW_3D_HANDLERS.append(
         bpy.types.SpaceView3D.draw_handler_add(draw_mcg_nodes, (), "WINDOW", "POST_VIEW")
     )
     SPACE_VIEW_3D_HANDLERS.append(

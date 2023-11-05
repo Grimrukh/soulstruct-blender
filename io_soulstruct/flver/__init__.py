@@ -10,6 +10,7 @@ __all__ = [
     "HideAllDummiesOperator",
     "ShowAllDummiesOperator",
     "PrintGameTransform",
+    "draw_dummy_ids",
 
     "ExportLooseFLVER",
     "ExportFLVERIntoBinder",
@@ -133,10 +134,12 @@ class FLVERToolsPanel(bpy.types.Panel):
 
     def draw(self, context):
 
-        misc_box = self.layout.box()
-        misc_box.operator(HideAllDummiesOperator.bl_idname)
-        misc_box.operator(ShowAllDummiesOperator.bl_idname)
-        misc_box.operator(PrintGameTransform.bl_idname)
+        dummy_box = self.layout.box()
+        dummy_box.label(text="Dummies:")
+        dummy_box.prop(context.scene.flver_settings, "dummy_id_draw_enabled", text="Draw Dummy IDs")
+        dummy_box.prop(context.scene.flver_settings, "dummy_id_font_size", text="Dummy ID Font Size")
+        dummy_box.operator(HideAllDummiesOperator.bl_idname)
+        dummy_box.operator(ShowAllDummiesOperator.bl_idname)
 
         textures_box = self.layout.box()
         textures_box.operator(ImportDDS.bl_idname)
@@ -149,6 +152,10 @@ class FLVERToolsPanel(bpy.types.Panel):
         misc_operators_box.label(text="Set Vertex Alpha:")
         misc_operators_box.prop(context.scene.flver_settings, "vertex_alpha")
         misc_operators_box.operator(SetVertexAlpha.bl_idname)
+
+        misc_box = self.layout.box()
+        misc_box.operator(PrintGameTransform.bl_idname)
+
 
 class FLVERUVMapsPanel(bpy.types.Panel):
     """Panel for Soulstruct FLVER UV map operators."""

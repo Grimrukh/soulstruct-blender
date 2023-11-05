@@ -30,7 +30,7 @@ class MCGDrawSettings(bpy.types.PropertyGroup):
 
 
 def draw_mcg_nodes():
-    """Draw MCG nodes and labels."""
+    """Draw MCG nodes points."""
     settings = bpy.context.scene.mcg_draw_settings  # type: MCGDrawSettings
     if not settings.mcg_graph_draw_enabled:
         return

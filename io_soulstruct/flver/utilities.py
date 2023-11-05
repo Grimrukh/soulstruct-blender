@@ -4,6 +4,7 @@ __all__ = [
     "FLVERImportError",
     "FLVERExportError",
     "PrintGameTransform",
+    "DummyInfo",
     "parse_dummy_name",
     "HideAllDummiesOperator",
     "ShowAllDummiesOperator",
@@ -17,6 +18,7 @@ __all__ = [
 ]
 
 import re
+import typing as tp
 from pathlib import Path
 
 from mathutils import Euler, Matrix
@@ -31,11 +33,6 @@ from io_soulstruct.utilities import (
     Transform, BlenderTransform, GAME_TO_BL_EULER, BL_TO_GAME_EULER, BL_TO_GAME_MAT3, LoggingOperator
 )
 from io_soulstruct.general.cached import get_cached_file
-
-
-DUMMY_NAME_RE = re.compile(  # accepts and ignores Blender '.001' suffix and anything else after the `[ref_id]` in name
-    r"^(?P<other_model>\[\w+\] +)?(?P<flver_name>.+) +Dummy<(?P<index>\d+)> *(?P<reference_id>\[\d+\]) *(\.\d+)?$"
-)
 
 
 class FLVERImportError(Exception):
@@ -114,24 +111,32 @@ class PrintGameTransform(LoggingOperator):
         return {"FINISHED"}
 
 
-def parse_dummy_name(dummy_name: str) -> dict[str, str | int]:
-    """Parse a FLVER dummy name into its component parts: `other_model`, `flver_name`, `index`, and `reference_id`.
+DUMMY_NAME_RE = re.compile(  # accepts and ignores Blender '.001' suffix and anything else after the `[ref_id]` in name
+    r"^(?P<model_name>.+) +[Dd]ummy(?P<index><\d+>)? *(?P<reference_id>\[\d+\]) *(\.\d+)?$"
+)
 
-    Returns a dictionary with keys `other_model` (str, optional), `flver_name` (str), `index` (int), and
-    (most importantly) `reference_id` (int).
 
-    If the dummy name is invalid, an empty dictionary is returned.
+class DummyInfo(tp.NamedTuple):
+    model_name: str
+    reference_id: int
+
+
+def parse_dummy_name(dummy_name: str) -> DummyInfo | None:
+    """Validate a FLVER dummy object name and return its extracted `model_name` and `reference_id`.
+
+    The index in the dummy name is not used or required - it is only created by the importer to preserve the order of
+    dummies by default.
+
+    If the dummy name is invalid, `None` is returned.
     """
     match = DUMMY_NAME_RE.match(dummy_name)
-    if match is None:
-        return {}  # invalid name
-    other_model = match.group("other_model")
-    return {
-        "other_model": other_model.strip()[1:-1] if other_model else "",  # exclude brackets
-        "flver_name": match.group("flver_name"),
-        "index": int(match.group("index")),
-        "reference_id": int(match.group("reference_id")[1:-1]),  # exclude brackets
-    }
+    if not match:
+        return None  # invalid name
+
+    return DummyInfo(
+        model_name=match.group("model_name"),
+        reference_id=int(match.group("reference_id")[1:-1]),  # exclude brackets in regex group
+    )
 
 
 def get_flver_from_binder(binder: Binder, file_path: Path) -> FLVER:

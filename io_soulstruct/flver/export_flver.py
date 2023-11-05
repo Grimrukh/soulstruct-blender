@@ -763,8 +763,9 @@ class FLVERExporter:
         with default values based on the current selected game, if able.
 
         If `is_equipment` is True, then only `armature` bones referenced by a Mesh vertex group (even if it contains no
-        vertices) will be exported in this FLVER skeleton, and a dummy root bone named `name` will be added to the start
-        of the exported FLVER skeleton.
+        vertices) will be exported in this FLVER skeleton, and a token root bone named `name` will be added to the start
+        of the exported FLVER skeleton. Additionally, only dummy Empty children with prefix '{name} ' will be exported
+        (though generally, equipment should not have any dummies).
 
         TODO: Currently only really tested for DS1 FLVERs.
         """
@@ -806,8 +807,8 @@ class FLVERExporter:
         self.context.view_layer.objects.active = mesh
 
         # noinspection PyUnresolvedReferences
-        for bl_dummy, dummy_dict in bl_dummies:
-            flver_dummy = self.export_dummy(bl_dummy, dummy_dict["reference_id"], bl_bone_names, bl_bone_data)
+        for bl_dummy, dummy_info in bl_dummies:
+            flver_dummy = self.export_dummy(bl_dummy, dummy_info.reference_id, bl_bone_names, bl_bone_data)
             # Mark attach/parent bones as used. TODO: Set more specific flags in later games (2 here).
             if flver_dummy.attach_bone_index >= 0:
                 flver.bones[flver_dummy.attach_bone_index].usage_flags = 0
@@ -853,32 +854,40 @@ class FLVERExporter:
         return flver
 
     def collect_dummies(
-        self, mesh: bpy.types.MeshObject, armature: bpy.types.ArmatureObject | None
-    ) -> list[tuple[bpy.types.Object, dict[str, tp.Any]]]:
-        """Collect all Empty children of the Mesh and Armature objects, and return them as a list of tuples of the
-        form `(bl_empty, dummy_dict)`, where `dummy_dict` is the result of `parse_dummy_name` on the empty's name.
+        self,
+        mesh: bpy.types.MeshObject,
+        armature: bpy.types.ArmatureObject | None,
+        name: str = "",
+    ) -> list[tuple[bpy.types.Object, DummyInfo]]:
+        """Collect all Empty children of the Mesh and Armature objects with valid Dummy names including prefix `name`,
+        and return them as a list of tuples of the form `(bl_empty, dummy_info)`.
 
         Dummies parented to the Mesh, rather than the Armature, will NOT be attached to any bones (though may still have
         custom `Parent Bone Name` data).
 
         Note that no dummies need exist in a FLVER (e.g. map pieces).
         """
-        bl_dummies = []  # type: list[tuple[bpy.types.Object, dict[str, tp.Any]]]
-        children = list(mesh.children)
+        bl_dummies = []  # type: list[tuple[bpy.types.Object, DummyInfo]]
+        empty_children = [child for child in mesh.children if child.type == "EMPTY"]
         if armature is not None:
-            children.extend(armature.children)
-        for child in children:
-            if child.type == "EMPTY":
-                if dummy_dict := self.parse_dummy_empty(child, mesh.name):
-                    bl_dummies.append((child, dummy_dict))
-            elif child is not mesh and (armature and child is not armature):
-                self.warning(f"Non-Empty child object '{child.name}' of Mesh/Armature ignored.")
+            empty_children.extend([child for child in armature.children if child.type == "EMPTY"])
+        for child in empty_children:
+            if dummy_info := self.parse_dummy_empty(child):
+                if dummy_info.model_name != name:
+                    self.warning(
+                        f"Ignoring Dummy '{child.name}' with non-matching FLVER model name prefix: "
+                        f"{dummy_info.model_name}"
+                    )
+                else:
+                    bl_dummies.append((child, dummy_info))
+            else:
+                self.warning(f"Ignoring Empty child '{child.name}' with invalid Dummy name.")
 
         # Sort dummies and meshes by 'human sorting' on Blender name (should match order in Blender hierarchy view).
         bl_dummies.sort(key=lambda o: natural_keys(o[0].name))
         return bl_dummies
 
-    def parse_dummy_empty(self, bl_empty: bpy.types.Object, expected_prefix: str) -> dict[str, tp.Any] | None:
+    def parse_dummy_empty(self, bl_empty: bpy.types.Object) -> DummyInfo | None:
         """Check for required 'Unk x30' custom property to detect dummies."""
         if bl_empty.get("Unk x30") is None:
             self.warning(
@@ -887,24 +896,15 @@ class FLVERExporter:
             )
             return None
 
-        dummy_dict = parse_dummy_name(bl_empty.name)
-        if not dummy_dict:
+        dummy_info = parse_dummy_name(bl_empty.name)
+        if not dummy_info:
             self.warning(
                 f"Could not interpret Dummy name: '{bl_empty.name}'. Ignoring it. Format should be: \n"
-                f"    `[other_model] {{Name}} Dummy<index> [reference_id]` "
-                f"    where `[other_model]` is an optional prefix used only for attached equipment FLVERs"
+                f"    `{{MODEL_NAME}} Dummy<{{INDEX}}> [{{REFERENCE_ID}}]`\n"
+                f"where 'MODEL_NAME' matches the name of the FLVER being exported."
             )
-        # TODO: exclude dummies with WRONG 'other_model' prefix, depending on whether c0000 or that equipment
-        #  is being exported. Currently excluding all dummies with any 'other_model' defined.
-        if dummy_dict.get("other_model", False):
-            return  # do not export
 
-        if dummy_dict["flver_name"] != expected_prefix:
-            self.warning(
-                f"Dummy '{bl_empty.name}' has unexpected FLVER name prefix '{dummy_dict['flver_name']}. Exporting it "
-                f"anyway."
-            )
-        return dummy_dict
+        return dummy_info
 
     def get_mtd_info(self, bl_material: bpy.types.Material, mtd_manager: MTDBinderManager = None) -> MTDInfo:
         """Get `MTDInfo` for a FLVER material, which is needed for both material creation and assignment of vertex UV
