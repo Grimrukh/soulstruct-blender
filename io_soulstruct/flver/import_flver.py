@@ -43,7 +43,7 @@ from bpy.props import StringProperty, FloatProperty, BoolProperty, EnumProperty,
 from bpy_extras.io_utils import ImportHelper
 from mathutils import Vector, Matrix
 
-from soulstruct.base.models.flver import FLVER, Dummy
+from soulstruct.base.models.flver import FLVER, FLVERBone, Dummy
 from soulstruct.base.models.flver.mesh_tools import MergedMesh
 from soulstruct.containers import Binder
 from soulstruct.dcx import DCXType
@@ -500,6 +500,7 @@ class ImportEquipmentFLVER(LoggingOperator, ImportHelper, ImportFLVERMixin):
 
             # Select newly imported mesh.
             if bl_mesh:
+                bl_mesh["Is Equipment"] = True
                 self.set_active_obj(bl_mesh)
 
         return {"FINISHED"}
@@ -631,6 +632,7 @@ class FLVERImporter:
         #  - `Version` and `Unicode` can be detected from selected game, and possibly the other unknowns
         #  - `Is Big Endian` can be a global settings bool
         bl_flver_mesh["Is Big Endian"] = flver.big_endian  # bool
+        bl_flver_mesh["Is Equipment"] = False  # bool  # enabled by caller if appropriate (affects skeleton export)
         bl_flver_mesh["Version"] = flver.version.name  # str
         bl_flver_mesh["Unicode"] = flver.unicode  # bool
         bl_flver_mesh["Unk x4a"] = flver.unk_x4a  # bool
@@ -1134,6 +1136,7 @@ class FLVERImporter:
         """Create all edit bones from FLVER bones in `bl_armature`."""
         edit_bones = []  # all bones
         for game_bone, bl_bone_name in zip(self.flver.bones, self.bl_bone_names, strict=True):
+            game_bone: FLVERBone
             edit_bone = bl_armature_data.edit_bones.new(bl_bone_name)  # '<DUPE>' suffixes already added to names
             edit_bone: bpy.types.EditBone
 
@@ -1148,12 +1151,7 @@ class FLVERImporter:
             # FLVER bones never inherit scale.
             edit_bone.inherit_scale = "NONE"
 
-            if game_bone.child_index != -1:
-                edit_bone["Child Name"] = self.bl_bone_names[game_bone.child_index]
-            if game_bone.next_sibling_index != -1:
-                edit_bone["Next Sibling Name"] = self.bl_bone_names[game_bone.next_sibling_index]
-            if game_bone.previous_sibling_index != -1:
-                edit_bone["Previous Sibling Name"] = self.bl_bone_names[game_bone.previous_sibling_index]
+            # We don't bother storing child or sibling bones. They are generated from parents on export.
             edit_bones.append(edit_bone)
         return edit_bones
 
@@ -1164,6 +1162,7 @@ class FLVERImporter:
         for game_bone, edit_bone, game_arma_transform in zip(
             self.flver.bones, edit_bones, game_arma_transforms, strict=True
         ):
+            game_bone: FLVERBone
             game_translate, game_rotmat, game_scale = game_arma_transform
 
             if not is_uniform(game_scale, rel_tol=0.001):
@@ -1190,8 +1189,9 @@ class FLVERImporter:
             edit_bone.matrix = bl_lrs_mat
             edit_bone.length = bone_length  # does not interact with `matrix`
 
-            if game_bone.parent_index != -1:
-                parent_edit_bone = edit_bones[game_bone.parent_index]
+            if game_bone.parent_bone is not None:
+                parent_bone_index = game_bone.parent_bone.get_bone_index(self.flver.bones)
+                parent_edit_bone = edit_bones[parent_bone_index]
                 edit_bone.parent = parent_edit_bone
                 # edit_bone.use_connect = True
 
