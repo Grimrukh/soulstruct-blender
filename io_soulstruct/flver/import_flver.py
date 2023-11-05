@@ -22,7 +22,7 @@ __all__ = [
     "QuickImportMapPieceFLVER",
     "QuickImportCharacterFLVER",
     "QuickImportObjectFLVER",
-    "ImportEquipmentFLVER",
+    "QuickImportEquipmentFLVER",
     "FLVERImportSettings",
     "FLVERImporter",
 ]
@@ -352,8 +352,8 @@ class QuickImportCharacterFLVER(LoggingOperator, ImportFLVERMixin):
 
 
 class QuickImportObjectFLVER(LoggingOperator, ImportFLVERMixin):
-    """Import all object FLVERs from the current selected value of listed game map OBJBNDs."""
-    bl_idname = "import_scene.quick_objbnd_flver"
+    """Import all object FLVERs from the current selected game OBJBND name."""
+    bl_idname = "import_scene.quick_object_flver"
     bl_label = "Import Object"
     bl_description = "Import selected object's FLVERs from game OBJBND"
 
@@ -383,6 +383,8 @@ class QuickImportObjectFLVER(LoggingOperator, ImportFLVERMixin):
             return self.error(f"OBJBND path does not exist: {objbnd_path}")
 
         self.info(f"Importing FLVERs from OBJBND: {objbnd_path}")
+
+        # Objects can have multiple FLVERs. We import them all separately.
 
         objbnd = Binder.from_path(objbnd_path)
         flver_entries = objbnd.find_entries_matching_name(r".*\.flver(\.dcx)?")
@@ -416,92 +418,54 @@ class QuickImportObjectFLVER(LoggingOperator, ImportFLVERMixin):
         return {"FINISHED"}
 
 
-class ImportEquipmentFLVER(LoggingOperator, ImportHelper, ImportFLVERMixin):
+class QuickImportEquipmentFLVER(LoggingOperator, ImportFLVERMixin):
     """Import weapon/armor FLVER from a `partsbnd` binder and attach it to selected armature (c0000)."""
-    bl_idname = "import_scene.equipment_flver"
-    bl_label = "Import Equipment FLVER"
-    bl_description = "Import a FromSoftware FLVER equipment model file from a PARTSBND file and attach to c0000."
-
-    filename_ext = ".partsbnd"
-
-    filter_glob: StringProperty(
-        default="*.flver;*.flver.dcx;*.partsbnd;*.partsbnd.dcx",
-        options={'HIDDEN'},
-        maxlen=255,  # Max internal buffer length, longer would be clamped.
-    )
-
-    files: CollectionProperty(
-        type=bpy.types.OperatorFileListElement,
-        options={'HIDDEN', 'SKIP_SAVE'},
-    )
-
-    directory: StringProperty(
-        options={'HIDDEN'},
-    )
+    bl_idname = "import_scene.quick_equipment_flver"
+    bl_label = "Import Equipment"
+    bl_description = "Import equipment FLVER from selected game PARTSBND"
 
     @classmethod
     def poll(cls, context):
-        """Armature that equipment is rigged to (usually c0000) must be selected."""
-        if len(context.selected_objects) != 1:
-            return False
-        # TODO: Could check for c0000 bones specifically.
-        obj = context.selected_objects[0]
-        return obj.type == "ARMATURE"
-
-    def invoke(self, context, _event):
-        """Set the initial directory."""
-        game_directory = GlobalSettings.get_scene_settings(context).game_directory
-        if game_directory:
-            if (parts_dir := Path(game_directory, "parts")).is_dir():
-                self.filepath = str(parts_dir)
-            elif Path(game_directory).is_dir():
-                self.filepath = game_directory
-        return super().invoke(context, _event)
+        game_lists = context.scene.game_files  # type: GameFiles
+        return game_lists.partsbnd not in {"", "0"}
 
     def execute(self, context):
-        self.info("Executing Equipment FLVER import...")
+        game_lists = context.scene.game_files  # type: GameFiles
+
+        partsbnd_path = game_lists.partsbnd
+        if not partsbnd_path:
+            return self.error("No PARTSBND selected.")
+        partsbnd_path = Path(partsbnd_path)
+        if not partsbnd_path.is_file():
+            return self.error(f"PARTSBND path is not a file: {partsbnd_path}.")
+
+        self.info(f"Importing FLVER from PARTSBND: {partsbnd_path}")
+
+        partsbnd = Binder.from_path(partsbnd_path)
+        flver = get_flver_from_binder(partsbnd, partsbnd_path)
+        texture_manager = TextureManager()
+        if self.find_game_tpfs:
+            texture_manager.find_flver_textures(partsbnd_path, partsbnd)
 
         settings = bpy.context.scene.soulstruct_global_settings  # type: GlobalSettings
         settings.save_settings()
 
-        # noinspection PyTypeChecker
-        rigged_armature = context.selected_objects[0]  # type: bpy.types.ArmatureObject
-        if rigged_armature.type != "ARMATURE":
-            return self.error("Selected object must be the Armature to which the equipment FLVER is rigged.")
-
-        file_paths = [Path(self.directory, file.name) for file in self.files]
-        flvers = []
-        texture_manager = TextureManager()
-
-        for file_path in file_paths:
-
-            if FLVER_BINDER_RE.match(file_path.name):
-                binder = Binder.from_path(file_path)
-                flver = get_flver_from_binder(binder, file_path)
-                if self.find_game_tpfs:
-                    texture_manager.find_flver_textures(file_path, binder)
-            else:  # loose equipment FLVER is unusual but supported, but TPFs may not be found
-                flver = FLVER.from_path(file_path)
-                if self.find_game_tpfs:
-                    texture_manager.find_flver_textures(file_path)
-                # No loose TPF sources (nowhere to look).
-            flvers.append((file_path, flver))
-
         importer = FLVERImporter(self, context, self.get_import_settings(context, texture_manager))
 
-        for file_path, flver in flvers:
-            name = file_path.name.split(".")[0]  # drop all extensions
-            try:
-                bl_armature, bl_mesh = importer.import_flver(flver, name=name, existing_armature=rigged_armature)
-            except Exception as ex:
-                importer.abort_import()
-                traceback.print_exc()  # for inspection in Blender console
-                return self.error(f"Cannot import equipment FLVER: {file_path.name}. Error: {ex}")
+        transform = None  # type: Transform | None
 
-            # Select newly imported mesh.
-            if bl_mesh:
-                bl_mesh["Is Equipment"] = True
-                self.set_active_obj(bl_mesh)
+        try:
+            name = partsbnd_path.name.split(".")[0]  # drop all extensions
+            bl_armature, bl_mesh = importer.import_flver(flver, name=name, transform=transform)
+        except Exception as ex:
+            # Delete any objects created prior to exception.
+            importer.abort_import()
+            traceback.print_exc()  # for inspection in Blender console
+            return self.error(f"Cannot import FLVER from PARTSBND: {partsbnd_path.name}. Error: {ex}")
+
+        # Select newly imported mesh.
+        if bl_mesh:
+            self.set_active_obj(bl_mesh)
 
         return {"FINISHED"}
 
@@ -565,7 +529,6 @@ class FLVERImporter:
         flver: FLVER,
         name: str,
         transform: Transform = None,
-        existing_armature: bpy.types.ArmatureObject = None,
     ) -> tuple[bpy.types.ArmatureObject, bpy.types.MeshObject] | None:
         """Read a FLVER into a Blender mesh and Armature.
 
@@ -601,25 +564,14 @@ class FLVERImporter:
                 f"They will be lost."
             )
 
-        if existing_armature:
-            # Do not create an armature for this FLVER; use `existing_armature` instead.
-            bl_armature_obj = existing_armature
-            # New FLVER mesh is only permitted to use bones in `existing_armature`. Other bone names (e.g. dummy root
-            # bones named after the PARTSBND equipment) will be removed and automatically added on export as needed.
-            armature_bone_names = [bone.name for bone in bl_armature_obj.data.bones]
-            self.bl_bone_names = [bone_name for bone_name in self.bl_bone_names if bone_name in armature_bone_names]
-            dummy_prefix = self.name  # we generally don't expect any dummies, but will distinguish them with this
-            # TODO: warn if `transform` is not None? invalid with existing armature, surely - but harmless?
-        else:
-            # Create a new armature for this FLVER.
-            bl_armature_obj = self.create_armature(settings.base_edit_bone_length)
-            dummy_prefix = ""
-            self.new_objs.append(bl_armature_obj)
+        bl_armature_obj = self.create_armature(settings.base_edit_bone_length)
+        dummy_prefix = ""
+        self.new_objs.append(bl_armature_obj)
 
-            if transform is not None:
-                bl_armature_obj.location = transform.bl_translate
-                bl_armature_obj.rotation_euler = transform.bl_rotate
-                bl_armature_obj.scale = transform.bl_scale
+        if transform is not None:
+            bl_armature_obj.location = transform.bl_translate
+            bl_armature_obj.rotation_euler = transform.bl_rotate
+            bl_armature_obj.scale = transform.bl_scale
 
         submesh_bl_material_indices, bl_material_uv_layer_names = self.create_materials(flver)
 
@@ -632,7 +584,6 @@ class FLVERImporter:
         #  - `Version` and `Unicode` can be detected from selected game, and possibly the other unknowns
         #  - `Is Big Endian` can be a global settings bool
         bl_flver_mesh["Is Big Endian"] = flver.big_endian  # bool
-        bl_flver_mesh["Is Equipment"] = False  # bool  # enabled by caller if appropriate (affects skeleton export)
         bl_flver_mesh["Version"] = flver.version.name  # str
         bl_flver_mesh["Unicode"] = flver.unicode  # bool
         bl_flver_mesh["Unk x4a"] = flver.unk_x4a  # bool
@@ -785,7 +736,7 @@ class FLVERImporter:
             return MTDInfo.from_mtd_name(mtd_name)
         return MTDInfo.from_mtd(mtd)
 
-    def create_armature(self, base_edit_bone_length: float) -> bpy.types.Object:
+    def create_armature(self, base_edit_bone_length: float) -> bpy.types.ArmatureObject:
         """Create a new Blender armature to serve as the parent object for the entire FLVER."""
 
         self.operator.to_object_mode()
@@ -795,6 +746,7 @@ class FLVERImporter:
         bl_armature_obj = self.create_obj(f"{self.name}", bl_armature_data)
         self.create_bones(bl_armature_obj, base_edit_bone_length)
 
+        # noinspection PyTypeChecker
         return bl_armature_obj
 
     def load_texture_images(self, texture_manager: TextureManager = None) -> list[bpy.types.Image]:

@@ -5,6 +5,7 @@ __all__ = [
     "ExportFLVERIntoBinder",
     "QuickExportMapPieceFLVERs",
     "QuickExportCharacterFLVER",
+    "QuickExportEquipmentFLVER",
 ]
 
 import re
@@ -23,7 +24,7 @@ from bpy.props import StringProperty, FloatProperty, BoolProperty, IntProperty
 from bpy_extras.io_utils import ExportHelper
 
 from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
-from soulstruct.base.models.flver import FLVER, Version, FLVERBone, FLVERBoneUsageFlags, Material, Texture, Dummy
+from soulstruct.base.models.flver import FLVER, Version, FLVERBone, Material, Texture, Dummy
 from soulstruct.base.models.flver.vertex_array import *
 from soulstruct.base.models.flver.mesh_tools import MergedMesh
 from soulstruct.utilities.maths import Vector3, Matrix3
@@ -192,16 +193,8 @@ class ExportLooseFLVER(LoggingOperator, ExportHelper, ExportFLVERMixin):
         exporter = FLVERExporter(self, context, self.get_export_settings(context))
         name = flver_file_path.name.split(".")[0]
 
-        if mesh.get("Is Equipment", False):
-            game = GlobalSettings.get_scene_settings(context).game
-            equipment_bone_filter = EQUIPMENT_BONE_FILTERS.get(game, None)
-            if equipment_bone_filter is None:
-                return self.error(f"Cannot yet export equipment FLVERs for game {game}.")
-        else:
-            equipment_bone_filter = None
-
         try:
-            flver = exporter.export_flver(mesh, armature, name=name, equipment_bone_filter=equipment_bone_filter)
+            flver = exporter.export_flver(mesh, armature, name=name)
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Cannot get exported FLVER. Error: {ex}")
@@ -499,7 +492,8 @@ class QuickExportCharacterFLVER(LoggingOperator, ExportFLVERMixin):
         settings = GlobalSettings.get_scene_settings(context)
 
         chr_name = self.get_default_flver_stem(mesh, armature)
-        chrbnd_path = Path(settings.game_directory, "chr", f"{chr_name}.chrbnd.dcx")
+        chrbnd_dcx_type = settings.resolve_dcx_type("Auto", "Binder", False, context)
+        chrbnd_path = chrbnd_dcx_type.process_path(Path(settings.game_directory, "chr", f"{chr_name}.chrbnd"))
         if not chrbnd_path.is_file():
             return self.error(f"CHRBND path is not a file: {chrbnd_path}.")
 
@@ -568,29 +562,27 @@ class QuickExportCharacterFLVER(LoggingOperator, ExportFLVERMixin):
 
 
 class QuickExportEquipmentFLVER(LoggingOperator, ExportFLVERMixin):
-    """Export a single FLVER model from a Blender mesh into a pre-selected PARTSBND in the game directory."""
+    """Export a single FLVER model from a Blender mesh into same-named PARTSBND in the game directory."""
     bl_idname = "export_scene.quick_equipment_flver"
     bl_label = "Export Equipment"
-    bl_description = "Export an equipment FLVER model file into appropriate game PARTSBND"
+    bl_description = "Export a FLVER model file into appropriate game PARTSBND"
 
     # NOTE: Always overwrites existing entry. DCX type and `BinderEntry` defaults are game-dependent.
 
     GAME_INFO = {
         GameNames.DS1R: {
             "partsbnd_flver_entry_id": 200,
-            "partsbnd_flver_entry_path": "N:\\FRPG\\data\\INTERROOT_x64\\parts\\{parts_name}\\{parts_name}.flver",
+            "partsbnd_flver_entry_path": "N:\\FRPG\\data\\INTERROOT_x64\\parts\\{part_name}\\{part_name}.flver",
         },
     }
 
     @classmethod
     def poll(cls, context):
-        """Must select a Mesh object for an equipment FLVER with a parent Armature (e.g. c0000)."""
+        """Must select an Armature parent for an equipment FLVER. No chance of a default skeleton!"""
         return (
             GlobalSettings.get_scene_settings(context).game_directory
             and len(context.selected_objects) == 1
-            and context.selected_objects[0].type == "MESH"
-            and context.selected_objects[0].parent is not None
-            and context.selected_objects[0].parent.type == "ARMATURE"
+            and context.selected_objects[0].type == "ARMATURE"
         )
 
     def execute(self, context):
@@ -599,12 +591,13 @@ class QuickExportEquipmentFLVER(LoggingOperator, ExportFLVERMixin):
         except FLVERExportError as ex:
             return self.error(str(ex))
         if armature is None:
-            return self.error("Equipment FLVER Mesh must have an Armature parent (e.g. c0000).")
+            return self.error("Must select an Armature parent to quick-export an equipment FLVER.")
 
         settings = GlobalSettings.get_scene_settings(context)
 
-        parts_name = self.get_default_flver_stem(mesh, None)  # armature name ignored (e.g. 'c0000')
-        partsbnd_path = Path(settings.game_directory, "parts", f"{parts_name}.partsbnd.dcx")
+        part_name = self.get_default_flver_stem(mesh, armature)
+        partsbnd_dcx_type = settings.resolve_dcx_type("Auto", "Binder", False, context)
+        partsbnd_path = partsbnd_dcx_type.process_path(Path(settings.game_directory, "parts", f"{part_name}.partsbnd"))
         if not partsbnd_path.is_file():
             return self.error(f"PARTSBND path is not a file: {partsbnd_path}.")
 
@@ -615,47 +608,33 @@ class QuickExportEquipmentFLVER(LoggingOperator, ExportFLVERMixin):
         # We replace an existing FLVER entry if it exists, or use the game default ID otherwise.
         flver_entries = partsbnd.find_entries_matching_name(r".*\.flver(\.dcx)?")
         if not flver_entries:
-            game_info = self.GAME_INFO.get(settings.game, {})
-            try:
-                entry_id = game_info["partsbnd_flver_entry_id"]
-            except KeyError:
+            game_info = self.GAME_INFO.get(settings.game, None)
+            if game_info is None:
                 return self.error(
-                    f"No FLVER files found in PARTSBND and don't know default ID for game {settings.game}."
+                    f"No FLVER files found in PARTSBND and don't know Binder defaults for {settings.game}."
                 )
 
+            entry_id = game_info["partsbnd_flver_entry_id"]
             try:
                 flver_entry = partsbnd.find_entry_id(entry_id)
             except EntryNotFoundError:
                 # Create new entry.
-                try:
-                    default_entry_path = game_info["partsbnd_flver_entry_path"].format(
-                        parts_name=parts_name
-                    )
-                except KeyError:
-                    return self.error(
-                        f"Entry {entry_id} not found in PARTSBND and don't know default path for game {settings.game}."
-                    )
-
+                default_entry_path = game_info["partsbnd_flver_entry_path"].format(part_name=part_name)
                 flver_entry = BinderEntry(b"", entry_id=entry_id, path=default_entry_path, flags=0x2)
         else:
             if len(flver_entries) > 1:
                 self.warning(f"Multiple FLVER files found in PARTSBND. Replacing first: {flver_entries[0].name}")
             flver_entry = flver_entries[0]
 
-        # Equipment skeleton is a subset of parent (e.g. c0000) Armature. Typically, it includes all bones under the
-        # c0000 'Master' bone, plus unparented 'Nub' and 'Shield' bones. It also has a dummy eponymous bone at the
-        # origin, e.g. 'AM_A_1000', but no vertices should be weighted to this non-c0000 bone. (In fact, there appear to
-        # generally be TWO identical dummy bones.) These dummy bones are automatically added by this operator.
-
         dcx_type = GlobalSettings.resolve_dcx_type(self.dcx_type, "FLVER", True, context)
 
         self.to_object_mode()
         exporter = FLVERExporter(self, context, self.get_export_settings(context))
         try:
-            flver = exporter.export_flver(mesh, armature=None, name=parts_name)
+            flver = exporter.export_flver(mesh, armature, name=part_name)
         except Exception as ex:
             traceback.print_exc()
-            return self.error(f"Cannot create exported FLVER from Blender Mesh '{parts_name}'. Error: {ex}")
+            return self.error(f"Cannot create exported FLVER from Blender Mesh '{part_name}'. Error: {ex}")
 
         flver.dcx_type = dcx_type
 
@@ -770,7 +749,6 @@ class FLVERExporter:
         mesh: bpy.types.MeshObject,
         armature: bpy.types.ArmatureObject | None,
         name: str,
-        equipment_bone_filter: tp.Callable[[FLVERBone], bool] = None,
     ) -> FLVER | None:
         """Create an entire FLVER from Blender Mesh and (optional) Armature objects.
 
@@ -783,15 +761,6 @@ class FLVERExporter:
 
         If the Mesh object is missing certain 'FLVER' custom properties (see `get_flver_props`), they will be exported
         with default values based on the current selected game, if able.
-
-        If `equipment_bone_filter` is given, then three special things will occur:
-            - Only `armature` bones that pass through that filter function will be exported. Usually, this is the
-              'Master' hierarchy, as well as loose root '*Nub' and '*Shield' bones.
-            - Bones that are actually used by mesh vertices (generally a subset, e.g. just hand bones and downward for
-              gloves) will be ordered before unused bones.
-            - Two identical root origin bones named `name` (usually the equipment FLVER model) will be inserted before
-              and after that prioritized list of actually weighted bones. The game apparently uses these to identify
-              which player bones it should actually care about.
 
         TODO: Currently only really tested for DS1 FLVERs.
         """
@@ -808,16 +777,10 @@ class FLVERExporter:
         layout_data_type_unk_x00 = get_bl_prop(mesh, "Layout Member Unk x00", int, default=0)
 
         bl_dummies = self.collect_dummies(mesh, armature)
-        if equipment_bone_filter is not None and bl_dummies:
-            self.warning(f"Equipment FLVERs should generally not have any Dummies (e.g. '{bl_dummies[0][0]}').")
 
         read_bone_type = self.detect_is_bind_pose(mesh)
         self.info(f"Exporting FLVER '{mesh.name}' with bone data from {read_bone_type.capitalize()}Bones.")
         if armature is None:
-            if equipment_bone_filter is not None:
-                # Absolutely no way to export an equipment FLVER without the player Armature, as the genuine bone
-                # transforms are included in the export, so we can't just use the vertex groups.
-                raise FLVERExportError("Equipment FLVERs must have an Armature parent for export (e.g. 'c0000').")
             self.info(  # not a warning
                 f"No Armature to export. Creating FLVER skeleton with a single origin bone named '{name}'."
             )
@@ -833,18 +796,6 @@ class FLVERExporter:
             flver.set_bone_children_siblings()  # only parents set in `create_bones`
             flver.set_bone_armature_space_transforms(bone_arma_transforms)
             bl_bone_data = armature.data.bones
-
-        if equipment_bone_filter is not None:
-            # Remove bones that don't pass the filter. (Bones are ordered by usage later.)
-            flver.bones = [bone for bone in flver.bones if equipment_bone_filter(bone)]
-            # Check that no parent references were left dangling.
-            for bone in flver.bones:
-                if bone.parent_bone is not None and bone.parent_bone not in flver.bones:
-                    raise FLVERExportError(
-                        f"Bone '{bone.name}' has parent '{bone.parent_bone.name}' that does not pass the equipment "
-                        f"bone filter."
-                    )
-            print(f"Equipment bone count: {len(flver.bones)}")
 
         # Make `mesh` the active object again.
         self.context.view_layer.objects.active = mesh
@@ -882,25 +833,6 @@ class FLVERExporter:
             layout_data_type_unk_x00=layout_data_type_unk_x00,
             mtd_infos=mtd_infos,
         )
-
-        if equipment_bone_filter is not None:
-            # Move used bones up before unused ones, and add dummy bones at start and end.
-            start_dummy_bone = FLVERBone(name=name, usage_flags=0)  # marked as 'used'
-            end_dummy_bone = FLVERBone(name=name, usage_flags=0)  # marked as 'used'
-            used_bones = []
-            unused_bones = []
-            for bone in flver.bones:
-                if bone.usage_flags & FLVERBoneUsageFlags.UNUSED:
-                    unused_bones.append(bone)
-                else:
-                    used_bones.append(bone)
-            flver.bones = [start_dummy_bone] + used_bones + [end_dummy_bone] + unused_bones
-
-            # TODO: Debugging
-            for bone in flver.bones:
-                print(bone.name, bone.usage_flags)
-                if bone.parent_bone:
-                    print(f"    {bone.parent_bone.name}")
 
         # TODO: Bone bounding box space seems to be always local to the bone for characters and always in armature space
         #  for map pieces. Not sure about objects, could be some of each (haven't found any non-origin bones that any

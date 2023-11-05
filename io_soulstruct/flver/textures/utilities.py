@@ -441,8 +441,15 @@ class TextureManager:
                     f"Opened CHRBND '{flver_source_path}' should have been passed to TextureManager! Will not be able "
                     f"to load attached character textures."
                 )
+        elif source_name.endswith(".partsbnd"):
+            # PARTSBND should have been given as an initial Binder. We also look in adjacent `Common*.tpf` loose TPFs.
+            if flver_binder:
+                self.scan_binder_textures(flver_binder)
+            else:
+                _LOGGER.warning(f"Opened PARTSBND '{flver_binder}' was not passed to TextureManager!")
+            self._find_parts_common_tpfs(source_dir)
         elif source_name.endswith("bnd"):
-            # Miscellaneous Binder already scanned for TPFs above. Warn if it wasn't passed in.
+            # Scan miscellaneous Binder for TPFs. Warn if it wasn't passed in.
             if not flver_binder:
                 _LOGGER.warning(
                     f"Opened Binder '{flver_source_path}' should have been passed to TextureManager! Will not be able "
@@ -583,6 +590,16 @@ class TextureManager:
             tpf_stem = tpf_entry.name.split(".")[0]
             if tpf_stem not in self._scanned_tpf_sources:
                 self._pending_tpf_sources.setdefault(tpf_stem, tpf_entry)
+
+    def _find_parts_common_tpfs(self, source_dir: Path):
+        """Find and immediately load all textures inside multi-texture 'Common' TPFs (e.g. player skin)."""
+        for common_tpf_path in source_dir.glob("Common*.tpf"):
+            common_tpf = TPF.from_path(common_tpf_path)
+            common_tpf_stem = common_tpf_path.name.split(".")[0]
+            self._scanned_tpf_sources.add(common_tpf_stem)
+            for texture in common_tpf.textures:
+                # TODO: Handle duplicate textures/overwrites. Currently ignoring duplicates.
+                self._tpf_textures.setdefault(texture.name, texture)
 
     def _find_aeg_tpfs(self, source_dir: Path):
         aeg_directory_match = AEG_STEM_RE.match(source_dir.name)

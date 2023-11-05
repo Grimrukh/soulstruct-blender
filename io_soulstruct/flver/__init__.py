@@ -5,7 +5,7 @@ __all__ = [
     "QuickImportMapPieceFLVER",
     "QuickImportCharacterFLVER",
     "QuickImportObjectFLVER",
-    "ImportEquipmentFLVER",
+    "QuickImportEquipmentFLVER",
 
     "HideAllDummiesOperator",
     "ShowAllDummiesOperator",
@@ -16,6 +16,7 @@ __all__ = [
     "ExportFLVERIntoBinder",
     "QuickExportMapPieceFLVERs",
     "QuickExportCharacterFLVER",
+    "QuickExportEquipmentFLVER",
 
     "FLVERSettings",
     "SetVertexAlpha",
@@ -65,7 +66,6 @@ class FLVERImportPanel(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         layout.operator(ImportFLVER.bl_idname)
-        layout.operator(ImportEquipmentFLVER.bl_idname)
 
         quick_import_box = layout.box()
         quick_import_box.label(text="Quick Game Import")
@@ -80,6 +80,9 @@ class FLVERImportPanel(bpy.types.Panel):
         objbnd_import_box = quick_import_box.box()
         objbnd_import_box.prop(context.scene.game_files, "objbnd_name")
         objbnd_import_box.operator(QuickImportObjectFLVER.bl_idname)
+        partsbnd_import_box = quick_import_box.box()
+        partsbnd_import_box.prop(context.scene.game_files, "partsbnd")
+        partsbnd_import_box.operator(QuickImportEquipmentFLVER.bl_idname)
 
 
 class FLVERExportPanel(bpy.types.Panel):
@@ -104,6 +107,7 @@ class FLVERExportPanel(bpy.types.Panel):
         quick_export_box.prop(context.scene.soulstruct_global_settings, "msb_export_mode", text="MSB Export Mode")
         quick_export_box.operator(QuickExportMapPieceFLVERs.bl_idname)
         quick_export_box.operator(QuickExportCharacterFLVER.bl_idname)
+        quick_export_box.operator(QuickExportEquipmentFLVER.bl_idname)
 
 
 class FLVERLightmapsPanel(bpy.types.Panel):

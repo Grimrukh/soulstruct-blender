@@ -88,7 +88,7 @@ CLASSES = (
     QuickImportMapPieceFLVER,
     QuickImportCharacterFLVER,
     QuickImportObjectFLVER,
-    ImportEquipmentFLVER,
+    QuickImportEquipmentFLVER,
 
     HideAllDummiesOperator,
     ShowAllDummiesOperator,
@@ -98,6 +98,7 @@ CLASSES = (
     ExportFLVERIntoBinder,
     QuickExportMapPieceFLVERs,
     QuickExportCharacterFLVER,
+    QuickExportEquipmentFLVER,
 
     FLVERSettings,
     SetVertexAlpha,
