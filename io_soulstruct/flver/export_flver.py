@@ -1231,7 +1231,7 @@ class FLVERExporter:
         # TODO: Default can surely be auto-set from game.
         layout_data_type_unk_x00 = get_bl_prop(mesh, "Layout Member Unk x00", int, default=0)
 
-        bl_dummies = self.collect_dummies(mesh, armature)
+        bl_dummies = self.collect_dummies(mesh, armature, name=name)
 
         read_bone_type = self.detect_is_bind_pose(mesh)
         self.info(f"Exporting FLVER '{mesh.name}' with bone data from {read_bone_type.capitalize()}Bones.")
