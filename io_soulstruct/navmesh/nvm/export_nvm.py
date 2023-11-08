@@ -28,10 +28,6 @@ if tp.TYPE_CHECKING:
     from soulstruct.darksouls1r.maps import MSB
 
 
-DEBUG_MESH_INDEX = None
-DEBUG_VERTEX_INDICES = []
-
-
 class ExportLooseNVM(LoggingOperator, ExportHelper):
     """Export loose NVM file from a Blender mesh.
 

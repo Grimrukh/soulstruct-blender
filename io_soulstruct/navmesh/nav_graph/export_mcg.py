@@ -18,10 +18,6 @@ from io_soulstruct.utilities import *
 from .utilities import MCGExportError
 
 
-DEBUG_MESH_INDEX = None
-DEBUG_VERTEX_INDICES = []
-
-
 class ExportMCG(LoggingOperator, ExportHelper):
     """Export MCG from a Blender object containing a Nodes parent and an Edges parent.
 

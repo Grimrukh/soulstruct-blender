@@ -10,7 +10,9 @@ from pathlib import Path
 
 import bpy
 
-from io_soulstruct.general import SoulstructSettings, MTDBinderManager
+from soulstruct.base.models.mtd import MTDBND as BaseMTDBND
+
+from io_soulstruct.general import SoulstructSettings
 from io_soulstruct.utilities.operators import LoggingOperator
 from io_soulstruct.flver.utilities import MTDInfo
 
@@ -96,7 +98,7 @@ class BakeLightmapTextures(LoggingOperator):
         self.info("Baking FLVER lightmap textures...")
 
         bake_settings = context.scene.bake_lightmap_settings  # type: BakeLightmapSettings
-        mtd_manager = SoulstructSettings.get_mtd_manager(context)
+        mtdbnd = SoulstructSettings.get_mtdbnd(context)
 
         # Get all selected FLVER meshes.
         flver_meshes = []
@@ -136,7 +138,7 @@ class BakeLightmapTextures(LoggingOperator):
                 material_target_image = self.parse_flver_material(
                     mesh,
                     material_slot,
-                    mtd_manager,
+                    mtdbnd,
                     bake_settings,
                     original_lightmap_strengths,
                     assert_lightmap_image=target_image,
@@ -170,7 +172,7 @@ class BakeLightmapTextures(LoggingOperator):
         self,
         mesh: bpy.types.MeshObject,
         material_slot: bpy.types.MaterialSlot,
-        mtd_manager: MTDBinderManager,
+        mtdbnd: BaseMTDBND,
         bake_settings: BakeLightmapSettings,
         original_lightmap_strengths: list[tuple[bpy.types.Node, float]],
         assert_lightmap_image: bpy.types.Image = None,
@@ -195,7 +197,7 @@ class BakeLightmapTextures(LoggingOperator):
         except KeyError:
             raise ValueError(f"Material '{bl_material.name}' of mesh {mesh.name} has no 'MTD Path' property.")
         try:
-            mtd = mtd_manager[mtd_name]
+            mtd = mtdbnd.mtds[mtd_name]
         except KeyError:
             self.warning(f"Could not find MTD '{mtd_name}' in MTD dict. Guessing info from name.")
             mtd_info = MTDInfo.from_mtd_name(mtd_name)

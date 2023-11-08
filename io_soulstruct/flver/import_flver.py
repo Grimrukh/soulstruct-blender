@@ -48,7 +48,7 @@ from soulstruct.containers import Binder
 from soulstruct.containers.tpf import TPFTexture, batch_get_tpf_texture_png_data
 from soulstruct.utilities.maths import Vector3
 
-from io_soulstruct.general import SoulstructSettings, SoulstructGameEnums, MTDBinderManager
+from io_soulstruct.general import SoulstructSettings, SoulstructGameEnums
 from io_soulstruct.general.cached import get_cached_file
 from io_soulstruct.utilities import *
 from .materials import get_submesh_blender_material
@@ -56,6 +56,7 @@ from .textures.import_textures import TextureImportManager, import_png_as_image
 from .utilities import *
 
 if tp.TYPE_CHECKING:
+    from soulstruct.base.models.mtd import MTDBND as BaseMTDBND
     from soulstruct.darksouls1r.maps import MSB
 
 FLVER_BINDER_RE = re.compile(r"^.*?\.(.*bnd)(\.dcx)?$")
@@ -132,7 +133,7 @@ class BaseFLVERImportOperator(LoggingImportOperator):
             self,
             context,
             texture_manager=texture_manager,
-            mtd_manager=settings.get_mtd_manager(context),
+            mtdbnd=settings.get_mtdbnd(context),
         )
 
         for bl_name, flver in flvers:
@@ -407,7 +408,7 @@ class ImportMapPieceMSBPart(LoggingOperator):
             self,
             context,
             texture_manager=texture_manager,
-            mtd_manager=settings.get_mtd_manager(context),
+            mtdbnd=settings.get_mtdbnd(context),
         )
 
         try:
@@ -446,7 +447,7 @@ class FLVERBatchImporter:
     operator: LoggingOperator
     context: bpy.types.Context
     texture_manager: TextureImportManager | None = None
-    mtd_manager: MTDBinderManager | None = None
+    mtdbnd: BaseMTDBND | None = None
 
     flver: FLVER | None = None  # current FLVER being imported
     name: str = ""  # name of root Blender mesh object that will be created
@@ -602,7 +603,7 @@ class FLVERBatchImporter:
             material_hash = hash(material)
             if material_hash in flver_material_mtd_infos:
                 continue
-            mtd_info = self.get_mtd_info(material.mtd_name, self.mtd_manager)
+            mtd_info = self.get_mtd_info(material.mtd_name, self.mtdbnd)
             flver_material_mtd_infos[material_hash] = mtd_info
             flver_material_uv_layer_names[material_hash] = flver_material_mtd_infos[material_hash].get_uv_layer_names()
 
@@ -679,16 +680,16 @@ class FLVERBatchImporter:
 
         return submesh_bl_material_indices, bl_material_uv_layer_names
 
-    def get_mtd_info(self, mtd_name: str, mtd_manager: MTDBinderManager = None) -> MTDInfo:
+    def get_mtd_info(self, mtd_name: str, mtdbnd: BaseMTDBND = None) -> MTDInfo:
         """Get `MTDInfo` for a FLVER material, which is needed for both material creation and assignment of vertex UV
         data to the correct Blender UV data layer during mesh creation.
         """
-        if not mtd_manager:
+        if not mtdbnd:
             return MTDInfo.from_mtd_name(mtd_name)
 
         # Use real MTD file (much less guesswork).
         try:
-            mtd = mtd_manager[mtd_name]
+            mtd = mtdbnd.mtds[mtd_name]
         except KeyError:
             self.warning(f"Could not find MTD '{mtd_name}' in MTD dict. Guessing info from name.")
             return MTDInfo.from_mtd_name(mtd_name)

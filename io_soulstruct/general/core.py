@@ -4,7 +4,6 @@ from __future__ import annotations
 __all__ = [
     "GameNames",
     "SoulstructSettings",
-    "MTDBinderManager",
 ]
 
 import typing as tp
@@ -12,12 +11,13 @@ from pathlib import Path
 
 import bpy
 
-from soulstruct.base.models.mtd import MTD
 from soulstruct.base.maps.msb import MSB as BaseMSB
-from soulstruct.containers import Binder
 from soulstruct.dcx import DCXType
 from soulstruct.utilities.files import read_json, write_json
 
+from soulstruct.base.models.mtd import MTDBND
+from soulstruct.darksouls1ptde.models.mtd import MTDBND as PTDE_MTDBND
+from soulstruct.darksouls1r.models.mtd import MTDBND as DS1R_MTDBND
 
 _SETTINGS_PATH = Path(__file__).parent.parent / "SoulstructSettings.json"
 
@@ -205,22 +205,34 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         raise ValueError(f"Default DCX compression for class name '{class_name}' and game '{_game}' is unknown.")
 
     @staticmethod
-    def get_mtd_manager(context: bpy.types.Context = None) -> MTDBinderManager | None:
-        """Find MTDBND and return a manager that grants on-demand MTD access to the LAST MTD file in the binder."""
+    def get_mtdbnd(context: bpy.types.Context = None) -> MTDBND | None:
+        """Load `MTDBND` from custom path, standard location in game directory, or bundled Soulstruct file."""
         settings = SoulstructSettings.get_scene_settings(context)
-        mtdbnd_path = settings.mtdbnd_path
-        if not mtdbnd_path:
-            if not settings.game_directory:
-                return None  # cannot find MTDBND without game directory
-            # Guess path.
-            dcx_type = settings.resolve_dcx_type("Auto", "Binder", False, context)
-            mtdbnd_name = dcx_type.process_path("mtd.mtdbnd")
-            mtdbnd_path = Path(settings.game_directory, "mtd", mtdbnd_name)
-            if not mtdbnd_path.is_file():
-                return None
 
-        mtdbnd = Binder.from_path(mtdbnd_path)
-        return MTDBinderManager(mtdbnd)
+        match settings.game:
+            case GameNames.PTDE:
+                mtdbnd_class = PTDE_MTDBND
+                from_bundled = mtdbnd_class.from_bundled
+            case GameNames.DS1R:
+                mtdbnd_class = DS1R_MTDBND
+                from_bundled = mtdbnd_class.from_bundled
+            case _:
+                # No MTDBND class for this game yet. Use generic base class (no bundled).
+                mtdbnd_class = MTDBND
+                from_bundled = None
+
+        mtdbnd_path = settings.mtdbnd_path
+        if not mtdbnd_path and settings.game_directory:
+            # Guess MTDBND path.
+            dcx_type = settings.resolve_dcx_type("Auto", "Binder", False, context)
+            mtdbnd_path = dcx_type.process_path(Path(settings.game_directory, "mtd", "mtd.mtdbnd"))
+        else:
+            mtdbnd_path = Path(mtdbnd_path)
+
+        if mtdbnd_path.is_file():
+            return mtdbnd_class.from_path(mtdbnd_path)
+
+        return from_bundled() if from_bundled else None
 
     @staticmethod
     def load_settings():
@@ -258,27 +270,3 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         }
         write_json(_SETTINGS_PATH, current_settings, indent=4)
         print(f"Saved settings to {_SETTINGS_PATH}")
-
-
-class MTDBinderManager:
-    """Holds an opened `MTDBND` Binder and reads/caches `MTD` contents only as requested."""
-
-    mtdbnd: Binder
-    _mtds: dict[str, MTD]
-
-    def __init__(self, mtdbnd: Binder):
-        self.mtdbnd = mtdbnd
-        self._mtds = {}
-
-    def __getitem__(self, mtd_name: str) -> MTD:
-        try:
-            return self._mtds[mtd_name]
-        except KeyError:
-            try:
-                # Uses LAST MTD found in Binder, as there are a few duplicates.
-                mtd_entry = self.mtdbnd.find_entries_matching_name(mtd_name, escape=True)[-1]
-            except IndexError:
-                raise KeyError(f"Cannot find MTD '{mtd_name}' in MTD Binder '{self.mtdbnd.path}'.")
-            mtd = mtd_entry.to_binary_file(MTD)
-            self._mtds[mtd_name] = mtd
-            return mtd

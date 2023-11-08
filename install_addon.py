@@ -15,7 +15,7 @@ from soulstruct_havok.utilities.files import HAVOK_PACKAGE_PATH
 
 
 def copy_addon(addons_dir: str | Path, copy_soulstruct_module=True, copy_third_party_modules=True, clear_settings=True):
-    """Copy `io_soulstruct` and (by default) `io_soulstruct_libs` into given `addons_dir` parent directory."""
+    """Copy `io_soulstruct` and (by default) `io_soulstruct_lib` into given `addons_dir` parent directory."""
 
     addons_dir = Path(addons_dir)
 

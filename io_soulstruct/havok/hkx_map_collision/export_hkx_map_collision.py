@@ -31,8 +31,6 @@ if tp.TYPE_CHECKING:
     from soulstruct.darksouls1r.maps import MSB
 
 
-DEBUG_MESH_INDEX = None
-DEBUG_VERTEX_INDICES = []
 LOOSE_HKX_COLLISION_NAME_RE = re.compile(r"^([hl])(\w{6})A(\d\d)$")  # game-readable model name; no extensions
 NUMERIC_HKX_COLLISION_NAME_RE = re.compile(r"^([hl])(\d{4})B(\d)A(\d\d)$")  # standard map model name; no extensions
 

@@ -10,9 +10,9 @@ import bpy
 
 from soulstruct.base.models.flver.material import Material
 from soulstruct.base.models.flver.submesh import Submesh
+from soulstruct.base.models.mtd import MTDInfo, MTDShaderCategory
 
 from io_soulstruct.utilities.operators import LoggingOperator
-from .utilities import MTDInfo
 
 
 def get_submesh_blender_material(
@@ -104,7 +104,7 @@ def get_submesh_blender_material(
                 uv_node = uv_nodes[uv_map_name] = builder.add_uv_node(uv_map_name)
             builder.link(uv_node.outputs["Vector"], tex_image_node.inputs["Vector"])
 
-    if mtd_info.is_water:
+    if mtd_info.shader_category == MTDShaderCategory.WATER:
         # Special simplified shader. Uses 'g_Bumpmap' only.
         water_mix = builder.new("ShaderNodeMixShader", (builder.MIX_X, builder.MIX_Y))
         transparent = builder.new("ShaderNodeBsdfTransparent", (builder.BSDF_X, 0))

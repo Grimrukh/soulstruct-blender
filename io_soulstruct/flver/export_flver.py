@@ -38,10 +38,8 @@ from .textures.export_textures import *
 from .utilities import *
 
 if tp.TYPE_CHECKING:
+    from soulstruct.base.models.mtd import MTDBND as BaseMTDBND
     from soulstruct.darksouls1r.maps import MSB
-
-DEBUG_MESH_INDEX = None
-DEBUG_VERTEX_INDICES = []
 
 
 class FLVERExportSettings(bpy.types.PropertyGroup):
@@ -175,7 +173,7 @@ class ExportStandaloneFLVER(LoggingOperator, ExportHelper):
 
         flver_file_path = Path(self.filepath)
         self.to_object_mode()
-        exporter = FLVERExporter(self, context, SoulstructSettings.get_mtd_manager(context))
+        exporter = FLVERExporter(self, context, SoulstructSettings.get_mtdbnd(context))
 
         # FLVER name is taken directly from desired file path here, not the Blender object.
         # TODO: `name` argument in exporter is used internally (e.g. default single bone name) and externally (e.g. to
@@ -303,7 +301,7 @@ class ExportFLVERIntoBinder(LoggingOperator, ExportHelper):
             else:
                 flver_entry = flver_entries[0]
 
-        exporter = FLVERExporter(self, context, SoulstructSettings.get_mtd_manager(context))
+        exporter = FLVERExporter(self, context, SoulstructSettings.get_mtdbnd(context))
 
         try:
             flver = exporter.export_flver(mesh, armature, name=flver_stem)
@@ -373,7 +371,7 @@ class ExportMapPieceFLVERs(LoggingOperator):
 
         self.to_object_mode()
 
-        exporter = FLVERExporter(self, context, SoulstructSettings.get_mtd_manager(context))
+        exporter = FLVERExporter(self, context, SoulstructSettings.get_mtdbnd(context))
 
         active_object = context.active_object
 
@@ -531,7 +529,7 @@ class ExportCharacterFLVER(LoggingOperator):
         dcx_type = SoulstructSettings.resolve_dcx_type("Auto", "FLVER", True, context)
 
         self.to_object_mode()
-        exporter = FLVERExporter(self, context, SoulstructSettings.get_mtd_manager(context))
+        exporter = FLVERExporter(self, context, SoulstructSettings.get_mtdbnd(context))
         try:
             flver = exporter.export_flver(mesh, armature, name=chr_name)
         except Exception as ex:
@@ -763,7 +761,7 @@ class ExportObjectFLVER(LoggingOperator):
         dcx_type = SoulstructSettings.resolve_dcx_type("Auto", "FLVER", True, context)
 
         self.to_object_mode()
-        exporter = FLVERExporter(self, context, SoulstructSettings.get_mtd_manager(context))
+        exporter = FLVERExporter(self, context, SoulstructSettings.get_mtdbnd(context))
         try:
             flver = exporter.export_flver(mesh, armature, name=obj_name)
         except Exception as ex:
@@ -910,7 +908,7 @@ class ExportEquipmentFLVER(LoggingOperator):
         dcx_type = SoulstructSettings.resolve_dcx_type("Auto", "FLVER", True, context)
 
         self.to_object_mode()
-        exporter = FLVERExporter(self, context, SoulstructSettings.get_mtd_manager(context))
+        exporter = FLVERExporter(self, context, SoulstructSettings.get_mtdbnd(context))
         try:
             flver = exporter.export_flver(mesh, armature, name=part_name)
         except Exception as ex:
@@ -1023,7 +1021,7 @@ class ExportMapPieceMSBParts(LoggingOperator):
 
         self.to_object_mode()
 
-        exporter = FLVERExporter(self, context, SoulstructSettings.get_mtd_manager(context))
+        exporter = FLVERExporter(self, context, SoulstructSettings.get_mtdbnd(context))
 
         active_object = context.active_object
 
@@ -1113,7 +1111,7 @@ class FLVERExporter:
 
     operator: LoggingOperator
     context: bpy.types.Context
-    mtd_manager: MTDBinderManager | None
+    mtdbnd: BaseMTDBND | None
 
     DEFAULT_VERSION = {
         GameNames.PTDE: Version.DarkSouls_A,
@@ -1267,7 +1265,7 @@ class FLVERExporter:
 
         # `MTDInfo` for each Blender material is needed to determine which BLender UV layers to read for which loops.
         mtd_infos = [
-            self.get_mtd_info(bl_material, self.mtd_manager)
+            self.get_mtd_info(bl_material, self.mtdbnd)
             for bl_material in mesh.data.materials
         ]
 
@@ -1356,17 +1354,17 @@ class FLVERExporter:
 
         return dummy_info
 
-    def get_mtd_info(self, bl_material: bpy.types.Material, mtd_manager: MTDBinderManager = None) -> MTDInfo:
+    def get_mtd_info(self, bl_material: bpy.types.Material, mtdbnd: BaseMTDBND = None) -> MTDInfo:
         """Get `MTDInfo` for a FLVER material, which is needed for both material creation and assignment of vertex UV
         data to the correct Blender UV data layer during mesh creation.
         """
         mtd_name = Path(bl_material["MTD Path"]).name
-        if not mtd_manager:
+        if not mtdbnd:
             return MTDInfo.from_mtd_name(mtd_name)
 
         # Use real MTD file (much less guesswork).
         try:
-            mtd = mtd_manager[mtd_name]
+            mtd = mtdbnd.mtds[mtd_name]
         except KeyError:
             self.warning(
                 f"Could not find MTD '{mtd_name}' from Blender material '{bl_material.name}' in MTD dict. "
