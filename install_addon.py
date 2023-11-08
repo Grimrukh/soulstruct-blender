@@ -132,8 +132,6 @@ def get_default_settings():
         "mtdbnd_path": "",
         "use_bak_file": False,
         "detect_map_from_parent": True,
-        "msb_import_mode": False,
-        "msb_export_mode": False,
     }
 
 

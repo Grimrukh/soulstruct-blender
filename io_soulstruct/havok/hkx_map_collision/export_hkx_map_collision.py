@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-__all__ = ["ExportLooseHKXMapCollision", "ExportHKXMapCollisionIntoBinder", "QuickExportHKXMapCollision"]
+__all__ = [
+    "ExportLooseHKXMapCollision",
+    "ExportHKXMapCollisionIntoBinder",
+    "ExportHKXMapCollisionIntoHKXBHD",
+    "ExportMSBMapCollision",
+]
 
 import re
 import traceback
@@ -285,9 +290,9 @@ class ExportHKXMapCollisionIntoBinder(LoggingOperator, ImportHelper):
         return {"FINISHED"}
 
 
-class QuickExportHKXMapCollision(LoggingOperator):
+class ExportHKXMapCollisionIntoHKXBHD(LoggingOperator):
     """Export a HKX collision file into a FromSoftware DSR map directory BHD."""
-    bl_idname = "export_scene_map.quick_hkx_map_collision"
+    bl_idname = "export_scene_map.hkx_map_collision_entry"
     bl_label = "Export Map Collision"
     bl_description = (
         "Export HKX map collisions into HKXBHD binder in appropriate game map (DS1R only)"
@@ -348,71 +353,30 @@ class QuickExportHKXMapCollision(LoggingOperator):
             else:
                 map_stem = settings.map_stem
 
-            if settings.msb_export_mode:
-                # Get model file stem from MSB (must contain matching part).
-                collision_part_name = hkx_parent.name.split(" ")[0].split(".")[0]
-                msb_path = Path(game_directory, "map/MapStudio", f"{map_stem}.msb")
-                msb = get_cached_file(msb_path, settings.get_game_msb_class(context))  # type: MSB
-                try:
-                    msb_part = msb.collisions.find_entry_name(collision_part_name)
-                except KeyError:
-                    return self.error(
-                        f"Collision part '{collision_part_name}' not found in MSB '{msb_path}'."
-                    )
-                if not msb_part.model.name:
-                    return self.error(
-                        f"Collision part '{collision_part_name}' in MSB '{msb_path}' has no model name."
-                    )
-                hkx_entry_stem = msb_part.model.name + f"A{map_stem[1:3]}"
+            # Guess HKX stem from first 10 characters of name of selected object.
+            hkx_entry_stem = hkx_parent.name[:10]
 
-                # Warn if HKX stem in MSB is unexpected.
-                if (model_file_stem := hkx_parent.get("Model File Stem", None)) is not None:
-                    if model_file_stem != hkx_entry_stem:
-                        self.warning(
-                            f"Collision part '{hkx_entry_stem}' in MSB '{msb_path}' has model name "
-                            f"'{msb_part.model.name}' but Blender mesh 'Model File Stem' is '{model_file_stem}'. "
-                            f"Using HKX stem from MSB model name; you may want to update the Blender mesh."
-                        )
+            if not LOOSE_HKX_COLLISION_NAME_RE.match(hkx_entry_stem):
+                return self.error(
+                    f"Selected object '{hkx_parent.name}' does not match the required name pattern for "
+                    f"a HKX collision parent object: 'h......A..' or 'l......A..'"
+                )
 
-                # Update part transform in MSB.
-                bl_transform = BlenderTransform.from_bl_obj(hkx_parent)
-                msb_part.translate = bl_transform.game_translate
-                msb_part.rotate = bl_transform.game_rotate_deg
-                msb_part.scale = bl_transform.game_scale
-
-                # Write MSB.
-                try:
-                    msb.write(msb_path)
-                except Exception as ex:
-                    self.warning(f"Could not write MSB '{msb_path}' with updated part transform. Error: {ex}")
-                else:
-                    self.info(f"Wrote MSB '{msb_path}' with updated part transform.")
-
+            # If HKX name is standard, check that it matches the selected map stem and warn user if not.
+            numeric_match = NUMERIC_HKX_COLLISION_NAME_RE.match(hkx_parent.name[:10])
+            if numeric_match is None:
+                self.warning(
+                    f"Selected object '{hkx_parent.name}' does not match the standard name pattern for "
+                    f"a HKX map collision model: 'h####B#A##' or 'l####B#A##'. Exporting anyway."
+                )
             else:
-                # Guess HKX stem from first 10 characters of name of selected object.
-                hkx_entry_stem = hkx_parent.name[:10]
-
-                if not LOOSE_HKX_COLLISION_NAME_RE.match(hkx_entry_stem):
-                    return self.error(
-                        f"Selected object '{hkx_parent.name}' does not match the required name pattern for "
-                        f"a HKX collision parent object: 'h......A..' or 'l......A..'"
-                    )
-
-                # If HKX name is standard, check that it matches the selected map stem and warn user if not.
-                numeric_match = NUMERIC_HKX_COLLISION_NAME_RE.match(hkx_parent.name[:10])
-                if numeric_match is None:
+                block, area = int(numeric_match.group(3)), int(numeric_match.group(4))
+                expected_map_stem = f"m{area:02d}_{block:02d}_00_00"
+                if expected_map_stem != map_stem:
                     self.warning(
-                        f"Selected object '{hkx_parent.name}' does not match the standard name pattern for "
-                        f"a HKX map collision model: 'h####B#A##' or 'l####B#A##'. Exporting anyway."
+                        f"Map area and/or block in name of selected object '{hkx_parent.name}' does not match the "
+                        f"export destination map '{map_stem}'. Exporting anyway."
                     )
-                else:
-                    block, area = int(numeric_match.group(3)), int(numeric_match.group(4))
-                    expected_map_stem = f"m{area:02d}_{block:02d}_00_00"
-                    if expected_map_stem != map_stem:
-                        self.warning(
-                            f"Map area and/or block in name of selected object '{hkx_parent.name}' does not match the "
-                            f"export destination map '{map_stem}'. Exporting anyway."
-                        )
 
             res = hkx_parent.name[0]  # 'h' or 'l'
             hkx_binder_path = map_dir_path / f"{res}{map_stem[1:]}.hkxbhd"  # drop 'm' from stem
@@ -438,6 +402,136 @@ class QuickExportHKXMapCollision(LoggingOperator):
                 self.report(
                     {"ERROR"}, f"Could not export object '{hkx_parent.name}' as HKX map collision. Error: {ex}"
                 )
+
+        return {"FINISHED"} if at_least_one_success else {"CANCELLED"}
+
+
+class ExportMSBMapCollision(LoggingOperator):
+    """Export a HKX collision file into a FromSoftware DSR map directory BHD."""
+    bl_idname = "export_scene_map.msb_hkx_map_collision"
+    bl_label = "Export Map Collision"
+    bl_description = (
+        "Export transform and model of HKX map collisions into MSB and HKXBHD binder in appropriate game map (DS1R)"
+    )
+
+    @classmethod
+    def poll(cls, context):
+        """Must select empty parents of only (and at least one) child meshes.
+
+        TODO: Also currently for DS1R only.
+        """
+        if SoulstructSettings.get_scene_settings(context).game != "DS1R":
+            return False
+        if not context.selected_objects:
+            return False
+        for obj in context.selected_objects:
+            if obj.type != "EMPTY":
+                return False
+            if not obj.children:
+                return False
+            if not all(child.type == "MESH" for child in obj.children):
+                return False
+        return True
+
+    def execute(self, context):
+        if not self.poll(context):
+            return self.error("Must select a parent of one or more collision submeshes.")
+
+        settings = SoulstructSettings.get_scene_settings(context)
+        game_directory = settings.game_directory
+        map_stem = settings.map_stem
+        # NOTE: Always uses DSR DCX.
+
+        if not game_directory or not map_stem:
+            return self.error("Game directory and map stem must be set in Blender's Soulstruct global settings.")
+
+        settings.save_settings()
+
+        map_dir_path = Path(game_directory, "map", map_stem)
+        if not map_dir_path.is_dir():
+            return self.error(f"Invalid game map directory: {map_dir_path}")
+
+        at_least_one_success = False
+
+        for hkx_parent in context.selected_objects:
+
+            if settings.detect_map_from_parent:
+                if hkx_parent.parent is None:
+                    return self.error(
+                        f"Object '{hkx_parent.name}' has no parent. Deselect 'Detect Map from Parent' to use single "
+                        f"game map specified in Soulstruct plugin settings."
+                    )
+                map_stem = hkx_parent.parent.name.split(" ")[0]
+                if not MAP_STEM_RE.match(map_stem):
+                    return self.error(
+                        f"Parent object '{hkx_parent.parent.name}' does not start with a valid map stem."
+                    )
+            else:
+                map_stem = settings.map_stem
+
+            # Get model file stem from MSB (must contain matching part).
+            collision_part_name = hkx_parent.name.split(" ")[0].split(".")[0]
+            msb_path = Path(game_directory, "map/MapStudio", f"{map_stem}.msb")
+            msb = get_cached_file(msb_path, settings.get_game_msb_class(context))  # type: MSB
+            try:
+                msb_part = msb.collisions.find_entry_name(collision_part_name)
+            except KeyError:
+                return self.error(
+                    f"Collision part '{collision_part_name}' not found in MSB '{msb_path}'."
+                )
+            if not msb_part.model.name:
+                return self.error(
+                    f"Collision part '{collision_part_name}' in MSB '{msb_path}' has no model name."
+                )
+            hkx_entry_stem = msb_part.model.name + f"A{map_stem[1:3]}"
+
+            # Warn if HKX stem in MSB is unexpected.
+            if (model_file_stem := hkx_parent.get("Model File Stem", None)) is not None:
+                if model_file_stem != hkx_entry_stem:
+                    self.warning(
+                        f"Collision part '{hkx_entry_stem}' in MSB '{msb_path}' has model name "
+                        f"'{msb_part.model.name}' but Blender mesh 'Model File Stem' is '{model_file_stem}'. "
+                        f"Using HKX stem from MSB model name; you may want to update the Blender mesh."
+                    )
+
+            # Update part transform in MSB.
+            bl_transform = BlenderTransform.from_bl_obj(hkx_parent)
+            msb_part.translate = bl_transform.game_translate
+            msb_part.rotate = bl_transform.game_rotate_deg
+            msb_part.scale = bl_transform.game_scale
+
+            res = hkx_parent.name[0]  # 'h' or 'l'
+            hkx_binder_path = map_dir_path / f"{res}{map_stem[1:]}.hkxbhd"  # drop 'm' from stem
+
+            try:
+                export_hkx_to_binder(
+                    self,
+                    context,
+                    hkx_parent,
+                    hkx_binder_path,
+                    hkx_entry_stem,
+                    dcx_type=DCXType.DS1_DS2,  # DS1R
+                    write_other_resolution=True,
+                    default_entry_path="{map}\\{name}.hkx.dcx",  # DS1R
+                    default_entry_flags=0x2,
+                    overwrite_existing=True,
+                    map_stem=map_stem,
+                )
+                at_least_one_success = True
+            except Exception as ex:
+                traceback.print_exc()
+                # Do not return; keep trying other selected objects.
+                self.report(
+                    {"ERROR"}, f"Could not export object '{hkx_parent.name}' as HKX map collision. Error: {ex}"
+                )
+
+            # Write MSB.
+            try:
+                msb.write(msb_path)
+            except Exception as ex:
+                self.warning(f"Could not write MSB '{msb_path}' with updated part transform. Error: {ex}")
+            else:
+                self.info(f"Wrote MSB '{msb_path}' with updated part transform.")
 
         return {"FINISHED"} if at_least_one_success else {"CANCELLED"}
 

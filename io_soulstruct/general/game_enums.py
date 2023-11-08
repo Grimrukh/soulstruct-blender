@@ -31,7 +31,8 @@ GAME_FILE_ENUMS = {
 
     # MSB parts
     "MSB_MAP_PIECE": (None, [("0", "None", "None")]),
-    "MSB_HKX_MAP_COLLISION": (None, [("0", "None", "None")]),  # entries in HKXBHD
+    "MSB_NAVMESH": (None, [("0", "None", "None")]),
+    "MSB_HKX_MAP_COLLISION": (None, [("0", "None", "None")]),
 
 }  # type: dict[str, tuple[None | Path, list[tuple[str, str, str]]]]
 
@@ -169,43 +170,61 @@ def get_nvm_items(self, context):
     if not nvmbnd_path.is_file():
         return _clear_items(key)
 
-    if settings.msb_import_mode:
-        # Open MSB and find all Navmesh parts. NOTE: We don't check here if the part's model is a valid file.
-        # It's up to the importer to handle and report that error case.
-        msb_path = Path(game_directory, "map/MapStudio", f"{map_stem}.msb")
-
-        if GAME_FILE_ENUMS[key][0] == msb_path:
-            # Use cached enum items.
-            # NOTE: Even if the MSB is written from Blender, Soulstruct cannot add or remove parts (yet).
-            return GAME_FILE_ENUMS[key][1]
-
-        try:
-            msb_class = SoulstructSettings.get_game_msb_class(context)
-            msb = get_cached_file(msb_path, msb_class)
-        except (FileNotFoundError, ValueError) as ex:
-            return _clear_items(key)
-        msb: MSB  # TODO: hack to get standard part lists
-
-        items = [("0", "None", "None")]
-        for navmesh_part in msb.navmeshes:
-            if not navmesh_part.model:
-                continue
-            full_model_name = navmesh_part.model.name + f"A{map_stem[1:3]}"
-            identifier = f"{navmesh_part.name}|{full_model_name}"
-            items.append(
-                (identifier, navmesh_part.name, f"{navmesh_part.name} (Model {full_model_name})")
-            )
-
-        # NOTE: The cache key is the MSB path.
-        GAME_FILE_ENUMS[key] = (msb_path, items)
-        return GAME_FILE_ENUMS[key][1]
-
     # Find all NVM entries in map NVMBND.
     if settings.resolve_dcx_type("Auto", "NVM", True, context).has_dcx_extension():
         pattern = re.compile(r".*\.nvm\.dcx")
     else:
         pattern = re.compile(r".*\.nvm")
     return _scan_binder_entries(key, nvmbnd_path, pattern)
+
+
+# noinspection PyUnusedLocal
+def get_nvm_part_items(self, context):
+    """Collect MSB Navmesh entries in selected game map's MSB."""
+    key = "MSB_NAVMESH"
+
+    settings = SoulstructSettings.get_scene_settings(context)
+    game_directory = settings.game_directory
+    map_stem = settings.map_stem
+    if not game_directory or map_stem in {"", "0"}:
+        return _clear_items(key)
+    map_path = Path(game_directory, "map", map_stem)
+    if not map_path.is_dir():
+        return _clear_items(key)
+    dcx_type = settings.resolve_dcx_type("Auto", "Binder", False, context)
+    nvmbnd_path = dcx_type.process_path(map_path / f"{map_stem}.nvmbnd")
+    if not nvmbnd_path.is_file():
+        return _clear_items(key)
+
+    # Open MSB and find all Navmesh parts. NOTE: We don't check here if the part's model is a valid file.
+    # It's up to the importer to handle and report that error case.
+    msb_path = Path(game_directory, "map/MapStudio", f"{map_stem}.msb")
+
+    if GAME_FILE_ENUMS[key][0] == msb_path:
+        # Use cached enum items.
+        # NOTE: Even if the MSB is written from Blender, Soulstruct cannot add or remove parts (yet).
+        return GAME_FILE_ENUMS[key][1]
+
+    try:
+        msb_class = SoulstructSettings.get_game_msb_class(context)
+        msb = get_cached_file(msb_path, msb_class)
+    except (FileNotFoundError, ValueError) as ex:
+        return _clear_items(key)
+    msb: MSB  # TODO: hack to get standard part lists
+
+    items = [("0", "None", "None")]
+    for navmesh_part in msb.navmeshes:
+        if not navmesh_part.model:
+            continue
+        full_model_name = navmesh_part.model.name + f"A{map_stem[1:3]}"
+        identifier = f"{navmesh_part.name}|{full_model_name}"
+        items.append(
+            (identifier, navmesh_part.name, f"{navmesh_part.name} (Model {full_model_name})")
+        )
+
+    # NOTE: The cache key is the MSB path.
+    GAME_FILE_ENUMS[key] = (msb_path, items)
+    return GAME_FILE_ENUMS[key][1]
 
 
 # noinspection PyUnusedLocal
@@ -352,6 +371,11 @@ class SoulstructGameEnums(bpy.types.PropertyGroup):
     map_piece_parts: bpy.props.EnumProperty(
         name="MSB Map Piece Part",
         items=get_msb_map_piece_items,
+    )
+
+    nvm_parts: bpy.props.EnumProperty(
+        name="MSB Navmesh Part",
+        items=get_nvm_part_items,
     )
 
     hkx_map_collision_parts: bpy.props.EnumProperty(

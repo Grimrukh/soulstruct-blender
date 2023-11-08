@@ -1,10 +1,12 @@
 __all__ = [
     "ImportNVM",
     "ImportNVMWithBinderChoice",
-    "QuickImportNVM",
+    "ImportNVMFromNVMBND",
+    "ImportNVMMSBPart",
     "ExportLooseNVM",
     "ExportNVMIntoBinder",
-    "QuickExportNVM",
+    "ExportNVMIntoNVMBND",
+    "ExportNVMMSBPart",
 ]
 
 from .import_nvm import *

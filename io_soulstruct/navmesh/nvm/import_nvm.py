@@ -10,7 +10,9 @@ This file format is only used in DeS and DS1 (PTDE/DSR).
 """
 from __future__ import annotations
 
-__all__ = ["ImportNVM", "ImportNVMWithBinderChoice", "QuickImportNVM"]
+__all__ = [
+    "ImportNVM", "ImportNVMWithBinderChoice", "ImportNVMFromNVMBND", "ImportNVMMSBPart"
+]
 
 import time
 import traceback
@@ -305,9 +307,9 @@ class ImportNVMWithBinderChoice(LoggingOperator):
         bpy.ops.wm.nvm_binder_choice_operator("INVOKE_DEFAULT")
 
 
-class QuickImportNVM(LoggingOperator):
+class ImportNVMFromNVMBND(LoggingOperator):
     """Import a NVM from the current selected value of listed game map NVMs."""
-    bl_idname = "import_scene.quick_nvm"
+    bl_idname = "import_scene.nvm_entry"
     bl_label = "Import NVM"
     bl_description = "Import selected NVM from game map directory's NVMBND binder"
 
@@ -349,27 +351,108 @@ class QuickImportNVM(LoggingOperator):
         if not nvmbnd_path.is_file():
             return self.error(f"Could not find NVMBND file for map '{settings.map_stem}': {nvmbnd_path}")
 
-        transform = None  # type: tp.Optional[Transform]
+        nvm_entry_name = context.scene.soulstruct_game_enums.nvm
+        bl_name = nvm_entry_name.split(".")[0]
 
-        if settings.msb_import_mode:
-            try:
-                part_name, nvm_stem = context.scene.soulstruct_game_enums.nvm.split("|")
-            except ValueError:
-                return self.error("Invalid MSB navmesh selection.")
-            msb_path = settings.get_selected_map_msb_path(context)
+        nvmbnd = Binder.from_path(nvmbnd_path)
+        try:
+            nvm_entry = nvmbnd.find_entry_name(nvm_entry_name)
+        except EntryNotFoundError:
+            return self.error(f"Could not find NVM entry '{nvm_entry_name}' in NVMBND file '{nvmbnd_path.name}'.")
 
-            # Get MSB part transform.
-            msb = get_cached_file(msb_path, settings.get_game_msb_class(context))  # type: MSB
-            navmesh_part = msb.navmeshes.find_entry_name(part_name)
-            transform = Transform.from_msb_part(navmesh_part)
+        import_info = NVMImportInfo(
+            nvmbnd_path, nvm_entry.minimal_stem, bl_name, nvm_entry.to_binary_file(NVM)
+        )
 
-            dcx_type = settings.resolve_dcx_type("Auto", "NVM", False, context)
-            nvm_entry_name = f"{nvm_stem}.nvm"
-            nvm_entry_name = dcx_type.process_path(nvm_entry_name)
-            bl_name = part_name
-        else:
-            nvm_entry_name = context.scene.soulstruct_game_enums.nvm
-            bl_name = nvm_entry_name.split(".")[0]
+        parent_obj = find_or_create_bl_empty(f"{map_path.stem} Navmeshes", context)
+
+        importer = NVMImporter(
+            self,
+            context,
+            use_linked_duplicates=False,
+            parent_obj=parent_obj,
+        )
+
+        self.info(f"Importing NVM model {import_info.model_file_stem} as '{import_info.bl_name}'.")
+
+        try:
+            importer.import_nvm(
+                import_info,
+                use_material=self.use_material,
+                create_quadtree_boxes=self.create_quadtree_boxes,
+            )
+        except Exception as ex:
+            # Delete any objects created prior to exception.
+            for obj in importer.all_bl_objs:
+                bpy.data.objects.remove(obj)
+            traceback.print_exc()  # for inspection in Blender console
+            return self.error(f"Cannot import NVM: {import_info.path}. Error: {ex}")
+
+        p = time.perf_counter() - start_time
+        self.info(f"Finished importing NVM {nvm_entry_name} from {nvmbnd_path.name} in {p} s.")
+
+        return {"FINISHED"}
+
+
+class ImportNVMMSBPart(LoggingOperator):
+    """Import a NVM from the current selected value of listed game MSB navmesh entries."""
+    bl_idname = "import_scene.msb_nvm"
+    bl_label = "Import Navmesh Part"
+    bl_description = "Import transform and model of selected Navmesh MSB part from selected game map"
+
+    # TODO: Currently no way to change these property defaults in GUI.
+
+    use_material: bpy.props.BoolProperty(
+        name="Use Material",
+        description="If enabled, 'NVM' material will be assigned or created for all imported navmeshes",
+        default=True,
+    )
+
+    create_quadtree_boxes: bpy.props.BoolProperty(
+        name="Create Quadtree Boxes",
+        description="If enabled, create quadtree boxes for all imported navmeshes",
+        default=False,
+    )
+
+    @classmethod
+    def poll(cls, context):
+        game_lists = context.scene.soulstruct_game_enums  # type: SoulstructGameEnums
+        return game_lists.nvm_parts not in {"", "0"}
+
+    def execute(self, context):
+
+        start_time = time.perf_counter()
+
+        settings = SoulstructSettings.get_scene_settings(context)
+        map_path = SoulstructSettings.get_selected_map_path(context)
+        if not map_path:
+            return self.error("Game directory and map stem must be set in Blender's Soulstruct global settings.")
+        settings.save_settings()
+
+        nvmbnd_dcx_type = settings.resolve_dcx_type("Auto", "Binder", False, context)
+        nvmbnd_path = nvmbnd_dcx_type.process_path(map_path / f"{settings.map_stem}.nvmbnd")
+        if settings.use_bak_file:
+            nvmbnd_path = nvmbnd_path.with_name(nvmbnd_path.name + ".bak")
+            if not nvmbnd_path.is_file():
+                return self.error(f"Could not find NVMBND '.bak' file for map '{settings.map_stem}'.")
+        if not nvmbnd_path.is_file():
+            return self.error(f"Could not find NVMBND file for map '{settings.map_stem}': {nvmbnd_path}")
+
+        try:
+            part_name, nvm_stem = context.scene.soulstruct_game_enums.nvm_parts.split("|")
+        except ValueError:
+            return self.error("Invalid MSB navmesh selection.")
+        msb_path = settings.get_selected_map_msb_path(context)
+
+        # Get MSB part transform.
+        msb = get_cached_file(msb_path, settings.get_game_msb_class(context))  # type: MSB
+        navmesh_part = msb.navmeshes.find_entry_name(part_name)
+        transform = Transform.from_msb_part(navmesh_part)
+
+        dcx_type = settings.resolve_dcx_type("Auto", "NVM", False, context)
+        nvm_entry_name = f"{nvm_stem}.nvm"
+        nvm_entry_name = dcx_type.process_path(nvm_entry_name)
+        bl_name = part_name
 
         nvmbnd = Binder.from_path(nvmbnd_path)
         try:
@@ -405,13 +488,12 @@ class QuickImportNVM(LoggingOperator):
             traceback.print_exc()  # for inspection in Blender console
             return self.error(f"Cannot import NVM: {import_info.path}. Error: {ex}")
 
-        if transform is not None:
-            # Assign detected MSB transform to navmesh.
-            nvm_obj.location = transform.bl_translate
-            nvm_obj.rotation_euler = transform.bl_rotate
-            nvm_obj.scale = transform.bl_scale
-            # Assign Model File Stem to navmesh.
-            nvm_obj["Model File Stem"] = import_info.model_file_stem
+        # Assign detected MSB transform to navmesh.
+        nvm_obj.location = transform.bl_translate
+        nvm_obj.rotation_euler = transform.bl_rotate
+        nvm_obj.scale = transform.bl_scale
+        # Assign Model File Stem to navmesh.
+        nvm_obj["Model File Stem"] = import_info.model_file_stem
 
         p = time.perf_counter() - start_time
         self.info(f"Finished importing NVM {nvm_entry_name} from {nvmbnd_path.name} in {p} s.")

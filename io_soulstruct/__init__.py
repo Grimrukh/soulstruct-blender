@@ -124,10 +124,12 @@ CLASSES = (
 
     ImportNVM,
     ImportNVMWithBinderChoice,
-    QuickImportNVM,
+    ImportNVMFromNVMBND,
+    ImportNVMMSBPart,
     ExportLooseNVM,
     ExportNVMIntoBinder,
-    QuickExportNVM,
+    ExportNVMIntoNVMBND,
+    ExportNVMMSBPart,
     ImportMCP,
     QuickImportMCP,
     ImportMCG,
@@ -156,7 +158,8 @@ if soulstruct_havok:
 
         ImportHKXMapCollision,
         ImportHKXMapCollisionWithBinderChoice,
-        QuickImportHKXMapCollision,
+        ImportHKXMapCollisionFromHKXBHD,
+        ImportMSBMapCollision,
 
         ImportHKXAnimation,
         ImportHKXAnimationWithBinderChoice,
@@ -173,7 +176,8 @@ if soulstruct_havok:
 
         ExportLooseHKXMapCollision,
         ExportHKXMapCollisionIntoBinder,
-        QuickExportHKXMapCollision,
+        ExportHKXMapCollisionIntoHKXBHD,
+        ExportMSBMapCollision,
         HKX_COLLISION_PT_hkx_map_collision_tools,
 
         # TODO: Cutscene operators need a bit more work.
