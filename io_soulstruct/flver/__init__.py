@@ -118,6 +118,7 @@ class FLVERExportPanel(bpy.types.Panel):
 
         game_export_box.operator(ExportMapPieceFLVERs.bl_idname)
         game_export_box.operator(ExportCharacterFLVER.bl_idname)
+        game_export_box.operator(ExportObjectFLVER.bl_idname)
         game_export_box.operator(ExportEquipmentFLVER.bl_idname)
 
         msb_export_box = layout.box()
@@ -141,7 +142,7 @@ class FLVERExportPanel(bpy.types.Panel):
             "height_mipmap_count",
             "lightmap_format",
             "lightmap_mipmap_count",
-            "chrbnd_tpf_max_size",
+            "max_chrbnd_tpf_size",
             "max_tpfs_per_map_tpfbhd",
         ):
             layout.prop(settings, prop)

@@ -24,7 +24,8 @@ import bpy
 from bpy.props import StringProperty, FloatProperty, BoolProperty, IntProperty
 from bpy_extras.io_utils import ExportHelper
 
-from soulstruct.containers import Binder, BinderEntry
+from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
+from soulstruct.dcx import DCXType
 from soulstruct.base.models.flver import FLVER, Version, FLVERBone, Material, Texture, Dummy
 from soulstruct.base.models.flver.vertex_array import *
 from soulstruct.base.models.flver.mesh_tools import MergedMesh
@@ -453,6 +454,22 @@ class ExportCharacterFLVER(LoggingOperator):
         },
     }
 
+    TPF_ENTRY_DEFAULTS = {
+        GameNames.DS1R: {
+            "entry_id": 100,
+            "path": "N:\\FRPG\\data\\INTERROOT_x64\\chr\\{name}\\{name}.tpf",
+            "flags": 0x2,
+        },
+    }
+
+    CHRTPFBHD_ENTRY_DEFAULTS = {
+        GameNames.DS1R: {
+            "entry_id": 800,
+            "path": "N:\\FRPG\\data\\INTERROOT_x64\\chr\\{name}\\{name}.chrtpfbhd",
+            "flags": 0x2,
+        },
+    }
+
     @classmethod
     def poll(cls, context):
         """Must select an Armature parent for a character FLVER. No chance of a default skeleton!
@@ -505,6 +522,7 @@ class ExportCharacterFLVER(LoggingOperator):
                 path=entry_defaults["path"].format(name=chr_name),
                 flags=entry_defaults["flags"],
             )
+            chrbnd.add_entry(flver_entry)
         else:
             if len(flver_entries) > 1:
                 self.warning(f"Multiple FLVER files found in CHRBND. Replacing first: {flver_entries[0].name}")
@@ -528,6 +546,10 @@ class ExportCharacterFLVER(LoggingOperator):
             traceback.print_exc()
             return self.error(f"Cannot write exported FLVER. Error: {ex}")
 
+        flver_export_settings = context.scene.flver_export_settings  # type: FLVERExportSettings
+        if flver_export_settings.export_textures:
+            self.export_chrbnd_textures(context, chrbnd, chr_name, exporter.collected_texture_images, settings)
+
         try:
             # Will create a `.bak` file automatically if absent.
             written_path = chrbnd.write()
@@ -539,6 +561,106 @@ class ExportCharacterFLVER(LoggingOperator):
 
         return {"FINISHED"}
 
+    def export_chrbnd_textures(
+        self,
+        context,
+        chrbnd: Binder,
+        chr_name: str,
+        images: dict[str, bpy.types.Image],
+        settings: SoulstructSettings
+    ):
+        texture_export_settings = context.scene.texture_export_settings  # type: TextureExportSettings
+        tpf_dcx_type = settings.resolve_dcx_type("Auto", "TPF", True, context)
+
+        tpf_entry_name = tpf_dcx_type.process_path(f"{chr_name}.tpf")
+        if not texture_export_settings.overwrite_existing and tpf_entry_name in chrbnd.get_entry_names():
+            # Causes failure even if we end up writing a CHRTPFBXF below.
+            self.warning(f"Cannot overwrite existing CHRBND TPF entry: {tpf_entry_name}")
+            return
+
+        # TODO: Get existing textures to resolve 'SAME' option for DDS format.
+        chrbnd_tpf = export_images_to_tpf(context, self, images, is_chrbnd=True)
+        if chrbnd_tpf is not None:
+            # Simple: bundle TPF into CHRBND.
+            chrbnd_tpf.dcx_type = tpf_dcx_type
+            try:
+                tpf_entry = chrbnd[tpf_entry_name]
+            except EntryNotFoundError:
+                # Create default entry.
+                try:
+                    tpf_defaults = self.TPF_ENTRY_DEFAULTS[settings.game]
+                except KeyError:
+                    self.warning(f"Cannot create default TPF entry for game {settings.game}.")
+                    return
+                tpf_entry = BinderEntry(
+                    data=bytes(chrbnd_tpf),
+                    entry_id=tpf_defaults["entry_id"],
+                    path=tpf_defaults["path"].format(name=chr_name),
+                    flags=tpf_defaults["flags"],
+                )
+                chrbnd.add_entry(tpf_entry)
+            else:
+                tpf_entry.set_from_binary_file(chrbnd_tpf)
+
+            self.info(f"Exported {len(chrbnd_tpf.textures)} textures into multi-texture TPF in CHRBND.")
+
+            chrtpfbdt_path = (chrbnd.path / f"../{chr_name}.chrtpfbdt").resolve()  # no DCX
+            if chrtpfbdt_path.is_file():
+                # Delete CHRTPFBDT (in favor of new TPF).
+                chrtpfbdt_path.unlink()
+            try:
+                # Remove old CHRTPFBHD header entry (in favor of new TPF).
+                chrbnd.remove_entry_name(f"{chr_name}.chrtpfbhd")
+            except EntryNotFoundError:
+                pass
+            return
+
+        # Too many textures for TPF. Create CHRTPFBXF and put header into CHRBND and data next to it.
+        chrtpfbhd_entry_name = f"{chr_name}.chrtpfbhd"  # no DCX
+        if not texture_export_settings.overwrite_existing and chrtpfbhd_entry_name in chrbnd.get_entry_names():
+            self.warning(f"Cannot overwrite existing CHRBND CHRTPFBHD entry: {chrtpfbhd_entry_name}")
+            return
+
+        # TODO: Get existing textures to resolve 'SAME' option for DDS format.
+        chrtpfbxf = export_images_to_tpfbhd(
+            context, self, images, tpf_dcx_type, entry_path_parent=f"\\{chr_name}\\"
+        )
+        chrtpfbxf.dcx_type = DCXType.Null
+
+        chrtpfbdt_path = (chrbnd.path / f"../{chr_name}.chrtpfbdt").resolve()  # no DCX
+        if not texture_export_settings.overwrite_existing and chrtpfbdt_path.is_file():
+            self.warning(f"Cannot overwrite existing CHRTPFBDT file: {chrtpfbdt_path}")
+            return
+
+        try:
+            chrtpfbhd_entry = chrbnd[chrtpfbhd_entry_name]
+        except EntryNotFoundError:
+            try:
+                chrtpfbhd_defaults = self.CHRTPFBHD_ENTRY_DEFAULTS[settings.game]
+            except KeyError:
+                self.warning(f"Cannot create default CHRTPFBHD entry for game {settings.game}.")
+                return
+
+            chrtpfbhd_entry = BinderEntry(
+                data=b"",  # filled below
+                entry_id=chrtpfbhd_defaults["entry_id"],
+                path=chrtpfbhd_defaults["path"].format(name=chr_name),
+                flags=chrtpfbhd_defaults["flags"],
+            )
+            chrbnd.add_entry(chrtpfbhd_entry)
+
+        # Remove old TPF if it exists.
+        try:
+            chrbnd.remove_entry_name(tpf_entry_name)
+        except EntryNotFoundError:
+            pass
+
+        chrtpfbxf.write_split(chrtpfbhd_entry, chrtpfbdt_path)
+        self.info(
+            f"Exported {len(chrtpfbxf.entries)} textures into CHRTPFBHD (in CHRBND) "
+            f"and adjacent CHRTPFBDT: {chrtpfbdt_path}"
+        )
+
 
 class ExportObjectFLVER(LoggingOperator):
     """Export a single FLVER model from a Blender mesh into same-named OBJBND in the game directory.
@@ -548,9 +670,9 @@ class ExportObjectFLVER(LoggingOperator):
     in the Binder. For example, Blender FLVER `o0100_1` will be exported into `o0100.objbnd` as Binder entry 201 (for
     games with standard default FLVER ID 200) with FLVER name `o0100_1.flver`.
     """
-    bl_idname = "export_scene.character_flver"
-    bl_label = "Export Character"
-    bl_description = "Export a FLVER model file into same-named game CHRBND (which must exist)"
+    bl_idname = "export_scene.object_flver"
+    bl_label = "Export Object"
+    bl_description = "Export a FLVER model file into same-named game OBJBND (which must exist)"
 
     # NOTE: Always overwrites existing entry. DCX type and `BinderEntry` defaults are game-dependent.
 
@@ -558,6 +680,14 @@ class ExportObjectFLVER(LoggingOperator):
         GameNames.DS1R: {
             "entry_id": 200,
             "path": "N:\\FRPG\\data\\INTERROOT_x64\\obj\\{name}\\{name}.flver",
+            "flags": 0x2,
+        },
+    }
+
+    TPF_ENTRY_DEFAULTS = {
+        GameNames.DS1R: {
+            "entry_id": 100,
+            "path": "N:\\FRPG\\data\\INTERROOT_x64\\obj\\{name}\\{name}.tpf",
             "flags": 0x2,
         },
     }
@@ -624,6 +754,7 @@ class ExportObjectFLVER(LoggingOperator):
                 path=entry_defaults["path"].format(name=obj_name),
                 flags=entry_defaults["flags"],
             )
+            objbnd.add_entry(flver_entry)
         else:
             if len(flver_entries) > 1:
                 self.warning(f"Multiple FLVER files found in OBJBND. Replacing first: {flver_entries[0].name}")
@@ -647,6 +778,10 @@ class ExportObjectFLVER(LoggingOperator):
             traceback.print_exc()
             return self.error(f"Cannot write exported FLVER. Error: {ex}")
 
+        flver_export_settings = context.scene.flver_export_settings  # type: FLVERExportSettings
+        if flver_export_settings.export_textures:
+            self.export_objbnd_textures(context, objbnd, obj_name, exporter.collected_texture_images, settings)
+
         try:
             # Will create a `.bak` file automatically if absent.
             written_path = objbnd.write()
@@ -657,6 +792,46 @@ class ExportObjectFLVER(LoggingOperator):
         self.info(f"Exported FLVER into OBJBND file: {written_path}")
 
         return {"FINISHED"}
+
+    def export_objbnd_textures(
+        self,
+        context,
+        objbnd: Binder,
+        obj_name: str,
+        images: dict[str, bpy.types.Image],
+        settings: SoulstructSettings
+    ):
+        texture_export_settings = context.scene.texture_export_settings  # type: TextureExportSettings
+        tpf_dcx_type = settings.resolve_dcx_type("Auto", "TPF", True, context)
+
+        tpf_entry_name = tpf_dcx_type.process_path(f"{objbnd}.tpf")
+        if not texture_export_settings.overwrite_existing and tpf_entry_name in objbnd.get_entry_names():
+            self.warning(f"Cannot overwrite existing OBJBND TPF entry: {tpf_entry_name}")
+            return
+
+        # TODO: Get existing textures to resolve 'SAME' option for DDS format.
+        objbnd_tpf = export_images_to_tpf(context, self, images, is_chrbnd=False)
+        objbnd_tpf.dcx_type = tpf_dcx_type
+        try:
+            tpf_entry = objbnd[tpf_entry_name]
+        except EntryNotFoundError:
+            # Create default entry.
+            try:
+                tpf_defaults = self.TPF_ENTRY_DEFAULTS[settings.game]
+            except KeyError:
+                self.warning(f"Cannot create default TPF entry for game {settings.game}.")
+                return
+            tpf_entry = BinderEntry(
+                data=bytes(objbnd_tpf),
+                entry_id=tpf_defaults["entry_id"],
+                path=tpf_defaults["path"].format(name=obj_name),
+                flags=tpf_defaults["flags"],
+            )
+            objbnd.add_entry(tpf_entry)
+        else:
+            tpf_entry.set_from_binary_file(objbnd_tpf)
+
+        self.info(f"Exported {len(objbnd_tpf.textures)} textures into multi-texture TPF in OBJBND.")
 
 
 class ExportEquipmentFLVER(LoggingOperator):
@@ -671,6 +846,14 @@ class ExportEquipmentFLVER(LoggingOperator):
         GameNames.DS1R: {
             "entry_id": 200,
             "path": "N:\\FRPG\\data\\INTERROOT_x64\\parts\\{name}\\{name}.flver",
+            "flags": 0x2,
+        },
+    }
+
+    TPF_ENTRY_DEFAULTS = {
+        GameNames.DS1R: {
+            "entry_id": 100,
+            "path": "N:\\FRPG\\data\\INTERROOT_x64\\parts\\{name}\\{name}.tpf",
             "flags": 0x2,
         },
     }
@@ -718,6 +901,7 @@ class ExportEquipmentFLVER(LoggingOperator):
                 path=entry_defaults["path"].format(name=part_name),
                 flags=entry_defaults["flags"],
             )
+            partsbnd.add_entry(flver_entry)
         else:
             if len(flver_entries) > 1:
                 self.warning(f"Multiple FLVER files found in PARTSBND. Replacing first: {flver_entries[0].name}")
@@ -741,6 +925,10 @@ class ExportEquipmentFLVER(LoggingOperator):
             traceback.print_exc()
             return self.error(f"Cannot write exported FLVER. Error: {ex}")
 
+        flver_export_settings = context.scene.flver_export_settings  # type: FLVERExportSettings
+        if flver_export_settings.export_textures:
+            self.export_partsbnd_textures(context, partsbnd, part_name, exporter.collected_texture_images, settings)
+
         try:
             # Will create a `.bak` file automatically if absent.
             written_path = partsbnd.write()
@@ -751,6 +939,46 @@ class ExportEquipmentFLVER(LoggingOperator):
         self.info(f"Exported FLVER into Binder file: {written_path}")
 
         return {"FINISHED"}
+
+    def export_partsbnd_textures(
+        self,
+        context,
+        partsbnd: Binder,
+        parts_name: str,
+        images: dict[str, bpy.types.Image],
+        settings: SoulstructSettings
+    ):
+        texture_export_settings = context.scene.texture_export_settings  # type: TextureExportSettings
+        tpf_dcx_type = settings.resolve_dcx_type("Auto", "TPF", True, context)
+
+        tpf_entry_name = tpf_dcx_type.process_path(f"{partsbnd}.tpf")
+        if not texture_export_settings.overwrite_existing and tpf_entry_name in partsbnd.get_entry_names():
+            self.warning(f"Cannot overwrite existing PARTSBND TPF entry: {tpf_entry_name}")
+            return
+
+        # TODO: Get existing textures to resolve 'SAME' option for DDS format.
+        partsbnd_tpf = export_images_to_tpf(context, self, images, is_chrbnd=False)
+        partsbnd_tpf.dcx_type = tpf_dcx_type
+        try:
+            tpf_entry = partsbnd[tpf_entry_name]
+        except EntryNotFoundError:
+            # Create default entry.
+            try:
+                tpf_defaults = self.TPF_ENTRY_DEFAULTS[settings.game]
+            except KeyError:
+                self.warning(f"Cannot create default TPF entry for game {settings.game}.")
+                return
+            tpf_entry = BinderEntry(
+                data=bytes(partsbnd_tpf),
+                entry_id=tpf_defaults["entry_id"],
+                path=tpf_defaults["path"].format(name=parts_name),
+                flags=tpf_defaults["flags"],
+            )
+            partsbnd.add_entry(tpf_entry)
+        else:
+            tpf_entry.set_from_binary_file(partsbnd_tpf)
+
+        self.info(f"Exported {len(partsbnd_tpf.textures)} textures into multi-texture TPF in PARTSBND.")
 
 # endregion
 

@@ -170,7 +170,7 @@ class TextureExportSettings(bpy.types.PropertyGroup):
         max=10,
     )
 
-    chrbnd_tpf_max_size: bpy.props.IntProperty(
+    max_chrbnd_tpf_size: bpy.props.IntProperty(
         name="Max CHRBND TPF Size (KB)",
         description="Maximum size (in KB) of TPF bundled with CHRBND. Characters with total texture size beyond this "
                     "will have their texture data placed in individual TPFs in an adjacent split CHRTPFBDT",
@@ -211,7 +211,7 @@ def export_images_to_tpf(
     context,
     operator: LoggingOperator,
     images: dict[str, bpy.types.Image],
-    maximum_texture_size=0,
+    is_chrbnd=False,
 ) -> TPF | None:
     """Combine all given Blender images as DDS files in one TPF.
 
@@ -228,6 +228,11 @@ def export_images_to_tpf(
         image = images[texture_stem]
         # Detect texture type from name.
         dds_format = settings.detect_texture_dds_format(texture_stem)
+        if dds_format == "NONE":
+            continue  # skip
+        if dds_format == "SAME":
+            # TODO: Fix.
+            raise NotImplementedError("Can currently only export Map Piece textures in 'SAME' mode.")
         # Convert Blender image to DDS.
         try:
             data = bl_image_to_dds(context, image, dds_format)
@@ -240,7 +245,7 @@ def export_images_to_tpf(
             TPFTexture(name=texture_stem, data=data, format=TPF_TEXTURE_FORMATS.get(dds_format, 1))
         )
 
-    if 0 < maximum_texture_size < total_dds_size:
+    if is_chrbnd and 0 < settings.max_chrbnd_tpf_size < total_dds_size // 1000:  # KB
         # Too much data for one multi-texture TPF. (Caller will likely create a split TPFBHD.)
         return None
 
@@ -256,6 +261,7 @@ def export_images_to_tpfbhd(
     context,
     operator: LoggingOperator,
     images: dict[str, bpy.types.Image],
+    tpf_dcx_type: DCXType,
     entry_path_parent: str = "",
 ) -> Binder:
     """Put each DDS texture into its own TPF in a new TPFBHD split binder.
@@ -276,6 +282,11 @@ def export_images_to_tpfbhd(
         image = images[texture_stem]
         # Detect texture type from name.
         dds_format = settings.detect_texture_dds_format(texture_stem)
+        if dds_format == "NONE":
+            continue  # skip
+        if dds_format == "SAME":
+            # TODO: Fix.
+            raise NotImplementedError("Can currently only export Map Piece textures in 'SAME' mode.")
         # Convert Blender image to DDS.
         try:
             data = bl_image_to_dds(context, image, dds_format)
@@ -289,6 +300,7 @@ def export_images_to_tpfbhd(
             platform=TPFPlatform[settings.platform],
             encoding_type=2,
             tpf_flags=3,
+            dcx_type=tpf_dcx_type,
         )
         # Add TPF to TPFBHD.
         tpf_entry = BinderEntry(
