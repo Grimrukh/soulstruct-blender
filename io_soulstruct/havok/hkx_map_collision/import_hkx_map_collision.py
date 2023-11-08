@@ -29,7 +29,7 @@ from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
 
 from soulstruct_havok.wrappers.hkx2015 import MapCollisionHKX
 
-from io_soulstruct.general import GlobalSettings, GameFiles
+from io_soulstruct.general import SoulstructSettings, SoulstructGameEnums
 from io_soulstruct.general.cached import get_cached_file
 from io_soulstruct.utilities import *
 from io_soulstruct.utilities.materials import *
@@ -96,14 +96,8 @@ class ImportHKXMapCollision(LoggingOperator, ImportHelper):
         default=True,
     )
 
-    files: bpy.props.CollectionProperty(
-        type=bpy.types.OperatorFileListElement,
-        options={'HIDDEN', 'SKIP_SAVE'},
-    )
-
-    directory: bpy.props.StringProperty(
-        options={'HIDDEN'},
-    )
+    files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'})
+    directory: bpy.props.StringProperty(options={'HIDDEN'})
 
     def execute(self, context):
         print("Executing HKX collision import...")
@@ -425,16 +419,16 @@ class QuickImportHKXMapCollision(LoggingOperator):
 
     @classmethod
     def poll(cls, context):
-        game_lists = context.scene.game_files  # type: GameFiles
+        game_lists = context.scene.soulstruct_game_enums  # type: SoulstructGameEnums
         return game_lists.hkx_map_collision not in {"", "0"}
 
     def execute(self, context):
 
         start_time = time.perf_counter()
 
-        settings = GlobalSettings.get_scene_settings(context)
-        game_lists = context.scene.game_files  # type: GameFiles
-        map_path = GlobalSettings.get_selected_map_path(context)
+        settings = SoulstructSettings.get_scene_settings(context)
+        game_lists = context.scene.soulstruct_game_enums  # type: SoulstructGameEnums
+        map_path = SoulstructSettings.get_selected_map_path(context)
         if not map_path:
             return self.error("Game directory and map stem must be set in Blender's Soulstruct global settings.")
         settings.save_settings()

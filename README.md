@@ -1,10 +1,13 @@
 # Soulstruct for Blender
 
-This Blender add-on enables you to import and export FromSoftware asset files, including FLVER models (Map Pieces, Characters, and Objects), Havok map collision, and Havok animations for characters and objects.
+This Blender add-on enables you to import and export FromSoftware asset files, including FLVER models (e.g. Map Pieces, 
+Characters, Objects, Equipment/Parts), Havok map collision, and Havok animations for characters and objects.
 
-It's powered by [Soulstruct](https://github.com/Grimrukh/soulstruct), my giant Python library of FromSoftware formats, and Soulstruct Havok, an experimental expansion library.
+It's powered by [Soulstruct](https://github.com/Grimrukh/soulstruct), my giant Python library of FromSoftware formats, 
+and Soulstruct Havok, an experimental expansion library.
 
-I developed these tools over the years in parallel with the development of Dark Souls: Nightfall, and finally put aside some time to polish and release them. I hope they serve you well and anticipate whatever mods they enable :)
+I developed these tools over the years in parallel with the development of Dark Souls: Nightfall, and finally put aside
+some time to polish and release them. I hope they serve you well and anticipate whatever mods they enable :)
 
 ## Table of Contents
 
@@ -36,7 +39,8 @@ release, clone and update (or just download) the repo, and update the contents o
 from the main `io_soulstruct` folder in the repo. **Note that updated `io_soulstruct` versions without zip releases
 may also use newer versions of `soulstruct` and `soulstruct-havok` that need to be installed into `scripts/addons/io_soulstruct_lib`.**
 I'll soon add these as Git submodules to the repo. (You can update `io_soulstruct_lib/soulstruct` yourself using the 
-[Soulstruct repo](https://github.com/Grimrukh/soulstruct), but as `soulstruct-havok` isn't public yet, this will be impossible to update.)
+[Soulstruct repo](https://github.com/Grimrukh/soulstruct), but as `soulstruct-havok` isn't public yet, this will be
+impossible to update.)
 
 Whenever you update an add-on in Blender, you will need to either restart Blender (recommended) or call the 
 `Reload Scripts` function from Blender.
@@ -48,7 +52,8 @@ These can be accessed in the new `Soulstruct` and `Soulstruct Havok` menus on th
 
 Each file type has three basic operators:
 - **Import**: Browse to a supported file to import into the current scene.
-  - If a supported Binder file (`*bnd` or `*bhd`) is selected, a pop-up will ask you which file entry inside that Binder you want to import.
+  - If a supported Binder file (`*bnd` or `*bhd`) is selected, a pop-up will ask you which file entry inside that Binder
+  you want to import.
 - **Export Loose**: Export the selected object(s) to the supported file type, as a loose file not inside a Binder.
 - **Export Into Binder**: Browse to an existing Binder and export the selected object(s) into it.
   - There are export options for controlling how entries are overwritten and/or created.
@@ -92,12 +97,14 @@ and `Use Upward Vector` (bool, usually `True`).
   **stored directly in its Blender object name in square brackets (e.g. `c1000 Dummy<0> [123]` has reference ID 123)**.
 - Soulstruct automatically **merges all FLVER submeshes** and **splits them on export** based on face material slot.
   - My splitter also handles the maximum per-submesh bone count for DS1 (38) automatically :)
-- You can export a `Mesh` that does not have an `Armature` parent, in which case the FLVER skeleton will have one eponymous bone to which all vertices are weighted.
+- You can export a `Mesh` that does not have an `Armature` parent, in which case the FLVER skeleton will have one 
+eponymous bone to which all vertices are weighted.
   - This is fine for, e.g., most map pieces.
 - Material node trees are automatically generated using the MTD parameters of each FLVER material.
   - Soulstruct will attempt to find the `mtdbnd` Binder inside the selected game's `mtd` folder.
     - You can supply a custom `mtdbnd` path in the `General Settings` panel.
-    - If the Binder is not found, Soulstruct will guess as much material information as possible just from the name of the MTD.
+    - If the Binder is not found, Soulstruct will guess as much material information as possible just from the name of 
+    the MTD.
   - The **names of the texture nodes** in each material are used on export, e.g. `g_Diffuse`.
   - You can otherwise edit the shader to your heart's content; it will not affect export.
 

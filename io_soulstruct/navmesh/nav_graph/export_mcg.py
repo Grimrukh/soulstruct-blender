@@ -172,9 +172,9 @@ class QuickExportMCGMCP(LoggingOperator):
     def poll(cls, context):
         """Requires a single selected Empty object with 'Edges' and 'Nodes children.
         
-        Also requires `GlobalSettings` game.
+        Also requires `SoulstructSettings` game.
         """
-        settings = GlobalSettings.get_scene_settings(context)
+        settings = SoulstructSettings.get_scene_settings(context)
         if not settings.game_directory:
             return False
         if not settings.detect_map_from_parent and not settings.map_stem:
@@ -199,7 +199,7 @@ class QuickExportMCGMCP(LoggingOperator):
         if len(selected_objs) > 1:
             return self.error("More than one object cannot be selected for MCG export.")
         
-        settings = GlobalSettings.get_scene_settings(context)
+        settings = SoulstructSettings.get_scene_settings(context)
         if settings.detect_map_from_parent:
             map_stem = selected_objs[0].parent.name.split(" ")[0]
         elif settings.map_stem:

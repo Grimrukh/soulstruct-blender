@@ -18,7 +18,7 @@ from soulstruct.containers import Binder, BinderEntry
 from soulstruct.dcx import DCXType
 from soulstruct.darksouls1r.maps.navmesh.nvm import NVM, NVMTriangle, NVMEventEntity
 
-from io_soulstruct.general import GlobalSettings, GameNames
+from io_soulstruct.general import SoulstructSettings, GameNames
 from io_soulstruct.general.cached import get_cached_file
 from io_soulstruct.utilities.operators import LoggingOperator, get_dcx_enum_property
 from io_soulstruct.utilities.misc import MAP_STEM_RE
@@ -255,7 +255,7 @@ class QuickExportNVM(LoggingOperator):
         if not self.poll(context):
             return self.error("No valid 'n' meshes selected for quick NVM export.")
 
-        settings = GlobalSettings.get_scene_settings(context)
+        settings = SoulstructSettings.get_scene_settings(context)
         game_directory = settings.game_directory
         if not game_directory:
             return self.error("Game directory must be set in Blender's Soulstruct global settings for quick export.")

@@ -85,7 +85,7 @@ class ExportLooseHKXAnimation(LoggingOperator, ExportHelper):
     def execute(self, context):
         self.info("Executing HKX animation export...")
 
-        settings = GlobalSettings.get_scene_settings(context)  # type: GlobalSettings
+        settings = SoulstructSettings.get_scene_settings(context)  # type: SoulstructSettings
 
         animation_file_path = Path(self.filepath)
 
@@ -207,7 +207,7 @@ class ExportHKXAnimationIntoBinder(LoggingOperator, ImportHelper):
         entry_path = self.default_entry_path + animation_name + (".hkx" if self.dcx_type == "Null" else ".hkx.dcx")
 
         # Update or create binder entry.
-        binder.add_or_replace_entry_data(self.animation_id, animation_hkx, new_path=entry_path)
+        binder.set_default_entry(self.animation_id, new_path=entry_path, new_data=bytes(animation_hkx))
 
         # Write modified binder back.
         binder.write()
@@ -255,7 +255,7 @@ class QuickExportCharacterHKXAnimation(LoggingOperator):
         if not self.poll(context):
             return self.error("Must select a single Armature of a character (name starting with 'c') with an Action.")
 
-        settings = GlobalSettings.get_scene_settings(context)
+        settings = SoulstructSettings.get_scene_settings(context)
         game_directory = settings.game_directory
         if not game_directory:
             return self.error("No game directory set in global Soulstruct Settings.")
@@ -320,7 +320,7 @@ class QuickExportCharacterHKXAnimation(LoggingOperator):
         )
 
         # Update or create binder entry.
-        anibnd.add_or_replace_entry_data(animation_id, animation_hkx, new_path=entry_path)
+        anibnd.set_default_entry(animation_id, new_path=entry_path, new_data=bytes(animation_hkx))
         self.info(f"Successfully exported animation '{animation_name}' to ANIBND '{anibnd_path.name}'.")
 
         # Write modified ANIBND back.
@@ -370,7 +370,7 @@ class QuickExportObjectHKXAnimation(LoggingOperator):
         if not self.poll(context):
             return self.error("Must select a single Armature of a object (name starting with 'o') with an Action.")
 
-        settings = GlobalSettings.get_scene_settings(context)
+        settings = SoulstructSettings.get_scene_settings(context)
         game_directory = settings.game_directory
         if not game_directory:
             return self.error("No game directory set in global Soulstruct Settings.")
@@ -438,7 +438,7 @@ class QuickExportObjectHKXAnimation(LoggingOperator):
         )
 
         # Update or create binder entry.
-        anibnd.add_or_replace_entry_data(animation_id, animation_hkx, new_path=entry_path)
+        anibnd.set_default_entry(animation_id, new_path=entry_path, new_data=bytes(animation_hkx))
 
         # Write modified ANIBND entry back.
         anibnd_entry.set_from_binary_file(anibnd)

@@ -20,11 +20,11 @@ from soulstruct.darksouls1r.maps.parts import *
 from soulstruct_havok.utilities.maths import TRSTransform
 from soulstruct_havok.wrappers.hkx2015 import RemoBND
 
-from io_soulstruct.general import GlobalSettings
+from io_soulstruct.general import SoulstructSettings
 from io_soulstruct.utilities.conversion import Transform, GAME_TO_BL_VECTOR, GAME_TO_BL_EULER
 from io_soulstruct.utilities.operators import LoggingOperator
-from io_soulstruct.flver.import_flver import FLVERImportSettings, FLVERImporter
-from io_soulstruct.flver.textures.utilities import TextureManager
+from io_soulstruct.flver.import_flver import FLVERBatchImporter
+from io_soulstruct.flver.textures.import_textures import TextureImportManager
 from io_soulstruct.havok.utilities import GAME_TRS_TO_BL_MATRIX, get_basis_matrix
 from .utilities import HKXCutsceneImportError
 
@@ -132,7 +132,7 @@ class ImportHKXCutscene(LoggingOperator, ImportHelper):
             return {"FINISHED"}
 
         loaded_map_studio_directories = {}  # type: dict[Path, MapStudioDirectory]
-        settings = GlobalSettings.get_scene_settings(context)
+        settings = SoulstructSettings.get_scene_settings(context)
 
         if not settings.game_directory:
             # Assume RemoBND is in the appropriate game `remo` folder.
@@ -152,7 +152,7 @@ class ImportHKXCutscene(LoggingOperator, ImportHelper):
 
         part_armatures = {}  # type: dict[str, tp.Any]
         flvers_to_import = {}  # type: dict[str, FLVER]
-        texture_manager = TextureManager()
+        texture_manager = TextureImportManager()
 
         for part_name, remo_part in remobnd.remo_parts.items():
             if remo_part.part is None:
@@ -199,16 +199,12 @@ class ImportHKXCutscene(LoggingOperator, ImportHelper):
         # Load FLVERs.
         if flvers_to_import:
 
-            flver_import_settings = FLVERImportSettings(
+            flver_importer = FLVERBatchImporter(
+                self,
+                context,
                 texture_manager=texture_manager,
-                read_from_png_cache=self.read_from_png_cache,
-                write_to_png_cache=self.write_to_png_cache,
-                material_blend_mode=self.material_blend_mode,
-                base_edit_bone_length=self.base_edit_bone_length,
-                mtd_manager=settings.get_mtd_manager(context) if self.use_mtd_binder else None,
+                mtd_manager=SoulstructSettings.get_mtd_manager(context),
             )
-
-            flver_importer = FLVERImporter(self, context, flver_import_settings)
 
             for part_name, flver in flvers_to_import.items():
                 msb_part = remobnd.remo_parts[part_name]

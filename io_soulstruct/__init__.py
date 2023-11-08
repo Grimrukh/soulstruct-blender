@@ -58,7 +58,7 @@ def menu_func_import(self, context):
 
 # noinspection PyUnusedLocal
 def menu_func_export(self, context):
-    self.layout.operator(ExportLooseFLVER.bl_idname, text="FLVER (.flver)")
+    self.layout.operator(ExportStandaloneFLVER.bl_idname, text="FLVER (.flver)")
     self.layout.operator(ExportFLVERIntoBinder.bl_idname, text="FLVER to Binder (.*bnd)")
     self.layout.operator(ExportLooseNVM.bl_idname, text="NVM (.nvm)")
     self.layout.operator(ExportNVMIntoBinder.bl_idname, text="NVM to Binder (.nvmbnd)")
@@ -71,8 +71,8 @@ def menu_func_view3d_mt(self, context):
 
 # Classes to register.
 CLASSES = (
-    GlobalSettings,
-    GameFiles,
+    SoulstructSettings,
+    SoulstructGameEnums,
     GlobalSettingsPanel,
     GlobalSettingsPanel_View,
     SelectGameDirectory,
@@ -85,32 +85,36 @@ CLASSES = (
     CutMeshSelectionOperator,
 
     ImportFLVER,
-    QuickImportMapPieceFLVER,
-    QuickImportCharacterFLVER,
-    QuickImportObjectFLVER,
-    QuickImportEquipmentFLVER,
+    ImportMapPieceFLVER,
+    ImportCharacterFLVER,
+    ImportObjectFLVER,
+    ImportEquipmentFLVER,
+    FLVERImportSettings,
+    ImportMapPieceMSBPart,
 
     HideAllDummiesOperator,
     ShowAllDummiesOperator,
     PrintGameTransform,
 
-    ExportLooseFLVER,
+    FLVERExportSettings,
+    ExportStandaloneFLVER,
     ExportFLVERIntoBinder,
-    QuickExportMapPieceFLVERs,
-    QuickExportCharacterFLVER,
-    QuickExportEquipmentFLVER,
+    ExportMapPieceFLVERs,
+    ExportCharacterFLVER,
+    ExportObjectFLVER,
+    ExportEquipmentFLVER,
+    ExportMapPieceMSBParts,
 
-    FLVERSettings,
+    FLVERToolSettings,
     SetVertexAlpha,
     ActivateUVMap1,
     ActivateUVMap2,
     ActivateUVMap3,
 
-    ImportDDS,
-    ExportTexturesIntoBinder,
+    ImportTextures,
     BakeLightmapSettings,
     BakeLightmapTextures,
-    ExportLightmapTextures,
+    TextureExportSettings,
 
     FLVERImportPanel,
     FLVERExportPanel,
@@ -182,7 +186,7 @@ if soulstruct_havok:
     def havok_menu_func_import(self, context):
         self.layout.operator(ImportHKXMapCollision.bl_idname, text="HKX Collision (.hkx/.hkxbhd)")
         self.layout.operator(ImportHKXAnimation.bl_idname, text="HKX Animation (.hkx/.hkxbhd)")
-        self.layout.operator(ImportHKXCutscene.bl_idname, text="HKX Cutscene (.remobnd)")
+        # self.layout.operator(ImportHKXCutscene.bl_idname, text="HKX Cutscene (.remobnd)")
 
     # noinspection PyUnusedLocal
     def havok_menu_func_export(self, context):
@@ -190,7 +194,7 @@ if soulstruct_havok:
         self.layout.operator(ExportHKXMapCollisionIntoBinder.bl_idname, text="HKX Collision to Binder (.hkxbhd)")
         self.layout.operator(ExportLooseHKXAnimation.bl_idname, text="HKX Animation (.hkx)")
         self.layout.operator(ExportHKXAnimationIntoBinder.bl_idname, text="HKX Animation to Binder (.hkxbhd)")
-        self.layout.operator(ExportHKXCutscene.bl_idname, text="HKX Cutscene (.remobnd)")
+        # self.layout.operator(ExportHKXCutscene.bl_idname, text="HKX Cutscene (.remobnd)")
 
 else:
     HAVOK_CLASSES = ()
@@ -204,7 +208,7 @@ SPACE_VIEW_3D_HANDLERS = []
 
 @bpy.app.handlers.persistent
 def load_handler(_):
-    GlobalSettings.load_settings()
+    SoulstructSettings.load_settings()
 
 
 def register():
@@ -219,13 +223,16 @@ def register():
     bpy.types.TOPBAR_MT_file_export.append(menu_func_export)
     bpy.types.VIEW3D_MT_object.append(menu_func_view3d_mt)
 
-    bpy.types.Scene.soulstruct_global_settings = bpy.props.PointerProperty(type=GlobalSettings)
-    bpy.types.Scene.game_files = bpy.props.PointerProperty(type=GameFiles)
+    bpy.types.Scene.soulstruct_settings = bpy.props.PointerProperty(type=SoulstructSettings)
+    bpy.types.Scene.soulstruct_game_enums = bpy.props.PointerProperty(type=SoulstructGameEnums)
+    bpy.types.Scene.flver_import_settings = bpy.props.PointerProperty(type=FLVERImportSettings)
+    bpy.types.Scene.flver_export_settings = bpy.props.PointerProperty(type=FLVERExportSettings)
+    bpy.types.Scene.texture_export_settings = bpy.props.PointerProperty(type=TextureExportSettings)
     bpy.types.Scene.bake_lightmap_settings = bpy.props.PointerProperty(type=BakeLightmapSettings)
     bpy.types.Scene.navmesh_face_settings = bpy.props.PointerProperty(type=NavmeshFaceSettings)
     bpy.types.Scene.mcg_draw_settings = bpy.props.PointerProperty(type=MCGDrawSettings)
     bpy.types.Scene.mesh_move_settings = bpy.props.PointerProperty(type=MeshMoveSettings)
-    bpy.types.Scene.flver_settings = bpy.props.PointerProperty(type=FLVERSettings)
+    bpy.types.Scene.flver_settings = bpy.props.PointerProperty(type=FLVERToolSettings)
 
     bpy.app.handlers.load_post.append(load_handler)
     LOAD_POST_HANDLERS.append(load_handler)
@@ -264,8 +271,11 @@ def unregister():
         bpy.types.TOPBAR_MT_file_import.remove(havok_menu_func_import)
         bpy.types.TOPBAR_MT_file_export.remove(havok_menu_func_export)
 
-    del bpy.types.Scene.soulstruct_global_settings
-    del bpy.types.Scene.game_files
+    del bpy.types.Scene.soulstruct_settings
+    del bpy.types.Scene.soulstruct_game_enums
+    del bpy.types.Scene.flver_import_settings
+    del bpy.types.Scene.flver_export_settings
+    del bpy.types.Scene.texture_export_settings
     del bpy.types.Scene.bake_lightmap_settings
     del bpy.types.Scene.navmesh_face_settings
     del bpy.types.Scene.mcg_draw_settings

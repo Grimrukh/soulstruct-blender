@@ -1,33 +1,37 @@
 from __future__ import annotations
 
 __all__ = [
+    "FLVERImportSettings",
     "ImportFLVER",
-    "QuickImportMapPieceFLVER",
-    "QuickImportCharacterFLVER",
-    "QuickImportObjectFLVER",
-    "QuickImportEquipmentFLVER",
+    "ImportMapPieceFLVER",
+    "ImportCharacterFLVER",
+    "ImportObjectFLVER",
+    "ImportEquipmentFLVER",
+    "ImportMapPieceMSBPart",
 
     "HideAllDummiesOperator",
     "ShowAllDummiesOperator",
     "PrintGameTransform",
     "draw_dummy_ids",
 
-    "ExportLooseFLVER",
+    "FLVERExportSettings",
+    "ExportStandaloneFLVER",
     "ExportFLVERIntoBinder",
-    "QuickExportMapPieceFLVERs",
-    "QuickExportCharacterFLVER",
-    "QuickExportEquipmentFLVER",
+    "ExportMapPieceFLVERs",
+    "ExportCharacterFLVER",
+    "ExportObjectFLVER",
+    "ExportEquipmentFLVER",
+    "ExportMapPieceMSBParts",
 
-    "FLVERSettings",
+    "FLVERToolSettings",
     "SetVertexAlpha",
     "ActivateUVMap1",
     "ActivateUVMap2",
     "ActivateUVMap3",
-    "ImportDDS",
-    "ExportTexturesIntoBinder",
+    "ImportTextures",
     "BakeLightmapSettings",
     "BakeLightmapTextures",
-    "ExportLightmapTextures",
+    "TextureExportSettings",
 
     "FLVERImportPanel",
     "FLVERExportPanel",
@@ -43,7 +47,9 @@ from io_soulstruct.misc_operators import CutMeshSelectionOperator
 from .import_flver import *
 from .export_flver import *
 from .misc_operators import *
-from .textures import *
+from .textures.import_textures import *
+from .textures.export_textures import *
+from .textures.lightmaps import *
 from .utilities import *
 
 
@@ -67,22 +73,23 @@ class FLVERImportPanel(bpy.types.Panel):
         layout = self.layout
         layout.operator(ImportFLVER.bl_idname)
 
-        quick_import_box = layout.box()
-        quick_import_box.label(text="Quick Game Import")
-        quick_import_box.prop(context.scene.soulstruct_global_settings, "use_bak_file", text="From .BAK File")
-        quick_import_box.prop(context.scene.soulstruct_global_settings, "msb_import_mode", text="MSB Import Mode")
-        map_piece_import_box = quick_import_box.box()
-        map_piece_import_box.prop(context.scene.game_files, "map_piece")
-        map_piece_import_box.operator(QuickImportMapPieceFLVER.bl_idname)
-        chrbnd_import_box = quick_import_box.box()
-        chrbnd_import_box.prop(context.scene.game_files, "chrbnd")
-        chrbnd_import_box.operator(QuickImportCharacterFLVER.bl_idname)
-        objbnd_import_box = quick_import_box.box()
-        objbnd_import_box.prop(context.scene.game_files, "objbnd_name")
-        objbnd_import_box.operator(QuickImportObjectFLVER.bl_idname)
-        partsbnd_import_box = quick_import_box.box()
-        partsbnd_import_box.prop(context.scene.game_files, "partsbnd")
-        partsbnd_import_box.operator(QuickImportEquipmentFLVER.bl_idname)
+        game_import_box = layout.box()
+        game_import_box.label(text="Game Model Import")
+        game_import_box.operator(ImportMapPieceFLVER.bl_idname)
+        game_import_box.operator(ImportCharacterFLVER.bl_idname)
+        game_import_box.operator(ImportObjectFLVER.bl_idname)
+        game_import_box.operator(ImportEquipmentFLVER.bl_idname)
+
+        msb_import_box = layout.box()
+        msb_import_box.label(text="Game MSB Part Import")
+        for prop in (
+            "import_textures",
+            "material_blend_mode",
+            "base_edit_bone_length",
+        ):
+            msb_import_box.prop(context.scene.flver_import_settings, prop)
+        msb_import_box.prop(context.scene.soulstruct_game_enums, "map_piece_parts")
+        msb_import_box.operator(ImportMapPieceMSBPart.bl_idname, text="Import Map Piece Part")
 
 
 class FLVERExportPanel(bpy.types.Panel):
@@ -96,18 +103,48 @@ class FLVERExportPanel(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-        layout.operator(ExportLooseFLVER.bl_idname)
+        for prop in ("base_edit_bone_length", "allow_missing_textures", "allow_unknown_texture_types"):
+            layout.prop(context.scene.flver_export_settings, prop)
+        layout.operator(ExportStandaloneFLVER.bl_idname)
         layout.operator(ExportFLVERIntoBinder.bl_idname)
 
-        quick_export_box = layout.box()
-        quick_export_box.label(text="Quick Game Export")
-        quick_export_box.prop(
-            context.scene.soulstruct_global_settings, "detect_map_from_parent", text="Detect Map from Parent"
-        )
-        quick_export_box.prop(context.scene.soulstruct_global_settings, "msb_export_mode", text="MSB Export Mode")
-        quick_export_box.operator(QuickExportMapPieceFLVERs.bl_idname)
-        quick_export_box.operator(QuickExportCharacterFLVER.bl_idname)
-        quick_export_box.operator(QuickExportEquipmentFLVER.bl_idname)
+        game_export_box = layout.box()
+        game_export_box.label(text="Game Model Export")
+        game_export_box.prop(context.scene.soulstruct_settings, "detect_map_from_parent")
+        game_export_box.prop(context.scene.flver_export_settings, "export_textures")
+
+        if context.scene.flver_export_settings.export_textures:
+            self._draw_texture_export_settings(context.scene.texture_export_settings, game_export_box.box())
+
+        game_export_box.operator(ExportMapPieceFLVERs.bl_idname)
+        game_export_box.operator(ExportCharacterFLVER.bl_idname)
+        game_export_box.operator(ExportEquipmentFLVER.bl_idname)
+
+        msb_export_box = layout.box()
+        msb_export_box.label(text="Game MSB Part Export")
+        msb_export_box.operator(ExportMapPieceMSBParts.bl_idname)
+
+    @staticmethod
+    def _draw_texture_export_settings(settings: TextureExportSettings, layout):
+        layout.label(text="Texture Export Settings")
+        for prop in (
+            "overwrite_existing",
+            "require_power_of_two",
+            "platform",
+            "diffuse_format",
+            "diffuse_mipmap_count",
+            "specular_format",
+            "specular_mipmap_count",
+            "bumpmap_format",
+            "bumpmap_mipmap_count",
+            "height_format",
+            "height_mipmap_count",
+            "lightmap_format",
+            "lightmap_mipmap_count",
+            "chrbnd_tpf_max_size",
+            "max_tpfs_per_map_tpfbhd",
+        ):
+            layout.prop(settings, prop)
 
 
 class FLVERLightmapsPanel(bpy.types.Panel):
@@ -121,11 +158,18 @@ class FLVERLightmapsPanel(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-        layout.prop(context.scene.bake_lightmap_settings, "bake_margin")
-        layout.prop(context.scene.bake_lightmap_settings, "bake_edge_shaders")
-        layout.prop(context.scene.bake_lightmap_settings, "bake_rendered_only")
+        for prop in (
+            "uv_layer_name",
+            "texture_node_name",
+            "bake_image_size",
+            "bake_device",
+            "bake_samples",
+            "bake_margin",
+            "bake_edge_shaders",
+            "bake_rendered_only",
+        ):
+            layout.prop(context.scene.bake_lightmap_settings, prop)
         layout.operator(BakeLightmapTextures.bl_idname)
-        layout.operator(ExportLightmapTextures.bl_idname)
 
 
 class FLVERToolsPanel(bpy.types.Panel):
@@ -139,15 +183,15 @@ class FLVERToolsPanel(bpy.types.Panel):
     def draw(self, context):
 
         dummy_box = self.layout.box()
-        dummy_box.label(text="Dummies:")
+        dummy_box.label(text="Dummy Tools")
         dummy_box.prop(context.scene.flver_settings, "dummy_id_draw_enabled", text="Draw Dummy IDs")
         dummy_box.prop(context.scene.flver_settings, "dummy_id_font_size", text="Dummy ID Font Size")
         dummy_box.operator(HideAllDummiesOperator.bl_idname)
         dummy_box.operator(ShowAllDummiesOperator.bl_idname)
 
         textures_box = self.layout.box()
-        textures_box.operator(ImportDDS.bl_idname)
-        textures_box.operator(ExportTexturesIntoBinder.bl_idname)
+        textures_box.operator(ImportTextures.bl_idname)
+        # textures_box.operator(ExportTexturesIntoBinder.bl_idname)
 
         misc_operators_box = self.layout.box()
         misc_operators_box.label(text="Move Mesh Selection:")

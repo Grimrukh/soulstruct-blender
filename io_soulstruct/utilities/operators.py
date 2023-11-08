@@ -2,12 +2,16 @@ from __future__ import annotations
 
 __all__ = [
     "LoggingOperator",
+    "LoggingImportOperator",
+    "LoggingExportOperator",
     "get_dcx_enum_property",
 ]
 
 import typing as tp
+from pathlib import Path
 
 import bpy
+from bpy_extras.io_utils import ImportHelper, ExportHelper
 
 if tp.TYPE_CHECKING:
     from soulstruct.dcx import DCXType
@@ -16,8 +20,6 @@ if tp.TYPE_CHECKING:
 class LoggingOperator(bpy.types.Operator):
 
     cleanup_callback: tp.Callable = None
-
-    # TODO: `report` seems to log to console for FLVER operators, but not HKX?
 
     def info(self, msg: str):
         print(f"# INFO: {msg}")
@@ -66,6 +68,43 @@ class LoggingOperator(bpy.types.Operator):
         LoggingOperator.deselect_all()
         obj.select_set(True)
         bpy.context.view_layer.objects.active = obj
+
+
+class LoggingImportOperator(LoggingOperator, ImportHelper):
+    """Includes default `invoke()` class method that defaults to selected game directory."""
+
+    # Type hints for `ImportHelper` properties (must be defined by each `Operator` leaf class).
+    files: tp.Collection[bpy.types.OperatorFileListElement]
+    directory: str
+
+    def invoke(self, context, _event):
+        """Set the initial directory based on Global Settings."""
+        game_directory = context.scene.soulstruct_settings.game_directory
+        if game_directory and Path(game_directory).is_dir():
+            self.directory = game_directory
+            context.window_manager.fileselect_add(self)
+            return {'RUNNING_MODAL'}
+        return super().invoke(context, _event)
+
+    @property
+    def file_paths(self) -> list[Path]:
+        return [Path(self.directory, file.name) for file in self.files]
+
+
+class LoggingExportOperator(LoggingOperator, ExportHelper):
+    """Includes default `invoke()` class method that defaults to selected game directory."""
+
+    # Type hints for `ExportHelper` properties (must be defined by each `Operator` leaf class).
+    directory: str
+
+    def invoke(self, context, _event):
+        """Set the initial directory based on Global Settings."""
+        game_directory = context.scene.soulstruct_settings.game_directory
+        if game_directory and Path(game_directory).is_dir():
+            self.directory = game_directory
+            context.window_manager.fileselect_add(self)
+            return {'RUNNING_MODAL'}
+        return super().invoke(context, _event)
 
 
 def get_dcx_enum_property(

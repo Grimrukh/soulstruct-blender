@@ -3,7 +3,7 @@ from __future__ import annotations
 
 __all__ = [
     "GameNames",
-    "GlobalSettings",
+    "SoulstructSettings",
     "MTDBinderManager",
 ]
 
@@ -19,7 +19,7 @@ from soulstruct.dcx import DCXType
 from soulstruct.utilities.files import read_json, write_json
 
 
-_SETTINGS_PATH = Path(__file__).parent.parent / "GlobalSettings.json"
+_SETTINGS_PATH = Path(__file__).parent.parent / "SoulstructSettings.json"
 
 
 class GameNames:
@@ -39,7 +39,7 @@ _MAP_STEM_ENUM_ITEMS = (None, [("0", "None", "None")])  # type: tuple[Path | Non
 # noinspection PyUnusedLocal
 def _get_map_stem_items(self, context: bpy.types.Context):
     """Get list of map stems in game directory."""
-    settings = GlobalSettings.get_scene_settings(context)
+    settings = SoulstructSettings.get_scene_settings(context)
     game_directory = settings.game_directory
     global _MAP_STEM_ENUM_ITEMS
 
@@ -66,7 +66,7 @@ def _get_map_stem_items(self, context: bpy.types.Context):
     return _MAP_STEM_ENUM_ITEMS[1]
 
 
-class GlobalSettings(bpy.types.PropertyGroup):
+class SoulstructSettings(bpy.types.PropertyGroup):
     """Global settings for the Soulstruct Blender plugin."""
 
     game: bpy.props.EnumProperty(
@@ -96,6 +96,19 @@ class GlobalSettings(bpy.types.PropertyGroup):
         default="",
     )
 
+    read_cached_pngs: bpy.props.BoolProperty(
+        name="Read Cached PNGs",
+        description="Read cached PNGs with matching stems from PNG cache (if given) rather than converting DDS "
+                    "textures of imported FLVERs",
+        default=True,
+    )
+
+    write_cached_pngs: bpy.props.BoolProperty(
+        name="Write Cached PNGs",
+        description="Write cached PNGs of imported FLVER textures (converted from DDS files) to PNG cache if given",
+        default=True,
+    )
+
     mtdbnd_path: bpy.props.StringProperty(
         name="MTDBND Path",
         description="Path of custom MTDBND file for detecting material setups. "
@@ -109,34 +122,28 @@ class GlobalSettings(bpy.types.PropertyGroup):
         default=False,
     )
 
-    msb_import_mode: bpy.props.BoolProperty(
-        name="MSB Import Mode",
-        description="Import map part names and transforms from appropriate MSB in addition to reading model file",
-        default=False,
-    )
-
     detect_map_from_parent: bpy.props.BoolProperty(
         name="Detect Map from Parent",
         description="Detect map stem from Blender parent when quick-exporting game map assets",
         default=True,
     )
 
-    msb_export_mode: bpy.props.BoolProperty(
-        name="MSB Export Mode",
-        description="Export map part names and transforms to appropriate MSB in addition to writing model file",
-        default=False,
-    )
-
     @staticmethod
-    def get_scene_settings(context: bpy.types.Context = None) -> GlobalSettings:
+    def get_scene_settings(context: bpy.types.Context = None) -> SoulstructSettings:
         if context is None:
             context = bpy.context
-        return context.scene.soulstruct_global_settings
+        return context.scene.soulstruct_settings
+
+    @staticmethod
+    def get_game_path(*parts: str, context: bpy.types.Context = None) -> Path:
+        """Get path relative to game directory."""
+        settings = SoulstructSettings.get_scene_settings(context)
+        return Path(settings.game_directory, *parts)
 
     @staticmethod
     def get_selected_map_path(context: bpy.types.Context = None) -> Path | None:
         """Get the `map_stem` path in its game directory."""
-        settings = GlobalSettings.get_scene_settings(context)
+        settings = SoulstructSettings.get_scene_settings(context)
         if not settings.game_directory or settings.map_stem in {"", "0"}:
             return None
         return Path(settings.game_directory, "map", settings.map_stem)
@@ -144,7 +151,7 @@ class GlobalSettings(bpy.types.PropertyGroup):
     @staticmethod
     def get_selected_map_msb_path(context: bpy.types.Context = None) -> Path | None:
         """Get the `map_stem` MSB path in its game directory."""
-        settings = GlobalSettings.get_scene_settings(context)
+        settings = SoulstructSettings.get_scene_settings(context)
         if not settings.game_directory or settings.map_stem in {"", "0"}:
             return None
         return Path(settings.game_directory, "map/MapStudio", f"{settings.map_stem}.msb")
@@ -152,7 +159,7 @@ class GlobalSettings(bpy.types.PropertyGroup):
     @staticmethod
     def get_game_msb_class(context: bpy.types.Context = None) -> tp.Type[BaseMSB]:
         """Get the `MSB` class associated with the selected game."""
-        settings = GlobalSettings.get_scene_settings(context)
+        settings = SoulstructSettings.get_scene_settings(context)
         match settings.game:
             case GameNames.DS1R:
                 from soulstruct.darksouls1r.maps.msb import MSB
@@ -169,13 +176,17 @@ class GlobalSettings(bpy.types.PropertyGroup):
             # Manual DCX type given.
             return DCXType[dcx_type_name]
 
-        _game = GlobalSettings.get_scene_settings(context).game
+        _game = SoulstructSettings.get_scene_settings(context).game
         match class_name.upper():
             case "BINDER":
                 match _game:
                     case "DS1R":
                         return DCXType.DS1_DS2
             case "FLVER":
+                match _game:
+                    case "DS1R":
+                        return DCXType.Null if is_binder_entry else DCXType.DS1_DS2
+            case "TPF":
                 match _game:
                     case "DS1R":
                         return DCXType.Null if is_binder_entry else DCXType.DS1_DS2
@@ -196,7 +207,7 @@ class GlobalSettings(bpy.types.PropertyGroup):
     @staticmethod
     def get_mtd_manager(context: bpy.types.Context = None) -> MTDBinderManager | None:
         """Find MTDBND and return a manager that grants on-demand MTD access to the LAST MTD file in the binder."""
-        settings = GlobalSettings.get_scene_settings(context)
+        settings = SoulstructSettings.get_scene_settings(context)
         mtdbnd_path = settings.mtdbnd_path
         if not mtdbnd_path:
             if not settings.game_directory:
@@ -218,7 +229,7 @@ class GlobalSettings(bpy.types.PropertyGroup):
             json_settings = read_json(_SETTINGS_PATH)
         except FileNotFoundError:
             return  # do nothing
-        settings = bpy.context.scene.soulstruct_global_settings
+        settings = bpy.context.scene.soulstruct_settings
         settings.game = json_settings.get("game", "DS1R")
         settings.game_directory = json_settings.get("game_directory", "")
         map_stem = json_settings.get("map_stem", "0")
@@ -226,21 +237,23 @@ class GlobalSettings(bpy.types.PropertyGroup):
             map_stem = "0"  # null enum value
         settings.map_stem = map_stem
         settings.png_cache_directory = json_settings.get("png_cache_directory", "")
+        settings.read_cached_pngs = json_settings.get("read_cached_pngs", True)
+        settings.write_cached_pngs = json_settings.get("write_cached_pngs", True)
         settings.mtdbnd_path = json_settings.get("mtdbnd_path", "")
         settings.use_bak_file = json_settings.get("use_bak_file", False)
         settings.detect_map_from_parent = json_settings.get("detect_map_from_parent", True)
-        settings.msb_import_mode = json_settings.get("msb_import_mode", False)
-        settings.msb_export_mode = json_settings.get("msb_export_mode", False)
 
     @staticmethod
     def save_settings():
         """Write settings from scene to JSON file."""
-        settings = bpy.context.scene.soulstruct_global_settings
+        settings = bpy.context.scene.soulstruct_settings
         current_settings = {
             key: getattr(settings, key)
             for key in (
-                "game", "game_directory", "map_stem", "png_cache_directory", "mtdbnd_path",
-                "use_bak_file", "detect_map_from_parent", "msb_import_mode", "msb_export_mode",
+                "game", "game_directory", "map_stem",
+                "png_cache_directory", "read_cached_pngs", "write_cached_pngs",
+                "mtdbnd_path",
+                "use_bak_file", "detect_map_from_parent",
             )
         }
         write_json(_SETTINGS_PATH, current_settings, indent=4)

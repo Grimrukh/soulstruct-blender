@@ -17,7 +17,7 @@ from soulstruct.dcx import DCXType
 from soulstruct.containers import Binder, BinderEntry
 from soulstruct_havok.wrappers.hkx2015 import MapCollisionHKX
 
-from io_soulstruct.general import GlobalSettings
+from io_soulstruct.general import SoulstructSettings
 from io_soulstruct.general.cached import get_cached_file
 from io_soulstruct.utilities import *
 from .utilities import *
@@ -299,7 +299,7 @@ class QuickExportHKXMapCollision(LoggingOperator):
 
         TODO: Also currently for DS1R only.
         """
-        if GlobalSettings.get_scene_settings(context).game != "DS1R":
+        if SoulstructSettings.get_scene_settings(context).game != "DS1R":
             return False
         if not context.selected_objects:
             return False
@@ -316,7 +316,7 @@ class QuickExportHKXMapCollision(LoggingOperator):
         if not self.poll(context):
             return self.error("Must select a parent of one or more collision submeshes.")
 
-        settings = GlobalSettings.get_scene_settings(context)
+        settings = SoulstructSettings.get_scene_settings(context)
         game_directory = settings.game_directory
         map_stem = settings.map_stem
         # NOTE: Always uses DSR DCX.

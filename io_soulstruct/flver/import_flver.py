@@ -19,12 +19,13 @@ from __future__ import annotations
 
 __all__ = [
     "ImportFLVER",
-    "QuickImportMapPieceFLVER",
-    "QuickImportCharacterFLVER",
-    "QuickImportObjectFLVER",
-    "QuickImportEquipmentFLVER",
+    "ImportMapPieceFLVER",
+    "ImportCharacterFLVER",
+    "ImportObjectFLVER",
+    "ImportEquipmentFLVER",
     "FLVERImportSettings",
-    "FLVERImporter",
+    "ImportMapPieceMSBPart",
+    "FLVERBatchImporter",
 ]
 
 import math
@@ -39,94 +40,129 @@ from pathlib import Path
 import bmesh
 import bpy
 import bpy.ops
-from bpy.props import StringProperty, FloatProperty, BoolProperty, EnumProperty, CollectionProperty
-from bpy_extras.io_utils import ImportHelper
 from mathutils import Vector, Matrix
 
 from soulstruct.base.models.flver import FLVER, FLVERBone, Dummy
 from soulstruct.base.models.flver.mesh_tools import MergedMesh
 from soulstruct.containers import Binder
-from soulstruct.dcx import DCXType
 from soulstruct.containers.tpf import TPFTexture, batch_get_tpf_texture_png_data
 from soulstruct.utilities.maths import Vector3
 
-from io_soulstruct.general import GlobalSettings, GameFiles, MTDBinderManager
+from io_soulstruct.general import SoulstructSettings, SoulstructGameEnums, MTDBinderManager
 from io_soulstruct.general.cached import get_cached_file
 from io_soulstruct.utilities import *
-from .utilities import *
 from .materials import get_submesh_blender_material
-from .textures.utilities import png_to_bl_image, TextureManager
+from .textures.import_textures import TextureImportManager, import_png_as_image
+from .utilities import *
 
 if tp.TYPE_CHECKING:
     from soulstruct.darksouls1r.maps import MSB
 
-FLVER_BINDER_RE = re.compile(r"^.*?\.(chr|obj|parts)bnd(\.dcx)?$")
+FLVER_BINDER_RE = re.compile(r"^.*?\.(.*bnd)(\.dcx)?$")
 MAP_NAME_RE = re.compile(r"^(m\d\d)_\d\d_\d\d_\d\d$")
 
 
-class ImportFLVERMixin:
+class FLVERImportSettings(bpy.types.PropertyGroup):
+    """Common FLVER import settings. Drawn manually in operator browser windows."""
 
-    # `LoggingOperator` type hints
-    error: tp.Callable[[str], set[str]]
-    warning: tp.Callable[[str], set[str]]
-    info: tp.Callable[[str], set[str]]
-
-    read_from_png_cache: BoolProperty(
-        name="Read from PNG Cache",
-        description="Read cached PNGs (instead of DDS files) from the above directory if available",
+    import_textures: bpy.props.BoolProperty(
+        name="Import Textures",
+        description="Import DDS textures from TPFs in expected locations for detected FLVER model source type",
         default=True,
     )
 
-    write_to_png_cache: BoolProperty(
-        name="Write to PNG Cache",
-        description="Write PNGs of any loaded textures (DDS files) to the above directory for future use",
-        default=True,
-    )
-
-    find_game_tpfs: BoolProperty(
-        name="Find Game TPF Files",
-        description="Look for TPF (DDS) textures in known game locations for FLVER source type",
-        default=True,
-    )
-
-    use_mtd_binder: BoolProperty(
-        name="Use MTD Binder",
-        description="Try to find MTD shaders in game 'mtd' folder to improve Blender shader accuracy",
-        default=True,
-    )
-
-    material_blend_mode: EnumProperty(
+    material_blend_mode: bpy.props.EnumProperty(
         name="Alpha Blend Mode",
         description="Alpha mode to use for new single-texture FLVER materials",
         items=[
-            ('OPAQUE', "Opaque", "Opaque Blend Mode"),
-            ('CLIP', "Clip", "Clip Blend Mode"),
-            ('HASHED', "Hashed", "Hashed Blend Mode"),
-            ('BLEND', "Blend", "Sorted Blend Mode"),
+            ("OPAQUE", "Opaque", "Opaque Blend Mode"),
+            ("CLIP", "Clip", "Clip Blend Mode"),
+            ("HASHED", "Hashed", "Hashed Blend Mode"),
+            ("BLEND", "Blend", "Sorted Blend Mode"),
         ],
         default="HASHED",
     )
 
-    base_edit_bone_length: FloatProperty(
+    base_edit_bone_length: bpy.props.FloatProperty(
         name="Base Edit Bone Length",
         description="Length of edit bones corresponding to bone scale 1",
         default=0.2,
         min=0.01,
     )
 
-    def get_import_settings(self, context, texture_manager: TextureManager):
-        settings = GlobalSettings.get_scene_settings(context)
-        return FLVERImportSettings(
+
+class BaseFLVERImportOperator(LoggingImportOperator):
+
+    def draw(self, context):
+        import_settings = context.scene.flver_import_settings  # type: FLVERImportSettings
+
+        self.layout.prop(import_settings, "import_textures")
+        self.layout.prop(import_settings, "material_blend_mode")
+        self.layout.prop(import_settings, "base_edit_bone_length")
+
+    def execute(self, context: bpy.types.Context):
+        """Default import method for FLVERs."""
+
+        start_time = time.perf_counter()
+
+        flvers = []  # holds `(bl_name, FLVER)` pairs
+        texture_manager = TextureImportManager()
+
+        import_settings = context.scene.flver_import_settings  # type: FLVERImportSettings
+
+        for source_path in self.file_paths:
+
+            if FLVER_BINDER_RE.match(source_path.name):
+                # NOTE: Will always import all FLVERs found in Binder.
+                binder = Binder.from_path(source_path)
+                binder_flvers = get_flvers_from_binder(binder, source_path, allow_multiple=True)
+                if import_settings.import_textures:
+                    texture_manager.find_flver_textures(source_path, binder)
+                for flver in binder_flvers:
+                    flvers.append((flver.path.name.split(".")[0], flver))
+            else:  # e.g. loose Map Piece FLVER
+                flver = FLVER.from_path(source_path)
+                if import_settings.import_textures:
+                    texture_manager.find_flver_textures(source_path)
+                flvers.append((source_path.name.split(".")[0], flver))
+
+        settings = bpy.context.scene.soulstruct_settings  # type: SoulstructSettings
+        settings.save_settings()
+        importer = FLVERBatchImporter(
+            self,
+            context,
             texture_manager=texture_manager,
-            read_from_png_cache=self.read_from_png_cache,
-            write_to_png_cache=self.write_to_png_cache,
-            material_blend_mode=self.material_blend_mode,
-            base_edit_bone_length=self.base_edit_bone_length,
-            mtd_manager=settings.get_mtd_manager(context) if self.use_mtd_binder else None,
+            mtd_manager=settings.get_mtd_manager(context),
         )
 
+        for bl_name, flver in flvers:
 
-class ImportFLVER(LoggingOperator, ImportHelper, ImportFLVERMixin):
+            try:
+                bl_armature, bl_mesh = importer.import_flver(flver, name=bl_name)
+            except Exception as ex:
+                # Delete any objects created prior to exception.
+                importer.abort_import()
+                traceback.print_exc()  # for inspection in Blender console
+                return self.error(f"Cannot import FLVER: {bl_name}. Error: {ex}")
+
+            # Select newly imported Armature.
+            if bl_armature:
+                self.set_active_obj(bl_armature)
+
+        self.info(f"Imported {len(flvers)} FLVER(s) in {time.perf_counter() - start_time:.3f} seconds.")
+
+        return {"FINISHED"}
+
+    def find_extra_textures(self, flver_source_path: Path, flver: FLVER, texture_manager: TextureImportManager):
+        """Can be overridden by importers for specific FLVER model types that know where their textures are."""
+        pass
+
+    def set_blender_parent(self, context, bl_flver_armature: bpy.types.ArmatureObject):
+        """Set parent of imported FLVER armature, if needed."""
+        pass
+
+
+class ImportFLVER(BaseFLVERImportOperator):
     """This appears in the tooltip of the operator and in the generated docs."""
     bl_idname = "import_scene.flver"
     bl_label = "Import FLVER"
@@ -134,130 +170,226 @@ class ImportFLVER(LoggingOperator, ImportHelper, ImportFLVERMixin):
 
     filename_ext = ".flver"
 
-    filter_glob: StringProperty(
+    filter_glob: bpy.props.StringProperty(
         default="*.flver;*.flver.dcx;*.chrbnd;*.chrbnd.dcx;*.objbnd;*.objbnd.dcx;"
                 "*.partsbnd;*.partsbnd.dcx;*.mapbnd;*.mapbnd.dcx;*.geombnd;*.geombnd.dcx",
         options={'HIDDEN'},
-        maxlen=255,  # Max internal buffer length, longer would be clamped.
+        maxlen=255,
     )
 
-    files: CollectionProperty(
-        type=bpy.types.OperatorFileListElement,
-        options={'HIDDEN', 'SKIP_SAVE'},
-    )
-
-    directory: StringProperty(
-        options={'HIDDEN'},
-    )
+    files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'},)
+    directory: bpy.props.StringProperty(options={'HIDDEN'})
 
     def invoke(self, context, _event):
         """Set the initial directory based on Global Settings."""
-        game_directory = GlobalSettings.get_scene_settings(context).game_directory
+        game_directory = SoulstructSettings.get_scene_settings(context).game_directory
         if game_directory and Path(game_directory).is_dir():
-            self.filepath = game_directory
+            self.directory = game_directory
+            context.window_manager.fileselect_add(self)
+            return {'RUNNING_MODAL'}
         return super().invoke(context, _event)
 
-    def execute(self, context):
-        self.info("Executing FLVER import...")
 
-        start_time = time.perf_counter()
+# region Game Folder Importers
 
-        file_paths = [Path(self.directory, file.name) for file in self.files]
-        flvers = []
-        texture_manager = TextureManager()
-
-        for file_path in file_paths:
-
-            if FLVER_BINDER_RE.match(file_path.name):
-                binder = Binder.from_path(file_path)
-                flver = get_flver_from_binder(binder, file_path)
-                if self.find_game_tpfs:
-                    texture_manager.find_flver_textures(file_path, binder)
-            else:  # e.g. loose Map Piece FLVER
-                flver = FLVER.from_path(file_path)
-                if self.find_game_tpfs:
-                    texture_manager.find_flver_textures(file_path)
-            flvers.append((file_path, flver))
-
-        settings = bpy.context.scene.soulstruct_global_settings  # type: GlobalSettings
-        settings.save_settings()
-        importer = FLVERImporter(self, context, self.get_import_settings(context, texture_manager))
-
-        for file_path, flver in flvers:
-
-            try:
-                name = file_path.name.split(".")[0]  # drop all extensions
-                bl_armature, bl_mesh = importer.import_flver(flver, name=name)
-            except Exception as ex:
-                # Delete any objects created prior to exception.
-                importer.abort_import()
-                traceback.print_exc()  # for inspection in Blender console
-                return self.error(f"Cannot import FLVER: {file_path.name}. Error: {ex}")
-
-            # Select newly imported mesh.
-            if bl_mesh:
-                self.set_active_obj(bl_mesh)
-
-        self.info(f"Imported {len(flvers)} FLVERs in {time.perf_counter() - start_time:.3f} seconds.")
-
-        return {"FINISHED"}
-
-
-class QuickImportMapPieceFLVER(LoggingOperator, ImportFLVERMixin):
-    """Import a map piece FLVER from the current selected value of listed game map piece FLVERs."""
-    bl_idname = "import_scene.quick_map_piece_flver"
+class ImportMapPieceFLVER(BaseFLVERImportOperator):
+    """Import a map piece FLVER from selected game map directory."""
+    bl_idname = "import_scene.map_piece_flver"
     bl_label = "Import Map Piece"
-    bl_description = "Import selected map piece FLVER from game map directory"
+    bl_description = "Import a Map Piece FLVER from selected game map directory"
+
+    filename_ext = ".flver"
+
+    filter_glob: bpy.props.StringProperty(
+        default="*.flver;*.flver.dcx",
+        options={'HIDDEN'},
+        maxlen=255,
+    )
+
+    files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'},)
+    directory: bpy.props.StringProperty(options={'HIDDEN'})
 
     @classmethod
     def poll(cls, context):
-        game_lists = context.scene.game_files  # type: GameFiles
-        return game_lists.map_piece not in {"", "0"}
+        return bool(SoulstructSettings.get_selected_map_path(context))
+
+    def invoke(self, context, _event):
+        """Set the initial directory based on Global Settings."""
+        map_path = SoulstructSettings.get_selected_map_path(context)
+        if map_path and Path(map_path).is_dir():
+            self.directory = str(map_path)
+            context.window_manager.fileselect_add(self)
+            return {'RUNNING_MODAL'}
+        return super().invoke(context, _event)
+
+    def find_extra_textures(self, flver_source_path: Path, flver: FLVER, texture_manager: TextureImportManager):
+
+        # Check all textures in FLVER for specific map 'mAA_' prefix textures and register TPFBHDs in those maps.
+        area_re = re.compile(r"^m\d\d_")
+        texture_map_areas = {
+            texture_path.stem[:3]
+            for texture_path in flver.get_all_texture_paths()
+            if re.match(area_re, texture_path.stem)
+        }
+        for map_area in texture_map_areas:
+            map_area_dir = (flver_source_path.parent / f"../{map_area}").resolve()
+            texture_manager.find_specific_map_textures(map_area_dir)
+
+    def set_blender_parent(self, context, bl_flver_armature: bpy.types.ArmatureObject):
+        """Find or create Map Piece parent."""
+        map_stem = SoulstructSettings.get_scene_settings(context).map_stem
+        map_piece_parent = find_or_create_bl_empty(f"{map_stem} Map Pieces", context)
+        bl_flver_armature.parent = map_piece_parent
+
+
+class ImportCharacterFLVER(BaseFLVERImportOperator):
+    """Shortcut for browsing for CHRBND Binders in game 'chr' directory."""
+    bl_idname = "import_scene.character_flver"
+    bl_label = "Import Character"
+    bl_description = "Import character FLVER from a CHRBND in selected game 'chr' directory"
+
+    filename_ext = ".chrbnd"
+
+    filter_glob: bpy.props.StringProperty(
+        default="*.chrbnd;*.chrbnd.dcx;",
+        options={'HIDDEN'},
+        maxlen=255,
+    )
+
+    files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'},)
+    directory: bpy.props.StringProperty(options={'HIDDEN'})
+
+    @classmethod
+    def poll(cls, context):
+        return bool(SoulstructSettings.get_game_path("chr"))
+
+    def invoke(self, context, _event):
+        chr_dir = SoulstructSettings.get_game_path("chr")
+        if chr_dir and chr_dir.is_dir():
+            self.directory = str(chr_dir)
+            context.window_manager.fileselect_add(self)
+            return {'RUNNING_MODAL'}
+        return super().invoke(context, _event)
+
+    # Base `execute` method is fine.
+
+
+class ImportObjectFLVER(BaseFLVERImportOperator):
+    """Shortcut for browsing for OBJBND Binders in game 'obj' directory."""
+    bl_idname = "import_scene.object_flver"
+    bl_label = "Import Object"
+    bl_description = "Import object FLVER from an OBJBND in selected game 'obj' directory"
+
+    filename_ext = ".objbnd"
+
+    filter_glob: bpy.props.StringProperty(
+        default="*.objbnd;*.objbnd.dcx;",
+        options={'HIDDEN'},
+        maxlen=255,
+    )
+
+    files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'},)
+    directory: bpy.props.StringProperty(options={'HIDDEN'})
+
+    @classmethod
+    def poll(cls, context):
+        return bool(SoulstructSettings.get_game_path("obj"))
+
+    def invoke(self, context, _event):
+        obj_dir = SoulstructSettings.get_game_path("obj")
+        if obj_dir and obj_dir.is_dir():
+            self.directory = str(obj_dir)
+            context.window_manager.fileselect_add(self)
+            return {'RUNNING_MODAL'}
+        return super().invoke(context, _event)
+
+    # Base `execute` method is fine.
+
+
+class ImportEquipmentFLVER(BaseFLVERImportOperator):
+    """Import weapon/armor FLVER from a `partsbnd` binder and attach it to selected armature (c0000)."""
+    bl_idname = "import_scene.equipment_flver"
+    bl_label = "Import Equipment"
+    bl_description = "Import equipment FLVER from a PARTSBND in selected game 'parts' directory"
+
+    filename_ext = ".partsbnd"
+
+    filter_glob: bpy.props.StringProperty(
+        default="*.partsbnd;*.partsbnd.dcx;",
+        options={'HIDDEN'},
+        maxlen=255,
+    )
+
+    files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'}, )
+    directory: bpy.props.StringProperty(options={'HIDDEN'})
+
+    @classmethod
+    def poll(cls, context):
+        return bool(SoulstructSettings.get_game_path("parts"))
+
+    def invoke(self, context, _event):
+        parts_dir = SoulstructSettings.get_game_path("parts")
+        if parts_dir and parts_dir.is_dir():
+            self.directory = str(parts_dir)
+            context.window_manager.fileselect_add(self)
+            return {'RUNNING_MODAL'}
+        return super().invoke(context, _event)
+
+    # Base `execute` method is fine.
+
+# endregion
+
+
+# region MSB Mode Importers
+
+class ImportMapPieceMSBPart(LoggingOperator):
+    """Import a map piece FLVER from selected game map directory."""
+    bl_idname = "import_scene.msb_map_piece_flver"
+    bl_label = "Import Map Piece Part"
+    bl_description = "Import FLVER model and MSB transform of selected Map Piece MSB part"
+
+    @classmethod
+    def poll(cls, context):
+        settings = SoulstructSettings.get_scene_settings(context)
+        msb_path = SoulstructSettings.get_game_path("map/MapStudio", f"{settings.map_stem}.msb")
+        if not msb_path or not msb_path.is_file():
+            return False
+        game_enums = context.scene.soulstruct_game_enums  # type: SoulstructGameEnums
+        if game_enums.map_piece_parts in {"", "0"}:
+            return False
+        return True  # MSB exists and a Map Piece part name is selected from enum
 
     def execute(self, context):
 
         start_time = time.perf_counter()
 
-        game_lists = context.scene.game_files  # type: GameFiles
-
-        settings = GlobalSettings.get_scene_settings(context)
+        settings = SoulstructSettings.get_scene_settings(context)
         settings.save_settings()
 
-        transform = None  # type: Transform | None
+        flver_import_settings = context.scene.flver_import_settings  # type: FLVERImportSettings
 
-        if settings.msb_import_mode:
-            try:
-                part_name, flver_stem = game_lists.map_piece.split("|")
-            except ValueError:
-                return self.error("Invalid MSB map piece selection.")
-            msb_path = settings.get_selected_map_msb_path(context)
+        try:
+            part_name, flver_stem = context.scene.soulstruct_game_enums.map_piece_parts.split("|")
+        except ValueError:
+            return self.error("Invalid MSB map piece selection.")
+        msb_path = settings.get_selected_map_msb_path(context)
 
-            # Get MSB part transform.
-            msb = get_cached_file(msb_path, settings.get_game_msb_class(context))  # type: MSB
-            map_piece_part = msb.map_pieces.find_entry_name(part_name)
-            transform = Transform.from_msb_part(map_piece_part)
+        # Get MSB part transform.
+        msb = get_cached_file(msb_path, settings.get_game_msb_class(context))  # type: MSB
+        map_piece_part = msb.map_pieces.find_entry_name(part_name)
+        transform = Transform.from_msb_part(map_piece_part)
 
-            dcx_type = settings.resolve_dcx_type("Auto", "FLVER", False, context)
-            flver_path = Path(settings.game_directory, "map", settings.map_stem, f"{flver_stem}.flver")
-            flver_path = dcx_type.process_path(flver_path)
-
-            bl_name = part_name
-        else:
-            flver_path = game_lists.map_piece
-            flver_stem = Path(flver_path).name.split(".")[0]
-            if not flver_path:
-                return self.error("No map piece FLVER selected.")
-            flver_path = Path(flver_path)
-            if not flver_path.is_file():
-                return self.error(f"Map piece FLVER path is not a file: {flver_path}. Try refreshing game file lists.")
-            bl_name = flver_path.name.split(".")[0]  # drop all extensions
+        dcx_type = settings.resolve_dcx_type("Auto", "FLVER", False, context)
+        flver_path = Path(settings.game_directory, "map", settings.map_stem, f"{flver_stem}.flver")
+        flver_path = dcx_type.process_path(flver_path)
+        bl_name = part_name
 
         self.info(f"Importing map piece FLVER: {flver_path}")
 
-        texture_manager = TextureManager()
+        texture_manager = TextureImportManager()
 
         flver = FLVER.from_path(flver_path)
-        if self.find_game_tpfs:
+        if flver_import_settings.import_textures:
             texture_manager.find_flver_textures(flver_path)
 
         # Check all textures in FLVER for specific map 'mAA_' prefix textures and register TPFBHDs in those maps.
@@ -271,7 +403,12 @@ class QuickImportMapPieceFLVER(LoggingOperator, ImportFLVERMixin):
             map_area_dir = (flver_path.parent / f"../{map_area}").resolve()
             texture_manager.find_specific_map_textures(map_area_dir)
 
-        importer = FLVERImporter(self, context, self.get_import_settings(context, texture_manager))
+        importer = FLVERBatchImporter(
+            self,
+            context,
+            texture_manager=texture_manager,
+            mtd_manager=settings.get_mtd_manager(context),
+        )
 
         try:
             bl_armature, bl_mesh = importer.import_flver(flver, name=bl_name, transform=transform)
@@ -281,10 +418,8 @@ class QuickImportMapPieceFLVER(LoggingOperator, ImportFLVERMixin):
             traceback.print_exc()  # for inspection in Blender console
             return self.error(f"Cannot import FLVER: {flver_path.name}. Error: {ex}")
 
-        # Set 'Model File Stem' if in MSB Import Mode. (This isn't used in MSB Export Mode, which gets its model from
-        # the MSB part, but is a generally useful tracker of the FLVER file stem.)
-        if transform is not None:
-            bl_mesh["Model File Stem"] = flver_stem
+        # Set 'Model File Stem' to ensure the model file stem is recorded, since the object name is the part name.
+        bl_mesh["Model File Stem"] = flver_stem
 
         # Find or create Map Piece parent.
         map_piece_parent = find_or_create_bl_empty(f"{settings.map_stem} Map Pieces", context)
@@ -298,192 +433,11 @@ class QuickImportMapPieceFLVER(LoggingOperator, ImportFLVERMixin):
 
         return {"FINISHED"}
 
-
-class QuickImportCharacterFLVER(LoggingOperator, ImportFLVERMixin):
-    """Import a character FLVER from the current selected value of listed game map CHRBNDs."""
-    bl_idname = "import_scene.quick_character_flver"
-    bl_label = "Import Character"
-    bl_description = "Import selected character's FLVER from game CHRBND"
-
-    @classmethod
-    def poll(cls, context):
-        game_lists = context.scene.game_files  # type: GameFiles
-        return game_lists.chrbnd not in {"", "0"}
-
-    def execute(self, context):
-        game_lists = context.scene.game_files  # type: GameFiles
-
-        chrbnd_path = game_lists.chrbnd
-        if not chrbnd_path:
-            return self.error("No CHRBND selected.")
-        chrbnd_path = Path(chrbnd_path)
-        if not chrbnd_path.is_file():
-            return self.error(f"CHRBND path is not a file: {chrbnd_path}.")
-
-        self.info(f"Importing FLVER from CHRBND: {chrbnd_path}")
-
-        chrbnd = Binder.from_path(chrbnd_path)
-        flver = get_flver_from_binder(chrbnd, chrbnd_path)
-        texture_manager = TextureManager()
-        if self.find_game_tpfs:
-            texture_manager.find_flver_textures(chrbnd_path, chrbnd)
-
-        settings = bpy.context.scene.soulstruct_global_settings  # type: GlobalSettings
-        settings.save_settings()
-
-        importer = FLVERImporter(self, context, self.get_import_settings(context, texture_manager))
-
-        transform = None  # type: Transform | None
-
-        try:
-            name = chrbnd_path.name.split(".")[0]  # drop all extensions
-            bl_armature, bl_mesh = importer.import_flver(flver, name=name, transform=transform)
-        except Exception as ex:
-            # Delete any objects created prior to exception.
-            importer.abort_import()
-            traceback.print_exc()  # for inspection in Blender console
-            return self.error(f"Cannot import FLVER from CHRBND: {chrbnd_path.name}. Error: {ex}")
-
-        # Select newly imported mesh.
-        if bl_mesh:
-            self.set_active_obj(bl_mesh)
-
-        return {"FINISHED"}
-
-
-class QuickImportObjectFLVER(LoggingOperator, ImportFLVERMixin):
-    """Import all object FLVERs from the current selected game OBJBND name."""
-    bl_idname = "import_scene.quick_object_flver"
-    bl_label = "Import Object"
-    bl_description = "Import selected object's FLVERs from game OBJBND"
-
-    @classmethod
-    def poll(cls, context):
-        game_files = context.scene.game_files  # type: GameFiles
-        settings = GlobalSettings.get_scene_settings(context)
-        return settings.game_directory != "" and game_files.objbnd_name != ""
-
-    def execute(self, context):
-        game_files = context.scene.game_files  # type: GameFiles
-        settings = GlobalSettings.get_scene_settings(context)
-
-        if not settings.game_directory:
-            return self.error("No game directory selected.")
-
-        objbnd_name = game_files.objbnd_name
-        if not objbnd_name:
-            return self.error("No OBJBND name given.")
-
-        objbnd_name = objbnd_name.removesuffix(".dcx").removesuffix(".objbnd") + ".objbnd"
-        if GlobalSettings.resolve_dcx_type("Auto", "Binder", False, context) != DCXType.Null:
-            objbnd_name += ".dcx"
-
-        objbnd_path = Path(settings.game_directory, "obj", objbnd_name)
-        if not objbnd_path.is_file():
-            return self.error(f"OBJBND path does not exist: {objbnd_path}")
-
-        self.info(f"Importing FLVERs from OBJBND: {objbnd_path}")
-
-        # Objects can have multiple FLVERs. We import them all separately.
-
-        objbnd = Binder.from_path(objbnd_path)
-        flver_entries = objbnd.find_entries_matching_name(r".*\.flver(\.dcx)?")
-        if not flver_entries:
-            return self.error(f"No FLVERs found in OBJBND: {objbnd_path}")
-        flvers = [
-            (entry.minimal_stem, FLVER.from_binder_entry(entry)) for entry in flver_entries
-        ]
-        texture_manager = TextureManager()
-        if self.find_game_tpfs:
-            texture_manager.find_flver_textures(objbnd_path, objbnd)
-
-        settings = bpy.context.scene.soulstruct_global_settings  # type: GlobalSettings
-        settings.save_settings()
-
-        importer = FLVERImporter(self, context, self.get_import_settings(context, texture_manager))
-
-        for name, flver in flvers:
-            try:
-                bl_armature, bl_mesh = importer.import_flver(flver, name=name)
-            except Exception as ex:
-                # Delete any objects created prior to exception.
-                importer.abort_import()
-                traceback.print_exc()  # for inspection in Blender console
-                return self.error(f"Cannot import FLVER from CHRBND: {objbnd_path.name}. Error: {ex}")
-
-            # Select newly imported mesh.
-            if bl_mesh:
-                self.set_active_obj(bl_mesh)
-
-        return {"FINISHED"}
-
-
-class QuickImportEquipmentFLVER(LoggingOperator, ImportFLVERMixin):
-    """Import weapon/armor FLVER from a `partsbnd` binder and attach it to selected armature (c0000)."""
-    bl_idname = "import_scene.quick_equipment_flver"
-    bl_label = "Import Equipment"
-    bl_description = "Import equipment FLVER from selected game PARTSBND"
-
-    @classmethod
-    def poll(cls, context):
-        game_lists = context.scene.game_files  # type: GameFiles
-        return game_lists.partsbnd not in {"", "0"}
-
-    def execute(self, context):
-        game_lists = context.scene.game_files  # type: GameFiles
-
-        partsbnd_path = game_lists.partsbnd
-        if not partsbnd_path:
-            return self.error("No PARTSBND selected.")
-        partsbnd_path = Path(partsbnd_path)
-        if not partsbnd_path.is_file():
-            return self.error(f"PARTSBND path is not a file: {partsbnd_path}.")
-
-        self.info(f"Importing FLVER from PARTSBND: {partsbnd_path}")
-
-        partsbnd = Binder.from_path(partsbnd_path)
-        flver = get_flver_from_binder(partsbnd, partsbnd_path)
-        texture_manager = TextureManager()
-        if self.find_game_tpfs:
-            texture_manager.find_flver_textures(partsbnd_path, partsbnd)
-
-        settings = bpy.context.scene.soulstruct_global_settings  # type: GlobalSettings
-        settings.save_settings()
-
-        importer = FLVERImporter(self, context, self.get_import_settings(context, texture_manager))
-
-        transform = None  # type: Transform | None
-
-        try:
-            name = partsbnd_path.name.split(".")[0]  # drop all extensions
-            bl_armature, bl_mesh = importer.import_flver(flver, name=name, transform=transform)
-        except Exception as ex:
-            # Delete any objects created prior to exception.
-            importer.abort_import()
-            traceback.print_exc()  # for inspection in Blender console
-            return self.error(f"Cannot import FLVER from PARTSBND: {partsbnd_path.name}. Error: {ex}")
-
-        # Select newly imported mesh.
-        if bl_mesh:
-            self.set_active_obj(bl_mesh)
-
-        return {"FINISHED"}
+# endregion
 
 
 @dataclass(slots=True)
-class FLVERImportSettings:
-    """Settings for a batch of FLVER imports."""
-
-    texture_manager: TextureManager = None
-    read_from_png_cache: bool = True
-    write_to_png_cache: bool = True
-    material_blend_mode: str = "HASHED"
-    base_edit_bone_length: float = 0.2
-    mtd_manager: MTDBinderManager | None = None
-
-
-@dataclass(slots=True)
-class FLVERImporter:
+class FLVERBatchImporter:
     """Manages imports for a batch of FLVER files using the same settings.
 
     Call `import_flver()` to import a single FLVER file.
@@ -491,7 +445,8 @@ class FLVERImporter:
 
     operator: LoggingOperator
     context: bpy.types.Context
-    settings: FLVERImportSettings
+    texture_manager: TextureImportManager | None = None
+    mtd_manager: MTDBinderManager | None = None
 
     flver: FLVER | None = None  # current FLVER being imported
     name: str = ""  # name of root Blender mesh object that will be created
@@ -547,7 +502,6 @@ class FLVERImporter:
         self.new_objs.clear()
         self.new_images.clear()
         self.new_materials.clear()
-        settings = self.settings
 
         # Create FLVER bone index -> Blender bone name dictionary. (Blender names are UTF-8.)
         # This is done even when `existing_armature` is given, as the order of bones in this new FLVER may be different
@@ -564,7 +518,9 @@ class FLVERImporter:
                 f"They will be lost."
             )
 
-        bl_armature_obj = self.create_armature(settings.base_edit_bone_length)
+        import_settings = self.context.scene.flver_import_settings  # type: FLVERImportSettings
+
+        bl_armature_obj = self.create_armature(import_settings.base_edit_bone_length)
         dummy_prefix = ""
         self.new_objs.append(bl_armature_obj)
 
@@ -573,7 +529,9 @@ class FLVERImporter:
             bl_armature_obj.rotation_euler = transform.bl_rotate
             bl_armature_obj.scale = transform.bl_scale
 
-        submesh_bl_material_indices, bl_material_uv_layer_names = self.create_materials(flver)
+        submesh_bl_material_indices, bl_material_uv_layer_names = self.create_materials(
+            flver, import_settings.material_blend_mode
+        )
 
         bl_flver_mesh = self.create_flver_mesh(
             flver, self.name, submesh_bl_material_indices, bl_material_uv_layer_names
@@ -609,17 +567,17 @@ class FLVERImporter:
 
         return bl_armature_obj, bl_flver_mesh  # might be used by other importers
 
-    def create_materials(self, flver: FLVER) -> tuple[list[int], list[list[str]]]:
+    def create_materials(self, flver: FLVER, material_blend_mode: str) -> tuple[list[int], list[list[str]]]:
         """Create Blender materials needed for `flver`.
 
         Returns a list of Blender material indices for each submesh, and a list of UV layer names for each Blender
         material (NOT each submesh).
         """
 
-        png_cache_directory = GlobalSettings.get_scene_settings(self.context).png_cache_directory
-        if self.settings.texture_manager or png_cache_directory:
+        png_cache_directory = SoulstructSettings.get_scene_settings(self.context).png_cache_directory
+        if self.texture_manager or png_cache_directory:
             p = time.perf_counter()
-            self.new_images = self.load_texture_images(self.settings.texture_manager)
+            self.new_images = self.load_texture_images(self.texture_manager)
             self.operator.info(f"Loaded {len(self.new_images)} textures in {time.perf_counter() - p:.3f} seconds.")
         else:
             self.warning("No TPF files or DDS dump folder given. No textures loaded for FLVER.")
@@ -644,7 +602,7 @@ class FLVERImporter:
             material_hash = hash(material)
             if material_hash in flver_material_mtd_infos:
                 continue
-            mtd_info = self.get_mtd_info(material.mtd_name, self.settings.mtd_manager)
+            mtd_info = self.get_mtd_info(material.mtd_name, self.mtd_manager)
             flver_material_mtd_infos[material_hash] = mtd_info
             flver_material_uv_layer_names[material_hash] = flver_material_mtd_infos[material_hash].get_uv_layer_names()
 
@@ -667,7 +625,7 @@ class FLVERImporter:
                     material_name=f"{self.name} Material {flver_material_index}",  # no Variant suffix
                     mtd_info=flver_material_mtd_infos[material_hash],
                     submesh=submesh,
-                    blend_mode=self.settings.material_blend_mode,
+                    blend_mode=material_blend_mode,
                 )  # type: bpy.types.Material
 
                 submesh_bl_material_indices.append(bl_material_index)
@@ -710,7 +668,7 @@ class FLVERImporter:
                 material_name=variant_name,
                 mtd_info=flver_material_mtd_infos[material_hash],
                 submesh=submesh,
-                blend_mode=self.settings.material_blend_mode,
+                blend_mode=material_blend_mode,
             )  # type: bpy.types.Material
 
             new_bl_material_index = len(self.new_materials)
@@ -749,15 +707,14 @@ class FLVERImporter:
         # noinspection PyTypeChecker
         return bl_armature_obj
 
-    def load_texture_images(self, texture_manager: TextureManager = None) -> list[bpy.types.Image]:
+    def load_texture_images(self, texture_manager: TextureImportManager = None) -> list[bpy.types.Image]:
         """Load texture images from either `png_cache` folder or TPFs found with `texture_manager`.
 
         Will NEVER load an image that is already in Blender's data, regardless of image type (identified by stem only).
         """
         bl_image_stems = {Path(image.name).stem for image in bpy.data.images}
         new_loaded_images = []
-        settings = self.settings
-        png_cache_directory = GlobalSettings.get_scene_settings(self.context).png_cache_directory
+        ss_settings = SoulstructSettings.get_scene_settings(self.context)
 
         textures_to_load = {}  # type: dict[str, TPFTexture]
         for texture_path in self.flver.get_all_texture_paths():
@@ -767,8 +724,8 @@ class FLVERImporter:
             if texture_stem in textures_to_load:
                 continue  # already queued to load below
 
-            if settings.read_from_png_cache and png_cache_directory:
-                png_path = Path(png_cache_directory, f"{texture_stem}.png")
+            if ss_settings.read_cached_pngs and ss_settings.png_cache_directory:
+                png_path = Path(ss_settings.png_cache_directory, f"{texture_stem}.png")
                 if png_path.is_file():
                     bl_image = bpy.data.images.load(str(png_path))
                     new_loaded_images.append(bl_image)
@@ -792,12 +749,13 @@ class FLVERImporter:
             from time import perf_counter
             t = perf_counter()
             all_png_data = batch_get_tpf_texture_png_data(list(textures_to_load.values()))
-            write_png_directory = (
-                Path(png_cache_directory) if png_cache_directory and settings.write_to_png_cache else None
-            )
-            print(f"# INFO: Converted PNG images in {perf_counter() - t} s (cached = {settings.write_to_png_cache})")
+            if ss_settings.png_cache_directory and ss_settings.write_cached_pngs:
+                write_png_directory = Path(ss_settings.png_cache_directory)
+            else:
+                write_png_directory = None
+            print(f"# INFO: Converted PNG images in {perf_counter() - t} s (cached = {ss_settings.write_cached_pngs})")
             for texture_stem, png_data in zip(textures_to_load.keys(), all_png_data):
-                bl_image = png_to_bl_image(texture_stem, png_data, write_png_directory)
+                bl_image = import_png_as_image(texture_stem, png_data, write_png_directory)
                 new_loaded_images.append(bl_image)
 
         return new_loaded_images
@@ -997,7 +955,11 @@ class FLVERImporter:
 
         self.operator.info(f"Assigned Blender vertex groups to bones in {time.perf_counter() - p} s")
 
-    def create_bones(self, bl_armature_obj: bpy.types.Object, base_edit_bone_length: float):
+    def create_bones(
+        self,
+        bl_armature_obj: bpy.types.Object,
+        base_edit_bone_length: float,
+    ):
         """Create FLVER bones on given `bl_armature_obj` in Blender.
 
         Bones can be a little confusing in Blender. See:
@@ -1079,7 +1041,7 @@ class FLVERImporter:
                 bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
         elif write_bone_type == "POSE":
             # This method will change back to OBJECT mode internally before setting pose bone data.
-            self.write_data_to_pose_bones(bl_armature_obj, edit_bones)
+            self.write_data_to_pose_bones(bl_armature_obj, edit_bones, base_edit_bone_length)
         else:
             # Should not be possible to reach.
             raise ValueError(f"Invalid `write_bone_type`: {write_bone_type}")
@@ -1147,13 +1109,17 @@ class FLVERImporter:
                 edit_bone.parent = parent_edit_bone
                 # edit_bone.use_connect = True
 
-    def write_data_to_pose_bones(self, bl_armature_obj: bpy.types.Object, edit_bones: list[bpy.types.EditBone]):
-
+    def write_data_to_pose_bones(
+        self,
+        bl_armature_obj: bpy.types.Object,
+        edit_bones: list[bpy.types.EditBone],
+        base_edit_bone_length: float,
+    ):
         for game_bone, edit_bone in zip(self.flver.bones, edit_bones, strict=True):
             # All edit bones are just Blender-Y-direction ("forward") stubs of base length.
             # This rigging makes map piece 'pose' bone data transform as expected for showing accurate vertex positions.
             edit_bone.head = Vector((0, 0, 0))
-            edit_bone.tail = Vector((0, self.settings.base_edit_bone_length, 0))
+            edit_bone.tail = Vector((0, base_edit_bone_length, 0))
 
         del edit_bones  # clear references to edit bones as we exit EDIT mode
         self.operator.to_object_mode()

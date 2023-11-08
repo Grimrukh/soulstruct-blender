@@ -144,14 +144,8 @@ class ImportHKXAnimation(LoggingOperator, ImportHelper, ImportHKXAnimationMixin)
         maxlen=255,  # Max internal buffer length, longer would be clamped.
     )
 
-    files: bpy.props.CollectionProperty(
-        type=bpy.types.OperatorFileListElement,
-        options={'HIDDEN', 'SKIP_SAVE'},
-    )
-
-    directory: bpy.props.StringProperty(
-        options={'HIDDEN'},
-    )
+    files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'})
+    directory: bpy.props.StringProperty(options={'HIDDEN'})
 
     @classmethod
     def poll(cls, context):
@@ -331,7 +325,7 @@ class QuickImportCharacterHKXAnimation(LoggingOperator, ImportHKXAnimationMixin)
         if not self.poll(context):
             return self.error("Must select a single Armature of a character (name starting with 'c').")
 
-        settings = GlobalSettings.get_scene_settings(context)
+        settings = SoulstructSettings.get_scene_settings(context)
         game_directory = settings.game_directory
         if not game_directory:
             return self.error("No game directory set in global Soulstruct Settings.")
@@ -398,7 +392,7 @@ class QuickImportObjectHKXAnimation(LoggingOperator, ImportHKXAnimationMixin):
         if not self.poll(context):
             return self.error("Must select a single Armature of a object (name starting with 'o').")
 
-        settings = GlobalSettings.get_scene_settings(context)
+        settings = SoulstructSettings.get_scene_settings(context)
         game_directory = settings.game_directory
         if not game_directory:
             return self.error("No game directory set in global Soulstruct Settings.")

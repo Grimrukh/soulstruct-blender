@@ -327,15 +327,15 @@ class QuickImportNVM(LoggingOperator):
 
     @classmethod
     def poll(cls, context):
-        game_lists = context.scene.game_files  # type: GameFiles
+        game_lists = context.scene.soulstruct_game_enums  # type: SoulstructGameEnums
         return game_lists.nvm not in {"", "0"}
 
     def execute(self, context):
 
         start_time = time.perf_counter()
 
-        settings = GlobalSettings.get_scene_settings(context)
-        map_path = GlobalSettings.get_selected_map_path(context)
+        settings = SoulstructSettings.get_scene_settings(context)
+        map_path = SoulstructSettings.get_selected_map_path(context)
         if not map_path:
             return self.error("Game directory and map stem must be set in Blender's Soulstruct global settings.")
         settings.save_settings()
@@ -353,7 +353,7 @@ class QuickImportNVM(LoggingOperator):
 
         if settings.msb_import_mode:
             try:
-                part_name, nvm_stem = context.scene.game_files.nvm.split("|")
+                part_name, nvm_stem = context.scene.soulstruct_game_enums.nvm.split("|")
             except ValueError:
                 return self.error("Invalid MSB navmesh selection.")
             msb_path = settings.get_selected_map_msb_path(context)
@@ -368,7 +368,7 @@ class QuickImportNVM(LoggingOperator):
             nvm_entry_name = dcx_type.process_path(nvm_entry_name)
             bl_name = part_name
         else:
-            nvm_entry_name = context.scene.game_files.nvm
+            nvm_entry_name = context.scene.soulstruct_game_enums.nvm
             bl_name = nvm_entry_name.split(".")[0]
 
         nvmbnd = Binder.from_path(nvmbnd_path)

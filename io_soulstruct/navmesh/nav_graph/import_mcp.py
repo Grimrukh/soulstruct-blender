@@ -17,7 +17,7 @@ from bpy_extras.io_utils import ImportHelper
 
 from soulstruct.darksouls1r.maps.navmesh import MCP, NavmeshAABB
 
-from io_soulstruct.general import GlobalSettings
+from io_soulstruct.general import SoulstructSettings
 from io_soulstruct.utilities import *
 
 MCP_NAME_RE = re.compile(r"(?P<stem>.*)\.mcp(?P<dcx>\.dcx)?")
@@ -36,14 +36,8 @@ class ImportMCP(LoggingOperator, ImportHelper):
         maxlen=255,
     )
 
-    files: bpy.props.CollectionProperty(
-        type=bpy.types.OperatorFileListElement,
-        options={'HIDDEN', 'SKIP_SAVE'},
-    )
-
-    directory: bpy.props.StringProperty(
-        options={'HIDDEN'},
-    )
+    files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'})
+    directory: bpy.props.StringProperty(options={'HIDDEN'})
 
     def execute(self, context):
         print("Executing MCP import...")
@@ -74,7 +68,7 @@ class QuickImportMCP(LoggingOperator):
 
     def execute(self, context):
 
-        settings = GlobalSettings.get_scene_settings(context)
+        settings = SoulstructSettings.get_scene_settings(context)
         game_directory = settings.game_directory
         map_stem = settings.map_stem
         if not game_directory or not map_stem:

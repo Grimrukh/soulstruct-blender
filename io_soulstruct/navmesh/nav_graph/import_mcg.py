@@ -19,7 +19,7 @@ from bpy_extras.io_utils import ImportHelper
 from soulstruct.darksouls1r.maps import MSB
 from soulstruct.darksouls1r.maps.navmesh import MCG, MCGNode, MCGEdge
 
-from io_soulstruct.general import GlobalSettings
+from io_soulstruct.general import SoulstructSettings
 from io_soulstruct.utilities import *
 from .utilities import MCGImportError
 
@@ -39,20 +39,14 @@ class ImportMCG(LoggingOperator, ImportHelper):
         maxlen=255,
     )
 
-    files: bpy.props.CollectionProperty(
-        type=bpy.types.OperatorFileListElement,
-        options={'HIDDEN', 'SKIP_SAVE'},
-    )
-
-    directory: bpy.props.StringProperty(
-        options={'HIDDEN'},
-    )
-
     custom_msb_path: bpy.props.StringProperty(
         name="Custom MSB Path",
         description="Custom MSB path to use for MCG import. Leave blank to auto-find",
         default="",
     )
+
+    files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'})
+    directory: bpy.props.StringProperty(options={'HIDDEN'})
 
     def execute(self, context):
         print("Executing MCG import...")
@@ -100,7 +94,7 @@ class QuickImportMCG(LoggingOperator):
 
     def execute(self, context):
 
-        settings = GlobalSettings.get_scene_settings(context)
+        settings = SoulstructSettings.get_scene_settings(context)
         game_directory = settings.game_directory
         map_stem = settings.map_stem
         if not game_directory or not map_stem:

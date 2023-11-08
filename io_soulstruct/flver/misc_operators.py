@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 __all__ = [
-    "FLVERSettings",
+    "FLVERToolSettings",
     "SetVertexAlpha",
     "ActivateUVMap1",
     "ActivateUVMap2",
@@ -19,7 +19,7 @@ from io_soulstruct.utilities.operators import LoggingOperator
 from .utilities import parse_dummy_name
 
 
-class FLVERSettings(bpy.types.PropertyGroup):
+class FLVERToolSettings(bpy.types.PropertyGroup):
     vertex_alpha: bpy.props.FloatProperty(
         name="Alpha",
         description="Alpha value to set for selected vertices",
@@ -151,7 +151,7 @@ class ActivateUVMap3(ActivateUVMap):
 
 def draw_dummy_ids():
     """Draw the numeric reference IDs of all Dummy children of selected FLVER."""
-    settings = bpy.context.scene.flver_settings  # type: FLVERSettings
+    settings = bpy.context.scene.flver_settings  # type: FLVERToolSettings
     if not settings.dummy_id_draw_enabled:
         return
 

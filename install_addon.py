@@ -27,8 +27,8 @@ def copy_addon(addons_dir: str | Path, copy_soulstruct_module=True, copy_third_p
 
     ignore_pycache = shutil.ignore_patterns("__pycache__", "*.pyc")
 
-    # Install actual Blender scripts, preserving existing 'GlobalSettings.json' only.
-    settings_path = dest_io_soulstruct_dir / "GlobalSettings.json"
+    # Install actual Blender scripts, preserving existing 'SoulstructSettings.json' only.
+    settings_path = dest_io_soulstruct_dir / "SoulstructSettings.json"
     if not clear_settings and settings_path.is_file():
         settings_data = settings_path.read_bytes()
     else:

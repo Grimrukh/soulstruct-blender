@@ -8,7 +8,7 @@ __all__ = [
     "parse_dummy_name",
     "HideAllDummiesOperator",
     "ShowAllDummiesOperator",
-    "get_flver_from_binder",
+    "get_flvers_from_binder",
     "get_map_piece_msb_transforms",
     "game_forward_up_vectors_to_bl_euler",
     "bl_euler_to_game_forward_up_vectors",
@@ -139,13 +139,13 @@ def parse_dummy_name(dummy_name: str) -> DummyInfo | None:
     )
 
 
-def get_flver_from_binder(binder: Binder, file_path: Path) -> FLVER:
+def get_flvers_from_binder(binder: Binder, file_path: Path, allow_multiple=False) -> list[FLVER]:
     flver_entries = binder.find_entries_matching_name(r".*\.flver(\.dcx)?")
     if not flver_entries:
         raise FLVERImportError(f"Cannot find a FLVER file in binder {file_path}.")
-    elif len(flver_entries) > 1:
+    elif not allow_multiple and len(flver_entries) > 1:
         raise FLVERImportError(f"Found multiple FLVER files in binder {file_path}.")
-    return flver_entries[0].to_binary_file(FLVER)
+    return [entry.to_binary_file(FLVER) for entry in flver_entries]
 
 
 def get_map_piece_msb_transforms(flver_path: Path, msb_path: Path = None) -> list[tuple[str, Transform]]:

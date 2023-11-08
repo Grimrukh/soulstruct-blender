@@ -13,7 +13,7 @@ from bpy.props import StringProperty
 from bpy_extras.io_utils import ImportHelper
 
 from io_soulstruct.utilities.operators import LoggingOperator
-from .core import GlobalSettings
+from .core import SoulstructSettings
 
 
 STEAM_COMMON_LOCATIONS = [
@@ -48,7 +48,7 @@ class SelectGameDirectory(LoggingOperator, ImportHelper):
         if self.filepath:
             # We use browser's current `directory`, not `filepath` itself.
             game_directory = Path(self.directory).resolve()
-            GlobalSettings.get_scene_settings(context).game_directory = str(game_directory)
+            SoulstructSettings.get_scene_settings(context).game_directory = str(game_directory)
 
         return {'FINISHED'}
 
@@ -69,7 +69,7 @@ class SelectMapDirectory(LoggingOperator, ImportHelper):
 
     def invoke(self, context, _event):
         """Set the initial directory."""
-        game_directory = GlobalSettings.get_scene_settings(context).game_directory
+        game_directory = SoulstructSettings.get_scene_settings(context).game_directory
         if game_directory:
             self.filepath = game_directory
         else:
@@ -82,7 +82,7 @@ class SelectMapDirectory(LoggingOperator, ImportHelper):
     def execute(self, context):
         if self.directory:
             map_directory = Path(self.directory).resolve()
-            settings = GlobalSettings.get_scene_settings(context)
+            settings = SoulstructSettings.get_scene_settings(context)
             settings.map_stem = map_directory.name
             settings.game_directory = str(map_directory.parent.parent)  # parent of 'map' directory
 
@@ -106,7 +106,7 @@ class SelectPNGCacheDirectory(LoggingOperator, ImportHelper):
     def execute(self, context):
         if self.directory:
             png_cache_directory = Path(self.directory).resolve()
-            GlobalSettings.get_scene_settings(context).png_cache_directory = str(png_cache_directory)
+            SoulstructSettings.get_scene_settings(context).png_cache_directory = str(png_cache_directory)
         return {'FINISHED'}
 
 
@@ -122,5 +122,5 @@ class SelectCustomMTDBNDFile(LoggingOperator, ImportHelper):
     def execute(self, context):
         if self.filepath:
             mtdbnd_path = Path(self.filepath).resolve()
-            GlobalSettings.get_scene_settings(context).mtdbnd_path = str(mtdbnd_path)
+            SoulstructSettings.get_scene_settings(context).mtdbnd_path = str(mtdbnd_path)
         return {'FINISHED'}

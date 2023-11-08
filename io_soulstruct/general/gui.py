@@ -18,23 +18,25 @@ class GlobalSettingsPanel_ViewMixin:
 
     def draw(self, context):
         layout = self.layout
-        layout.prop(context.scene.soulstruct_global_settings, "game")
+        layout.prop(context.scene.soulstruct_settings, "game")
 
         row = layout.row(align=True)
         split = row.split(factor=0.75)
-        split.column().prop(context.scene.soulstruct_global_settings, "game_directory")
+        split.column().prop(context.scene.soulstruct_settings, "game_directory")
         split.column().operator(SelectGameDirectory.bl_idname, text="Browse")
 
-        layout.row().prop(context.scene.soulstruct_global_settings, "map_stem")
+        layout.row().prop(context.scene.soulstruct_settings, "map_stem")
 
         row = layout.row()
         split = row.split(factor=0.75)
-        split.column().prop(context.scene.soulstruct_global_settings, "png_cache_directory")
+        split.column().prop(context.scene.soulstruct_settings, "png_cache_directory")
         split.column().operator(SelectPNGCacheDirectory.bl_idname, text="Browse")
+        layout.row().prop(context.scene.soulstruct_settings, "read_cached_pngs")
+        layout.row().prop(context.scene.soulstruct_settings, "write_cached_pngs")
 
         row = layout.row()
         split = row.split(factor=0.75)
-        split.column().prop(context.scene.soulstruct_global_settings, "mtdbnd_path")
+        split.column().prop(context.scene.soulstruct_settings, "mtdbnd_path")
         split.column().operator(SelectCustomMTDBNDFile.bl_idname, text="Browse")
 
 
