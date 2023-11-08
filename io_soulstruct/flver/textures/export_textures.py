@@ -343,8 +343,6 @@ def export_images_to_map_area_tpfbhds(
                 dds_format = existing_dds.texconv_format
                 if dds_format == "BC5U":
                     dds_format = "BC5_UNORM"
-                print(f"Existing TPF {texture_stem}: DDS format '{dds_format}', "
-                      f"TPF texture format {existing_tpf.textures[0].format}")
                 if "TYPELESS" in dds_format:
                     dds_format = dds_format.replace("TYPELESS", "UNORM")
                     operator.warning(f"Cannot export 'TYPELESS' DDS format. Changing to '{dds_format}'.")
