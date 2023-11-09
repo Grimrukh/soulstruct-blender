@@ -363,6 +363,13 @@ class ExportNVMMSBPart(LoggingOperator):
         default=True,  # TODO: cannot be disabled
     )
 
+    prefer_new_model_file_stem: BoolProperty(
+        name="Prefer New Model File Stem",
+        description="Use the 'Model File Stem' property on the Blender mesh parent to update the model file stem in "
+                    "the MSB and determine the NVM entry stem to write. If disabled, the MSB model name will be used.",
+        default=True,
+    )
+
     GAME_INFO = {
         GameNames.DS1R: {
             "nvm_entry_path": "{map}\\{stem}.nvm",  # no DCX
@@ -384,9 +391,14 @@ class ExportNVMMSBPart(LoggingOperator):
         settings = SoulstructSettings.get_scene_settings(context)
         game_directory = settings.game_directory
         if not game_directory:
-            return self.error("Game directory must be set in Blender's Soulstruct global settings for quick export.")
+            return self.error(
+                "Game directory must be set in Blender's Soulstruct global settings for MSB Navmesh Part export."
+            )
         if not settings.detect_map_from_parent and settings.map_stem in {"", "0"}:
-            return self.error("Game map stem must be set in Blender's Soulstruct global settings for quick export.")
+            return self.error(
+                "Game map stem must be set in Blender's Soulstruct global settings for MSB Navmesh Part export "
+                "when 'Detect Map from Parent' is disabled."
+            )
 
         # TODO: Not needed for meshes only?
         if bpy.ops.object.mode_set.poll():
@@ -397,6 +409,9 @@ class ExportNVMMSBPart(LoggingOperator):
         nvm_dcx_type = settings.resolve_dcx_type("Auto", "NVM", True, context)
 
         opened_nvmbnds = {}  # type: dict[str, Binder]
+        opened_msbs = {}  # type: dict[Path, MSB]
+        edited_part_names = {}  # type: dict[Path, set[str]]
+
         for bl_mesh_obj in context.selected_objects:
 
             bl_mesh_obj: bpy.types.MeshObject
@@ -424,7 +439,11 @@ class ExportNVMMSBPart(LoggingOperator):
             # Get model file stem from MSB (must contain matching part).
             navmesh_part_name = bl_mesh_obj.name.split(" ")[0].split(".")[0]
             msb_path = Path(game_directory, "map/MapStudio", f"{map_stem}.msb")
-            msb = get_cached_file(msb_path, settings.get_game_msb_class(context))  # type: MSB
+            msb = opened_msbs.setdefault(
+                msb_path,
+                get_cached_file(msb_path, settings.get_game_msb_class(context)),
+            )  # type: MSB
+
             try:
                 msb_part = msb.navmeshes.find_entry_name(navmesh_part_name)
             except KeyError:
@@ -435,7 +454,21 @@ class ExportNVMMSBPart(LoggingOperator):
                 return self.error(
                     f"Navmesh part '{navmesh_part_name}' in MSB '{msb_path}' has no model name."
                 )
-            nvm_entry_stem = msb_part.model.name + f"A{map_stem[1:3]}"
+
+            edited_msb_part_names = edited_part_names.setdefault(msb_path, set())
+            if navmesh_part_name in edited_msb_part_names:
+                self.warning(
+                    f"Navmesh part '{navmesh_part_name}' was exported more than once in selected meshes."
+                )
+            edited_msb_part_names.add(navmesh_part_name)
+
+            nvm_entry_stem = bl_mesh_obj.get("Model File Stem", None) if self.prefer_new_model_file_stem else None
+            if not nvm_entry_stem:  # could be None or empty string
+                # Use existing MSB model name.
+                nvm_entry_stem = msb_part.model.name + f"A{map_stem[1:3]}"
+            else:
+                # Update MSB model name.
+                msb_part.model.name = nvm_entry_stem[:7]
 
             # Warn if NVM stem in MSB is unexpected.
             if (model_file_stem := bl_mesh_obj.get("Model File Stem", None)) is not None:
@@ -499,13 +532,14 @@ class ExportNVMMSBPart(LoggingOperator):
                 traceback.print_exc()
                 return self.error(f"Cannot write exported NVM. Error: {ex}")
 
+        for msb_path, msb in opened_msbs.items():
             # Write MSB.
             try:
                 msb.write(msb_path)
             except Exception as ex:
-                self.warning(f"Could not write MSB '{msb_path}' with updated part transform. Error: {ex}")
+                self.warning(f"Could not write MSB '{msb_path}' with updated part transform(s). Error: {ex}")
             else:
-                self.info(f"Wrote MSB '{msb_path}' with updated part transform.")
+                self.info(f"Wrote MSB '{msb_path}' with updated part transform(s).")
 
         for nvmbnd_path, nvmbnd in opened_nvmbnds.items():
             try:

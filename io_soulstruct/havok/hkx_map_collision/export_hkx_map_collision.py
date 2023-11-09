@@ -412,6 +412,13 @@ class ExportMSBMapCollision(LoggingOperator):
         "Export transform and model of HKX map collisions into MSB and HKXBHD binder in appropriate game map (DS1R)"
     )
 
+    prefer_new_model_file_stem: BoolProperty(
+        name="Prefer New Model File Stem",
+        description="Use the 'Model File Stem' property on the Blender mesh parent to update the model file stem in "
+                    "the MSB and determine the HKX entry stem to write. If disabled, the MSB model name will be used.",
+        default=True,
+    )
+
     @classmethod
     def poll(cls, context):
         """Must select empty parents of only (and at least one) child meshes.
@@ -451,6 +458,9 @@ class ExportMSBMapCollision(LoggingOperator):
 
         at_least_one_success = False
 
+        opened_msbs = {}  # type: dict[Path, MSB]
+        edited_part_names = {}  # type: dict[Path, set[str]]
+
         for hkx_parent in context.selected_objects:
 
             if settings.detect_map_from_parent:
@@ -470,7 +480,12 @@ class ExportMSBMapCollision(LoggingOperator):
             # Get model file stem from MSB (must contain matching part).
             collision_part_name = hkx_parent.name.split(" ")[0].split(".")[0]
             msb_path = Path(game_directory, "map/MapStudio", f"{map_stem}.msb")
-            msb = get_cached_file(msb_path, settings.get_game_msb_class(context))  # type: MSB
+
+            msb = opened_msbs.setdefault(
+                msb_path,
+                get_cached_file(msb_path, settings.get_game_msb_class(context)),
+            )  # type: MSB
+
             try:
                 msb_part = msb.collisions.find_entry_name(collision_part_name)
             except KeyError:
@@ -481,7 +496,21 @@ class ExportMSBMapCollision(LoggingOperator):
                 return self.error(
                     f"Collision part '{collision_part_name}' in MSB '{msb_path}' has no model name."
                 )
-            hkx_entry_stem = msb_part.model.name + f"A{map_stem[1:3]}"
+
+            hkx_entry_stem = hkx_parent.get("Model File Stem", None) if self.prefer_new_model_file_stem else None
+            if not hkx_entry_stem:  # could be None or empty string
+                # Use existing MSB model name.
+                hkx_entry_stem = msb_part.model.name + f"A{map_stem[1:3]}"
+            else:
+                # Update MSB model name.
+                msb_part.model.name = hkx_entry_stem[:7]
+
+            edited_msb_part_names = edited_part_names.setdefault(msb_path, set())
+            if collision_part_name in edited_msb_part_names:
+                self.warning(
+                    f"Navmesh part '{collision_part_name}' was exported more than once in selected meshes."
+                )
+            edited_msb_part_names.add(collision_part_name)
 
             # Warn if HKX stem in MSB is unexpected.
             if (model_file_stem := hkx_parent.get("Model File Stem", None)) is not None:

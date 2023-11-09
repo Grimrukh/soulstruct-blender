@@ -991,6 +991,13 @@ class ExportMapPieceMSBParts(LoggingOperator):
         "armatures/meshes. Model file names are detected from MSB part models"
     )
 
+    prefer_new_model_file_stem: BoolProperty(
+        name="Prefer New Model File Stem",
+        description="Use the 'Model File Stem' property on the Blender mesh parent to update the model file stem in "
+                    "the MSB and determine the FLVER name to write. If disabled, the MSB model name will be used.",
+        default=True,
+    )
+
     @classmethod
     def poll(cls, context):
         """One or more 'm*' Armatures or Meshes selected."""
@@ -1025,6 +1032,9 @@ class ExportMapPieceMSBParts(LoggingOperator):
 
         active_object = context.active_object
 
+        opened_msbs = {}  # type: dict[Path, MSB]
+        edited_part_names = {}  # type: dict[Path, set[str]]
+
         for mesh, armature in meshes_armatures:
 
             if settings.detect_map_from_parent:
@@ -1045,8 +1055,14 @@ class ExportMapPieceMSBParts(LoggingOperator):
 
             # Get model file stem from MSB (must contain matching part).
             map_piece_part_name = get_default_flver_stem(mesh, armature, self)  # could be the same as the file stem
+
             msb_path = Path(game_directory, "map/MapStudio", f"{map_stem}.msb")
-            msb = get_cached_file(msb_path, settings.get_game_msb_class(context))  # type: MSB
+
+            msb = opened_msbs.setdefault(
+                msb_path,
+                get_cached_file(msb_path, settings.get_game_msb_class(context)),
+            )  # type: MSB
+
             try:
                 msb_part = msb.map_pieces.find_entry_name(map_piece_part_name)
             except KeyError:
@@ -1057,30 +1073,35 @@ class ExportMapPieceMSBParts(LoggingOperator):
                 return self.error(
                     f"Map piece part '{map_piece_part_name}' in MSB '{msb_path}' has no model name."
                 )
-            flver_stem = msb_part.model.name + f"A{map_stem[1:3]}"
 
-            # Warn if FLVER stem is unexpected.
-            if (model_file_stem := mesh.get("Model File Stem", None)) is not None:
-                if model_file_stem != flver_stem:
-                    self.warning(
-                        f"Map piece part '{map_piece_part_name}' in MSB '{msb_path}' has model name "
-                        f"'{msb_part.model.name}' but Blender mesh 'Model File Stem' is '{model_file_stem}'. "
-                        f"Using FLVER stem from MSB model name; you may want to update the Blender mesh."
-                    )
+            edited_msb_part_names = edited_part_names.setdefault(msb_path, set())
+            if map_piece_part_name in edited_msb_part_names:
+                self.warning(
+                    f"Map Piece part '{map_piece_part_name}' was exported more than once in selected meshes."
+                )
+            edited_msb_part_names.add(map_piece_part_name)
+
+            flver_stem = mesh.get("Model File Stem", None) if self.prefer_new_model_file_stem else None
+            if not flver_stem:  # could be None or empty string
+                # Use existing MSB model name.
+                flver_stem = msb_part.model.name + f"A{map_stem[1:3]}"
+                # Warn if FLVER stem is unexpected.
+                if (model_file_stem := mesh.get("Model File Stem", None)) is not None:
+                    if model_file_stem != flver_stem:
+                        self.warning(
+                            f"Map piece part '{map_piece_part_name}' in MSB '{msb_path}' has model name "
+                            f"'{msb_part.model.name}' but Blender mesh 'Model File Stem' is '{model_file_stem}'. "
+                            f"Using FLVER stem from MSB model name; you may want to update the Blender mesh."
+                        )
+            else:
+                # Update MSB model name.
+                msb_part.model.name = flver_stem[:7]
 
             # Update part transform in MSB.
             bl_transform = BlenderTransform.from_bl_obj(armature or mesh)
             msb_part.translate = bl_transform.game_translate
             msb_part.rotate = bl_transform.game_rotate_deg
             msb_part.scale = bl_transform.game_scale
-
-            # Write MSB.
-            try:
-                msb.write(msb_path)
-            except Exception as ex:
-                self.warning(f"Could not write MSB '{msb_path}' with updated part transform. Error: {ex}")
-            else:
-                self.info(f"Wrote MSB '{msb_path}' with updated part transform.")
 
             try:
                 flver = exporter.export_flver(mesh, armature, name=flver_stem)
@@ -1096,6 +1117,15 @@ class ExportMapPieceMSBParts(LoggingOperator):
                 traceback.print_exc()
                 return self.error(f"Cannot write exported FLVER '{flver_stem}'. Error: {ex}")
             self.info(f"Exported FLVER to: {written_path}")
+
+        for msb_path, msb in opened_msbs.items():
+            # Write MSB.
+            try:
+                msb.write(msb_path)
+            except Exception as ex:
+                self.warning(f"Could not write MSB '{msb_path}' with updated part transform(s). Error: {ex}")
+            else:
+                self.info(f"Wrote MSB '{msb_path}' with updated part transform(s).")
 
         # Select original active object.
         if active_object:
