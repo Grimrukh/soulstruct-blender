@@ -107,7 +107,7 @@ def get_submesh_blender_material(
     if mtd_info.shader_category == MTDShaderCategory.WATER:
         # Special simplified shader. Uses 'g_Bumpmap' only.
         water_mix = builder.new("ShaderNodeMixShader", (builder.MIX_X, builder.MIX_Y))
-        transparent = builder.new("ShaderNodeBsdfTransparent", (builder.BSDF_X, 0))
+        transparent = builder.new("ShaderNodeBsdfTransparent", (builder.BSDF_X, builder.MIX_Y))
         glass = builder.new("ShaderNodeBsdfGlass", (builder.BSDF_X, 1000), input_defaults={"IOR": 1.333})
         builder.link(transparent.outputs[0], water_mix.inputs[1])
         builder.link(glass.outputs[0], water_mix.inputs[2])
@@ -220,8 +220,7 @@ class NodeTreeBuilder:
     TEX_X = -550
     OVERLAY_X = -250  # includes Normal Map node for 'g_Bumpmap'
     BSDF_X = -50
-    MIX_X, MIX_Y = 150, 0  # only one (max)
-    OUTPUT_X, OUTPUT_Y = 250, 0  # only one
+    MIX_X, MIX_Y = 100, 300  # only one (max)
 
     def __init__(self, node_tree: bpy.types.NodeTree):
         self.tree = node_tree

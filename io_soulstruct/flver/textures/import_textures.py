@@ -366,7 +366,7 @@ class TextureImportManager:
                 raise
 
         # Search for a multi-DDS TPF whose stem is a prefix of the requested texture.
-        for tpf_stem in self._pending_tpf_sources:
+        for tpf_stem in tuple(self._pending_tpf_sources):  # tpf keys may be popped when textures are loaded
             if texture_stem.startswith(tpf_stem):
                 # TODO: Could also enforce that the texture stem only has two extra characters (e.g. '_n' or '_s').
                 self._load_tpf(tpf_stem)
