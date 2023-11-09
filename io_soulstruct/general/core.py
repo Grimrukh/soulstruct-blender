@@ -55,11 +55,26 @@ def _get_map_stem_items(self, context: bpy.types.Context):
     if _MAP_STEM_ENUM_ITEMS[0] == map_dir_path:
         return _MAP_STEM_ENUM_ITEMS[1]  # cached
 
+    map_stem_names = []
+    match settings.game:
+        case GameNames.DS1R:
+            map_stem_names = [map_stem.name for map_stem in sorted(map_dir_path.glob("m*_*_*_*")) if map_stem.is_dir()]
+        case GameNames.PTDE:
+            map_stem_names = [map_stem.name for map_stem in sorted(map_dir_path.glob("m*_*_*_*")) if map_stem.is_dir()]
+        case GameNames.ER:
+            for area in sorted(map_dir_path.glob("m*")):
+                map_stem_names.extend([
+                    f"{area.name}/{map_stem.name}"
+                    for map_stem in sorted(area.glob("m*_*_*_*"))
+                    if map_stem.is_dir()
+                ])
+        case _:
+            pass  # leave empty
+
     _MAP_STEM_ENUM_ITEMS = (
         map_dir_path, [("0", "None", "None")] + [
-            (map_stem.name, map_stem.name, f"Map {map_stem.name}")
-            for map_stem in sorted(map_dir_path.glob("m*_*_*_*"))
-            if map_stem.is_dir()
+            (name, name, f"Map {name}")
+            for name in map_stem_names
         ]
     )
 
@@ -74,6 +89,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         description="Game to use when choosing default values, DCX compression, file paths/extensions, etc",
         items=[
             (GameNames.DS1R, GameNames.DS1R, "Dark Souls: Remastered"),
+            # (GameNames.ER, GameNames.ER, "Elden Ring"),
         ],
         default=GameNames.DS1R,
     )
@@ -182,14 +198,20 @@ class SoulstructSettings(bpy.types.PropertyGroup):
                 match _game:
                     case "DS1R":
                         return DCXType.DS1_DS2
+                    case "ER":
+                        return DCXType.DCX_KRAK
             case "FLVER":
                 match _game:
                     case "DS1R":
                         return DCXType.Null if is_binder_entry else DCXType.DS1_DS2
+                    case "ER":
+                        return DCXType.Null if is_binder_entry else DCXType.DCX_KRAK  # no loose FLVERs I think
             case "TPF":
                 match _game:
                     case "DS1R":
                         return DCXType.Null if is_binder_entry else DCXType.DS1_DS2
+                    case "ER":
+                        return DCXType.Null if is_binder_entry else DCXType.DCX_KRAK
             case "NVM":
                 match _game:
                     case "DS1R":
@@ -225,14 +247,23 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         if not mtdbnd_path and settings.game_directory:
             # Guess MTDBND path.
             dcx_type = settings.resolve_dcx_type("Auto", "Binder", False, context)
-            mtdbnd_path = dcx_type.process_path(Path(settings.game_directory, "mtd", "mtd.mtdbnd"))
+            for mtdbnd_name in (
+                "mtd.mtdbnd", "allmaterialbnd.mtdbnd"
+            ):
+                mtdbnd_path = dcx_type.process_path(Path(settings.game_directory, "mtd", mtdbnd_name))
+                if mtdbnd_path.is_file():
+                    print(f"Found MTDBND: {mtdbnd_path}")
+                    break
         else:
             mtdbnd_path = Path(mtdbnd_path)
 
         if mtdbnd_path.is_file():
             return mtdbnd_class.from_path(mtdbnd_path)
 
-        return from_bundled() if from_bundled else None
+        if from_bundled:
+            print(f"Loading bundled MTDBND for game {settings.game}...")
+            return from_bundled()
+        return None
 
     @staticmethod
     def load_settings():

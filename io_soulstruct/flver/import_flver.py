@@ -202,7 +202,7 @@ class ImportMapPieceFLVER(BaseFLVERImportOperator):
     filename_ext = ".flver"
 
     filter_glob: bpy.props.StringProperty(
-        default="*.flver;*.flver.dcx",
+        default="*.flver;*.flver.dcx;*.mapbnd;*.mapbnd.dcx",
         options={'HIDDEN'},
         maxlen=255,
     )
