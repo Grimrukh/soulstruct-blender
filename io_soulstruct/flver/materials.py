@@ -179,12 +179,11 @@ def get_submesh_blender_material(
                 builder.link(tex_image_node.outputs["Color"], bsdf_node.inputs["Specular"])
 
     if "g_Height" in tex_image_nodes:
+        # 'g_Height' is an actual height map (not normals, like 'g_Bumpmap').
         height_node = tex_image_nodes["g_Height"]
-        displace_node = builder.new("ShaderNodeDisplacement", location=(builder.OVERLAY_X, height_node.location[1]))
-        # TODO: Is UVMap1 correct for displacement? Should I mix UV map data using vertex alpha here?
+        # NOTE: In my observation so far, this always uses UVMap1 (i.e. never the second texture in a two-slot mat).
         builder.link(uv_nodes["UVMap1"].outputs["Vector"], height_node.inputs["Vector"])
-        builder.link(height_node.outputs["Color"], displace_node.inputs["Normal"])
-        builder.link(displace_node.outputs["Displacement"], output_node.inputs["Displacement"])
+        builder.link(height_node.outputs["Color"], output_node.inputs["Displacement"])
 
     for texture_type, bsdf_node in zip(("g_Bumpmap", "g_Bumpmap_2"), bsdf_nodes):
         if texture_type not in tex_image_nodes or texture_type not in mtd_info.texture_types:
