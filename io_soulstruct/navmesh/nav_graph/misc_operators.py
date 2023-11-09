@@ -3,8 +3,12 @@ from __future__ import annotations
 __all__ = [
     "CreateMCGEdgeOperator",
     "create_mcg_edge",
+    "set_node_navmesh_name_triangles",
+    "SetNodeNavmeshATriangles",
+    "SetNodeNavmeshBTriangles",
 ]
 
+import bmesh
 import bpy
 
 from io_soulstruct.navmesh.nav_graph.utilities import MCGExportError
@@ -24,7 +28,11 @@ class CreateMCGEdgeOperator(LoggingOperator):
 
     @classmethod
     def poll(cls, context):
-        return context.mode == "OBJECT" and len(context.selected_objects) == 3 and bpy.context.scene.mcg_draw_settings.mcg_parent_name != ""
+        return (
+            context.mode == "OBJECT"
+            and len(context.selected_objects) == 3
+            and bpy.context.scene.mcg_draw_settings.mcg_parent_name != ""
+        )
 
     def execute(self, context):
 
@@ -42,7 +50,9 @@ def create_mcg_edge(context, data):
     try:
         mcg_parent = data.objects[bpy.context.scene.mcg_draw_settings.mcg_parent_name]
     except KeyError:
-        raise MCGEdgeCreationError(f"MCG parent object '{bpy.context.scene.mcg_draw_settings.mcg_parent_name}' not found.")
+        raise MCGEdgeCreationError(
+            f"MCG parent object '{bpy.context.scene.mcg_draw_settings.mcg_parent_name}' not found."
+        )
 
     node_parent = edge_parent = None
     for child in mcg_parent.children:
@@ -127,3 +137,68 @@ def create_mcg_edge(context, data):
     bl_edge["Navmesh Name"] = navmesh.name
     bl_edge["Node A"] = f"Node {node_a_index}"
     bl_edge["Node B"] = f"Node {node_b_index}"
+
+
+def set_node_navmesh_name_triangles(context, a_or_b: str):
+    node = context.selected_objects[0]
+    name_prop = f"Navmesh {a_or_b} Name"
+    if node.get(name_prop, None) is None:
+        raise MCGEdgeCreationError(f"Selected node does not have a '{name_prop}' property.")
+    triangles_prop = f"Navmesh {a_or_b} Triangles"
+    if node.get(triangles_prop, None) is None:
+        raise MCGEdgeCreationError(f"Selected node does not have a '{triangles_prop}' property.")
+    navmesh = context.edit_object
+    node[name_prop] = navmesh.name
+    bm = bmesh.from_edit_mesh(navmesh.data)
+    node[triangles_prop] = [f.index for f in bm.faces if f.select]
+    del bm
+
+
+class SetNodeNavmeshATriangles(LoggingOperator):
+    bl_idname = "io_soulstruct_scene.set_node_navmesh_a_triangles"
+    bl_label = "Set Node Navmesh A Triangles"
+    bl_description = "Use edited mesh to set the navmesh name and triangle indices of Navmesh A on selected MCG node"
+
+    @classmethod
+    def poll(cls, context):
+        return (
+            context.mode == "EDIT_MESH"
+            and 0 < len(context.selected_objects) <= 2
+            and context.selected_objects[0].type == "EMPTY"
+            # NOTE: We don't explicitly poll for 'Navmesh A Name' and 'Navmesh A Triangles' properties, so that the
+            # user can see an informative error message about their absence if missing.
+        )
+
+    def execute(self, context):
+
+        try:
+            set_node_navmesh_name_triangles(context, "A")
+        except Exception as ex:
+            return self.error(str(ex))
+
+        return {"FINISHED"}
+
+
+class SetNodeNavmeshBTriangles(LoggingOperator):
+    bl_idname = "io_soulstruct_scene.set_node_navmesh_b_triangles"
+    bl_label = "Set Node Navmesh B Triangles"
+    bl_description = "Use edited mesh to set the navmesh name and triangle indices of Navmesh B on selected MCG node"
+
+    @classmethod
+    def poll(cls, context):
+        return (
+            context.mode == "EDIT_MESH"
+            and 0 < len(context.selected_objects) <= 2
+            and context.selected_objects[0].type == "EMPTY"
+            # NOTE: We don't explicitly poll for 'Navmesh A Name' and 'Navmesh A Triangles' properties, so that the
+            # user can see an informative error message about their absence if missing.
+        )
+
+    def execute(self, context):
+
+        try:
+            set_node_navmesh_name_triangles(context, "B")
+        except Exception as ex:
+            return self.error(str(ex))
+
+        return {"FINISHED"}

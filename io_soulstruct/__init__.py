@@ -137,6 +137,8 @@ CLASSES = (
     ExportMCG,
     QuickExportMCGMCP,
     CreateMCGEdgeOperator,
+    SetNodeNavmeshATriangles,
+    SetNodeNavmeshBTriangles,
     NVM_PT_ds1_navmesh_import,
     NVM_PT_ds1_navmesh_export,
     NVM_PT_ds1_navmesh_tools,
