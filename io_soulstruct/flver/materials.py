@@ -36,10 +36,21 @@ def get_submesh_blender_material(
 
     # Critical `Material` information stored in custom properties.
     bl_material["Flags"] = material.flags  # int
-    bl_material["GX Index"] = material.gx_index  # int
     bl_material["MTD Path"] = material.mtd_path  # str
     bl_material["Unk x18"] = material.unk_x18  # int
     # NOTE: Texture path prefixes not stored, as they aren't actually needed in the TPFBHDs.
+
+    # Store GX items as custom properties 'array', except the final dummy array.
+    for i, gx_item in enumerate(material.gx_items):
+        if gx_item.is_dummy:
+            continue  # ignore dummy items
+        try:
+            bl_material[f"GXItem[{i}] Category"] = gx_item.category.decode()
+        except UnicodeDecodeError:
+            operator.warning(f"Could not decode GXItem {i} category: {gx_item.category}. Storing empty string.")
+            bl_material[f"GXItem[{i}] Category"] = ""
+        bl_material[f"GXItem[{i}] Index"] = gx_item.index
+        bl_material[f"GXItem[{i}] Data"] = repr(gx_item.data)
 
     node_tree = bl_material.node_tree
     node_tree.nodes.remove(node_tree.nodes["Principled BSDF"])

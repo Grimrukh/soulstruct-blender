@@ -292,9 +292,19 @@ class TextureImportManager:
         source_name = Path(flver_source_path).name.removesuffix(".dcx")
         source_dir = flver_source_path.parent
 
+        # MAP PIECES
         if source_name.endswith(".flver"):
             # Loose FLVER file. Likely a map piece in an older game like DS1. We look in adjacent `mXX` directory.
             self._find_map_tpfs(source_dir)
+        elif source_name.endswith(".mapbnd"):
+            # PARTSBND should have been given as an initial Binder. We also look in adjacent `Common*.tpf` loose TPFs.
+            if flver_binder:
+                self.scan_binder_textures(flver_binder)
+            else:
+                _LOGGER.warning(f"Opened PARTSBND '{flver_binder}' was not passed to TextureImportManager!")
+            self._find_parts_common_tpfs(source_dir)
+
+        # CHARACTERS
         elif source_name.endswith(".chrbnd"):
             # CHRBND should have been given as an initial Binder. We also look in adjacent `chrtpfbdt` file.
             if flver_binder:
@@ -305,6 +315,8 @@ class TextureImportManager:
                     f"Opened CHRBND '{flver_source_path}' should have been passed to TextureImportManager! Will not be "
                     f"able to load attached character textures."
                 )
+
+        # EQUIPMENT
         elif source_name.endswith(".partsbnd"):
             # PARTSBND should have been given as an initial Binder. We also look in adjacent `Common*.tpf` loose TPFs.
             if flver_binder:
@@ -312,6 +324,13 @@ class TextureImportManager:
             else:
                 _LOGGER.warning(f"Opened PARTSBND '{flver_binder}' was not passed to TextureImportManager!")
             self._find_parts_common_tpfs(source_dir)
+
+        # ASSETS (Elden Ring)
+        elif source_name.endswith(".geombnd"):
+            # Likely an AEG asset FLVER from Elden Ring onwards. We look in nearby `aet` directory.
+            self._find_aeg_tpfs(source_dir)
+
+        # GENERIC BINDERS (e.g. OBJECTS)
         elif source_name.endswith("bnd"):
             # Scan miscellaneous Binder for TPFs. Warn if it wasn't passed in.
             if not flver_binder:
@@ -321,9 +340,6 @@ class TextureImportManager:
                 )
             else:
                 self.scan_binder_textures(flver_binder)
-        elif source_name.endswith(".geombnd"):
-            # Likely an AEG asset FLVER from Elden Ring onwards. We look in nearby `aet` directory.
-            self._find_aeg_tpfs(source_dir)
 
     def find_specific_map_textures(self, map_area_dir: Path):
         """Register TPFBHD Binders in a specific `map_area_dir` 'mAA' map directory.

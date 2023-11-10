@@ -31,6 +31,27 @@ ER_GX_ITEM_MAPPING = {
 }
 
 
+def see_textures():
+    """
+    TODO:
+        - To load Elden Ring map piece textures, for a given material:
+            - Load the MATBIN for the map piece material (use batch `MATBINBND` instance).
+            - Find the texture names. For each texture:
+                - Open the relevant AET binder (obviously only open each one once for an import batch).
+                - Get the DDS.
+        - Note that the MATBIN texture names have '.tif' extension, which ER must convert DDS into instead of '.tga'.
+        - So, I need a MATBIN class first. Thanks TKGP:
+            https://github.com/JKAnderson/SoulsFormats/blob/er/SoulsFormats/Formats/MATBIN.cs
+    """
+
+    stormveil = Path(ELDEN_RING_PATH + "/map/m10/m10_00_00_00/")
+    for mapbnd_path in stormveil.glob("*.mapbnd.dcx"):
+        flver = FLVER.from_binder_path(mapbnd_path)
+        for submesh in flver.submeshes:
+            print(submesh.material.mtd_name, submesh.material.textures)
+        return
+
+
 def main():
     # flver = FLVER.from_binder_path(ELDEN_RING_PATH + "/parts/am_f_2310.partsbnd.dcx", 200)
     stormveil = Path(ELDEN_RING_PATH + "/map/m10/m10_00_00_00/")
@@ -84,4 +105,5 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    see_textures()
+    # main()

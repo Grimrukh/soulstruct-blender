@@ -1838,10 +1838,10 @@ class FLVERExporter:
         flver_material = Material(
             name=name,
             flags=get_bl_prop(bl_material, "Flags", int),
-            gx_index=get_bl_prop(bl_material, "GX Index", int, default=-1),  # TODO: not yet supported
             mtd_path=get_bl_prop(bl_material, "MTD Path", str),
             unk_x18=get_bl_prop(bl_material, "Unk x18", int, default=0),
         )
+        # TODO: Read `GXItem` custom properties.
 
         node_textures = {node.name: node for node in bl_material.node_tree.nodes if node.type == "TEX_IMAGE"}
         flver_textures = []

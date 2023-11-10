@@ -513,10 +513,10 @@ class FLVERBatchImporter:
             bl_bone_name = f"{bone.name} <DUPE>" if bone.name in self.bl_bone_names else bone.name
             self.bl_bone_names.append(bl_bone_name)
 
-        if flver.gx_lists:
+        if any(submesh.material.gx_items for submesh in flver.submeshes):
             self.warning(
-                f"FLVER {self.name} has GX Lists, which are not yet supported by Soulstruct for Blender. "
-                f"They will be lost."
+                f"One or more materials in FLVER {self.name} use GX Items, which are not yet supported by Soulstruct "
+                f"for Blender. They will be lost."
             )
 
         import_settings = self.context.scene.flver_import_settings  # type: FLVERImportSettings
