@@ -1442,7 +1442,6 @@ class FLVERExporter:
             }
 
             submesh_info.append((flver_material, array_layout, submesh_kwargs))
-            flver.materials.append(flver_material)
             self.operator.info(f"Created FLVER material: {flver_material.name}")
 
         # 2. Extract UV layers. (Yes, we iterate over Blender materials again, but it's worth the clarity of purpose.)

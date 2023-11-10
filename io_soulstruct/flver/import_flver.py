@@ -599,11 +599,11 @@ class FLVERBatchImporter:
         # Map FLVER material hashes to their MTD info and UV layer names.
         flver_material_mtd_infos = {}
         flver_material_uv_layer_names = {}
-        for material in flver.materials:
-            material_hash = hash(material)
+        for submesh in flver.submeshes:
+            material_hash = hash(submesh.material)  # TODO: should hash ignore material name?
             if material_hash in flver_material_mtd_infos:
-                continue
-            mtd_info = self.get_mtd_info(material.mtd_name, self.mtdbnd)
+                continue  # material already created (used by a previous submesh)
+            mtd_info = self.get_mtd_info(submesh.material.mtd_name, self.mtdbnd)
             flver_material_mtd_infos[material_hash] = mtd_info
             flver_material_uv_layer_names[material_hash] = flver_material_mtd_infos[material_hash].get_uv_layer_names()
 

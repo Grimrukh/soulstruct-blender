@@ -741,14 +741,12 @@ def scan_chr_layouts():
         chrbnd = Binder.from_path(chrbnd_path)
         print(f"Reading FLVER in {chrbnd_path.name}...")
         flver = chrbnd[200].to_binary_file(FLVER)
-        for mesh in flver.submeshes:
-            if mesh.material_index < 0:
-                raise ValueError(f"Invalid material index: {mesh.material_index}")
-            material = flver.materials[mesh.material_index]
+        for submesh in flver.submeshes:
+            material = submesh.material
             if material.mtd_name not in mtd_and_layout:
                 mtd_and_layout[material.mtd_name] = set()
-            layout = flver.buffer_layouts[mesh.vertex_buffers[0].layout_index]
-            layout_str = ", ".join(str(m) for m in layout.members)
+            layout = submesh.vertex_arrays[0].layout
+            layout_str = ", ".join(str(m) for m in layout)
             mtd_and_layout[material.mtd_name].add(layout_str)
 
     print("{")
@@ -772,9 +770,9 @@ def scan_chr():
         chrbnd = Binder.from_path(chrbnd_path)
         print(f"Reading FLVER in {chrbnd_path.name}...")
         flver = chrbnd[200].to_binary_file(FLVER)
-        for material in flver.materials:
-            texture_types = [tex.texture_type for tex in material.textures]
-            mtd_and_texture_types.append((Path(material.mtd_path).stem, texture_types))
+        for submesh in flver.submeshes:
+            texture_types = [tex.texture_type for tex in submesh.material.textures]
+            mtd_and_texture_types.append((Path(submesh.material.mtd_path).stem, texture_types))
 
     for mtd_texture_types in mtd_and_texture_types:
         print(mtd_texture_types)
@@ -789,9 +787,9 @@ def scan_map():
                 continue  # skip duplicate DLC directory (models are still read from _00 folder)
             print(f"Reading FLVER {flver_path.name}...")
             flver = FLVER.from_path(flver_path)
-            for material in flver.materials:
-                texture_types = [tex.texture_type for tex in material.textures]
-                f.write(f"    ('{Path(material.mtd_path).stem}', {texture_types}),\n")
+            for submesh in flver.submeshes:
+                texture_types = [tex.texture_type for tex in submesh.material.textures]
+                f.write(f"    ('{Path(submesh.material.mtd_path).stem}', {texture_types}),\n")
         f.write("}\n")
 
 
@@ -804,14 +802,12 @@ def scan_map_layouts():
             continue  # skip duplicate DLC directory (models are still read from _00 folder)
         print(f"Reading FLVER {flver_path.name}...")
         flver = FLVER.from_path(flver_path)
-        for mesh in flver.submeshes:
-            if mesh.material_index < 0:
-                raise ValueError(f"Invalid material index: {mesh.material_index}")
-            material = flver.materials[mesh.material_index]
+        for submesh in flver.submeshes:
+            material = submesh.material
             if material.mtd_name not in mtd_and_layout:
                 mtd_and_layout[material.mtd_name] = set()
-            layout = flver.buffer_layouts[mesh.vertex_buffers[0].layout_index]
-            layout_str = ", ".join(str(m) for m in layout.members)
+            layout = submesh.vertex_arrays[0].layout
+            layout_str = ", ".join(str(m) for m in layout)
             mtd_and_layout[material.mtd_name].add(layout_str)
 
     print("{")
