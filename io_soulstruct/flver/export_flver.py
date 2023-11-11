@@ -1588,6 +1588,8 @@ class FLVERExporter:
 
         loop_vertex_indices = np.empty(loop_count, dtype=np.int32)
         loop_normals = np.empty((loop_count, 3), dtype=np.float32)
+        # TODO: Not exporting any real normal_w data yet. If used as a fake bone weight, it should be stored in a custom
+        #  data layer.
         loop_normals_w = np.full((loop_count, 1), 127, dtype=np.uint8)
         # TODO: could check combined `dtype` now to skip these if not needed by any materials.
         #  (Related: mark these arrays as optional attributes in `MergedMesh`.)
@@ -1604,13 +1606,6 @@ class FLVERExporter:
             loop_colors_layer.data.foreach_get("color", loop_vertex_color.ravel())
         for uv_i, uv_layer in enumerate(uv_layers):
             uv_layer.data.foreach_get("uv", loop_uvs[uv_i].ravel())
-
-        print(loop_vertex_indices[:5])
-        print(loop_normals[:5])
-        print(loop_tangents[:5])
-        print(loop_bitangents[:5])
-        print(loop_vertex_color[:5])
-        print(loop_uvs[0][:5])
 
         # Add `w` components to tangents and bitangents (-1).
         minus_one = np.full((loop_count, 1), -1, dtype=np.float32)
