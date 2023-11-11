@@ -1437,11 +1437,8 @@ class FLVERExporter:
         all_uv_layer_names_set = set()
         for material_info in material_infos:
             all_uv_layer_names_set |= set(material_info.get_uv_layer_names())
-        uv_layers = sorted(all_uv_layer_names_set)  # e.g. ["UVMap1", "UVMap2", "UVMap3", "UVMapWindA", "UVMapWindB"]
-        uv_layer_data = [
-            list(bl_mesh.data.uv_layers[uv_layer_name].data)
-            for uv_layer_name in uv_layers
-        ]
+        uv_layer_names = sorted(all_uv_layer_names_set)  # e.g. ["UVMap1", "UVMap2", "UVMap3"]
+        uv_layers = [bl_mesh.data.uv_layers[uv_layer_name] for uv_layer_name in uv_layer_names]
 
         # 3. Prepare Mesh data.
         mesh_data = bl_mesh.data  # type: bpy.types.Mesh
@@ -1570,13 +1567,6 @@ class FLVERExporter:
         # Finally, we iterate over loops and construct their arrays.
         p = time.perf_counter()
         loop_count = len(mesh_data.loops)
-        loop_vertex_indices = np.empty(loop_count, dtype=np.int32)
-        loop_normals = np.empty((loop_count, 3), dtype=np.float32)
-        loop_normals_w = np.full((loop_count, 1), 127, dtype=np.uint8)
-        # TODO: could check combined `dtype` now to skip these if not needed by any materials.
-        #  (Related: mark these arrays as optional attributes in `MergedMesh`.)
-        loop_tangents = np.empty((loop_count, 3), dtype=np.float32)
-        loop_bitangents = np.empty((loop_count, 3), dtype=np.float32)
 
         # UV arrays correspond to FLVER-wide sorted UV layer names.
         loop_uvs = [
@@ -1596,24 +1586,31 @@ class FLVERExporter:
             # Prepare for loop filling.
             loop_vertex_color = np.empty((loop_count, 4), dtype=np.float32)
 
-        # TODO: Trial `foreach_get` for these properties (and reshaping arrays). Do a perf comparison.
-        for i, loop in enumerate(mesh_data.loops):
-            loop_vertex_indices[i] = loop.vertex_index
-            loop_normals[i] = loop.normal
-            loop_tangents[i] = loop.tangent
-            # TODO: Use a `MergedMesh` method to construct all bitangents at once with `np.cross`? Maybe not.
-            #  Actually, 95% sure that `bitangent` is just used as the tangent for a second texture group.
-            #  Later games change to using multiple `tangent` layout elements.
-            loop_bitangents[i] = loop.bitangent
+        loop_vertex_indices = np.empty(loop_count, dtype=np.int32)
+        loop_normals = np.empty((loop_count, 3), dtype=np.float32)
+        loop_normals_w = np.full((loop_count, 1), 127, dtype=np.uint8)
+        # TODO: could check combined `dtype` now to skip these if not needed by any materials.
+        #  (Related: mark these arrays as optional attributes in `MergedMesh`.)
+        loop_tangents = np.empty((loop_count, 3), dtype=np.float32)
+        loop_bitangents = np.empty((loop_count, 3), dtype=np.float32)
 
-            if loop_colors_layer:
-                loop_vertex_color[i] = loop_colors_layer.data[i].color
+        mesh_data.loops.foreach_get("vertex_index", loop_vertex_indices)
+        mesh_data.loops.foreach_get("normal", loop_normals.ravel())
+        mesh_data.loops.foreach_get("tangent", loop_tangents.ravel())
+        # TODO: 99% sure that `bitangent` data in DS1 is used to store tangent data for the second texture group.
+        #  So it should be calculated from "tangent" for loops that actually use it... ugh.
+        mesh_data.loops.foreach_get("bitangent", loop_bitangents.ravel())
+        if loop_colors_layer:
+            loop_colors_layer.data.foreach_get("color", loop_vertex_color.ravel())
+        for uv_i, uv_layer in enumerate(uv_layers):
+            uv_layer.data.foreach_get("uv", loop_uvs[uv_i].ravel())
 
-            # TODO: Technically it's a waste of time writing the data from UV layers that aren't even used by a certain
-            #  submesh (and will hence be discarded during split submesh creation), but I'd need to go back and retrieve
-            #  the material index of this loop's parent face to know which UV layer names to export. Not worth it.
-            for uv_i, uv_data in enumerate(uv_layer_data):
-                loop_uvs[uv_i][i] = uv_data[i].uv
+        print(loop_vertex_indices[:5])
+        print(loop_normals[:5])
+        print(loop_tangents[:5])
+        print(loop_bitangents[:5])
+        print(loop_vertex_color[:5])
+        print(loop_uvs[0][:5])
 
         # Add `w` components to tangents and bitangents (-1).
         minus_one = np.full((loop_count, 1), -1, dtype=np.float32)

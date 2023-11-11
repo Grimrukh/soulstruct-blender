@@ -344,9 +344,7 @@ class DS1MaterialShaderInfo(BaseMaterialShaderInfo):
             data_types.insert(3, VertexBitangent(VertexDataFormatEnum.FourBytesC, 0))
 
         # Calculate total UV map count and use a combination of UVPair and UV format members below.
-        print(self.sampler_types)
         uv_count = len(self.get_uv_layer_names())
-        print(f"UV count = {uv_count}")
 
         if self.shader_category in {MTDShaderCategory.FOLIAGE, MTDShaderCategory.IVY}:
             # Foliage shaders have two extra UV slots for wind animation control.
