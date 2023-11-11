@@ -372,7 +372,7 @@ class DS1MaterialShaderInfo(BaseMaterialShaderInfo):
 
         return VertexArrayLayout(data_types)
 
-    def get_chr_array_layout(self) -> VertexArrayLayout:
+    def get_character_layout(self) -> VertexArrayLayout:
         """Get a standard vertex array layout for character (and probably object) materials in DS1."""
         data_types = [
             VertexPosition(VertexDataFormatEnum.Float3, 0),

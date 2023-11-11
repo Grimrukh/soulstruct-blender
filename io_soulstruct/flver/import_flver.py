@@ -254,7 +254,7 @@ class ImportCharacterFLVER(BaseFLVERImportOperator):
     filename_ext = ".chrbnd"
 
     filter_glob: bpy.props.StringProperty(
-        default="*.chrbnd;*.chrbnd.dcx;",
+        default="*.chrbnd;*.chrbnd.dcx;*.chrbnd.bak;*.chrbnd.dcx.bak;",
         options={'HIDDEN'},
         maxlen=255,
     )

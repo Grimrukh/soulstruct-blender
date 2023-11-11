@@ -1409,6 +1409,7 @@ class FLVERExporter:
         Also creates `Material` and `VertexArrayLayout` instances for each Blender material, and assigns them to the
         appropriate `Submesh` instances. Any duplicate instances here will be merged when FLVER is packed.
         """
+        soulstruct_settings = SoulstructSettings.get_scene_settings(self.context)
 
         # 1. Create per-submesh info. Note that every Blender material index is guaranteed to be mapped to AT LEAST ONE
         #    split `Submesh` in the exported FLVER (more if submesh bone maximum is exceeded). This allows the user to
@@ -1484,7 +1485,7 @@ class FLVERExporter:
         # TODO: Surely I can use `vertices.foreach_get("co" / "groups")`?
         p = time.perf_counter()
         for i, vertex in enumerate(mesh_data.vertices):
-            vertex_positions[i] = vertex.co
+            vertex_positions[i] = vertex.co  # TODO: would use `foreach_get` but still have to iterate for bones?
 
             bone_indices = []  # global (splitter will make them local to submesh if appropriate)
             bone_weights = []
@@ -1493,14 +1494,12 @@ class FLVERExporter:
                 try:
                     bone_index = bl_bone_names.index(mesh_group.name)
                 except ValueError:
-                    raise FLVERExportError(
-                        f"Vertex is weighted to invalid bone name: '{mesh_group.name}'."
-                    )
+                    raise FLVERExportError(f"Vertex is weighted to invalid bone name: '{mesh_group.name}'.")
                 bone_indices.append(bone_index)
                 # We don't waste time calling retrieval method `weight()` for map pieces.
                 if use_chr_layout:
+                    # TODO: `vertex_group` has `group` (int) and `weight` (float) on it already?
                     bone_weights.append(mesh_group.weight(i))
-                break
 
             if len(bone_indices) > 4:
                 raise FLVERExportError(
@@ -1530,6 +1529,7 @@ class FLVERExporter:
                 while len(bone_weights) < 4:
                     bone_weights.append(0.0)
                 while len(bone_indices) < 4:
+                    # NOTE: we use -1 here to optimize the mesh splitting process; it will be changed to 0 for write.
                     bone_indices.append(-1)
             else:  # map pieces
                 if len(bone_indices) == 1:
@@ -1541,9 +1541,13 @@ class FLVERExporter:
             if bone_weights:  # rigged only
                 vertex_bone_weights[i] = bone_weights
 
-        # TODO: For later games, remove flag 1 and add flag 8 here, I think.
         for used_bone_index in used_bone_indices:
-            flver.bones[used_bone_index].usage_flags = 0
+            if soulstruct_settings.game == GameNames.ER:  # TODO: Not sure which game this started in.
+                # Remobe bit 1 (unused) and add bit 8 (used by vertices).
+                flver.bones[used_bone_index].usage_flags &= ~1
+                flver.bones[used_bone_index].usage_flags |= 8
+            else:
+                flver.bones[used_bone_index].usage_flags = 0
 
         vertex_data["position"] = vertex_positions
         vertex_data["bone_weights"] = vertex_bone_weights

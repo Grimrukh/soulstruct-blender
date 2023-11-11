@@ -333,7 +333,7 @@ class QuickImportCharacterHKXAnimation(LoggingOperator, ImportHKXAnimationMixin)
         # noinspection PyTypeChecker
         bl_armature = context.selected_objects[0]  # type: bpy.types.ArmatureObject
 
-        character_name = bl_armature.name.split(" ")[0]
+        character_name = bl_armature.name.split(" ")[0].split(".")[0]
         if character_name == "c0000":
             return self.error("Automatic ANIBND import is not yet supported for c0000 (player model).")
 
