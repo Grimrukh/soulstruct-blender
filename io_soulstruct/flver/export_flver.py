@@ -13,6 +13,7 @@ __all__ = [
 
 import time
 
+import re
 import traceback
 import typing as tp
 from dataclasses import dataclass, field
@@ -1286,9 +1287,9 @@ class FLVERExporter:
             flver_dummy = self.export_dummy(bl_dummy, dummy_info.reference_id, bl_bone_names, bl_bone_data)
             # Mark attach/parent bones as used. TODO: Set more specific flags in later games (2 here).
             if flver_dummy.attach_bone_index >= 0:
-                flver.bones[flver_dummy.attach_bone_index].usage_flags = 0
+                flver.bones[flver_dummy.attach_bone_index].usage_flags &= ~1
             if flver_dummy.parent_bone_index >= 0:
-                flver.bones[flver_dummy.parent_bone_index].usage_flags = 0
+                flver.bones[flver_dummy.parent_bone_index].usage_flags &= ~1
             flver.dummies.append(flver_dummy)
 
         # Material info for each Blender material is needed to determine which Blender UV layers to use for which loops.
@@ -1542,12 +1543,9 @@ class FLVERExporter:
                 vertex_bone_weights[i] = bone_weights
 
         for used_bone_index in used_bone_indices:
+            flver.bones[used_bone_index].usage_flags &= ~1
             if soulstruct_settings.game == GameNames.ER:  # TODO: Not sure which game this started in.
-                # Remobe bit 1 (unused) and add bit 8 (used by vertices).
-                flver.bones[used_bone_index].usage_flags &= ~1
                 flver.bones[used_bone_index].usage_flags |= 8
-            else:
-                flver.bones[used_bone_index].usage_flags = 0
 
         vertex_data["position"] = vertex_positions
         vertex_data["bone_weights"] = vertex_bone_weights
@@ -1675,13 +1673,16 @@ class FLVERExporter:
                 continue  # ignore this bone (e.g. c0000 bones not used by equipment FLVER being exported)
 
             game_bone_name = edit_bone.name
+            while re.match(r".*\.\d\d\d$", game_bone_name):
+                # Bone names can be repeated in the FLVER. Remove Blender duplicate suffixes.
+                game_bone_name = game_bone_name[:-4]
             while game_bone_name.endswith(" <DUPE>"):
                 # Bone names can be repeated in the FLVER.
                 game_bone_name = game_bone_name.removesuffix(" <DUPE>")
 
-            # Bone is UNUSED by default. This flag may be removed during dummy/mesh export.
+            unused = get_bl_prop(edit_bone, "Is Unused", bool, default=False)
             # TODO: Also need to figure out what usage the 'cXXXX' flag in later games represents in the FLVER.
-            game_bone = FLVERBone(name=game_bone_name, usage_flags=1)
+            game_bone = FLVERBone(name=game_bone_name, usage_flags=int(unused))
 
             if edit_bone.parent:
                 parent_bone_name = edit_bone.parent.name

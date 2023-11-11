@@ -42,7 +42,7 @@ import bpy
 import bpy.ops
 from mathutils import Vector, Matrix
 
-from soulstruct.base.models.flver import FLVER, FLVERBone, Dummy
+from soulstruct.base.models.flver import FLVER, FLVERBone, FLVERBoneUsageFlags, Dummy
 from soulstruct.base.models.flver.mesh_tools import MergedMesh
 from soulstruct.containers import Binder
 from soulstruct.containers.tpf import TPFTexture, batch_get_tpf_texture_png_data
@@ -1061,7 +1061,8 @@ class FLVERBatchImporter:
             edit_bone = bl_armature_data.edit_bones.new(bl_bone_name)  # '<DUPE>' suffixes already added to names
             edit_bone: bpy.types.EditBone
 
-            # NOTE: We do not need to store usage flags (formerly 'Unk x3c') on bones, as it can be detected on export.
+            # Storing 'Unused' flag for now. TODO: If later games' other flags can't be safely auto-detected, store too.
+            edit_bone["Is Unused"] = bool(game_bone.usage_flags & FLVERBoneUsageFlags.UNUSED)
 
             # If this is `False`, then a bone's rest pose rotation will NOT affect its relative pose basis translation.
             # That is, pose basis translation will be interpreted as being in parent space (or object for root bones)
