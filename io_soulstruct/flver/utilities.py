@@ -13,8 +13,6 @@ __all__ = [
     "game_forward_up_vectors_to_bl_euler",
     "bl_euler_to_game_forward_up_vectors",
     "bl_rotmat_to_game_forward_up_vectors",
-    "VertexArrayLayoutFactory",
-    "MTDInfo",
 ]
 
 import re
@@ -26,8 +24,6 @@ from mathutils import Euler, Matrix
 from soulstruct import Binder, FLVER
 from soulstruct.utilities.maths import Vector3, Matrix3
 from soulstruct.darksouls1r.maps import MSB, get_map
-from soulstruct.base.models.flver.layout_repair import VertexArrayLayoutFactory
-from soulstruct.base.models.mtd import MTDInfo
 
 from io_soulstruct.utilities import (
     Transform, BlenderTransform, GAME_TO_BL_EULER, BL_TO_GAME_EULER, BL_TO_GAME_MAT3, LoggingOperator

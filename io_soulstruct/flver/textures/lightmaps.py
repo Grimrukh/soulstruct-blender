@@ -14,7 +14,7 @@ from soulstruct.base.models.mtd import MTDBND as BaseMTDBND
 
 from io_soulstruct.general import SoulstructSettings
 from io_soulstruct.utilities.operators import LoggingOperator
-from io_soulstruct.flver.utilities import MTDInfo
+from io_soulstruct.flver.materials import DS1MaterialShaderInfo
 
 
 class BakeLightmapSettings(bpy.types.PropertyGroup):
@@ -156,8 +156,8 @@ class BakeLightmapTextures(LoggingOperator):
         except Exception as ex:
             try:
                 self.cleanup_callback()
-            except Exception as ex:
-                self.warning(f"Error during cleanup callback after Bake Lightmap operation failed: {ex}")
+            except Exception as ex2:
+                self.warning(f"Error during cleanup callback after Bake Lightmap operation failed: {ex2}")
             return self.error(f"Error occurred during Cycles bake operation: {ex}")
 
         self.info(f"Baked lightmap texture for {len(flver_meshes)} meshes: {target_image.name}")
@@ -196,13 +196,7 @@ class BakeLightmapTextures(LoggingOperator):
             mtd_name = Path(bl_material["MTD Path"]).name
         except KeyError:
             raise ValueError(f"Material '{bl_material.name}' of mesh {mesh.name} has no 'MTD Path' property.")
-        try:
-            mtd = mtdbnd.mtds[mtd_name]
-        except KeyError:
-            self.warning(f"Could not find MTD '{mtd_name}' in MTD dict. Guessing info from name.")
-            mtd_info = MTDInfo.from_mtd_name(mtd_name)
-        else:
-            mtd_info = MTDInfo.from_mtd(mtd)
+        material_info = DS1MaterialShaderInfo.from_mtdbnd_or_name(self, mtd_name, mtdbnd)
 
         texture_node_name = bake_settings.texture_node_name
 
@@ -262,12 +256,12 @@ class BakeLightmapTextures(LoggingOperator):
                 f"is hidden from rendering."
             )
 
-        if mtd_info.is_water:
+        if material_info.is_water:
             self.info(
                 f"Bake will NOT include material '{bl_material.name}' of mesh {mesh.name} with "
                 f"water MTD shader: {mtd_name}"
             )
-        elif not bake_settings.bake_edge_shaders and mtd_info.edge:
+        elif not bake_settings.bake_edge_shaders and material_info.edge:
             self.info(
                 f"Bake will NOT include material '{bl_material.name}' of mesh {mesh.name} with "
                 f"'Edge' MTD shader: {mtd_name}"

@@ -34,6 +34,7 @@ from soulstruct.utilities.maths import Vector3, Matrix3
 from io_soulstruct.general import *
 from io_soulstruct.general.cached import get_cached_file
 from io_soulstruct.utilities import *
+from .materials import BaseMaterialShaderInfo, DS1MaterialShaderInfo
 from .textures.export_textures import *
 from .utilities import *
 
@@ -1252,12 +1253,9 @@ class FLVERExporter:
         if armature is not None and armature.type != "ARMATURE":
             raise FLVERExportError("`armature` object passed to FLVER exporter must be an Armature or `None`.")
 
-        scene_settings = SoulstructSettings.get_scene_settings(self.context)
+        soulstruct_settings = SoulstructSettings.get_scene_settings(self.context)
 
-        flver = FLVER(**self.get_flver_props(mesh, scene_settings.game))
-
-        # TODO: Default can surely be auto-set from game.
-        layout_data_type_unk_x00 = get_bl_prop(mesh, "Layout Member Unk x00", int, default=0)
+        flver = FLVER(**self.get_flver_props(mesh, soulstruct_settings.game))
 
         bl_dummies = self.collect_dummies(mesh, armature, name=name)
 
@@ -1293,11 +1291,23 @@ class FLVERExporter:
                 flver.bones[flver_dummy.parent_bone_index].usage_flags = 0
             flver.dummies.append(flver_dummy)
 
-        # `MTDInfo` for each Blender material is needed to determine which BLender UV layers to read for which loops.
-        mtd_infos = [
-            self.get_mtd_info(bl_material, self.mtdbnd)
-            for bl_material in mesh.data.materials
-        ]
+        # Material info for each Blender material is needed to determine which Blender UV layers to use for which loops.
+        match soulstruct_settings.game:
+            case GameNames.PTDE | GameNames.DS1R:
+                material_infos = []
+                for bl_material in mesh.data.materials:
+                    try:
+                        mtd_name = Path(bl_material["MTD Path"]).name
+                    except KeyError:
+                        raise FLVERExportError(
+                            f"Material '{bl_material.name}' has no 'MTD Path' custom property. "
+                            f"Cannot export FLVER."
+                        )
+                    material_infos.append(
+                        DS1MaterialShaderInfo.from_mtdbnd_or_name(self.operator, mtd_name, self.mtdbnd)
+                    )
+            case _:
+                raise NotImplementedError(f"Cannot yet export FLVERs for game {soulstruct_settings.game}.")
 
         if not mesh.data.vertices:
             # Mesh is empty (e.g. c0000). Leave FLVER/bone bounding boxes as max/min float values (default).
@@ -1313,8 +1323,7 @@ class FLVERExporter:
             bl_bone_names,
             use_chr_layout=read_bone_type == "EDIT",
             strip_bl_material_prefix=name,
-            layout_data_type_unk_x00=layout_data_type_unk_x00,
-            mtd_infos=mtd_infos,
+            material_infos=material_infos,
         )
 
         # TODO: Bone bounding box space seems to be always local to the bone for characters and always in armature space
@@ -1384,25 +1393,6 @@ class FLVERExporter:
 
         return dummy_info
 
-    def get_mtd_info(self, bl_material: bpy.types.Material, mtdbnd: BaseMTDBND = None) -> MTDInfo:
-        """Get `MTDInfo` for a FLVER material, which is needed for both material creation and assignment of vertex UV
-        data to the correct Blender UV data layer during mesh creation.
-        """
-        mtd_name = Path(bl_material["MTD Path"]).name
-        if not mtdbnd:
-            return MTDInfo.from_mtd_name(mtd_name)
-
-        # Use real MTD file (much less guesswork).
-        try:
-            mtd = mtdbnd.mtds[mtd_name]
-        except KeyError:
-            self.warning(
-                f"Could not find MTD '{mtd_name}' from Blender material '{bl_material.name}' in MTD dict. "
-                f"Guessing info from name."
-            )
-            return MTDInfo.from_mtd_name(mtd_name)
-        return MTDInfo.from_mtd(mtd)
-
     def export_submeshes(
         self,
         flver: FLVER,
@@ -1410,8 +1400,7 @@ class FLVERExporter:
         bl_bone_names: list[str],
         use_chr_layout: bool,
         strip_bl_material_prefix: str,
-        layout_data_type_unk_x00: int,
-        mtd_infos: list[MTDInfo],
+        material_infos: list[BaseMaterialShaderInfo],
     ):
         """
         Construct a `MergedMesh` from Blender data, in a straightforward way (unfortunately using `for` loops over
@@ -1425,15 +1414,14 @@ class FLVERExporter:
         #    split `Submesh` in the exported FLVER (more if submesh bone maximum is exceeded). This allows the user to
         #    also split their submeshes manually in Blender, if they wish.
         submesh_info = []  # type: list[tuple[Material, VertexArrayLayout, dict[str, tp.Any]]]
-        layout_factory = VertexArrayLayoutFactory(layout_data_type_unk_x00)
-        for mtd_info, bl_material in zip(mtd_infos, bl_mesh.data.materials):
+        for material_info, bl_material in zip(material_infos, bl_mesh.data.materials):
             # Some Blender materials may be variants representing distinct Submesh/FaceSet properties; these will be
             # mapped to the same FLVER `Material`/`VertexArrayLayout` combo (created here).
-            flver_material = self.export_material(bl_material, mtd_info, strip_bl_material_prefix)
+            flver_material = self.export_material(bl_material, material_info, strip_bl_material_prefix)
             if use_chr_layout:
-                array_layout = layout_factory.get_ds1_chr_array_layout(mtd_info)
+                array_layout = material_info.get_character_layout()
             else:
-                array_layout = layout_factory.get_ds1_map_array_layout(mtd_info)
+                array_layout = material_info.get_map_piece_layout()
             submesh_kwargs = {
                 "is_bind_pose": get_bl_prop(bl_material, "Is Bind Pose", int, default=use_chr_layout, callback=bool),
                 "default_bone_index": get_bl_prop(bl_material, "Default Bone Index", int, default=0),
@@ -1444,11 +1432,11 @@ class FLVERExporter:
             submesh_info.append((flver_material, array_layout, submesh_kwargs))
             self.operator.info(f"Created FLVER material: {flver_material.name}")
 
-        # 2. Extract UV layers. (Yes, we iterate over Blender materials again, but it's worth the clarity of purpose.)
+        # 2. Extract UV layers.
         # Maps UV layer names to lists of `MeshUVLoop` instances (so they're converted only once across all materials).
         all_uv_layer_names_set = set()
-        for mtd_info in mtd_infos:
-            all_uv_layer_names_set |= set(mtd_info.get_uv_layer_names())
+        for material_info in material_infos:
+            all_uv_layer_names_set |= set(material_info.get_uv_layer_names())
         uv_layers = sorted(all_uv_layer_names_set)  # e.g. ["UVMap1", "UVMap2", "UVMap3", "UVMapWindA", "UVMapWindB"]
         uv_layer_data = [
             list(bl_mesh.data.uv_layers[uv_layer_name].data)
@@ -1608,11 +1596,14 @@ class FLVERExporter:
             # Prepare for loop filling.
             loop_vertex_color = np.empty((loop_count, 4), dtype=np.float32)
 
+        # TODO: Trial `foreach_get` for these properties (and reshaping arrays). Do a perf comparison.
         for i, loop in enumerate(mesh_data.loops):
             loop_vertex_indices[i] = loop.vertex_index
             loop_normals[i] = loop.normal
             loop_tangents[i] = loop.tangent
             # TODO: Use a `MergedMesh` method to construct all bitangents at once with `np.cross`? Maybe not.
+            #  Actually, 95% sure that `bitangent` is just used as the tangent for a second texture group.
+            #  Later games change to using multiple `tangent` layout elements.
             loop_bitangents[i] = loop.bitangent
 
             if loop_colors_layer:
@@ -1819,7 +1810,7 @@ class FLVERExporter:
     def export_material(
         self,
         bl_material: bpy.types.Material,
-        mtd_info: MTDInfo,
+        material_info: BaseMaterialShaderInfo,
         prefix: str,
     ) -> Material:
         """Create a FLVER material from Blender material custom properties and texture nodes.
@@ -1845,21 +1836,21 @@ class FLVERExporter:
 
         node_textures = {node.name: node for node in bl_material.node_tree.nodes if node.type == "TEX_IMAGE"}
         flver_textures = []
-        for texture_type in mtd_info.texture_types:
-            if texture_type not in node_textures:
+        for sampler_type in material_info.sampler_types:
+            if sampler_type not in node_textures:
                 # Only 'g_DetailBumpmap' can always be omitted from node tree entirely, as it's always empty (in DS1).
-                if texture_type != "g_DetailBumpmap":
+                if sampler_type != "g_DetailBumpmap":
                     raise FLVERExportError(
-                        f"Could not find a shader node for required texture type '{texture_type}' in material "
+                        f"Could not find a shader node for required texture type '{sampler_type}' in material "
                         f"'{bl_material}'. You must create an Image Texture node in the shader and give it this name, "
                         f"then assign a Blender image to it. (You do not have to connect the node to any others.)"
                     )
                 else:
                     texture_path = ""  # missing
             else:
-                tex_node = node_textures.pop(texture_type)
+                tex_node = node_textures.pop(sampler_type)
                 if tex_node.image is None:
-                    if texture_type != "g_DetailBumpmap" and not export_settings.allow_missing_textures:
+                    if sampler_type != "g_DetailBumpmap" and not export_settings.allow_missing_textures:
                         raise FLVERExportError(
                             f"Texture node '{tex_node.name}' in material '{bl_material}' has no image assigned. "
                             f"You must assign a Blender texture to this node, or enable 'Allow Missing Textures' in "
@@ -1876,7 +1867,7 @@ class FLVERExporter:
 
             flver_texture = Texture(
                 path=texture_path,
-                texture_type=texture_type,
+                texture_type=sampler_type,
             )
             flver_textures.append(flver_texture)
 
@@ -1889,11 +1880,11 @@ class FLVERExporter:
             # TODO: Currently assuming that FLVER material texture order doesn't matter (due to texture type).
             #  If it does, we'll need to sort them here, probably based on node location Y.
             for unk_texture_type, tex_node in node_textures.items():
-                texture_type = tex_node.name
+                sampler_type = tex_node.name
                 if not tex_node.image:
                     if not export_settings.allow_missing_textures:
                         raise FLVERExportError(
-                            f"Unknown texture node '{texture_type}' in material '{bl_material}' has no image assigned. "
+                            f"Unknown texture node '{sampler_type}' in material '{bl_material}' has no image assigned. "
                             f"You must assign a Blender texture to this node, or enable 'Allow Missing Textures' in "
                             f"the FLVER export options."
                         )
@@ -1905,7 +1896,7 @@ class FLVERExporter:
 
                 flver_texture = Texture(
                     path=texture_path,
-                    texture_type=texture_type,
+                    texture_type=sampler_type,
                 )
                 flver_textures.append(flver_texture)
 

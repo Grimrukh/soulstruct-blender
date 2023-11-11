@@ -13,6 +13,7 @@ import bpy
 
 from soulstruct.base.maps.msb import MSB as BaseMSB
 from soulstruct.dcx import DCXType
+from soulstruct.eldenring.models.matbin import MATBINBND
 from soulstruct.utilities.files import read_json, write_json
 
 from soulstruct.base.models.mtd import MTDBND
@@ -127,8 +128,15 @@ class SoulstructSettings(bpy.types.PropertyGroup):
 
     mtdbnd_path: bpy.props.StringProperty(
         name="MTDBND Path",
-        description="Path of custom MTDBND file for detecting material setups. "
-                    "Defaults to: '{game_directory}/mtd/mtd.mtdbnd{.dcx}')",
+        description="Path of custom MTDBND or MATBINBND file for detecting material setups. "
+                    "Defaults to an automatic game-specific location in selected game directory",
+        default="",
+    )
+
+    matbinbnd_path: bpy.props.StringProperty(
+        name="MATBINBND Path",
+        description="Path of custom MATBINBND file for detecting material setups (Elden Ring only). "
+                    "Defaults to an automatic game-specific location in selected game directory",
         default="",
     )
 
@@ -252,7 +260,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):
             ):
                 mtdbnd_path = dcx_type.process_path(Path(settings.game_directory, "mtd", mtdbnd_name))
                 if mtdbnd_path.is_file():
-                    print(f"Found MTDBND: {mtdbnd_path}")
+                    print(f"Found MTDBND in game directory: {mtdbnd_path}")
                     break
         else:
             mtdbnd_path = Path(mtdbnd_path)
@@ -262,6 +270,38 @@ class SoulstructSettings(bpy.types.PropertyGroup):
 
         if from_bundled:
             print(f"Loading bundled MTDBND for game {settings.game}...")
+            return from_bundled()
+        return None
+
+    @staticmethod
+    def get_matbinbnd(context: bpy.types.Context = None) -> MATBINBND | None:
+        """Load `MTDBND` from custom path, standard location in game directory, or bundled Soulstruct file."""
+        settings = SoulstructSettings.get_scene_settings(context)
+
+        match settings.game:
+            case GameNames.ER:
+                matbinbnd_class = MATBINBND
+                from_bundled = matbinbnd_class.from_bundled
+            case _:
+                # No MATBINBND is possible for this game yet.
+                # TODO: Can distinguish games that definitely don't have it from newer games that might.
+                return None
+
+        matbinbnd_path = settings.matbinbnd_path
+        if not matbinbnd_path and settings.game_directory:
+            # Guess MTDBND path.
+            dcx_type = settings.resolve_dcx_type("Auto", "Binder", False, context)
+            matbinbnd_name = dcx_type.process_path(Path(settings.game_directory, "material/allmaterial.matbinbnd.dcx"))
+            if matbinbnd_name.is_file():
+                print(f"Found MATBINBND in game directory: {matbinbnd_name}")
+        else:
+            matbinbnd_path = Path(matbinbnd_path)
+
+        if matbinbnd_path.is_file():
+            return matbinbnd_class.from_path(matbinbnd_path)
+
+        if from_bundled:
+            print(f"Loading bundled MATBINBND for game {settings.game}...")
             return from_bundled()
         return None
 

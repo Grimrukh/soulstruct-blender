@@ -48,16 +48,17 @@ from soulstruct.containers import Binder
 from soulstruct.containers.tpf import TPFTexture, batch_get_tpf_texture_png_data
 from soulstruct.utilities.maths import Vector3
 
-from io_soulstruct.general import SoulstructSettings, SoulstructGameEnums
+from io_soulstruct.general import SoulstructSettings, SoulstructGameEnums, GameNames
 from io_soulstruct.general.cached import get_cached_file
 from io_soulstruct.utilities import *
-from .materials import get_submesh_blender_material
+from .materials import BaseMaterialShaderInfo, DS1MaterialShaderInfo, get_submesh_blender_material
 from .textures.import_textures import TextureImportManager, import_png_as_image
 from .utilities import *
 
 if tp.TYPE_CHECKING:
     from soulstruct.base.models.mtd import MTDBND as BaseMTDBND
     from soulstruct.darksouls1r.maps import MSB
+    from soulstruct.eldenring.models.matbin import MATBINBND
 
 FLVER_BINDER_RE = re.compile(r"^.*?\.(.*bnd)(\.dcx)?$")
 MAP_NAME_RE = re.compile(r"^(m\d\d)_\d\d_\d\d_\d\d$")
@@ -134,6 +135,7 @@ class BaseFLVERImportOperator(LoggingImportOperator):
             context,
             texture_manager=texture_manager,
             mtdbnd=settings.get_mtdbnd(context),
+            matbinbnd=settings.get_matbinbnd(context),
         )
 
         for bl_name, flver in flvers:
@@ -448,6 +450,7 @@ class FLVERBatchImporter:
     context: bpy.types.Context
     texture_manager: TextureImportManager | None = None
     mtdbnd: BaseMTDBND | None = None
+    matbinbnd: MATBINBND | None = None
 
     flver: FLVER | None = None  # current FLVER being imported
     name: str = ""  # name of root Blender mesh object that will be created
@@ -574,9 +577,8 @@ class FLVERBatchImporter:
         Returns a list of Blender material indices for each submesh, and a list of UV layer names for each Blender
         material (NOT each submesh).
         """
-
-        png_cache_directory = SoulstructSettings.get_scene_settings(self.context).png_cache_directory
-        if self.texture_manager or png_cache_directory:
+        soulstruct_settings = SoulstructSettings.get_scene_settings(self.context)
+        if self.texture_manager or soulstruct_settings.png_cache_directory:
             p = time.perf_counter()
             self.new_images = self.load_texture_images(self.texture_manager)
             self.operator.info(f"Loaded {len(self.new_images)} textures in {time.perf_counter() - p:.3f} seconds.")
@@ -597,15 +599,22 @@ class FLVERBatchImporter:
         flver_material_hash_variants = {}
 
         # Map FLVER material hashes to their MTD info and UV layer names.
-        flver_material_mtd_infos = {}
-        flver_material_uv_layer_names = {}
+        flver_material_infos = {}  # type: dict[int, BaseMaterialShaderInfo]
+        flver_material_uv_layer_names = {}  # type: dict[int, list[str]]
         for submesh in flver.submeshes:
             material_hash = hash(submesh.material)  # TODO: should hash ignore material name?
-            if material_hash in flver_material_mtd_infos:
+            if material_hash in flver_material_infos:
                 continue  # material already created (used by a previous submesh)
-            mtd_info = self.get_mtd_info(submesh.material.mtd_name, self.mtdbnd)
-            flver_material_mtd_infos[material_hash] = mtd_info
-            flver_material_uv_layer_names[material_hash] = flver_material_mtd_infos[material_hash].get_uv_layer_names()
+
+            match soulstruct_settings.game:
+                case GameNames.PTDE | GameNames.DS1R:
+                    material_info = DS1MaterialShaderInfo.from_mtdbnd_or_name(
+                        self.operator, submesh.material.mtd_name, self.mtdbnd
+                    )
+                case _:
+                    raise FLVERImportError(f"FLVER import not implemented for game {soulstruct_settings.game.name}.")
+            flver_material_infos[material_hash] = material_info
+            flver_material_uv_layer_names[material_hash] = material_info.get_uv_layer_names()
 
         self.new_materials = []
         for submesh in flver.submeshes:
@@ -624,7 +633,7 @@ class FLVERBatchImporter:
                     self.operator,
                     material,
                     material_name=f"{self.name} Material {flver_material_index}",  # no Variant suffix
-                    mtd_info=flver_material_mtd_infos[material_hash],
+                    material_info=flver_material_infos[material_hash],
                     submesh=submesh,
                     blend_mode=material_blend_mode,
                 )  # type: bpy.types.Material
@@ -667,7 +676,7 @@ class FLVERBatchImporter:
                 self.operator,
                 material,
                 material_name=variant_name,
-                mtd_info=flver_material_mtd_infos[material_hash],
+                material_info=flver_material_infos[material_hash],
                 submesh=submesh,
                 blend_mode=material_blend_mode,
             )  # type: bpy.types.Material
@@ -679,21 +688,6 @@ class FLVERBatchImporter:
             bl_material_uv_layer_names.append(flver_material_uv_layer_names[material_hash])
 
         return submesh_bl_material_indices, bl_material_uv_layer_names
-
-    def get_mtd_info(self, mtd_name: str, mtdbnd: BaseMTDBND = None) -> MTDInfo:
-        """Get `MTDInfo` for a FLVER material, which is needed for both material creation and assignment of vertex UV
-        data to the correct Blender UV data layer during mesh creation.
-        """
-        if not mtdbnd:
-            return MTDInfo.from_mtd_name(mtd_name)
-
-        # Use real MTD file (much less guesswork).
-        try:
-            mtd = mtdbnd.mtds[mtd_name]
-        except KeyError:
-            self.warning(f"Could not find MTD '{mtd_name}' in MTD dict. Guessing info from name.")
-            return MTDInfo.from_mtd_name(mtd_name)
-        return MTDInfo.from_mtd(mtd)
 
     def create_armature(self, base_edit_bone_length: float) -> bpy.types.ArmatureObject:
         """Create a new Blender armature to serve as the parent object for the entire FLVER."""
@@ -898,9 +892,21 @@ class FLVERBatchImporter:
 
         # Create and populate UV and vertex color data layers.
         for i, uv_layer_name in enumerate(merged_mesh.all_uv_layers):
+            try:
+                merged_loop_uv_array = merged_mesh.loop_uvs[i]
+            except IndexError:
+                last_i = len(merged_mesh.loop_uvs) - 1
+                self.warning(
+                    f"UV layer index {i} ('{uv_layer_name}') was not found in merged FLVER. "
+                    f"Loading data from last UV index instead: {last_i} ('{merged_mesh.all_uv_layers[last_i]}')"
+                )
+                merged_loop_uv_array = merged_mesh.loop_uvs[last_i]
+
+            # Create new Blender UV layer.
             uv_layer = bl_mesh.uv_layers.new(name=uv_layer_name, do_init=False)
-            loop_uv_data = merged_mesh.loop_uvs[i][valid_loop_indices].ravel()
+            loop_uv_data = merged_loop_uv_array[valid_loop_indices].ravel()
             uv_layer.data.foreach_set("uv", loop_uv_data)
+
         # TODO: Support multiple colors.
         color_layer = bl_mesh.vertex_colors.new(name="VertexColors")
         loop_color_data = merged_mesh.loop_vertex_colors[0][valid_loop_indices].ravel()

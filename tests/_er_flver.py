@@ -2,7 +2,7 @@ import struct
 from pathlib import Path
 
 from soulstruct import FLVER, ELDEN_RING_PATH
-
+from soulstruct.eldenring.models.matbin import MATBINBND
 
 # TODO: Findings so far:
 #  - Haven't seen a material that uses more than two GX Items, EXCLUDING the dummy item.
@@ -10,6 +10,7 @@ from soulstruct import FLVER, ELDEN_RING_PATH
 #       (0, 0, 0, -1, 0, 0, 0, 0, 0, 0)
 
 
+# NOTE: Some of these arg formats can't be confirmed (always zero) or of course, could be smaller than 4 bytes.
 ER_GX_ITEM_MAPPING = {
     b"GXMD": {
         (131, 32): "3i5f",
@@ -18,7 +19,7 @@ ER_GX_ITEM_MAPPING = {
         (133, 32): "3i5f",
         (133, 44): "3i5f2if",
         (137, 32): "3i5f",
-        (162, 28): "3if3i",  # TODO: only instance of GXMD not compatible with the others - suggests `unk` DOES matter
+        (162, 28): "3if3i",  # TODO: only args of GXMD not compatible with the others; suggests `index` DOES matter
         (192, 96): "3i5f2i5f2if2if2if",
         (400, 32): "3i5f",
     },
@@ -50,6 +51,21 @@ def see_textures():
         for submesh in flver.submeshes:
             print(submesh.material.mtd_name, submesh.material.textures)
         return
+
+
+def print_matbinbnd():
+    matbinbnd = MATBINBND.from_path(ELDEN_RING_PATH + "/material/allmaterial.matbinbnd.dcx")
+    shader_stems = set()
+    for matbin_name in matbinbnd.get_entry_names():
+        if matbin_name.startswith("m10_00"):
+            matbin = matbinbnd.get_matbin(matbin_name)  # lazy load
+            shader_stems.add(matbin.shader_stem)
+            if matbin.shader_stem in {
+                "M[AMSN]", "M[AMSN_V]", "M[AMSN][Ov_N]", "M[AMSN_V][Ov_N]", "M[AMSN][Ov_AN]", "M[AMSN_V][Ov_AN]"
+            }:
+                print(matbin)
+    for stem in sorted(shader_stems):
+        print(stem)
 
 
 def main():
@@ -105,5 +121,6 @@ def main():
 
 
 if __name__ == '__main__':
-    see_textures()
+    # see_textures()
+    print_matbinbnd()
     # main()
