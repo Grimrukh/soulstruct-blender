@@ -17,7 +17,7 @@ def test_artorias():
     for i in range(len(van_artorias.bones)):
         v_bone = van_artorias.bones[i]
         a_bone = artorias.bones[i]
-        if v_bone == a_bone:
+        if v_bone.usage_flags == a_bone.usage_flags:
             continue
         print()
         print(v_bone)

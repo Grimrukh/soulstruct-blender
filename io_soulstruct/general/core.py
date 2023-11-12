@@ -26,6 +26,7 @@ _SETTINGS_PATH = Path(__file__).parent.parent / "SoulstructSettings.json"
 class GameNames:
     # TODO: Should probably make use of my `games` module here to avoid repetition.
 
+    DES = "DES"  # Demon's Souls
     PTDE = "PTDE"  # Dark Souls: Prepare to Die Edition
     DS1R = "DS1R"  # Dark Souls: Remastered
     BB = "BB"  # Bloodborne

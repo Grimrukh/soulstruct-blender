@@ -284,12 +284,8 @@ class DS1MaterialShaderInfo(BaseMaterialShaderInfo):
 
     def get_uv_layer_names(self) -> list[str]:
         """Determine Blender UV layer names, which should correspond with the length of each vertex UV list."""
-        uv_layer_names = []
-        sorted_uv_indices = sorted(self.sampler_type_uv_indices.values())
-        for uv_index in sorted_uv_indices:
-            name = f"UVMap{uv_index}"
-            if name not in uv_layer_names:
-                uv_layer_names.append(name)
+        sorted_uv_indices = sorted(set(self.sampler_type_uv_indices.values()))
+        uv_layer_names = [f"UVMap{uv_index}" for uv_index in sorted_uv_indices]
 
         if self.shader_category in {MTDShaderCategory.FOLIAGE, MTDShaderCategory.IVY}:
             # Add extra UV layers for plant wind animation control.
@@ -345,10 +341,6 @@ class DS1MaterialShaderInfo(BaseMaterialShaderInfo):
 
         # Calculate total UV map count and use a combination of UVPair and UV format members below.
         uv_count = len(self.get_uv_layer_names())
-
-        if self.shader_category in {MTDShaderCategory.FOLIAGE, MTDShaderCategory.IVY}:
-            # Foliage shaders have two extra UV slots for wind animation control.
-            uv_count += 2
 
         if uv_count > 4:
             # TODO: Might be an unnecessary assertion. True for DS1, for sure.

@@ -27,7 +27,7 @@ from bpy_extras.io_utils import ExportHelper
 
 from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
 from soulstruct.dcx import DCXType
-from soulstruct.base.models.flver import FLVER, Version, FLVERBone, Material, Texture, Dummy
+from soulstruct.base.models.flver import FLVER, Version, FLVERBone, FLVERBoneUsageFlags, Material, Texture, Dummy
 from soulstruct.base.models.flver.vertex_array import *
 from soulstruct.base.models.flver.mesh_tools import MergedMesh
 from soulstruct.utilities.maths import Vector3, Matrix3
@@ -1438,9 +1438,9 @@ class FLVERExporter:
         # Maps UV layer names to lists of `MeshUVLoop` instances (so they're converted only once across all materials).
         all_uv_layer_names_set = set()
         for material_info in material_infos:
-            all_uv_layer_names_set |= set(material_info.get_uv_layer_names())
+            material_uv_layer_names = material_info.get_uv_layer_names()
+            all_uv_layer_names_set |= set(material_uv_layer_names)
         uv_layer_names = sorted(all_uv_layer_names_set)  # e.g. ["UVMap1", "UVMap2", "UVMap3"]
-        uv_layers = [bl_mesh.data.uv_layers[uv_layer_name] for uv_layer_name in uv_layer_names]
 
         # 3. Prepare Mesh data.
         mesh_data = bl_mesh.data  # type: bpy.types.Mesh
@@ -1573,7 +1573,7 @@ class FLVERExporter:
         # UV arrays correspond to FLVER-wide sorted UV layer names.
         loop_uvs = [
             np.zeros((loop_count, 2), dtype=np.float32)  # default: 0.0 (each material may only use a subset of UVs)
-            for _ in uv_layers
+            for _ in uv_layer_names
         ]
 
         try:
@@ -1606,7 +1606,10 @@ class FLVERExporter:
         mesh_data.loops.foreach_get("bitangent", loop_bitangents.ravel())
         if loop_colors_layer:
             loop_colors_layer.data.foreach_get("color", loop_vertex_color.ravel())
-        for uv_i, uv_layer in enumerate(uv_layers):
+        for uv_i, uv_layer_name in enumerate(uv_layer_names):
+            uv_layer = bl_mesh.data.uv_layers[uv_layer_name]
+            if len(uv_layer.data) == 0:
+                raise FLVERExportError(f"UV layer {uv_layer.name} contains no data.")
             uv_layer.data.foreach_get("uv", loop_uvs[uv_i].ravel())
 
         # Add `w` components to tangents and bitangents (-1).
@@ -1680,9 +1683,10 @@ class FLVERExporter:
                 # Bone names can be repeated in the FLVER.
                 game_bone_name = game_bone_name.removesuffix(" <DUPE>")
 
-            unused = get_bl_prop(edit_bone, "Is Unused", bool, default=False)
-            # TODO: Also need to figure out what usage the 'cXXXX' flag in later games represents in the FLVER.
-            game_bone = FLVERBone(name=game_bone_name, usage_flags=int(unused))
+            game = SoulstructSettings.get_scene_settings(self.context).game
+            no_use_specific_flags = game in {GameNames.DES, GameNames.DS1R, GameNames.PTDE}
+            usage_flags = self.get_bone_usage_flags(edit_bone, no_use_specific_flags)
+            game_bone = FLVERBone(name=game_bone_name, usage_flags=usage_flags)
 
             if edit_bone.parent:
                 parent_bone_name = edit_bone.parent.name
@@ -1743,6 +1747,28 @@ class FLVERExporter:
                 )
 
         return game_bones, edit_bone_names, game_arma_transforms
+
+    @staticmethod
+    def get_bone_usage_flags(edit_bone: bpy.types.EditBone, no_use_specific_flags: bool) -> int:
+        flags = 0
+        if get_bl_prop(edit_bone, "Is Unused", bool, default=False):
+            flags |= FLVERBoneUsageFlags.UNUSED
+        if get_bl_prop(edit_bone, "Is Used by Local Dummy", bool, default=False):
+            flags |= FLVERBoneUsageFlags.DUMMY
+        if get_bl_prop(edit_bone, "Is Used by Equipment", bool, default=False):
+            flags |= FLVERBoneUsageFlags.cXXXX
+        if get_bl_prop(edit_bone, "Is Used by Local Mesh", bool, default=False):
+            flags |= FLVERBoneUsageFlags.MESH
+
+        if bool(flags & FLVERBoneUsageFlags.UNUSED) and flags != 1:
+            raise FLVERExportError(
+                f"Bone '{edit_bone.name}' has 'Is Unused' enabled, but also has other usage flags set!"
+            )
+
+        if no_use_specific_flags and flags > 1:
+            flags = 0  # all use types are the same
+
+        return flags
 
     def export_dummy(
         self,
