@@ -1595,6 +1595,7 @@ class FLVERExporter:
         loop_normals_w = np.full((loop_count, 1), 127, dtype=np.uint8)
         # TODO: could check combined `dtype` now to skip these if not needed by any materials.
         #  (Related: mark these arrays as optional attributes in `MergedMesh`.)
+        # TODO: Currently only exporting one `tangent` array. Need to calculate tangents for each UV map, per material.
         loop_tangents = np.empty((loop_count, 3), dtype=np.float32)
         loop_bitangents = np.empty((loop_count, 3), dtype=np.float32)
 
@@ -1624,7 +1625,7 @@ class FLVERExporter:
             loop_vertex_indices=loop_vertex_indices,
             loop_normals=loop_normals,
             loop_normals_w=loop_normals_w,
-            loop_tangents=loop_tangents,
+            loop_tangents=[loop_tangents],
             loop_bitangents=loop_bitangents,
             loop_vertex_colors=[loop_vertex_color],
             loop_uvs=loop_uvs,
