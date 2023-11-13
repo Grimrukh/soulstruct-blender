@@ -4,8 +4,8 @@ from __future__ import annotations
 __all__ = [
     "ImportHKXAnimation",
     "ImportHKXAnimationWithBinderChoice",
-    "QuickImportCharacterHKXAnimation",
-    "QuickImportObjectHKXAnimation",
+    "ImportCharacterHKXAnimation",
+    "ImportObjectHKXAnimation",
 ]
 
 import re
@@ -306,11 +306,11 @@ class ImportHKXAnimationWithBinderChoice(LoggingOperator):
         bpy.ops.wm.hkx_animation_binder_choice_operator("INVOKE_DEFAULT")
 
 
-class QuickImportCharacterHKXAnimation(LoggingOperator, ImportHKXAnimationMixin):
+class ImportCharacterHKXAnimation(LoggingOperator, ImportHKXAnimationMixin):
     """Detects name of selected character FLVER Armature and finds their ANIBND in the game directory."""
-    bl_idname = "import_scene.quick_hkx_character_animation"
+    bl_idname = "import_scene.character_hkx_animation"
     bl_label = "Import Character Anim"
-    bl_description = "Import a HKX animation file from the selected character's ANIBND"
+    bl_description = "Import a HKX animation file from the selected character's pre-loaded ANIBND"
 
     @classmethod
     def poll(cls, context):
@@ -373,11 +373,11 @@ class QuickImportCharacterHKXAnimation(LoggingOperator, ImportHKXAnimationMixin)
         return {"FINISHED"}
 
 
-class QuickImportObjectHKXAnimation(LoggingOperator, ImportHKXAnimationMixin):
+class ImportObjectHKXAnimation(LoggingOperator, ImportHKXAnimationMixin):
     """Detects name of selected object FLVER Armature and finds their OBJBND in the game directory."""
-    bl_idname = "import_scene.quick_hkx_object_animation"
+    bl_idname = "import_scene.object_hkx_animation"
     bl_label = "Import Object Anim"
-    bl_description = "Import a HKX animation file from the selected object's OBJBND"
+    bl_description = "Import a HKX animation file from the selected object's pre-loaded OBJBND"
 
     @classmethod
     def poll(cls, context):
@@ -473,22 +473,26 @@ class HKXAnimationImporter:
         root_motion: None | np.ndarray = None,
     ):
         """Import single animation HKX."""
-
-        if root_motion is not None and len(root_motion) != len(arma_frames):
-            raise ValueError(
-                f"Number of animation root motion frames ({len(root_motion)}) does not match number of bone "
-                f"animation frames ({len(arma_frames)})."
-            )
+        bone_frame_scaling = 2 if self.to_60_fps else 1
+        root_motion_frame_scaling = 1.0
+        if root_motion is not None:
+            if len(root_motion) < 1:
+                # Weird, but we'll leave default scaling and put any single root motion keyframe at 0.
+                pass
+            elif len(root_motion) != len(arma_frames):
+                # Root motion is at a lesser (or possibly greater?) sample rate than bone animation. For example, if
+                # only two root motion samples are given, they will be scaled to match the first and last frame of
+                # `arma_frames`. This scaling stacks with the intrinsic `bone_frame_scaling` (e.g. 2 for 60 FPS).
+                root_motion_frame_scaling = len(arma_frames) / (len(root_motion) - 1) * bone_frame_scaling
 
         action_name = f"{self.model_name}|{animation_name}"
         action = None
         original_location = self.bl_armature.location.copy()
-        frame_scaling = 2 if self.to_60_fps else 1
         try:
             self.bl_armature.animation_data_create()
             self.bl_armature.animation_data.action = action = bpy.data.actions.new(name=action_name)
             bone_basis_samples = self._get_bone_basis_samples(arma_frames)
-            self._add_keyframes_batch(bone_basis_samples, root_motion, frame_scaling)
+            self._add_keyframes_batch(bone_basis_samples, root_motion, bone_frame_scaling, root_motion_frame_scaling)
         except Exception:
             if action:
                 bpy.data.actions.remove(action)
@@ -577,7 +581,8 @@ class HKXAnimationImporter:
         self,
         bone_basis_samples: dict[str, list[list[float]]],
         root_motion: np.ndarray | None,
-        frame_scaling: int,
+        bone_frame_scaling: float,
+        root_motion_frame_scaling: float,
     ):
         """
         Faster method of adding all bone and (optional) root keyframe data.
@@ -617,13 +622,15 @@ class HKXAnimationImporter:
         #    `[bl_frame_index_0, value_0, bl_frame_index_1, value_1, ...]`
         # which we do with a list comprehension.
         if root_loc_fcurves:
-            for col, fcurve in enumerate(root_loc_fcurves):
-                dim_samples = root_motion[:, col]
+            # NOTE: There may be less root motion samples than bone animation samples. We spread the root motion samples
+            # out to match the bone animation frames using `root_motion_frame_scaling` (done by caller).
+            for col, fcurve in enumerate(root_loc_fcurves):  # x, y, z
+                dim_samples = root_motion[:, col]  # one dimension of root motion
                 fcurve.keyframe_points.add(count=len(dim_samples))
                 root_dim_flat = [
                     x
                     for frame_index, sample_float in enumerate(dim_samples)
-                    for x in [frame_index * frame_scaling, sample_float]
+                    for x in [frame_index * root_motion_frame_scaling, sample_float]
                 ]
                 fcurve.keyframe_points.foreach_set("co", root_dim_flat)
 
@@ -634,6 +641,6 @@ class HKXAnimationImporter:
                 bone_dim_flat = [
                     x
                     for frame_index, sample_float in enumerate(samples)
-                    for x in [frame_index * frame_scaling, sample_float]
+                    for x in [frame_index * bone_frame_scaling, sample_float]
                 ]
                 bone_fcurve.keyframe_points.foreach_set("co", bone_dim_flat)

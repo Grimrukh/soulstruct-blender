@@ -165,8 +165,8 @@ if soulstruct_havok:
 
         ImportHKXAnimation,
         ImportHKXAnimationWithBinderChoice,
-        QuickImportCharacterHKXAnimation,
-        QuickImportObjectHKXAnimation,
+        ImportCharacterHKXAnimation,
+        ImportObjectHKXAnimation,
         ExportLooseHKXAnimation,
         ExportHKXAnimationIntoBinder,
         QuickExportCharacterHKXAnimation,
