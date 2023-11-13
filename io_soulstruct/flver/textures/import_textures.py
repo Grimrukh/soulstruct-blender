@@ -15,7 +15,8 @@ from pathlib import Path
 
 import bpy
 
-from soulstruct.base.textures.dds import texconv, DDS
+from soulstruct.base.textures.dds import DDS
+from soulstruct.base.textures.texconv import texconv
 from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
 from soulstruct.containers.tpf import TPF, TPFTexture, batch_get_tpf_texture_png_data
 

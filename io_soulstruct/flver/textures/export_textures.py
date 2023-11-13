@@ -14,7 +14,8 @@ from pathlib import Path
 import bpy
 
 from soulstruct.containers import Binder, BinderEntry
-from soulstruct.containers.tpf import TPF, TPFTexture, TPFPlatform, texconv
+from soulstruct.containers.tpf import TPF, TPFTexture, TPFPlatform
+from soulstruct.base.textures.texconv import texconv
 from soulstruct.dcx import DCXType
 
 from io_soulstruct.utilities import LoggingOperator, LoggingImportOperator
