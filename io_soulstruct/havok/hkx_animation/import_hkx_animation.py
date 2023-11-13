@@ -474,7 +474,7 @@ class HKXAnimationImporter:
     ):
         """Import single animation HKX."""
         bone_frame_scaling = 2 if self.to_60_fps else 1
-        root_motion_frame_scaling = 1.0
+        root_motion_frame_scaling = bone_frame_scaling
         if root_motion is not None:
             if len(root_motion) < 1:
                 # Weird, but we'll leave default scaling and put any single root motion keyframe at 0.
@@ -483,7 +483,7 @@ class HKXAnimationImporter:
                 # Root motion is at a lesser (or possibly greater?) sample rate than bone animation. For example, if
                 # only two root motion samples are given, they will be scaled to match the first and last frame of
                 # `arma_frames`. This scaling stacks with the intrinsic `bone_frame_scaling` (e.g. 2 for 60 FPS).
-                root_motion_frame_scaling = len(arma_frames) / (len(root_motion) - 1) * bone_frame_scaling
+                root_motion_frame_scaling *= len(arma_frames) / (len(root_motion) - 1)
 
         action_name = f"{self.model_name}|{animation_name}"
         action = None

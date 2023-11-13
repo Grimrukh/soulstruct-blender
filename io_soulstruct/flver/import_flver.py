@@ -516,12 +516,6 @@ class FLVERBatchImporter:
             bl_bone_name = f"{bone.name} <DUPE>" if bone.name in self.bl_bone_names else bone.name
             self.bl_bone_names.append(bl_bone_name)
 
-        if any(submesh.material.gx_items for submesh in flver.submeshes):
-            self.warning(
-                f"One or more materials in FLVER {self.name} use GX Items, which are not yet supported by Soulstruct "
-                f"for Blender. They will be lost."
-            )
-
         import_settings = self.context.scene.flver_import_settings  # type: FLVERImportSettings
 
         bl_armature_obj = self.create_armature(import_settings.base_edit_bone_length)
@@ -750,6 +744,8 @@ class FLVERBatchImporter:
                 write_png_directory = None
             print(f"# INFO: Converted PNG images in {perf_counter() - t} s (cached = {ss_settings.write_cached_pngs})")
             for texture_stem, png_data in zip(textures_to_load.keys(), all_png_data):
+                if png_data is None:
+                    continue  # failed to convert this texture
                 bl_image = import_png_as_image(texture_stem, png_data, write_png_directory)
                 new_loaded_images.append(bl_image)
 

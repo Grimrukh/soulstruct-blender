@@ -211,6 +211,8 @@ class ImportTextures(LoggingImportOperator):
         self.info(f"Loaded {len(textures_png_data)} texture(s) from TPF: {tpf_path.name}")
         texture_images = {}
         for texture, png_data in zip(tpf.textures, textures_png_data):
+            if png_data is None:
+                continue  # failed to convert this texture
             try:
                 bl_image = import_png_as_image(texture.name, png_data, replace_existing=self.overwrite_existing)
             except Exception as ex:
