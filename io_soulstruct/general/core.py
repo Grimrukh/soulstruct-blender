@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 __all__ = [
-    "GameNames",
+    "BlenderGame",
     "SoulstructSettings",
 ]
 
@@ -13,17 +13,18 @@ import bpy
 
 from soulstruct.base.maps.msb import MSB as BaseMSB
 from soulstruct.dcx import DCXType
-from soulstruct.eldenring.models.matbin import MATBINBND
+from soulstruct.games import *
 from soulstruct.utilities.files import read_json, write_json
 
 from soulstruct.base.models.mtd import MTDBND
 from soulstruct.darksouls1ptde.models.mtd import MTDBND as PTDE_MTDBND
 from soulstruct.darksouls1r.models.mtd import MTDBND as DS1R_MTDBND
+from soulstruct.eldenring.models.matbin import MATBINBND
 
 _SETTINGS_PATH = Path(__file__).parent.parent / "SoulstructSettings.json"
 
 
-class GameNames:
+class BlenderGame:
     # TODO: Should probably make use of my `games` module here to avoid repetition.
 
     DES = "DES"  # Demon's Souls
@@ -31,6 +32,7 @@ class GameNames:
     DS1R = "DS1R"  # Dark Souls: Remastered
     BB = "BB"  # Bloodborne
     DS3 = "DS3"  # Dark Souls III
+    SEK = "SEK"  # Sekiro: Shadows Die Twice
     ER = "ER"  # Elden Ring
     # TODO: A few more to add, obviously.
 
@@ -59,19 +61,19 @@ def _get_map_stem_items(self, context: bpy.types.Context):
 
     map_stem_names = []
     match settings.game:
-        case GameNames.DS1R:
-            map_stem_names = [map_stem.name for map_stem in sorted(map_dir_path.glob("m*_*_*_*")) if map_stem.is_dir()]
-        case GameNames.PTDE:
-            map_stem_names = [map_stem.name for map_stem in sorted(map_dir_path.glob("m*_*_*_*")) if map_stem.is_dir()]
-        case GameNames.ER:
-            for area in sorted(map_dir_path.glob("m*")):
-                map_stem_names.extend([
-                    f"{area.name}/{map_stem.name}"
-                    for map_stem in sorted(area.glob("m*_*_*_*"))
-                    if map_stem.is_dir()
-                ])
-        case _:
-            pass  # leave empty
+        case BlenderGame.ER:
+            for area in sorted(map_dir_path.glob("m??")):
+                map_stem_names.extend(
+                    [
+                        f"{area.name}/{map_stem.name}"
+                        for map_stem in sorted(area.glob("m??_??_??_??"))
+                        if map_stem.is_dir()
+                    ]
+                )
+        case _:  # standard map stem names
+            map_stem_names = [
+                map_stem.name for map_stem in sorted(map_dir_path.glob("m??_??_??_??")) if map_stem.is_dir()
+            ]
 
     _MAP_STEM_ENUM_ITEMS = (
         map_dir_path, [("0", "None", "None")] + [
@@ -90,10 +92,12 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         name="Game",
         description="Game to use when choosing default values, DCX compression, file paths/extensions, etc",
         items=[
-            (GameNames.DS1R, GameNames.DS1R, "Dark Souls: Remastered"),
-            # (GameNames.ER, GameNames.ER, "Elden Ring"),
+            (BlenderGame.PTDE, "DS1: PTDE", "Dark Souls: Prepare to Die Edition"),
+            (BlenderGame.DS1R, "DS1: Remastered", "Dark Souls: Remastered"),
+            # (BlenderGame.BB, "Bloodborne", "Bloodborne"),
+            # (BlenderGame.ER, BlenderGame.ER, "Elden Ring"),
         ],
-        default=GameNames.DS1R,
+        default=BlenderGame.DS1R,
     )
 
     game_directory: bpy.props.StringProperty(
@@ -179,15 +183,21 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         settings = SoulstructSettings.get_scene_settings(context)
         if not settings.game_directory or settings.map_stem in {"", "0"}:
             return None
-        return Path(settings.game_directory, "map/MapStudio", f"{settings.map_stem}.msb")
+        msb_dcx_type = settings.resolve_dcx_type("Auto", "MSB", False, context)
+        return msb_dcx_type.process_path(
+            Path(settings.game_directory, f"map/MapStudio", f"{settings.map_stem}.msb")
+        )
 
     @staticmethod
     def get_game_msb_class(context: bpy.types.Context = None) -> tp.Type[BaseMSB]:
         """Get the `MSB` class associated with the selected game."""
         settings = SoulstructSettings.get_scene_settings(context)
         match settings.game:
-            case GameNames.DS1R:
+            case BlenderGame.DS1R:
                 from soulstruct.darksouls1r.maps.msb import MSB
+                return MSB
+            case BlenderGame.BB:
+                from soulstruct.bloodborne.maps.msb import MSB
                 return MSB
         raise ValueError(f"Game '{settings.game}' is not supported for MSB access.")
 
@@ -195,44 +205,63 @@ class SoulstructSettings(bpy.types.PropertyGroup):
     def resolve_dcx_type(
         dcx_type_name: str, class_name: str, is_binder_entry=False, context: bpy.types.Context = None
     ) -> DCXType:
-        """Get DCX type associated with `class_name` for selected game."""
+        """Get DCX type associated with `class_name` for selected game.
+
+        TODO: Should use `games` module and game-specific class default DCX where possible.
+        """
 
         if dcx_type_name != "Auto":
             # Manual DCX type given.
             return DCXType[dcx_type_name]
 
         _game = SoulstructSettings.get_scene_settings(context).game
+        if _game == BlenderGame.PTDE:
+            return DCXType.Null  # never any DCX in PTDE
+
         match class_name.upper():
             case "BINDER":
                 match _game:
-                    case "DS1R":
-                        return DCXType.DS1_DS2
-                    case "ER":
-                        return DCXType.DCX_KRAK
+                    case BlenderGame.DS1R:
+                        return DARK_SOULS_DSR.default_dcx_type
+                    case BlenderGame.BB:
+                        return BLOODBORNE.default_dcx_type
+                    case BlenderGame.ER:
+                        return ELDEN_RING.default_dcx_type
             case "FLVER":
+                if is_binder_entry:
+                    return DCXType.Null
                 match _game:
-                    case "DS1R":
-                        return DCXType.Null if is_binder_entry else DCXType.DS1_DS2
-                    case "ER":
-                        return DCXType.Null if is_binder_entry else DCXType.DCX_KRAK  # no loose FLVERs I think
+                    case BlenderGame.DS1R:
+                        return DCXType.DS1_DS2
+                    case BlenderGame.BB:
+                        return DCXType.BB_DS3
+                    case BlenderGame.ER:
+                        return DCXType.DCX_KRAK
+            case "MSB":
+                match _game:
+                    case BlenderGame.PTDE | BlenderGame.DS1R:
+                        return DCXType.Null
+                    case BlenderGame.BB:
+                        return BLOODBORNE.default_dcx_type
+                    case BlenderGame.ER:
+                        return ELDEN_RING.default_dcx_type
             case "TPF":
                 match _game:
-                    case "DS1R":
-                        return DCXType.Null if is_binder_entry else DCXType.DS1_DS2
-                    case "ER":
-                        return DCXType.Null if is_binder_entry else DCXType.DCX_KRAK
+                    case BlenderGame.DS1R:
+                        return DARK_SOULS_DSR.default_dcx_type
+                    case BlenderGame.ER:
+                        return ELDEN_RING.default_dcx_type
             case "NVM":
                 match _game:
-                    case "DS1R":
-                        return DCXType.Null  # never compressed in map BND
+                    case BlenderGame.DS1R:
+                        return DCXType.Null  # never compressed inside DCX map BND
             case "MAPCOLLISIONHKX":
                 match _game:
-                    case "DS1R":
-                        return DCXType.DS1_DS2  # compressed in map h/l BXF split binder
+                    case BlenderGame.DS1R:
+                        return DCXType.DS1_DS2  # compressed inside non-DCX map h/l BXF split binder
             case "ANIMATIONHKX":
-                match _game:
-                    case "DS1R":
-                        return DCXType.Null  # never compressed in ANIBND
+                return DCXType.Null  # no loose animations
+
         raise ValueError(f"Default DCX compression for class name '{class_name}' and game '{_game}' is unknown.")
 
     @staticmethod
@@ -241,10 +270,10 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         settings = SoulstructSettings.get_scene_settings(context)
 
         match settings.game:
-            case GameNames.PTDE:
+            case BlenderGame.PTDE:
                 mtdbnd_class = PTDE_MTDBND
                 from_bundled = mtdbnd_class.from_bundled
-            case GameNames.DS1R:
+            case BlenderGame.DS1R:
                 mtdbnd_class = DS1R_MTDBND
                 from_bundled = mtdbnd_class.from_bundled
             case _:
@@ -280,7 +309,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         settings = SoulstructSettings.get_scene_settings(context)
 
         match settings.game:
-            case GameNames.ER:
+            case BlenderGame.ER:
                 matbinbnd_class = MATBINBND
                 from_bundled = matbinbnd_class.from_bundled
             case _:

@@ -91,6 +91,7 @@ CLASSES = (
     ImportEquipmentFLVER,
     FLVERImportSettings,
     ImportMapPieceMSBPart,
+    ImportAllMapPieceMSBParts,
 
     HideAllDummiesOperator,
     ShowAllDummiesOperator,

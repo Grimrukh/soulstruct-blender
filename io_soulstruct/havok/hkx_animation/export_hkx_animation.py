@@ -229,7 +229,7 @@ class QuickExportCharacterHKXAnimation(LoggingOperator):
     )
 
     GAME_INFO = {
-        GameNames.DS1R: {
+        BlenderGame.DS1R: {
             "animation_stem_template": "##_####",
             "hkx_entry_path": "N:\\FRPG\\data\\Model\\chr\\{character_name}\\hkxx64\\{animation_stem}.hkx",
             "hkx_dcx_type": DCXType.Null,
@@ -344,7 +344,7 @@ class QuickExportObjectHKXAnimation(LoggingOperator):
     )
 
     GAME_INFO = {
-        GameNames.DS1R: {
+        BlenderGame.DS1R: {
             "animation_stem_template": "##_####",
             "hkx_entry_path": "N:\\FRPG\\data\\Model\\obj\\{object_name}\\hkxx64\\{animation_stem}.hkx",
             "hkx_dcx_type": DCXType.Null,

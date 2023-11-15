@@ -447,7 +447,12 @@ class ExportCharacterFLVER(LoggingOperator):
     # NOTE: Always overwrites existing entry. DCX type and `BinderEntry` defaults are game-dependent.
 
     ENTRY_DEFAULTS = {
-        GameNames.DS1R: {
+        BlenderGame.PTDE: {
+            "entry_id": 200,
+            "path": "N:\\FRPG\\data\\INTERROOT_win32\\chr\\{name}\\{name}.flver",
+            "flags": 0x2,
+        },
+        BlenderGame.DS1R: {
             "entry_id": 200,
             "path": "N:\\FRPG\\data\\INTERROOT_x64\\chr\\{name}\\{name}.flver",
             "flags": 0x2,
@@ -455,7 +460,12 @@ class ExportCharacterFLVER(LoggingOperator):
     }
 
     TPF_ENTRY_DEFAULTS = {
-        GameNames.DS1R: {
+        BlenderGame.PTDE: {
+            "entry_id": 100,
+            "path": "N:\\FRPG\\data\\INTERROOT_win32\\chr\\{name}\\{name}.tpf",
+            "flags": 0x2,
+        },
+        BlenderGame.DS1R: {
             "entry_id": 100,
             "path": "N:\\FRPG\\data\\INTERROOT_x64\\chr\\{name}\\{name}.tpf",
             "flags": 0x2,
@@ -463,7 +473,8 @@ class ExportCharacterFLVER(LoggingOperator):
     }
 
     CHRTPFBHD_ENTRY_DEFAULTS = {
-        GameNames.DS1R: {
+        # PTDE does not use this.
+        BlenderGame.DS1R: {
             "entry_id": 800,
             "path": "N:\\FRPG\\data\\INTERROOT_x64\\chr\\{name}\\{name}.chrtpfbhd",
             "flags": 0x2,
@@ -571,7 +582,6 @@ class ExportCharacterFLVER(LoggingOperator):
     ):
         texture_export_settings = context.scene.texture_export_settings  # type: TextureExportSettings
         tpf_dcx_type = settings.resolve_dcx_type("Auto", "TPF", True, context)
-
         tpf_entry_name = tpf_dcx_type.process_path(f"{chr_name}.tpf")
         if not texture_export_settings.overwrite_existing and tpf_entry_name in chrbnd.get_entry_names():
             # Causes failure even if we end up writing a CHRTPFBXF below.
@@ -579,7 +589,8 @@ class ExportCharacterFLVER(LoggingOperator):
             return
 
         # TODO: Get existing textures to resolve 'SAME' option for DDS format.
-        chrbnd_tpf = export_images_to_tpf(context, self, images, is_chrbnd=True)
+        is_chrbnd = settings.game != BlenderGame.PTDE  # PTDE never uses CHRTPFBXF for large textures
+        chrbnd_tpf = export_images_to_tpf(context, self, images, is_chrbnd=is_chrbnd)
         if chrbnd_tpf is not None:
             # Simple: bundle TPF into CHRBND.
             chrbnd_tpf.dcx_type = tpf_dcx_type
@@ -677,7 +688,12 @@ class ExportObjectFLVER(LoggingOperator):
     # NOTE: Always overwrites existing entry. DCX type and `BinderEntry` defaults are game-dependent.
 
     ENTRY_DEFAULTS = {
-        GameNames.DS1R: {
+        BlenderGame.PTDE: {
+            "entry_id": 200,
+            "path": "N:\\FRPG\\data\\INTERROOT_win32\\obj\\{name}\\{name}.flver",
+            "flags": 0x2,
+        },
+        BlenderGame.DS1R: {
             "entry_id": 200,
             "path": "N:\\FRPG\\data\\INTERROOT_x64\\obj\\{name}\\{name}.flver",
             "flags": 0x2,
@@ -685,7 +701,12 @@ class ExportObjectFLVER(LoggingOperator):
     }
 
     TPF_ENTRY_DEFAULTS = {
-        GameNames.DS1R: {
+        BlenderGame.PTDE: {
+            "entry_id": 100,
+            "path": "N:\\FRPG\\data\\INTERROOT_win32\\obj\\{name}\\{name}.tpf",
+            "flags": 0x2,
+        },
+        BlenderGame.DS1R: {
             "entry_id": 100,
             "path": "N:\\FRPG\\data\\INTERROOT_x64\\obj\\{name}\\{name}.tpf",
             "flags": 0x2,
@@ -799,7 +820,7 @@ class ExportObjectFLVER(LoggingOperator):
         objbnd: Binder,
         obj_name: str,
         images: dict[str, bpy.types.Image],
-        settings: SoulstructSettings
+        settings: SoulstructSettings,
     ):
         texture_export_settings = context.scene.texture_export_settings  # type: TextureExportSettings
         tpf_dcx_type = settings.resolve_dcx_type("Auto", "TPF", True, context)
@@ -843,7 +864,7 @@ class ExportEquipmentFLVER(LoggingOperator):
     # NOTE: Always overwrites existing entry. DCX type and `BinderEntry` defaults are game-dependent.
 
     ENTRY_DEFAULTS = {
-        GameNames.DS1R: {
+        BlenderGame.DS1R: {
             "entry_id": 200,
             "path": "N:\\FRPG\\data\\INTERROOT_x64\\parts\\{name}\\{name}.flver",
             "flags": 0x2,
@@ -851,7 +872,7 @@ class ExportEquipmentFLVER(LoggingOperator):
     }
 
     TPF_ENTRY_DEFAULTS = {
-        GameNames.DS1R: {
+        BlenderGame.DS1R: {
             "entry_id": 100,
             "path": "N:\\FRPG\\data\\INTERROOT_x64\\parts\\{name}\\{name}.tpf",
             "flags": 0x2,
@@ -1058,7 +1079,8 @@ class ExportMapPieceMSBParts(LoggingOperator):
             # Get model file stem from MSB (must contain matching part).
             map_piece_part_name = get_default_flver_stem(mesh, armature, self)  # could be the same as the file stem
 
-            msb_path = Path(game_directory, "map/MapStudio", f"{map_stem}.msb")
+            msb_dcx_type = settings.resolve_dcx_type("Auto", "MSB", False, context)
+            msb_path = msb_dcx_type.process_path(Path(game_directory, "map/MapStudio", f"{map_stem}.msb"))
 
             msb = opened_msbs.setdefault(
                 msb_path,
@@ -1146,10 +1168,10 @@ class FLVERExporter:
     mtdbnd: BaseMTDBND | None
 
     DEFAULT_VERSION = {
-        GameNames.PTDE: Version.DarkSouls_A,
-        GameNames.DS1R: Version.DarkSouls_A,
-        GameNames.BB: Version.Bloodborne_DS3_A,
-        GameNames.DS3: Version.Bloodborne_DS3_A,
+        BlenderGame.PTDE: Version.DarkSouls_A,
+        BlenderGame.DS1R: Version.DarkSouls_A,
+        BlenderGame.BB: Version.Bloodborne_DS3_A,
+        BlenderGame.DS3: Version.Bloodborne_DS3_A,
     }
 
     # Collects Blender images corresponding to exported FLVER material textures. Should be used and cleared by the
@@ -1294,7 +1316,7 @@ class FLVERExporter:
 
         # Material info for each Blender material is needed to determine which Blender UV layers to use for which loops.
         match soulstruct_settings.game:
-            case GameNames.PTDE | GameNames.DS1R:
+            case BlenderGame.PTDE | BlenderGame.DS1R:
                 material_infos = []
                 for bl_material in mesh.data.materials:
                     try:
@@ -1544,7 +1566,7 @@ class FLVERExporter:
 
         for used_bone_index in used_bone_indices:
             flver.bones[used_bone_index].usage_flags &= ~1
-            if soulstruct_settings.game == GameNames.ER:  # TODO: Not sure which game this started in.
+            if soulstruct_settings.game == BlenderGame.ER:  # TODO: Not sure which game this started in.
                 flver.bones[used_bone_index].usage_flags |= 8
 
         vertex_data["position"] = vertex_positions
@@ -1685,7 +1707,7 @@ class FLVERExporter:
                 game_bone_name = game_bone_name.removesuffix(" <DUPE>")
 
             game = SoulstructSettings.get_scene_settings(self.context).game
-            no_use_specific_flags = game in {GameNames.DES, GameNames.DS1R, GameNames.PTDE}
+            no_use_specific_flags = game in {BlenderGame.DES, BlenderGame.DS1R, BlenderGame.PTDE}
             usage_flags = self.get_bone_usage_flags(edit_bone, no_use_specific_flags)
             game_bone = FLVERBone(name=game_bone_name, usage_flags=usage_flags)
 

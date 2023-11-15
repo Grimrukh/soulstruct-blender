@@ -14,7 +14,7 @@ from soulstruct.darksouls1ptde.constants import CHARACTER_MODELS as DS1_CHARACTE
 from soulstruct.darksouls1r.maps import MSB
 
 from .cached import get_cached_file
-from .core import SoulstructSettings, GameNames
+from .core import SoulstructSettings, BlenderGame
 
 # Global variable to keep enum references alive, and the paths used to cache them.
 # NOTE: Only Binder entries are used at the moment.
@@ -69,9 +69,10 @@ def get_msb_map_piece_items(self, context):
     if not game_directory or map_stem in {"", "0"}:
         return _clear_items(key)
 
-        # Open MSB and find all Map Piece parts. NOTE: We don't check here if the part's model is a valid file.
+    # Open MSB and find all Map Piece parts. NOTE: We don't check here if the part's model is a valid file.
     # It's up to the importer to handle and report that error case.
-    msb_path = Path(game_directory, "map/MapStudio", f"{map_stem}.msb")
+    msb_dcx_type = settings.resolve_dcx_type("Auto", "MSB", False, context)
+    msb_path = msb_dcx_type.process_path(Path(game_directory, "map/MapStudio", f"{map_stem}.msb"))
 
     if GAME_FILE_ENUMS[key][0] == msb_path:
         # Use cached enum items.
@@ -89,7 +90,7 @@ def get_msb_map_piece_items(self, context):
     for map_piece_part in msb.map_pieces:
         if not map_piece_part.model:
             continue
-        full_model_name = map_piece_part.model.name + f"A{map_stem[1:3]}"
+        full_model_name = map_piece_part.model.get_model_file_stem(map_stem)
         identifier = f"{map_piece_part.name}|{full_model_name}"
         items.append(
             (identifier, map_piece_part.name, f"{map_piece_part.name} (Model {full_model_name})")
@@ -116,7 +117,7 @@ def get_chrbnd_items(self, context):
     if settings.resolve_dcx_type("Auto", "Binder", False, context).has_dcx_extension():
         chrbnd_glob += ".dcx"
 
-    if settings.game in {GameNames.PTDE, GameNames.DS1R}:
+    if settings.game in {BlenderGame.PTDE, BlenderGame.DS1R}:
         # Use DS1 character model names in description.
         def desc_callback(chrbnd_stem: str):
             try:

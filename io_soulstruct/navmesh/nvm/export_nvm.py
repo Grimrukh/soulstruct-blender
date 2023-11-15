@@ -18,7 +18,7 @@ from soulstruct.containers import Binder, BinderEntry
 from soulstruct.dcx import DCXType
 from soulstruct.darksouls1r.maps.navmesh.nvm import NVM, NVMTriangle, NVMEventEntity
 
-from io_soulstruct.general import SoulstructSettings, GameNames
+from io_soulstruct.general import SoulstructSettings, BlenderGame
 from io_soulstruct.general.cached import get_cached_file
 from io_soulstruct.utilities.operators import LoggingOperator, get_dcx_enum_property
 from io_soulstruct.utilities.misc import MAP_STEM_RE
@@ -234,7 +234,7 @@ class ExportNVMIntoNVMBND(LoggingOperator):
     )
 
     GAME_INFO = {
-        GameNames.DS1R: {
+        BlenderGame.DS1R: {
             "nvm_entry_path": "{map}\\{stem}.nvm",  # no DCX
         },
     }
@@ -371,7 +371,7 @@ class ExportNVMMSBPart(LoggingOperator):
     )
 
     GAME_INFO = {
-        GameNames.DS1R: {
+        BlenderGame.DS1R: {
             "nvm_entry_path": "{map}\\{stem}.nvm",  # no DCX
         },
     }

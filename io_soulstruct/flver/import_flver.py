@@ -25,6 +25,7 @@ __all__ = [
     "ImportEquipmentFLVER",
     "FLVERImportSettings",
     "ImportMapPieceMSBPart",
+    "ImportAllMapPieceMSBParts",
     "FLVERBatchImporter",
 ]
 
@@ -48,10 +49,10 @@ from soulstruct.containers import Binder
 from soulstruct.containers.tpf import TPFTexture, batch_get_tpf_texture_png_data
 from soulstruct.utilities.maths import Vector3
 
-from io_soulstruct.general import SoulstructSettings, SoulstructGameEnums, GameNames
+from io_soulstruct.general import SoulstructSettings, SoulstructGameEnums, BlenderGame
 from io_soulstruct.general.cached import get_cached_file
 from io_soulstruct.utilities import *
-from .materials import BaseMaterialShaderInfo, DS1MaterialShaderInfo, get_submesh_blender_material
+from .materials import *
 from .textures.import_textures import TextureImportManager, import_png_as_image
 from .utilities import *
 
@@ -120,12 +121,15 @@ class BaseFLVERImportOperator(LoggingImportOperator):
                 binder_flvers = get_flvers_from_binder(binder, source_path, allow_multiple=True)
                 if import_settings.import_textures:
                     texture_manager.find_flver_textures(source_path, binder)
+                    for flver in binder_flvers:
+                        self.find_extra_textures(source_path, flver, texture_manager)
                 for flver in binder_flvers:
                     flvers.append((flver.path.name.split(".")[0], flver))
             else:  # e.g. loose Map Piece FLVER
                 flver = FLVER.from_path(source_path)
                 if import_settings.import_textures:
                     texture_manager.find_flver_textures(source_path)
+                    self.find_extra_textures(source_path, flver, texture_manager)
                 flvers.append((source_path.name.split(".")[0], flver))
 
         settings = bpy.context.scene.soulstruct_settings  # type: SoulstructSettings
@@ -226,8 +230,7 @@ class ImportMapPieceFLVER(BaseFLVERImportOperator):
         return super().invoke(context, _event)
 
     def find_extra_textures(self, flver_source_path: Path, flver: FLVER, texture_manager: TextureImportManager):
-
-        # Check all textures in FLVER for specific map 'mAA_' prefix textures and register TPFBHDs in those maps.
+        """Check all textures in FLVER for specific map 'mAA_' prefix textures and register TPFBHDs in those maps."""
         area_re = re.compile(r"^m\d\d_")
         texture_map_areas = {
             texture_path.stem[:3]
@@ -346,7 +349,7 @@ class ImportEquipmentFLVER(BaseFLVERImportOperator):
 # region MSB Mode Importers
 
 class ImportMapPieceMSBPart(LoggingOperator):
-    """Import a map piece FLVER from selected game map directory."""
+    """Import the model of an enum-selected MSB Map Piece part, and its MSB transform."""
     bl_idname = "import_scene.msb_map_piece_flver"
     bl_label = "Import Map Piece Part"
     bl_description = "Import FLVER model and MSB transform of selected Map Piece MSB part"
@@ -354,7 +357,8 @@ class ImportMapPieceMSBPart(LoggingOperator):
     @classmethod
     def poll(cls, context):
         settings = SoulstructSettings.get_scene_settings(context)
-        msb_path = SoulstructSettings.get_game_path("map/MapStudio", f"{settings.map_stem}.msb")
+        msb_dcx_type = settings.resolve_dcx_type("Auto", "MSB", False, context)
+        msb_path = msb_dcx_type.process_path(settings.get_game_path("map/MapStudio", f"{settings.map_stem}.msb"))
         if not msb_path or not msb_path.is_file():
             return False
         game_enums = context.scene.soulstruct_game_enums  # type: SoulstructGameEnums
@@ -389,22 +393,22 @@ class ImportMapPieceMSBPart(LoggingOperator):
 
         self.info(f"Importing map piece FLVER: {flver_path}")
 
-        texture_manager = TextureImportManager()
-
         flver = FLVER.from_path(flver_path)
-        if flver_import_settings.import_textures:
-            texture_manager.find_flver_textures(flver_path)
 
-        # Check all textures in FLVER for specific map 'mAA_' prefix textures and register TPFBHDs in those maps.
-        area_re = re.compile(r"^m\d\d_")
-        texture_map_areas = {
-            texture_path.stem[:3]
-            for texture_path in flver.get_all_texture_paths()
-            if re.match(area_re, texture_path.stem)
-        }
-        for map_area in texture_map_areas:
-            map_area_dir = (flver_path.parent / f"../{map_area}").resolve()
-            texture_manager.find_specific_map_textures(map_area_dir)
+        if flver_import_settings.import_textures:
+            texture_manager = TextureImportManager()
+            texture_manager.find_flver_textures(flver_path)
+            area_re = re.compile(r"^m\d\d_")
+            texture_map_areas = {
+                texture_path.stem[:3]
+                for texture_path in flver.get_all_texture_paths()
+                if re.match(area_re, texture_path.stem)
+            }
+            for map_area in texture_map_areas:
+                map_area_dir = (flver_path.parent / f"../{map_area}").resolve()
+                texture_manager.find_specific_map_textures(map_area_dir)
+        else:
+            texture_manager = None
 
         importer = FLVERBatchImporter(
             self,
@@ -414,7 +418,7 @@ class ImportMapPieceMSBPart(LoggingOperator):
         )
 
         try:
-            bl_armature, bl_mesh = importer.import_flver(flver, name=bl_name, transform=transform)
+            bl_armature, bl_mesh = importer.import_flver(flver, name=bl_name)
         except Exception as ex:
             # Delete any objects created prior to exception.
             importer.abort_import()
@@ -428,11 +432,130 @@ class ImportMapPieceMSBPart(LoggingOperator):
         map_piece_parent = find_or_create_bl_empty(f"{settings.map_stem} Map Pieces", context)
         bl_armature.parent = map_piece_parent
 
+        # Set transform.
+        if transform is not None:
+            bl_armature.location = transform.bl_translate
+            bl_armature.rotation_euler = transform.bl_rotate
+            bl_armature.scale = transform.bl_scale
+
         # Select newly imported armature.
         if bl_armature:
             self.set_active_obj(bl_armature)
 
         self.info(f"Imported map piece FLVER in {time.perf_counter() - start_time:.3f} seconds.")
+
+        return {"FINISHED"}
+
+
+class ImportAllMapPieceMSBParts(LoggingOperator):
+    """Import ALL MSB map piece parts and their transforms. Will take a long time!"""
+    bl_idname = "import_scene.all_msb_map_piece_flver"
+    bl_label = "Import All Map Piece Parts (SLOW)"
+    bl_description = "Import FLVER model and MSB transform of every Map Piece MSB part (SLOW)"
+
+    link_model_data: bpy.props.BoolProperty(
+        name="Link Model Data",
+        description="Use instances of Armature and Mesh data for repeated models instead of duplicating objects",
+        default=True,
+    )
+
+    @classmethod
+    def poll(cls, context):
+        settings = SoulstructSettings.get_scene_settings(context)
+        msb_dcx_type = settings.resolve_dcx_type("Auto", "MSB", False, context)
+        msb_path = msb_dcx_type.process_path(settings.get_game_path("map/MapStudio", f"{settings.map_stem}.msb"))
+        if not msb_path or not msb_path.is_file():
+            return False
+        return True  # MSB exists
+
+    def execute(self, context):
+
+        start_time = time.perf_counter()
+
+        settings = SoulstructSettings.get_scene_settings(context)
+        settings.save_settings()
+
+        flver_import_settings = context.scene.flver_import_settings  # type: FLVERImportSettings
+        if flver_import_settings.import_textures:
+            texture_manager = TextureImportManager()
+        else:
+            texture_manager = None
+
+        msb_path = settings.get_selected_map_msb_path(context)
+        msb = get_cached_file(msb_path, settings.get_game_msb_class(context))  # type: MSB
+        flver_dcx_type = settings.resolve_dcx_type("Auto", "FLVER", False, context)
+
+        # Maps FLVER model stems to Armature and Mesh already created.
+        loaded_models = {}  # type: dict[str, tuple[bpy.types.ArmatureObject, bpy.types.MeshObject]]
+
+        importer = FLVERBatchImporter(
+            self,
+            context,
+            texture_manager=texture_manager,
+            mtdbnd=settings.get_mtdbnd(context),
+        )
+
+        for map_piece_part in msb.map_pieces:
+            model_stem = map_piece_part.model.get_model_file_stem(settings.map_stem)
+
+            if self.link_model_data and model_stem in loaded_models:
+                # Use existing Armature and Mesh data.
+                existing_armature, existing_mesh = loaded_models[model_stem]
+                new_armature_obj = bpy.data.objects.new(map_piece_part.name, existing_armature)
+                new_mesh_obj = bpy.data.objects.new(map_piece_part.name, existing_mesh)
+                context.scene.collection.objects.link(new_armature_obj)
+                context.scene.collection.objects.link(new_mesh_obj)
+                continue
+
+            # Import new FLVER.
+            flver_path = Path(settings.game_directory, "map", settings.map_stem, f"{model_stem}.flver")
+            flver_path = flver_dcx_type.process_path(flver_path)
+            transform = Transform.from_msb_part(map_piece_part)
+
+            self.info(f"Importing map piece FLVER: {flver_path}")
+
+            flver = FLVER.from_path(flver_path)
+            if texture_manager:
+                texture_manager.find_flver_textures(flver_path)
+                area_re = re.compile(r"^m\d\d_")
+                texture_map_areas = {
+                    texture_path.stem[:3]
+                    for texture_path in flver.get_all_texture_paths()
+                    if re.match(area_re, texture_path.stem)
+                }
+                for map_area in texture_map_areas:
+                    map_area_dir = (flver_path.parent / f"../{map_area}").resolve()
+                    texture_manager.find_specific_map_textures(map_area_dir)
+
+            try:
+                bl_armature, bl_mesh = importer.import_flver(flver, name=map_piece_part.name)
+            except Exception as ex:
+                # Delete any objects created prior to exception.
+                importer.abort_import()
+                traceback.print_exc()  # for inspection in Blender console
+                self.error(f"Cannot import FLVER: {flver_path.name}. Error: {ex}")
+                continue
+
+            # Set 'Model File Stem' to ensure the model file stem is recorded, since the object name is the part name.
+            bl_mesh["Model File Stem"] = model_stem
+
+            # Find or create Map Piece parent.
+            map_piece_parent = find_or_create_bl_empty(f"{settings.map_stem} Map Pieces", context)
+            bl_armature.parent = map_piece_parent
+
+            # Set transform.
+            if transform is not None:
+                bl_armature.location = transform.bl_translate
+                bl_armature.rotation_euler = transform.bl_rotate
+                bl_armature.scale = transform.bl_scale
+
+            # Record model for future Part instances.
+            loaded_models[model_stem] = (bl_armature, bl_mesh)
+
+        self.info(
+            f"Imported {len(loaded_models)} map piece FLVER models and {len(msb.map_pieces)} Parts in "
+            f"{time.perf_counter() - start_time:.3f} seconds."
+        )
 
         return {"FINISHED"}
 
@@ -487,8 +610,7 @@ class FLVERBatchImporter:
         self,
         flver: FLVER,
         name: str,
-        transform: Transform = None,
-    ) -> tuple[bpy.types.ArmatureObject, bpy.types.MeshObject] | None:
+    ) -> tuple[bpy.types.ArmatureObject, bpy.types.MeshObject]:
         """Read a FLVER into a Blender mesh and Armature.
 
         If `existing_armature` is passed, the skeleton of `flver` will not be imported as a new Armature, and the FLVER
@@ -498,7 +620,7 @@ class FLVERBatchImporter:
         In this mode, if `flver` vertices are weighted to any bones not in `existing_armature`, they will be ignored and
         a warning will be logged.
         """
-        start_time = time.perf_counter()
+        # start_time = time.perf_counter()
 
         self.flver = flver
         self.name = name
@@ -521,11 +643,6 @@ class FLVERBatchImporter:
         bl_armature_obj = self.create_armature(import_settings.base_edit_bone_length)
         dummy_prefix = ""
         self.new_objs.append(bl_armature_obj)
-
-        if transform is not None:
-            bl_armature_obj.location = transform.bl_translate
-            bl_armature_obj.rotation_euler = transform.bl_rotate
-            bl_armature_obj.scale = transform.bl_scale
 
         submesh_bl_material_indices, bl_material_uv_layer_names = self.create_materials(
             flver, import_settings.material_blend_mode
@@ -561,7 +678,7 @@ class FLVERBatchImporter:
         for i, dummy in enumerate(flver.dummies):
             self.create_dummy(dummy, index=i, bl_armature=bl_armature_obj, dummy_prefix=dummy_prefix)
 
-        self.operator.info(f"Created FLVER Blender mesh '{name}' in {time.perf_counter() - start_time:.3f} seconds.")
+        # self.operator.info(f"Created FLVER Blender mesh '{name}' in {time.perf_counter() - start_time:.3f} seconds.")
 
         return bl_armature_obj, bl_flver_mesh  # might be used by other importers
 
@@ -575,7 +692,8 @@ class FLVERBatchImporter:
         if self.texture_manager or soulstruct_settings.png_cache_directory:
             p = time.perf_counter()
             self.new_images = self.load_texture_images(self.texture_manager)
-            self.operator.info(f"Loaded {len(self.new_images)} textures in {time.perf_counter() - p:.3f} seconds.")
+            if self.new_images:
+                self.operator.info(f"Loaded {len(self.new_images)} textures in {time.perf_counter() - p:.3f} seconds.")
         else:
             self.warning("No TPF files or DDS dump folder given. No textures loaded for FLVER.")
 
@@ -601,8 +719,12 @@ class FLVERBatchImporter:
                 continue  # material already created (used by a previous submesh)
 
             match soulstruct_settings.game:
-                case GameNames.PTDE | GameNames.DS1R:
+                case BlenderGame.PTDE | BlenderGame.DS1R:
                     material_info = DS1MaterialShaderInfo.from_mtdbnd_or_name(
+                        self.operator, submesh.material.mtd_name, self.mtdbnd
+                    )
+                case BlenderGame.BB:
+                    material_info = BBMaterialShaderInfo.from_mtdbnd_or_name(
                         self.operator, submesh.material.mtd_name, self.mtdbnd
                     )
                 case _:
@@ -798,14 +920,14 @@ class FLVERBatchImporter:
             # noinspection PyTypeChecker
             return self.create_obj(f"{name} Mesh <INVALID>", bl_mesh)
 
-        p = time.perf_counter()
+        # p = time.perf_counter()
         # Create merged mesh.
         merged_mesh = MergedMesh.from_flver(
             flver,
             submesh_bl_material_indices,
             material_uv_layers=submesh_uv_layer_names,
         )
-        self.operator.info(f"Merged FLVER submeshes in {time.perf_counter() - p} s")
+        # self.operator.info(f"Merged FLVER submeshes in {time.perf_counter() - p} s")
 
         bl_vert_bone_weights, bl_vert_bone_indices = self.create_bm_mesh(bl_mesh, merged_mesh)
 
@@ -822,7 +944,7 @@ class FLVERBatchImporter:
         Returns two arrays of bone indices and bone weights for the created Blender vertices.
         """
 
-        p = time.perf_counter()
+        # p = time.perf_counter()
 
         merged_mesh.swap_vertex_yz(tangents=False, bitangents=False)
         merged_mesh.invert_vertex_uv(invert_u=False, invert_v=True)
@@ -873,7 +995,7 @@ class FLVERBatchImporter:
             bm_face.material_index = face[3]
             valid_loop_indices.extend(loop_indices)
 
-        self.operator.info(f"Created Blender mesh in {time.perf_counter() - p} s")
+        # self.operator.info(f"Created Blender mesh in {time.perf_counter() - p} s")
 
         if degenerate_face_count or duplicate_face_count:
             self.warning(
@@ -938,7 +1060,7 @@ class FLVERBatchImporter:
         # the number of Blender group `add()` calls needed at the end of this function.
         bone_vertex_group_indices = {}  # type: dict[tuple[int, float], list[int]]
 
-        p = time.perf_counter()
+        # p = time.perf_counter()
         # TODO: Can probably be vectorized better with NumPy.
         for v_i, (bone_indices, bone_weights) in enumerate(zip(bl_vert_bone_indices, bl_vert_bone_weights)):
             if all(weight == 0.0 for weight in bone_weights) and len(set(bone_indices)) == 1:
@@ -956,7 +1078,7 @@ class FLVERBatchImporter:
         for (bone_index, bone_weight), bone_vertices in bone_vertex_group_indices.items():
             bone_vertex_groups[bone_index].add(bone_vertices, bone_weight, "ADD")
 
-        self.operator.info(f"Assigned Blender vertex groups to bones in {time.perf_counter() - p} s")
+        # self.operator.info(f"Assigned Blender vertex groups to bones in {time.perf_counter() - p} s")
 
     def create_bones(
         self,
