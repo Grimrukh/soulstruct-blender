@@ -2,6 +2,7 @@ from __future__ import annotations
 
 __all__ = [
     "MAP_STEM_RE",
+    "get_bl_obj_stem",
     "get_bl_prop",
     "is_uniform",
     "natural_keys",
@@ -19,6 +20,11 @@ from soulstruct.utilities.maths import Vector3
 
 
 MAP_STEM_RE = re.compile(r"^m(?P<area>\d\d)_(?P<block>\d\d)_(?P<cc>\d\d)_(?P<dd>\d\d)$")
+
+
+def get_bl_obj_stem(bl_obj: bpy.types.Object) -> str:
+    """Get part of name before first period and space."""
+    return bl_obj.name.split(".")[0].split(" ")[0]
 
 
 def get_bl_prop(bl_obj, name: str, prop_type: tp.Type, default=None, callback: tp.Callable = None):

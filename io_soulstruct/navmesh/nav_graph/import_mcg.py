@@ -94,7 +94,7 @@ class QuickImportMCG(LoggingOperator):
 
     def execute(self, context):
 
-        settings = SoulstructSettings.get_scene_settings(context)
+        settings = SoulstructSettings.from_context(context)
         game_directory = settings.game_directory
         map_stem = settings.map_stem
         if not game_directory or not map_stem:

@@ -25,13 +25,15 @@ from bpy_extras.io_utils import ImportHelper
 from mathutils import Vector
 
 from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
-from soulstruct.darksouls1r.maps import MSB
 from soulstruct.darksouls1r.maps.navmesh.nvm import NVM, NVMBox, NVMEventEntity
 
 from io_soulstruct.utilities import *
 from io_soulstruct.general import *
 from io_soulstruct.general.cached import get_cached_file
 from .utilities import *
+
+if tp.TYPE_CHECKING:
+    from io_soulstruct.type_checking import MSB_TYPING
 
 
 class NVMImportInfo(tp.NamedTuple):
@@ -329,6 +331,8 @@ class ImportNVMFromNVMBND(LoggingOperator):
 
     @classmethod
     def poll(cls, context):
+        if cls.settings(context).game_variable_name != "DARK_SOULS_DSR":
+            return False
         game_lists = context.scene.soulstruct_game_enums  # type: SoulstructGameEnums
         return game_lists.nvm not in {"", "0"}
 
@@ -336,22 +340,18 @@ class ImportNVMFromNVMBND(LoggingOperator):
 
         start_time = time.perf_counter()
 
-        settings = SoulstructSettings.get_scene_settings(context)
-        map_path = SoulstructSettings.get_selected_map_path(context)
-        if not map_path:
-            return self.error("Game directory and map stem must be set in Blender's Soulstruct global settings.")
+        settings = self.settings(context)
         settings.save_settings()
+        if settings.game_variable_name != "DARK_SOULS_DSR":
+            return self.error("NVM import from game NVMBND is only available for Dark Souls Remastered.")
 
-        nvmbnd_dcx_type = settings.resolve_dcx_type("Auto", "Binder", False, context)
-        nvmbnd_path = nvmbnd_dcx_type.process_path(map_path / f"{settings.map_stem}.nvmbnd")
-        if settings.use_bak_file:
-            nvmbnd_path = nvmbnd_path.with_name(nvmbnd_path.name + ".bak")
-            if not nvmbnd_path.is_file():
-                return self.error(f"Could not find NVMBND '.bak' file for map '{settings.map_stem}'.")
-        if not nvmbnd_path.is_file():
+        nvmbnd_path = settings.get_import_map_path(f"{settings.map_stem}.nvmbnd")
+        if not nvmbnd_path or not nvmbnd_path.is_file():
             return self.error(f"Could not find NVMBND file for map '{settings.map_stem}': {nvmbnd_path}")
 
         nvm_entry_name = context.scene.soulstruct_game_enums.nvm
+        if nvm_entry_name in {"", "0"}:
+            return self.error("No NVM entry selected.")
         bl_name = nvm_entry_name.split(".")[0]
 
         nvmbnd = Binder.from_path(nvmbnd_path)
@@ -364,7 +364,7 @@ class ImportNVMFromNVMBND(LoggingOperator):
             nvmbnd_path, nvm_entry.minimal_stem, bl_name, nvm_entry.to_binary_file(NVM)
         )
 
-        parent_obj = find_or_create_bl_empty(f"{map_path.stem} Navmeshes", context)
+        parent_obj = find_or_create_bl_empty(f"{settings.map_stem} Navmeshes", context)
 
         importer = NVMImporter(
             self,
@@ -416,6 +416,8 @@ class ImportNVMMSBPart(LoggingOperator):
 
     @classmethod
     def poll(cls, context):
+        if cls.settings(context).game_variable_name != "DARK_SOULS_DSR":
+            return False
         game_lists = context.scene.soulstruct_game_enums  # type: SoulstructGameEnums
         return game_lists.nvm_parts not in {"", "0"}
 
@@ -423,35 +425,27 @@ class ImportNVMMSBPart(LoggingOperator):
 
         start_time = time.perf_counter()
 
-        settings = SoulstructSettings.get_scene_settings(context)
-        map_path = SoulstructSettings.get_selected_map_path(context)
-        if not map_path:
-            return self.error("Game directory and map stem must be set in Blender's Soulstruct global settings.")
+        settings = self.settings(context)
         settings.save_settings()
+        if settings.game_variable_name != "DARK_SOULS_DSR":
+            return self.error("MSB Navmesh import from game is only available for Dark Souls Remastered.")
 
-        nvmbnd_dcx_type = settings.resolve_dcx_type("Auto", "Binder", False, context)
-        nvmbnd_path = nvmbnd_dcx_type.process_path(map_path / f"{settings.map_stem}.nvmbnd")
-        if settings.use_bak_file:
-            nvmbnd_path = nvmbnd_path.with_name(nvmbnd_path.name + ".bak")
-            if not nvmbnd_path.is_file():
-                return self.error(f"Could not find NVMBND '.bak' file for map '{settings.map_stem}'.")
-        if not nvmbnd_path.is_file():
+        nvmbnd_path = settings.get_import_map_path(f"{settings.map_stem}.nvmbnd")
+        if not nvmbnd_path or not nvmbnd_path.is_file():
             return self.error(f"Could not find NVMBND file for map '{settings.map_stem}': {nvmbnd_path}")
 
         try:
             part_name, nvm_stem = context.scene.soulstruct_game_enums.nvm_parts.split("|")
         except ValueError:
             return self.error("Invalid MSB navmesh selection.")
-        msb_path = settings.get_selected_map_msb_path(context)
+        msb_path = settings.get_import_msb_path()
 
         # Get MSB part transform.
-        msb = get_cached_file(msb_path, settings.get_game_msb_class(context))  # type: MSB
+        msb = get_cached_file(msb_path, settings.get_game_msb_class())  # type: MSB_TYPING
         navmesh_part = msb.navmeshes.find_entry_name(part_name)
         transform = Transform.from_msb_part(navmesh_part)
 
-        dcx_type = settings.resolve_dcx_type("Auto", "NVM", False, context)
-        nvm_entry_name = f"{nvm_stem}.nvm"
-        nvm_entry_name = dcx_type.process_path(nvm_entry_name)
+        nvm_entry_name = f"{nvm_stem}.nvm"  # no DCX in DSR
         bl_name = part_name
 
         nvmbnd = Binder.from_path(nvmbnd_path)
@@ -464,7 +458,7 @@ class ImportNVMMSBPart(LoggingOperator):
             nvmbnd_path, nvm_entry.minimal_stem, bl_name, nvm_entry.to_binary_file(NVM)
         )
 
-        parent_obj = find_or_create_bl_empty(f"{map_path.stem} Navmeshes", context)
+        parent_obj = find_or_create_bl_empty(f"{settings.map_stem} Navmeshes", context)
 
         importer = NVMImporter(
             self,

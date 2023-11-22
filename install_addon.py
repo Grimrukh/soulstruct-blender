@@ -4,7 +4,6 @@ The Blender script (`io_flver.py`) will ensure that the mini-Soulstruct module i
 you will have to restart Blender to see any changes to this mini-module, as `Reload Scripts` in Blender will not
 re-import it.
 """
-import json
 import shutil
 import sys
 from pathlib import Path
@@ -29,11 +28,7 @@ def copy_addon(addons_dir: str | Path, copy_soulstruct_module=True, copy_third_p
 
     # Install actual Blender scripts, preserving existing 'SoulstructSettings.json' only.
     settings_path = dest_io_soulstruct_dir / "SoulstructSettings.json"
-    if not clear_settings and settings_path.is_file():
-        settings_data = settings_path.read_bytes()
-    else:
-        # Default settings.
-        settings_data = json.dumps(get_default_settings(), indent=4).encode()
+    settings_data = settings_path.read_bytes() if not clear_settings and settings_path.is_file() else b""
     if dest_io_soulstruct_dir.is_dir():
         shutil.rmtree(dest_io_soulstruct_dir, ignore_errors=False)
     shutil.copytree(
@@ -43,7 +38,8 @@ def copy_addon(addons_dir: str | Path, copy_soulstruct_module=True, copy_third_p
             "__pycache__", "*.pyc", "__address_cache__", "soulstruct_config.json", "soulstruct.log"
         ),
     )
-    settings_path.write_bytes(settings_data)
+    if settings_data:
+        settings_path.write_bytes(settings_data)
     print(f"# Blender addon `io_soulstruct` installed to '{addons_dir}'.")
 
     if copy_soulstruct_module:
@@ -121,18 +117,6 @@ def copy_site_package(dir_name: str, destination_dir: Path):
         ignore=shutil.ignore_patterns("*.pyc", "__pycache__"),
         dirs_exist_ok=True,
     )
-
-
-def get_default_settings():
-    return {
-        "game": "DS1R",
-        "game_directory": "",
-        "map_stem": "0",
-        "png_cache_directory": "",
-        "mtdbnd_path": "",
-        "use_bak_file": False,
-        "detect_map_from_parent": True,
-    }
 
 
 def main(args):

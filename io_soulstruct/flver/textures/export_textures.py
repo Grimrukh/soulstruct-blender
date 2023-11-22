@@ -6,6 +6,7 @@ __all__ = [
     "export_images_to_tpfbhd",
     "export_images_to_map_area_tpfbhds",
     "bl_image_to_dds",
+    "bl_images_to_dds",
 ]
 
 import tempfile
@@ -15,7 +16,7 @@ import bpy
 
 from soulstruct.containers import Binder, BinderEntry
 from soulstruct.containers.tpf import TPF, TPFTexture, TPFPlatform
-from soulstruct.base.textures.texconv import texconv
+from soulstruct.base.textures.texconv import texconv, batch_texconv_to_dds
 from soulstruct.dcx import DCXType
 
 from io_soulstruct.utilities import LoggingOperator, LoggingImportOperator
@@ -186,18 +187,20 @@ class TextureExportSettings(bpy.types.PropertyGroup):
         default=324,
     )
 
-    def detect_texture_dds_format(self, texture_stem: str) -> str:
-        """Return DDS format and `TPFTexture` format for given texture type."""
+    def detect_texture_dds_format_mipmap_count(self, texture_stem: str) -> tuple[str, int]:
+        """Return selected DDS format and mipmap count for given texture stem."""
+        # TODO: Handle other game types/suffixes like 'albedo', 'normal', 'displacement'.
+        #  Probably just want a different settings group shown/used for each game.
         if texture_stem.endswith("_n"):
-            return self.bumpmap_format
+            return self.bumpmap_format, self.bumpmap_mipmap_count
         elif texture_stem.endswith("_s"):
-            return self.specular_format
+            return self.specular_format, self.specular_mipmap_count
         elif texture_stem.endswith("_h"):
-            return self.height_format
+            return self.height_format, self.height_mipmap_count
         elif "_lit_" in texture_stem:
-            return self.lightmap_format
+            return self.lightmap_format, self.lightmap_mipmap_count
         else:  # default
-            return self.diffuse_format
+            return self.diffuse_format, self.diffuse_mipmap_count
 
 
 # Defaults to 1. Not required by every game, but definitely in DSR.
@@ -212,7 +215,7 @@ def export_images_to_tpf(
     context,
     operator: LoggingOperator,
     images: dict[str, bpy.types.Image],
-    is_chrbnd=False,
+    enforce_max_chrbnd_tpf_size=False,
 ) -> TPF | None:
     """Combine all given Blender images as DDS files in one TPF.
 
@@ -228,7 +231,7 @@ def export_images_to_tpf(
     for texture_stem in sorted(images):
         image = images[texture_stem]
         # Detect texture type from name.
-        dds_format = settings.detect_texture_dds_format(texture_stem)
+        dds_format, mipmap_count = settings.detect_texture_dds_format_mipmap_count(texture_stem)
         if dds_format == "NONE":
             continue  # skip
         if dds_format == "SAME":
@@ -236,7 +239,7 @@ def export_images_to_tpf(
             raise NotImplementedError("Can currently only export Map Piece textures in 'SAME' mode.")
         # Convert Blender image to DDS.
         try:
-            data = bl_image_to_dds(context, image, dds_format)
+            data = bl_image_to_dds(context, image, dds_format, mipmap_count)
         except TextureExportError as ex:
             operator.report({"ERROR"}, f"Could not export texture '{texture_stem}': {ex}")
             continue
@@ -246,7 +249,7 @@ def export_images_to_tpf(
             TPFTexture(name=texture_stem, data=data, format=TPF_TEXTURE_FORMATS.get(dds_format, 1))
         )
 
-    if is_chrbnd and 0 < settings.max_chrbnd_tpf_size < total_dds_size // 1000:  # KB
+    if enforce_max_chrbnd_tpf_size and 0 < settings.max_chrbnd_tpf_size < total_dds_size // 1000:  # KB
         # Too much data for one multi-texture TPF. (Caller will likely create a split TPFBHD.)
         return None
 
@@ -282,7 +285,7 @@ def export_images_to_tpfbhd(
     for i, texture_stem in enumerate(sorted(images)):
         image = images[texture_stem]
         # Detect texture type from name.
-        dds_format = settings.detect_texture_dds_format(texture_stem)
+        dds_format, mipmap_count = settings.detect_texture_dds_format_mipmap_count(texture_stem)
         if dds_format == "NONE":
             continue  # skip
         if dds_format == "SAME":
@@ -290,7 +293,7 @@ def export_images_to_tpfbhd(
             raise NotImplementedError("Can currently only export Map Piece textures in 'SAME' mode.")
         # Convert Blender image to DDS.
         try:
-            data = bl_image_to_dds(context, image, dds_format)
+            data = bl_image_to_dds(context, image, dds_format, mipmap_count)
         except TextureExportError as ex:
             operator.report({"ERROR"}, f"Could not export texture '{texture_stem}': {ex}")
             continue
@@ -330,7 +333,7 @@ def export_images_to_map_area_tpfbhds(
     """
 
     map_area = map_area_dir.name
-    settings = context.scene.texture_export_settings  # type: TextureExportSettings
+    tex_export_settings = context.scene.texture_export_settings  # type: TextureExportSettings
 
     # Scan for all TPFs. We don't unpack the entries.
     tpf_entries = {}
@@ -338,17 +341,21 @@ def export_images_to_map_area_tpfbhds(
         tpfbhd = Binder.from_path(tpfbhd_path)
         tpf_entries |= {entry.minimal_stem: entry for entry in tpfbhd.entries}
 
+    if not tpf_entries:
+        raise FileNotFoundError(f"No map TPFBHDs found in map area '{map_area}'.")
+
     new_tpf_info = []  # type: list[tuple[str, BinderEntry, str]]
+    conversion_kwargs = {}  # type: dict[str, tuple[bpy.types.Image, str, int]]
 
     for texture_stem in images:
 
-        dds_format = settings.detect_texture_dds_format(texture_stem)
+        dds_format, mipmap_count = tex_export_settings.detect_texture_dds_format_mipmap_count(texture_stem)
         if dds_format == "NONE":
             continue  # do not export this texture type
 
-        # We have to check for existing textures with the same name as those we're exporting.
+        # We check for existing textures with the same name as those we're exporting.
         if texture_stem in tpf_entries:
-            if not settings.overwrite_existing:
+            if not tex_export_settings.overwrite_existing:
                 raise FileExistsError(f"Texture '{texture_stem}' already exists in map area TPFBHDs.")
             if dds_format == "SAME":
                 existing_tpf = TPF.from_binder_entry(tpf_entries[texture_stem])
@@ -376,22 +383,28 @@ def export_images_to_map_area_tpfbhds(
                 flags=0x2,
             ), dds_format))
 
-    # Convert images to DDS and export into found/new entries.
+        conversion_kwargs[texture_stem] = (images[texture_stem], dds_format, mipmap_count)
+
+    # Convert images to DDS.
+    operator.info(f"Converting {len(conversion_kwargs)} Blender images to DDS textures....")
+    dds_dict = bl_images_to_dds(operator, conversion_kwargs)
+
+    # Export into found/new entries.
     success_count = 0
     for texture_stem, entry, dds_format in new_tpf_info:
 
-        try:
-            data = bl_image_to_dds(context, images[texture_stem], dds_format)
-        except TextureExportError as ex:
-            operator.report({"ERROR"}, f"Could not export texture '{texture_stem}': {ex}")
+        dds_data = dds_dict[texture_stem]
+        if not dds_data:
+            # Conversion failed.
+            operator.report({"ERROR"}, f"Could not export texture '{texture_stem}'.")
             continue
         success_count += 1
         operator.info(f"Converted texture {texture_stem} to DDS (format {dds_format}).")
         # Create single-texture TPF.
-        texture = TPFTexture(name=texture_stem, data=data, format=TPF_TEXTURE_FORMATS.get(dds_format, 1))
+        texture = TPFTexture(name=texture_stem, data=dds_data, format=TPF_TEXTURE_FORMATS.get(dds_format, 1))
         tpf = TPF(
             textures=[texture],
-            platform=TPFPlatform[settings.platform],
+            platform=TPFPlatform[tex_export_settings.platform],
             encoding_type=2,
             tpf_flags=3,
             dcx_type=tpf_dcx_type,
@@ -400,7 +413,7 @@ def export_images_to_map_area_tpfbhds(
 
     # Alphabetize entries.
     remaining_entries = [tpf_entries[stem] for stem in sorted(tpf_entries)]
-    max_per_map = settings.max_tpfs_per_map_tpfbhd
+    max_per_map = tex_export_settings.max_tpfs_per_map_tpfbhd
 
     # Split entries into TPFBHDs of maximum size.
     tpfbhds = []
@@ -416,7 +429,7 @@ def export_images_to_map_area_tpfbhds(
         tpfbhds.append(tpfbhd)
         tpfbhd_index += 1
 
-    operator.info(f"Export {success_count} textures to {tpfbhd_index} TPFBHDs in map area '{map_area}'.")
+    operator.info(f"Exported {success_count} textures to {tpfbhd_index} TPFBHDs in map area {map_area}.")
 
     return tpfbhds
 
@@ -434,6 +447,13 @@ def bl_image_to_dds(
 
     Cannot export 'TYPELESS' DDS formats. If `mipmap_count` is left as 0, `texconv` will generate a full mipmap chain
     with `texconv`.
+
+    TODO: Need a batch multiprocessing version of this:
+        - Pass in all (bl_image, format, mipmaps) tuples to be converted.
+        - Create a temporary PNG for each. Update filepath_raw and save Blender image.
+        - Call a simple starmap function that calls `texconv` on each PNG with the appropriate format/mipmap args.
+        - Read in all DDS files and return a dict mapping the Blender texture stems to DDS bytes.
+        - Any conversion that failed just has `None` for its DDS bytes.
     """
     if "TYPELESS" in dds_format:
         # `texconv` does not support TYPELESS.
@@ -465,6 +485,43 @@ def bl_image_to_dds(
         except FileNotFoundError:
             stdout = texconv_result.stdout.decode()
             raise TextureExportError(f"Could not convert texture to DDS with format {dds_format}:\n    {stdout}")
+
+
+def bl_images_to_dds(
+    operator: LoggingOperator,
+    bl_images_formats_mipmaps: dict[str, tuple[bpy.types.Image, str, int]],
+) -> dict[str, bytes]:
+    processed_kwargs = {}
+
+    for texture_stem, (bl_image, dds_format, mipmap_count) in bl_images_formats_mipmaps.items():
+        if "TYPELESS" in dds_format:
+            # `texconv` does not support TYPELESS.
+            operator.error(
+                f"DDS format '{dds_format}' is not supported by `texconv`. Try UNORM instead of TYPELESS."
+            )
+            continue
+
+        if len(bl_image.pixels) <= 4:
+            operator.error(
+                f"Blender image '{bl_image.name}' contains one or less pixels. Cannot export it."
+            )
+            continue
+
+        temp_image_path = Path(f"~/AppData/Local/Temp/{bl_image.name}").expanduser()
+        bl_image.filepath_raw = str(temp_image_path)
+        bl_image.save()  # TODO: sometimes fails with 'No error' (depending on how Blender is storing data I think)
+
+        processed_kwargs[texture_stem] = {
+            "dds_format": dds_format,
+            "is_dx10": dds_format[:3] in {"BC5", "BC7"},
+            "mipmap_count": mipmap_count,
+            "input_path": temp_image_path,
+        }
+
+    with tempfile.TemporaryDirectory() as output_dir:
+        dds_dict = batch_texconv_to_dds(Path(output_dir), processed_kwargs)
+
+    return dds_dict
 
 
 class ExportTexturesIntoBinder(LoggingImportOperator):

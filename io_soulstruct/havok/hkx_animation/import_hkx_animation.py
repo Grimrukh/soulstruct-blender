@@ -26,7 +26,6 @@ from soulstruct_havok.utilities.maths import TRSTransform
 from soulstruct_havok.wrappers.hkx2015 import AnimationHKX, SkeletonHKX
 
 from io_soulstruct.utilities import *
-from io_soulstruct.general import *
 from io_soulstruct.havok.utilities import GAME_TRS_TO_BL_MATRIX, get_basis_matrix
 from .utilities import *
 
@@ -81,54 +80,46 @@ class ImportHKXAnimationMixin:
 
         return [(file_path, skeleton_hkx, animation_hkx)]
 
-    def import_hkxs_with_paths(self, bl_armature, hkxs_with_paths, importer: HKXAnimationImporter):
+    def import_hkx(
+        self,
+        bl_armature: bpy.types.ArmatureObject,
+        importer: HKXAnimationImporter,
+        file_path: Path,
+        skeleton_hkx: SkeletonHKX,
+        animation_hkx: AnimationHKX,
+    ):
+        anim_name = animation_hkx.path.name.split(".")[0]
 
-        for file_path, skeleton_hkx, hkx_or_entries in hkxs_with_paths:
+        self.info(f"Importing HKX animation for {bl_armature.name}: {anim_name}")
 
-            if isinstance(hkx_or_entries, list):
-                # Defer through entry selection operator.
-                ImportHKXAnimationWithBinderChoice.run(
-                    importer=importer,
-                    binder_file_path=Path(file_path),
-                    hkx_entries=hkx_or_entries,
-                    bl_armature=bl_armature,
-                    skeleton_hkx=skeleton_hkx,
+        p = time.perf_counter()
+        animation_hkx.animation_container.spline_to_interleaved()
+        self.info(f"Converted spline animation to interleaved in {time.perf_counter() - p:.4f} seconds.")
+
+        # We look up track bone names from annotations. TODO: Should just use `skeleton_hkx`?
+        track_bone_names = [
+            annotation.trackName for annotation in animation_hkx.animation_container.animation.annotationTracks
+        ]
+        bl_bone_names = [b.name for b in bl_armature.data.bones]
+        for bone_name in track_bone_names:
+            if bone_name not in bl_bone_names:
+                raise ValueError(
+                    f"Animation bone name '{bone_name}' is missing from selected Blender Armature."
                 )
-                continue
 
-            animation_hkx = hkx_or_entries
-            anim_name = animation_hkx.path.name.split(".")[0]
+        p = time.perf_counter()
+        arma_frames = get_armature_frames(animation_hkx, skeleton_hkx, track_bone_names)
+        root_motion = get_root_motion(animation_hkx)
+        self.info(f"Constructed armature animation frames in {time.perf_counter() - p:.4f} seconds.")
 
-            self.info(f"Importing HKX animation for {bl_armature.name}: {anim_name}")
-
-            p = time.perf_counter()
-            animation_hkx.animation_container.spline_to_interleaved()
-            self.info(f"Converted spline animation to interleaved in {time.perf_counter() - p:.4f} seconds.")
-
-            # We look up track bone names from annotations. TODO: Should just use `skeleton_hkx`?
-            track_bone_names = [
-                annotation.trackName for annotation in animation_hkx.animation_container.animation.annotationTracks
-            ]
-            bl_bone_names = [b.name for b in bl_armature.data.bones]
-            for bone_name in track_bone_names:
-                if bone_name not in bl_bone_names:
-                    raise ValueError(
-                        f"Animation bone name '{bone_name}' is missing from selected Blender Armature."
-                    )
-
-            p = time.perf_counter()
-            arma_frames = get_armature_frames(animation_hkx, skeleton_hkx, track_bone_names)
-            root_motion = get_root_motion(animation_hkx)
-            self.info(f"Constructed armature animation frames in {time.perf_counter() - p:.4f} seconds.")
-
-            # Import single animation HKX.
-            p = time.perf_counter()
-            try:
-                importer.create_action(anim_name, arma_frames, root_motion)
-            except Exception as ex:
-                traceback.print_exc()
-                raise HKXAnimationImportError(f"Cannot import HKX animation: {file_path.name}. Error: {ex}")
-            self.info(f"Created animation action in {time.perf_counter() - p:.4f} seconds.")
+        # Import single animation HKX.
+        p = time.perf_counter()
+        try:
+            importer.create_action(anim_name, arma_frames, root_motion)
+        except Exception as ex:
+            traceback.print_exc()
+            raise HKXAnimationImportError(f"Cannot import HKX animation: {file_path.name}. Error: {ex}")
+        self.info(f"Created animation action in {time.perf_counter() - p:.4f} seconds.")
 
 
 class ImportHKXAnimation(LoggingOperator, ImportHelper, ImportHKXAnimationMixin):
@@ -154,6 +145,17 @@ class ImportHKXAnimation(LoggingOperator, ImportHelper, ImportHKXAnimationMixin)
             return context.selected_objects[0].type == "ARMATURE"
         except IndexError:
             return False
+
+    def invoke(self, context, _event):
+        """Set the initial directory based on Global Settings."""
+        game_import_directory = self.settings(context).game_import_directory
+        game_chr_directory = game_import_directory / "chr"
+        for directory in (game_chr_directory, game_import_directory):
+            if directory and directory.is_dir():
+                self.directory = str(directory)
+                context.window_manager.fileselect_add(self)
+                return {'RUNNING_MODAL'}
+        return super().invoke(context, _event)
 
     def execute(self, context):
 
@@ -201,12 +203,25 @@ class ImportHKXAnimation(LoggingOperator, ImportHelper, ImportHKXAnimationMixin)
 
         importer = HKXAnimationImporter(self, context, bl_armature, bl_armature.name, self.to_60_fps)
 
-        try:
-            self.import_hkxs_with_paths(bl_armature, hkxs_with_paths, importer)
-        except Exception as ex:
-            return self.error(f"Error occurred while importing HKX animation(s). Error: {ex}")
+        return_strings = set()
+        for file_path, skeleton_hkx, hkx_or_entries in hkxs_with_paths:
+            if isinstance(hkx_or_entries, list):
+                # Defer through entry selection operator.
+                ImportHKXAnimationWithBinderChoice.run(
+                    importer=importer,
+                    binder_file_path=Path(file_path),
+                    hkx_entries=hkx_or_entries,
+                    bl_armature=bl_armature,
+                    skeleton_hkx=skeleton_hkx,
+                )
+                continue
+            try:
+                return_strings |= self.import_hkx(bl_armature, importer, file_path, skeleton_hkx, hkx_or_entries)
+            except Exception as ex:
+                # We don't error out here, because we want to continue importing other files.
+                self.error(f"Error occurred while importing HKX animation: {ex}")
 
-        return {"FINISHED"}
+        return {"FINISHED"} if "FINISHED" in return_strings else {"CANCELLED"}  # at least one finished
 
 
 # noinspection PyUnusedLocal
@@ -325,25 +340,16 @@ class ImportCharacterHKXAnimation(LoggingOperator, ImportHKXAnimationMixin):
         if not self.poll(context):
             return self.error("Must select a single Armature of a character (name starting with 'c').")
 
-        settings = SoulstructSettings.get_scene_settings(context)
-        game_directory = settings.game_directory
-        if not game_directory:
-            return self.error("No game directory set in global Soulstruct Settings.")
-
+        settings = self.settings(context)
         # noinspection PyTypeChecker
         bl_armature = context.selected_objects[0]  # type: bpy.types.ArmatureObject
 
-        character_name = bl_armature.name.split(" ")[0].split(".")[0]
+        character_name = get_bl_obj_stem(bl_armature)
         if character_name == "c0000":
             return self.error("Automatic ANIBND import is not yet supported for c0000 (player model).")
 
-        dcx_type = settings.resolve_dcx_type("Auto", "Binder")
-        anibnd_path = dcx_type.process_path(Path(game_directory, "chr", f"{character_name}.anibnd"))
-        if settings.use_bak_file:
-            anibnd_path = anibnd_path.with_name(anibnd_path.name + ".bak")
-            if not anibnd_path.is_file():
-                return self.error(f"Cannot find ANIBND '.bak' for character '{character_name}' in game directory.")
-        elif not anibnd_path.is_file():
+        anibnd_path = settings.get_import_path(f"chr/{character_name}.anibnd")
+        if not anibnd_path or not anibnd_path.is_file():
             return self.error(f"Cannot find ANIBND for character '{character_name}' in game directory.")
 
         skeleton_anibnd = anibnd = Binder.from_path(anibnd_path)
@@ -365,12 +371,25 @@ class ImportCharacterHKXAnimation(LoggingOperator, ImportHKXAnimationMixin):
 
         importer = HKXAnimationImporter(self, context, bl_armature, bl_armature.name, self.to_60_fps)
 
-        try:
-            self.import_hkxs_with_paths(bl_armature, hkxs_with_paths, importer)
-        except Exception as ex:
-            return self.error(f"Error occurred while importing HKX animation(s). Error: {ex}")
+        return_strings = set()
+        for file_path, skeleton_hkx, hkx_or_entries in hkxs_with_paths:
+            if isinstance(hkx_or_entries, list):
+                # Defer through entry selection operator.
+                ImportHKXAnimationWithBinderChoice.run(
+                    importer=importer,
+                    binder_file_path=Path(file_path),
+                    hkx_entries=hkx_or_entries,
+                    bl_armature=bl_armature,
+                    skeleton_hkx=skeleton_hkx,
+                )
+                continue
+            try:
+                return_strings |= self.import_hkx(bl_armature, importer, file_path, skeleton_hkx, hkx_or_entries)
+            except Exception as ex:
+                # We don't error out here, because we want to continue importing other files.
+                self.error(f"Error occurred while importing HKX animation: {ex}")
 
-        return {"FINISHED"}
+        return {"FINISHED"} if "FINISHED" in return_strings else {"CANCELLED"}  # at least one finished
 
 
 class ImportObjectHKXAnimation(LoggingOperator, ImportHKXAnimationMixin):
@@ -392,27 +411,19 @@ class ImportObjectHKXAnimation(LoggingOperator, ImportHKXAnimationMixin):
         if not self.poll(context):
             return self.error("Must select a single Armature of a object (name starting with 'o').")
 
-        settings = SoulstructSettings.get_scene_settings(context)
-        game_directory = settings.game_directory
-        if not game_directory:
-            return self.error("No game directory set in global Soulstruct Settings.")
-
+        settings = self.settings(context)
         # noinspection PyTypeChecker
         bl_armature = context.selected_objects[0]  # type: bpy.types.ArmatureObject
-        object_name = bl_armature.name.split(" ")[0]
 
-        dcx_type = settings.resolve_dcx_type("Auto", "Binder")
-        objbnd_path = dcx_type.process_path(Path(game_directory, "obj", f"{object_name}.objbnd"))
-        if settings.use_bak_file:
-            objbnd_path = objbnd_path.with_name(objbnd_path.name + ".bak")
-            if not objbnd_path.is_file():
-                return self.error(f"Cannot find OBJBND '.bak' for object '{object_name}' in game directory.")
-        elif not objbnd_path.is_file():
-            return self.error(f"Cannot find OBJBND for object '{object_name}' in game directory.")
+        object_name = get_bl_obj_stem(bl_armature)
+
+        objbnd_path = settings.get_import_path(f"obj/{object_name}.anibnd")
+        if not objbnd_path or not objbnd_path.is_file():
+            return self.error(f"Cannot find OBJBND for '{object_name}' in game directory.")
 
         objbnd = Binder.from_path(objbnd_path)
 
-        # Find ANIBND entry.
+        # Find ANIBND entry inside OBJBND.
         try:
             anibnd_entry = objbnd[f"{object_name}.anibnd"]
         except EntryNotFoundError:
@@ -435,12 +446,25 @@ class ImportObjectHKXAnimation(LoggingOperator, ImportHKXAnimationMixin):
 
         importer = HKXAnimationImporter(self, context, bl_armature, bl_armature.name, self.to_60_fps)
 
-        try:
-            self.import_hkxs_with_paths(bl_armature, hkxs_with_paths, importer)
-        except Exception as ex:
-            return self.error(f"Error occurred while importing HKX animation(s). Error: {ex}")
+        return_strings = set()
+        for file_path, skeleton_hkx, hkx_or_entries in hkxs_with_paths:
+            if isinstance(hkx_or_entries, list):
+                # Defer through entry selection operator.
+                ImportHKXAnimationWithBinderChoice.run(
+                    importer=importer,
+                    binder_file_path=Path(file_path),
+                    hkx_entries=hkx_or_entries,
+                    bl_armature=bl_armature,
+                    skeleton_hkx=skeleton_hkx,
+                )
+                continue
+            try:
+                return_strings |= self.import_hkx(bl_armature, importer, file_path, skeleton_hkx, hkx_or_entries)
+            except Exception as ex:
+                # We don't error out here, because we want to continue importing other files.
+                self.error(f"Error occurred while importing HKX animation: {ex}")
 
-        return {"FINISHED"}
+        return {"FINISHED"} if "FINISHED" in return_strings else {"CANCELLED"}  # at least one finished
 
 
 class HKXAnimationImporter:

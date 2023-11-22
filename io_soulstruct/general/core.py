@@ -2,56 +2,52 @@
 from __future__ import annotations
 
 __all__ = [
-    "BlenderGame",
     "SoulstructSettings",
 ]
+
+import traceback
+
+import shutil
 
 import typing as tp
 from pathlib import Path
 
 import bpy
 
-from soulstruct.base.maps.msb import MSB as BaseMSB
+from soulstruct.base.base_binary_file import BaseBinaryFile
+from soulstruct.base.models.mtd import MTDBND
 from soulstruct.dcx import DCXType
 from soulstruct.games import *
-from soulstruct.utilities.files import read_json, write_json
+from soulstruct.utilities.files import read_json, write_json, create_bak
 
-from soulstruct.base.models.mtd import MTDBND
-from soulstruct.darksouls1ptde.models.mtd import MTDBND as PTDE_MTDBND
-from soulstruct.darksouls1r.models.mtd import MTDBND as DS1R_MTDBND
-from soulstruct.eldenring.models.matbin import MATBINBND
+if tp.TYPE_CHECKING:
+    from io_soulstruct.type_checking import MSB_TYPING, MATBINBND_TYPING
+    from io_soulstruct.utilities import LoggingOperator
 
 _SETTINGS_PATH = Path(__file__).parent.parent / "SoulstructSettings.json"
-
-
-class BlenderGame:
-    # TODO: Should probably make use of my `games` module here to avoid repetition.
-
-    DES = "DES"  # Demon's Souls
-    PTDE = "PTDE"  # Dark Souls: Prepare to Die Edition
-    DS1R = "DS1R"  # Dark Souls: Remastered
-    BB = "BB"  # Bloodborne
-    DS3 = "DS3"  # Dark Souls III
-    SEK = "SEK"  # Sekiro: Shadows Die Twice
-    ER = "ER"  # Elden Ring
-    # TODO: A few more to add, obviously.
-
 
 _MAP_STEM_ENUM_ITEMS = (None, [("0", "None", "None")])  # type: tuple[Path | None, list[tuple[str, str, str]]]
 
 
+# Global holder for games that front-end users can currently select (or have auto-detected) for the `game` enum.
+SUPPORTED_GAMES = [
+    DARK_SOULS_PTDE,
+    DARK_SOULS_DSR,
+]
+
+
 # noinspection PyUnusedLocal
 def _get_map_stem_items(self, context: bpy.types.Context):
-    """Get list of map stems in game directory."""
-    settings = SoulstructSettings.get_scene_settings(context)
-    game_directory = settings.game_directory
+    """Get list of map stems in game import directory."""
+    settings = SoulstructSettings.from_context(context)
+    game_import_directory = settings.game_import_directory
     global _MAP_STEM_ENUM_ITEMS
 
-    if not game_directory:
+    if not game_import_directory:
         _MAP_STEM_ENUM_ITEMS = (None, [("0", "None", "None")])
         return _MAP_STEM_ENUM_ITEMS[1]
 
-    map_dir_path = Path(game_directory, "map")
+    map_dir_path = Path(game_import_directory, "map")
     if not map_dir_path.is_dir():
         _MAP_STEM_ENUM_ITEMS = (None, [("0", "None", "None")])
         return _MAP_STEM_ENUM_ITEMS[1]
@@ -61,7 +57,9 @@ def _get_map_stem_items(self, context: bpy.types.Context):
 
     map_stem_names = []
     match settings.game:
-        case BlenderGame.ER:
+        case None:
+            pass  # no choices
+        case {"name": ELDEN_RING.name}:
             for area in sorted(map_dir_path.glob("m??")):
                 map_stem_names.extend(
                     [
@@ -88,22 +86,47 @@ def _get_map_stem_items(self, context: bpy.types.Context):
 class SoulstructSettings(bpy.types.PropertyGroup):
     """Global settings for the Soulstruct Blender plugin."""
 
-    game: bpy.props.EnumProperty(
+    # region Blender and Wrapper Properties
+
+    game_enum: bpy.props.EnumProperty(
         name="Game",
         description="Game to use when choosing default values, DCX compression, file paths/extensions, etc",
         items=[
-            (BlenderGame.PTDE, "DS1: PTDE", "Dark Souls: Prepare to Die Edition"),
-            (BlenderGame.DS1R, "DS1: Remastered", "Dark Souls: Remastered"),
-            # (BlenderGame.BB, "Bloodborne", "Bloodborne"),
-            # (BlenderGame.ER, BlenderGame.ER, "Elden Ring"),
+            (game.variable_name, game.name, game.name)
+            for game in SUPPORTED_GAMES
         ],
-        default=BlenderGame.DS1R,
+        default=DARK_SOULS_DSR.variable_name,
     )
 
-    game_directory: bpy.props.StringProperty(
-        name="Game Directory",
-        description="Unpacked game directory containing game executable",
+    @property
+    def game(self) -> Game | None:
+        """Get selected Game object from `soulstruct.games`."""
+        return get_game(self.game_enum)
+
+    str_game_import_directory: bpy.props.StringProperty(
+        name="Import Directory",
+        description="Root (containing EXE/BIN) of game directory to import from and optionally export to",
         default="",
+    )
+
+    @property
+    def game_import_directory(self) -> Path | None:
+        return Path(self.str_game_import_directory) if self.str_game_import_directory else None
+
+    str_game_export_directory: bpy.props.StringProperty(
+        name="Export Directory",
+        description="Root game-like directory to export to",
+        default="",
+    )
+
+    @property
+    def game_export_directory(self) -> Path | None:
+        return Path(self.str_game_export_directory) if self.str_game_export_directory else None
+
+    also_export_to_import: bpy.props.BoolProperty(
+        name="Also Export to Import Directory",
+        description="Also export to the game import directory when exporting",
+        default=False,
     )
 
     map_stem: bpy.props.EnumProperty(
@@ -112,11 +135,37 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         items=_get_map_stem_items,
     )
 
-    png_cache_directory: bpy.props.StringProperty(
+    str_mtdbnd_path: bpy.props.StringProperty(
+        name="MTDBND Path",
+        description="Path of custom MTDBND file for detecting material setups. "
+                    "Defaults to an automatic game-specific location in selected game directory",
+        default="",
+    )
+
+    @property
+    def mtdbnd_path(self) -> Path | None:
+        return Path(self.str_mtdbnd_path) if self.str_mtdbnd_path else None
+
+    str_matbinbnd_path: bpy.props.StringProperty(
+        name="MATBINBND Path",
+        description="Path of custom MATBINBND file for detecting material setups (Elden Ring only). "
+                    "Defaults to an automatic game-specific location in selected game directory",
+        default="",
+    )
+
+    @property
+    def matbinbnd_path(self) -> Path | None:
+        return Path(self.str_matbinbnd_path) if self.str_matbinbnd_path else None
+
+    str_png_cache_directory: bpy.props.StringProperty(
         name="PNG Cache Directory",
         description="Path of directory to read/write cached PNG textures (from game DDS textures)",
         default="",
     )
+
+    @property
+    def png_cache_directory(self) -> Path | None:
+        return Path(self.str_png_cache_directory) if self.str_png_cache_directory else None
 
     read_cached_pngs: bpy.props.BoolProperty(
         name="Read Cached PNGs",
@@ -131,23 +180,9 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         default=True,
     )
 
-    mtdbnd_path: bpy.props.StringProperty(
-        name="MTDBND Path",
-        description="Path of custom MTDBND or MATBINBND file for detecting material setups. "
-                    "Defaults to an automatic game-specific location in selected game directory",
-        default="",
-    )
-
-    matbinbnd_path: bpy.props.StringProperty(
-        name="MATBINBND Path",
-        description="Path of custom MATBINBND file for detecting material setups (Elden Ring only). "
-                    "Defaults to an automatic game-specific location in selected game directory",
-        default="",
-    )
-
-    use_bak_file: bpy.props.BoolProperty(
-        name="Use BAK File",
-        description="Use BAK file when quick-importing from game directory (and fail if missing)",
+    import_bak_file: bpy.props.BoolProperty(
+        name="Import BAK File",
+        description="Import from '.bak' backup file when quick-importing from game directory (and fail if missing)",
         default=False,
     )
 
@@ -157,216 +192,364 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         default=True,
     )
 
+    # endregion
+
     @staticmethod
-    def get_scene_settings(context: bpy.types.Context = None) -> SoulstructSettings:
+    def from_context(context: bpy.types.Context = None) -> SoulstructSettings:
         if context is None:
             context = bpy.context
         return context.scene.soulstruct_settings
 
-    @staticmethod
-    def get_game_path(*parts: str, context: bpy.types.Context = None) -> Path:
-        """Get path relative to game directory."""
-        settings = SoulstructSettings.get_scene_settings(context)
-        return Path(settings.game_directory, *parts)
+    def is_game(self, *name_or_game: str | Game) -> bool:
+        """Check if any `name_or_game` is the selected `Game`."""
+        for game in name_or_game:
+            if isinstance(game, Game) and game is self.game:
+                return True
+            elif get_game(game) is self.game:
+                return True
+        return False
 
-    @staticmethod
-    def get_selected_map_path(context: bpy.types.Context = None) -> Path | None:
-        """Get the `map_stem` path in its game directory."""
-        settings = SoulstructSettings.get_scene_settings(context)
-        if not settings.game_directory or settings.map_stem in {"", "0"}:
+    @property
+    def game_variable_name(self) -> str:
+        game = self.game
+        return game.variable_name if game else ""
+
+    def auto_set_game(self):
+        """Determine `game` enum value from `game_import_directory`."""
+        if not self.str_game_import_directory:
+            return
+        for game in SUPPORTED_GAMES:
+            executable_path = Path(self.str_game_import_directory, game.executable_name)
+            if executable_path.is_file():
+                self.game_enum = game.variable_name
+                return
+
+    def get_import_path(self, *parts: str | Path, dcx_type: DCXType.Null = None) -> Path | None:
+        """Get path relative to game import directory.
+
+        If `dcx_type` is given (including `Null`), the path will be processed by that DCX type. Otherwise, the known
+        game specific/default DCX type will be used.
+
+        Will add `.bak` suffix to path if `import_bak_file` is enabled.
+        """
+        if not self.game:
             return None
-        return Path(settings.game_directory, "map", settings.map_stem)
+        import_path = Path(self.str_game_import_directory, *parts)
+        if dcx_type is not None:
+            import_path = dcx_type.process_path(import_path)
+        if "." in import_path.name:
+            import_path = self.game.process_dcx_path(import_path)
+            if self.import_bak_file:  # add extra '.bak' suffix
+                return import_path.with_suffix(import_path.suffix + ".bak")
+        return import_path
 
-    @staticmethod
-    def get_selected_map_msb_path(context: bpy.types.Context = None) -> Path | None:
-        """Get the `map_stem` MSB path in its game directory."""
-        settings = SoulstructSettings.get_scene_settings(context)
-        if not settings.game_directory or settings.map_stem in {"", "0"}:
+    def get_import_map_path(self, *parts, dcx_type: DCXType.Null = None) -> Path | None:
+        """Get the `map_stem` path in the game import 'map' directory.
+
+        If `dcx_type` is given (including `Null`), the path will be processed by that DCX type. Otherwise, the known
+        game specific/default DCX type will be used.
+        """
+        if not self.game or not self.str_game_import_directory or self.map_stem in {"", "0"}:
             return None
-        msb_dcx_type = settings.resolve_dcx_type("Auto", "MSB", False, context)
-        return msb_dcx_type.process_path(
-            Path(settings.game_directory, f"map/MapStudio", f"{settings.map_stem}.msb")
-        )
+        import_path = Path(self.str_game_import_directory, f"map/{self.map_stem}", *parts)
+        if "." in import_path.name:
+            if dcx_type is not None:
+                import_path = dcx_type.process_path(import_path)
+            else:
+                import_path = self.game.process_dcx_path(import_path)
+            if self.import_bak_file:  # add extra '.bak' suffix
+                return import_path.with_suffix(import_path.suffix + ".bak")
+        return import_path
 
-    @staticmethod
-    def get_game_msb_class(context: bpy.types.Context = None) -> tp.Type[BaseMSB]:
+    def get_import_msb_path(self, map_stem="") -> Path | None:
+        """Get the `map_stem` MSB path in its game import 'MapStudio' directory."""
+        if not map_stem:
+            map_stem = self.map_stem
+        if not self.game or not self.str_game_import_directory or map_stem in {"", "0"}:
+            return None
+        msb_dcx_type = self.resolve_dcx_type("Auto", "MSB")
+        relative_msb_path = Path(self.game.default_file_paths["MapStudioDirectory"], f"{map_stem}.msb")
+        if self.import_bak_file:  # add extra '.bak' suffix
+            relative_msb_path = relative_msb_path.with_suffix(relative_msb_path.suffix + ".bak")
+        return msb_dcx_type.process_path(Path(self.str_game_import_directory, relative_msb_path))
+
+    def get_export_path(self, *parts: str | Path, dcx_type: DCXType.Null = None) -> Path | None:
+        """Get path relative to game export directory.
+
+        If `dcx_type` is given (including `Null`), the path will be processed by that DCX type. Otherwise, the known
+        game specific/default DCX type will be used.
+        """
+        if not self.game:
+            return None
+        export_path = Path(self.str_game_export_directory, *parts)
+        if "." in export_path.name:
+            if dcx_type is not None:
+                return dcx_type.process_path(export_path)
+            return self.game.process_dcx_path(export_path)
+        return export_path
+
+    def get_export_map_path(self, *parts, dcx_type: DCXType.Null = None) -> Path | None:
+        """Get the `map_stem` path in the game export 'map' directory.
+
+        If `dcx_type` is given (including `Null`), the path will be processed by that DCX type. Otherwise, the known
+        game specific/default DCX type will be used.
+        """
+        if not self.str_game_export_directory or self.map_stem in {"", "0"}:
+            return None
+        export_path = Path(self.str_game_export_directory, f"map/{self.map_stem}", *parts)
+        if "." in export_path.name:
+            if dcx_type is not None:
+                return dcx_type.process_path(export_path)
+            return self.game.process_dcx_path(export_path)
+        return export_path
+
+    def get_export_msb_path(self) -> Path | None:
+        """Get the `map_stem` MSB path in its game export 'MapStudio' directory."""
+        if not self.str_game_export_directory or self.map_stem in {"", "0"}:
+            return None
+        msb_dcx_type = self.resolve_dcx_type("Auto", "MSB")
+        relative_msb_path = Path(self.game.default_file_paths["MapStudioDirectory"], f"{self.map_stem}.msb")
+        return msb_dcx_type.process_path(Path(self.str_game_export_directory, relative_msb_path))
+
+    @property
+    def can_export(self) -> bool:
+        """Checks if `game_export_directory` is set and/or `game_import_directory` is set and `also_export_to_import`
+        is enabled, in which case quick-export operators will poll `True`."""
+        if self.str_game_export_directory:
+            return True
+        if self.str_game_import_directory and self.also_export_to_import:
+            return True
+        return False
+
+    def export_file(
+        self, operator: LoggingOperator, file: BaseBinaryFile, relative_path: Path, class_name=""
+    ) -> set[str]:
+        if relative_path.is_absolute():
+            # Indicates a mistake in an operator.
+            raise ValueError(f"Relative path for export must be relative to game directory: {relative_path}")
+        try:
+            self._export_file(operator, file, relative_path, class_name)
+        except Exception as e:
+            traceback.print_exc()
+            operator.report({"ERROR"}, f"Failed to export {class_name} file: {e}")
+            return {"CANCELLED"}
+        return {"FINISHED"}
+
+    def _export_file(self, operator: LoggingOperator, file: BaseBinaryFile, relative_path: Path, class_name=""):
+        if not class_name:
+            class_name = file.cls_name
+
+        if self.game_export_directory:
+            export_path = self.get_export_path(relative_path)
+            export_path.parent.mkdir(parents=True, exist_ok=True)
+            written = file.write(export_path)
+            operator.info(f"Exported {class_name} to: {written}")
+            if self.game_import_directory and self.also_export_to_import:
+                # Copy to import directory.
+                import_path = self.get_import_path(relative_path)
+                if import_path.is_file():
+                    create_bak(import_path)  # we may be about to replace it
+                    operator.info(f"Created backup file: {import_path}")
+                else:
+                    import_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(export_path, import_path)
+                operator.info(f"Copied exported {class_name} to import directory: {import_path}")
+        elif self.game_import_directory and self.also_export_to_import:
+            import_path = self.get_import_path(relative_path)
+            import_path.parent.mkdir(parents=True, exist_ok=True)
+            written = file.write(import_path)
+            operator.info(f"Exported {class_name} to import directory only: {written}")
+        else:
+            operator.warning(
+                f"Cannot export {class_name} file. Game export directory is not set and game import directory is not "
+                f"set (or writing to import directory is disabled)."
+            )
+
+    def export_file_data(
+        self, operator: LoggingOperator, data: bytes, relative_path: Path, class_name: str
+    ) -> set[str]:
+        try:
+            self._export_file_data(operator, data, relative_path, class_name)
+        except Exception as e:
+            traceback.print_exc()
+            operator.report({"ERROR"}, f"Failed to export {class_name} file: {e}")
+            return {"CANCELLED"}
+        return {"FINISHED"}
+
+    def _export_file_data(self, operator: LoggingOperator, data: bytes, relative_path: Path, class_name: str):
+        if self.game_export_directory:
+            export_path = self.get_export_path(relative_path)
+            if export_path.is_file():
+                create_bak(export_path)
+                operator.info(f"Created backup file: {export_path}")
+            else:
+                export_path.parent.mkdir(parents=True, exist_ok=True)
+            export_path.write_bytes(data)
+            operator.info(f"Exported {class_name} to: {export_path}")
+            if self.game_import_directory and self.also_export_to_import:
+                # Copy to import directory.
+                import_path = self.get_import_path(relative_path)
+                if import_path.is_file():
+                    create_bak(import_path)
+                    operator.info(f"Created backup file: {import_path}")
+                else:
+                    import_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(export_path, import_path)
+                operator.info(f"Copied exported {class_name} to import directory: {import_path}")
+        elif self.game_import_directory and self.also_export_to_import:
+            import_path = self.get_import_path(relative_path)
+            if import_path.is_file():
+                create_bak(import_path)
+                operator.info(f"Created backup file: {import_path}")
+            else:
+                import_path.parent.mkdir(parents=True, exist_ok=True)
+            import_path.write_bytes(data)
+            operator.info(f"Exported {class_name} to import directory only: {import_path}")
+        else:
+            operator.warning(
+                f"Cannot export {class_name} file. Game export directory is not set and game import directory is not "
+                f"set (or writing to import directory is disabled)."
+            )
+
+    def copy_file_import_to_export(self, relative_path: Path, overwrite_existing=False, must_exist=False) -> bool:
+        """Copy file from import directory to export directory, if both are set.
+
+        If `overwrite_existing` is `False` (default), the file will not be copied if it already exists in the export
+        directory. If `must_exist` is `True`, the file must already exist in the export directory or successfully be
+        copied from the import directory.
+        """
+        import_path = self.get_import_path(relative_path)
+        export_path = self.get_export_path(relative_path)
+        if not export_path:
+            raise ValueError(
+                f"Export directory not set. Cannot copy file from import to export directory: {relative_path}"
+            )
+        if not import_path or not import_path.is_file():
+            if must_exist and not export_path.is_file():
+                raise FileNotFoundError(f"Cannot copy file from import to export directory: {import_path}")
+            return False  # nothing to copy
+        if export_path and export_path.is_file() and not overwrite_existing:
+            return False  # already exists
+        export_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(import_path, export_path)
+        return True
+
+    def get_game_msb_class(self) -> type[MSB_TYPING]:
         """Get the `MSB` class associated with the selected game."""
-        settings = SoulstructSettings.get_scene_settings(context)
-        match settings.game:
-            case BlenderGame.DS1R:
-                from soulstruct.darksouls1r.maps.msb import MSB
-                return MSB
-            case BlenderGame.BB:
-                from soulstruct.bloodborne.maps.msb import MSB
-                return MSB
-        raise ValueError(f"Game '{settings.game}' is not supported for MSB access.")
+        try:
+            return self.game.from_game_submodule_import("maps.msb", "MSB")
+        except ImportError:
+            # TODO: Specific exception type?
+            raise ValueError(f"Game {self.game} does not have an MSB class in Soulstruct.")
 
-    @staticmethod
-    def resolve_dcx_type(
-        dcx_type_name: str, class_name: str, is_binder_entry=False, context: bpy.types.Context = None
-    ) -> DCXType:
+    def resolve_dcx_type(self, dcx_type_name: str, class_name: str) -> DCXType:
         """Get DCX type associated with `class_name` for selected game.
 
-        TODO: Should use `games` module and game-specific class default DCX where possible.
+        NOTE: Those should generally only be called for loose files or files inside uncompressed split BHD binders
+        (usually TPFs). Files inside compressed BND binders never use DCX, as far as I'm aware.
+
+        If `dcx_type_name` is not "Auto", it is returned directly.
         """
 
         if dcx_type_name != "Auto":
             # Manual DCX type given.
             return DCXType[dcx_type_name]
+        return self.game.get_dcx_type(class_name)
 
-        _game = SoulstructSettings.get_scene_settings(context).game
-        if _game == BlenderGame.PTDE:
-            return DCXType.Null  # never any DCX in PTDE
-
-        match class_name.upper():
-            case "BINDER":
-                match _game:
-                    case BlenderGame.DS1R:
-                        return DARK_SOULS_DSR.default_dcx_type
-                    case BlenderGame.BB:
-                        return BLOODBORNE.default_dcx_type
-                    case BlenderGame.ER:
-                        return ELDEN_RING.default_dcx_type
-            case "FLVER":
-                if is_binder_entry:
-                    return DCXType.Null
-                match _game:
-                    case BlenderGame.DS1R:
-                        return DCXType.DS1_DS2
-                    case BlenderGame.BB:
-                        return DCXType.BB_DS3
-                    case BlenderGame.ER:
-                        return DCXType.DCX_KRAK
-            case "MSB":
-                match _game:
-                    case BlenderGame.PTDE | BlenderGame.DS1R:
-                        return DCXType.Null
-                    case BlenderGame.BB:
-                        return BLOODBORNE.default_dcx_type
-                    case BlenderGame.ER:
-                        return ELDEN_RING.default_dcx_type
-            case "TPF":
-                match _game:
-                    case BlenderGame.DS1R:
-                        return DARK_SOULS_DSR.default_dcx_type
-                    case BlenderGame.ER:
-                        return ELDEN_RING.default_dcx_type
-            case "NVM":
-                match _game:
-                    case BlenderGame.DS1R:
-                        return DCXType.Null  # never compressed inside DCX map BND
-            case "MAPCOLLISIONHKX":
-                match _game:
-                    case BlenderGame.DS1R:
-                        return DCXType.DS1_DS2  # compressed inside non-DCX map h/l BXF split binder
-            case "ANIMATIONHKX":
-                return DCXType.Null  # no loose animations
-
-        raise ValueError(f"Default DCX compression for class name '{class_name}' and game '{_game}' is unknown.")
-
-    @staticmethod
-    def get_mtdbnd(context: bpy.types.Context = None) -> MTDBND | None:
+    def get_mtdbnd(self) -> MTDBND | None:
         """Load `MTDBND` from custom path, standard location in game directory, or bundled Soulstruct file."""
-        settings = SoulstructSettings.get_scene_settings(context)
 
-        match settings.game:
-            case BlenderGame.PTDE:
-                mtdbnd_class = PTDE_MTDBND
-                from_bundled = mtdbnd_class.from_bundled
-            case BlenderGame.DS1R:
-                mtdbnd_class = DS1R_MTDBND
-                from_bundled = mtdbnd_class.from_bundled
-            case _:
-                # No MTDBND class for this game yet. Use generic base class (no bundled).
-                mtdbnd_class = MTDBND
-                from_bundled = None
+        try:
+            mtdbnd_class = self.game.from_game_submodule_import("models.mtd", "MTDBND")
+        except ImportError:
+            mtdbnd_class = MTDBND
 
-        mtdbnd_path = settings.mtdbnd_path
-        if not mtdbnd_path and settings.game_directory:
-            # Guess MTDBND path.
-            dcx_type = settings.resolve_dcx_type("Auto", "Binder", False, context)
+        mtdbnd_path = self.mtdbnd_path
+
+        if not mtdbnd_path and self.game_import_directory:
+            # Try to find MTDBND in game import directory.
             for mtdbnd_name in (
                 "mtd.mtdbnd", "allmaterialbnd.mtdbnd"
             ):
-                mtdbnd_path = dcx_type.process_path(Path(settings.game_directory, "mtd", mtdbnd_name))
+                mtdbnd_path = self.game.process_dcx_path(self.game_import_directory / f"mtd/{mtdbnd_name}")
                 if mtdbnd_path.is_file():
                     print(f"Found MTDBND in game directory: {mtdbnd_path}")
                     break
-        else:
-            mtdbnd_path = Path(mtdbnd_path)
 
         if mtdbnd_path.is_file():
             return mtdbnd_class.from_path(mtdbnd_path)
 
+        from_bundled = getattr(mtdbnd_class, "from_bundled", None)
         if from_bundled:
-            print(f"Loading bundled MTDBND for game {settings.game}...")
+            print(f"Loading bundled MTDBND for game {self.game.name}...")
             return from_bundled()
         return None
 
-    @staticmethod
-    def get_matbinbnd(context: bpy.types.Context = None) -> MATBINBND | None:
-        """Load `MTDBND` from custom path, standard location in game directory, or bundled Soulstruct file."""
-        settings = SoulstructSettings.get_scene_settings(context)
+    def get_matbinbnd(self) -> MATBINBND_TYPING | None:
+        """Load `MATBINBND` from custom path, standard location in game directory, or bundled Soulstruct file."""
 
-        match settings.game:
-            case BlenderGame.ER:
-                matbinbnd_class = MATBINBND
-                from_bundled = matbinbnd_class.from_bundled
-            case _:
-                # No MATBINBND is possible for this game yet.
-                # TODO: Can distinguish games that definitely don't have it from newer games that might.
-                return None
+        try:
+            matbinbnd_class = self.game.from_game_submodule_import("models.matbin", "MATBINBND")
+        except ImportError:
+            # No generic support.
+            return None
 
-        matbinbnd_path = settings.matbinbnd_path
-        if not matbinbnd_path and settings.game_directory:
-            # Guess MTDBND path.
-            dcx_type = settings.resolve_dcx_type("Auto", "Binder", False, context)
-            matbinbnd_name = dcx_type.process_path(Path(settings.game_directory, "material/allmaterial.matbinbnd.dcx"))
-            if matbinbnd_name.is_file():
-                print(f"Found MATBINBND in game directory: {matbinbnd_name}")
-        else:
-            matbinbnd_path = Path(matbinbnd_path)
+        matbinbnd_path = self.matbinbnd_path
+
+        if not matbinbnd_path and self.game_import_directory:
+            # Try to find MATBINBND in game import directory.
+            matbinbnd_path = self.game.process_dcx_path(self.game_import_directory / "material/allmaterial.matbinbnd")
+            if matbinbnd_path.is_file():
+                print(f"Found MATBINBND in game directory: {matbinbnd_path}")
 
         if matbinbnd_path.is_file():
             return matbinbnd_class.from_path(matbinbnd_path)
 
+        from_bundled = getattr(matbinbnd_class, "from_bundled", None)
         if from_bundled:
-            print(f"Loading bundled MATBINBND for game {settings.game}...")
+            print(f"Loading bundled MATBINBND for game {self.game.name}...")
             return from_bundled()
         return None
 
-    @staticmethod
-    def load_settings():
+    def load_settings(self):
         """Read settings from JSON file and set them in the scene."""
         try:
             json_settings = read_json(_SETTINGS_PATH)
         except FileNotFoundError:
             return  # do nothing
-        settings = bpy.context.scene.soulstruct_settings
-        settings.game = json_settings.get("game", "DS1R")
-        settings.game_directory = json_settings.get("game_directory", "")
+        self.game_enum = json_settings.get("game", DARK_SOULS_DSR.variable_name)
+        self.str_game_import_directory = json_settings.get("game_import_directory", "")
+        self.str_game_export_directory = json_settings.get("game_export_directory", "")
+        self.also_export_to_import = json_settings.get("also_export_to_import", False)
         map_stem = json_settings.get("map_stem", "0")
         if not map_stem:
             map_stem = "0"  # null enum value
-        settings.map_stem = map_stem
-        settings.png_cache_directory = json_settings.get("png_cache_directory", "")
-        settings.read_cached_pngs = json_settings.get("read_cached_pngs", True)
-        settings.write_cached_pngs = json_settings.get("write_cached_pngs", True)
-        settings.mtdbnd_path = json_settings.get("mtdbnd_path", "")
-        settings.use_bak_file = json_settings.get("use_bak_file", False)
-        settings.detect_map_from_parent = json_settings.get("detect_map_from_parent", True)
+        self.map_stem = map_stem
+        self.str_mtdbnd_path = json_settings.get("mtdbnd_path", "")
+        self.str_matbinbnd_path = json_settings.get("matbinbnd_path", "")
+        self.str_png_cache_directory = json_settings.get("png_cache_directory", "")
+        self.read_cached_pngs = json_settings.get("read_cached_pngs", True)
+        self.write_cached_pngs = json_settings.get("write_cached_pngs", True)
+        self.import_bak_file = json_settings.get("import_bak_file", False)
+        self.detect_map_from_parent = json_settings.get("detect_map_from_parent", True)
 
-    @staticmethod
-    def save_settings():
+    def save_settings(self):
         """Write settings from scene to JSON file."""
-        settings = bpy.context.scene.soulstruct_settings
         current_settings = {
-            key: getattr(settings, key)
+            key.lstrip("_"): getattr(self, key)
             for key in (
-                "game", "game_directory", "map_stem",
-                "png_cache_directory", "read_cached_pngs", "write_cached_pngs",
-                "mtdbnd_path",
-                "use_bak_file", "detect_map_from_parent",
+                "game_enum",
+                "str_game_import_directory",
+                "str_game_export_directory",
+                "also_export_to_import",
+                "map_stem",
+                "str_mtdbnd_path",
+                "str_matbinbnd_path",
+                "str_png_cache_directory",
+                "read_cached_pngs",
+                "write_cached_pngs",
+                "import_bak_file",
+                "detect_map_from_parent",
             )
         }
         write_json(_SETTINGS_PATH, current_settings, indent=4)

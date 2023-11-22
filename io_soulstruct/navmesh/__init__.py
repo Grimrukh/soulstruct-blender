@@ -74,7 +74,7 @@ class NVM_PT_ds1_navmesh_import(bpy.types.Panel):
 
         quick_box = self.layout.box()
         quick_box.label(text="Game Navmesh Import")
-        quick_box.prop(context.scene.soulstruct_settings, "use_bak_file", text="From .BAK File")
+        quick_box.prop(context.scene.soulstruct_settings, "import_bak_file", text="From .BAK File")
         quick_box.prop(context.scene.soulstruct_game_enums, "nvm")
         quick_box.operator(ImportNVMFromNVMBND.bl_idname)
         quick_box.operator(QuickImportMCG.bl_idname)

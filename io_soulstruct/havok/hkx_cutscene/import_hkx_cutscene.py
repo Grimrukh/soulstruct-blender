@@ -20,7 +20,6 @@ from soulstruct.darksouls1r.maps.parts import *
 from soulstruct_havok.utilities.maths import TRSTransform
 from soulstruct_havok.wrappers.hkx2015 import RemoBND
 
-from io_soulstruct.general import SoulstructSettings
 from io_soulstruct.utilities.conversion import Transform, GAME_TO_BL_VECTOR, GAME_TO_BL_EULER
 from io_soulstruct.utilities.operators import LoggingOperator
 from io_soulstruct.flver.import_flver import FLVERBatchImporter
@@ -132,13 +131,10 @@ class ImportHKXCutscene(LoggingOperator, ImportHelper):
             return {"FINISHED"}
 
         loaded_map_studio_directories = {}  # type: dict[Path, MapStudioDirectory]
-        settings = SoulstructSettings.get_scene_settings(context)
+        settings = self.settings(context)
 
-        if not settings.game_directory:
-            # Assume RemoBND is in the appropriate game `remo` folder.
-            game_directory = remobnd_path.parent.parent
-        else:
-            game_directory = Path(settings.game_directory)
+        # If import directory is not set, we assume the RemoBND is in the usual game `remo` folder.
+        game_directory = settings.game_import_directory or remobnd_path.parent.parent
 
         map_studio_path = Path(game_directory, "map/MapStudio")
         map_studio_directory = loaded_map_studio_directories.setdefault(
@@ -202,25 +198,25 @@ class ImportHKXCutscene(LoggingOperator, ImportHelper):
             flver_importer = FLVERBatchImporter(
                 self,
                 context,
+                settings,
                 texture_manager=texture_manager,
-                mtdbnd=SoulstructSettings.get_mtdbnd(context),
             )
 
             for part_name, flver in flvers_to_import.items():
                 msb_part = remobnd.remo_parts[part_name]
-                if isinstance(msb_part, MSBMapPiece):
-                    transform = Transform.from_msb_part(msb_part)
-                else:
-                    # Even static objects are 'placed' in cutscenes by animating their root bone.
-                    transform = None
                 self.info(f"Importing FLVER for '{part_name}'...")
                 # TODO: Catch and ignore errors?
-                part_armature = flver_importer.import_flver(
+                part_armature, part_mesh = flver_importer.import_flver(
                     flver,
                     name=part_name,  # exact match to cutscene part name
-                    transform=transform,  # set for map pieces
                 )
                 part_armatures[part_name] = part_armature
+                if isinstance(msb_part, MSBMapPiece):
+                    transform = Transform.from_msb_part(msb_part)
+                    part_armature.location = transform.bl_translate
+                    part_armature.rotation_euler = transform.bl_rotate
+                    part_armature.scale = transform.bl_scale
+                # NOTE: Even static objects are 'placed' in cutscenes by animating their root bone.
 
         for part_name, remo_part in remobnd.remo_parts.items():
             if part_name not in part_armatures:

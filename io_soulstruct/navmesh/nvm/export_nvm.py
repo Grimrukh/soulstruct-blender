@@ -2,7 +2,6 @@ from __future__ import annotations
 
 __all__ = ["ExportLooseNVM", "ExportNVMIntoBinder", "ExportNVMIntoNVMBND", "ExportNVMMSBPart"]
 
-import re
 import traceback
 from pathlib import Path
 
@@ -18,14 +17,13 @@ from soulstruct.containers import Binder, BinderEntry
 from soulstruct.dcx import DCXType
 from soulstruct.darksouls1r.maps.navmesh.nvm import NVM, NVMTriangle, NVMEventEntity
 
-from io_soulstruct.general import SoulstructSettings, BlenderGame
 from io_soulstruct.general.cached import get_cached_file
 from io_soulstruct.utilities.operators import LoggingOperator, get_dcx_enum_property
-from io_soulstruct.utilities.misc import MAP_STEM_RE
+from io_soulstruct.utilities.misc import MAP_STEM_RE, get_bl_obj_stem
 from io_soulstruct.utilities.conversion import BlenderTransform
 
 if tp.TYPE_CHECKING:
-    from soulstruct.darksouls1r.maps import MSB
+    from io_soulstruct.type_checking import MSB_TYPING
 
 
 class ExportLooseNVM(LoggingOperator, ExportHelper):
@@ -46,9 +44,6 @@ class ExportLooseNVM(LoggingOperator, ExportHelper):
     )
 
     dcx_type: get_dcx_enum_property(DCXType.Null)  # no compression in DS1
-
-    # TODO: Options to:
-    #   - Detect appropriate MSB and update transform of this model instance (if unique) (low priority).
 
     @classmethod
     def poll(cls, context):
@@ -142,7 +137,6 @@ class ExportNVMIntoBinder(LoggingOperator, ImportHelper):
         if not self.poll(context):
             return self.error("No valid Meshes selected for NVM export.")
 
-        print("Executing NVM export to Binder...")
         # noinspection PyTypeChecker
         selected_objs = [obj for obj in context.selected_objects]  # type: list[bpy.types.MeshObject]
 
@@ -227,23 +221,14 @@ class ExportNVMIntoNVMBND(LoggingOperator):
     bl_label = "Export NVM"
     bl_description = "Export selected meshes as NVM navmeshes into selected game map NVMBND"
 
-    overwrite_existing: BoolProperty(
-        name="Overwrite Existing",
-        description="Overwrite first existing '{name}.nvm{.dcx}' matching entry in Binder",
-        default=True,  # TODO: cannot be disabled
-    )
-
-    GAME_INFO = {
-        BlenderGame.DS1R: {
-            "nvm_entry_path": "{map}\\{stem}.nvm",  # no DCX
-        },
-    }
+    # Always overwrites existing NVM entries.
 
     @classmethod
     def poll(cls, context):
         """One or more 'n*' Meshes selected."""
         return (
-            len(context.selected_objects) > 0
+            cls.settings(context).game_variable_name == "DARK_SOULS_DSR"
+            and len(context.selected_objects) > 0
             and all(obj.type == "MESH" and obj.name[0] == "n" for obj in context.selected_objects)
         )
 
@@ -251,20 +236,22 @@ class ExportNVMIntoNVMBND(LoggingOperator):
         if not self.poll(context):
             return self.error("No valid 'n' meshes selected for quick NVM export.")
 
-        settings = SoulstructSettings.get_scene_settings(context)
-        game_directory = settings.game_directory
-        if not game_directory:
-            return self.error("Game directory must be set in Blender's Soulstruct global settings for quick export.")
-        if not settings.detect_map_from_parent and settings.map_stem in {"", "0"}:
-            return self.error("Game map stem must be set in Blender's Soulstruct global settings for quick export.")
+        settings = self.settings(context)
+        settings.save_settings()
+        if settings.game_variable_name != "DARK_SOULS_DSR":
+            return self.error("Quick NVM export is only supported for Dark Souls: Remastered.")
+
+        if not settings.map_stem and not settings.detect_map_from_parent:
+            return self.error(
+                "No game map directory specified in Soulstruct settings and `Detect Map from Parent` is disabled."
+            )
+        default_map_path = Path(f"map/{settings.map_stem}") if settings.map_stem else None
 
         # TODO: Not needed for meshes only?
         if bpy.ops.object.mode_set.poll():
             bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
 
         exporter = NVMExporter(self, context)
-        nvmbnd_dcx_type = settings.resolve_dcx_type("Auto", "Binder", False, context)
-        nvm_dcx_type = settings.resolve_dcx_type("Auto", "NVM", True, context)
 
         opened_nvmbnds = {}  # type: dict[str, Binder]
         for bl_mesh_obj in context.selected_objects:
@@ -282,16 +269,20 @@ class ExportNVMIntoNVMBND(LoggingOperator):
                     return self.error(
                         f"Parent object '{bl_mesh_obj.parent.name}' does not start with a valid map stem."
                     )
+                relative_nvmbnd_path = Path(f"map/{map_stem}/{map_stem}.nvmbnd")
             else:
                 map_stem = settings.map_stem
+                relative_nvmbnd_path = default_map_path / f"{map_stem}.nvmbnd"
 
             try:
-                nvmbnd_path = nvmbnd_dcx_type.process_path(Path(game_directory, "map", map_stem, f"{map_stem}.nvmbnd"))
-                nvmbnd = opened_nvmbnds.setdefault(map_stem, Binder.from_path(nvmbnd_path))
+                nvmbnd = opened_nvmbnds.setdefault(
+                    map_stem,
+                    Binder.from_path(settings.get_import_path(relative_nvmbnd_path))
+                )
             except Exception as ex:
                 return self.error(f"Could not load NVMBND for map '{map_stem}'. Error: {ex}")
 
-            model_file_stem = bl_mesh_obj.get("Model File Stem", bl_mesh_obj.name.split(" ")[0].split(".")[0])
+            model_file_stem = bl_mesh_obj.get("Model File Stem", get_bl_obj_stem(bl_mesh_obj))
 
             try:
                 nvm = exporter.export_nvm(bl_mesh_obj)
@@ -301,52 +292,20 @@ class ExportNVMIntoNVMBND(LoggingOperator):
             else:
                 nvm.dcx_type = DCXType.Null  # no DCX compression inside NVMBND
 
-            nvm_pattern = re.compile(
-                rf"{model_file_stem}\.nvm\.dcx" if nvm_dcx_type.has_dcx_extension() else rf"{model_file_stem}\.nvm"
+            nvm_entry_name = f"{model_file_stem}.nvm"
+            nvmbnd.set_default_entry(
+                nvm_entry_name,
+                new_id=nvmbnd.highest_entry_id + 1,
+                new_path=f"{map_stem}\\{nvm_entry_name}",
+                new_flags=0x2,
+                new_data=nvm,
             )
-            matching_entries = nvmbnd.find_entries_matching_name(nvm_pattern)
-            if not matching_entries:
-                # Create new entry.
-                try:
-                    nvm_entry_path = self.GAME_INFO[settings.game]["nvm_entry_path"].format(
-                        map=map_stem, stem=model_file_stem
-                    )
-                except KeyError:
-                    return self.error(f"Game '{settings.game}' is not supported for quick NVM export.")
 
-                new_entry_id = nvmbnd.highest_entry_id + 1
-                nvm_entry = BinderEntry(b"", entry_id=new_entry_id, path=nvm_entry_path, flags=0x2)
-                nvmbnd.add_entry(nvm_entry)  # data set below
-                self.info(f"Creating new NVMBND entry: ID {new_entry_id}, path '{nvm_entry_path}'.")
-            else:
-                if not self.overwrite_existing:
-                    return self.error(f"NVM named '{model_file_stem}' already exists in Binder and overwrite = False.")
-
-                nvm_entry = matching_entries[0]
-
-                if len(matching_entries) > 1:
-                    self.warning(
-                        f"Multiple NVMs with stem '{model_file_stem}' found in NVMBND. "
-                        f"Replacing first: {nvm_entry.name}"
-                    )
-                else:
-                    self.info(
-                        f"Replacing existing NVMBND entry: ID {nvm_entry.entry_id}, path '{nvm_entry.path}'"
-                    )
-
-            try:
-                nvm_entry.set_from_binary_file(nvm)
-            except Exception as ex:
-                traceback.print_exc()
-                return self.error(f"Cannot write exported NVM. Error: {ex}")
-
-        for nvmbnd_path, nvmbnd in opened_nvmbnds.items():
-            try:
-                # Will create a `.bak` file automatically if absent.
-                nvmbnd.write()
-            except Exception as ex:
-                traceback.print_exc()
-                return self.error(f"Cannot write NVMBND '{nvmbnd_path}' with new NVM. Error: {ex}")
+        for nvmbnd in opened_nvmbnds.values():
+            nvmbnd.entries = list(sorted(nvmbnd.entries, key=lambda e: e.name))
+            for i, entry in enumerate(nvmbnd.entries):
+                entry.entry_id = i
+            settings.export_file(self, nvmbnd, nvmbnd.path.relative_to(settings.game_import_directory))
 
         return {"FINISHED"}
 
@@ -357,12 +316,9 @@ class ExportNVMMSBPart(LoggingOperator):
     bl_label = "Export Navmesh Part"
     bl_description = "Export transform and mesh of selected NVM navmeshes into selected game map MSB/NVMBND"
 
-    overwrite_existing: BoolProperty(
-        name="Overwrite Existing",
-        description="Overwrite first existing '{name}.nvm{.dcx}' matching entry in Binder",
-        default=True,  # TODO: cannot be disabled
-    )
+    # Always overwrites existing NVM parts and NVMBND entries.
 
+    # TODO: Can't disable, but leaving here for now.
     prefer_new_model_file_stem: BoolProperty(
         name="Prefer New Model File Stem",
         description="Use the 'Model File Stem' property on the Blender mesh parent to update the model file stem in "
@@ -370,46 +326,37 @@ class ExportNVMMSBPart(LoggingOperator):
         default=True,
     )
 
-    GAME_INFO = {
-        BlenderGame.DS1R: {
-            "nvm_entry_path": "{map}\\{stem}.nvm",  # no DCX
-        },
-    }
-
     @classmethod
     def poll(cls, context):
         """One or more 'n*' Meshes selected."""
         return (
-            len(context.selected_objects) > 0
+            cls.settings(context).game_variable_name == "DARK_SOULS_DSR"
+            and len(context.selected_objects) > 0
             and all(obj.type == "MESH" and obj.name[0] == "n" for obj in context.selected_objects)
         )
 
     def execute(self, context):
+        settings = self.settings(context)
+        if settings.game_variable_name != "DARK_SOULS_DSR":
+            return self.error("Quick MSB Navmesh export is only supported for Dark Souls: Remastered.")
+
         if not self.poll(context):
             return self.error("No valid 'n' meshes selected for quick NVM export.")
 
-        settings = SoulstructSettings.get_scene_settings(context)
-        game_directory = settings.game_directory
-        if not game_directory:
+        if not settings.map_stem and not settings.detect_map_from_parent:
             return self.error(
-                "Game directory must be set in Blender's Soulstruct global settings for MSB Navmesh Part export."
+                "No game map directory specified in Soulstruct settings and `Detect Map from Parent` is disabled."
             )
-        if not settings.detect_map_from_parent and settings.map_stem in {"", "0"}:
-            return self.error(
-                "Game map stem must be set in Blender's Soulstruct global settings for MSB Navmesh Part export "
-                "when 'Detect Map from Parent' is disabled."
-            )
+        default_map_path = Path(f"map/{settings.map_stem}") if settings.map_stem else None
 
         # TODO: Not needed for meshes only?
         if bpy.ops.object.mode_set.poll():
             bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
 
         exporter = NVMExporter(self, context)
-        nvmbnd_dcx_type = settings.resolve_dcx_type("Auto", "Binder", False, context)
-        nvm_dcx_type = settings.resolve_dcx_type("Auto", "NVM", True, context)
 
         opened_nvmbnds = {}  # type: dict[str, Binder]
-        opened_msbs = {}  # type: dict[Path, MSB]
+        opened_msbs = {}  # type: dict[Path, MSB_TYPING]
         edited_part_names = {}  # type: dict[Path, set[str]]
 
         for bl_mesh_obj in context.selected_objects:
@@ -427,22 +374,26 @@ class ExportNVMMSBPart(LoggingOperator):
                     return self.error(
                         f"Parent object '{bl_mesh_obj.parent.name}' does not start with a valid map stem."
                     )
+                relative_nvmbnd_path = Path(f"map/{map_stem}/{map_stem}.nvmbnd")
             else:
                 map_stem = settings.map_stem
+                relative_nvmbnd_path = default_map_path / f"{map_stem}.nvmbnd"
 
             try:
-                nvmbnd_path = nvmbnd_dcx_type.process_path(Path(game_directory, "map", map_stem, f"{map_stem}.nvmbnd"))
-                nvmbnd = opened_nvmbnds.setdefault(map_stem, Binder.from_path(nvmbnd_path))
+                nvmbnd = opened_nvmbnds.setdefault(
+                    map_stem,
+                    Binder.from_path(settings.get_import_path(relative_nvmbnd_path))
+                )
             except Exception as ex:
                 return self.error(f"Could not load NVMBND for map '{map_stem}'. Error: {ex}")
 
             # Get model file stem from MSB (must contain matching part).
-            navmesh_part_name = bl_mesh_obj.name.split(" ")[0].split(".")[0]
-            msb_path = Path(game_directory, "map/MapStudio", f"{map_stem}.msb")
+            navmesh_part_name = get_bl_obj_stem(bl_mesh_obj)  # could be the same as the file stem
+            msb_path = settings.get_import_msb_path(map_stem)
             msb = opened_msbs.setdefault(
                 msb_path,
-                get_cached_file(msb_path, settings.get_game_msb_class(context)),
-            )  # type: MSB
+                get_cached_file(msb_path, settings.get_game_msb_class()),
+            )  # type: MSB_TYPING
 
             try:
                 msb_part = msb.navmeshes.find_entry_name(navmesh_part_name)
@@ -462,22 +413,21 @@ class ExportNVMMSBPart(LoggingOperator):
                 )
             edited_msb_part_names.add(navmesh_part_name)
 
-            nvm_entry_stem = bl_mesh_obj.get("Model File Stem", None) if self.prefer_new_model_file_stem else None
-            if not nvm_entry_stem:  # could be None or empty string
+            model_stem = bl_mesh_obj.get("Model File Stem", None) if self.prefer_new_model_file_stem else None
+            if not model_stem:  # could be None or empty string
                 # Use existing MSB model name.
-                nvm_entry_stem = msb_part.model.name + f"A{map_stem[1:3]}"
+                model_stem = msb_part.model.get_model_file_stem(map_stem)
+                # Warn if MSB model stem does not match (non-preferred) Blender object property.
+                if (model_file_stem := bl_mesh_obj.get("Model File Stem", None)) is not None:
+                    if model_file_stem != model_stem:
+                        self.warning(
+                            f"Navmesh part '{navmesh_part_name}' in MSB '{msb_path}' has model name "
+                            f"'{msb_part.model.name}' but Blender mesh 'Model File Stem' is '{model_file_stem}'. "
+                            f"Using NVM stem from MSB model name; you may want to update the Blender mesh."
+                        )
             else:
-                # Update MSB model name.
-                msb_part.model.name = nvm_entry_stem[:7]
-
-            # Warn if NVM stem in MSB is unexpected.
-            if (model_file_stem := bl_mesh_obj.get("Model File Stem", None)) is not None:
-                if model_file_stem != nvm_entry_stem:
-                    self.warning(
-                        f"Collision part '{nvm_entry_stem}' in MSB '{msb_path}' has model name "
-                        f"'{msb_part.model.name}' but Blender mesh 'Model File Stem' is '{model_file_stem}'. "
-                        f"Using HKX stem from MSB model name; you may want to update the Blender mesh."
-                    )
+                # Update MSB model name (game-dependent format).
+                msb_part.model.set_name_from_model_file_stem(model_stem)
 
             # Update part transform in MSB.
             bl_transform = BlenderTransform.from_bl_obj(bl_mesh_obj)
@@ -493,61 +443,25 @@ class ExportNVMMSBPart(LoggingOperator):
             else:
                 nvm.dcx_type = DCXType.Null  # no DCX compression inside NVMBND
 
-            nvm_pattern = re.compile(
-                rf"{model_file_stem}\.nvm\.dcx" if nvm_dcx_type.has_dcx_extension() else rf"{model_file_stem}\.nvm"
+            nvm_entry_name = f"{model_stem}.nvm"
+            nvmbnd.set_default_entry(
+                nvm_entry_name,
+                new_id=nvmbnd.highest_entry_id + 1,
+                new_path=f"{map_stem}\\{nvm_entry_name}",
+                new_flags=0x2,
+                new_data=nvm,
             )
-            matching_entries = nvmbnd.find_entries_matching_name(nvm_pattern)
-            if not matching_entries:
-                # Create new entry.
-                try:
-                    nvm_entry_path = self.GAME_INFO[settings.game]["nvm_entry_path"].format(
-                        map=map_stem, stem=model_file_stem
-                    )
-                except KeyError:
-                    return self.error(f"Game '{settings.game}' is not supported for quick NVM export.")
-
-                new_entry_id = nvmbnd.highest_entry_id + 1
-                nvm_entry = BinderEntry(b"", entry_id=new_entry_id, path=nvm_entry_path, flags=0x2)
-                nvmbnd.add_entry(nvm_entry)  # data set below
-                self.info(f"Creating new NVMBND entry: ID {new_entry_id}, path '{nvm_entry_path}'.")
-            else:
-                if not self.overwrite_existing:
-                    return self.error(f"NVM named '{model_file_stem}' already exists in Binder and overwrite = False.")
-
-                nvm_entry = matching_entries[0]
-
-                if len(matching_entries) > 1:
-                    self.warning(
-                        f"Multiple NVMs with stem '{model_file_stem}' found in NVMBND. "
-                        f"Replacing first: {nvm_entry.name}"
-                    )
-                else:
-                    self.info(
-                        f"Replacing existing NVMBND entry: ID {nvm_entry.entry_id}, path '{nvm_entry.path}'"
-                    )
-
-            try:
-                nvm_entry.set_from_binary_file(nvm)
-            except Exception as ex:
-                traceback.print_exc()
-                return self.error(f"Cannot write exported NVM. Error: {ex}")
 
         for msb_path, msb in opened_msbs.items():
             # Write MSB.
-            try:
-                msb.write(msb_path)
-            except Exception as ex:
-                self.warning(f"Could not write MSB '{msb_path}' with updated part transform(s). Error: {ex}")
-            else:
-                self.info(f"Wrote MSB '{msb_path}' with updated part transform(s).")
+            relative_msb_path = msb_path.relative_to(settings.game_import_directory)
+            settings.export_file(self, msb, relative_msb_path)
 
-        for nvmbnd_path, nvmbnd in opened_nvmbnds.items():
-            try:
-                # Will create a `.bak` file automatically if absent.
-                nvmbnd.write()
-            except Exception as ex:
-                traceback.print_exc()
-                return self.error(f"Cannot write NVMBND '{nvmbnd_path}' with new NVM. Error: {ex}")
+        for nvmbnd in opened_nvmbnds.values():
+            nvmbnd.entries = list(sorted(nvmbnd.entries, key=lambda e: e.name))
+            for i, entry in enumerate(nvmbnd.entries):
+                entry.entry_id = i
+            settings.export_file(self, nvmbnd, nvmbnd.path.relative_to(settings.game_import_directory))
 
         return {"FINISHED"}
 

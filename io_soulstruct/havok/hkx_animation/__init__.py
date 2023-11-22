@@ -47,7 +47,7 @@ class HKX_ANIMATION_PT_hkx_animation_tools(bpy.types.Panel):
 
         quick_import_box = import_box.box()
         quick_import_box.label(text="Quick Game Import")
-        quick_import_box.prop(context.scene.soulstruct_settings, "use_bak_file", text="From .BAK File")
+        quick_import_box.prop(context.scene.soulstruct_settings, "import_bak_file", text="From .BAK File")
         quick_import_box.operator(ImportCharacterHKXAnimation.bl_idname)
         quick_import_box.operator(ImportObjectHKXAnimation.bl_idname)
 

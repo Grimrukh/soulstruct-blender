@@ -8,6 +8,7 @@ __all__ = [
 
 import bpy
 
+from .core import SoulstructSettings
 from .operators import *
 
 
@@ -17,27 +18,43 @@ class GlobalSettingsPanel_ViewMixin:
     layout: bpy.types.UILayout
 
     def draw(self, context):
+        settings = context.scene.soulstruct_settings  # type: SoulstructSettings
         layout = self.layout
-        layout.prop(context.scene.soulstruct_settings, "game")
+        layout.prop(settings, "game_enum")
 
         row = layout.row(align=True)
         split = row.split(factor=0.75)
-        split.column().prop(context.scene.soulstruct_settings, "game_directory")
-        split.column().operator(SelectGameDirectory.bl_idname, text="Browse")
+        split.column().prop(settings, "str_game_import_directory")
+        split.column().operator(SelectGameImportDirectory.bl_idname, text="Browse")
 
-        layout.row().prop(context.scene.soulstruct_settings, "map_stem")
+        row = layout.row(align=True)
+        split = row.split(factor=0.75)
+        split.column().prop(settings, "str_game_export_directory")
+        split.column().operator(SelectGameExportDirectory.bl_idname, text="Browse")
+
+        layout.row().prop(settings, "import_bak_file")
+        layout.row().prop(settings, "also_export_to_import")
+
+        layout.row().prop(settings, "map_stem")
+
+        if settings.game_variable_name == "ELDEN_RING":
+            row = layout.row()
+            split = row.split(factor=0.75)
+            split.column().prop(settings, "str_matbinbnd_path")
+            split.column().operator(SelectCustomMATBINBNDFile.bl_idname, text="Browse")
+        else:
+            # TODO: Elden Ring still has an MTDBND that FLVERs may occasionally use?
+            row = layout.row()
+            split = row.split(factor=0.75)
+            split.column().prop(settings, "str_mtdbnd_path")
+            split.column().operator(SelectCustomMTDBNDFile.bl_idname, text="Browse")
 
         row = layout.row()
         split = row.split(factor=0.75)
-        split.column().prop(context.scene.soulstruct_settings, "png_cache_directory")
+        split.column().prop(settings, "str_png_cache_directory")
         split.column().operator(SelectPNGCacheDirectory.bl_idname, text="Browse")
-        layout.row().prop(context.scene.soulstruct_settings, "read_cached_pngs")
-        layout.row().prop(context.scene.soulstruct_settings, "write_cached_pngs")
-
-        row = layout.row()
-        split = row.split(factor=0.75)
-        split.column().prop(context.scene.soulstruct_settings, "mtdbnd_path")
-        split.column().operator(SelectCustomMTDBNDFile.bl_idname, text="Browse")
+        layout.row().prop(settings, "read_cached_pngs")
+        layout.row().prop(settings, "write_cached_pngs")
 
 
 class GlobalSettingsPanel(bpy.types.Panel, GlobalSettingsPanel_ViewMixin):

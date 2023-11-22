@@ -15,11 +15,16 @@ from bpy_extras.io_utils import ImportHelper, ExportHelper
 
 if tp.TYPE_CHECKING:
     from soulstruct.dcx import DCXType
+    from io_soulstruct.general.core import SoulstructSettings
 
 
 class LoggingOperator(bpy.types.Operator):
 
     cleanup_callback: tp.Callable = None
+
+    @staticmethod
+    def settings(context) -> SoulstructSettings:
+        return context.scene.soulstruct_settings
 
     def info(self, msg: str):
         print(f"# INFO: {msg}")
@@ -79,9 +84,9 @@ class LoggingImportOperator(LoggingOperator, ImportHelper):
 
     def invoke(self, context, _event):
         """Set the initial directory based on Global Settings."""
-        game_directory = context.scene.soulstruct_settings.game_directory
-        if game_directory and Path(game_directory).is_dir():
-            self.directory = game_directory
+        game_import_directory = context.scene.soulstruct_settings.game_import_directory
+        if game_import_directory and game_import_directory.is_dir():
+            self.directory = str(game_import_directory)
             context.window_manager.fileselect_add(self)
             return {'RUNNING_MODAL'}
         return super().invoke(context, _event)
@@ -99,9 +104,9 @@ class LoggingExportOperator(LoggingOperator, ExportHelper):
 
     def invoke(self, context, _event):
         """Set the initial directory based on Global Settings."""
-        game_directory = context.scene.soulstruct_settings.game_directory
-        if game_directory and Path(game_directory).is_dir():
-            self.directory = game_directory
+        game_export_directory = context.scene.soulstruct_settings.game_export_directory
+        if game_export_directory and Path(game_export_directory).is_dir():
+            self.directory = str(game_export_directory)
             context.window_manager.fileselect_add(self)
             return {'RUNNING_MODAL'}
         return super().invoke(context, _event)

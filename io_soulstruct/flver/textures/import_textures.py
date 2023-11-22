@@ -428,7 +428,10 @@ class TextureImportManager:
             self._tpf_textures.setdefault(texture.name, texture)
 
     def _find_map_tpfs(self, map_area_block_dir: Path):
-        """Find 'mAA' directory adjacent to given 'mAA_BB_CC_DD' directory and find all TPFBHD split Binders in it."""
+        """Find 'mAA' directory adjacent to given 'mAA_BB_CC_DD' directory and find all TPFBHD split Binders in it.
+
+        In PTDE, also searches loose `map/tx` folder for TPFs.
+        """
         map_directory_match = MAP_STEM_RE.match(map_area_block_dir.name)
         if not map_directory_match:
             _LOGGER.warning("Loose FLVER not located in a map folder (`mAA_BB_CC_DD`). Cannot find map TPFs.")
@@ -436,6 +439,9 @@ class TextureImportManager:
         area = map_directory_match.groupdict()["area"]
         map_area_dir = map_area_block_dir / f"../m{area}"
         self._find_map_area_tpfbhds(map_area_dir)
+        tx_path = map_area_block_dir / "../tx"
+        if tx_path.is_dir():
+            self._find_tpfs_in_dir(map_area_block_dir / "../tx")
 
     def _find_map_area_tpfbhds(self, map_area_dir: Path):
         if not map_area_dir.is_dir():
@@ -456,6 +462,17 @@ class TextureImportManager:
                         # TODO: Handle duplicate textures/overwrites. Currently ignoring duplicates.
                         self._tpf_textures.setdefault(texture.name, texture)
                     self._scanned_tpf_sources.add(tpf_stem)
+
+    def _find_tpfs_in_dir(self, tpf_dir: Path):
+        """Register all TPF files in `tpf_dir` as pending sources."""
+        if not tpf_dir.is_dir():
+            _LOGGER.warning(f"Directory does not exist: {tpf_dir}. Cannot find TPFs in it.")
+            return
+
+        for tpf_path in tpf_dir.glob("*.tpf"):
+            tpf_stem = tpf_path.name.split(".")[0]
+            if tpf_stem not in self._scanned_tpf_sources:
+                self._pending_tpf_sources.setdefault(tpf_stem, tpf_path)
 
     def _find_chr_tpfbdts(self, source_dir: Path, chrbnd: Binder):
         try:
@@ -526,6 +543,7 @@ def import_png_as_image(
         bl_image = bpy.data.images.load(str(write_png_path))
         bl_image.pack()  # embed PNG in `.blend` file
     else:
+        # TODO: doesn't work (size doesn't update, e.g.)
         if bl_image.packed_file:
             bl_image.unpack(method="USE_ORIGINAL")
         bl_image.filepath_raw = str(write_png_path)

@@ -85,7 +85,7 @@ class ExportLooseHKXAnimation(LoggingOperator, ExportHelper):
     def execute(self, context):
         self.info("Executing HKX animation export...")
 
-        settings = SoulstructSettings.get_scene_settings(context)  # type: SoulstructSettings
+        settings = SoulstructSettings.from_context(context)  # type: SoulstructSettings
 
         animation_file_path = Path(self.filepath)
 
@@ -117,7 +117,7 @@ class ExportLooseHKXAnimation(LoggingOperator, ExportHelper):
         finally:
             context.scene.frame_set(current_frame)
 
-        dcx_type = settings.resolve_dcx_type(self.dcx_type, "HKX", is_binder_entry=False)
+        dcx_type = settings.resolve_dcx_type(self.dcx_type, "hkx")
         animation_hkx.dcx_type = dcx_type
         animation_hkx.write(animation_file_path)
 
@@ -228,16 +228,15 @@ class QuickExportCharacterHKXAnimation(LoggingOperator):
         default=True,
     )
 
-    GAME_INFO = {
-        BlenderGame.DS1R: {
-            "animation_stem_template": "##_####",
-            "hkx_entry_path": "N:\\FRPG\\data\\Model\\chr\\{character_name}\\hkxx64\\{animation_stem}.hkx",
-            "hkx_dcx_type": DCXType.Null,
-        }
-    }
+    # TODO: Hard-coding defaults for DSR (only supported game for now).
+    ANIMATION_STEM_TEMPLATE = "##_####"
+    HKX_ENTRY_PATH = "N:\\FRPG\\data\\Model\\chr\\{character_name}\\hkxx64\\{animation_stem}.hkx"
+    HKX_DCX_TYPE = DCXType.Null
 
     @classmethod
     def poll(cls, context):
+        if cls.settings(context).game_variable_name != "DARK_SOULS_DSR":
+            return False
         if len(context.selected_objects) != 1:
             return False
         obj = context.selected_objects[0]
@@ -255,25 +254,18 @@ class QuickExportCharacterHKXAnimation(LoggingOperator):
         if not self.poll(context):
             return self.error("Must select a single Armature of a character (name starting with 'c') with an Action.")
 
-        settings = SoulstructSettings.get_scene_settings(context)
-        game_directory = settings.game_directory
-        if not game_directory:
-            return self.error("No game directory set in global Soulstruct Settings.")
-        game_hkx_settings = self.GAME_INFO.get(settings.game, None)
-        if game_hkx_settings is None:
+        settings = self.settings(context)
+        if settings.game_variable_name != "DARK_SOULS_DSR":
             return self.error(f"Game '{settings.game}' not supported for automatic ANIBND export.")
 
         bl_armature = context.selected_objects[0]
 
-        character_name = bl_armature.name.split(" ")[0]
+        character_name = get_bl_obj_stem(bl_armature)
         if character_name == "c0000":
             return self.error("Automatic ANIBND import is not yet supported for c0000 (player model).")
 
-        # Get ANIBND.
-        dcx_type = settings.resolve_dcx_type("Auto", "Binder")
-        anibnd_path = dcx_type.process_path(Path(game_directory, "chr", f"{character_name}.anibnd"))
-
-        if not anibnd_path.is_file():
+        anibnd_path = settings.get_import_path(f"chr/{character_name}.anibnd")
+        if not anibnd_path or not anibnd_path.is_file():
             return self.error(f"Cannot find ANIBND for character '{character_name}' in game directory.")
 
         skeleton_anibnd = anibnd = Binder.from_path(anibnd_path)
@@ -296,9 +288,9 @@ class QuickExportCharacterHKXAnimation(LoggingOperator):
             return self.error(f"Could not parse animation ID from action name '{action.name}'.")
 
         try:
-            animation_name = get_animation_name(animation_id, game_hkx_settings["animation_stem_template"], prefix="a")
+            animation_name = get_animation_name(animation_id, self.ANIMATION_STEM_TEMPLATE, prefix="a")
         except ValueError:
-            max_digits = game_hkx_settings["animation_stem_template"].count("#")
+            max_digits = self.ANIMATION_STEM_TEMPLATE.count("#")
             return self.error(
                 f"Animation ID {animation_id} is too large for game {settings.game}. Max is {'9' * max_digits}."
             )
@@ -314,20 +306,17 @@ class QuickExportCharacterHKXAnimation(LoggingOperator):
         finally:
             context.scene.frame_set(current_frame)
 
-        animation_hkx.dcx_type = settings.resolve_dcx_type("Auto", "AnimationHKX")
+        animation_hkx.dcx_type = self.HKX_DCX_TYPE
         entry_path = animation_hkx.dcx_type.process_path(
-            game_hkx_settings["hkx_entry_path"].format(character_name=character_name, animation_stem=animation_name)
+            self.HKX_ENTRY_PATH.format(character_name=character_name, animation_stem=animation_name)
         )
 
         # Update or create binder entry.
-        anibnd.set_default_entry(animation_id, new_path=entry_path, new_data=bytes(animation_hkx))
+        anibnd.set_default_entry(animation_id, new_path=entry_path, new_data=animation_hkx)
         self.info(f"Successfully exported animation '{animation_name}' to ANIBND '{anibnd_path.name}'.")
 
-        # Write modified ANIBND back.
-        anibnd.write()
-        self.info(f"Wrote modified ANIBND '{anibnd_path.name}' back to disk.")
-
-        return {"FINISHED"}
+        # Write modified ANIBND.
+        return settings.export_file(self, anibnd, Path(f"chr/{anibnd_path.name}"))
 
 
 class QuickExportObjectHKXAnimation(LoggingOperator):
@@ -343,16 +332,15 @@ class QuickExportObjectHKXAnimation(LoggingOperator):
         default=True,
     )
 
-    GAME_INFO = {
-        BlenderGame.DS1R: {
-            "animation_stem_template": "##_####",
-            "hkx_entry_path": "N:\\FRPG\\data\\Model\\obj\\{object_name}\\hkxx64\\{animation_stem}.hkx",
-            "hkx_dcx_type": DCXType.Null,
-        }
-    }
+    # TODO: Hard-coding defaults for DSR (only supported game for now).
+    ANIMATION_STEM_TEMPLATE = "##_####"
+    HKX_ENTRY_PATH = "N:\\FRPG\\data\\Model\\chr\\{character_name}\\hkxx64\\{animation_stem}.hkx"
+    HKX_DCX_TYPE = DCXType.Null
 
     @classmethod
     def poll(cls, context):
+        if cls.settings(context).game_variable_name != "DARK_SOULS_DSR":
+            return False
         if len(context.selected_objects) != 1:
             return False
         obj = context.selected_objects[0]
@@ -367,31 +355,24 @@ class QuickExportObjectHKXAnimation(LoggingOperator):
         return True
 
     def execute(self, context):
+        settings = self.settings(context)
+        if settings.game_variable_name != "DARK_SOULS_DSR":
+            return self.error(f"Game '{settings.game}' not supported for automatic ANIBND export.")
         if not self.poll(context):
             return self.error("Must select a single Armature of a object (name starting with 'o') with an Action.")
 
-        settings = SoulstructSettings.get_scene_settings(context)
-        game_directory = settings.game_directory
-        if not game_directory:
-            return self.error("No game directory set in global Soulstruct Settings.")
-        game_hkx_settings = self.GAME_INFO.get(settings.game, None)
-        if game_hkx_settings is None:
-            return self.error(f"Game '{settings.game}' not supported for automatic ANIBND export.")
-
         bl_armature = context.selected_objects[0]
-
-        object_name = bl_armature.name.split(" ")[0]
+        object_name = get_bl_obj_stem(bl_armature)
 
         # Get OBJBND.
-        dcx_type = settings.resolve_dcx_type("Auto", "Binder")
-        objbnd_path = dcx_type.process_path(Path(game_directory, "obj", f"{object_name}.objbnd"))
-        if not objbnd_path.is_file():
+        objbnd_path = settings.get_import_path(f"obj/{object_name}.objbnd")
+        if not objbnd_path or not objbnd_path.is_file():
             return self.error(f"Cannot find OBJBND for object '{object_name}' in game directory.")
         objbnd = Binder.from_path(objbnd_path)
 
         # Find ANIBND entry.
         try:
-            anibnd_entry = objbnd[f"{object_name}.anibnd"]
+            anibnd_entry = objbnd[f"{object_name}.anibnd"]  # no DCX
         except EntryNotFoundError:
             return self.error(f"OBJBND of object '{object_name}' has no ANIBND.")
         skeleton_anibnd = anibnd = Binder.from_binder_entry(anibnd_entry)
@@ -414,9 +395,9 @@ class QuickExportObjectHKXAnimation(LoggingOperator):
             return self.error(f"Could not parse animation ID from action name '{action.name}'.")
 
         try:
-            animation_name = get_animation_name(animation_id, game_hkx_settings["animation_stem_template"], prefix="a")
+            animation_name = get_animation_name(animation_id, self.ANIMATION_STEM_TEMPLATE, prefix="a")
         except ValueError:
-            max_digits = game_hkx_settings["animation_stem_template"].count("#")
+            max_digits = self.ANIMATION_STEM_TEMPLATE.count("#")
             return self.error(
                 f"Animation ID {animation_id} is too large for game {settings.game}. Max is {'9' * max_digits}."
             )
@@ -432,9 +413,9 @@ class QuickExportObjectHKXAnimation(LoggingOperator):
         finally:
             context.scene.frame_set(current_frame)
 
-        animation_hkx.dcx_type = settings.resolve_dcx_type("Auto", "AnimationHKX")
+        animation_hkx.dcx_type = DCXType.Null  # no DCX inside OBJBND/ANIBND
         entry_path = animation_hkx.dcx_type.process_path(
-            game_hkx_settings["hkx_entry_path"].format(object_name=object_name, animation_stem=animation_name)
+            self.HKX_ENTRY_PATH.format(object_name=object_name, animation_stem=animation_name)
         )
 
         # Update or create binder entry.
@@ -443,10 +424,8 @@ class QuickExportObjectHKXAnimation(LoggingOperator):
         # Write modified ANIBND entry back.
         anibnd_entry.set_from_binary_file(anibnd)
 
-        # Write modified OBJBND file back.
-        objbnd.write()
-
-        return {"FINISHED"}
+        # Export modified OBJBND.
+        return settings.export_file(self, objbnd, Path(f"obj/{objbnd_path.name}"))
 
 
 def create_animation_hkx(skeleton_hkx: SkeletonHKX, bl_armature, from_60_fps: bool) -> AnimationHKX:

@@ -75,10 +75,12 @@ CLASSES = (
     SoulstructGameEnums,
     GlobalSettingsPanel,
     GlobalSettingsPanel_View,
-    SelectGameDirectory,
+    SelectGameImportDirectory,
+    SelectGameExportDirectory,
     SelectMapDirectory,
     SelectPNGCacheDirectory,
     SelectCustomMTDBNDFile,
+    SelectCustomMATBINBNDFile,
 
     MeshMoveSettings,
     CopyMeshSelectionOperator,
@@ -215,7 +217,7 @@ SPACE_VIEW_3D_HANDLERS = []
 
 @bpy.app.handlers.persistent
 def load_handler(_):
-    SoulstructSettings.load_settings()
+    SoulstructSettings.from_context().load_settings()
 
 
 def register():

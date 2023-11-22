@@ -47,9 +47,10 @@ from soulstruct.base.models.flver import FLVER, FLVERBone, FLVERBoneUsageFlags, 
 from soulstruct.base.models.flver.mesh_tools import MergedMesh
 from soulstruct.containers import Binder
 from soulstruct.containers.tpf import TPFTexture, batch_get_tpf_texture_png_data
+from soulstruct.games import *
 from soulstruct.utilities.maths import Vector3
 
-from io_soulstruct.general import SoulstructSettings, SoulstructGameEnums, BlenderGame
+from io_soulstruct.general import SoulstructSettings, SoulstructGameEnums
 from io_soulstruct.general.cached import get_cached_file
 from io_soulstruct.utilities import *
 from .materials import *
@@ -58,8 +59,10 @@ from .utilities import *
 
 if tp.TYPE_CHECKING:
     from soulstruct.base.models.mtd import MTDBND as BaseMTDBND
-    from soulstruct.darksouls1r.maps import MSB
     from soulstruct.eldenring.models.matbin import MATBINBND
+
+    from io_soulstruct.type_checking import MSB_TYPING
+
 
 FLVER_BINDER_RE = re.compile(r"^.*?\.(.*bnd)(\.dcx)?$")
 MAP_NAME_RE = re.compile(r"^(m\d\d)_\d\d_\d\d_\d\d$")
@@ -132,14 +135,13 @@ class BaseFLVERImportOperator(LoggingImportOperator):
                     self.find_extra_textures(source_path, flver, texture_manager)
                 flvers.append((source_path.name.split(".")[0], flver))
 
-        settings = bpy.context.scene.soulstruct_settings  # type: SoulstructSettings
+        settings = self.settings(context)
         settings.save_settings()
         importer = FLVERBatchImporter(
             self,
             context,
+            settings,
             texture_manager=texture_manager,
-            mtdbnd=settings.get_mtdbnd(context),
-            matbinbnd=settings.get_matbinbnd(context),
         )
 
         for bl_name, flver in flvers:
@@ -184,14 +186,14 @@ class ImportFLVER(BaseFLVERImportOperator):
         maxlen=255,
     )
 
-    files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'},)
+    files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'})
     directory: bpy.props.StringProperty(options={'HIDDEN'})
 
     def invoke(self, context, _event):
         """Set the initial directory based on Global Settings."""
-        game_directory = SoulstructSettings.get_scene_settings(context).game_directory
-        if game_directory and Path(game_directory).is_dir():
-            self.directory = game_directory
+        game_import_directory = self.settings(context).game_import_directory
+        if game_import_directory and game_import_directory.is_dir():
+            self.directory = str(game_import_directory)
             context.window_manager.fileselect_add(self)
             return {'RUNNING_MODAL'}
         return super().invoke(context, _event)
@@ -213,16 +215,16 @@ class ImportMapPieceFLVER(BaseFLVERImportOperator):
         maxlen=255,
     )
 
-    files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'},)
+    files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'})
     directory: bpy.props.StringProperty(options={'HIDDEN'})
 
     @classmethod
     def poll(cls, context):
-        return bool(SoulstructSettings.get_selected_map_path(context))
+        return bool(cls.settings(context).get_import_map_path())
 
     def invoke(self, context, _event):
         """Set the initial directory based on Global Settings."""
-        map_path = SoulstructSettings.get_selected_map_path(context)
+        map_path = self.settings(context).get_import_map_path()
         if map_path and Path(map_path).is_dir():
             self.directory = str(map_path)
             context.window_manager.fileselect_add(self)
@@ -243,7 +245,7 @@ class ImportMapPieceFLVER(BaseFLVERImportOperator):
 
     def set_blender_parent(self, context, bl_flver_armature: bpy.types.ArmatureObject):
         """Find or create Map Piece parent."""
-        map_stem = SoulstructSettings.get_scene_settings(context).map_stem
+        map_stem = self.settings(context).map_stem
         map_piece_parent = find_or_create_bl_empty(f"{map_stem} Map Pieces", context)
         bl_flver_armature.parent = map_piece_parent
 
@@ -262,15 +264,15 @@ class ImportCharacterFLVER(BaseFLVERImportOperator):
         maxlen=255,
     )
 
-    files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'},)
+    files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'})
     directory: bpy.props.StringProperty(options={'HIDDEN'})
 
     @classmethod
     def poll(cls, context):
-        return bool(SoulstructSettings.get_game_path("chr"))
+        return bool(cls.settings(context).get_import_path("chr"))
 
     def invoke(self, context, _event):
-        chr_dir = SoulstructSettings.get_game_path("chr")
+        chr_dir = self.settings(context).get_import_path("chr")
         if chr_dir and chr_dir.is_dir():
             self.directory = str(chr_dir)
             context.window_manager.fileselect_add(self)
@@ -294,15 +296,15 @@ class ImportObjectFLVER(BaseFLVERImportOperator):
         maxlen=255,
     )
 
-    files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'},)
+    files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'})
     directory: bpy.props.StringProperty(options={'HIDDEN'})
 
     @classmethod
     def poll(cls, context):
-        return bool(SoulstructSettings.get_game_path("obj"))
+        return bool(cls.settings(context).get_import_path("obj"))
 
     def invoke(self, context, _event):
-        obj_dir = SoulstructSettings.get_game_path("obj")
+        obj_dir = self.settings(context).get_import_path("obj")
         if obj_dir and obj_dir.is_dir():
             self.directory = str(obj_dir)
             context.window_manager.fileselect_add(self)
@@ -331,10 +333,10 @@ class ImportEquipmentFLVER(BaseFLVERImportOperator):
 
     @classmethod
     def poll(cls, context):
-        return bool(SoulstructSettings.get_game_path("parts"))
+        return bool(cls.settings(context).get_import_path("parts"))
 
     def invoke(self, context, _event):
-        parts_dir = SoulstructSettings.get_game_path("parts")
+        parts_dir = self.settings(context).get_import_path("parts")
         if parts_dir and parts_dir.is_dir():
             self.directory = str(parts_dir)
             context.window_manager.fileselect_add(self)
@@ -356,9 +358,8 @@ class ImportMapPieceMSBPart(LoggingOperator):
 
     @classmethod
     def poll(cls, context):
-        settings = SoulstructSettings.get_scene_settings(context)
-        msb_dcx_type = settings.resolve_dcx_type("Auto", "MSB", False, context)
-        msb_path = msb_dcx_type.process_path(settings.get_game_path("map/MapStudio", f"{settings.map_stem}.msb"))
+        settings = SoulstructSettings.from_context(context)
+        msb_path = settings.get_import_msb_path()
         if not msb_path or not msb_path.is_file():
             return False
         game_enums = context.scene.soulstruct_game_enums  # type: SoulstructGameEnums
@@ -370,7 +371,7 @@ class ImportMapPieceMSBPart(LoggingOperator):
 
         start_time = time.perf_counter()
 
-        settings = SoulstructSettings.get_scene_settings(context)
+        settings = SoulstructSettings.from_context(context)
         settings.save_settings()
 
         flver_import_settings = context.scene.flver_import_settings  # type: FLVERImportSettings
@@ -379,16 +380,13 @@ class ImportMapPieceMSBPart(LoggingOperator):
             part_name, flver_stem = context.scene.soulstruct_game_enums.map_piece_parts.split("|")
         except ValueError:
             return self.error("Invalid MSB map piece selection.")
-        msb_path = settings.get_selected_map_msb_path(context)
+        msb_path = settings.get_import_msb_path()
 
         # Get MSB part transform.
-        msb = get_cached_file(msb_path, settings.get_game_msb_class(context))  # type: MSB
+        msb = get_cached_file(msb_path, settings.get_game_msb_class())  # type: MSB_TYPING
         map_piece_part = msb.map_pieces.find_entry_name(part_name)
         transform = Transform.from_msb_part(map_piece_part)
-
-        dcx_type = settings.resolve_dcx_type("Auto", "FLVER", False, context)
-        flver_path = Path(settings.game_directory, "map", settings.map_stem, f"{flver_stem}.flver")
-        flver_path = dcx_type.process_path(flver_path)
+        flver_path = settings.get_import_map_path(f"{flver_stem}.flver")
         bl_name = part_name
 
         self.info(f"Importing map piece FLVER: {flver_path}")
@@ -413,8 +411,8 @@ class ImportMapPieceMSBPart(LoggingOperator):
         importer = FLVERBatchImporter(
             self,
             context,
+            settings,
             texture_manager=texture_manager,
-            mtdbnd=settings.get_mtdbnd(context),
         )
 
         try:
@@ -461,9 +459,8 @@ class ImportAllMapPieceMSBParts(LoggingOperator):
 
     @classmethod
     def poll(cls, context):
-        settings = SoulstructSettings.get_scene_settings(context)
-        msb_dcx_type = settings.resolve_dcx_type("Auto", "MSB", False, context)
-        msb_path = msb_dcx_type.process_path(settings.get_game_path("map/MapStudio", f"{settings.map_stem}.msb"))
+        settings = SoulstructSettings.from_context(context)
+        msb_path = settings.get_import_msb_path()
         if not msb_path or not msb_path.is_file():
             return False
         return True  # MSB exists
@@ -472,7 +469,7 @@ class ImportAllMapPieceMSBParts(LoggingOperator):
 
         start_time = time.perf_counter()
 
-        settings = SoulstructSettings.get_scene_settings(context)
+        settings = SoulstructSettings.from_context(context)
         settings.save_settings()
 
         flver_import_settings = context.scene.flver_import_settings  # type: FLVERImportSettings
@@ -481,9 +478,8 @@ class ImportAllMapPieceMSBParts(LoggingOperator):
         else:
             texture_manager = None
 
-        msb_path = settings.get_selected_map_msb_path(context)
-        msb = get_cached_file(msb_path, settings.get_game_msb_class(context))  # type: MSB
-        flver_dcx_type = settings.resolve_dcx_type("Auto", "FLVER", False, context)
+        msb_path = settings.get_import_msb_path()
+        msb = get_cached_file(msb_path, settings.get_game_msb_class())  # type: MSB_TYPING
 
         # Maps FLVER model stems to Armature and Mesh already created.
         loaded_models = {}  # type: dict[str, tuple[bpy.types.ArmatureObject, bpy.types.MeshObject]]
@@ -491,8 +487,8 @@ class ImportAllMapPieceMSBParts(LoggingOperator):
         importer = FLVERBatchImporter(
             self,
             context,
+            settings,
             texture_manager=texture_manager,
-            mtdbnd=settings.get_mtdbnd(context),
         )
 
         for map_piece_part in msb.map_pieces:
@@ -508,8 +504,7 @@ class ImportAllMapPieceMSBParts(LoggingOperator):
                 continue
 
             # Import new FLVER.
-            flver_path = Path(settings.game_directory, "map", settings.map_stem, f"{model_stem}.flver")
-            flver_path = flver_dcx_type.process_path(flver_path)
+            flver_path = settings.get_import_map_path(f"{model_stem}.flver")
             transform = Transform.from_msb_part(map_piece_part)
 
             self.info(f"Importing map piece FLVER: {flver_path}")
@@ -571,16 +566,26 @@ class FLVERBatchImporter:
 
     operator: LoggingOperator
     context: bpy.types.Context
+    settings: SoulstructSettings
     texture_manager: TextureImportManager | None = None
+
+    # Loaded from `settings` if not given.
     mtdbnd: BaseMTDBND | None = None
     matbinbnd: MATBINBND | None = None
 
+    # Per-FLVER settings.
     flver: FLVER | None = None  # current FLVER being imported
     name: str = ""  # name of root Blender mesh object that will be created
     bl_bone_names: list[str] = field(default_factory=list)  # list of Blender bone names in order of FLVER bones
     new_objs: list[bpy.types.Object] = field(default_factory=list)  # all new objects created during import
     new_images: list[bpy.types.Image] = field(default_factory=list)  # all new images created during import
     new_materials: list[bpy.types.Material] = field(default_factory=list)  # all new materials created during import
+
+    def __post_init__(self):
+        if self.mtdbnd is None:
+            self.mtdbnd = self.settings.get_mtdbnd()
+        if self.matbinbnd is None:
+            self.matbinbnd = self.settings.get_matbinbnd()
 
     def abort_import(self):
         """Delete all Blender objects, images, and materials created during this import."""
@@ -688,7 +693,7 @@ class FLVERBatchImporter:
         Returns a list of Blender material indices for each submesh, and a list of UV layer names for each Blender
         material (NOT each submesh).
         """
-        soulstruct_settings = SoulstructSettings.get_scene_settings(self.context)
+        soulstruct_settings = SoulstructSettings.from_context(self.context)
         if self.texture_manager or soulstruct_settings.png_cache_directory:
             p = time.perf_counter()
             self.new_images = self.load_texture_images(self.texture_manager)
@@ -718,17 +723,16 @@ class FLVERBatchImporter:
             if material_hash in flver_material_infos:
                 continue  # material already created (used by a previous submesh)
 
-            match soulstruct_settings.game:
-                case BlenderGame.PTDE | BlenderGame.DS1R:
-                    material_info = DS1MaterialShaderInfo.from_mtdbnd_or_name(
-                        self.operator, submesh.material.mtd_name, self.mtdbnd
-                    )
-                case BlenderGame.BB:
-                    material_info = BBMaterialShaderInfo.from_mtdbnd_or_name(
-                        self.operator, submesh.material.mtd_name, self.mtdbnd
-                    )
-                case _:
-                    raise FLVERImportError(f"FLVER import not implemented for game {soulstruct_settings.game.name}.")
+            if soulstruct_settings.is_game(DARK_SOULS_PTDE, DARK_SOULS_DSR):
+                material_info = DS1MaterialShaderInfo.from_mtdbnd_or_name(
+                    self.operator, submesh.material.mtd_name, self.mtdbnd
+                )
+            elif soulstruct_settings.is_game(BLOODBORNE):
+                material_info = BBMaterialShaderInfo.from_mtdbnd_or_name(
+                    self.operator, submesh.material.mtd_name, self.mtdbnd
+                )
+            else:
+                raise FLVERImportError(f"FLVER import not implemented for game {soulstruct_settings.game.name}.")
             flver_material_infos[material_hash] = material_info
             flver_material_uv_layer_names[material_hash] = material_info.get_uv_layer_names()
 
@@ -823,9 +827,16 @@ class FLVERBatchImporter:
 
         Will NEVER load an image that is already in Blender's data, regardless of image type (identified by stem only).
         """
-        bl_image_stems = {Path(image.name).stem for image in bpy.data.images}
+        bl_image_stems = set()
+        image_stems_to_replace = set()
+        for image in bpy.data.images:
+            stem = Path(image.name).stem
+            if image.size[:] == (1, 1) and image.pixels[:] == (1.0, 0.0, 1.0, 1.0):
+                image_stems_to_replace.add(stem)
+            else:
+                bl_image_stems.add(stem)
         new_loaded_images = []
-        ss_settings = SoulstructSettings.get_scene_settings(self.context)
+        ss_settings = SoulstructSettings.from_context(self.context)
 
         textures_to_load = {}  # type: dict[str, TPFTexture]
         for texture_path in self.flver.get_all_texture_paths():
@@ -868,7 +879,9 @@ class FLVERBatchImporter:
             for texture_stem, png_data in zip(textures_to_load.keys(), all_png_data):
                 if png_data is None:
                     continue  # failed to convert this texture
-                bl_image = import_png_as_image(texture_stem, png_data, write_png_directory)
+                bl_image = import_png_as_image(
+                    texture_stem, png_data, write_png_directory, replace_existing=texture_stem in image_stems_to_replace
+                )
                 new_loaded_images.append(bl_image)
 
         return new_loaded_images

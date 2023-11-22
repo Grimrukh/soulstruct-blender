@@ -30,15 +30,14 @@ from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
 
 from soulstruct_havok.wrappers.hkx2015 import MapCollisionHKX
 
-from io_soulstruct.general import SoulstructSettings, SoulstructGameEnums
+from io_soulstruct.general import SoulstructGameEnums
 from io_soulstruct.general.cached import get_cached_file
 from io_soulstruct.utilities import *
 from io_soulstruct.utilities.materials import *
 from .utilities import *
 
 if tp.TYPE_CHECKING:
-    from soulstruct.darksouls1r.maps.msb import MSB
-
+    from io_soulstruct.type_checking import MSB_TYPING
 
 HKX_NAME_RE = re.compile(r".*\.hkx(\.dcx)?")
 HKX_BINDER_RE = re.compile(r"^.*?\.hkxbhd(\.dcx)?$")
@@ -100,8 +99,16 @@ class ImportHKXMapCollision(LoggingOperator, ImportHelper):
     files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'})
     directory: bpy.props.StringProperty(options={'HIDDEN'})
 
+    def invoke(self, context, _event):
+        """Set the initial directory based on Global Settings."""
+        map_path = self.settings(context).get_import_map_path()
+        if map_path and map_path.is_dir():
+            self.directory = str(map_path)
+            context.window_manager.fileselect_add(self)
+            return {'RUNNING_MODAL'}
+        return super().invoke(context, _event)
+
     def execute(self, context):
-        print("Executing HKX collision import...")
 
         file_paths = [Path(self.directory, file.name) for file in self.files]
         import_infos = []  # type: list[HKXImportInfo | HKXImportChoiceInfo]
@@ -283,7 +290,7 @@ def load_other_res_hkx(
             return None
         return other_res_hkx
 
-    # Look for other-resolution loose HKX in same directory.
+    # Look for other-resolution loose HKX in same directory (e.g. DS1: PTDE).
     other_hkx_path = file_path.parent / f"{other_res}{file_path.name[1:]}"
     if not other_hkx_path.is_file():
         operator.warning(
@@ -427,28 +434,22 @@ class ImportHKXMapCollisionFromHKXBHD(LoggingOperator):
 
         start_time = time.perf_counter()
 
-        settings = SoulstructSettings.get_scene_settings(context)
-        game_lists = context.scene.soulstruct_game_enums  # type: SoulstructGameEnums
-        map_path = SoulstructSettings.get_selected_map_path(context)
-        if not map_path:
-            return self.error("Game directory and map stem must be set in Blender's Soulstruct global settings.")
+        settings = self.settings(context)
         settings.save_settings()
+        game_lists = context.scene.soulstruct_game_enums  # type: SoulstructGameEnums
 
-        transform = None  # type: Transform | None
+        import_map_path = settings.get_import_map_path()
+        if not import_map_path:  # validation
+            return self.error("Game directory and map stem must be set in Blender's Soulstruct global settings.")
 
         hkx_entry_name = game_lists.hkx_map_collision
+        if hkx_entry_name in {"", "0"}:
+            return self.error("No HKX map collision entry selected.")
         bl_name = hkx_entry_name.split(".")[0]
 
         # BXF file never has DCX.
-        hkxbhd_path = map_path / f"h{settings.map_stem[1:]}.hkxbhd"
-        hkxbdt_path = map_path / f"h{settings.map_stem[1:]}.hkxbdt"
-        if settings.use_bak_file:
-            hkxbhd_path = hkxbhd_path.with_name(hkxbhd_path.name + ".bak")
-            if not hkxbhd_path.is_file():
-                return self.error(f"Could not find HKXBHD '.bak' file for map '{settings.map_stem}'.")
-            hkxbdt_path = hkxbdt_path.with_name(hkxbdt_path.name + ".bak")
-            if not hkxbdt_path.is_file():
-                return self.error(f"Could not find HKXBDT '.bak' file for map '{settings.map_stem}'.")
+        hkxbhd_path = settings.get_import_map_path(f"h{settings.map_stem[1:]}.hkxbhd")
+        hkxbdt_path = settings.get_import_map_path(f"h{settings.map_stem[1:]}.hkxbdt")
         if not hkxbhd_path.is_file():
             return self.error(f"Could not find HKXBHD header file for map '{settings.map_stem}': {hkxbhd_path}")
         if not hkxbdt_path.is_file():
@@ -511,19 +512,8 @@ class ImportHKXMapCollisionFromHKXBHD(LoggingOperator):
                 traceback.print_exc()  # for inspection in Blender console
                 return self.error(f"Cannot import other-res HKX for {import_info.path}. Error: {ex}")
 
-        if transform is not None:
-            # Assign detected MSB transform to collision mesh parent.
-            hkx_parent.location = transform.bl_translate
-            hkx_parent.rotation_euler = transform.bl_rotate
-            hkx_parent.scale = transform.bl_scale
-
         map_parent = find_or_create_bl_empty(f"{settings.map_stem} Collisions", context)
         hkx_parent.parent = map_parent
-
-        # Set 'Model File Stem' if in MSB Import Mode. (This isn't used in MSB Export Mode, which gets its model from
-        # the MSB part, but is a generally useful tracker of the HKX entry stem.)
-        if transform is not None:
-            hkx_parent["Model File Stem"] = hkx_model_name
 
         p = time.perf_counter() - start_time
         self.info(f"Finished importing HKX map collision {hkx_entry_name} from {hkxbhd_path.name} in {p} s.")
@@ -560,44 +550,35 @@ class ImportMSBMapCollision(LoggingOperator):
 
         start_time = time.perf_counter()
 
-        settings = SoulstructSettings.get_scene_settings(context)
-        game_lists = context.scene.soulstruct_game_enums  # type: SoulstructGameEnums
-        map_path = SoulstructSettings.get_selected_map_path(context)
-        if not map_path:
-            return self.error("Game directory and map stem must be set in Blender's Soulstruct global settings.")
+        settings = self.settings(context)
         settings.save_settings()
+        game_lists = context.scene.soulstruct_game_enums  # type: SoulstructGameEnums
+
+        import_map_path = settings.get_import_map_path()
+        if not import_map_path:  # validation
+            return self.error("Game directory and map stem must be set in Blender's Soulstruct global settings.")
+
+        # BXF file never has DCX.
+        hkxbhd_path = settings.get_import_map_path(f"h{settings.map_stem[1:]}.hkxbhd")
+        hkxbdt_path = settings.get_import_map_path(f"h{settings.map_stem[1:]}.hkxbdt")
+        if not hkxbhd_path.is_file():
+            return self.error(f"Could not find HKXBHD header file for map '{settings.map_stem}': {hkxbhd_path}")
+        if not hkxbdt_path.is_file():
+            return self.error(f"Could not find HKXBDT data file for map '{settings.map_stem}': {hkxbdt_path}")
 
         try:
             part_name, hkx_stem = game_lists.hkx_map_collision_parts.split("|")
         except ValueError:
             return self.error("Invalid MSB collision selection.")
-        msb_path = settings.get_selected_map_msb_path(context)
+        msb_path = settings.get_import_msb_path()
 
         # Get MSB part transform.
-        msb = get_cached_file(msb_path, settings.get_game_msb_class(context))  # type: MSB
+        msb = get_cached_file(msb_path, settings.get_game_msb_class())  # type: MSB_TYPING
+
         collision_part = msb.collisions.find_entry_name(part_name)
         transform = Transform.from_msb_part(collision_part)
-
-        dcx_type = settings.resolve_dcx_type("Auto", "MapCollisionHKX", False, context)
-        hkx_entry_name = f"{hkx_stem}.hkx"
-        hkx_entry_name = dcx_type.process_path(hkx_entry_name)
-
+        hkx_entry_name = settings.game.process_dcx_path(f"{hkx_stem}.hkx")
         bl_name = part_name
-
-        # BXF file never has DCX.
-        hkxbhd_path = map_path / f"h{settings.map_stem[1:]}.hkxbhd"
-        hkxbdt_path = map_path / f"h{settings.map_stem[1:]}.hkxbdt"
-        if settings.use_bak_file:
-            hkxbhd_path = hkxbhd_path.with_name(hkxbhd_path.name + ".bak")
-            if not hkxbhd_path.is_file():
-                return self.error(f"Could not find HKXBHD '.bak' file for map '{settings.map_stem}'.")
-            hkxbdt_path = hkxbdt_path.with_name(hkxbdt_path.name + ".bak")
-            if not hkxbdt_path.is_file():
-                return self.error(f"Could not find HKXBDT '.bak' file for map '{settings.map_stem}'.")
-        if not hkxbhd_path.is_file():
-            return self.error(f"Could not find HKXBHD header file for map '{settings.map_stem}': {hkxbhd_path}")
-        if not hkxbdt_path.is_file():
-            return self.error(f"Could not find HKXBDT data file for map '{settings.map_stem}': {hkxbdt_path}")
 
         hkxbxf = Binder.from_path(hkxbhd_path)
         try:
@@ -664,10 +645,7 @@ class ImportMSBMapCollision(LoggingOperator):
         map_parent = find_or_create_bl_empty(f"{settings.map_stem} Collisions", context)
         hkx_parent.parent = map_parent
 
-        # Set 'Model File Stem' if in MSB Import Mode. (This isn't used in MSB Export Mode, which gets its model from
-        # the MSB part, but is a generally useful tracker of the HKX entry stem.)
-        if transform is not None:
-            hkx_parent["Model File Stem"] = hkx_model_name
+        hkx_parent["Model File Stem"] = hkx_model_name
 
         p = time.perf_counter() - start_time
         self.info(f"Finished importing HKX map collision {hkx_entry_name} from {hkxbhd_path.name} in {p} s.")
