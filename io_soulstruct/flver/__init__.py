@@ -36,6 +36,7 @@ __all__ = [
 
     "FLVERImportPanel",
     "FLVERExportPanel",
+    "TextureExportSettingsPanel",
     "FLVERLightmapsPanel",
     "FLVERToolsPanel",
     "FLVERUVMapsPanel",
@@ -67,7 +68,7 @@ class FLVERImportPanel(bpy.types.Panel):
     bl_idname = "SCENE_PT_flver_import"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "Soulstruct"
+    bl_category = "Soulstruct FLVER"
     bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
@@ -100,7 +101,7 @@ class FLVERExportPanel(bpy.types.Panel):
     bl_idname = "SCENE_PT_flver_export"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "Soulstruct"
+    bl_category = "Soulstruct FLVER"
     bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
@@ -115,9 +116,6 @@ class FLVERExportPanel(bpy.types.Panel):
         game_export_box.prop(context.scene.soulstruct_settings, "detect_map_from_parent")
         game_export_box.prop(context.scene.flver_export_settings, "export_textures")
 
-        if context.scene.flver_export_settings.export_textures:
-            self._draw_texture_export_settings(context.scene.texture_export_settings, game_export_box.box())
-
         game_export_box.operator(ExportMapPieceFLVERs.bl_idname)
         game_export_box.operator(ExportCharacterFLVER.bl_idname)
         game_export_box.operator(ExportObjectFLVER.bl_idname)
@@ -127,27 +125,43 @@ class FLVERExportPanel(bpy.types.Panel):
         msb_export_box.label(text="Game MSB Part Export")
         msb_export_box.operator(ExportMapPieceMSBParts.bl_idname)
 
-    @staticmethod
-    def _draw_texture_export_settings(settings: TextureExportSettings, layout):
-        layout.label(text="Texture Export Settings")
-        for prop in (
-            "overwrite_existing",
-            "require_power_of_two",
-            "platform",
-            "diffuse_format",
-            "diffuse_mipmap_count",
-            "specular_format",
-            "specular_mipmap_count",
-            "bumpmap_format",
-            "bumpmap_mipmap_count",
-            "height_format",
-            "height_mipmap_count",
-            "lightmap_format",
-            "lightmap_mipmap_count",
-            "max_chrbnd_tpf_size",
-            "max_tpfs_per_map_tpfbhd",
+
+class TextureExportSettingsPanel(bpy.types.Panel):
+    """Panel for Soulstruct FLVER texture export settings."""
+    bl_label = "Texture Export Settings"
+    bl_idname = "SCENE_PT_texture_export_settings"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "Soulstruct FLVER"
+    bl_options = {'DEFAULT_CLOSED'}
+
+    def draw(self, context):
+        # TODO: These are DS1 fields. Need other games. (Use their own settings classes.)
+        settings = bpy.context.scene.texture_export_settings  # type: TextureExportSettings
+        for prop, split in (
+            ("overwrite_existing", 0),
+            ("require_power_of_two", 0),
+            ("platform", 0.6),
+            ("diffuse_format", 0.6),
+            ("diffuse_mipmap_count", 0),
+            ("specular_format", 0.6),
+            ("specular_mipmap_count", 0),
+            ("bumpmap_format", 0.6),
+            ("bumpmap_mipmap_count", 0),
+            ("height_format", 0.6),
+            ("height_mipmap_count", 0),
+            ("lightmap_format", 0.6),
+            ("lightmap_mipmap_count", 0),
+            ("max_chrbnd_tpf_size", 0),
+            ("max_tpfs_per_map_tpfbhd", 0),
         ):
-            layout.prop(settings, prop)
+            if split > 0:
+                row = self.layout.row(align=True)
+                split = row.split(factor=split)
+                split.column().label(text=prop.replace("_", " ").title())
+                split.column().prop(settings, prop, text="")
+            else:
+                self.layout.prop(settings, prop)
 
 
 class FLVERLightmapsPanel(bpy.types.Panel):
@@ -156,7 +170,7 @@ class FLVERLightmapsPanel(bpy.types.Panel):
     bl_idname = "SCENE_PT_flver_lightmaps"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "Soulstruct"
+    bl_category = "Soulstruct FLVER"
     bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
@@ -180,7 +194,7 @@ class FLVERToolsPanel(bpy.types.Panel):
     bl_idname = "SCENE_PT_flver_tools"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "Soulstruct"
+    bl_category = "Soulstruct FLVER"
     bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
@@ -214,7 +228,7 @@ class FLVERUVMapsPanel(bpy.types.Panel):
     bl_idname = "SCENE_PT_uv_maps"
     bl_space_type = "IMAGE_EDITOR"
     bl_region_type = "UI"
-    bl_category = "Soulstruct"
+    bl_category = "Soulstruct FLVER"
     bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):

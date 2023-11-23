@@ -11,7 +11,7 @@ __all__ = [
     "ExportHKXMapCollisionIntoHKXBHD",
     "ExportMSBMapCollision",
 
-    "HKX_COLLISION_PT_hkx_map_collision_tools",
+    "HKX_COLLISION_PT_hkx_map_collisions",
 ]
 
 import importlib
@@ -29,7 +29,6 @@ else:
 import soulstruct
 importlib.reload(soulstruct)
 
-
 if "HKX_PT_hkx_tools" in locals():
     importlib.reload(sys.modules["io_soulstruct.hkx_map_collision.utilities"])
     importlib.reload(sys.modules["io_soulstruct.hkx_map_collision.import_hkx"])
@@ -42,9 +41,9 @@ from .export_hkx_map_collision import *
 from io_soulstruct.misc_operators import CopyMeshSelectionOperator
 
 
-class HKX_COLLISION_PT_hkx_map_collision_tools(bpy.types.Panel):
+class HKX_COLLISION_PT_hkx_map_collisions(bpy.types.Panel):
     bl_label = "HKX Map Collisions"
-    bl_idname = "HKX_PT_hkx_map_collision_tools"
+    bl_idname = "HKX_PT_hkx_map_collisions"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "Soulstruct Havok"
@@ -52,6 +51,11 @@ class HKX_COLLISION_PT_hkx_map_collision_tools(bpy.types.Panel):
 
     # noinspection PyUnusedLocal
     def draw(self, context):
+        settings = context.scene.soulstruct_settings
+        if settings.game_variable_name != "DARK_SOULS_DSR":
+            self.layout.label(text="Dark Souls: Remastered only.")
+            return
+
         import_box = self.layout.box()
         import_box.operator(ImportHKXMapCollision.bl_idname)
 

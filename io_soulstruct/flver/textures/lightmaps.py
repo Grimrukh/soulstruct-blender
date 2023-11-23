@@ -12,7 +12,6 @@ import bpy
 
 from soulstruct.base.models.mtd import MTDBND as BaseMTDBND
 
-from io_soulstruct.general import SoulstructSettings
 from io_soulstruct.utilities.operators import LoggingOperator
 from io_soulstruct.flver.materials import DS1MaterialShaderInfo
 
@@ -98,7 +97,7 @@ class BakeLightmapTextures(LoggingOperator):
         self.info("Baking FLVER lightmap textures...")
 
         bake_settings = context.scene.bake_lightmap_settings  # type: BakeLightmapSettings
-        mtdbnd = SoulstructSettings.get_mtdbnd(context)
+        mtdbnd = self.settings(context).get_mtdbnd()
 
         # Get all selected FLVER meshes.
         flver_meshes = []

@@ -23,6 +23,9 @@ from soulstruct.containers.tpf import TPF, TPFTexture, batch_get_tpf_texture_png
 from io_soulstruct.utilities import MAP_STEM_RE
 from io_soulstruct.utilities.operators import LoggingImportOperator
 
+if tp.TYPE_CHECKING:
+    from io_soulstruct.general import SoulstructSettings
+
 _LOGGER = logging.getLogger(__name__)
 
 TPF_RE = re.compile(r"(?P<stem>.*)\.tpf(?P<dcx>\.dcx)?$")
@@ -274,6 +277,7 @@ class TextureImportManager:
 
     Uses selected game, FLVER name, and FLVER texture paths to determine where to find TPFs.
     """
+    settings: SoulstructSettings
 
     # Maps Binder stems to Binder file paths we are aware of, but have NOT yet opened and scanned for TPF sources.
     _binder_paths: dict[str, Path] = field(default_factory=dict)
@@ -309,10 +313,15 @@ class TextureImportManager:
 
         # CHARACTERS
         elif source_name.endswith(".chrbnd"):
-            # CHRBND should have been given as an initial Binder. We also look in adjacent `chrtpfbdt` file.
+            # CHRBND should have been given as an initial Binder. We also look in adjacent `chrtpfbdt` file (using
+            # header in CHRBND) for DSR, and adjacent loose folders for PTDE.
             if flver_binder:
                 self.scan_binder_textures(flver_binder)
-                self._find_chr_tpfbdts(source_dir, flver_binder)
+                if self.settings.game_variable_name == "DARK_SOULS_PTDE":
+                    self._find_chr_loose_tpfs(source_dir, model_stem=source_name.split(".")[0])
+                elif self.settings.game_variable_name == "DARK_SOULS_DSR":
+                    self._find_chr_tpfbdts(source_dir, flver_binder)
+                # TODO: More games. Where does Bloodborne keep character textures?
             else:
                 _LOGGER.warning(
                     f"Opened CHRBND '{flver_source_path}' should have been passed to TextureImportManager! Will not be "
@@ -473,6 +482,15 @@ class TextureImportManager:
             tpf_stem = tpf_path.name.split(".")[0]
             if tpf_stem not in self._scanned_tpf_sources:
                 self._pending_tpf_sources.setdefault(tpf_stem, tpf_path)
+
+    def _find_chr_loose_tpfs(self, source_dir: Path, model_stem: str):
+        """Find character TPFs in a loose folder next to the CHRBND."""
+        chr_tpf_dir = source_dir / model_stem
+        if chr_tpf_dir.is_dir():
+            for tpf_path in chr_tpf_dir.glob("*.tpf"):  # no DCX in PTDE
+                tpf_stem = tpf_path.name.split(".")[0]
+                if tpf_stem not in self._scanned_tpf_sources:
+                    self._pending_tpf_sources.setdefault(tpf_stem, tpf_path)
 
     def _find_chr_tpfbdts(self, source_dir: Path, chrbnd: Binder):
         try:

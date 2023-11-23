@@ -148,7 +148,7 @@ class ImportHKXCutscene(LoggingOperator, ImportHelper):
 
         part_armatures = {}  # type: dict[str, tp.Any]
         flvers_to_import = {}  # type: dict[str, FLVER]
-        texture_manager = TextureImportManager()
+        texture_manager = TextureImportManager(settings)
 
         for part_name, remo_part in remobnd.remo_parts.items():
             if remo_part.part is None:

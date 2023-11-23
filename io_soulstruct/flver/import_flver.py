@@ -50,7 +50,6 @@ from soulstruct.containers.tpf import TPFTexture, batch_get_tpf_texture_png_data
 from soulstruct.games import *
 from soulstruct.utilities.maths import Vector3
 
-from io_soulstruct.general import SoulstructSettings, SoulstructGameEnums
 from io_soulstruct.general.cached import get_cached_file
 from io_soulstruct.utilities import *
 from .materials import *
@@ -61,6 +60,7 @@ if tp.TYPE_CHECKING:
     from soulstruct.base.models.mtd import MTDBND as BaseMTDBND
     from soulstruct.eldenring.models.matbin import MATBINBND
 
+    from io_soulstruct.general import SoulstructSettings, SoulstructGameEnums
     from io_soulstruct.type_checking import MSB_TYPING
 
 
@@ -112,7 +112,7 @@ class BaseFLVERImportOperator(LoggingImportOperator):
         start_time = time.perf_counter()
 
         flvers = []  # holds `(bl_name, FLVER)` pairs
-        texture_manager = TextureImportManager()
+        texture_manager = TextureImportManager(self.settings(context))
 
         import_settings = context.scene.flver_import_settings  # type: FLVERImportSettings
 
@@ -358,7 +358,7 @@ class ImportMapPieceMSBPart(LoggingOperator):
 
     @classmethod
     def poll(cls, context):
-        settings = SoulstructSettings.from_context(context)
+        settings = cls.settings(context)
         msb_path = settings.get_import_msb_path()
         if not msb_path or not msb_path.is_file():
             return False
@@ -371,7 +371,7 @@ class ImportMapPieceMSBPart(LoggingOperator):
 
         start_time = time.perf_counter()
 
-        settings = SoulstructSettings.from_context(context)
+        settings = self.settings(context)
         settings.save_settings()
 
         flver_import_settings = context.scene.flver_import_settings  # type: FLVERImportSettings
@@ -394,7 +394,7 @@ class ImportMapPieceMSBPart(LoggingOperator):
         flver = FLVER.from_path(flver_path)
 
         if flver_import_settings.import_textures:
-            texture_manager = TextureImportManager()
+            texture_manager = TextureImportManager(settings)
             texture_manager.find_flver_textures(flver_path)
             area_re = re.compile(r"^m\d\d_")
             texture_map_areas = {
@@ -459,7 +459,7 @@ class ImportAllMapPieceMSBParts(LoggingOperator):
 
     @classmethod
     def poll(cls, context):
-        settings = SoulstructSettings.from_context(context)
+        settings = cls.settings(context)
         msb_path = settings.get_import_msb_path()
         if not msb_path or not msb_path.is_file():
             return False
@@ -469,12 +469,12 @@ class ImportAllMapPieceMSBParts(LoggingOperator):
 
         start_time = time.perf_counter()
 
-        settings = SoulstructSettings.from_context(context)
+        settings = self.settings(context)
         settings.save_settings()
 
         flver_import_settings = context.scene.flver_import_settings  # type: FLVERImportSettings
         if flver_import_settings.import_textures:
-            texture_manager = TextureImportManager()
+            texture_manager = TextureImportManager(settings)
         else:
             texture_manager = None
 
@@ -693,8 +693,7 @@ class FLVERBatchImporter:
         Returns a list of Blender material indices for each submesh, and a list of UV layer names for each Blender
         material (NOT each submesh).
         """
-        soulstruct_settings = SoulstructSettings.from_context(self.context)
-        if self.texture_manager or soulstruct_settings.png_cache_directory:
+        if self.texture_manager or self.settings.png_cache_directory:
             p = time.perf_counter()
             self.new_images = self.load_texture_images(self.texture_manager)
             if self.new_images:
@@ -723,16 +722,16 @@ class FLVERBatchImporter:
             if material_hash in flver_material_infos:
                 continue  # material already created (used by a previous submesh)
 
-            if soulstruct_settings.is_game(DARK_SOULS_PTDE, DARK_SOULS_DSR):
+            if self.settings.is_game(DARK_SOULS_PTDE, DARK_SOULS_DSR):
                 material_info = DS1MaterialShaderInfo.from_mtdbnd_or_name(
                     self.operator, submesh.material.mtd_name, self.mtdbnd
                 )
-            elif soulstruct_settings.is_game(BLOODBORNE):
+            elif self.settings.is_game(BLOODBORNE):
                 material_info = BBMaterialShaderInfo.from_mtdbnd_or_name(
                     self.operator, submesh.material.mtd_name, self.mtdbnd
                 )
             else:
-                raise FLVERImportError(f"FLVER import not implemented for game {soulstruct_settings.game.name}.")
+                raise FLVERImportError(f"FLVER import not implemented for game {self.settings.game.name}.")
             flver_material_infos[material_hash] = material_info
             flver_material_uv_layer_names[material_hash] = material_info.get_uv_layer_names()
 
@@ -836,7 +835,6 @@ class FLVERBatchImporter:
             else:
                 bl_image_stems.add(stem)
         new_loaded_images = []
-        ss_settings = SoulstructSettings.from_context(self.context)
 
         textures_to_load = {}  # type: dict[str, TPFTexture]
         for texture_path in self.flver.get_all_texture_paths():
@@ -846,8 +844,8 @@ class FLVERBatchImporter:
             if texture_stem in textures_to_load:
                 continue  # already queued to load below
 
-            if ss_settings.read_cached_pngs and ss_settings.png_cache_directory:
-                png_path = Path(ss_settings.png_cache_directory, f"{texture_stem}.png")
+            if self.settings.read_cached_pngs and self.settings.png_cache_directory:
+                png_path = Path(self.settings.png_cache_directory, f"{texture_stem}.png")
                 if png_path.is_file():
                     bl_image = bpy.data.images.load(str(png_path))
                     new_loaded_images.append(bl_image)
@@ -871,11 +869,11 @@ class FLVERBatchImporter:
             from time import perf_counter
             t = perf_counter()
             all_png_data = batch_get_tpf_texture_png_data(list(textures_to_load.values()))
-            if ss_settings.png_cache_directory and ss_settings.write_cached_pngs:
-                write_png_directory = Path(ss_settings.png_cache_directory)
+            if self.settings.png_cache_directory and self.settings.write_cached_pngs:
+                write_png_directory = Path(self.settings.png_cache_directory)
             else:
                 write_png_directory = None
-            print(f"# INFO: Converted PNG images in {perf_counter() - t} s (cached = {ss_settings.write_cached_pngs})")
+            print(f"# INFO: Converted images in {perf_counter() - t} s (cached = {self.settings.write_cached_pngs})")
             for texture_stem, png_data in zip(textures_to_load.keys(), all_png_data):
                 if png_data is None:
                     continue  # failed to convert this texture

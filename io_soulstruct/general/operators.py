@@ -16,7 +16,6 @@ from bpy.props import StringProperty
 from bpy_extras.io_utils import ImportHelper
 
 from io_soulstruct.utilities.operators import LoggingOperator
-from .core import SoulstructSettings
 
 
 STEAM_COMMON_LOCATIONS = [
@@ -51,7 +50,7 @@ class SelectGameImportDirectory(LoggingOperator, ImportHelper):
         if self.filepath:
             # We use browser's current `directory`, not `filepath` itself.
             game_directory = Path(self.directory).resolve()
-            settings = SoulstructSettings.from_context(context)
+            settings = self.settings(context)
             settings.str_game_import_directory = str(game_directory)
             settings.auto_set_game()
 
@@ -84,7 +83,7 @@ class SelectGameExportDirectory(LoggingOperator, ImportHelper):
         if self.filepath:
             # We use browser's current `directory`, not `filepath` itself.
             game_directory = Path(self.directory).resolve()
-            settings = SoulstructSettings.from_context(context)
+            settings = self.settings(context)
             settings.str_game_export_directory = str(game_directory)
             # We do NOT auto-set game here, because the user may be exporting to any folder.
 
@@ -107,9 +106,9 @@ class SelectMapDirectory(LoggingOperator, ImportHelper):
 
     def invoke(self, context, _event):
         """Set the initial directory."""
-        game_import_directory = SoulstructSettings.from_context(context).game_import_directory
-        if game_import_directory:
-            self.filepath = str(game_import_directory)
+        settings = self.settings(context)
+        if settings.str_game_import_directory:
+            self.filepath = settings.str_game_import_directory
         else:
             for steam_common_location in STEAM_COMMON_LOCATIONS:
                 if steam_common_location.is_dir():
@@ -122,7 +121,7 @@ class SelectMapDirectory(LoggingOperator, ImportHelper):
             map_directory = Path(self.directory).resolve()
             if not re.match(r"m\d\d_\d\d_\d\d_\d\d", map_directory.name):
                 self.warning("Selected directory does not appear to be a valid map directory name. Using anyway.")
-            settings = SoulstructSettings.from_context(context)
+            settings = self.settings(context)
             settings.map_stem = map_directory.name
             settings.str_game_import_directory = str(map_directory.parent.parent)  # parent of 'map' directory
 
@@ -146,7 +145,7 @@ class SelectPNGCacheDirectory(LoggingOperator, ImportHelper):
     def execute(self, context):
         if self.directory:
             png_cache_directory = Path(self.directory).resolve()
-            settings = SoulstructSettings.from_context(context)
+            settings = self.settings(context)
             settings.str_png_cache_directory = str(png_cache_directory)
         return {'FINISHED'}
 
@@ -163,7 +162,7 @@ class SelectCustomMTDBNDFile(LoggingOperator, ImportHelper):
     def execute(self, context):
         if self.filepath:
             mtdbnd_path = Path(self.filepath).resolve()
-            settings = SoulstructSettings.from_context(context)
+            settings = self.settings(context)
             settings.str_mtdbnd_path = str(mtdbnd_path)
         return {'FINISHED'}
 
@@ -180,6 +179,6 @@ class SelectCustomMATBINBNDFile(LoggingOperator, ImportHelper):
     def execute(self, context):
         if self.filepath:
             matbinbnd_path = Path(self.filepath).resolve()
-            settings = SoulstructSettings.from_context(context)
+            settings = self.settings(context)
             settings.str_matbinbnd_path = str(matbinbnd_path)
         return {'FINISHED'}

@@ -19,11 +19,11 @@ from bpy_extras.io_utils import ImportHelper, ExportHelper
 
 from soulstruct.containers import Binder, EntryNotFoundError
 from soulstruct.dcx import DCXType
+from soulstruct.games import DARK_SOULS_DSR
 from soulstruct_havok.wrappers.hkx2015 import SkeletonHKX, AnimationHKX
 from soulstruct_havok.utilities.maths import TRSTransform
 
 from io_soulstruct.utilities import *
-from io_soulstruct.general import *
 from io_soulstruct.havok.utilities import BL_MATRIX_TO_GAME_TRS
 from .utilities import *
 
@@ -85,7 +85,7 @@ class ExportLooseHKXAnimation(LoggingOperator, ExportHelper):
     def execute(self, context):
         self.info("Executing HKX animation export...")
 
-        settings = SoulstructSettings.from_context(context)  # type: SoulstructSettings
+        settings = self.settings(context)
 
         animation_file_path = Path(self.filepath)
 
@@ -202,10 +202,9 @@ class ExportHKXAnimationIntoBinder(LoggingOperator, ImportHelper):
         finally:
             context.scene.frame_set(current_frame)
 
-        animation_hkx.dcx_type = DCXType[self.dcx_type]
-
-        entry_path = self.default_entry_path + animation_name + (".hkx" if self.dcx_type == "Null" else ".hkx.dcx")
-
+        dcx_type = DCXType.Null if self.dcx_type == "Auto" else DCXType[self.dcx_type]
+        animation_hkx.dcx_type = dcx_type
+        entry_path = self.default_entry_path + animation_name + (".hkx" if dcx_type == DCXType.Null else ".hkx.dcx")
         # Update or create binder entry.
         binder.set_default_entry(self.animation_id, new_path=entry_path, new_data=bytes(animation_hkx))
 
@@ -235,7 +234,10 @@ class QuickExportCharacterHKXAnimation(LoggingOperator):
 
     @classmethod
     def poll(cls, context):
-        if cls.settings(context).game_variable_name != "DARK_SOULS_DSR":
+        settings = cls.settings(context)
+        if not settings.is_game(DARK_SOULS_DSR):
+            return False
+        if not settings.can_export:
             return False
         if len(context.selected_objects) != 1:
             return False
@@ -264,12 +266,15 @@ class QuickExportCharacterHKXAnimation(LoggingOperator):
         if character_name == "c0000":
             return self.error("Automatic ANIBND import is not yet supported for c0000 (player model).")
 
-        anibnd_path = settings.get_import_path(f"chr/{character_name}.anibnd")
+        relative_anibnd_path = Path(f"chr/{character_name}.anibnd")
+        settings.prepare_file_in_export_directory(relative_anibnd_path, False, must_exist=True)
+        anibnd_path = settings.get_preferred_export_path(relative_anibnd_path)
         if not anibnd_path or not anibnd_path.is_file():
-            return self.error(f"Cannot find ANIBND for character '{character_name}' in game directory.")
+            return self.error(f"Cannot find ANIBND for character {character_name}: {anibnd_path}")
 
+        # Skeleton is in ANIBND.
         skeleton_anibnd = anibnd = Binder.from_path(anibnd_path)
-        # TODO: Support c0000 automatic import. Combine all sub-ANIBND entries into one big choice list?
+        # TODO: Support c0000 automatic export. Choose ANIBND based on animation ID?
 
         try:
             skeleton_entry = skeleton_anibnd[SKELETON_ENTRY_RE]
@@ -313,7 +318,7 @@ class QuickExportCharacterHKXAnimation(LoggingOperator):
 
         # Update or create binder entry.
         anibnd.set_default_entry(animation_id, new_path=entry_path, new_data=animation_hkx)
-        self.info(f"Successfully exported animation '{animation_name}' to ANIBND '{anibnd_path.name}'.")
+        self.info(f"Successfully exported animation {animation_name} into ANIBND {anibnd_path.name}.")
 
         # Write modified ANIBND.
         return settings.export_file(self, anibnd, Path(f"chr/{anibnd_path.name}"))
@@ -364,24 +369,26 @@ class QuickExportObjectHKXAnimation(LoggingOperator):
         bl_armature = context.selected_objects[0]
         object_name = get_bl_obj_stem(bl_armature)
 
-        # Get OBJBND.
-        objbnd_path = settings.get_import_path(f"obj/{object_name}.objbnd")
+        # Get OBJBND to modify from export (preferred) or import directory.
+        relative_objbnd_path = Path(f"obj/{object_name}.objbnd")
+        settings.prepare_file_in_export_directory(relative_objbnd_path, False, must_exist=True)
+        objbnd_path = settings.get_preferred_export_path(relative_objbnd_path)
         if not objbnd_path or not objbnd_path.is_file():
-            return self.error(f"Cannot find OBJBND for object '{object_name}' in game directory.")
+            return self.error(f"Cannot find OBJBND for object {object_name}: {objbnd_path}")
         objbnd = Binder.from_path(objbnd_path)
 
         # Find ANIBND entry.
         try:
             anibnd_entry = objbnd[f"{object_name}.anibnd"]  # no DCX
         except EntryNotFoundError:
-            return self.error(f"OBJBND of object '{object_name}' has no ANIBND.")
+            return self.error(f"OBJBND for object {object_name} has no ANIBND entry.")
         skeleton_anibnd = anibnd = Binder.from_binder_entry(anibnd_entry)
 
         # Find skeleton entry.
         try:
             skeleton_entry = skeleton_anibnd[SKELETON_ENTRY_RE]
         except EntryNotFoundError:
-            return self.error("Could not find 'skeleton.hkx' (case-insensitive) in ANIBND.")
+            return self.error("Could not find 'skeleton.hkx' (case-insensitive) in ANIBND inside OBJBND.")
         skeleton_hkx = SkeletonHKX.from_binder_entry(skeleton_entry)
 
         # Get animation stem from action name. We will re-format its ID in the selected game's known format (e.g. to
@@ -402,7 +409,7 @@ class QuickExportObjectHKXAnimation(LoggingOperator):
                 f"Animation ID {animation_id} is too large for game {settings.game}. Max is {'9' * max_digits}."
             )
 
-        self.info(f"Exporting animation '{animation_name} into OBJBND '{objbnd_path.name}'...")
+        self.info(f"Exporting animation {animation_name} into OBJBND {objbnd_path.name}...")
 
         current_frame = context.scene.frame_current
         try:

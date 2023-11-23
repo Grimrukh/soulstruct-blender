@@ -12,8 +12,8 @@ from soulstruct.dcx import DCXType
 from soulstruct.darksouls1r.maps import MSB
 from soulstruct.darksouls1r.maps.navmesh.mcg import MCG, MCGNode, MCGEdge
 from soulstruct.darksouls1r.maps.navmesh.mcp import MCP
+from soulstruct.games import DARK_SOULS_DSR
 
-from io_soulstruct.general import *
 from io_soulstruct.utilities import *
 from .utilities import MCGExportError
 
@@ -145,7 +145,9 @@ class ExportMCG(LoggingOperator, ExportHelper):
             else:
                 nvmbnd_path = Path(self.custom_nvmbnd_path)
             try:
-                mcp_path = write_mcp(nvmbnd_path, msb_path, mcg_path)
+                mcp_path = mcg_path.with_name(mcg_path.name.replace(".mcg", ".mcp"))
+                mcp = MCP.from_msb_mcg_nvm_paths(mcp_path, msb_path, mcg_path, nvmbnd_path)
+                mcp.write(mcp_path)
             except Exception as ex:
                 traceback.print_exc()
                 self.warning(f"Error occurred when attempting to auto-generate MCP. Error: {ex}")
@@ -170,8 +172,10 @@ class QuickExportMCGMCP(LoggingOperator):
         
         Also requires `SoulstructSettings` game.
         """
-        settings = SoulstructSettings.from_context(context)
-        if not settings.game_directory:
+        settings = cls.settings(context)
+        if not settings.can_export:
+            return False
+        if not settings.is_game(DARK_SOULS_DSR):
             return False
         if not settings.detect_map_from_parent and not settings.map_stem:
             return False
@@ -195,7 +199,7 @@ class QuickExportMCGMCP(LoggingOperator):
         if len(selected_objs) > 1:
             return self.error("More than one object cannot be selected for MCG export.")
         
-        settings = SoulstructSettings.from_context(context)
+        settings = self.settings(context)
         if settings.detect_map_from_parent:
             map_stem = selected_objs[0].parent.name.split(" ")[0]
         elif settings.map_stem:
@@ -206,13 +210,15 @@ class QuickExportMCGMCP(LoggingOperator):
             raise ValueError(f"Invalid map stem: {map_stem}")
         map_id = (int(match.group(1)), int(match.group(2)), int(match.group(3)), int(match.group(4)))
 
-        mcg_path = Path(settings.game_directory, "map", map_stem, f"{map_stem}.mcg")  # no DCX
-        msb_path = mcg_path.parent.parent / "MapStudio" / f"{mcg_path.name.split('.')[0]}.msb"
+        relative_mcg_path = Path(f"map/{map_stem}/{map_stem}.mcg")  # no DCX
+        # We prefer to read the MSB and NVMBND in the export directory if they exist. We do not copy them to export
+        # because they are not modified and the user may not want to include them in a mod package.
+        msb_path = settings.get_preferred_export_path(f"map/MapStudop/{map_stem}.msb")
         if not msb_path.is_file():
-            return self.error(f"Could not find MSB file '{msb_path}'.")
-        nvmbnd_path = mcg_path.parent / f"{mcg_path.name.split('.')[0]}.nvmbnd.dcx"
+            return self.error(f"Could not find MSB file for map {map_stem} in export OR import directory.")
+        nvmbnd_path = settings.get_preferred_export_path(f"map/{map_stem}/{map_stem}.nvmbnd")
         if not nvmbnd_path.is_file():
-            return self.error(f"Could not find NVMBND binder file '{nvmbnd_path}'.")
+            return self.error(f"Could not find NVMBND binder for map {map_stem} in export OR import directory.")
         
         node_parent = edge_parent = None
         for child in selected_objs[0].children:
@@ -245,34 +251,24 @@ class QuickExportMCGMCP(LoggingOperator):
         else:
             mcg.dcx_type = DCXType.Null
 
-        try:
-            # Will create a `.bak` file automatically if absent.
-            mcg.write(mcg_path)
-            self.info(f"Wrote MCG file successfully: {mcg_path.name}")
-        except Exception as ex:
-            traceback.print_exc()
-            return self.error(f"Cannot write exported MCG. Error: {ex}")
+        mcg_result = settings.export_file(self, mcg, relative_mcg_path)
+        if mcg_result == {"CANCELLED"}:
+            # MCG export failed. Don't bother trying to write MCP.
+            return mcg_result
+
+        # This will be the MCG path just exported.
+        mcg_path = settings.get_preferred_export_path(relative_mcg_path)
 
         # Any error here will not affect MCG write (already done above).
         try:
-            mcp_path = write_mcp(nvmbnd_path, msb_path, mcg_path)
+            relative_mcp_path = Path(f"map/{map_stem}/{map_stem}.mcp")
+            mcp = MCP.from_msb_mcg_nvm_paths(relative_mcp_path, msb_path, mcg_path, nvmbnd_path)
+            settings.export_file(self, mcp, relative_mcp_path)
         except Exception as ex:
             traceback.print_exc()
             self.warning(f"Error occurred when attempting to auto-generate MCP, but MCG still written. Error: {ex}")
-        else:
-            self.info(f"Wrote MCP file successfully: {mcp_path.name}")
 
         return {"FINISHED"}
-
-
-def write_mcp(nvmbnd_path: Path, msb_path: Path, mcg_path: Path) -> Path:
-    if not nvmbnd_path.is_file():
-        raise FileNotFoundError(f"Could not find NVMBND file '{nvmbnd_path}'. MCP file not auto-generated.")
-    mcp_path = mcg_path.parent / f"{mcg_path.name.split('.')[0]}.mcp"
-    mcp = MCP.from_msb_mcg_nvm_paths(mcp_path, msb_path, mcg_path, nvmbnd_path)
-    # Will create a `.bak` file automatically if absent.
-    mcp.write(mcp_path)
-    return mcp_path
 
 
 class MCGExporter:

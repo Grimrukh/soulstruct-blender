@@ -19,7 +19,6 @@ from bpy_extras.io_utils import ImportHelper
 from soulstruct.darksouls1r.maps import MSB
 from soulstruct.darksouls1r.maps.navmesh import MCG, MCGNode, MCGEdge
 
-from io_soulstruct.general import SoulstructSettings
 from io_soulstruct.utilities import *
 from .utilities import MCGImportError
 
@@ -92,17 +91,21 @@ class QuickImportMCG(LoggingOperator):
 
     # MSB always auto-found.
 
+    @classmethod
+    def poll(cls, context):
+        if not cls.settings(context).map_stem:
+            return False
+        return True
+
     def execute(self, context):
 
-        settings = SoulstructSettings.from_context(context)
-        game_directory = settings.game_directory
-        map_stem = settings.map_stem
-        if not game_directory or not map_stem:
-            return self.error("Game directory or map stem not set in Soulstruct plugin settings.")
-        mcg_path = Path(game_directory, "map", map_stem, f"{map_stem}.mcg")
+        settings = self.settings(context)
+        if not settings.map_stem:
+            return
+        mcg_path = settings.get_import_map_path(f"{settings.map_stem}.mcg")
         if not mcg_path.is_file():
             return self.error(f"Could not find MCG file '{mcg_path}'.")
-        msb_path = Path(game_directory, "map", "MapStudio", f"{map_stem}.msb")
+        msb_path = settings.get_import_msb_path()
         if not msb_path.is_file():
             return self.error(f"Could not find MSB file '{msb_path}'.")
         try:
@@ -121,7 +124,7 @@ class QuickImportMCG(LoggingOperator):
         # mcg.set_navmesh_references(msb.navmeshes)
 
         importer = MCGImporter(self, context)
-        importer.import_mcg(mcg, map_stem=map_stem, navmesh_part_names=navmesh_part_names)
+        importer.import_mcg(mcg, map_stem=settings.map_stem, navmesh_part_names=navmesh_part_names)
 
         return {'FINISHED'}
 

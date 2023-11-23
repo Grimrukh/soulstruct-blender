@@ -2,7 +2,8 @@ from __future__ import annotations
 
 __all__ = [
     "GlobalSettingsPanel",
-    "GlobalSettingsPanel_View",
+    "GlobalSettingsPanel_FLVERView",
+    "GlobalSettingsPanel_NavmeshView",
     "GlobalSettingsPanel_HavokView",
 ]
 
@@ -66,19 +67,28 @@ class GlobalSettingsPanel(bpy.types.Panel, GlobalSettingsPanel_ViewMixin):
     bl_context = "scene"
 
 
-class GlobalSettingsPanel_View(bpy.types.Panel, GlobalSettingsPanel_ViewMixin):
+class GlobalSettingsPanel_FLVERView(bpy.types.Panel, GlobalSettingsPanel_ViewMixin):
     """VIEW properties panel for Soulstruct global settings."""
     bl_label = "General Settings"
-    bl_idname = "VIEW_PT_soulstruct_settings"
+    bl_idname = "VIEW_PT_soulstruct_settings_flver"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "Soulstruct"
+    bl_category = "Soulstruct FLVER"
+
+
+class GlobalSettingsPanel_NavmeshView(bpy.types.Panel, GlobalSettingsPanel_ViewMixin):
+    """VIEW properties panel for Soulstruct global settings."""
+    bl_label = "General Settings"
+    bl_idname = "VIEW_PT_soulstruct_settings_navmesh"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "Soulstruct Navmesh"
 
 
 class GlobalSettingsPanel_HavokView(bpy.types.Panel, GlobalSettingsPanel_ViewMixin):
     """VIEW properties panel for Soulstruct Havok global settings."""
     bl_label = "General Settings"
-    bl_idname = "VIEW_PT_soulstruct_havok_settings"
+    bl_idname = "VIEW_PT_soulstruct_settings_havok"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "Soulstruct Havok"

@@ -17,7 +17,6 @@ from bpy_extras.io_utils import ImportHelper
 
 from soulstruct.darksouls1r.maps.navmesh import MCP, NavmeshAABB
 
-from io_soulstruct.general import SoulstructSettings
 from io_soulstruct.utilities import *
 
 MCP_NAME_RE = re.compile(r"(?P<stem>.*)\.mcp(?P<dcx>\.dcx)?")
@@ -68,12 +67,8 @@ class QuickImportMCP(LoggingOperator):
 
     def execute(self, context):
 
-        settings = SoulstructSettings.from_context(context)
-        game_directory = settings.game_directory
-        map_stem = settings.map_stem
-        if not game_directory or not map_stem:
-            return self.error("Game directory or map stem not set in Soulstruct plugin settings.")
-        mcp_path = Path(game_directory, "map", map_stem, f"{map_stem}.mcp")
+        settings = self.settings(context)
+        mcp_path = settings.get_import_map_path(f"{settings.map_stem}.mcp")
         if not mcp_path.is_file():
             return self.error(f"Could not find MCP file '{mcp_path}'.")
 

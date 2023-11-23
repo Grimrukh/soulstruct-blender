@@ -23,7 +23,6 @@ from soulstruct.containers import Binder, BinderEntry
 from soulstruct.games import DARK_SOULS_DSR
 from soulstruct_havok.wrappers.hkx2015 import MapCollisionHKX
 
-from io_soulstruct.general import SoulstructSettings
 from io_soulstruct.general.cached import get_cached_file
 from io_soulstruct.utilities import *
 from .utilities import *
@@ -362,7 +361,7 @@ class ExportHKXMapCollisionIntoHKXBHD(LoggingOperator):
         if not self.poll(context):
             return self.error("Must select a parent of one or more collision submeshes.")
 
-        settings = SoulstructSettings.from_context(context)
+        settings = self.settings(context)
         settings.save_settings()
 
         return_strings = set()
@@ -418,15 +417,15 @@ class ExportHKXMapCollisionIntoHKXBHD(LoggingOperator):
             # Copy initial HKXBHD/BDT from import to export directory if needed.
             hkxbhd_relative_path = Path(f"map/{map_stem}/{res}{map_stem[1:]}.hkxbhd")
             hkdbdt_relative_path = Path(f"map/{map_stem}/{res}{map_stem[1:]}.hkxbdt")
-            settings.copy_file_import_to_export(hkxbhd_relative_path, False, must_exist=True)
-            settings.copy_file_import_to_export(hkdbdt_relative_path, False, must_exist=True)
+            settings.prepare_file_in_export_directory(hkxbhd_relative_path, False, True)
+            settings.prepare_file_in_export_directory(hkdbdt_relative_path, False, True)
             hkxbhd_path = settings.get_export_path(hkxbhd_relative_path)
 
             if other_res_bl_meshes:
                 other_res_hkxbhd_relative_path = Path(f"map/{map_stem}/{other_res}{map_stem[1:]}.hkxbhd")
                 other_res_hkdbdt_relative_path = Path(f"map/{map_stem}/{other_res}{map_stem[1:]}.hkxbdt")
-                settings.copy_file_import_to_export(other_res_hkxbhd_relative_path, False, must_exist=True)
-                settings.copy_file_import_to_export(other_res_hkdbdt_relative_path, False, must_exist=True)
+                settings.prepare_file_in_export_directory(other_res_hkxbhd_relative_path, False, True)
+                settings.prepare_file_in_export_directory(other_res_hkdbdt_relative_path, False, True)
             else:
                 other_res_hkxbhd_relative_path = None
 
@@ -596,15 +595,15 @@ class ExportMSBMapCollision(LoggingOperator):
             # Copy initial HKXBHD/BDT from import to export directory if needed.
             hkxbhd_relative_path = Path(f"map/{map_stem}/{res}{map_stem[1:]}.hkxbhd")
             hkdbdt_relative_path = Path(f"map/{map_stem}/{res}{map_stem[1:]}.hkxbdt")
-            settings.copy_file_import_to_export(hkxbhd_relative_path, False, must_exist=True)
-            settings.copy_file_import_to_export(hkdbdt_relative_path, False, must_exist=True)
+            settings.prepare_file_in_export_directory(hkxbhd_relative_path, False, True)
+            settings.prepare_file_in_export_directory(hkdbdt_relative_path, False, True)
             hkxbhd_path = settings.get_export_path(hkxbhd_relative_path)
 
             if other_res_bl_meshes:
                 other_res_hkxbhd_relative_path = Path(f"map/{map_stem}/{other_res}{map_stem[1:]}.hkxbhd")
                 other_res_hkdbdt_relative_path = Path(f"map/{map_stem}/{other_res}{map_stem[1:]}.hkxbdt")
-                settings.copy_file_import_to_export(other_res_hkxbhd_relative_path, False, must_exist=True)
-                settings.copy_file_import_to_export(other_res_hkdbdt_relative_path, False, must_exist=True)
+                settings.prepare_file_in_export_directory(other_res_hkxbhd_relative_path, False, True)
+                settings.prepare_file_in_export_directory(other_res_hkdbdt_relative_path, False, True)
             else:
                 other_res_hkxbhd_relative_path = None
 

@@ -514,7 +514,7 @@ class ExportCharacterFLVER(BaseGameFLVERExportOperator):
         )
 
     def execute(self, context):
-        settings = SoulstructSettings.from_context(context)
+        settings = self.settings(context)
 
         try:
             model_stem, chrbnd, flver, exporter = self.get_binder_and_flver(
@@ -526,17 +526,30 @@ class ExportCharacterFLVER(BaseGameFLVERExportOperator):
         except FLVERExportError as ex:
             return self.error(str(ex))
 
+        # TODO: Support PTDE export to loose model folder 'chr/cXXXX'.
+
+    def finish_dsr(
+        self,
+        context,
+        settings: SoulstructSettings,
+        chrbnd: CHRBND_TYPING,
+        model_stem: str,
+        exporter: FLVERBatchExporter
+    ):
         flver_export_settings = context.scene.flver_export_settings  # type: FLVERExportSettings
         relative_chrtpfbdt_path = Path(f"chr/{model_stem}.chrtpfbdt")  # no DCX
+        delete_old_chrtpfbdt = False
         if flver_export_settings.export_textures:
             packed_bdt = self.export_chrbnd_textures(
                 context,
+                settings,
                 chrbnd,
                 model_stem,
                 relative_chrtpfbdt_path,
                 exporter.collected_texture_images,
-                settings,
             )
+            if packed_bdt is None:  # bundled TPF successful
+                delete_old_chrtpfbdt = True
         else:
             packed_bdt = None
 
@@ -547,16 +560,35 @@ class ExportCharacterFLVER(BaseGameFLVERExportOperator):
         if packed_bdt is not None:
             settings.export_file_data(self, packed_bdt, relative_chrtpfbdt_path, "CHRTPFBDT")
 
+        if delete_old_chrtpfbdt:
+            relative_chrtpfbdt_path = Path(f"chr/{model_stem}.chrtpfbdt").resolve()  # no DCX
+            export_chrtpfbdt_path = settings.get_export_path(relative_chrtpfbdt_path)
+            if export_chrtpfbdt_path and export_chrtpfbdt_path.is_file():
+                # Delete CHRTPFBDT (in favor of new TPF).
+                export_chrtpfbdt_path.unlink()
+            if settings.also_export_to_import:
+                import_chrtpfbdt_path = settings.get_import_path(relative_chrtpfbdt_path)
+                if import_chrtpfbdt_path and import_chrtpfbdt_path.is_file():
+                    import_chrtpfbdt_path.unlink()
+            try:
+                # Remove old CHRTPFBHD header entry (in favor of new TPF).
+                chrbnd.remove_entry_name(f"{model_stem}.chrtpfbhd")
+            except EntryNotFoundError:
+                pass
+
         return {"FINISHED"}
+
+    # TODO: Sort out the common logic from below (e.g. try to export a bundled TPF) and the game-specific backup
+    #  methods, e.g. loose folder for PTDE and CHRTPFBHD/CHRTPFBDT for DS1R (and maybe other games).
 
     def export_chrbnd_textures(
         self,
         context,
+        settings: SoulstructSettings,
         chrbnd: CHRBND_TYPING,
         chr_name: str,
         chrtpfbdt_export_path: Path,
         images: dict[str, bpy.types.Image],
-        settings: SoulstructSettings
     ) -> bytes | None:
         """Export CHRBND textures into a multi-texture TPF inside the CHRBND, or to a split Binder that is literally
         split between the CHRBND (header) and its parent folder (data).
@@ -579,16 +611,6 @@ class ExportCharacterFLVER(BaseGameFLVERExportOperator):
             multi_tpf.dcx_type = settings.game.get_dcx_type("tpf")
             chrbnd.tpf = multi_tpf
             self.info(f"Exported {len(multi_tpf.textures)} textures into multi-texture TPF in CHRBND.")
-
-            chrtpfbdt_path = (chrbnd.path / f"../{chr_name}.chrtpfbdt").resolve()  # no DCX
-            if chrtpfbdt_path.is_file():
-                # Delete CHRTPFBDT (in favor of new TPF).
-                chrtpfbdt_path.unlink()
-            try:
-                # Remove old CHRTPFBHD header entry (in favor of new TPF).
-                chrbnd.remove_entry_name(f"{chr_name}.chrtpfbhd")
-            except EntryNotFoundError:
-                pass
             return None
 
         # Too many textures for TPF. Create CHRTPFBXF and put header into CHRBND and data next to it.
@@ -922,9 +944,9 @@ def export_map_area_textures(
             # Copy initial TPFBHDs/BDTs from import directory (will not overwrite existing).
             # Will raise a `FileNotFoundError` if import file does not exist.
             for tpfbhd_path in import_area_dir.glob("*.tpfbhd"):
-                settings.copy_file_import_to_export(Path(f"map/{area}/{tpfbhd_path.name}"), False, True)
+                settings.prepare_file_in_export_directory(Path(f"map/{area}/{tpfbhd_path.name}"), False, True)
             for tpfbdt_path in import_area_dir.glob("*.tpfbdt"):
-                settings.copy_file_import_to_export(Path(f"map/{area}/{tpfbdt_path.name}"), False, True)
+                settings.prepare_file_in_export_directory(Path(f"map/{area}/{tpfbdt_path.name}"), False, True)
 
         # We prefer to start with the TPFBHDs from the export directory (potentially just copied from import).
         if export_area_dir and export_area_dir.is_dir():
@@ -1156,8 +1178,6 @@ class FLVERBatchExporter:
         Also creates `Material` and `VertexArrayLayout` instances for each Blender material, and assigns them to the
         appropriate `Submesh` instances. Any duplicate instances here will be merged when FLVER is packed.
         """
-        soulstruct_settings = SoulstructSettings.from_context(self.context)
-
         # 1. Create per-submesh info. Note that every Blender material index is guaranteed to be mapped to AT LEAST ONE
         #    split `Submesh` in the exported FLVER (more if submesh bone maximum is exceeded). This allows the user to
         #    also split their submeshes manually in Blender, if they wish.
@@ -1290,7 +1310,7 @@ class FLVERBatchExporter:
 
         for used_bone_index in used_bone_indices:
             flver.bones[used_bone_index].usage_flags &= ~1
-            if soulstruct_settings.game is ELDEN_RING:  # TODO: Probably started in an earlier game.
+            if self.settings.is_game(ELDEN_RING):  # TODO: Probably started in an earlier game.
                 flver.bones[used_bone_index].usage_flags |= 8
 
         vertex_data["position"] = vertex_positions
@@ -1637,6 +1657,22 @@ class FLVERBatchExporter:
             flver_texture = Texture(
                 path=texture_path,
                 texture_type=sampler_type,
+            )
+            flver_textures.append(flver_texture)
+
+        # TODO: Haven't quite figured out what the deal is with g_DetailBumpmap being present or absent, but for
+        #  now, I'm allowing it to be written to the FLVER automatically.
+        if "g_DetailBumpmap" in node_textures:
+            tex_node = node_textures.pop("g_DetailBumpmap")
+            if tex_node.image is None:
+                texture_path = ""  # missing (fine)
+            else:
+                texture_stem = Path(tex_node.image.name).stem
+                texture_path = bl_material.get(f"Path[{texture_stem}]", f"{texture_stem}.tga")
+                self.collected_texture_images[texture_stem] = tex_node.image
+            flver_texture = Texture(
+                path=texture_path,
+                texture_type="g_DetailBumpmap",
             )
             flver_textures.append(flver_texture)
 

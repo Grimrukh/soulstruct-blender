@@ -169,20 +169,19 @@ def get_hkx_map_collision_items(self, context):
     if not map_path or not map_path.is_dir():
         return _clear_items(key)
 
-    match settings.game:
-        case {"name": DARK_SOULS_PTDE.name}:
-            # Loose HKX files. TODO: Need code for finding adjacent loose lo-res collisions as well.
-            # TODO: Easily found, but I haven't finished map collision support for Havok 2010 yet.
-            #  Just need to set up the SS Havok class and test the packfile writing.
-            # return _scan_loose_files(key, map_path, "h*.hkx")
+    if settings.is_game(DARK_SOULS_PTDE):
+        # Loose HKX files. TODO: Need code for finding adjacent loose lo-res collisions as well.
+        # TODO: Easily found, but I haven't finished map collision support for Havok 2010 yet.
+        #  Just need to set up the SS Havok class and test the packfile writing.
+        # return _scan_loose_files(key, map_path, "h*.hkx")
+        return _clear_items(key)
+    elif settings.is_game(DARK_SOULS_DSR):
+        # Compressed HKX files inside HKXBHD binder.
+        hkxbhd_path = map_path / f"h{settings.map_stem[1:]}.hkxbhd"  # no DCX
+        if not hkxbhd_path.is_file():
             return _clear_items(key)
-        case {"name": DARK_SOULS_DSR.name}:
-            # Compressed HKX files inside HKXBHD binder.
-            hkxbhd_path = settings.game.process_dcx_path(map_path / f"h{settings.map_stem[1:]}.hkxbhd")
-            if not hkxbhd_path.is_file():
-                return _clear_items(key)
-            pattern = re.compile(r".*\.hkx.dcx")
-            return _scan_binder_entries(key, hkxbhd_path, pattern)
+        pattern = re.compile(r".*\.hkx\.dcx")
+        return _scan_binder_entries(key, hkxbhd_path, pattern)
 
     # TODO: HKX collision not supported for other games. Not sure if I can handle `hkcdSimdTree` yet.
     return _clear_items(key)

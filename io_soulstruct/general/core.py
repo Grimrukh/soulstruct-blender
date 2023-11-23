@@ -56,10 +56,10 @@ def _get_map_stem_items(self, context: bpy.types.Context):
         return _MAP_STEM_ENUM_ITEMS[1]  # cached
 
     map_stem_names = []
-    match settings.game:
+    match settings.game_enum:
         case None:
             pass  # no choices
-        case {"name": ELDEN_RING.name}:
+        case ELDEN_RING.variable_name:
             for area in sorted(map_dir_path.glob("m??")):
                 map_stem_names.extend(
                     [
@@ -101,7 +101,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):
     @property
     def game(self) -> Game | None:
         """Get selected Game object from `soulstruct.games`."""
-        return get_game(self.game_enum)
+        return get_game(self.game_enum) if self.game_enum else None
 
     str_game_import_directory: bpy.props.StringProperty(
         name="Import Directory",
@@ -224,7 +224,18 @@ class SoulstructSettings(bpy.types.PropertyGroup):
                 self.game_enum = game.variable_name
                 return
 
-    def get_import_path(self, *parts: str | Path, dcx_type: DCXType.Null = None) -> Path | None:
+    def _process_path(self, path: Path, dcx_type: DCXType | None) -> Path:
+        """Process path with given `dcx_type`, or default DCX type if `dcx_type` is `None` and the path name contains a
+        period (i.e. doesn't look like a directory)."""
+        if dcx_type is not None:
+            path = dcx_type.process_path(path)
+        elif "." in path.name:
+            path = self.game.process_dcx_path(path)
+        if "." in path.name and self.import_bak_file:  # add extra '.bak' suffix
+            return path.with_suffix(path.suffix + ".bak")
+        return path
+
+    def get_import_path(self, *parts: str | Path, dcx_type: DCXType = None) -> Path | None:
         """Get path relative to game import directory.
 
         If `dcx_type` is given (including `Null`), the path will be processed by that DCX type. Otherwise, the known
@@ -232,63 +243,41 @@ class SoulstructSettings(bpy.types.PropertyGroup):
 
         Will add `.bak` suffix to path if `import_bak_file` is enabled.
         """
-        if not self.game:
+        if not self.str_game_import_directory:
             return None
         import_path = Path(self.str_game_import_directory, *parts)
-        if dcx_type is not None:
-            import_path = dcx_type.process_path(import_path)
-        if "." in import_path.name:
-            import_path = self.game.process_dcx_path(import_path)
-            if self.import_bak_file:  # add extra '.bak' suffix
-                return import_path.with_suffix(import_path.suffix + ".bak")
-        return import_path
+        return self._process_path(import_path, dcx_type)
 
-    def get_import_map_path(self, *parts, dcx_type: DCXType.Null = None) -> Path | None:
+    def get_import_map_path(self, *parts, dcx_type: DCXType = None) -> Path | None:
         """Get the `map_stem` path in the game import 'map' directory.
 
         If `dcx_type` is given (including `Null`), the path will be processed by that DCX type. Otherwise, the known
         game specific/default DCX type will be used.
         """
-        if not self.game or not self.str_game_import_directory or self.map_stem in {"", "0"}:
+        if not self.str_game_import_directory or self.map_stem in {"", "0"}:
             return None
         import_path = Path(self.str_game_import_directory, f"map/{self.map_stem}", *parts)
-        if "." in import_path.name:
-            if dcx_type is not None:
-                import_path = dcx_type.process_path(import_path)
-            else:
-                import_path = self.game.process_dcx_path(import_path)
-            if self.import_bak_file:  # add extra '.bak' suffix
-                return import_path.with_suffix(import_path.suffix + ".bak")
-        return import_path
+        return self._process_path(import_path, dcx_type)
 
     def get_import_msb_path(self, map_stem="") -> Path | None:
         """Get the `map_stem` MSB path in its game import 'MapStudio' directory."""
-        if not map_stem:
-            map_stem = self.map_stem
-        if not self.game or not self.str_game_import_directory or map_stem in {"", "0"}:
+        map_stem = map_stem or self.map_stem
+        if not self.str_game_import_directory or map_stem in {"", "0"}:
             return None
-        msb_dcx_type = self.resolve_dcx_type("Auto", "MSB")
-        relative_msb_path = Path(self.game.default_file_paths["MapStudioDirectory"], f"{map_stem}.msb")
-        if self.import_bak_file:  # add extra '.bak' suffix
-            relative_msb_path = relative_msb_path.with_suffix(relative_msb_path.suffix + ".bak")
-        return msb_dcx_type.process_path(Path(self.str_game_import_directory, relative_msb_path))
+        return self.get_import_path(self.game.default_file_paths["MapStudioDirectory"], f"{map_stem}.msb")
 
-    def get_export_path(self, *parts: str | Path, dcx_type: DCXType.Null = None) -> Path | None:
+    def get_export_path(self, *parts: str | Path, dcx_type: DCXType = None) -> Path | None:
         """Get path relative to game export directory.
 
         If `dcx_type` is given (including `Null`), the path will be processed by that DCX type. Otherwise, the known
         game specific/default DCX type will be used.
         """
-        if not self.game:
+        if not self.str_game_export_directory:
             return None
         export_path = Path(self.str_game_export_directory, *parts)
-        if "." in export_path.name:
-            if dcx_type is not None:
-                return dcx_type.process_path(export_path)
-            return self.game.process_dcx_path(export_path)
-        return export_path
+        return self._process_path(export_path, dcx_type)
 
-    def get_export_map_path(self, *parts, dcx_type: DCXType.Null = None) -> Path | None:
+    def get_export_map_path(self, *parts, dcx_type: DCXType = None) -> Path | None:
         """Get the `map_stem` path in the game export 'map' directory.
 
         If `dcx_type` is given (including `Null`), the path will be processed by that DCX type. Otherwise, the known
@@ -297,19 +286,27 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         if not self.str_game_export_directory or self.map_stem in {"", "0"}:
             return None
         export_path = Path(self.str_game_export_directory, f"map/{self.map_stem}", *parts)
-        if "." in export_path.name:
-            if dcx_type is not None:
-                return dcx_type.process_path(export_path)
-            return self.game.process_dcx_path(export_path)
-        return export_path
+        return self._process_path(export_path, dcx_type)
 
-    def get_export_msb_path(self) -> Path | None:
+    def get_export_msb_path(self, map_stem="") -> Path | None:
         """Get the `map_stem` MSB path in its game export 'MapStudio' directory."""
-        if not self.str_game_export_directory or self.map_stem in {"", "0"}:
+        map_stem = map_stem or self.map_stem
+        if not self.str_game_export_directory or map_stem in {"", "0"}:
             return None
-        msb_dcx_type = self.resolve_dcx_type("Auto", "MSB")
-        relative_msb_path = Path(self.game.default_file_paths["MapStudioDirectory"], f"{self.map_stem}.msb")
-        return msb_dcx_type.process_path(Path(self.str_game_export_directory, relative_msb_path))
+        return self.get_export_path(self.game.default_file_paths["MapStudioDirectory"], f"{map_stem}.msb")
+
+    def get_preferred_export_path(self, *parts: str | Path, dcx_type: DCXType = None) -> Path | None:
+        """Get path relative to game export directory, or game import directory if export directory is not set or the
+        file does not exist in the export directory. Does not check if the import backup file exists.
+
+        If `dcx_type` is given (including `Null`), the path will be processed by that DCX type. Otherwise, the known
+        game specific/default DCX type will be used.
+        """
+        if self.str_game_export_directory:
+            export_path = self.get_export_path(*parts, dcx_type=dcx_type)
+            if export_path.is_file():
+                return export_path
+        return self.get_import_path(*parts, dcx_type=dcx_type)
 
     @property
     def can_export(self) -> bool:
@@ -411,23 +408,29 @@ class SoulstructSettings(bpy.types.PropertyGroup):
                 f"set (or writing to import directory is disabled)."
             )
 
-    def copy_file_import_to_export(self, relative_path: Path, overwrite_existing=False, must_exist=False) -> bool:
-        """Copy file from import directory to export directory, if both are set.
+    def prepare_file_in_export_directory(
+        self, relative_path: Path, overwrite_existing=False, must_exist=False, dcx_type: DCXType = None
+    ) -> bool:
+        """Copy file from import directory to export directory, if both are set. Useful for copying in Binders that are
+        only being partially modified with new entries.
+
+        Does nothing if export directory is not set, in which case you are either exporting to the import directory only
+        or will likely hit an exception later on.
 
         If `overwrite_existing` is `False` (default), the file will not be copied if it already exists in the export
         directory. If `must_exist` is `True`, the file must already exist in the export directory or successfully be
-        copied from the import directory.
+        copied from the import directory (assuming the export directory is set).
+
+        Never creates a `.bak` backup file.
         """
-        import_path = self.get_import_path(relative_path)
-        export_path = self.get_export_path(relative_path)
+        import_path = self.get_import_path(relative_path, dcx_type=dcx_type)
+        export_path = self.get_export_path(relative_path, dcx_type=dcx_type)
         if not export_path:
-            raise ValueError(
-                f"Export directory not set. Cannot copy file from import to export directory: {relative_path}"
-            )
+            return False  # no export directory
         if not import_path or not import_path.is_file():
             if must_exist and not export_path.is_file():
-                raise FileNotFoundError(f"Cannot copy file from import to export directory: {import_path}")
-            return False  # nothing to copy
+                raise FileNotFoundError(f"File does not exist in import or export directory: {relative_path}")
+            return False  # nothing to copy (may or may not already exist in export)
         if export_path and export_path.is_file() and not overwrite_existing:
             return False  # already exists
         export_path.parent.mkdir(parents=True, exist_ok=True)
@@ -517,17 +520,17 @@ class SoulstructSettings(bpy.types.PropertyGroup):
             json_settings = read_json(_SETTINGS_PATH)
         except FileNotFoundError:
             return  # do nothing
-        self.game_enum = json_settings.get("game", DARK_SOULS_DSR.variable_name)
-        self.str_game_import_directory = json_settings.get("game_import_directory", "")
-        self.str_game_export_directory = json_settings.get("game_export_directory", "")
+        self.game_enum = json_settings.get("game_enum", DARK_SOULS_DSR.variable_name)
+        self.str_game_import_directory = json_settings.get("str_game_import_directory", "")
+        self.str_game_export_directory = json_settings.get("str_game_export_directory", "")
         self.also_export_to_import = json_settings.get("also_export_to_import", False)
         map_stem = json_settings.get("map_stem", "0")
         if not map_stem:
             map_stem = "0"  # null enum value
         self.map_stem = map_stem
-        self.str_mtdbnd_path = json_settings.get("mtdbnd_path", "")
-        self.str_matbinbnd_path = json_settings.get("matbinbnd_path", "")
-        self.str_png_cache_directory = json_settings.get("png_cache_directory", "")
+        self.str_mtdbnd_path = json_settings.get("str_mtdbnd_path", "")
+        self.str_matbinbnd_path = json_settings.get("str_atbinbnd_path", "")
+        self.str_png_cache_directory = json_settings.get("str_png_cache_directory", "")
         self.read_cached_pngs = json_settings.get("read_cached_pngs", True)
         self.write_cached_pngs = json_settings.get("write_cached_pngs", True)
         self.import_bak_file = json_settings.get("import_bak_file", False)
@@ -553,4 +556,4 @@ class SoulstructSettings(bpy.types.PropertyGroup):
             )
         }
         write_json(_SETTINGS_PATH, current_settings, indent=4)
-        print(f"Saved settings to {_SETTINGS_PATH}")
+        # print(f"Saved settings to {_SETTINGS_PATH}")

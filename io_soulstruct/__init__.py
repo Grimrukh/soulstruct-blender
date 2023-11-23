@@ -74,7 +74,7 @@ CLASSES = (
     SoulstructSettings,
     SoulstructGameEnums,
     GlobalSettingsPanel,
-    GlobalSettingsPanel_View,
+    GlobalSettingsPanel_FLVERView,
     SelectGameImportDirectory,
     SelectGameExportDirectory,
     SelectMapDirectory,
@@ -121,10 +121,12 @@ CLASSES = (
 
     FLVERImportPanel,
     FLVERExportPanel,
+    TextureExportSettingsPanel,
     # FLVERLightmapsPanel,  # TODO: not quite ready
     FLVERToolsPanel,
     FLVERUVMapsPanel,
 
+    GlobalSettingsPanel_NavmeshView,
     ImportNVM,
     ImportNVMWithBinderChoice,
     ImportNVMFromNVMBND,
@@ -177,13 +179,13 @@ if soulstruct_havok:
 
         ArmatureActionChoiceOperator,
         SelectArmatureActionOperator,
-        HKX_ANIMATION_PT_hkx_animation_tools,
+        HKX_ANIMATION_PT_hkx_animations,
 
         ExportLooseHKXMapCollision,
         ExportHKXMapCollisionIntoBinder,
         ExportHKXMapCollisionIntoHKXBHD,
         ExportMSBMapCollision,
-        HKX_COLLISION_PT_hkx_map_collision_tools,
+        HKX_COLLISION_PT_hkx_map_collisions,
 
         # TODO: Cutscene operators need a bit more work.
         # ImportHKXCutscene,

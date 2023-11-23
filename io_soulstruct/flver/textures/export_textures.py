@@ -77,7 +77,7 @@ class TextureExportSettings(bpy.types.PropertyGroup):
         description="Number of mipmaps to generate in DDS textures (0 = all mipmaps)",
         default=0,
         min=0,
-        max=10,
+        max=20,
     )
 
     specular_format: bpy.props.EnumProperty(
@@ -100,7 +100,7 @@ class TextureExportSettings(bpy.types.PropertyGroup):
         description="Number of mipmaps to generate in DDS textures (0 = all mipmaps)",
         default=0,
         min=0,
-        max=10,
+        max=20,
     )
 
     bumpmap_format: bpy.props.EnumProperty(
@@ -123,7 +123,7 @@ class TextureExportSettings(bpy.types.PropertyGroup):
         description="Number of mipmaps to generate in DDS textures (0 = all mipmaps)",
         default=0,
         min=0,
-        max=10,
+        max=20,
     )
 
     height_format: bpy.props.EnumProperty(
@@ -146,7 +146,7 @@ class TextureExportSettings(bpy.types.PropertyGroup):
         description="Number of mipmaps to generate in DDS textures (0 = all mipmaps)",
         default=0,
         min=0,
-        max=10,
+        max=20,
     )
 
     lightmap_format: bpy.props.EnumProperty(
@@ -169,7 +169,7 @@ class TextureExportSettings(bpy.types.PropertyGroup):
         description="Number of mipmaps to generate in DDS textures (0 = all mipmaps)",
         default=0,
         min=0,
-        max=10,
+        max=20,
     )
 
     max_chrbnd_tpf_size: bpy.props.IntProperty(

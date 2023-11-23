@@ -58,15 +58,20 @@ _navmesh_type_items = [
 
 
 class NVM_PT_ds1_navmesh_import(bpy.types.Panel):
-    bl_label = "DS1 Navmesh Import"
+    bl_label = "Navmesh Import"
     bl_idname = "NVM_PT_ds1_navmesh_import"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "Soulstruct"
+    bl_category = "Soulstruct Navmesh"
     bl_options = {'DEFAULT_CLOSED'}
 
     # noinspection PyUnusedLocal
     def draw(self, context):
+        settings = context.scene.soulstruct_settings
+        if settings.game_variable_name != "DARK_SOULS_DSR":
+            self.layout.label(text="Dark Souls: Remastered only.")
+            return
+
         import_loose_box = self.layout.box()
         import_loose_box.operator(ImportNVM.bl_idname)
         import_loose_box.operator(ImportMCG.bl_idname)
@@ -87,15 +92,20 @@ class NVM_PT_ds1_navmesh_import(bpy.types.Panel):
 
 
 class NVM_PT_ds1_navmesh_export(bpy.types.Panel):
-    bl_label = "DS1 Navmesh Export"
+    bl_label = "Navmesh Export"
     bl_idname = "NVM_PT_ds1_navmesh_export"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "Soulstruct"
+    bl_category = "Soulstruct Navmesh"
     bl_options = {'DEFAULT_CLOSED'}
 
     # noinspection PyUnusedLocal
     def draw(self, context):
+        settings = context.scene.soulstruct_settings
+        if settings.game_variable_name != "DARK_SOULS_DSR":
+            self.layout.label(text="Dark Souls: Remastered only.")
+            return
+
         export_box = self.layout.box()
         export_box.operator(ExportLooseNVM.bl_idname)
         export_box.operator(ExportNVMIntoBinder.bl_idname)
@@ -118,15 +128,16 @@ class NVM_PT_ds1_navmesh_export(bpy.types.Panel):
 
 
 class NVM_PT_ds1_navmesh_tools(bpy.types.Panel):
-    bl_label = "DS1 Navmesh Tools"
+    bl_label = "Navmesh Tools"
     bl_idname = "NVM_PT_ds1_navmesh_tools"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "Soulstruct"
+    bl_category = "Soulstruct Navmesh"
     bl_options = {'DEFAULT_CLOSED'}
 
     # noinspection PyUnusedLocal
     def draw(self, context):
+        """Still shown if game is not DSR."""
 
         self.layout.label(text="MCG Draw Settings:")
         mcg_draw_settings_box = self.layout.box()
