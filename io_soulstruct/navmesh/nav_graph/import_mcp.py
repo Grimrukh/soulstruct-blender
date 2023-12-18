@@ -68,7 +68,7 @@ class QuickImportMCP(LoggingOperator):
     def execute(self, context):
 
         settings = self.settings(context)
-        mcp_path = settings.get_import_map_path(f"{settings.map_stem}.mcp")
+        mcp_path = settings.get_game_map_path(f"{settings.map_stem}.mcp")
         if not mcp_path.is_file():
             return self.error(f"Could not find MCP file '{mcp_path}'.")
 

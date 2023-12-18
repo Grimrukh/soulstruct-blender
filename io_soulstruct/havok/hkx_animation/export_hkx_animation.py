@@ -237,7 +237,7 @@ class QuickExportCharacterHKXAnimation(LoggingOperator):
         settings = cls.settings(context)
         if not settings.is_game(DARK_SOULS_DSR):
             return False
-        if not settings.can_export:
+        if not settings.can_auto_export:
             return False
         if len(context.selected_objects) != 1:
             return False
@@ -267,8 +267,8 @@ class QuickExportCharacterHKXAnimation(LoggingOperator):
             return self.error("Automatic ANIBND import is not yet supported for c0000 (player model).")
 
         relative_anibnd_path = Path(f"chr/{character_name}.anibnd")
-        settings.prepare_file_in_export_directory(relative_anibnd_path, False, must_exist=True)
-        anibnd_path = settings.get_preferred_export_path(relative_anibnd_path)
+        settings.prepare_project_file(relative_anibnd_path, False, must_exist=True)
+        anibnd_path = settings.get_project_or_game_path(relative_anibnd_path)
         if not anibnd_path or not anibnd_path.is_file():
             return self.error(f"Cannot find ANIBND for character {character_name}: {anibnd_path}")
 
@@ -371,8 +371,8 @@ class QuickExportObjectHKXAnimation(LoggingOperator):
 
         # Get OBJBND to modify from export (preferred) or import directory.
         relative_objbnd_path = Path(f"obj/{object_name}.objbnd")
-        settings.prepare_file_in_export_directory(relative_objbnd_path, False, must_exist=True)
-        objbnd_path = settings.get_preferred_export_path(relative_objbnd_path)
+        settings.prepare_project_file(relative_objbnd_path, False, must_exist=True)
+        objbnd_path = settings.get_project_or_game_path(relative_objbnd_path)
         if not objbnd_path or not objbnd_path.is_file():
             return self.error(f"Cannot find OBJBND for object {object_name}: {objbnd_path}")
         objbnd = Binder.from_path(objbnd_path)

@@ -102,10 +102,10 @@ class QuickImportMCG(LoggingOperator):
         settings = self.settings(context)
         if not settings.map_stem:
             return
-        mcg_path = settings.get_import_map_path(f"{settings.map_stem}.mcg")
+        mcg_path = settings.get_game_map_path(f"{settings.map_stem}.mcg")
         if not mcg_path.is_file():
             return self.error(f"Could not find MCG file '{mcg_path}'.")
-        msb_path = settings.get_import_msb_path()
+        msb_path = settings.get_game_msb_path()
         if not msb_path.is_file():
             return self.error(f"Could not find MSB file '{msb_path}'.")
         try:

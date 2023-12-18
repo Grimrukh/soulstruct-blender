@@ -260,11 +260,10 @@ class ExportHKXMapCollisionIntoBinder(LoggingOperator, ImportHelper):
 
         hkx_binder_path = Path(self.filepath)
 
-        hkx_entry_stem = hkx_parent.get("Model File Stem", hkx_parent.name.split(" ")[0].split(".")[0])
+        hkx_entry_stem = hkx_parent.get("Model File Stem", get_bl_obj_stem(hkx_parent))
         if not LOOSE_HKX_COLLISION_NAME_RE.match(hkx_entry_stem) is None:
             self.warning(
-                f"HKX export file name '{hkx_entry_stem}' must be 'h####B#A##' or 'l####B#A##' "
-                f"(`allow_any_name = False`)."
+                f"HKX map collision model name '{hkx_entry_stem}' should generally be 'h....B.A..' or 'l....B.A..'."
             )
         # NOTE: If this is a new collision, its name must be in standard numeric format so that the map can be
         # detected for the new Binder entry path.
@@ -342,7 +341,7 @@ class ExportHKXMapCollisionIntoHKXBHD(LoggingOperator):
         TODO: Also currently for DS1R only.
         """
         settings = cls.settings(context)
-        if not settings.can_export:
+        if not settings.can_auto_export:
             return False
         if not settings.is_game(DARK_SOULS_DSR):
             return False
@@ -364,9 +363,24 @@ class ExportHKXMapCollisionIntoHKXBHD(LoggingOperator):
         settings = self.settings(context)
         settings.save_settings()
 
+        export_kwargs = dict(
+            operator=self,
+            context=context,
+            dcx_type=DCXType.DS1_DS2,  # DS1R (inside HKXBHD)
+            default_entry_path="{map}\\{name}.hkx.dcx",  # DS1R
+            default_entry_flags=0x2,
+            overwrite_existing=True,
+        )
+
+        opened_hkxbhds = {"h": {}, "l": {}}  # type: dict[str, dict[Path, Binder]]  # keys are relative HKXBHD paths
         return_strings = set()
 
         for hkx_parent in context.selected_objects:
+
+            res = hkx_parent.name[0]
+            if res not in "hl":
+                self.error(f"Selected object '{hkx_parent.name}' must start with 'h' or 'l' to export.")
+                continue
 
             if settings.detect_map_from_parent:
                 if hkx_parent.parent is None:
@@ -382,92 +396,79 @@ class ExportHKXMapCollisionIntoHKXBHD(LoggingOperator):
             else:
                 map_stem = settings.map_stem
 
-            # Guess HKX stem from first 10 characters of name of selected object.
-            hkx_entry_stem = hkx_parent.name[:10]
+            # Guess HKX stem from first 10 characters of name of selected object if 'Model File Stem' is not set.
+            # TODO: This assumes DS1 model stem formatting.
+            hkx_entry_stem = hkx_parent.get("Model File Stem", hkx_parent.name[:10])
 
             if not LOOSE_HKX_COLLISION_NAME_RE.match(hkx_entry_stem):
                 return self.error(
-                    f"Selected object '{hkx_parent.name}' does not match the required name pattern for "
-                    f"a DS1R HKX collision parent object: 'h......A..' or 'l......A..'"
+                    f"Selected object's model stem '{hkx_entry_stem}' does not match the required name pattern for "
+                    f"a DS1 HKX collision parent object: 'h......A..' or 'l......A..'"
                 )
 
             # If HKX name is standard, check that it matches the selected map stem and warn user if not.
-            numeric_match = NUMERIC_HKX_COLLISION_NAME_RE.match(hkx_parent.name[:10])
+            numeric_match = NUMERIC_HKX_COLLISION_NAME_RE.match(hkx_entry_stem)
             if numeric_match is None:
                 self.warning(
-                    f"Selected object '{hkx_parent.name}' does not match the standard name pattern for "
-                    f"a DS1R HKX map collision model: 'h####B#A##' or 'l####B#A##'. Exporting anyway."
+                    f"Selected object model stem '{hkx_entry_stem}' does not match the standard name pattern for "
+                    f"a DS1 HKX map collision model: 'h####B#A##' or 'l####B#A##'. Exporting anyway."
                 )
             else:
                 block, area = int(numeric_match.group(3)), int(numeric_match.group(4))
                 expected_map_stem = f"m{area:02d}_{block:02d}_00_00"
                 if expected_map_stem != map_stem:
                     self.warning(
-                        f"Map area and/or block in name of selected object '{hkx_parent.name}' does not match the "
-                        f"export destination map '{map_stem}'. Exporting anyway."
+                        f"Map area and/or block in name of selected object model stem '{hkx_entry_stem}' does not "
+                        f"match the export destination map '{map_stem}'. Exporting anyway."
                     )
-
-            res = hkx_parent.name[0]  # 'h' or 'l'
 
             try:
                 bl_meshes, other_res_bl_meshes, other_res = get_mesh_children(self, hkx_parent, True)
             except HKXMapCollisionExportError as ex:
                 raise HKXMapCollisionExportError(f"Children of object '{hkx_parent}' cannot be exported. Error: {ex}")
 
-            # Copy initial HKXBHD/BDT from import to export directory if needed.
-            hkxbhd_relative_path = Path(f"map/{map_stem}/{res}{map_stem[1:]}.hkxbhd")
-            hkdbdt_relative_path = Path(f"map/{map_stem}/{res}{map_stem[1:]}.hkxbdt")
-            settings.prepare_file_in_export_directory(hkxbhd_relative_path, False, True)
-            settings.prepare_file_in_export_directory(hkdbdt_relative_path, False, True)
-            hkxbhd_path = settings.get_export_path(hkxbhd_relative_path)
-
-            if other_res_bl_meshes:
-                other_res_hkxbhd_relative_path = Path(f"map/{map_stem}/{other_res}{map_stem[1:]}.hkxbhd")
-                other_res_hkdbdt_relative_path = Path(f"map/{map_stem}/{other_res}{map_stem[1:]}.hkxbdt")
-                settings.prepare_file_in_export_directory(other_res_hkxbhd_relative_path, False, True)
-                settings.prepare_file_in_export_directory(other_res_hkdbdt_relative_path, False, True)
+            if res == "h":
+                res_meshes = {
+                    "h": bl_meshes,
+                    "l": other_res_bl_meshes,
+                }
             else:
-                other_res_hkxbhd_relative_path = None
+                # Swap res and meshes.
+                res_meshes = {
+                    "h": other_res_bl_meshes,
+                    "l": bl_meshes,
+                }
 
-            hkxbhd, other_res_hkxbhd = load_hkxbhds(hkxbhd_path, other_res=other_res)
+            for r in "hl":
+                meshes = res_meshes[r]
+                if not meshes:
+                    continue
+                opened_res_hkxbhds = opened_hkxbhds[r]
+                relative_hkxbhd_path = Path(f"map/{map_stem}/{r}{map_stem[1:]}.hkxbhd")  # no DCX
+                if relative_hkxbhd_path not in opened_res_hkxbhds:
+                    relative_hkxbdt_path = Path(f"map/{map_stem}/{r}{map_stem[1:]}.hkxbdt")  # no DCX
+                    settings.prepare_project_file(relative_hkxbhd_path, False, True)
+                    settings.prepare_project_file(relative_hkxbdt_path, False, True)
+                    hkxbhd_path = settings.get_project_or_game_path(relative_hkxbhd_path)
+                    opened_res_hkxbhds[relative_hkxbhd_path] = Binder.from_path(hkxbhd_path)
 
-            export_kwargs = dict(
-                operator=self,
-                context=context,
-                dcx_type=DCXType.DS1_DS2,  # DS1R (inside HKXBHD)
-                default_entry_path="{map}\\{name}.hkx.dcx",  # DS1R
-                default_entry_flags=0x2,
-                overwrite_existing=True,
-                map_stem=map_stem,
-            )
+                hkxbhd = opened_res_hkxbhds[relative_hkxbhd_path]
 
-            try:
-                export_hkx_to_binder(
-                    bl_meshes=bl_meshes,
-                    hkxbhd=hkxbhd,
-                    hkx_entry_stem=hkx_entry_stem,
-                    **export_kwargs,
-                )
-            except Exception as ex:
-                traceback.print_exc()
-                return self.error(f"Could not execute HKX export to Binder. Error: {ex}")
-
-            if other_res_bl_meshes:
-                other_res_hkx_entry_stem = f"{other_res}{hkx_entry_stem[1:]}" if other_res else None
                 try:
                     export_hkx_to_binder(
-                        bl_meshes=other_res_bl_meshes,
-                        hkxbhd=other_res_hkxbhd,
-                        hkx_entry_stem=other_res_hkx_entry_stem,
+                        bl_meshes=meshes,
+                        hkxbhd=hkxbhd,
+                        hkx_entry_stem=hkx_entry_stem,
+                        map_stem=map_stem,
                         **export_kwargs,
                     )
                 except Exception as ex:
                     traceback.print_exc()
-                    return self.error(f"Could not execute HKX export to Binder. Error: {ex}")
+                    self.error(f"Could not execute HKX export to Binder. Error: {ex}")
 
-            return_strings |= settings.export_file(self, hkxbhd, hkxbhd_relative_path)
-            if other_res_bl_meshes:
-                settings.export_file(self, other_res_hkxbhd, other_res_hkxbhd_relative_path)
+        for opened_res_hkxbhds in opened_hkxbhds.values():
+            for relative_hkxbhd_path, hkxbhd in opened_res_hkxbhds.items():
+                return_strings |= settings.export_file(self, hkxbhd, relative_hkxbhd_path)
 
         return {"FINISHED"} if "FINISHED" in return_strings else {"CANCELLED"}  # at least one success
 
@@ -494,7 +495,7 @@ class ExportMSBMapCollision(LoggingOperator):
         TODO: Also currently for DS1R only.
         """
         settings = cls.settings(context)
-        if not settings.can_export:
+        if not settings.can_auto_export:
             return False
         if not settings.is_game(DARK_SOULS_DSR):
             return False
@@ -516,11 +517,26 @@ class ExportMSBMapCollision(LoggingOperator):
         settings = self.settings(context)
         settings.save_settings()
 
-        opened_msbs = {}  # type: dict[Path, MSB_TYPING]
-        edited_part_names = {}  # type: dict[Path, set[str]]
+        export_kwargs = dict(
+            operator=self,
+            context=context,
+            dcx_type=DCXType.DS1_DS2,  # DS1R (inside HKXBHD)
+            default_entry_path="{map}\\{name}.hkx.dcx",  # DS1R
+            default_entry_flags=0x2,
+            overwrite_existing=True,
+        )
+
+        opened_msbs = {}  # type: dict[Path, MSB_TYPING]  # keys are relative MSB paths
+        opened_hkxbhds = {"h": {}, "l": {}}  # type: dict[str, dict[Path, Binder]]  # keys are relative HKXBHD paths
+        edited_part_names = {}  # type: dict[str, set[str]]  # keys are map stems
         return_strings = set()
 
         for hkx_parent in context.selected_objects:
+
+            res = hkx_parent.name[0]
+            if res not in "hl":
+                self.error(f"Selected object '{hkx_parent.name}' must start with 'h' or 'l' to export.")
+                continue
 
             if settings.detect_map_from_parent:
                 if hkx_parent.parent is None:
@@ -536,47 +552,51 @@ class ExportMSBMapCollision(LoggingOperator):
             else:
                 map_stem = settings.map_stem
 
+            relative_msb_path = settings.get_relative_msb_path(map_stem)
+
             # Get model file stem from MSB (must contain matching part).
             collision_part_name = get_bl_obj_stem(hkx_parent)
-            msb_path = settings.get_import_msb_path(map_stem)
-            msb = opened_msbs.setdefault(
-                msb_path,
-                get_cached_file(msb_path, settings.get_game_msb_class()),
-            )  # type: MSB_TYPING
+            if map_stem not in opened_msbs:
+                # Open new MSB.
+                settings.prepare_project_file(relative_msb_path, False, True)
+                msb_path = settings.get_project_or_game_path(relative_msb_path)
+                opened_msbs[relative_msb_path] = get_cached_file(msb_path, settings.get_game_msb_class())
+
+            msb = opened_msbs[relative_msb_path]  # type: MSB_TYPING
 
             try:
                 msb_part = msb.collisions.find_entry_name(collision_part_name)
             except KeyError:
                 return self.error(
-                    f"Collision part '{collision_part_name}' not found in MSB '{msb_path}'."
+                    f"Collision part '{collision_part_name}' not found in MSB for map {map_stem}."
                 )
             if not msb_part.model.name:
                 return self.error(
-                    f"Collision part '{collision_part_name}' in MSB '{msb_path}' has no model name."
+                    f"Collision part '{collision_part_name}' in MSB for map {map_stem} has no model name."
                 )
 
             hkx_entry_stem = hkx_parent.get("Model File Stem", None) if self.prefer_new_model_file_stem else None
             if not hkx_entry_stem:  # could be None or empty string
                 # Use existing MSB model name.
-                hkx_entry_stem = msb_part.model.name + f"A{map_stem[1:3]}"
+                hkx_entry_stem = msb_part.model.get_model_file_stem(map_stem)
             else:
                 # Update MSB model name.
-                msb_part.model.name = hkx_entry_stem[:7]
+                msb_part.model.set_name_from_model_file_stem(hkx_entry_stem)
 
-            edited_msb_part_names = edited_part_names.setdefault(msb_path, set())
+            edited_msb_part_names = edited_part_names.setdefault(map_stem, set())
             if collision_part_name in edited_msb_part_names:
                 self.warning(
                     f"Navmesh part '{collision_part_name}' was exported more than once in selected meshes."
                 )
             edited_msb_part_names.add(collision_part_name)
 
-            # Warn if HKX stem in MSB is unexpected.
+            # Warn if HKX stem in MSB is unexpected. (Only reachable if `prefer_new_model_file_stem = False`.)
             if (model_file_stem := hkx_parent.get("Model File Stem", None)) is not None:
                 if model_file_stem != hkx_entry_stem:
                     self.warning(
-                        f"Collision part '{hkx_entry_stem}' in MSB '{msb_path}' has model name "
+                        f"Collision part '{hkx_entry_stem}' in MSB for map {map_stem} has model name "
                         f"'{msb_part.model.name}' but Blender mesh 'Model File Stem' is '{model_file_stem}'. "
-                        f"Using HKX stem from MSB model name; you may want to update the Blender mesh."
+                        f"Prioritizing HKX stem from MSB model name; you may want to update the Blender mesh."
                     )
 
             # Update part transform in MSB.
@@ -585,70 +605,56 @@ class ExportMSBMapCollision(LoggingOperator):
             msb_part.rotate = bl_transform.game_rotate_deg
             msb_part.scale = bl_transform.game_scale
 
-            res = hkx_parent.name[0]  # 'h' or 'l'
-
             try:
                 bl_meshes, other_res_bl_meshes, other_res = get_mesh_children(self, hkx_parent, True)
             except HKXMapCollisionExportError as ex:
                 raise HKXMapCollisionExportError(f"Children of object '{hkx_parent}' cannot be exported. Error: {ex}")
 
-            # Copy initial HKXBHD/BDT from import to export directory if needed.
-            hkxbhd_relative_path = Path(f"map/{map_stem}/{res}{map_stem[1:]}.hkxbhd")
-            hkdbdt_relative_path = Path(f"map/{map_stem}/{res}{map_stem[1:]}.hkxbdt")
-            settings.prepare_file_in_export_directory(hkxbhd_relative_path, False, True)
-            settings.prepare_file_in_export_directory(hkdbdt_relative_path, False, True)
-            hkxbhd_path = settings.get_export_path(hkxbhd_relative_path)
-
-            if other_res_bl_meshes:
-                other_res_hkxbhd_relative_path = Path(f"map/{map_stem}/{other_res}{map_stem[1:]}.hkxbhd")
-                other_res_hkdbdt_relative_path = Path(f"map/{map_stem}/{other_res}{map_stem[1:]}.hkxbdt")
-                settings.prepare_file_in_export_directory(other_res_hkxbhd_relative_path, False, True)
-                settings.prepare_file_in_export_directory(other_res_hkdbdt_relative_path, False, True)
+            if res == "h":
+                res_meshes = {
+                    "h": bl_meshes,
+                    "l": other_res_bl_meshes,
+                }
             else:
-                other_res_hkxbhd_relative_path = None
+                # Swap res and meshes.
+                res_meshes = {
+                    "h": other_res_bl_meshes,
+                    "l": bl_meshes,
+                }
 
-            hkxbhd, other_res_hkxbhd = load_hkxbhds(hkxbhd_path, other_res=other_res)
+            for r in "hl":
+                meshes = res_meshes[r]
+                if not meshes:
+                    continue
+                opened_res_hkxbhds = opened_hkxbhds[r]
+                relative_hkxbhd_path = Path(f"map/{map_stem}/{r}{map_stem[1:]}.hkxbhd")  # no DCX
+                if relative_hkxbhd_path not in opened_res_hkxbhds:
+                    relative_hkxbdt_path = Path(f"map/{map_stem}/{r}{map_stem[1:]}.hkxbdt")  # no DCX
+                    settings.prepare_project_file(relative_hkxbhd_path, False, True)
+                    settings.prepare_project_file(relative_hkxbdt_path, False, True)
+                    hkxbhd_path = settings.get_project_or_game_path(relative_hkxbhd_path)
+                    opened_res_hkxbhds[relative_hkxbhd_path] = Binder.from_path(hkxbhd_path)
 
-            export_kwargs = dict(
-                operator=self,
-                context=context,
-                dcx_type=DCXType.DS1_DS2,  # DS1R (inside HKXBHD)
-                default_entry_path="{map}\\{name}.hkx.dcx",  # DS1R
-                default_entry_flags=0x2,
-                overwrite_existing=True,
-                map_stem=map_stem,
-            )
+                hkxbhd = opened_res_hkxbhds[relative_hkxbhd_path]
 
-            try:
-                export_hkx_to_binder(
-                    bl_meshes=bl_meshes,
-                    hkxbhd=hkxbhd,
-                    hkx_entry_stem=hkx_entry_stem,
-                    **export_kwargs,
-                )
-            except Exception as ex:
-                traceback.print_exc()
-                return self.error(f"Could not execute HKX export to Binder. Error: {ex}")
-
-            if other_res_bl_meshes:
-                other_res_hkx_entry_stem = f"{other_res}{hkx_entry_stem[1:]}" if other_res else None
                 try:
                     export_hkx_to_binder(
-                        bl_meshes=other_res_bl_meshes,
-                        hkxbhd=other_res_hkxbhd,
-                        hkx_entry_stem=other_res_hkx_entry_stem,
+                        bl_meshes=meshes,
+                        hkxbhd=hkxbhd,
+                        hkx_entry_stem=hkx_entry_stem,
+                        map_stem=map_stem,
                         **export_kwargs,
                     )
                 except Exception as ex:
                     traceback.print_exc()
-                    return self.error(f"Could not execute HKX export to Binder. Error: {ex}")
+                    self.error(f"Could not execute HKX export to Binder. Error: {ex}")
 
-            return_strings |= settings.export_file(self, hkxbhd, hkxbhd_relative_path)
-            if other_res_bl_meshes:
-                settings.export_file(self, other_res_hkxbhd, other_res_hkxbhd_relative_path)
+        for opened_res_hkxbhds in opened_hkxbhds.values():
+            for relative_hkxbhd_path, hkxbhd in opened_res_hkxbhds.items():
+                return_strings |= settings.export_file(self, hkxbhd, relative_hkxbhd_path)
 
-        for msb_path, msb in opened_msbs.items():
-            settings.export_file(self, msb, msb_path.relative_to(settings.game_import_directory))
+        for relative_msb_path, msb in opened_msbs.items():
+            settings.export_file(self, msb, relative_msb_path)
 
         return {"FINISHED"} if "FINISHED" in return_strings else {"CANCELLED"}  # at least one success
 
@@ -673,9 +679,6 @@ def load_hkxbhds(hkxbhd_path: Path, other_res: str = "") -> tuple[Binder, Binder
         raise HKXMapCollisionExportError(
             f"Could not load HKXBHD file '{other_res_hkxbhd}' for other resolution. Error: {ex}"
         )
-    if other_res == hkxbhd_path.name[0]:
-        # Tried to export, e.g., 'h' parent into 'l' binder. Just swap the binders.
-        hkxbhd, other_res_hkxbhd = other_res_hkxbhd, hkxbhd
     return hkxbhd, other_res_hkxbhd
 
 

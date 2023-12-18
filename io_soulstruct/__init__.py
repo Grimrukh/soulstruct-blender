@@ -75,7 +75,7 @@ CLASSES = (
     SoulstructGameEnums,
     GlobalSettingsPanel,
     GlobalSettingsPanel_FLVERView,
-    SelectGameImportDirectory,
+    SelectGameDirectory,
     SelectGameExportDirectory,
     SelectMapDirectory,
     SelectPNGCacheDirectory,

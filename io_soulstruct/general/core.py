@@ -38,16 +38,17 @@ SUPPORTED_GAMES = [
 
 # noinspection PyUnusedLocal
 def _get_map_stem_items(self, context: bpy.types.Context):
-    """Get list of map stems in game import directory."""
+    """Get list of map stems in project/game directory."""
+    # TODO: Probably need to combine map stems in project and game...? Ugh.
     settings = SoulstructSettings.from_context(context)
-    game_import_directory = settings.game_import_directory
+    game_directory = settings.game_directory
     global _MAP_STEM_ENUM_ITEMS
 
-    if not game_import_directory:
+    if not game_directory:
         _MAP_STEM_ENUM_ITEMS = (None, [("0", "None", "None")])
         return _MAP_STEM_ENUM_ITEMS[1]
 
-    map_dir_path = Path(game_import_directory, "map")
+    map_dir_path = Path(game_directory, "map")
     if not map_dir_path.is_dir():
         _MAP_STEM_ENUM_ITEMS = (None, [("0", "None", "None")])
         return _MAP_STEM_ENUM_ITEMS[1]
@@ -103,42 +104,44 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         """Get selected Game object from `soulstruct.games`."""
         return get_game(self.game_enum) if self.game_enum else None
 
-    str_game_import_directory: bpy.props.StringProperty(
-        name="Import Directory",
-        description="Root (containing EXE/BIN) of game directory to import from and optionally export to",
+    str_game_directory: bpy.props.StringProperty(
+        name="Game Directory",
+        description="Root (containing EXE/BIN) of game directory to import files from when they are missing from the "
+                    "project directory, and optionally export to if 'Also Export to Game' is enabled",
         default="",
     )
 
     @property
-    def game_import_directory(self) -> Path | None:
-        return Path(self.str_game_import_directory) if self.str_game_import_directory else None
+    def game_directory(self) -> Path | None:
+        return Path(self.str_game_directory) if self.str_game_directory else None
 
-    str_game_export_directory: bpy.props.StringProperty(
-        name="Export Directory",
-        description="Root game-like directory to export to",
+    str_project_directory: bpy.props.StringProperty(
+        name="Project Directory",
+        description="Project root directory with game-like structure to export to. Files for import and Binders needed "
+                    "for exporting new entries will also be sourced here first if they exist",
         default="",
     )
 
     @property
-    def game_export_directory(self) -> Path | None:
-        return Path(self.str_game_export_directory) if self.str_game_export_directory else None
+    def project_directory(self) -> Path | None:
+        return Path(self.str_project_directory) if self.str_project_directory else None
 
-    also_export_to_import: bpy.props.BoolProperty(
-        name="Also Export to Import Directory",
-        description="Also export to the game import directory when exporting",
+    also_export_to_game: bpy.props.BoolProperty(
+        name="Also Export to Game",
+        description="Export files to the game directory in addition to the project directory (if given)",
         default=False,
     )
 
     map_stem: bpy.props.EnumProperty(
         name="Map Stem",
-        description="Directory in game 'map' folder to use when auto-importing or exporting map assets",
+        description="Directory in game/project 'map' folder to use when importing or exporting map assets",
         items=_get_map_stem_items,
     )
 
     str_mtdbnd_path: bpy.props.StringProperty(
         name="MTDBND Path",
         description="Path of custom MTDBND file for detecting material setups. "
-                    "Defaults to an automatic game-specific location in selected game directory",
+                    "Defaults to an automatic known location in selected project (preferred) or game directory",
         default="",
     )
 
@@ -148,8 +151,8 @@ class SoulstructSettings(bpy.types.PropertyGroup):
 
     str_matbinbnd_path: bpy.props.StringProperty(
         name="MATBINBND Path",
-        description="Path of custom MATBINBND file for detecting material setups (Elden Ring only). "
-                    "Defaults to an automatic game-specific location in selected game directory",
+        description="Path of custom MATBINBND file for detecting material setups in Elden Ring only. "
+                    "Defaults to an automatic known location in selected project (preferred) or game directory",
         default="",
     )
 
@@ -176,19 +179,22 @@ class SoulstructSettings(bpy.types.PropertyGroup):
 
     write_cached_pngs: bpy.props.BoolProperty(
         name="Write Cached PNGs",
-        description="Write cached PNGs of imported FLVER textures (converted from DDS files) to PNG cache if given",
+        description="Write cached PNGs of imported FLVER textures (converted from DDS files) to PNG cache if given, so "
+                    "they can be loaded more quickly in the future or modified by the user without DDS headaches",
         default=True,
     )
 
     import_bak_file: bpy.props.BoolProperty(
         name="Import BAK File",
-        description="Import from '.bak' backup file when quick-importing from game directory (and fail if missing)",
+        description="Import from '.bak' backup file when auto-importing from project/game directory. If enabled and a "
+                    "'.bak' file is not found, the import will fail",
         default=False,
     )
 
     detect_map_from_parent: bpy.props.BoolProperty(
         name="Detect Map from Parent",
-        description="Detect map stem from Blender parent when quick-exporting game map assets",
+        description="Detect map stem (e.g. 'm10_00_00_00') from name of selected objects' Blender parent(s) when "
+                    "auto-exporting map assets",
         default=True,
     )
 
@@ -215,11 +221,11 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         return game.variable_name if game else ""
 
     def auto_set_game(self):
-        """Determine `game` enum value from `game_import_directory`."""
-        if not self.str_game_import_directory:
+        """Determine `game` enum value from `game_directory`."""
+        if not self.str_game_directory:
             return
         for game in SUPPORTED_GAMES:
-            executable_path = Path(self.str_game_import_directory, game.executable_name)
+            executable_path = Path(self.str_game_directory, game.executable_name)
             if executable_path.is_file():
                 self.game_enum = game.variable_name
                 return
@@ -235,95 +241,114 @@ class SoulstructSettings(bpy.types.PropertyGroup):
             return path.with_suffix(path.suffix + ".bak")
         return path
 
-    def get_import_path(self, *parts: str | Path, dcx_type: DCXType = None) -> Path | None:
-        """Get path relative to game import directory.
+    def get_game_path(self, *parts: str | Path, dcx_type: DCXType = None) -> Path | None:
+        """Get path relative to selected game directory. Does NOT check if the file/directory actually exists.
 
         If `dcx_type` is given (including `Null`), the path will be processed by that DCX type. Otherwise, the known
-        game specific/default DCX type will be used.
+        game specific/default DCX type for the file type will be used.
 
         Will add `.bak` suffix to path if `import_bak_file` is enabled.
         """
-        if not self.str_game_import_directory:
+        if not self.str_game_directory:
             return None
-        import_path = Path(self.str_game_import_directory, *parts)
+        import_path = Path(self.str_game_directory, *parts)
         return self._process_path(import_path, dcx_type)
 
-    def get_import_map_path(self, *parts, dcx_type: DCXType = None) -> Path | None:
-        """Get the `map_stem` path in the game import 'map' directory.
+    def get_game_map_path(self, *parts, dcx_type: DCXType = None) -> Path | None:
+        """Get the `map/{map_stem}` path, and optionally further, in the game directory.
 
         If `dcx_type` is given (including `Null`), the path will be processed by that DCX type. Otherwise, the known
-        game specific/default DCX type will be used.
+        game specific/default DCX type for the file type will be used.
         """
-        if not self.str_game_import_directory or self.map_stem in {"", "0"}:
+        if not self.str_game_directory or self.map_stem in {"", "0"}:
             return None
-        import_path = Path(self.str_game_import_directory, f"map/{self.map_stem}", *parts)
+        import_path = Path(self.str_game_directory, f"map/{self.map_stem}", *parts)
         return self._process_path(import_path, dcx_type)
 
-    def get_import_msb_path(self, map_stem="") -> Path | None:
-        """Get the `map_stem` MSB path in its game import 'MapStudio' directory."""
+    def get_game_msb_path(self, map_stem="") -> Path | None:
+        """Get the `map_stem` MSB path in the game `map/MapStudio` directory."""
         map_stem = map_stem or self.map_stem
-        if not self.str_game_import_directory or map_stem in {"", "0"}:
+        if not self.str_game_directory or map_stem in {"", "0"}:
             return None
-        return self.get_import_path(self.game.default_file_paths["MapStudioDirectory"], f"{map_stem}.msb")
+        return self.get_game_path(self.get_relative_msb_path(map_stem))
 
-    def get_export_path(self, *parts: str | Path, dcx_type: DCXType = None) -> Path | None:
-        """Get path relative to game export directory.
+    def get_project_path(self, *parts: str | Path, dcx_type: DCXType = None) -> Path | None:
+        """Get path relative to the selected project directory.
 
         If `dcx_type` is given (including `Null`), the path will be processed by that DCX type. Otherwise, the known
-        game specific/default DCX type will be used.
+        game specific/default DCX type for the file type will be used.
         """
-        if not self.str_game_export_directory:
+        if not self.str_project_directory:
             return None
-        export_path = Path(self.str_game_export_directory, *parts)
+        export_path = Path(self.str_project_directory, *parts)
         return self._process_path(export_path, dcx_type)
 
-    def get_export_map_path(self, *parts, dcx_type: DCXType = None) -> Path | None:
-        """Get the `map_stem` path in the game export 'map' directory.
+    def get_project_map_path(self, *parts, dcx_type: DCXType = None) -> Path | None:
+        """Get the `map/{map_stem}` path, and optionally further, in the project directory.
 
         If `dcx_type` is given (including `Null`), the path will be processed by that DCX type. Otherwise, the known
-        game specific/default DCX type will be used.
+        game specific/default DCX type for the file type will be used.
         """
-        if not self.str_game_export_directory or self.map_stem in {"", "0"}:
+        if not self.str_project_directory or self.map_stem in {"", "0"}:
             return None
-        export_path = Path(self.str_game_export_directory, f"map/{self.map_stem}", *parts)
+        export_path = Path(self.str_project_directory, f"map/{self.map_stem}", *parts)
         return self._process_path(export_path, dcx_type)
 
-    def get_export_msb_path(self, map_stem="") -> Path | None:
-        """Get the `map_stem` MSB path in its game export 'MapStudio' directory."""
+    def get_project_msb_path(self, map_stem="") -> Path | None:
+        """Get the `map_stem` MSB path in the project `map/MapStudio` directory."""
         map_stem = map_stem or self.map_stem
-        if not self.str_game_export_directory or map_stem in {"", "0"}:
+        if not self.str_project_directory or map_stem in {"", "0"}:
             return None
-        return self.get_export_path(self.game.default_file_paths["MapStudioDirectory"], f"{map_stem}.msb")
+        return self.get_project_path(self.get_relative_msb_path(map_stem))
 
-    def get_preferred_export_path(self, *parts: str | Path, dcx_type: DCXType = None) -> Path | None:
-        """Get path relative to game export directory, or game import directory if export directory is not set or the
-        file does not exist in the export directory. Does not check if the import backup file exists.
+    def get_project_or_game_file_path(self, *parts: str | Path, dcx_type: DCXType = None) -> Path | None:
+        """Try to get file path relative to project directory first, then fall back to the same path relative to the
+        game directory if the file does not exist in the project directory.
+
+        Raises a `FileNotFoundError` if the path cannot be found in EITHER directory.
 
         If `dcx_type` is given (including `Null`), the path will be processed by that DCX type. Otherwise, the known
-        game specific/default DCX type will be used.
+        game specific/default DCX type for the file type will be used.
         """
-        if self.str_game_export_directory:
-            export_path = self.get_export_path(*parts, dcx_type=dcx_type)
-            if export_path.is_file():
-                return export_path
-        return self.get_import_path(*parts, dcx_type=dcx_type)
+        if self.str_project_directory:
+            project_path = self.get_project_path(*parts, dcx_type=dcx_type)
+            if project_path.is_file():
+                return project_path
+        game_path = self.get_game_path(*parts, dcx_type=dcx_type)
+        if game_path and game_path.is_file():
+            return game_path
+        raise FileNotFoundError(f"File not found in project or game directory: {parts}")
 
     @property
-    def can_export(self) -> bool:
-        """Checks if `game_export_directory` is set and/or `game_import_directory` is set and `also_export_to_import`
-        is enabled, in which case quick-export operators will poll `True`."""
-        if self.str_game_export_directory:
+    def can_auto_export(self) -> bool:
+        """Checks if `project_directory` is set and/or `game_directory` is set and `also_export_to_game`
+        is enabled, in which case auto-export operators will poll `True`."""
+        if self.str_project_directory:
             return True
-        if self.str_game_import_directory and self.also_export_to_import:
+        if self.str_game_directory and self.also_export_to_game:
             return True
         return False
+
+    def get_relative_msb_path(self, map_stem="") -> Path | None:
+        """Get relative MSB path of given `map_stem` (or selected by default) for selected game."""
+        map_stem = map_stem or self.map_stem
+        if map_stem in {"", "0"}:
+            return None
+        return self.game.process_dcx_path(
+            Path(self.game.default_file_paths["MapStudioDirectory"], f"{map_stem}.msb")
+        )
 
     def export_file(
         self, operator: LoggingOperator, file: BaseBinaryFile, relative_path: Path, class_name=""
     ) -> set[str]:
+        """Write `file` to `relative_path` in project directory (if given) and optionally also to game directory if
+        `also_export_to_game` is enabled.
+
+        `class_name` is used for logging and will be automatically detected from `file` if not given.
+        """
         if relative_path.is_absolute():
             # Indicates a mistake in an operator.
-            raise ValueError(f"Relative path for export must be relative to game directory: {relative_path}")
+            raise ValueError(f"Relative path for export must be relative to game root, not absolute: {relative_path}")
         try:
             self._export_file(operator, file, relative_path, class_name)
         except Exception as e:
@@ -336,35 +361,39 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         if not class_name:
             class_name = file.cls_name
 
-        if self.game_export_directory:
-            export_path = self.get_export_path(relative_path)
-            export_path.parent.mkdir(parents=True, exist_ok=True)
-            written = file.write(export_path)
+        if self.project_directory:
+            project_path = self.get_project_path(relative_path)
+            project_path.parent.mkdir(parents=True, exist_ok=True)
+            written = file.write(project_path)
             operator.info(f"Exported {class_name} to: {written}")
-            if self.game_import_directory and self.also_export_to_import:
-                # Copy to import directory.
-                import_path = self.get_import_path(relative_path)
-                if import_path.is_file():
-                    create_bak(import_path)  # we may be about to replace it
-                    operator.info(f"Created backup file: {import_path}")
+            if self.game_directory and self.also_export_to_game:
+                # Copy to game directory.
+                game_path = self.get_game_path(relative_path)
+                if game_path.is_file():
+                    create_bak(game_path)  # we may be about to replace it
+                    operator.info(f"Created backup file in game directory: {game_path}")
                 else:
-                    import_path.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(export_path, import_path)
-                operator.info(f"Copied exported {class_name} to import directory: {import_path}")
-        elif self.game_import_directory and self.also_export_to_import:
-            import_path = self.get_import_path(relative_path)
-            import_path.parent.mkdir(parents=True, exist_ok=True)
-            written = file.write(import_path)
-            operator.info(f"Exported {class_name} to import directory only: {written}")
+                    game_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(project_path, game_path)
+                operator.info(f"Copied exported {class_name} to game directory: {game_path}")
+        elif self.game_directory and self.also_export_to_game:
+            game_path = self.get_game_path(relative_path)
+            game_path.parent.mkdir(parents=True, exist_ok=True)
+            written = file.write(game_path)
+            operator.info(f"Exported {class_name} to game directory only: {written}")
         else:
             operator.warning(
-                f"Cannot export {class_name} file. Game export directory is not set and game import directory is not "
-                f"set (or writing to import directory is disabled)."
+                f"Cannot export {class_name} file. Project directory is not set and game directory is either not "
+                f"set or 'Also Export to Game' is disabled."
             )
 
     def export_file_data(
         self, operator: LoggingOperator, data: bytes, relative_path: Path, class_name: str
     ) -> set[str]:
+        """Version of `export_file` that takes raw `bytes` data instead of a `BaseBinaryFile`.
+
+        `class_name` must be given in this case because it cannot be automatically detected.
+        """
         try:
             self._export_file_data(operator, data, relative_path, class_name)
         except Exception as e:
@@ -374,67 +403,69 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         return {"FINISHED"}
 
     def _export_file_data(self, operator: LoggingOperator, data: bytes, relative_path: Path, class_name: str):
-        if self.game_export_directory:
-            export_path = self.get_export_path(relative_path)
-            if export_path.is_file():
-                create_bak(export_path)
-                operator.info(f"Created backup file: {export_path}")
+        if self.project_directory:
+            project_path = self.get_project_path(relative_path)
+            if project_path.is_file():
+                create_bak(project_path)
+                operator.info(f"Created backup file in project directory: {project_path}")
             else:
-                export_path.parent.mkdir(parents=True, exist_ok=True)
-            export_path.write_bytes(data)
-            operator.info(f"Exported {class_name} to: {export_path}")
-            if self.game_import_directory and self.also_export_to_import:
-                # Copy to import directory.
-                import_path = self.get_import_path(relative_path)
-                if import_path.is_file():
-                    create_bak(import_path)
-                    operator.info(f"Created backup file: {import_path}")
+                project_path.parent.mkdir(parents=True, exist_ok=True)
+            project_path.write_bytes(data)
+            operator.info(f"Exported {class_name} to: {project_path}")
+            if self.game_directory and self.also_export_to_game:
+                # Copy to game directory.
+                game_path = self.get_game_path(relative_path)
+                if game_path.is_file():
+                    create_bak(game_path)
+                    operator.info(f"Created backup file in game directory: {game_path}")
                 else:
-                    import_path.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(export_path, import_path)
-                operator.info(f"Copied exported {class_name} to import directory: {import_path}")
-        elif self.game_import_directory and self.also_export_to_import:
-            import_path = self.get_import_path(relative_path)
-            if import_path.is_file():
-                create_bak(import_path)
-                operator.info(f"Created backup file: {import_path}")
+                    game_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(project_path, game_path)
+                operator.info(f"Copied exported {class_name} to game directory: {game_path}")
+        elif self.game_directory and self.also_export_to_game:
+            game_path = self.get_game_path(relative_path)
+            if game_path.is_file():
+                create_bak(game_path)
+                operator.info(f"Created backup file in game directory: {game_path}")
             else:
-                import_path.parent.mkdir(parents=True, exist_ok=True)
-            import_path.write_bytes(data)
-            operator.info(f"Exported {class_name} to import directory only: {import_path}")
+                game_path.parent.mkdir(parents=True, exist_ok=True)
+            game_path.write_bytes(data)
+            operator.info(f"Exported {class_name} to game directory only: {game_path}")
         else:
             operator.warning(
-                f"Cannot export {class_name} file. Game export directory is not set and game import directory is not "
-                f"set (or writing to import directory is disabled)."
+                f"Cannot export {class_name} file. Project directory is not set and game directory is either not "
+                f"set or 'Also Export to Game' is disabled."
             )
 
-    def prepare_file_in_export_directory(
+    def prepare_project_file(
         self, relative_path: Path, overwrite_existing=False, must_exist=False, dcx_type: DCXType = None
     ) -> bool:
-        """Copy file from import directory to export directory, if both are set. Useful for copying in Binders that are
-        only being partially modified with new entries.
+        """Copy file from game directory to project directory, if both are set.
 
-        Does nothing if export directory is not set, in which case you are either exporting to the import directory only
-        or will likely hit an exception later on.
+        Useful for creating initial Binders in project directory that are only being partially modified with new
+        exported entries.
 
-        If `overwrite_existing` is `False` (default), the file will not be copied if it already exists in the export
-        directory. If `must_exist` is `True`, the file must already exist in the export directory or successfully be
-        copied from the import directory (assuming the export directory is set).
+        Does nothing if project directory is not set, in which case you are either exporting to the game directory only
+        or will likely hit an exception later on due.
+
+        If `overwrite_existing` is `False` (default), the file will not be copied if it already exists in the project
+        directory. If `must_exist` is `True`, the file must already exist in the project directory or successfully be
+        copied from the game directory (assuming the project directory is set).
 
         Never creates a `.bak` backup file.
         """
-        import_path = self.get_import_path(relative_path, dcx_type=dcx_type)
-        export_path = self.get_export_path(relative_path, dcx_type=dcx_type)
-        if not export_path:
-            return False  # no export directory
-        if not import_path or not import_path.is_file():
-            if must_exist and not export_path.is_file():
-                raise FileNotFoundError(f"File does not exist in import or export directory: {relative_path}")
-            return False  # nothing to copy (may or may not already exist in export)
-        if export_path and export_path.is_file() and not overwrite_existing:
+        game_path = self.get_game_path(relative_path, dcx_type=dcx_type)
+        project_path = self.get_project_path(relative_path, dcx_type=dcx_type)
+        if not project_path:
+            return False  # no project directory
+        if not game_path or not game_path.is_file():
+            if must_exist and not project_path.is_file():
+                raise FileNotFoundError(f"File does not exist in game or project directory: {relative_path}")
+            return False  # nothing to copy (may or may not already exist in project)
+        if project_path and project_path.is_file() and not overwrite_existing:
             return False  # already exists
-        export_path.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(import_path, export_path)
+        project_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(game_path, project_path)
         return True
 
     def get_game_msb_class(self) -> type[MSB_TYPING]:
@@ -469,14 +500,18 @@ class SoulstructSettings(bpy.types.PropertyGroup):
 
         mtdbnd_path = self.mtdbnd_path
 
-        if not mtdbnd_path and self.game_import_directory:
-            # Try to find MTDBND in game import directory.
-            for mtdbnd_name in (
-                "mtd.mtdbnd", "allmaterialbnd.mtdbnd"
-            ):
-                mtdbnd_path = self.game.process_dcx_path(self.game_import_directory / f"mtd/{mtdbnd_name}")
-                if mtdbnd_path.is_file():
-                    print(f"Found MTDBND in game directory: {mtdbnd_path}")
+        if not mtdbnd_path:
+            # Try to find MTDBND in project or game directory.
+            for label, directory in (("project", self.project_directory), ("game", self.game_directory)):
+                if not directory:
+                    continue
+                for mtdbnd_name in ("mtd.mtdbnd", "allmaterialbnd.mtdbnd"):
+                    try_mtdbnd_path = self.game.process_dcx_path(directory / f"mtd/{mtdbnd_name}")
+                    if try_mtdbnd_path.is_file():
+                        mtdbnd_path = try_mtdbnd_path
+                        print(f"Found MTDBND in {label} directory: {mtdbnd_path}")
+                        break
+                if mtdbnd_path:  # found
                     break
 
         if mtdbnd_path.is_file():
@@ -499,11 +534,16 @@ class SoulstructSettings(bpy.types.PropertyGroup):
 
         matbinbnd_path = self.matbinbnd_path
 
-        if not matbinbnd_path and self.game_import_directory:
-            # Try to find MATBINBND in game import directory.
-            matbinbnd_path = self.game.process_dcx_path(self.game_import_directory / "material/allmaterial.matbinbnd")
-            if matbinbnd_path.is_file():
-                print(f"Found MATBINBND in game directory: {matbinbnd_path}")
+        if not matbinbnd_path:
+            # Try to find MATABINBND in project or game directory.
+            for label, directory in (("project", self.project_directory), ("game", self.game_directory)):
+                if not directory:
+                    continue
+                try_matbinbnd_path = self.game.process_dcx_path(directory / f"material/allmaterial.matbinbnd")
+                if try_matbinbnd_path.is_file():
+                    matbinbnd_path = try_matbinbnd_path
+                    print(f"Found MATBINBND in {label} directory: {matbinbnd_path}")
+                    break
 
         if matbinbnd_path.is_file():
             return matbinbnd_class.from_path(matbinbnd_path)
@@ -521,15 +561,15 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         except FileNotFoundError:
             return  # do nothing
         self.game_enum = json_settings.get("game_enum", DARK_SOULS_DSR.variable_name)
-        self.str_game_import_directory = json_settings.get("str_game_import_directory", "")
-        self.str_game_export_directory = json_settings.get("str_game_export_directory", "")
-        self.also_export_to_import = json_settings.get("also_export_to_import", False)
+        self.str_game_directory = json_settings.get("str_game_directory", "")
+        self.str_project_directory = json_settings.get("str_project_directory", "")
+        self.also_export_to_game = json_settings.get("also_export_to_game", False)
         map_stem = json_settings.get("map_stem", "0")
         if not map_stem:
             map_stem = "0"  # null enum value
         self.map_stem = map_stem
         self.str_mtdbnd_path = json_settings.get("str_mtdbnd_path", "")
-        self.str_matbinbnd_path = json_settings.get("str_atbinbnd_path", "")
+        self.str_matbinbnd_path = json_settings.get("str_matbinbnd_path", "")
         self.str_png_cache_directory = json_settings.get("str_png_cache_directory", "")
         self.read_cached_pngs = json_settings.get("read_cached_pngs", True)
         self.write_cached_pngs = json_settings.get("write_cached_pngs", True)
@@ -542,9 +582,9 @@ class SoulstructSettings(bpy.types.PropertyGroup):
             key.lstrip("_"): getattr(self, key)
             for key in (
                 "game_enum",
-                "str_game_import_directory",
-                "str_game_export_directory",
-                "also_export_to_import",
+                "str_game_directory",
+                "str_project_directory",
+                "also_export_to_game",
                 "map_stem",
                 "str_mtdbnd_path",
                 "str_matbinbnd_path",

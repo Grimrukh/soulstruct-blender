@@ -27,7 +27,6 @@ import bpy
 from bpy_extras.io_utils import ImportHelper
 
 from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
-from soulstruct.dcx import DCXType
 
 from soulstruct_havok.wrappers.hkx2015 import MapCollisionHKX
 
@@ -102,7 +101,7 @@ class ImportHKXMapCollision(LoggingOperator, ImportHelper):
 
     def invoke(self, context, _event):
         """Set the initial directory based on Global Settings."""
-        map_path = self.settings(context).get_import_map_path()
+        map_path = self.settings(context).get_game_map_path()
         if map_path and map_path.is_dir():
             self.directory = str(map_path)
             context.window_manager.fileselect_add(self)
@@ -439,7 +438,7 @@ class ImportHKXMapCollisionFromHKXBHD(LoggingOperator):
         settings.save_settings()
         game_lists = context.scene.soulstruct_game_enums  # type: SoulstructGameEnums
 
-        import_map_path = settings.get_import_map_path()
+        import_map_path = settings.get_game_map_path()
         if not import_map_path:  # validation
             return self.error("Game directory and map stem must be set in Blender's Soulstruct global settings.")
 
@@ -449,8 +448,8 @@ class ImportHKXMapCollisionFromHKXBHD(LoggingOperator):
         bl_name = hkx_entry_name.split(".")[0]
 
         # BXF file never has DCX.
-        hkxbhd_path = settings.get_import_map_path(f"h{settings.map_stem[1:]}.hkxbhd", dcx_type=DCXType.Null)
-        hkxbdt_path = settings.get_import_map_path(f"h{settings.map_stem[1:]}.hkxbdt", dcx_type=DCXType.Null)
+        hkxbhd_path = settings.get_game_map_path(f"h{settings.map_stem[1:]}.hkxbhd")
+        hkxbdt_path = settings.get_game_map_path(f"h{settings.map_stem[1:]}.hkxbdt")
         if not hkxbhd_path.is_file():
             return self.error(f"Could not find HKXBHD header file for map '{settings.map_stem}': {hkxbhd_path}")
         if not hkxbdt_path.is_file():
@@ -555,13 +554,13 @@ class ImportMSBMapCollision(LoggingOperator):
         settings.save_settings()
         game_lists = context.scene.soulstruct_game_enums  # type: SoulstructGameEnums
 
-        import_map_path = settings.get_import_map_path()
+        import_map_path = settings.get_game_map_path()
         if not import_map_path:  # validation
             return self.error("Game directory and map stem must be set in Blender's Soulstruct global settings.")
 
         # BXF file never has DCX.
-        hkxbhd_path = settings.get_import_map_path(f"h{settings.map_stem[1:]}.hkxbhd", DCXType.Null)
-        hkxbdt_path = settings.get_import_map_path(f"h{settings.map_stem[1:]}.hkxbdt", DCXType.Null)
+        hkxbhd_path = settings.get_game_map_path(f"h{settings.map_stem[1:]}.hkxbhd")
+        hkxbdt_path = settings.get_game_map_path(f"h{settings.map_stem[1:]}.hkxbdt")
         if not hkxbhd_path.is_file():
             return self.error(f"Could not find HKXBHD header file for map '{settings.map_stem}': {hkxbhd_path}")
         if not hkxbdt_path.is_file():
@@ -571,7 +570,7 @@ class ImportMSBMapCollision(LoggingOperator):
             part_name, hkx_stem = game_lists.hkx_map_collision_parts.split("|")
         except ValueError:
             return self.error("Invalid MSB collision selection.")
-        msb_path = settings.get_import_msb_path()
+        msb_path = settings.get_game_msb_path()
 
         # Get MSB part transform.
         msb = get_cached_file(msb_path, settings.get_game_msb_class())  # type: MSB_TYPING

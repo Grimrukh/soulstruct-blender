@@ -345,7 +345,7 @@ class ImportNVMFromNVMBND(LoggingOperator):
         if settings.game_variable_name != "DARK_SOULS_DSR":
             return self.error("NVM import from game NVMBND is only available for Dark Souls Remastered.")
 
-        nvmbnd_path = settings.get_import_map_path(f"{settings.map_stem}.nvmbnd")
+        nvmbnd_path = settings.get_game_map_path(f"{settings.map_stem}.nvmbnd")
         if not nvmbnd_path or not nvmbnd_path.is_file():
             return self.error(f"Could not find NVMBND file for map '{settings.map_stem}': {nvmbnd_path}")
 
@@ -430,7 +430,7 @@ class ImportNVMMSBPart(LoggingOperator):
         if settings.game_variable_name != "DARK_SOULS_DSR":
             return self.error("MSB Navmesh import from game is only available for Dark Souls Remastered.")
 
-        nvmbnd_path = settings.get_import_map_path(f"{settings.map_stem}.nvmbnd")
+        nvmbnd_path = settings.get_game_map_path(f"{settings.map_stem}.nvmbnd")
         if not nvmbnd_path or not nvmbnd_path.is_file():
             return self.error(f"Could not find NVMBND file for map '{settings.map_stem}': {nvmbnd_path}")
 
@@ -438,7 +438,7 @@ class ImportNVMMSBPart(LoggingOperator):
             part_name, nvm_stem = context.scene.soulstruct_game_enums.nvm_parts.split("|")
         except ValueError:
             return self.error("Invalid MSB navmesh selection.")
-        msb_path = settings.get_import_msb_path()
+        msb_path = settings.get_game_msb_path()
 
         # Get MSB part transform.
         msb = get_cached_file(msb_path, settings.get_game_msb_class())  # type: MSB_TYPING

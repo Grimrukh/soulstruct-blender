@@ -48,7 +48,7 @@ def get_map_piece_items(self, context):
     key = "MAP_PIECE"
 
     settings = SoulstructSettings.from_context(context)
-    map_directory = settings.get_import_map_path()
+    map_directory = settings.get_game_map_path()
     if not map_directory or not map_directory.is_dir():
         return _clear_items(key)
 
@@ -68,7 +68,7 @@ def get_msb_map_piece_items(self, context):
     key = "MSB_MAP_PIECE"
 
     settings = SoulstructSettings.from_context(context)
-    msb_path = settings.get_import_msb_path()
+    msb_path = settings.get_game_msb_path()
     if not msb_path or not msb_path.is_file():
         return _clear_items(key)
 
@@ -106,7 +106,7 @@ def get_nvm_items(self, context):
     key = "NVM"
 
     settings = SoulstructSettings.from_context(context)
-    map_path = settings.get_import_map_path()
+    map_path = settings.get_game_map_path()
     if not map_path or not map_path.is_dir():
         return _clear_items(key)
     nvmbnd_path = settings.game.process_dcx_path(map_path / f"{settings.map_stem}.nvmbnd")
@@ -127,7 +127,7 @@ def get_nvm_part_items(self, context):
     key = "MSB_NAVMESH"
 
     settings = SoulstructSettings.from_context(context)
-    msb_path = settings.get_import_msb_path()
+    msb_path = settings.get_game_msb_path()
     if not msb_path or not msb_path.is_file():
         return _clear_items(key)
 
@@ -165,7 +165,7 @@ def get_hkx_map_collision_items(self, context):
     key = "HKX_MAP_COLLISION"
 
     settings = SoulstructSettings.from_context(context)
-    map_path = settings.get_import_map_path()
+    map_path = settings.get_game_map_path()
     if not map_path or not map_path.is_dir():
         return _clear_items(key)
 
@@ -193,7 +193,7 @@ def get_msb_hkx_map_collision_items(self, context):
     key = "MSB_HKX_MAP_COLLISION"
 
     settings = SoulstructSettings.from_context(context)
-    msb_path = settings.get_import_msb_path()
+    msb_path = settings.get_game_msb_path()
     if not msb_path or not msb_path.is_file():
         return _clear_items(key)
 

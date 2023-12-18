@@ -139,7 +139,7 @@ class TextureExportSettingsPanel(bpy.types.Panel):
         # TODO: These are DS1 fields. Need other games. (Use their own settings classes.)
         settings = bpy.context.scene.texture_export_settings  # type: TextureExportSettings
         for prop, split in (
-            ("overwrite_existing", 0),
+            ("overwrite_existing_map_textures", 0),
             ("require_power_of_two", 0),
             ("platform", 0.6),
             ("diffuse_format", 0.6),
@@ -153,7 +153,7 @@ class TextureExportSettingsPanel(bpy.types.Panel):
             ("lightmap_format", 0.6),
             ("lightmap_mipmap_count", 0),
             ("max_chrbnd_tpf_size", 0),
-            ("max_tpfs_per_map_tpfbhd", 0),
+            ("map_tpfbhd_count", 0),
         ):
             if split > 0:
                 row = self.layout.row(align=True)

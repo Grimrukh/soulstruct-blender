@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 __all__ = [
-    "SelectGameImportDirectory",
+    "SelectGameDirectory",
     "SelectGameExportDirectory",
     "SelectMapDirectory",
     "SelectPNGCacheDirectory",
@@ -24,11 +24,11 @@ STEAM_COMMON_LOCATIONS = [
 ]
 
 
-class SelectGameImportDirectory(LoggingOperator, ImportHelper):
+class SelectGameDirectory(LoggingOperator, ImportHelper):
     """Browse for global game directory."""
-    bl_idname = "soulstruct.select_game_import_directory"
-    bl_label = "Select Game Import Directory"
-    bl_description = "Select game import directory with browser"
+    bl_idname = "soulstruct.select_game_directory"
+    bl_label = "Select Game Directory"
+    bl_description = "Select game directory with browser"
 
     directory: StringProperty()
 
@@ -51,7 +51,7 @@ class SelectGameImportDirectory(LoggingOperator, ImportHelper):
             # We use browser's current `directory`, not `filepath` itself.
             game_directory = Path(self.directory).resolve()
             settings = self.settings(context)
-            settings.str_game_import_directory = str(game_directory)
+            settings.str_game_directory = str(game_directory)
             settings.auto_set_game()
 
         return {'FINISHED'}
@@ -59,7 +59,7 @@ class SelectGameImportDirectory(LoggingOperator, ImportHelper):
 
 class SelectGameExportDirectory(LoggingOperator, ImportHelper):
     """Browse for global game directory."""
-    bl_idname = "soulstruct.select_game_export_directory"
+    bl_idname = "soulstruct.select_project_directory"
     bl_label = "Select Game Export Directory"
     bl_description = "Select game export directory with browser"
 
@@ -84,14 +84,14 @@ class SelectGameExportDirectory(LoggingOperator, ImportHelper):
             # We use browser's current `directory`, not `filepath` itself.
             game_directory = Path(self.directory).resolve()
             settings = self.settings(context)
-            settings.str_game_export_directory = str(game_directory)
+            settings.str_project_directory = str(game_directory)
             # We do NOT auto-set game here, because the user may be exporting to any folder.
 
         return {'FINISHED'}
 
 
 class SelectMapDirectory(LoggingOperator, ImportHelper):
-    """Browse for game map directory to set both `game_import_directory` and `map_stem` settings."""
+    """Browse for game map directory to set both `game_directory` and `map_stem` settings."""
     bl_idname = "soulstruct.select_map_directory"
     bl_label = "Select Map Directory"
     bl_description = "Select game import directory AND map directory with browser"
@@ -107,8 +107,8 @@ class SelectMapDirectory(LoggingOperator, ImportHelper):
     def invoke(self, context, _event):
         """Set the initial directory."""
         settings = self.settings(context)
-        if settings.str_game_import_directory:
-            self.filepath = settings.str_game_import_directory
+        if settings.str_game_directory:
+            self.filepath = settings.str_game_directory
         else:
             for steam_common_location in STEAM_COMMON_LOCATIONS:
                 if steam_common_location.is_dir():
@@ -123,7 +123,7 @@ class SelectMapDirectory(LoggingOperator, ImportHelper):
                 self.warning("Selected directory does not appear to be a valid map directory name. Using anyway.")
             settings = self.settings(context)
             settings.map_stem = map_directory.name
-            settings.str_game_import_directory = str(map_directory.parent.parent)  # parent of 'map' directory
+            settings.str_game_directory = str(map_directory.parent.parent)  # parent of 'map' directory
 
         return {'FINISHED'}
 

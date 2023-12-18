@@ -173,7 +173,7 @@ class QuickExportMCGMCP(LoggingOperator):
         Also requires `SoulstructSettings` game.
         """
         settings = cls.settings(context)
-        if not settings.can_export:
+        if not settings.can_auto_export:
             return False
         if not settings.is_game(DARK_SOULS_DSR):
             return False
@@ -213,10 +213,10 @@ class QuickExportMCGMCP(LoggingOperator):
         relative_mcg_path = Path(f"map/{map_stem}/{map_stem}.mcg")  # no DCX
         # We prefer to read the MSB and NVMBND in the export directory if they exist. We do not copy them to export
         # because they are not modified and the user may not want to include them in a mod package.
-        msb_path = settings.get_preferred_export_path(f"map/MapStudop/{map_stem}.msb")
+        msb_path = settings.get_project_or_game_path(f"map/MapStudop/{map_stem}.msb")
         if not msb_path.is_file():
             return self.error(f"Could not find MSB file for map {map_stem} in export OR import directory.")
-        nvmbnd_path = settings.get_preferred_export_path(f"map/{map_stem}/{map_stem}.nvmbnd")
+        nvmbnd_path = settings.get_project_or_game_path(f"map/{map_stem}/{map_stem}.nvmbnd")
         if not nvmbnd_path.is_file():
             return self.error(f"Could not find NVMBND binder for map {map_stem} in export OR import directory.")
         
@@ -257,7 +257,7 @@ class QuickExportMCGMCP(LoggingOperator):
             return mcg_result
 
         # This will be the MCG path just exported.
-        mcg_path = settings.get_preferred_export_path(relative_mcg_path)
+        mcg_path = settings.get_project_or_game_path(relative_mcg_path)
 
         # Any error here will not affect MCG write (already done above).
         try:

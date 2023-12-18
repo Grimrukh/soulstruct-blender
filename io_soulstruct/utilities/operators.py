@@ -84,9 +84,9 @@ class LoggingImportOperator(LoggingOperator, ImportHelper):
 
     def invoke(self, context, _event):
         """Set the initial directory based on Global Settings."""
-        game_import_directory = context.scene.soulstruct_settings.game_import_directory
-        if game_import_directory and game_import_directory.is_dir():
-            self.directory = str(game_import_directory)
+        game_directory = context.scene.soulstruct_settings.game_directory
+        if game_directory and game_directory.is_dir():
+            self.directory = str(game_directory)
             context.window_manager.fileselect_add(self)
             return {'RUNNING_MODAL'}
         return super().invoke(context, _event)
@@ -104,9 +104,9 @@ class LoggingExportOperator(LoggingOperator, ExportHelper):
 
     def invoke(self, context, _event):
         """Set the initial directory based on Global Settings."""
-        game_export_directory = context.scene.soulstruct_settings.game_export_directory
-        if game_export_directory and Path(game_export_directory).is_dir():
-            self.directory = str(game_export_directory)
+        project_directory = context.scene.soulstruct_settings.project_directory
+        if project_directory and Path(project_directory).is_dir():
+            self.directory = str(project_directory)
             context.window_manager.fileselect_add(self)
             return {'RUNNING_MODAL'}
         return super().invoke(context, _event)

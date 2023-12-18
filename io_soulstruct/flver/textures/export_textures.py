@@ -2,13 +2,16 @@ from __future__ import annotations
 
 __all__ = [
     "TextureExportSettings",
+    "export_image_to_tpf",
     "export_images_to_tpf",
+    "export_images_to_multiple_tpfs",
     "export_images_to_tpfbhd",
     "export_images_to_map_area_tpfbhds",
     "bl_image_to_dds",
     "bl_images_to_dds",
 ]
 
+import math
 import tempfile
 from pathlib import Path
 
@@ -31,9 +34,10 @@ class TextureExportSettings(bpy.types.PropertyGroup):
     # TODO: These defaults aren't good generically. Looks like some diffuse textures require DXT1, e.g. Could be
     #  material dependent!
 
-    overwrite_existing: bpy.props.BoolProperty(
-        name="Overwrite Existing Textures",
-        description="Overwrite existing TPF textures with the same name as exported textures",
+    overwrite_existing_map_textures: bpy.props.BoolProperty(
+        name="Overwrite Existing Map Textures",
+        description="Overwrite existing map TPF textures with the same name as exported textures. Other FLVER types "
+                    "that bundle their own textures will always be overwritten with a complete new set",
         default=True,
     )
 
@@ -46,13 +50,13 @@ class TextureExportSettings(bpy.types.PropertyGroup):
 
     platform: bpy.props.EnumProperty(
         name="Platform",
-        description="Platform to export textures for",
+        description="Platform to export textures for. Currently only PC is supported",
         items=[
             ("PC", "PC", "PC"),
-            ("Xbox360", "Xbox 360", "Xbox 360"),
-            ("PS3", "PS3", "PS3"),
-            ("PS4", "PS4", "PS4"),
-            ("XboxOne", "Xbox One", "Xbox One"),
+            # ("Xbox360", "Xbox 360", "Xbox 360"),
+            # ("PS3", "PS3", "PS3"),
+            # ("PS4", "PS4", "PS4"),
+            # ("XboxOne", "Xbox One", "Xbox One"),
         ],
         default="PC",
     )
@@ -175,16 +179,18 @@ class TextureExportSettings(bpy.types.PropertyGroup):
     max_chrbnd_tpf_size: bpy.props.IntProperty(
         name="Max CHRBND TPF Size (KB)",
         description="Maximum size (in KB) of TPF bundled with CHRBND. Characters with total texture size beyond this "
-                    "will have their texture data placed in individual TPFs in an adjacent split CHRTPFBDT",
+                    "will have their texture data placed in individual TPFs in an adjacent folder (PTDE) or split "
+                    "CHRTPFBDT (DSR)",
         default=5000,
     )
 
-    max_tpfs_per_map_tpfbhd: bpy.props.IntProperty(
-        name="Max TPFs per Map TPFBHD",
-        description="Maximum number of TPFs that can be bundled into a single map TPFBHD. All map TPFs will be "
-                    "alphabetized and written to different TPFBHDs of no more than this many textures with suffixes "
-                    "'_0000', '_0001', etc",
-        default=324,
+    map_tpfbhd_count: bpy.props.IntProperty(
+        name="Map TPFBHD Count",
+        description="Map texture TPFs will be alphabetized and evenly divided between this many TPFBHD binders with "
+                    "suffixes '_0000', '_0001', etc. in their file stems",
+        default=4,
+        min=1,
+        max=10,  # arbitrary
     )
 
     def detect_texture_dds_format_mipmap_count(self, texture_stem: str) -> tuple[str, int]:
@@ -261,6 +267,63 @@ def export_images_to_tpf(
     )
 
 
+def export_image_to_tpf(
+    context: bpy.types.Context,
+    operator: LoggingOperator,
+    settings: TextureExportSettings,
+    texture_stem: str,
+    image: bpy.types.Image,
+    dcx_type: DCXType,
+) -> TPF | None:
+    # Detect texture type from name.
+    dds_format, mipmap_count = settings.detect_texture_dds_format_mipmap_count(texture_stem)
+    if dds_format == "NONE":
+        return None  # no texture
+    if dds_format == "SAME":
+        # TODO: Fix.
+        raise NotImplementedError("Can currently only export Map Piece textures in 'SAME' mode.")
+    # Convert Blender image to DDS.
+    try:
+        data = bl_image_to_dds(context, image, dds_format, mipmap_count)
+    except TextureExportError as ex:
+        operator.report({"ERROR"}, f"Could not export texture '{texture_stem}': {ex}")
+        return None
+    # Create single-texture TPF.
+    texture = TPFTexture(name=texture_stem, data=data, format=TPF_TEXTURE_FORMATS.get(dds_format, 1))
+    return TPF(
+        textures=[texture],
+        platform=TPFPlatform[settings.platform],
+        encoding_type=2,
+        tpf_flags=3,
+        dcx_type=dcx_type,
+    )
+
+
+def export_images_to_multiple_tpfs(
+    context,
+    operator: LoggingOperator,
+    images: dict[str, bpy.types.Image],
+    tpf_dcx_type: DCXType,
+) -> dict[str, TPF]:
+    """Put each DDS texture into its own TPF and return them all.
+
+    Used for, e.g., 'overflow' CHRBND textures in DS1: PTDE when they do not fit into a single multi-texture CHRBND TPF.
+    """
+    if not images:
+        raise ValueError("No images given to export to TPFs.")
+
+    settings = context.scene.texture_export_settings  # type: TextureExportSettings
+
+    tpfs = {}
+    for texture_stem in sorted(images):
+        image = images[texture_stem]
+        tpf = export_image_to_tpf(context, operator, settings, texture_stem, image, tpf_dcx_type)
+        if tpf:
+            tpfs[texture_stem] = tpf
+
+    return tpfs
+
+
 def export_images_to_tpfbhd(
     context,
     operator: LoggingOperator,
@@ -284,28 +347,10 @@ def export_images_to_tpfbhd(
     tpfbxf = Binder.empty_bxf3()  # TODO: DS1 type
     for i, texture_stem in enumerate(sorted(images)):
         image = images[texture_stem]
-        # Detect texture type from name.
-        dds_format, mipmap_count = settings.detect_texture_dds_format_mipmap_count(texture_stem)
-        if dds_format == "NONE":
-            continue  # skip
-        if dds_format == "SAME":
-            # TODO: Fix.
-            raise NotImplementedError("Can currently only export Map Piece textures in 'SAME' mode.")
-        # Convert Blender image to DDS.
-        try:
-            data = bl_image_to_dds(context, image, dds_format, mipmap_count)
-        except TextureExportError as ex:
-            operator.report({"ERROR"}, f"Could not export texture '{texture_stem}': {ex}")
+        tpf = export_image_to_tpf(context, operator, settings, texture_stem, image, tpf_dcx_type)
+        if not tpf:
             continue
-        # Create single-texture TPF.
-        texture = TPFTexture(name=texture_stem, data=data, format=TPF_TEXTURE_FORMATS.get(dds_format, 1))
-        tpf = TPF(
-            textures=[texture],
-            platform=TPFPlatform[settings.platform],
-            encoding_type=2,
-            tpf_flags=3,
-            dcx_type=tpf_dcx_type,
-        )
+
         # Add TPF to TPFBHD.
         tpf_entry = BinderEntry(
             data=bytes(tpf),
@@ -355,7 +400,7 @@ def export_images_to_map_area_tpfbhds(
 
         # We check for existing textures with the same name as those we're exporting.
         if texture_stem in tpf_entries:
-            if not tex_export_settings.overwrite_existing:
+            if not tex_export_settings.overwrite_existing_map_textures:
                 raise FileExistsError(f"Texture '{texture_stem}' already exists in map area TPFBHDs.")
             if dds_format == "SAME":
                 existing_tpf = TPF.from_binder_entry(tpf_entries[texture_stem])
@@ -386,7 +431,7 @@ def export_images_to_map_area_tpfbhds(
         conversion_kwargs[texture_stem] = (images[texture_stem], dds_format, mipmap_count)
 
     # Convert images to DDS.
-    operator.info(f"Converting {len(conversion_kwargs)} Blender images to DDS textures....")
+    operator.info(f"Converting {len(conversion_kwargs)} Blender images to DDS textures...")
     dds_dict = bl_images_to_dds(operator, conversion_kwargs)
 
     # Export into found/new entries.
@@ -413,7 +458,7 @@ def export_images_to_map_area_tpfbhds(
 
     # Alphabetize entries.
     remaining_entries = [tpf_entries[stem] for stem in sorted(tpf_entries)]
-    max_per_map = tex_export_settings.max_tpfs_per_map_tpfbhd
+    max_per_map = math.ceil(len(remaining_entries) / tex_export_settings.map_tpfbhd_count)
 
     # Split entries into TPFBHDs of maximum size.
     tpfbhds = []

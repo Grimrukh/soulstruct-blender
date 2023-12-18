@@ -274,13 +274,18 @@ class ExportNVMIntoNVMBND(LoggingOperator):
                 map_stem = settings.map_stem
                 relative_nvmbnd_path = default_map_path / f"{map_stem}.nvmbnd"
 
-            try:
-                nvmbnd = opened_nvmbnds.setdefault(
-                    map_stem,
-                    Binder.from_path(settings.get_import_path(relative_nvmbnd_path))
-                )
-            except Exception as ex:
-                return self.error(f"Could not load NVMBND for map '{map_stem}'. Error: {ex}")
+            if map_stem not in opened_nvmbnds:
+                settings.prepare_project_file(relative_nvmbnd_path, False, must_exist=True)
+                nvmbnd_path = settings.get_project_or_game_path(relative_nvmbnd_path)
+                if not nvmbnd_path or not nvmbnd_path.is_file():
+                    return self.error(f"Cannot find NVMBND for map '{settings.map_stem}': {nvmbnd_path}")
+                try:
+                    nvmbnd = opened_nvmbnds[map_stem] = Binder.from_path(nvmbnd_path)
+                except Exception as ex:
+                    self.error(f"Could not load NVMBND for map '{map_stem}'. Error: {ex}")
+                    continue
+            else:
+                nvmbnd = opened_nvmbnds[map_stem]
 
             model_file_stem = bl_mesh_obj.get("Model File Stem", get_bl_obj_stem(bl_mesh_obj))
 
@@ -305,7 +310,7 @@ class ExportNVMIntoNVMBND(LoggingOperator):
             nvmbnd.entries = list(sorted(nvmbnd.entries, key=lambda e: e.name))
             for i, entry in enumerate(nvmbnd.entries):
                 entry.entry_id = i
-            settings.export_file(self, nvmbnd, nvmbnd.path.relative_to(settings.game_import_directory))
+            settings.export_file(self, nvmbnd, nvmbnd.path.relative_to(settings.game_directory))
 
         return {"FINISHED"}
 
@@ -379,17 +384,22 @@ class ExportNVMMSBPart(LoggingOperator):
                 map_stem = settings.map_stem
                 relative_nvmbnd_path = default_map_path / f"{map_stem}.nvmbnd"
 
-            try:
-                nvmbnd = opened_nvmbnds.setdefault(
-                    map_stem,
-                    Binder.from_path(settings.get_import_path(relative_nvmbnd_path))
-                )
-            except Exception as ex:
-                return self.error(f"Could not load NVMBND for map '{map_stem}'. Error: {ex}")
+            if map_stem not in opened_nvmbnds:
+                settings.prepare_project_file(relative_nvmbnd_path, False, must_exist=True)
+                nvmbnd_path = settings.get_project_or_game_path(relative_nvmbnd_path)
+                if not nvmbnd_path or not nvmbnd_path.is_file():
+                    return self.error(f"Cannot find NVMBND for map '{settings.map_stem}': {nvmbnd_path}")
+                try:
+                    nvmbnd = opened_nvmbnds[map_stem] = Binder.from_path(nvmbnd_path)
+                except Exception as ex:
+                    self.error(f"Could not load NVMBND for map '{map_stem}'. Error: {ex}")
+                    continue
+            else:
+                nvmbnd = opened_nvmbnds[map_stem]
 
             # Get model file stem from MSB (must contain matching part).
             navmesh_part_name = get_bl_obj_stem(bl_mesh_obj)  # could be the same as the file stem
-            msb_path = settings.get_import_msb_path(map_stem)
+            msb_path = settings.get_game_msb_path(map_stem)
             msb = opened_msbs.setdefault(
                 msb_path,
                 get_cached_file(msb_path, settings.get_game_msb_class()),
@@ -454,14 +464,14 @@ class ExportNVMMSBPart(LoggingOperator):
 
         for msb_path, msb in opened_msbs.items():
             # Write MSB.
-            relative_msb_path = msb_path.relative_to(settings.game_import_directory)
+            relative_msb_path = msb_path.relative_to(settings.game_directory)
             settings.export_file(self, msb, relative_msb_path)
 
         for nvmbnd in opened_nvmbnds.values():
             nvmbnd.entries = list(sorted(nvmbnd.entries, key=lambda e: e.name))
             for i, entry in enumerate(nvmbnd.entries):
                 entry.entry_id = i
-            settings.export_file(self, nvmbnd, nvmbnd.path.relative_to(settings.game_import_directory))
+            settings.export_file(self, nvmbnd, nvmbnd.path.relative_to(settings.game_directory))
 
         return {"FINISHED"}
 
