@@ -185,13 +185,20 @@ class ExportStandaloneFLVER(LoggingOperator, ExportHelper):
         self.to_object_mode()
         exporter = FLVERBatchExporter(self, context, settings, settings.get_mtdbnd())
 
-        # FLVER name is taken directly from desired file path here, not the Blender object.
-        # TODO: `name` argument in exporter is used internally (e.g. default single bone name) and externally (e.g. to
-        #  strip material name prefixes from Blender). This is confusing and should be fixed.
-        name = flver_file_path.name.split(".")[0]
+        # NOTE: As the exported FLVER model stem may differ from the Blender object, we need to pass both to the
+        # exporter. The exported name is used to create a default bone (the only place in the FLVER file where the model
+        # stem appears internally) and the current Blender model stem is used to strip prefixes from dummies and
+        # materials.
+        exported_flver_stem = flver_file_path.name.split(".")[0]
+        bl_flver_stem = get_default_flver_stem(mesh, armature, self)
 
         try:
-            flver = exporter.export_flver(mesh, armature, name=name)
+            flver = exporter.export_flver(
+                mesh,
+                armature,
+                default_bone_name=exported_flver_stem,
+                bl_name=bl_flver_stem,
+            )
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Cannot get exported FLVER. Error: {ex}")
@@ -316,7 +323,7 @@ class ExportFLVERIntoBinder(LoggingOperator, ExportHelper):
         exporter = FLVERBatchExporter(self, context, settings, settings.get_mtdbnd())
 
         try:
-            flver = exporter.export_flver(mesh, armature, name=flver_stem)
+            flver = exporter.export_flver(mesh, armature, bl_name=flver_stem)
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Cannot create exported FLVER from Blender Mesh '{flver_stem}'. Error: {ex}")
@@ -410,7 +417,7 @@ class ExportMapPieceFLVERs(LoggingOperator):
             model_stem = get_default_flver_stem(mesh, armature, self)
 
             try:
-                flver = exporter.export_flver(mesh, armature, name=model_stem)
+                flver = exporter.export_flver(mesh, armature, bl_name=model_stem)
             except Exception as ex:
                 traceback.print_exc()
                 return self.error(f"Cannot get exported FLVER '{model_stem}'. Error: {ex}")
@@ -470,7 +477,7 @@ class BaseGameFLVERBinderExportOperator(LoggingOperator):
         self.to_object_mode()
         exporter = FLVERBatchExporter(self, context, settings, settings.get_mtdbnd())
         try:
-            flver = exporter.export_flver(mesh, armature, name=model_stem)
+            flver = exporter.export_flver(mesh, armature, bl_name=model_stem)
         except Exception as ex:
             traceback.print_exc()
             raise FLVERExportError(f"Cannot create exported FLVER from Blender Mesh '{model_stem}'. Error: {ex}")
@@ -895,7 +902,7 @@ class ExportMapPieceMSBParts(LoggingOperator):
             msb_part.scale = bl_transform.game_scale
 
             try:
-                flver = exporter.export_flver(mesh, armature, name=model_stem)
+                flver = exporter.export_flver(mesh, armature, bl_name=model_stem)
             except Exception as ex:
                 traceback.print_exc()
                 return self.error(f"Cannot get exported FLVER '{model_stem}'. Error: {ex}")
@@ -1017,7 +1024,8 @@ class FLVERBatchExporter:
         self,
         mesh: bpy.types.MeshObject,
         armature: bpy.types.ArmatureObject | None,
-        name: str,
+        bl_name: str,
+        default_bone_name: str = None,
     ) -> FLVER:
         """Create an entire FLVER from Blender Mesh and (optional) Armature objects.
 
@@ -1026,13 +1034,20 @@ class FLVERBatchExporter:
         can be attached to Armature bones (which most will, realistically).
 
         If `armature` is None, a default skeleton with a single bone at the model's origin will be created (which is why
-        `name` must be passed in). This is fine for 99% of map pieces, for example.
+        `default_bone_name` must be passed in). This is fine for 99% of map pieces, for example.
+
+        `bl_name` is used to strip disambiguating prefixes from the Blender dummy children and materials used by this
+        mesh. This may be different from `default_bone_name`, as a Blender mesh with a given name could be exported as
+        a different arbitrary model name. Note that if any bones already exist, it's up to the user to correct their
+        names to a new model name. If `default_bone_name` and `bl_name` are different, this method will warn the user
+        if any (presumably outdated) bones starting with `bl_name` exist.
 
         If the Mesh object is missing certain 'FLVER' custom properties (see `get_flver_props`), they will be exported
         with default values based on the current selected game, if able.
 
         TODO: Currently only really tested for DS1 FLVERs.
         """
+        default_bone_name = default_bone_name or bl_name
         if mesh.type != "MESH":
             raise FLVERExportError("`mesh` object passed to FLVER exporter must be a Mesh.")
         if armature is not None and armature.type != "ARMATURE":
@@ -1040,15 +1055,15 @@ class FLVERBatchExporter:
 
         flver = FLVER(**self.get_flver_props(mesh, self.settings.game))
 
-        bl_dummies = self.collect_dummies(mesh, armature, name=name)
+        bl_dummies = self.collect_dummies(mesh, armature, model_name=bl_name)
 
         read_bone_type = self.detect_is_bind_pose(mesh)
         self.info(f"Exporting FLVER '{mesh.name}' with bone data from {read_bone_type.capitalize()}Bones.")
         if armature is None:
             self.info(  # not a warning
-                f"No Armature to export. Creating FLVER skeleton with a single origin bone named '{name}'."
+                f"No Armature to export. Creating FLVER skeleton with a single origin bone named '{default_bone_name}'."
             )
-            default_bone = FLVERBone(name=name)  # default transform and other fields
+            default_bone = FLVERBone(name=default_bone_name)  # default transform and other fields
             flver.bones = [default_bone]
             bl_bone_names = [default_bone.name]
             bl_bone_data = None
@@ -1057,6 +1072,16 @@ class FLVERBatchExporter:
                 armature,
                 read_bone_type,
             )
+            if default_bone_name != bl_name:
+                # FLVER is being exported with a different name, so we warn the user if there are still bones starting
+                # with the current Blender name.
+                for bl_bone_name in bl_bone_names:
+                    if bl_bone_name.startswith(bl_name):
+                        self.warning(
+                            f"Bone '{bl_bone_name}' in Armature '{armature.name}' starts with the same name as the "
+                            f"current Blender mesh name '{bl_name}' rather than the new exported name "
+                            f"'{default_bone_name}'. This bone name will not be updated automatically."
+                        )
             flver.set_bone_children_siblings()  # only parents set in `create_bones`
             flver.set_bone_armature_space_transforms(bone_arma_transforms)
             bl_bone_data = armature.data.bones
@@ -1093,8 +1118,8 @@ class FLVERBatchExporter:
 
         if not mesh.data.vertices:
             # Mesh is empty (e.g. c0000). Leave FLVER/bone bounding boxes as max/min float values (default).
-            if name not in {"c0000", "c1000"}:
-                self.warning(f"Exporting non-c0000/c1000 FLVER '{name}' with no mesh data.")
+            if bl_name not in {"c0000", "c1000"}:
+                self.warning(f"Exporting non-c0000/c1000 FLVER '{bl_name}' with no mesh data.")
             return flver
 
         # TODO: Current choosing default vertex buffer layout (CHR vs. MAP PIECE) based on read bone type, which in
@@ -1104,7 +1129,7 @@ class FLVERBatchExporter:
             mesh,
             bl_bone_names,
             use_chr_layout=read_bone_type == "EDIT",
-            strip_bl_material_prefix=name,
+            strip_bl_material_prefix=bl_name,
             material_infos=material_infos,
         )
 
@@ -1125,10 +1150,10 @@ class FLVERBatchExporter:
         self,
         mesh: bpy.types.MeshObject,
         armature: bpy.types.ArmatureObject | None,
-        name: str = "",
+        model_name: str,
     ) -> list[tuple[bpy.types.Object, DummyInfo]]:
-        """Collect all Empty children of the Mesh and Armature objects with valid Dummy names including prefix `name`,
-        and return them as a list of tuples of the form `(bl_empty, dummy_info)`.
+        """Collect all Empty children of the Mesh and Armature objects with valid Dummy names including prefix
+        `model_name`, and return them as a list of tuples of the form `(bl_empty, dummy_info)`.
 
         Dummies parented to the Mesh, rather than the Armature, will NOT be attached to any bones (though may still have
         custom `Parent Bone Name` data).
@@ -1141,7 +1166,7 @@ class FLVERBatchExporter:
             empty_children.extend([child for child in armature.children if child.type == "EMPTY"])
         for child in empty_children:
             if dummy_info := self.parse_dummy_empty(child):
-                if dummy_info.model_name != name:
+                if dummy_info.model_name != model_name:
                     if dummy_info.model_name != "c0000":  # don't bother warning for standard c0000 case (equipment)
                         self.warning(
                             f"Ignoring Dummy '{child.name}' with non-matching FLVER model name prefix: "

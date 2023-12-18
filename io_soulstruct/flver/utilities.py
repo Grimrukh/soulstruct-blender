@@ -108,7 +108,7 @@ class PrintGameTransform(LoggingOperator):
 
 
 DUMMY_NAME_RE = re.compile(  # accepts and ignores Blender '.001' suffix and anything else after the `[ref_id]` in name
-    r"^(?P<model_name>.+) +[Dd]ummy(?P<index><\d+>)? *(?P<reference_id>\[\d+\]) *(\.\d+)?$"
+    r"^(?P<model_name>.+)(( +)|\|)[Dd]ummy(?P<index><\d+>)? *(?P<reference_id>\[\d+\]) *(\.\d+)?$"
 )
 
 
