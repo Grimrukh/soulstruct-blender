@@ -2,7 +2,7 @@ from __future__ import annotations
 
 __all__ = [
     "SelectGameDirectory",
-    "SelectGameExportDirectory",
+    "SelectProjectDirectory",
     "SelectMapDirectory",
     "SelectPNGCacheDirectory",
     "SelectCustomMTDBNDFile",
@@ -57,11 +57,11 @@ class SelectGameDirectory(LoggingOperator, ImportHelper):
         return {'FINISHED'}
 
 
-class SelectGameExportDirectory(LoggingOperator, ImportHelper):
-    """Browse for global game directory."""
+class SelectProjectDirectory(LoggingOperator, ImportHelper):
+    """Browse for global project directory."""
     bl_idname = "soulstruct.select_project_directory"
-    bl_label = "Select Game Export Directory"
-    bl_description = "Select game export directory with browser"
+    bl_label = "Select Project Directory"
+    bl_description = "Select project directory with browser"
 
     directory: StringProperty()
 
@@ -82,9 +82,9 @@ class SelectGameExportDirectory(LoggingOperator, ImportHelper):
     def execute(self, context):
         if self.filepath:
             # We use browser's current `directory`, not `filepath` itself.
-            game_directory = Path(self.directory).resolve()
+            project_directory = Path(self.directory).resolve()
             settings = self.settings(context)
-            settings.str_project_directory = str(game_directory)
+            settings.str_project_directory = str(project_directory)
             # We do NOT auto-set game here, because the user may be exporting to any folder.
 
         return {'FINISHED'}

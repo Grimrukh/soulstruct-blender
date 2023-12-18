@@ -275,10 +275,10 @@ class ExportNVMIntoNVMBND(LoggingOperator):
                 relative_nvmbnd_path = default_map_path / f"{map_stem}.nvmbnd"
 
             if map_stem not in opened_nvmbnds:
-                settings.prepare_project_file(relative_nvmbnd_path, False, must_exist=True)
-                nvmbnd_path = settings.get_project_or_game_path(relative_nvmbnd_path)
-                if not nvmbnd_path or not nvmbnd_path.is_file():
-                    return self.error(f"Cannot find NVMBND for map '{settings.map_stem}': {nvmbnd_path}")
+                try:
+                    nvmbnd_path = settings.prepare_project_file(relative_nvmbnd_path, False, must_exist=True)
+                except FileNotFoundError as ex:
+                    return self.error(f"Cannot find NVMBND: {relative_nvmbnd_path}. Error: {ex}")
                 try:
                     nvmbnd = opened_nvmbnds[map_stem] = Binder.from_path(nvmbnd_path)
                 except Exception as ex:
@@ -385,10 +385,10 @@ class ExportNVMMSBPart(LoggingOperator):
                 relative_nvmbnd_path = default_map_path / f"{map_stem}.nvmbnd"
 
             if map_stem not in opened_nvmbnds:
-                settings.prepare_project_file(relative_nvmbnd_path, False, must_exist=True)
-                nvmbnd_path = settings.get_project_or_game_path(relative_nvmbnd_path)
-                if not nvmbnd_path or not nvmbnd_path.is_file():
-                    return self.error(f"Cannot find NVMBND for map '{settings.map_stem}': {nvmbnd_path}")
+                try:
+                    nvmbnd_path = settings.prepare_project_file(relative_nvmbnd_path, False, must_exist=True)
+                except FileNotFoundError as ex:
+                    return self.error(f"Cannot find NVMBND: {relative_nvmbnd_path}. Error: {ex}")
                 try:
                     nvmbnd = opened_nvmbnds[map_stem] = Binder.from_path(nvmbnd_path)
                 except Exception as ex:
@@ -502,7 +502,9 @@ class NVMExporter:
         for face in bl_mesh_obj.data.polygons:
             if len(face.vertices) != 3:
                 raise ValueError(f"Found a non-triangular mesh face in NVM. It must be triangulated first.")
-            nvm_faces.append(tuple(face.vertices))
+            # noinspection PyTypeChecker
+            vertices = tuple(face.vertices)  # type: tuple[int, int, int]
+            nvm_faces.append(vertices)
 
         def find_connected_face_index(edge_v1: int, edge_v2: int, not_face) -> int:
             """Find face that shares an edge with the given edge.

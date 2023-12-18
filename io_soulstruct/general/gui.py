@@ -31,9 +31,10 @@ class GlobalSettingsPanel_ViewMixin:
         row = layout.row(align=True)
         split = row.split(factor=0.75)
         split.column().prop(settings, "str_project_directory")
-        split.column().operator(SelectGameExportDirectory.bl_idname, text="Browse")
+        split.column().operator(SelectProjectDirectory.bl_idname, text="Browse")
 
         layout.row().prop(settings, "import_bak_file")
+        layout.row().prop(settings, "prefer_import_from_project")
         layout.row().prop(settings, "also_export_to_game")
 
         layout.row().prop(settings, "map_stem")

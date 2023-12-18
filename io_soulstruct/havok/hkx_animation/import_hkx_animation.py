@@ -348,7 +348,7 @@ class ImportCharacterHKXAnimation(LoggingOperator, ImportHKXAnimationMixin):
         if character_name == "c0000":
             return self.error("Automatic ANIBND import is not yet supported for c0000 (player model).")
 
-        anibnd_path = settings.get_game_path(f"chr/{character_name}.anibnd")
+        anibnd_path = settings.get_import_file_path(f"chr/{character_name}.anibnd")
         if not anibnd_path or not anibnd_path.is_file():
             return self.error(f"Cannot find ANIBND for character '{character_name}' in game directory.")
 
@@ -417,7 +417,7 @@ class ImportObjectHKXAnimation(LoggingOperator, ImportHKXAnimationMixin):
 
         object_name = get_bl_obj_stem(bl_armature)
 
-        objbnd_path = settings.get_game_path(f"obj/{object_name}.anibnd")
+        objbnd_path = settings.get_import_file_path(f"obj/{object_name}.anibnd")
         if not objbnd_path or not objbnd_path.is_file():
             return self.error(f"Cannot find OBJBND for '{object_name}' in game directory.")
 

@@ -12,6 +12,7 @@ import bpy
 from soulstruct.containers import Binder
 from soulstruct.games import *
 
+from io_soulstruct.utilities.misc import is_path_and_file, is_path_and_dir
 from .cached import get_cached_file
 from .core import SoulstructSettings
 
@@ -48,7 +49,7 @@ def get_map_piece_items(self, context):
     key = "MAP_PIECE"
 
     settings = SoulstructSettings.from_context(context)
-    map_directory = settings.get_game_map_path()
+    map_directory = settings.get_import_map_path()
     if not map_directory or not map_directory.is_dir():
         return _clear_items(key)
 
@@ -68,8 +69,8 @@ def get_msb_map_piece_items(self, context):
     key = "MSB_MAP_PIECE"
 
     settings = SoulstructSettings.from_context(context)
-    msb_path = settings.get_game_msb_path()
-    if not msb_path or not msb_path.is_file():
+    msb_path = settings.get_import_msb_path()
+    if not is_path_and_file(msb_path):
         return _clear_items(key)
 
     # Open MSB and find all Map Piece parts. NOTE: We don't check here if the part's model is a valid file.
@@ -106,8 +107,8 @@ def get_nvm_items(self, context):
     key = "NVM"
 
     settings = SoulstructSettings.from_context(context)
-    map_path = settings.get_game_map_path()
-    if not map_path or not map_path.is_dir():
+    map_path = settings.get_import_map_path()
+    if not is_path_and_dir(map_path):
         return _clear_items(key)
     nvmbnd_path = settings.game.process_dcx_path(map_path / f"{settings.map_stem}.nvmbnd")
     if not nvmbnd_path.is_file():
@@ -127,8 +128,8 @@ def get_nvm_part_items(self, context):
     key = "MSB_NAVMESH"
 
     settings = SoulstructSettings.from_context(context)
-    msb_path = settings.get_game_msb_path()
-    if not msb_path or not msb_path.is_file():
+    msb_path = settings.get_import_msb_path()
+    if not is_path_and_file(msb_path):
         return _clear_items(key)
 
     # Open MSB and find all Map Piece parts. NOTE: We don't check here if the part's model is a valid file.
@@ -165,8 +166,8 @@ def get_hkx_map_collision_items(self, context):
     key = "HKX_MAP_COLLISION"
 
     settings = SoulstructSettings.from_context(context)
-    map_path = settings.get_game_map_path()
-    if not map_path or not map_path.is_dir():
+    map_path = settings.get_import_map_path()
+    if not is_path_and_dir(map_path):
         return _clear_items(key)
 
     if settings.is_game(DARK_SOULS_PTDE):
@@ -193,8 +194,8 @@ def get_msb_hkx_map_collision_items(self, context):
     key = "MSB_HKX_MAP_COLLISION"
 
     settings = SoulstructSettings.from_context(context)
-    msb_path = settings.get_game_msb_path()
-    if not msb_path or not msb_path.is_file():
+    msb_path = settings.get_import_msb_path()
+    if not is_path_and_file(msb_path):
         return _clear_items(key)
 
     # Open MSB and find all Map Piece parts. NOTE: We don't check here if the part's model is a valid file.

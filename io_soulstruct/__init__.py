@@ -76,7 +76,7 @@ CLASSES = (
     GlobalSettingsPanel,
     GlobalSettingsPanel_FLVERView,
     SelectGameDirectory,
-    SelectGameExportDirectory,
+    SelectProjectDirectory,
     SelectMapDirectory,
     SelectPNGCacheDirectory,
     SelectCustomMTDBNDFile,

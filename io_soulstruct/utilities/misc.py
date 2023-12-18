@@ -7,11 +7,14 @@ __all__ = [
     "is_uniform",
     "natural_keys",
     "find_or_create_bl_empty",
+    "is_path_and_file",
+    "is_path_and_dir",
 ]
 
 import math
 import re
 import typing as tp
+from pathlib import Path
 
 import bpy
 from mathutils import Vector
@@ -83,3 +86,17 @@ def find_or_create_bl_empty(name: str, context):
             context = bpy.context
         context.scene.collection.objects.link(obj)
     return obj
+
+
+def is_path_and_file(path: str | Path | None) -> bool:
+    """Return True if `path` is a valid path to a file."""
+    if path is None:
+        return False
+    return Path(path).is_file()
+
+
+def is_path_and_dir(path: str | Path | None) -> bool:
+    """Return True if `path` is a valid path to a directory."""
+    if path is None:
+        return False
+    return Path(path).is_dir()

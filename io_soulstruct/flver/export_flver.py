@@ -566,12 +566,12 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
 
                 def post_export_action():
                     export_tpf_dir_path = settings.get_project_path(relative_tpf_dir_path)
-                    if export_tpf_dir_path and export_tpf_dir_path.is_file():
+                    if is_path_and_dir(export_tpf_dir_path):
                         # Delete loose TPF folder (in favor of new Binder TPF).
                         export_tpf_dir_path.rmdir()
                     if settings.also_export_to_game:
                         import_tpf_dir_path = settings.get_game_path(relative_tpf_dir_path)
-                        if import_tpf_dir_path and import_tpf_dir_path.is_file():
+                        if is_path_and_dir(import_tpf_dir_path):
                             import_tpf_dir_path.rmdir()
 
                 return post_export_action
@@ -606,12 +606,12 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
 
                 def post_export_action():
                     export_chrtpfbdt_path = settings.get_project_path(relative_chrtpfbdt_path)
-                    if export_chrtpfbdt_path and export_chrtpfbdt_path.is_file():
+                    if is_path_and_file(export_chrtpfbdt_path):
                         # Delete CHRTPFBDT (in favor of new TPF).
                         export_chrtpfbdt_path.unlink()
                     if settings.also_export_to_game:
                         import_chrtpfbdt_path = settings.get_game_path(relative_chrtpfbdt_path)
-                        if import_chrtpfbdt_path and import_chrtpfbdt_path.is_file():
+                        if is_path_and_file(import_chrtpfbdt_path):
                             import_chrtpfbdt_path.unlink()
 
                 return post_export_action

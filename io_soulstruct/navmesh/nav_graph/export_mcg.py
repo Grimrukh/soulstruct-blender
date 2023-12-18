@@ -211,14 +211,22 @@ class QuickExportMCGMCP(LoggingOperator):
         map_id = (int(match.group(1)), int(match.group(2)), int(match.group(3)), int(match.group(4)))
 
         relative_mcg_path = Path(f"map/{map_stem}/{map_stem}.mcg")  # no DCX
-        # We prefer to read the MSB and NVMBND in the export directory if they exist. We do not copy them to export
-        # because they are not modified and the user may not want to include them in a mod package.
-        msb_path = settings.get_project_or_game_path(f"map/MapStudop/{map_stem}.msb")
-        if not msb_path.is_file():
-            return self.error(f"Could not find MSB file for map {map_stem} in export OR import directory.")
-        nvmbnd_path = settings.get_project_or_game_path(f"map/{map_stem}/{map_stem}.nvmbnd")
-        if not nvmbnd_path.is_file():
-            return self.error(f"Could not find NVMBND binder for map {map_stem} in export OR import directory.")
+        # We prefer to read the MSB and NVMBND in the project directory if they exist. We do not prepare/copy them to
+        # the project because they are not modified and the user may not want to include them in a mod package.
+        msb_path = settings.get_project_msb_path(map_stem)
+        if not is_path_and_file(msb_path):
+            msb_path = settings.get_game_msb_path(map_stem)
+        if not is_path_and_file(msb_path):
+            return self.error(
+                f"Could not find MSB file required for MCG export for map {map_stem} in project or game directory."
+            )
+        nvmbnd_path = settings.get_project_path(f"map/{map_stem}/{map_stem}.nvmbnd")
+        if not is_path_and_file(nvmbnd_path):
+            nvmbnd_path = settings.get_game_path(f"map/{map_stem}/{map_stem}.nvmbnd")
+        if not is_path_and_file(nvmbnd_path):
+            return self.error(
+                f"Could not find NVMBND binder required for MCG export for map {map_stem} in project or game directory."
+            )
         
         node_parent = edge_parent = None
         for child in selected_objs[0].children:
@@ -256,10 +264,16 @@ class QuickExportMCGMCP(LoggingOperator):
             # MCG export failed. Don't bother trying to write MCP.
             return mcg_result
 
-        # This will be the MCG path just exported.
-        mcg_path = settings.get_project_or_game_path(relative_mcg_path)
-
         # Any error here will not affect MCG write (already done above).
+
+        # This will be the MCG path just exported.
+        mcg_path = settings.get_project_path(relative_mcg_path)
+        if not is_path_and_file(mcg_path) and settings.also_export_to_game:
+            mcg_path = settings.get_game_path(relative_mcg_path)
+        if not is_path_and_file(mcg_path):
+            self.warning(f"Could not find MCG file just exported: {mcg_path}. MCP not auto-generated.")
+            return {"FINISHED"}
+
         try:
             relative_mcp_path = Path(f"map/{map_stem}/{map_stem}.mcp")
             mcp = MCP.from_msb_mcg_nvm_paths(relative_mcp_path, msb_path, mcg_path, nvmbnd_path)

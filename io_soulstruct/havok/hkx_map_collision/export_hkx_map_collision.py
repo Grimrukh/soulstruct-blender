@@ -446,10 +446,21 @@ class ExportHKXMapCollisionIntoHKXBHD(LoggingOperator):
                 opened_res_hkxbhds = opened_hkxbhds[r]
                 relative_hkxbhd_path = Path(f"map/{map_stem}/{r}{map_stem[1:]}.hkxbhd")  # no DCX
                 if relative_hkxbhd_path not in opened_res_hkxbhds:
+                    try:
+                        hkxbhd_path = settings.prepare_project_file(relative_hkxbhd_path, False, must_exist=True)
+                    except FileNotFoundError as ex:
+                        return self.error(
+                            f"Could not find HKXBHD file '{relative_hkxbhd_path}' for map '{map_stem}'. Error: {ex}"
+                        )
+
                     relative_hkxbdt_path = Path(f"map/{map_stem}/{r}{map_stem[1:]}.hkxbdt")  # no DCX
-                    settings.prepare_project_file(relative_hkxbhd_path, False, True)
-                    settings.prepare_project_file(relative_hkxbdt_path, False, True)
-                    hkxbhd_path = settings.get_project_or_game_path(relative_hkxbhd_path)
+                    try:
+                        settings.prepare_project_file(relative_hkxbdt_path, False, must_exist=True)  # path not needed
+                    except FileNotFoundError as ex:
+                        return self.error(
+                            f"Could not find HKXBDT file '{relative_hkxbdt_path}' for map '{map_stem}'. Error: {ex}"
+                        )
+
                     opened_res_hkxbhds[relative_hkxbhd_path] = Binder.from_path(hkxbhd_path)
 
                 hkxbhd = opened_res_hkxbhds[relative_hkxbhd_path]
@@ -558,8 +569,13 @@ class ExportMSBMapCollision(LoggingOperator):
             collision_part_name = get_bl_obj_stem(hkx_parent)
             if map_stem not in opened_msbs:
                 # Open new MSB.
-                settings.prepare_project_file(relative_msb_path, False, True)
-                msb_path = settings.get_project_or_game_path(relative_msb_path)
+                try:
+                    msb_path = settings.prepare_project_file(relative_msb_path, False, must_exist=True)
+                except FileNotFoundError as ex:
+                    self.error(
+                        f"Could not find MSB file '{relative_msb_path}' for map '{map_stem}'. Error: {ex}"
+                    )
+                    continue
                 opened_msbs[relative_msb_path] = get_cached_file(msb_path, settings.get_game_msb_class())
 
             msb = opened_msbs[relative_msb_path]  # type: MSB_TYPING
@@ -567,13 +583,15 @@ class ExportMSBMapCollision(LoggingOperator):
             try:
                 msb_part = msb.collisions.find_entry_name(collision_part_name)
             except KeyError:
-                return self.error(
+                self.error(
                     f"Collision part '{collision_part_name}' not found in MSB for map {map_stem}."
                 )
+                continue
             if not msb_part.model.name:
-                return self.error(
+                self.error(
                     f"Collision part '{collision_part_name}' in MSB for map {map_stem} has no model name."
                 )
+                continue
 
             hkx_entry_stem = hkx_parent.get("Model File Stem", None) if self.prefer_new_model_file_stem else None
             if not hkx_entry_stem:  # could be None or empty string
@@ -608,7 +626,8 @@ class ExportMSBMapCollision(LoggingOperator):
             try:
                 bl_meshes, other_res_bl_meshes, other_res = get_mesh_children(self, hkx_parent, True)
             except HKXMapCollisionExportError as ex:
-                raise HKXMapCollisionExportError(f"Children of object '{hkx_parent}' cannot be exported. Error: {ex}")
+                self.error(f"Children of object '{hkx_parent}' cannot be exported. Error: {ex}")
+                continue
 
             if res == "h":
                 res_meshes = {
@@ -629,10 +648,21 @@ class ExportMSBMapCollision(LoggingOperator):
                 opened_res_hkxbhds = opened_hkxbhds[r]
                 relative_hkxbhd_path = Path(f"map/{map_stem}/{r}{map_stem[1:]}.hkxbhd")  # no DCX
                 if relative_hkxbhd_path not in opened_res_hkxbhds:
+                    try:
+                        hkxbhd_path = settings.prepare_project_file(relative_hkxbhd_path, False, must_exist=True)
+                    except FileNotFoundError as ex:
+                        return self.error(
+                            f"Could not find HKXBHD file '{relative_hkxbhd_path}' for map '{map_stem}'. Error: {ex}"
+                        )
+
                     relative_hkxbdt_path = Path(f"map/{map_stem}/{r}{map_stem[1:]}.hkxbdt")  # no DCX
-                    settings.prepare_project_file(relative_hkxbhd_path, False, True)
-                    settings.prepare_project_file(relative_hkxbdt_path, False, True)
-                    hkxbhd_path = settings.get_project_or_game_path(relative_hkxbhd_path)
+                    try:
+                        settings.prepare_project_file(relative_hkxbdt_path, False, must_exist=True)  # path not needed
+                    except FileNotFoundError as ex:
+                        return self.error(
+                            f"Could not find HKXBDT file '{relative_hkxbdt_path}' for map '{map_stem}'. Error: {ex}"
+                        )
+
                     opened_res_hkxbhds[relative_hkxbhd_path] = Binder.from_path(hkxbhd_path)
 
                 hkxbhd = opened_res_hkxbhds[relative_hkxbhd_path]

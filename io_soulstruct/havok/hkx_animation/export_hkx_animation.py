@@ -267,10 +267,10 @@ class QuickExportCharacterHKXAnimation(LoggingOperator):
             return self.error("Automatic ANIBND import is not yet supported for c0000 (player model).")
 
         relative_anibnd_path = Path(f"chr/{character_name}.anibnd")
-        settings.prepare_project_file(relative_anibnd_path, False, must_exist=True)
-        anibnd_path = settings.get_project_or_game_path(relative_anibnd_path)
-        if not anibnd_path or not anibnd_path.is_file():
-            return self.error(f"Cannot find ANIBND for character {character_name}: {anibnd_path}")
+        try:
+            anibnd_path = settings.prepare_project_file(relative_anibnd_path, False, must_exist=True)
+        except FileNotFoundError as ex:
+            return self.error(f"Cannot find ANIBND for character {character_name}: {ex}")
 
         # Skeleton is in ANIBND.
         skeleton_anibnd = anibnd = Binder.from_path(anibnd_path)
@@ -369,12 +369,12 @@ class QuickExportObjectHKXAnimation(LoggingOperator):
         bl_armature = context.selected_objects[0]
         object_name = get_bl_obj_stem(bl_armature)
 
-        # Get OBJBND to modify from export (preferred) or import directory.
+        # Get OBJBND to modify from project (preferred) or game directory.
         relative_objbnd_path = Path(f"obj/{object_name}.objbnd")
-        settings.prepare_project_file(relative_objbnd_path, False, must_exist=True)
-        objbnd_path = settings.get_project_or_game_path(relative_objbnd_path)
-        if not objbnd_path or not objbnd_path.is_file():
-            return self.error(f"Cannot find OBJBND for object {object_name}: {objbnd_path}")
+        try:
+            objbnd_path = settings.prepare_project_file(relative_objbnd_path, False, must_exist=True)
+        except FileNotFoundError:
+            return self.error(f"Cannot find OBJBND for object {object_name}.")
         objbnd = Binder.from_path(objbnd_path)
 
         # Find ANIBND entry.

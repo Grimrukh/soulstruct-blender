@@ -220,11 +220,11 @@ class ImportMapPieceFLVER(BaseFLVERImportOperator):
 
     @classmethod
     def poll(cls, context):
-        return bool(cls.settings(context).get_game_map_path())
+        return bool(cls.settings(context).get_import_map_path())
 
     def invoke(self, context, _event):
         """Set the initial directory based on Global Settings."""
-        map_path = self.settings(context).get_game_map_path()
+        map_path = self.settings(context).get_import_map_path()
         if map_path and Path(map_path).is_dir():
             self.directory = str(map_path)
             context.window_manager.fileselect_add(self)
@@ -269,10 +269,10 @@ class ImportCharacterFLVER(BaseFLVERImportOperator):
 
     @classmethod
     def poll(cls, context):
-        return bool(cls.settings(context).get_game_path("chr"))
+        return bool(cls.settings(context).get_import_dir_path("chr"))
 
     def invoke(self, context, _event):
-        chr_dir = self.settings(context).get_game_path("chr")
+        chr_dir = self.settings(context).get_import_dir_path("chr")
         if chr_dir and chr_dir.is_dir():
             self.directory = str(chr_dir)
             context.window_manager.fileselect_add(self)
@@ -301,10 +301,10 @@ class ImportObjectFLVER(BaseFLVERImportOperator):
 
     @classmethod
     def poll(cls, context):
-        return bool(cls.settings(context).get_game_path("obj"))
+        return bool(cls.settings(context).get_import_dir_path("obj"))
 
     def invoke(self, context, _event):
-        obj_dir = self.settings(context).get_game_path("obj")
+        obj_dir = self.settings(context).get_import_dir_path("obj")
         if obj_dir and obj_dir.is_dir():
             self.directory = str(obj_dir)
             context.window_manager.fileselect_add(self)
@@ -333,10 +333,10 @@ class ImportEquipmentFLVER(BaseFLVERImportOperator):
 
     @classmethod
     def poll(cls, context):
-        return bool(cls.settings(context).get_game_path("parts"))
+        return bool(cls.settings(context).get_import_dir_path("parts"))
 
     def invoke(self, context, _event):
-        parts_dir = self.settings(context).get_game_path("parts")
+        parts_dir = self.settings(context).get_import_dir_path("parts")
         if parts_dir and parts_dir.is_dir():
             self.directory = str(parts_dir)
             context.window_manager.fileselect_add(self)
@@ -359,8 +359,8 @@ class ImportMapPieceMSBPart(LoggingOperator):
     @classmethod
     def poll(cls, context):
         settings = cls.settings(context)
-        msb_path = settings.get_game_msb_path()
-        if not msb_path or not msb_path.is_file():
+        msb_path = settings.get_import_msb_path()
+        if is_path_and_file(msb_path):
             return False
         game_enums = context.scene.soulstruct_game_enums  # type: SoulstructGameEnums
         if game_enums.map_piece_parts in {"", "0"}:
@@ -380,13 +380,13 @@ class ImportMapPieceMSBPart(LoggingOperator):
             part_name, flver_stem = context.scene.soulstruct_game_enums.map_piece_parts.split("|")
         except ValueError:
             return self.error("Invalid MSB map piece selection.")
-        msb_path = settings.get_game_msb_path()
+        msb_path = settings.get_import_msb_path()
 
         # Get MSB part transform.
         msb = get_cached_file(msb_path, settings.get_game_msb_class())  # type: MSB_TYPING
         map_piece_part = msb.map_pieces.find_entry_name(part_name)
         transform = Transform.from_msb_part(map_piece_part)
-        flver_path = settings.get_game_map_path(f"{flver_stem}.flver")
+        flver_path = settings.get_import_map_path(f"{flver_stem}.flver")
         bl_name = part_name
 
         self.info(f"Importing map piece FLVER: {flver_path}")
@@ -460,8 +460,8 @@ class ImportAllMapPieceMSBParts(LoggingOperator):
     @classmethod
     def poll(cls, context):
         settings = cls.settings(context)
-        msb_path = settings.get_game_msb_path()
-        if not msb_path or not msb_path.is_file():
+        msb_path = settings.get_import_msb_path()
+        if not is_path_and_file(msb_path):
             return False
         return True  # MSB exists
 
@@ -478,7 +478,7 @@ class ImportAllMapPieceMSBParts(LoggingOperator):
         else:
             texture_manager = None
 
-        msb_path = settings.get_game_msb_path()
+        msb_path = settings.get_import_msb_path()
         msb = get_cached_file(msb_path, settings.get_game_msb_class())  # type: MSB_TYPING
 
         # Maps FLVER model stems to Armature and Mesh already created.
@@ -504,7 +504,7 @@ class ImportAllMapPieceMSBParts(LoggingOperator):
                 continue
 
             # Import new FLVER.
-            flver_path = settings.get_game_map_path(f"{model_stem}.flver")
+            flver_path = settings.get_import_map_path(f"{model_stem}.flver")
             transform = Transform.from_msb_part(map_piece_part)
 
             self.info(f"Importing map piece FLVER: {flver_path}")
