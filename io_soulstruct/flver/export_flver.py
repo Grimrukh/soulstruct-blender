@@ -456,10 +456,14 @@ class BaseGameFLVERBinderExportOperator(LoggingOperator):
         model_stem = get_default_flver_stem(mesh, armature, self)
         cls_name = binder_class.__name__
 
-        # NOTE: We get the existing Binder from the game import directory, regardless of export destination(s).
-        binder_path = settings.get_game_path(binder_path_template.format(model_stem=model_stem))
-        if not binder_path.is_file():
-            raise FLVERExportError(f"Missing {cls_name} for {model_stem} in Game Import Directory: {binder_path}.")
+        # We prepare and retrieve the binder to be exported into.
+        relative_binder_path = Path(binder_path_template.format(model_stem=model_stem))
+        try:
+            binder_path = settings.prepare_project_file(relative_binder_path, overwrite_existing=False, must_exist=True)
+        except FileNotFoundError as ex:
+            raise FLVERExportError(
+                f"Cannot find {cls_name} binder for {model_stem}: {relative_binder_path}. Error: {ex}"
+            )
 
         binder = binder_class.from_path(binder_path)
 
@@ -842,10 +846,11 @@ class ExportMapPieceMSBParts(LoggingOperator):
             # Get model file stem from MSB (must contain matching part).
             map_piece_part_name = get_default_flver_stem(mesh, armature, self)  # could be the same as the file stem
 
-            msb_path = settings.get_game_msb_path(map_stem)
+            relative_msb_path = settings.get_relative_msb_path(map_stem)
+            msb_path = settings.prepare_project_file(relative_msb_path)
 
             msb = opened_msbs.setdefault(
-                msb_path,
+                relative_msb_path,
                 get_cached_file(msb_path, settings.get_game_msb_class()),
             )  # type: MSB_TYPING
 
@@ -905,9 +910,8 @@ class ExportMapPieceMSBParts(LoggingOperator):
                 area_textures = map_area_textures.setdefault(area, {})
                 area_textures |= exporter.collected_texture_images
 
-        for msb_path, msb in opened_msbs.items():
+        for relative_msb_path, msb in opened_msbs.items():
             # Write MSB.
-            relative_msb_path = msb_path.relative_to(settings.game_directory)
             settings.export_file(self, msb, relative_msb_path)
 
         if map_area_textures:  # only non-empty if texture export enabled

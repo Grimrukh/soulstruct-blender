@@ -438,22 +438,30 @@ class ImportHKXMapCollisionFromHKXBHD(LoggingOperator):
         settings.save_settings()
         game_lists = context.scene.soulstruct_game_enums  # type: SoulstructGameEnums
 
-        import_map_path = settings.get_import_map_path()
-        if not import_map_path:  # validation
-            return self.error("Game directory and map stem must be set in Blender's Soulstruct global settings.")
-
         hkx_entry_name = game_lists.hkx_map_collision
         if hkx_entry_name in {"", "0"}:
             return self.error("No HKX map collision entry selected.")
-        bl_name = hkx_entry_name.split(".")[0]
 
+        # Import source may depend on suffix of entry enum.
         # BXF file never has DCX.
-        hkxbhd_path = settings.get_import_map_path(f"h{settings.map_stem[1:]}.hkxbhd")
-        hkxbdt_path = settings.get_import_map_path(f"h{settings.map_stem[1:]}.hkxbdt")
-        if not hkxbhd_path.is_file():
+        if hkx_entry_name.endswith(" (G)"):
+            hkx_entry_name = hkx_entry_name.removesuffix(" (G)")
+            hkxbhd_path = settings.get_game_map_path(f"h{settings.map_stem[1:]}.hkxbhd")
+            hkxbdt_path = settings.get_game_map_path(f"h{settings.map_stem[1:]}.hkxbdt")
+        elif hkx_entry_name.endswith(" (P)"):
+            hkx_entry_name = hkx_entry_name.removesuffix(" (P)")
+            hkxbhd_path = settings.get_project_map_path(f"h{settings.map_stem[1:]}.hkxbhd")
+            hkxbdt_path = settings.get_project_map_path(f"h{settings.map_stem[1:]}.hkxbdt")
+        else:  # no suffix, so we use whichever source is preferred
+            hkxbhd_path = settings.get_import_map_path(f"h{settings.map_stem[1:]}.hkxbhd")
+            hkxbdt_path = settings.get_import_map_path(f"h{settings.map_stem[1:]}.hkxbdt")
+
+        if not is_path_and_file(hkxbhd_path):
             return self.error(f"Could not find HKXBHD header file for map '{settings.map_stem}': {hkxbhd_path}")
-        if not hkxbdt_path.is_file():
+        if not is_path_and_file(hkxbdt_path):
             return self.error(f"Could not find HKXBDT data file for map '{settings.map_stem}': {hkxbdt_path}")
+
+        bl_name = hkx_entry_name.split(".")[0]
 
         hkxbxf = Binder.from_path(hkxbhd_path)
         try:

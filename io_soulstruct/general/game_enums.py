@@ -3,41 +3,44 @@ from __future__ import annotations
 __all__ = ["SoulstructGameEnums"]
 
 import re
-
 import typing as tp
-from pathlib import Path
 
 import bpy
 
-from soulstruct.containers import Binder
 from soulstruct.games import *
 
-from io_soulstruct.utilities.misc import is_path_and_file, is_path_and_dir
+from io_soulstruct.utilities.misc import CachedEnum, is_path_and_file, is_path_and_dir
 from .cached import get_cached_file
 from .core import SoulstructSettings
 
 if tp.TYPE_CHECKING:
     from io_soulstruct.type_checking import MSB_TYPING
 
-# Global variable to keep enum references alive, and the paths used to cache them.
+# Global variable to keep enum references alive, and the game and/or project paths used to cache them.
 # NOTE: Only Binder entries are used at the moment.
 GAME_FILE_ENUMS = {
     # Loose files
-    "MAP_PIECE": (None, [("0", "None", "None")]),
-    "CHRBND": (None, [("0", "None", "None")]),
-    "OBJBND": (None, [("0", "None", "None")]),
-    "PARTSBND": (None, [("0", "None", "None")]),
+    "MAP_PIECE": CachedEnum(),
+    "CHRBND": CachedEnum(),
+    "OBJBND": CachedEnum(),
+    "PARTSBND": CachedEnum(),
 
     # Loose Binder entries
-    "NVM": (None, [("0", "None", "None")]),  # entries in NVMBND
-    "HKX_MAP_COLLISION": (None, [("0", "None", "None")]),  # entries in HKXBHD
+    "NVM": CachedEnum(),
+    "HKX_MAP_COLLISION": CachedEnum(),
 
     # MSB parts
-    "MSB_MAP_PIECE": (None, [("0", "None", "None")]),
-    "MSB_NAVMESH": (None, [("0", "None", "None")]),
-    "MSB_HKX_MAP_COLLISION": (None, [("0", "None", "None")]),
+    "MSB_MAP_PIECE": CachedEnum(),
+    "MSB_NAVMESH": CachedEnum(),
+    "MSB_HKX_MAP_COLLISION": CachedEnum(),
 
-}  # type: dict[str, tuple[None | Path, list[tuple[str, str, str]]]]
+}  # type: dict[str, CachedEnum]
+
+
+def _clear_items(key: str) -> CachedEnum:
+    """Clear cached enum items for the given key."""
+    GAME_FILE_ENUMS[key] = CachedEnum()
+    return GAME_FILE_ENUMS[key]
 
 
 # noinspection PyUnusedLocal
@@ -49,18 +52,30 @@ def get_map_piece_items(self, context):
     key = "MAP_PIECE"
 
     settings = SoulstructSettings.from_context(context)
-    map_directory = settings.get_import_map_path()
-    if not map_directory or not map_directory.is_dir():
-        return _clear_items(key)
+    game_map_directory = settings.get_import_map_path()
+    project_map_directory = settings.get_project_map_path()
+    if not is_path_and_dir(game_map_directory) and not is_path_and_dir(project_map_directory):
+        return _clear_items(key).items
 
     # Find all map piece FLVER files in map directory.
     flver_glob = settings.game.process_dcx_path("*.flver")
-    return _scan_loose_files(key, map_directory, flver_glob, lambda stem: f"{stem} in map {settings.map_stem}")
+    cached = GAME_FILE_ENUMS[key]
+    if not cached.is_valid(game_map_directory, project_map_directory):
+        cached = GAME_FILE_ENUMS[key] = CachedEnum.from_loose_files(
+            game_map_directory,
+            project_map_directory,
+            flver_glob,
+            use_value_source_suffix=True,
+            desc_callback=lambda stem: f"{stem} in map {settings.map_stem}",
+        )
+    return cached.items
 
 
 # noinspection PyUnusedLocal
 def get_msb_map_piece_items(self, context):
     """Collect quick-importable `MSBMapPiece` parts in the selected game's selected map MSB.
+
+    Does NOT 'merge' MSBs across project and game. Only uses the preferred imported MSB.
 
     TODO: Many MSBs, especially in later games, have too many Map Piece parts to reasonably display in Blender's limited
      enum pop-up window. I'm thinking of writing all the parts as file names to a temporarily folder and then using the
@@ -69,83 +84,93 @@ def get_msb_map_piece_items(self, context):
     key = "MSB_MAP_PIECE"
 
     settings = SoulstructSettings.from_context(context)
-    msb_path = settings.get_import_msb_path()
+    msb_path = settings.get_import_msb_path()  # we use preferred import location only
     if not is_path_and_file(msb_path):
-        return _clear_items(key)
+        return _clear_items(key).items
 
     # Open MSB and find all Map Piece parts. NOTE: We don't check here if the part's model is a valid file.
     # It's up to the importer to handle and report that error case.
-    if GAME_FILE_ENUMS[key][0] == msb_path:
+    if GAME_FILE_ENUMS[key].is_valid(msb_path, None):
         # Use cached enum items.
         # NOTE: Even if the MSB is written from Blender, Soulstruct cannot add or remove parts (yet).
-        return GAME_FILE_ENUMS[key][1]
+        return _clear_items(key).items
 
     try:
         msb_class = settings.get_game_msb_class()
         msb = get_cached_file(msb_path, msb_class)  # type: MSB_TYPING
     except (FileNotFoundError, ValueError) as ex:
-        return _clear_items(key)
+        return _clear_items(key).items
 
-    items = [("0", "None", "None")]
+    items = []
     for map_piece_part in msb.map_pieces:
         if not map_piece_part.model:
-            continue
+            continue  # part is missing MSB model
         full_model_name = map_piece_part.model.get_model_file_stem(settings.map_stem)
         identifier = f"{map_piece_part.name}|{full_model_name}"
         items.append(
             (identifier, map_piece_part.name, f"{map_piece_part.name} (Model {full_model_name})")
         )
 
-    # NOTE: The cache key is the MSB path.
-    GAME_FILE_ENUMS[key] = (msb_path, items)
-    return GAME_FILE_ENUMS[key][1]
+    # NOTE: The cache key is the preferred imported MSB path only.
+    GAME_FILE_ENUMS[key] = CachedEnum(msb_path, None, items)
+    return GAME_FILE_ENUMS[key].items
 
 
 # noinspection PyUnusedLocal
 def get_nvm_items(self, context):
     """Collect navmesh NVM entries in selected game map's 'mAA_BB_CC_DD.nvmbnd' binder."""
+    # TODO: Need to collect entries from both game (G) and project (P) and indicate their source in the enum value.
     key = "NVM"
 
     settings = SoulstructSettings.from_context(context)
-    map_path = settings.get_import_map_path()
-    if not is_path_and_dir(map_path):
-        return _clear_items(key)
-    nvmbnd_path = settings.game.process_dcx_path(map_path / f"{settings.map_stem}.nvmbnd")
-    if not nvmbnd_path.is_file():
-        return _clear_items(key)
 
-    # Find all NVM entries in map NVMBND. (Never compressed.)
-    pattern = re.compile(r".*\.nvm$")
-    return _scan_binder_entries(key, nvmbnd_path, pattern)
+    game_nvmbnd_path = settings.get_game_map_path(f"{settings.map_stem}.nvmbnd")
+    project_nvmbnd_path = settings.get_project_map_path(f"{settings.map_stem}.nvmbnd")
+    if not is_path_and_file(game_nvmbnd_path) and not is_path_and_file(project_nvmbnd_path):
+        return _clear_items(key).items
+
+    cached = GAME_FILE_ENUMS[key]
+    if not cached.is_valid(game_nvmbnd_path, project_nvmbnd_path):
+        # Find all NVM entries in map NVMBND. (Never compressed.)
+        pattern = re.compile(r".*\.nvm$")
+        cached = GAME_FILE_ENUMS[key] = CachedEnum.from_binder_entries(
+            game_nvmbnd_path,
+            project_nvmbnd_path,
+            pattern,
+            use_value_source_suffix=True,
+        )
+    return cached.items
 
 
 # noinspection PyUnusedLocal
 def get_nvm_part_items(self, context):
     """Collect MSB Navmesh entries in selected game map's MSB.
 
+    TODO: Only set up for DS1.
     TODO: See Map Pieces above re: too many parts to display.
     """
     key = "MSB_NAVMESH"
 
     settings = SoulstructSettings.from_context(context)
-    msb_path = settings.get_import_msb_path()
+    msb_path = settings.get_import_msb_path()  # we use preferred import location only
     if not is_path_and_file(msb_path):
-        return _clear_items(key)
+        return _clear_items(key).items
 
-    # Open MSB and find all Map Piece parts. NOTE: We don't check here if the part's model is a valid file.
+    # Open MSB and find all Navmesh parts. NOTE: We don't check here if the part's model is a valid file.
     # It's up to the importer to handle and report that error case.
-    if GAME_FILE_ENUMS[key][0] == msb_path:
+    if GAME_FILE_ENUMS[key].is_valid(msb_path, None):
         # Use cached enum items.
         # NOTE: Even if the MSB is written from Blender, Soulstruct cannot add or remove parts (yet).
-        return GAME_FILE_ENUMS[key][1]
+        return GAME_FILE_ENUMS[key].items
 
     try:
         msb_class = settings.get_game_msb_class()
         msb = get_cached_file(msb_path, msb_class)  # type: MSB_TYPING
     except (FileNotFoundError, ValueError) as ex:
-        return _clear_items(key)
+        GAME_FILE_ENUMS[key] = CachedEnum()
+        return GAME_FILE_ENUMS[key].items
 
-    items = [("0", "None", "None")]
+    items = []
     for navmesh_part in msb.navmeshes:
         if not navmesh_part.model:
             continue
@@ -156,36 +181,53 @@ def get_nvm_part_items(self, context):
         )
 
     # NOTE: The cache key is the MSB path.
-    GAME_FILE_ENUMS[key] = (msb_path, items)
-    return GAME_FILE_ENUMS[key][1]
+    GAME_FILE_ENUMS[key] = CachedEnum(msb_path, None, items)
+    return GAME_FILE_ENUMS[key].items
 
 
 # noinspection PyUnusedLocal
 def get_hkx_map_collision_items(self, context):
-    """Collect (hi-res) map collision HKX entries in selected game map's 'hAA_BB_CC_DD.hkxbhd' binder."""
+    """Collect (hi-res) map collision HKX entries in selected game map's 'hAA_BB_CC_DD.hkxbhd' binder.
+
+    Finds entries in both game and project directories, and indicates their source in the enum value.
+    """
     key = "HKX_MAP_COLLISION"
 
     settings = SoulstructSettings.from_context(context)
-    map_path = settings.get_import_map_path()
-    if not is_path_and_dir(map_path):
-        return _clear_items(key)
+    game_map_path = settings.get_game_map_path()
+    project_map_path = settings.get_project_map_path()
+    if not is_path_and_dir(game_map_path) and not is_path_and_dir(project_map_path):
+        return _clear_items(key).items
+
+    cached = GAME_FILE_ENUMS[key]
+    if cached.is_valid(game_map_path, project_map_path):
+        return cached.items  # use cached items
 
     if settings.is_game(DARK_SOULS_PTDE):
         # Loose HKX files. TODO: Need code for finding adjacent loose lo-res collisions as well.
         # TODO: Easily found, but I haven't finished map collision support for Havok 2010 yet.
         #  Just need to set up the SS Havok class and test the packfile writing.
         # return _scan_loose_files(key, map_path, "h*.hkx")
-        return _clear_items(key)
+        return _clear_items(key).items
     elif settings.is_game(DARK_SOULS_DSR):
         # Compressed HKX files inside HKXBHD binder.
-        hkxbhd_path = map_path / f"h{settings.map_stem[1:]}.hkxbhd"  # no DCX
-        if not hkxbhd_path.is_file():
-            return _clear_items(key)
+        game_hkxbhd_path = game_map_path / f"h{settings.map_stem[1:]}.hkxbhd"  # no DCX
+        if not game_hkxbhd_path.is_file():
+            game_hkxbhd_path = None
+        project_hkxbhd_path = project_map_path / f"h{settings.map_stem[1:]}.hkxbhd"  # no DCX
+        if not project_hkxbhd_path.is_file():
+            project_hkxbhd_path = None
         pattern = re.compile(r".*\.hkx\.dcx")
-        return _scan_binder_entries(key, hkxbhd_path, pattern)
+        cached = GAME_FILE_ENUMS[key] = CachedEnum.from_binder_entries(
+            game_hkxbhd_path,
+            project_hkxbhd_path,
+            pattern,
+            use_value_source_suffix=True,
+        )
+        return cached.items
 
-    # TODO: HKX collision not supported for other games. Not sure if I can handle `hkcdSimdTree` yet.
-    return _clear_items(key)
+    # TODO: HKX collision not supported for other games. Not sure if I can handle `hkcdSimdTree` yet (or ever).
+    return _clear_items(key).items
 
 
 # noinspection PyUnusedLocal
@@ -194,27 +236,29 @@ def get_msb_hkx_map_collision_items(self, context):
     key = "MSB_HKX_MAP_COLLISION"
 
     settings = SoulstructSettings.from_context(context)
-    msb_path = settings.get_import_msb_path()
+    msb_path = settings.get_import_msb_path()  # we use preferred import location only
     if not is_path_and_file(msb_path):
-        return _clear_items(key)
+        return _clear_items(key).items
+
+    cached = GAME_FILE_ENUMS[key]
+    if cached.is_valid(msb_path, None):
+        # Use cached enum items.
+        # NOTE: Even if the MSB is written from Blender, Soulstruct cannot add or remove parts (yet).
+        return cached.items
 
     # Open MSB and find all Map Piece parts. NOTE: We don't check here if the part's model is a valid file.
     # It's up to the importer to handle and report that error case.
-    if GAME_FILE_ENUMS[key][0] == msb_path:
-        # Use cached enum items.
-        # NOTE: Even if the MSB is written from Blender, Soulstruct cannot add or remove parts (yet).
-        return GAME_FILE_ENUMS[key][1]
 
     try:
         msb_class = settings.get_game_msb_class()
         msb = get_cached_file(msb_path, msb_class)  # type: MSB_TYPING
     except (FileNotFoundError, ValueError) as ex:
-        return _clear_items(key)
+        return _clear_items(key).items
 
-    items = [("0", "None", "None")]
+    items = []
     for collision_part in msb.collisions:
         if not collision_part.model:
-            continue
+            continue  # part is missing MSB model
         full_model_name = collision_part.model.get_model_file_stem(settings.map_stem)
         identifier = f"{collision_part.name}|{full_model_name}"
         items.append(
@@ -222,43 +266,8 @@ def get_msb_hkx_map_collision_items(self, context):
         )
 
     # NOTE: The cache key is the MSB path.
-    GAME_FILE_ENUMS[key] = (msb_path, items)
-    return GAME_FILE_ENUMS[key][1]
-
-
-def _clear_items(enum_key: str) -> list[tuple[str, str, str]]:
-    GAME_FILE_ENUMS[enum_key] = (None, [("0", "None", "None")])
-    return GAME_FILE_ENUMS[enum_key][1]
-
-
-def _scan_loose_files(
-    enum_key: str, scan_directory: Path, glob: str, desc_callback: tp.Callable[[str], str] = None,
-) -> list[tuple[str, str, str]]:
-    """Scan a directory for files and cache them by path."""
-    if GAME_FILE_ENUMS[enum_key][0] != scan_directory:
-        # Scan and cache.
-        items = [("0", "None", "None")]
-        for f in scan_directory.glob(glob):
-            if f.is_file():
-                minimal_stem = f.name.split(".")[0]
-                desc = minimal_stem if desc_callback is None else desc_callback(minimal_stem)
-                items.append((str(f), minimal_stem, desc))
-        GAME_FILE_ENUMS[enum_key] = (scan_directory, items)
-    return GAME_FILE_ENUMS[enum_key][1]
-
-
-def _scan_binder_entries(
-    enum_key: str, binder_path: Path, entry_name_pattern: re.Pattern, desc_callback: tp.Callable[[str], str] = None,
-) -> list[tuple[str, str, str]]:
-    """Scan a Binder's entries and cache them by path."""
-    if GAME_FILE_ENUMS[enum_key][0] != binder_path:
-        # Scan and cache.
-        items = [("0", "None", "None")]
-        for e in Binder.from_path(binder_path).find_entries_matching_name(entry_name_pattern):
-            desc = e.minimal_stem if desc_callback is None else desc_callback(e.minimal_stem)
-            items.append((e.name, e.minimal_stem, desc))
-        GAME_FILE_ENUMS[enum_key] = (binder_path, items)
-    return GAME_FILE_ENUMS[enum_key][1]
+    cached = GAME_FILE_ENUMS[key] = CachedEnum(msb_path, None, items)
+    return cached.items
 
 
 class SoulstructGameEnums(bpy.types.PropertyGroup):

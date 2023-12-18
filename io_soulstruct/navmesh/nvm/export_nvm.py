@@ -253,7 +253,7 @@ class ExportNVMIntoNVMBND(LoggingOperator):
 
         exporter = NVMExporter(self, context)
 
-        opened_nvmbnds = {}  # type: dict[str, Binder]
+        opened_nvmbnds = {}  # type: dict[Path, Binder]
         for bl_mesh_obj in context.selected_objects:
 
             bl_mesh_obj: bpy.types.MeshObject
@@ -274,18 +274,18 @@ class ExportNVMIntoNVMBND(LoggingOperator):
                 map_stem = settings.map_stem
                 relative_nvmbnd_path = default_map_path / f"{map_stem}.nvmbnd"
 
-            if map_stem not in opened_nvmbnds:
+            if relative_nvmbnd_path not in opened_nvmbnds:
                 try:
                     nvmbnd_path = settings.prepare_project_file(relative_nvmbnd_path, False, must_exist=True)
                 except FileNotFoundError as ex:
                     return self.error(f"Cannot find NVMBND: {relative_nvmbnd_path}. Error: {ex}")
                 try:
-                    nvmbnd = opened_nvmbnds[map_stem] = Binder.from_path(nvmbnd_path)
+                    nvmbnd = opened_nvmbnds[relative_nvmbnd_path] = Binder.from_path(nvmbnd_path)
                 except Exception as ex:
                     self.error(f"Could not load NVMBND for map '{map_stem}'. Error: {ex}")
                     continue
             else:
-                nvmbnd = opened_nvmbnds[map_stem]
+                nvmbnd = opened_nvmbnds[relative_nvmbnd_path]
 
             model_file_stem = bl_mesh_obj.get("Model File Stem", get_bl_obj_stem(bl_mesh_obj))
 
@@ -306,11 +306,11 @@ class ExportNVMIntoNVMBND(LoggingOperator):
                 new_data=nvm,
             )
 
-        for nvmbnd in opened_nvmbnds.values():
+        for relative_nvmbnd_path, nvmbnd in opened_nvmbnds.items():
             nvmbnd.entries = list(sorted(nvmbnd.entries, key=lambda e: e.name))
             for i, entry in enumerate(nvmbnd.entries):
                 entry.entry_id = i
-            settings.export_file(self, nvmbnd, nvmbnd.path.relative_to(settings.game_directory))
+            settings.export_file(self, nvmbnd, relative_nvmbnd_path)
 
         return {"FINISHED"}
 
@@ -399,9 +399,10 @@ class ExportNVMMSBPart(LoggingOperator):
 
             # Get model file stem from MSB (must contain matching part).
             navmesh_part_name = get_bl_obj_stem(bl_mesh_obj)  # could be the same as the file stem
-            msb_path = settings.get_game_msb_path(map_stem)
+            relative_msb_path = settings.get_relative_msb_path(map_stem)
+            msb_path = settings.prepare_project_file(relative_msb_path, False, must_exist=True)
             msb = opened_msbs.setdefault(
-                msb_path,
+                relative_msb_path,
                 get_cached_file(msb_path, settings.get_game_msb_class()),
             )  # type: MSB_TYPING
 
@@ -462,9 +463,8 @@ class ExportNVMMSBPart(LoggingOperator):
                 new_data=nvm,
             )
 
-        for msb_path, msb in opened_msbs.items():
+        for relative_msb_path, msb in opened_msbs.items():
             # Write MSB.
-            relative_msb_path = msb_path.relative_to(settings.game_directory)
             settings.export_file(self, msb, relative_msb_path)
 
         for nvmbnd in opened_nvmbnds.values():

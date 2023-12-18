@@ -345,13 +345,23 @@ class ImportNVMFromNVMBND(LoggingOperator):
         if settings.game_variable_name != "DARK_SOULS_DSR":
             return self.error("NVM import from game NVMBND is only available for Dark Souls Remastered.")
 
-        nvmbnd_path = settings.get_import_map_path(f"{settings.map_stem}.nvmbnd")
-        if not nvmbnd_path or not nvmbnd_path.is_file():
-            return self.error(f"Could not find NVMBND file for map '{settings.map_stem}': {nvmbnd_path}")
-
         nvm_entry_name = context.scene.soulstruct_game_enums.nvm
         if nvm_entry_name in {"", "0"}:
             return self.error("No NVM entry selected.")
+
+        # Import source may depend on suffix of entry enum.
+        if nvm_entry_name.endswith(" (G)"):
+            nvm_entry_name = nvm_entry_name.removesuffix(" (G)")
+            nvmbnd_path = settings.get_game_map_path(f"{settings.map_stem}.nvmbnd")
+        elif nvm_entry_name.endswith(" (P)"):
+            nvm_entry_name = nvm_entry_name.removesuffix(" (P)")
+            nvmbnd_path = settings.get_project_map_path(f"{settings.map_stem}.nvmbnd")
+        else:  # no suffix, so we use whichever source is preferred
+            nvmbnd_path = settings.get_import_map_path(f"{settings.map_stem}.nvmbnd")
+
+        if not is_path_and_file(nvmbnd_path):  # validation
+            return self.error(f"Could not find NVMBND file for map '{settings.map_stem}': {nvmbnd_path}")
+
         bl_name = nvm_entry_name.split(".")[0]
 
         nvmbnd = Binder.from_path(nvmbnd_path)

@@ -354,6 +354,7 @@ class ImportCharacterHKXAnimation(LoggingOperator, ImportHKXAnimationMixin):
 
         skeleton_anibnd = anibnd = Binder.from_path(anibnd_path)
         # TODO: Support c0000 automatic import. Combine all sub-ANIBND entries into one big choice list?
+        self.info(f"Importing animation(s) from ANIBND: {anibnd_path}")
 
         # Find skeleton entry.
         try:
@@ -436,6 +437,8 @@ class ImportObjectHKXAnimation(LoggingOperator, ImportHKXAnimationMixin):
         except EntryNotFoundError:
             return self.error(f"ANIBND of object '{object_name}' has no skeleton HKX file.")
         skeleton_hkx = SkeletonHKX.from_binder_entry(skeleton_entry)
+
+        self.info(f"Importing animation(s) from ANIBND inside OBJBND: {objbnd}")
 
         # Find animation HKX entry/entries.
         anim_hkx_entries = anibnd.find_entries_matching_name(r"a.*\.hkx(\.dcx)?")

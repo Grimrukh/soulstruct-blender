@@ -20,7 +20,7 @@ from soulstruct.dcx import DCXType
 from soulstruct.games import *
 from soulstruct.utilities.files import read_json, write_json, create_bak
 
-from io_soulstruct.utilities.misc import is_path_and_file, is_path_and_dir
+from io_soulstruct.utilities.misc import CachedEnum, is_path_and_file, is_path_and_dir
 
 if tp.TYPE_CHECKING:
     from io_soulstruct.type_checking import MSB_TYPING, MATBINBND_TYPING
@@ -29,9 +29,7 @@ if tp.TYPE_CHECKING:
 _SETTINGS_PATH = Path(__file__).parent.parent / "SoulstructSettings.json"
 
 # Associates a game 'map' path and/or project 'map' path with a list of map choice enums.
-_MAP_STEM_ENUM_ITEMS = (
-    None, None, [("0", "None", "None")]
-)  # type: tuple[Path | None, Path | None, list[tuple[str, str, str]]]
+_MAP_STEM_ENUM = CachedEnum()
 
 
 # Global holder for games that front-end users can currently select (or have auto-detected) for the `game` enum.
@@ -50,7 +48,7 @@ def _get_map_stem_items(self, context: bpy.types.Context) -> list[tuple[str, str
     destination file itself, these suffixes are not used in any way internally.
     """
 
-    global _MAP_STEM_ENUM_ITEMS
+    global _MAP_STEM_ENUM
 
     settings = SoulstructSettings.from_context(context)
     game_directory = settings.game_directory
@@ -59,11 +57,11 @@ def _get_map_stem_items(self, context: bpy.types.Context) -> list[tuple[str, str
     project_map_dir_path = Path(project_directory, "map") if project_directory else None
 
     if not is_path_and_dir(game_map_dir_path) and not is_path_and_dir(project_map_dir_path):
-        _MAP_STEM_ENUM_ITEMS = (None, None, [("0", "None", "None")])  # reset
-        return _MAP_STEM_ENUM_ITEMS[2]
+        _MAP_STEM_ENUM = CachedEnum()  # reset
+        return _MAP_STEM_ENUM.items
 
-    if _MAP_STEM_ENUM_ITEMS[0] == game_map_dir_path and _MAP_STEM_ENUM_ITEMS[1] == project_map_dir_path:
-        return _MAP_STEM_ENUM_ITEMS[2]  # cached
+    if _MAP_STEM_ENUM.is_valid(game_map_dir_path, project_map_dir_path):
+        return _MAP_STEM_ENUM.items  # cached
 
     game_map_stem_names = []
     project_map_stem_names = []
@@ -106,7 +104,7 @@ def _get_map_stem_items(self, context: bpy.types.Context) -> list[tuple[str, str
     else:
         shared_map_stem_names = sorted(set(game_map_stem_names) & set(project_map_stem_names))
 
-    map_stems = [("0", "None", "None")] + [
+    map_stems = [
         (name, name, f"Map {name}")
         for name in shared_map_stem_names
     ] + [
@@ -116,9 +114,9 @@ def _get_map_stem_items(self, context: bpy.types.Context) -> list[tuple[str, str
         (name, f"{name} (P)", f"Map {name} (in project only)")
         for name in sorted(set(project_map_stem_names) - set(shared_map_stem_names))
     ]
-    _MAP_STEM_ENUM_ITEMS = (game_map_dir_path, project_map_dir_path, map_stems)
 
-    return _MAP_STEM_ENUM_ITEMS[2]
+    _MAP_STEM_ENUM = CachedEnum(game_map_dir_path, project_map_dir_path, map_stems)
+    return _MAP_STEM_ENUM.items
 
 
 class SoulstructSettings(bpy.types.PropertyGroup):
