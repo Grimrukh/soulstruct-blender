@@ -1,5 +1,7 @@
 # Soulstruct for Blender
 
+**NOTE: This add-on does NOT yet support Blender 4.X!**
+
 This Blender add-on enables you to import and export FromSoftware asset files, including FLVER models (e.g. Map Pieces, 
 Characters, Objects, Equipment/Parts), Havok map collision, and Havok animations for characters and objects.
 
