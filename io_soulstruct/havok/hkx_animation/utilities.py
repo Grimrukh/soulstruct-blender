@@ -42,7 +42,7 @@ def get_armature_frames(
 def get_root_motion(animation_hkx: AnimationHKX, swap_yz=True) -> np.ndarray | None:
     try:
         root_motion = animation_hkx.animation_container.get_reference_frame_samples()
-    except TypeError:
+    except (ValueError, TypeError):
         return None
 
     if swap_yz:

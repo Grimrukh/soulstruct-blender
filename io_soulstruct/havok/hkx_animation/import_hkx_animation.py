@@ -39,6 +39,7 @@ class ImportHKXAnimationMixin:
 
     info: tp.Callable[[str], None]
     warning: tp.Callable[[str], None]
+    error: tp.Callable[[str], set[str]]
 
     # TODO: Support import all?
     import_all_animations: bpy.props.BoolProperty(
@@ -87,7 +88,7 @@ class ImportHKXAnimationMixin:
         file_path: Path,
         skeleton_hkx: SkeletonHKX,
         animation_hkx: AnimationHKX,
-    ):
+    ) -> set[str]:
         anim_name = animation_hkx.path.name.split(".")[0]
 
         self.info(f"Importing HKX animation for {bl_armature.name}: {anim_name}")
@@ -120,6 +121,8 @@ class ImportHKXAnimationMixin:
             traceback.print_exc()
             raise HKXAnimationImportError(f"Cannot import HKX animation: {file_path.name}. Error: {ex}")
         self.info(f"Created animation action in {time.perf_counter() - p:.4f} seconds.")
+
+        return {"FINISHED"}
 
 
 class ImportHKXAnimation(LoggingOperator, ImportHelper, ImportHKXAnimationMixin):
