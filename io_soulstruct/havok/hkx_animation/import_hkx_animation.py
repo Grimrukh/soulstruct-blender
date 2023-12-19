@@ -623,9 +623,10 @@ class HKXAnimationImporter:
 
         # Initialize FCurves for root motion and bones
         if root_motion is not None:
-            root_loc_fcurves = [action.fcurves.new(data_path="location", index=i) for i in range(3)]
+            root_fcurves = [action.fcurves.new(data_path="location", index=i) for i in range(3)]
+            root_fcurves.append(action.fcurves.new(data_path="rotation_euler", index=2))  # z-axis rotation in Blender
         else:
-            root_loc_fcurves = []
+            root_fcurves = []
 
         bone_fcurves = {}
         for bone_name in bone_basis_samples.keys():
@@ -648,10 +649,10 @@ class HKXAnimationImporter:
         # `foreach_set` requires that we flatten the list of tuples to be assigned, a la:
         #    `[bl_frame_index_0, value_0, bl_frame_index_1, value_1, ...]`
         # which we do with a list comprehension.
-        if root_loc_fcurves:
+        if root_fcurves:
             # NOTE: There may be less root motion samples than bone animation samples. We spread the root motion samples
             # out to match the bone animation frames using `root_motion_frame_scaling` (done by caller).
-            for col, fcurve in enumerate(root_loc_fcurves):  # x, y, z
+            for col, fcurve in enumerate(root_fcurves):  # x, y, z, -rz (from game ry)
                 dim_samples = root_motion[:, col]  # one dimension of root motion
                 fcurve.keyframe_points.add(count=len(dim_samples))
                 root_dim_flat = [

@@ -46,7 +46,8 @@ def get_root_motion(animation_hkx: AnimationHKX, swap_yz=True) -> np.ndarray | N
         return None
 
     if swap_yz:
-        root_motion = np.c_[root_motion[:, 0], root_motion[:, 2], root_motion[:, 1]]
+        # Swap Y and Z axes and negate rotation (now around Z axis). Array is read-only, so we construct a new one.
+        root_motion = np.c_[root_motion[:, 0], root_motion[:, 2], root_motion[:, 1], -root_motion[:, 3]]
     return root_motion
 
 
