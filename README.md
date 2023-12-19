@@ -1,6 +1,6 @@
 # Soulstruct for Blender
 
-**NOTE: This add-on does NOT yet support Blender 4.X!**
+**NOTE: This add-on does NOT yet support Blender 4.X for FLVER import/export due to shader node changes.**
 
 This Blender add-on enables you to import and export FromSoftware asset files, including FLVER models (e.g. Map Pieces, 
 Characters, Objects, Equipment/Parts), Havok map collision, and Havok animations for characters and objects.
@@ -25,6 +25,7 @@ some time to polish and release them. I hope they serve you well and anticipate 
 This is an experimental add-on that is not yet published to Blender. To install the add-on manually, follow these steps:
 
 1. Ensure you have **Blender 3.3 or later**, as Python 3.10 is required.
+   - Blender 4.0 is not yet supported for FLVER import/export due to a change in shader nodes. 
 2. Download the add-on `.zip` file from the GitHub repository (Releases).
 3. Unzip the contents into your Blender's **user** `scripts/addons` directory.
    - On Windows, the directory is typically at `C:/<User>/AppData/Roaming/Blender Foundation/Blender/<version>/scripts/addons/`.
