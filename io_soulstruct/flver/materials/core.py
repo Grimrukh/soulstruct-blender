@@ -14,6 +14,12 @@ from soulstruct.base.models.flver.submesh import Submesh
 from io_soulstruct.utilities.operators import LoggingOperator
 from .material_info import *
 
+# Node input for specular strength is called "Specular IOR Level" in Blender 4.X, but just "Specular" prior to that.
+if bpy.app.version[0] == 4:
+    PRINCIPLED_SPEC_INPUT = "Specular IOR Level"
+else:
+    PRINCIPLED_SPEC_INPUT = "Specular"
+
 
 def get_submesh_blender_material(
     operator: LoggingOperator,
@@ -247,7 +253,11 @@ class NodeTreeBuilder:
                 self.link(tex_image_node.outputs["Color"], overlay_node.inputs["Color1"])
                 self.link(lightmap_node.outputs["Color"], overlay_node.inputs["Color2"])  # order is important!
 
-                bsdf_input = "Base Color" if texture_type.startswith("g_Diffuse") else "Specular"
+                if texture_type.startswith("g_Diffuse"):
+                    bsdf_input = "Base Color"
+                else:  # g_Specular
+                    bsdf_input = PRINCIPLED_SPEC_INPUT
+
                 self.link(overlay_node.outputs["Color"], bsdf_node.inputs[bsdf_input])
                 if texture_type.startswith("g_Diffuse"):
                     # Plug diffuse alpha into BSDF alpha.
@@ -265,7 +275,7 @@ class NodeTreeBuilder:
                     self.link(tex_image_node.outputs["Color"], bsdf_node.inputs["Base Color"])
                     self.link(tex_image_node.outputs["Alpha"], bsdf_node.inputs["Alpha"])
                 else:  # g_Specular[_2]
-                    self.link(tex_image_node.outputs["Color"], bsdf_node.inputs["Specular"])
+                    self.link(tex_image_node.outputs["Color"], bsdf_node.inputs[PRINCIPLED_SPEC_INPUT])
 
         if "g_Height" in self.tex_image_nodes:
             # 'g_Height' is an actual height map (not normals, like 'g_Bumpmap').
@@ -367,7 +377,7 @@ class NodeTreeBuilder:
                 elif texture_type.startswith("g_ShininessTexture"):
                     self.link(overlay_node.outputs["Color"], bsdf_node.inputs["Sheen"])
                 else:  # g_SpecularTexture[2]
-                    self.link(overlay_node.outputs["Color"], bsdf_node.inputs["Specular"])
+                    self.link(overlay_node.outputs["Color"], bsdf_node.inputs[PRINCIPLED_SPEC_INPUT])
 
         else:
             # Plug diffuse and specular textures directly into Principled BSDF.
@@ -387,7 +397,7 @@ class NodeTreeBuilder:
                 elif texture_type.startswith("g_ShininessTexture"):
                     self.link(tex_image_node.outputs["Color"], bsdf_node.inputs["Sheen"])
                 else:  # g_SpecularTexture[2]
-                    self.link(tex_image_node.outputs["Color"], bsdf_node.inputs["Specular"])
+                    self.link(tex_image_node.outputs["Color"], bsdf_node.inputs[PRINCIPLED_SPEC_INPUT])
 
         # TODO: 'g_DisplacementTexture' in BB
         # if "g_Height" in self.tex_image_nodes:
