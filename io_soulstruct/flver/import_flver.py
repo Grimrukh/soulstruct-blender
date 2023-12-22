@@ -583,9 +583,9 @@ class FLVERBatchImporter:
 
     def __post_init__(self):
         if self.mtdbnd is None:
-            self.mtdbnd = self.settings.get_mtdbnd()
+            self.mtdbnd = self.settings.get_mtdbnd(self.operator)
         if self.matbinbnd is None:
-            self.matbinbnd = self.settings.get_matbinbnd()
+            self.matbinbnd = self.settings.get_matbinbnd(self.operator)
 
     def abort_import(self):
         """Delete all Blender objects, images, and materials created during this import."""

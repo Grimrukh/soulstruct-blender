@@ -96,8 +96,9 @@ class BakeLightmapTextures(LoggingOperator):
         """
         self.info("Baking FLVER lightmap textures...")
 
+        settings = self.settings(context)
+        mtdbnd = settings.get_mtdbnd(self)
         bake_settings = context.scene.bake_lightmap_settings  # type: BakeLightmapSettings
-        mtdbnd = self.settings(context).get_mtdbnd()
 
         # Get all selected FLVER meshes.
         flver_meshes = []

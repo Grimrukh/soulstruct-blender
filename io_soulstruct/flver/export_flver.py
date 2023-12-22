@@ -183,7 +183,7 @@ class ExportStandaloneFLVER(LoggingOperator, ExportHelper):
 
         flver_file_path = Path(self.filepath)
         self.to_object_mode()
-        exporter = FLVERBatchExporter(self, context, settings, settings.get_mtdbnd())
+        exporter = FLVERBatchExporter(self, context, settings, settings.get_mtdbnd(self))
 
         # NOTE: As the exported FLVER model stem may differ from the Blender object, we need to pass both to the
         # exporter. The exported name is used to create a default bone (the only place in the FLVER file where the model
@@ -320,7 +320,7 @@ class ExportFLVERIntoBinder(LoggingOperator, ExportHelper):
             else:
                 flver_entry = flver_entries[0]
 
-        exporter = FLVERBatchExporter(self, context, settings, settings.get_mtdbnd())
+        exporter = FLVERBatchExporter(self, context, settings, settings.get_mtdbnd(self))
 
         try:
             flver = exporter.export_flver(mesh, armature, bl_name=flver_stem)
@@ -475,7 +475,7 @@ class BaseGameFLVERBinderExportOperator(LoggingOperator):
         binder = binder_class.from_path(binder_path)
 
         self.to_object_mode()
-        exporter = FLVERBatchExporter(self, context, settings, settings.get_mtdbnd())
+        exporter = FLVERBatchExporter(self, context, settings, settings.get_mtdbnd(self))
         try:
             flver = exporter.export_flver(mesh, armature, bl_name=model_stem)
         except Exception as ex:
@@ -826,7 +826,7 @@ class ExportMapPieceMSBParts(LoggingOperator):
         flver_dcx_type = settings.game.get_dcx_type("flver")
 
         self.to_object_mode()
-        exporter = FLVERBatchExporter(self, context, settings, settings.get_mtdbnd())
+        exporter = FLVERBatchExporter(self, context, settings, settings.get_mtdbnd(self))
         active_object = context.active_object
 
         map_area_textures = {}  # maps area stems 'mAA' to dictionaries of Blender images to export
@@ -1016,9 +1016,9 @@ class FLVERBatchExporter:
 
     def __post_init__(self):
         if self.mtdbnd is None:
-            self.mtdbnd = self.settings.get_mtdbnd()
+            self.mtdbnd = self.settings.get_mtdbnd(self.operator)
         if self.matbinbnd is None:
-            self.matbinbnd = self.settings.get_matbinbnd()
+            self.matbinbnd = self.settings.get_matbinbnd(self.operator)
 
     def export_flver(
         self,
@@ -1368,7 +1368,7 @@ class FLVERBatchExporter:
                     f"Cannot export FLVER mesh '{bl_mesh.name}' with any non-triangle faces. "
                     f"Face index {i} has {len(face.loop_indices)} sides)."
                 )
-        self.info(f"Constructed combined face array in {time.perf_counter() - p} s.")
+        self.info(f"Constructed combined face array with {len(faces)} rows in {time.perf_counter() - p} s.")
 
         # Finally, we iterate over loops and construct their arrays.
         p = time.perf_counter()

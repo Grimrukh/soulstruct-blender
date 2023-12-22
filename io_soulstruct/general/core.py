@@ -609,7 +609,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):
             return DCXType[dcx_type_name]
         return self.game.get_dcx_type(class_name)
 
-    def get_mtdbnd(self) -> MTDBND | None:
+    def get_mtdbnd(self, operator: LoggingOperator) -> MTDBND | None:
         """Load `MTDBND` from custom path, standard location in game directory, or bundled Soulstruct file."""
 
         try:
@@ -628,7 +628,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):
                     try_mtdbnd_path = self.game.process_dcx_path(directory / f"mtd/{mtdbnd_name}")
                     if try_mtdbnd_path.is_file():
                         mtdbnd_path = try_mtdbnd_path
-                        print(f"Found MTDBND in {label} directory: {mtdbnd_path}")
+                        operator.info(f"Found MTDBND in {label} directory: {mtdbnd_path}")
                         break
                 if mtdbnd_path:  # found
                     break
@@ -638,11 +638,11 @@ class SoulstructSettings(bpy.types.PropertyGroup):
 
         from_bundled = getattr(mtdbnd_class, "from_bundled", None)
         if from_bundled:
-            print(f"Loading bundled MTDBND for game {self.game.name}...")
+            operator.info(f"Loading bundled MTDBND for game {self.game.name}...")
             return from_bundled()
         return None
 
-    def get_matbinbnd(self) -> MATBINBND_TYPING | None:
+    def get_matbinbnd(self, operator: LoggingOperator) -> MATBINBND_TYPING | None:
         """Load `MATBINBND` from custom path, standard location in game directory, or bundled Soulstruct file."""
 
         try:
@@ -661,7 +661,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):
                 try_matbinbnd_path = self.game.process_dcx_path(directory / f"material/allmaterial.matbinbnd")
                 if try_matbinbnd_path.is_file():
                     matbinbnd_path = try_matbinbnd_path
-                    print(f"Found MATBINBND in {label} directory: {matbinbnd_path}")
+                    operator.info(f"Found MATBINBND in {label} directory: {matbinbnd_path}")
                     break
 
         if matbinbnd_path.is_file():
@@ -669,7 +669,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):
 
         from_bundled = getattr(matbinbnd_class, "from_bundled", None)
         if from_bundled:
-            print(f"Loading bundled MATBINBND for game {self.game.name}...")
+            operator.info(f"Loading bundled MATBINBND for game {self.game.name}...")
             return from_bundled()
         return None
 
