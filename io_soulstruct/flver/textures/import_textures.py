@@ -19,6 +19,7 @@ from soulstruct.base.textures.dds import DDS
 from soulstruct.base.textures.texconv import texconv
 from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
 from soulstruct.containers.tpf import TPF, TPFTexture, batch_get_tpf_texture_png_data
+from soulstruct.games import *
 
 from io_soulstruct.utilities import MAP_STEM_RE
 from io_soulstruct.utilities.operators import LoggingImportOperator
@@ -317,16 +318,36 @@ class TextureImportManager:
             # header in CHRBND) for DSR, and adjacent loose folders for PTDE.
             if flver_binder:
                 self.scan_binder_textures(flver_binder)
-                if self.settings.game_variable_name == "DARK_SOULS_PTDE":
+                if self.settings.is_game(DARK_SOULS_PTDE):
                     self._find_chr_loose_tpfs(source_dir, model_stem=source_name.split(".")[0])
-                elif self.settings.game_variable_name == "DARK_SOULS_DSR":
-                    self._find_chr_tpfbdts(source_dir, flver_binder)
-                # TODO: More games. Where does Bloodborne keep character textures?
+                elif self.settings.is_game(DARK_SOULS_DSR):
+                    self._find_chr_tpfbdts(source_dir, flver_binder)  # CHRTPFBHD is in `flver_binder`
+                elif self.settings.is_game(BLOODBORNE):
+                    # Bloodborne doesn't have any loose/BXF CHRBND textures.
+                    pass
+                elif self.settings.is_game(DARK_SOULS_3, SEKIRO):
+                    self._find_texbnd(source_dir, model_stem=source_name.split(".")[0], res="")  # no res
+                elif self.settings.is_game(ELDEN_RING):
+                    # TODO: Option for low/high res. Using low for now.
+                    self._find_texbnd(source_dir, model_stem=source_name.split(".")[0], res="_l")
             else:
                 _LOGGER.warning(
                     f"Opened CHRBND '{flver_source_path}' should have been passed to TextureImportManager! Will not be "
                     f"able to load attached character textures."
                 )
+
+            if not source_name.endswith("9.chrbnd"):
+                # We also check for a 'cXXX9' CHRBND, which contains textures shared by all characters 'cXXX*'.
+                # Example: c2239 in DSR has skin textures for Stray (c2230), Firesage (c2231), and Asylum Demon (c2232).
+                c9_name = f"{source_name[:-8]}9.chrbnd"
+                if flver_source_path.suffix == ".dcx":
+                    c9_name += ".dcx"
+                c9_chrbnd_path = source_dir / c9_name
+                if c9_chrbnd_path not in self._scanned_binder_paths and c9_chrbnd_path.is_file():
+                    # Found cXXX9 CHRBND. Mark it as scanned now, then recur this method on it.
+                    self._scanned_binder_paths.add(c9_chrbnd_path)
+                    c9_chrbnd = Binder.from_path(c9_chrbnd_path)
+                    self.find_flver_textures(c9_chrbnd_path, flver_binder=c9_chrbnd)
 
         # EQUIPMENT
         elif source_name.endswith(".partsbnd"):
@@ -512,6 +533,18 @@ class TextureImportManager:
             tpf_stem = tpf_entry.name.split(".")[0]
             if tpf_stem not in self._scanned_tpf_sources:
                 self._pending_tpf_sources.setdefault(tpf_stem, tpf_entry)
+
+    def _find_texbnd(self, source_dir: Path, model_stem: str, res: str):
+        """Find character TPFs in a TEXBND next to the CHRBND. (Always DCX for games that use it.)"""
+        texbnd_path = source_dir / f"{model_stem}{res}.texbnd.dcx"
+        if not texbnd_path in self._scanned_binder_paths and texbnd_path.is_file():
+            self._scanned_binder_paths.add(texbnd_path)
+            texbnd = Binder.from_path(texbnd_path)
+            for tpf_entry in texbnd.find_entries_matching_name(TPF_RE):
+                # These are very likely to be used by the FLVER, but we still queue them up rather than open them now.
+                tpf_stem = tpf_entry.name.split(".")[0]
+                if tpf_stem not in self._scanned_tpf_sources:
+                    self._pending_tpf_sources.setdefault(tpf_stem, tpf_entry)
 
     def _find_parts_common_tpfs(self, source_dir: Path):
         """Find and immediately load all textures inside multi-texture 'Common' TPFs (e.g. player skin)."""

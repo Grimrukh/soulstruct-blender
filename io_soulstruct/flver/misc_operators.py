@@ -27,7 +27,7 @@ class FLVERToolSettings(bpy.types.PropertyGroup):
         min=0.0,
         max=1.0,
     )
-    dummy_id_draw_enabled: bpy.props.BoolProperty(name="Draw Dummy IDs", default=True)
+    dummy_id_draw_enabled: bpy.props.BoolProperty(name="Draw Dummy IDs", default=False)
     dummy_id_font_size: bpy.props.IntProperty(name="Dummy ID Font Size", default=16, min=1, max=100)
 
 
