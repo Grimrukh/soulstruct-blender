@@ -3,6 +3,7 @@ from __future__ import annotations
 
 __all__ = [
     "SoulstructSettings",
+    "CLEAR_MAP_STEM_ENUM",
 ]
 
 import traceback
@@ -30,6 +31,11 @@ _SETTINGS_PATH = Path(__file__).parent.parent / "SoulstructSettings.json"
 
 # Associates a game 'map' path and/or project 'map' path with a list of map choice enums.
 _MAP_STEM_ENUM = CachedEnum()
+
+
+def CLEAR_MAP_STEM_ENUM():
+    global _MAP_STEM_ENUM
+    _MAP_STEM_ENUM = CachedEnum()
 
 
 # Global holder for games that front-end users can currently select (or have auto-detected) for the `game` enum.
@@ -441,6 +447,8 @@ class SoulstructSettings(bpy.types.PropertyGroup):
 
         `class_name` is used for logging and will be automatically detected from `file` if not given.
         """
+        from .game_enums import CLEAR_GAME_FILE_ENUMS
+
         if relative_path.is_absolute():
             # Indicates a mistake in an operator.
             raise ValueError(f"Relative path for export must be relative to game root, not absolute: {relative_path}")
@@ -450,6 +458,11 @@ class SoulstructSettings(bpy.types.PropertyGroup):
             traceback.print_exc()
             operator.report({"ERROR"}, f"Failed to export {class_name} file: {e}")
             return {"CANCELLED"}
+
+        # Clear enums so any new files/folders/entries can be detected.
+        CLEAR_MAP_STEM_ENUM()
+        CLEAR_GAME_FILE_ENUMS()
+
         return {"FINISHED"}
 
     def _export_file(self, operator: LoggingOperator, file: BaseBinaryFile, relative_path: Path, class_name=""):
@@ -489,12 +502,19 @@ class SoulstructSettings(bpy.types.PropertyGroup):
 
         `class_name` must be given in this case because it cannot be automatically detected.
         """
+        from .game_enums import CLEAR_GAME_FILE_ENUMS
+
         try:
             self._export_file_data(operator, data, relative_path, class_name)
         except Exception as e:
             traceback.print_exc()
             operator.report({"ERROR"}, f"Failed to export {class_name} file: {e}")
             return {"CANCELLED"}
+
+        # Clear enums so any new files/folders/entries can be detected.
+        CLEAR_MAP_STEM_ENUM()
+        CLEAR_GAME_FILE_ENUMS()
+
         return {"FINISHED"}
 
     def _export_file_data(self, operator: LoggingOperator, data: bytes, relative_path: Path, class_name: str):
@@ -549,6 +569,8 @@ class SoulstructSettings(bpy.types.PropertyGroup):
 
         Never creates a `.bak` backup file.
         """
+        from .game_enums import CLEAR_GAME_FILE_ENUMS
+
         game_path = self.get_game_path(relative_path, dcx_type=dcx_type)
         project_path = self.get_project_path(relative_path, dcx_type=dcx_type)
 
@@ -585,6 +607,11 @@ class SoulstructSettings(bpy.types.PropertyGroup):
             shutil.copy2(game_path, project_path)
         except Exception as ex:
             raise RuntimeError(f"Failed to copy file '{game_path.name}' from game directory to project directory: {ex}")
+
+        # Clear enums so any new files/folders/entries can be detected.
+        CLEAR_MAP_STEM_ENUM()
+        CLEAR_GAME_FILE_ENUMS()
+
         return project_path
 
     def get_game_msb_class(self) -> type[MSB_TYPING]:

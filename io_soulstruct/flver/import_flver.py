@@ -360,7 +360,7 @@ class ImportMapPieceMSBPart(LoggingOperator):
     def poll(cls, context):
         settings = cls.settings(context)
         msb_path = settings.get_import_msb_path()
-        if is_path_and_file(msb_path):
+        if not is_path_and_file(msb_path):
             return False
         game_enums = context.scene.soulstruct_game_enums  # type: SoulstructGameEnums
         if game_enums.map_piece_parts in {"", "0"}:
@@ -493,43 +493,56 @@ class ImportAllMapPieceMSBParts(LoggingOperator):
 
         for map_piece_part in msb.map_pieces:
             model_stem = map_piece_part.model.get_model_file_stem(settings.map_stem)
+            transform = Transform.from_msb_part(map_piece_part)
 
             if self.link_model_data and model_stem in loaded_models:
                 # Use existing Armature and Mesh data.
                 existing_armature, existing_mesh = loaded_models[model_stem]
-                new_armature_obj = bpy.data.objects.new(map_piece_part.name, existing_armature)
-                new_mesh_obj = bpy.data.objects.new(map_piece_part.name, existing_mesh)
-                context.scene.collection.objects.link(new_armature_obj)
-                context.scene.collection.objects.link(new_mesh_obj)
-                continue
+                bl_armature = bpy.data.objects.new(map_piece_part.name, existing_armature.data)
+                bl_mesh = bpy.data.objects.new(map_piece_part.name, existing_mesh.data)
+                context.scene.collection.objects.link(bl_armature)
+                context.scene.collection.objects.link(bl_mesh)
 
-            # Import new FLVER.
-            flver_path = settings.get_import_map_path(f"{model_stem}.flver")
-            transform = Transform.from_msb_part(map_piece_part)
+                # Parent mesh to armature. This is critical for proper animation behavior (especially with root motion).
+                bl_mesh.parent = bl_armature
+                # noinspection PyTypeChecker
+                importer.create_mesh_armature_modifier(bl_mesh, bl_armature)
 
-            self.info(f"Importing map piece FLVER: {flver_path}")
+                # Copy FLVER properties to new mesh (as a new FLVER is exportable from any duplicate).
+                self.copy_bl_mesh_props(existing_mesh, bl_mesh)
 
-            flver = FLVER.from_path(flver_path)
-            if texture_manager:
-                texture_manager.find_flver_textures(flver_path)
-                area_re = re.compile(r"^m\d\d_")
-                texture_map_areas = {
-                    texture_path.stem[:3]
-                    for texture_path in flver.get_all_texture_paths()
-                    if re.match(area_re, texture_path.stem)
-                }
-                for map_area in texture_map_areas:
-                    map_area_dir = (flver_path.parent / f"../{map_area}").resolve()
-                    texture_manager.find_specific_map_textures(map_area_dir)
+                self.info(
+                    f"Created duplicate armature/mesh for MSB part '{map_piece_part.name}' in Blender linked to model "
+                    f"data of part '{existing_armature.name}'."
+                )
 
-            try:
-                bl_armature, bl_mesh = importer.import_flver(flver, name=map_piece_part.name)
-            except Exception as ex:
-                # Delete any objects created prior to exception.
-                importer.abort_import()
-                traceback.print_exc()  # for inspection in Blender console
-                self.error(f"Cannot import FLVER: {flver_path.name}. Error: {ex}")
-                continue
+            else:
+                # Import new FLVER.
+                flver_path = settings.get_import_map_path(f"{model_stem}.flver")
+
+                self.info(f"Importing map piece FLVER: {flver_path}")
+
+                flver = FLVER.from_path(flver_path)
+                if texture_manager:
+                    texture_manager.find_flver_textures(flver_path)
+                    area_re = re.compile(r"^m\d\d_")
+                    texture_map_areas = {
+                        texture_path.stem[:3]
+                        for texture_path in flver.get_all_texture_paths()
+                        if re.match(area_re, texture_path.stem)
+                    }
+                    for map_area in texture_map_areas:
+                        map_area_dir = (flver_path.parent / f"../{map_area}").resolve()
+                        texture_manager.find_specific_map_textures(map_area_dir)
+
+                try:
+                    bl_armature, bl_mesh = importer.import_flver(flver, name=map_piece_part.name)
+                except Exception as ex:
+                    # Delete any objects created prior to exception.
+                    importer.abort_import()
+                    traceback.print_exc()  # for inspection in Blender console
+                    self.error(f"Cannot import FLVER: {flver_path.name}. Error: {ex}")
+                    continue
 
             # Set 'Model File Stem' to ensure the model file stem is recorded, since the object name is the part name.
             bl_mesh["Model File Stem"] = model_stem
@@ -553,6 +566,12 @@ class ImportAllMapPieceMSBParts(LoggingOperator):
         )
 
         return {"FINISHED"}
+
+    @staticmethod
+    def copy_bl_mesh_props(source_mesh: bpy.types.Object, target_mesh: bpy.types.Object):
+        """Copy custom properties from source to target mesh."""
+        for prop_name in source_mesh.keys():
+            target_mesh[prop_name] = source_mesh[prop_name]
 
 # endregion
 
@@ -672,13 +691,7 @@ class FLVERBatchImporter:
 
         # Parent mesh to armature. This is critical for proper animation behavior (especially with root motion).
         bl_flver_mesh.parent = bl_armature_obj
-
-        self.operator.set_active_obj(bl_flver_mesh)
-        bpy.ops.object.modifier_add(type="ARMATURE")
-        armature_mod = bl_flver_mesh.modifiers["Armature"]
-        armature_mod.object = bl_armature_obj
-        armature_mod.show_in_editmode = True
-        armature_mod.show_on_cage = True
+        self.create_mesh_armature_modifier(bl_flver_mesh, bl_armature_obj)
 
         for i, dummy in enumerate(flver.dummies):
             self.create_dummy(dummy, index=i, bl_armature=bl_armature_obj, dummy_prefix=dummy_prefix)
@@ -686,6 +699,14 @@ class FLVERBatchImporter:
         # self.operator.info(f"Created FLVER Blender mesh '{name}' in {time.perf_counter() - start_time:.3f} seconds.")
 
         return bl_armature_obj, bl_flver_mesh  # might be used by other importers
+
+    def create_mesh_armature_modifier(self, bl_mesh: bpy.types.MeshObject, bl_armature: bpy.types.ArmatureObject):
+        self.operator.set_active_obj(bl_mesh)
+        bpy.ops.object.modifier_add(type="ARMATURE")
+        armature_mod = bl_mesh.modifiers["Armature"]
+        armature_mod.object = bl_armature
+        armature_mod.show_in_editmode = True
+        armature_mod.show_on_cage = True
 
     def create_materials(self, flver: FLVER, material_blend_mode: str) -> tuple[list[int], list[list[str]]]:
         """Create Blender materials needed for `flver`.

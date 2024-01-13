@@ -30,10 +30,8 @@ MAP_STEM_RE = re.compile(r"^m(?P<area>\d\d)_(?P<block>\d\d)_(?P<cc>\d\d)_(?P<dd>
 
 @dataclass(slots=True, frozen=True)
 class CachedEnum:
-    """Cache enum values by a game and/or project path.
+    """Cache enum values by a game and/or project path."""
 
-    Uses `dataclass` for default factory method.
-    """
     import_path_1: Path | None = None
     import_path_2: Path | None = None
     items: list[tuple[str, str, str]] = field(default_factory=lambda: [("0", "None", "None")])
@@ -41,11 +39,12 @@ class CachedEnum:
     def __post_init__(self):
         """Adds 'None' default value to start of list."""
         if not self.items:
-            object.__setattr__(self, "values", [("0", "None", "None")])
+            object.__setattr__(self, "items", [("0", "None", "None")])
         elif self.items[0] != ("0", "None", "None"):
             self.items.insert(0, ("0", "None", "None"))
 
     def is_valid(self, import_path_1: Path | None, import_path_2: Path | None) -> bool:
+        """Compares both import paths to ensure they are the same as those used to create this CachedEnum."""
         return self.import_path_1 == import_path_1 and self.import_path_2 == import_path_2
 
     @classmethod
@@ -71,13 +70,13 @@ class CachedEnum:
                 minimal_stem = f.name.split(".")[0]
                 desc = minimal_stem if desc_callback is None else desc_callback(minimal_stem)
                 items_2.append((str(f), minimal_stem, desc))
-            # Values that appear in only one source list have suffixes added to their names, their descriptions, and (by
+            # Items that appear in only one source list have suffixes added to their names, their descriptions, and (by
             # default) their values. Common items appear first, followed by (G) items and (P) items.
             items = []
-            common_values = set([f[0] for f in items_1]).intersection(set([f[0] for f in items_2]))
+            common_items = set([f[0] for f in items_1]).intersection(set([f[0] for f in items_2]))
 
             for item in items_1:
-                if item[0] in common_values:
+                if item[0] in common_items:
                     items.append(item)  # as is
                 else:
                     # Add game-only suffix.
@@ -87,7 +86,7 @@ class CachedEnum:
                         f"{item[2]} (in game only)"
                     ))
             for item in items_2:
-                if item[0] not in common_values:
+                if item[0] not in common_items:
                     # Add project-only suffix.
                     items.append((
                         f"{item[0]} (P)" if use_value_source_suffix else item[0],
@@ -124,7 +123,7 @@ class CachedEnum:
                 desc = e.minimal_stem if desc_callback is None else desc_callback(e.minimal_stem)
                 items_2.append((e.name, e.minimal_stem, desc))
 
-            # Values that appear in only one source list have suffixes added to their names, their descriptions, and (by
+            # Items that appear in only one source list have suffixes added to their names, their descriptions, and (by
             # default) their values. Common items appear first, followed by (G) items and (P) items.
             items = []
             common_values = set([f[0] for f in items_1]).intersection(set([f[0] for f in items_2]))
@@ -196,15 +195,14 @@ def is_uniform(vector: Vector | Vector3, rel_tol: float):
     return xy_close and xz_close and yz_close
 
 
-def atoi(text):
+def atoi(text: str):
     return int(text) if text.isdigit() else text
 
 
-def natural_keys(text):
-    """Key for `list.sort()` to sort in human/natural order (preserve numeric chunks).
+def natural_keys(text: str):
+    """Key for `sorted` or `list.sort()` to sort in human/natural order (preserve numeric chunks).
 
-    See:
-        http://nedbatchelder.com/blog/200712/human_sorting.html
+    See: http://nedbatchelder.com/blog/200712/human_sorting.html
     """
     return [atoi(c) for c in re.split(r"(\d+)", text)]
 

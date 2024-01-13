@@ -13,7 +13,7 @@ from .core import SoulstructSettings
 from .operators import *
 
 
-class GlobalSettingsPanel_ViewMixin:
+class _GlobalSettingsPanel_ViewMixin:
     """VIEW properties panel mix-in for Soulstruct global settings."""
 
     layout: bpy.types.UILayout
@@ -36,6 +36,7 @@ class GlobalSettingsPanel_ViewMixin:
         layout.row().prop(settings, "import_bak_file")
         layout.row().prop(settings, "prefer_import_from_project")
         layout.row().prop(settings, "also_export_to_game")
+        layout.row().operator(ClearCachedLists.bl_idname, text="Refresh File/Folder Dropdowns")
 
         layout.row().prop(settings, "map_stem")
 
@@ -59,7 +60,7 @@ class GlobalSettingsPanel_ViewMixin:
         layout.row().prop(settings, "write_cached_pngs")
 
 
-class GlobalSettingsPanel(bpy.types.Panel, GlobalSettingsPanel_ViewMixin):
+class GlobalSettingsPanel(bpy.types.Panel, _GlobalSettingsPanel_ViewMixin):
     """SCENE properties panel for Soulstruct global settings."""
     bl_label = "Soulstruct Settings"
     bl_idname = "SCENE_PT_soulstruct_settings"
@@ -68,7 +69,7 @@ class GlobalSettingsPanel(bpy.types.Panel, GlobalSettingsPanel_ViewMixin):
     bl_context = "scene"
 
 
-class GlobalSettingsPanel_FLVERView(bpy.types.Panel, GlobalSettingsPanel_ViewMixin):
+class GlobalSettingsPanel_FLVERView(bpy.types.Panel, _GlobalSettingsPanel_ViewMixin):
     """VIEW properties panel for Soulstruct global settings."""
     bl_label = "General Settings"
     bl_idname = "VIEW_PT_soulstruct_settings_flver"
@@ -77,7 +78,7 @@ class GlobalSettingsPanel_FLVERView(bpy.types.Panel, GlobalSettingsPanel_ViewMix
     bl_category = "Soulstruct FLVER"
 
 
-class GlobalSettingsPanel_NavmeshView(bpy.types.Panel, GlobalSettingsPanel_ViewMixin):
+class GlobalSettingsPanel_NavmeshView(bpy.types.Panel, _GlobalSettingsPanel_ViewMixin):
     """VIEW properties panel for Soulstruct global settings."""
     bl_label = "General Settings"
     bl_idname = "VIEW_PT_soulstruct_settings_navmesh"
@@ -86,7 +87,7 @@ class GlobalSettingsPanel_NavmeshView(bpy.types.Panel, GlobalSettingsPanel_ViewM
     bl_category = "Soulstruct Navmesh"
 
 
-class GlobalSettingsPanel_HavokView(bpy.types.Panel, GlobalSettingsPanel_ViewMixin):
+class GlobalSettingsPanel_HavokView(bpy.types.Panel, _GlobalSettingsPanel_ViewMixin):
     """VIEW properties panel for Soulstruct Havok global settings."""
     bl_label = "General Settings"
     bl_idname = "VIEW_PT_soulstruct_settings_havok"

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-__all__ = ["SoulstructGameEnums"]
+__all__ = [
+    "SoulstructGameEnums",
+    "CLEAR_GAME_FILE_ENUMS",
+]
 
 import re
 import typing as tp
@@ -17,7 +20,7 @@ if tp.TYPE_CHECKING:
     from io_soulstruct.type_checking import MSB_TYPING
 
 # Global variable to keep enum references alive, and the game and/or project paths used to cache them.
-# NOTE: Only Binder entries are used at the moment.
+# NOTE: Only used for Binder and MSB entries at the moment, as loose files can just be selected from the file browser.
 GAME_FILE_ENUMS = {
     # Loose files
     "MAP_PIECE": CachedEnum(),
@@ -41,6 +44,12 @@ def _clear_items(key: str) -> CachedEnum:
     """Clear cached enum items for the given key."""
     GAME_FILE_ENUMS[key] = CachedEnum()
     return GAME_FILE_ENUMS[key]
+
+
+def CLEAR_GAME_FILE_ENUMS():
+    """Forcibly clear all cached enum items (e.g. after a file export)."""
+    for key in GAME_FILE_ENUMS:
+        GAME_FILE_ENUMS[key] = CachedEnum()
 
 
 # noinspection PyUnusedLocal
@@ -90,10 +99,11 @@ def get_msb_map_piece_items(self, context):
 
     # Open MSB and find all Map Piece parts. NOTE: We don't check here if the part's model is a valid file.
     # It's up to the importer to handle and report that error case.
-    if GAME_FILE_ENUMS[key].is_valid(msb_path, None):
+    cached = GAME_FILE_ENUMS[key]
+    if cached.is_valid(msb_path, None):
         # Use cached enum items.
         # NOTE: Even if the MSB is written from Blender, Soulstruct cannot add or remove parts (yet).
-        return _clear_items(key).items
+        return cached.items
 
     try:
         msb_class = settings.get_game_msb_class()
@@ -112,8 +122,8 @@ def get_msb_map_piece_items(self, context):
         )
 
     # NOTE: The cache key is the preferred imported MSB path only.
-    GAME_FILE_ENUMS[key] = CachedEnum(msb_path, None, items)
-    return GAME_FILE_ENUMS[key].items
+    cached = GAME_FILE_ENUMS[key] = CachedEnum(msb_path, None, items)
+    return cached.items
 
 
 # noinspection PyUnusedLocal
@@ -158,17 +168,17 @@ def get_nvm_part_items(self, context):
 
     # Open MSB and find all Navmesh parts. NOTE: We don't check here if the part's model is a valid file.
     # It's up to the importer to handle and report that error case.
-    if GAME_FILE_ENUMS[key].is_valid(msb_path, None):
+    cached = GAME_FILE_ENUMS[key]
+    if cached.is_valid(msb_path, None):
         # Use cached enum items.
         # NOTE: Even if the MSB is written from Blender, Soulstruct cannot add or remove parts (yet).
-        return GAME_FILE_ENUMS[key].items
+        return cached.items
 
     try:
         msb_class = settings.get_game_msb_class()
         msb = get_cached_file(msb_path, msb_class)  # type: MSB_TYPING
     except (FileNotFoundError, ValueError) as ex:
-        GAME_FILE_ENUMS[key] = CachedEnum()
-        return GAME_FILE_ENUMS[key].items
+        return _clear_items(key).items
 
     items = []
     for navmesh_part in msb.navmeshes:
@@ -181,8 +191,8 @@ def get_nvm_part_items(self, context):
         )
 
     # NOTE: The cache key is the MSB path.
-    GAME_FILE_ENUMS[key] = CachedEnum(msb_path, None, items)
-    return GAME_FILE_ENUMS[key].items
+    cached = GAME_FILE_ENUMS[key] = CachedEnum(msb_path, None, items)
+    return cached.items
 
 
 # noinspection PyUnusedLocal

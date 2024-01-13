@@ -104,8 +104,10 @@ class CutMeshSelectionOperator(LoggingOperator):
 
         # Identify edited and non-edited meshes
         edited_mesh_obj = context.edit_object
-        dest_msh_obj = [obj for obj in context.selected_objects if obj != edited_mesh_obj][0]
-        dest_msh_obj: bpy.types.MeshObject
+        # noinspection PyTypeChecker
+        dest_msh_obj = [
+            obj for obj in context.selected_objects if obj != edited_mesh_obj
+        ][0]  # type: bpy.types.MeshObject
 
         # Check if both are mesh objects
         if edited_mesh_obj.type != "MESH" or dest_msh_obj.type != "MESH":
@@ -120,6 +122,7 @@ class CutMeshSelectionOperator(LoggingOperator):
         # Switch to OBJECT mode and identify the newly created object
         bpy.ops.object.mode_set(mode="OBJECT")
         try:
+            # noinspection PyTypeChecker
             temp_obj = [
                 obj for obj in context.selected_objects
                 if obj != edited_mesh_obj and obj != dest_msh_obj

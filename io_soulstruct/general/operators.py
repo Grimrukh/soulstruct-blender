@@ -7,6 +7,7 @@ __all__ = [
     "SelectPNGCacheDirectory",
     "SelectCustomMTDBNDFile",
     "SelectCustomMATBINBNDFile",
+    "ClearCachedLists",
 ]
 
 import re
@@ -16,6 +17,8 @@ from bpy.props import StringProperty
 from bpy_extras.io_utils import ImportHelper
 
 from io_soulstruct.utilities.operators import LoggingOperator
+from .game_enums import CLEAR_GAME_FILE_ENUMS
+from .core import CLEAR_MAP_STEM_ENUM
 
 
 STEAM_COMMON_LOCATIONS = [
@@ -54,6 +57,10 @@ class SelectGameDirectory(LoggingOperator, ImportHelper):
             settings.str_game_directory = str(game_directory)
             settings.auto_set_game()
 
+            # Refresh cached enum lists.
+            CLEAR_GAME_FILE_ENUMS()
+            CLEAR_MAP_STEM_ENUM()
+
         return {'FINISHED'}
 
 
@@ -86,6 +93,10 @@ class SelectProjectDirectory(LoggingOperator, ImportHelper):
             settings = self.settings(context)
             settings.str_project_directory = str(project_directory)
             # We do NOT auto-set game here, because the user may be exporting to any folder.
+
+            # Refresh cached enum lists.
+            CLEAR_GAME_FILE_ENUMS()
+            CLEAR_MAP_STEM_ENUM()
 
         return {'FINISHED'}
 
@@ -124,6 +135,10 @@ class SelectMapDirectory(LoggingOperator, ImportHelper):
             settings = self.settings(context)
             settings.map_stem = map_directory.name
             settings.str_game_directory = str(map_directory.parent.parent)  # parent of 'map' directory
+
+            # Refresh cached enum lists.
+            CLEAR_GAME_FILE_ENUMS()
+            CLEAR_MAP_STEM_ENUM()
 
         return {'FINISHED'}
 
@@ -181,4 +196,16 @@ class SelectCustomMATBINBNDFile(LoggingOperator, ImportHelper):
             matbinbnd_path = Path(self.filepath).resolve()
             settings = self.settings(context)
             settings.str_matbinbnd_path = str(matbinbnd_path)
+        return {'FINISHED'}
+
+
+class ClearCachedLists(LoggingOperator):
+    """Clear all cached enum lists, including the list of map folder stems."""
+    bl_idname = "soulstruct.clear_cached_lists"
+    bl_label = "Clear Cached Lists"
+    bl_description = "Clear all cached lists"
+
+    def execute(self, context):
+        CLEAR_GAME_FILE_ENUMS()
+        CLEAR_MAP_STEM_ENUM()
         return {'FINISHED'}

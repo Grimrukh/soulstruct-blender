@@ -81,6 +81,7 @@ CLASSES = (
     SelectPNGCacheDirectory,
     SelectCustomMTDBNDFile,
     SelectCustomMATBINBNDFile,
+    ClearCachedLists,
 
     MeshMoveSettings,
     CopyMeshSelectionOperator,
