@@ -29,6 +29,7 @@ __all__ = [
     "FLVERBatchImporter",
 ]
 
+import fnmatch
 import math
 import numpy as np
 import re
@@ -94,6 +95,22 @@ class FLVERImportSettings(bpy.types.PropertyGroup):
         description="Length of edit bones corresponding to bone scale 1",
         default=0.2,
         min=0.01,
+    )
+
+    msb_part_name_match: bpy.props.StringProperty(
+        name="MSB Part Name Match",
+        description="Glob/Regex for filtering MSB part names when importing all parts",
+        default="*",
+    )
+
+    msb_part_name_match_mode: bpy.props.EnumProperty(
+        name="MSB Part Name Match Mode",
+        description="Whether to use glob or regex for MSB part name matching",
+        items=[
+            ("GLOB", "Glob", "Use glob for MSB part name matching"),
+            ("REGEX", "Regex", "Use regex for MSB part name matching"),
+        ],
+        default="GLOB",
     )
 
 
@@ -478,6 +495,18 @@ class ImportAllMapPieceMSBParts(LoggingOperator):
         else:
             texture_manager = None
 
+        part_name_match = flver_import_settings.msb_part_name_match
+        match flver_import_settings.msb_part_name_match_mode:
+            case "GLOB":
+                def is_name_match(name: str):
+                    return part_name_match in {"", "*"} or fnmatch.fnmatch(name, part_name_match)
+            case "REGEX":
+                pattern = re.compile(part_name_match)
+                def is_name_match(name: str):
+                    return part_name_match == "" or re.match(pattern, name)
+            case _:  # should never happen
+                return self.error(f"Invalid MSB part name match mode: {flver_import_settings.msb_part_name_match_mode}")
+
         msb_path = settings.get_import_msb_path()
         msb = get_cached_file(msb_path, settings.get_game_msb_class())  # type: MSB_TYPING
 
@@ -491,7 +520,14 @@ class ImportAllMapPieceMSBParts(LoggingOperator):
             texture_manager=texture_manager,
         )
 
+        part_count = 0
+
         for map_piece_part in msb.map_pieces:
+
+            if not is_name_match(map_piece_part.name):
+                # MSB map piece name (part, not model) does not match glob/regex.
+                continue
+
             model_stem = map_piece_part.model.get_model_file_stem(settings.map_stem)
             transform = Transform.from_msb_part(map_piece_part)
 
@@ -559,9 +595,10 @@ class ImportAllMapPieceMSBParts(LoggingOperator):
 
             # Record model for future Part instances.
             loaded_models[model_stem] = (bl_armature, bl_mesh)
+            part_count += 1
 
         self.info(
-            f"Imported {len(loaded_models)} map piece FLVER models and {len(msb.map_pieces)} Parts in "
+            f"Imported {len(loaded_models)} map piece FLVER models and {part_count} / {len(msb.map_pieces)} Parts in "
             f"{time.perf_counter() - start_time:.3f} seconds."
         )
 

@@ -92,7 +92,9 @@ class FLVERImportPanel(bpy.types.Panel):
             msb_import_box.prop(context.scene.flver_import_settings, prop)
         msb_import_box.prop(context.scene.soulstruct_game_enums, "map_piece_parts")
         msb_import_box.operator(ImportMapPieceMSBPart.bl_idname, text="Import Map Piece Part")
-        msb_import_box.operator(ImportAllMapPieceMSBParts.bl_idname, text="Import ALL Map Piece Parts")
+        msb_import_box.prop(context.scene.flver_import_settings, "msb_part_name_match")
+        msb_import_box.prop(context.scene.flver_import_settings, "msb_part_name_match_mode")
+        msb_import_box.operator(ImportAllMapPieceMSBParts.bl_idname, text="Import ALL Matching Parts")
 
 
 class FLVERExportPanel(bpy.types.Panel):
