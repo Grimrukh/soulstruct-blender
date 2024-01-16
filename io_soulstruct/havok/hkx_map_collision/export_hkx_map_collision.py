@@ -539,7 +539,7 @@ class ExportMSBMapCollision(LoggingOperator):
 
         opened_msbs = {}  # type: dict[Path, MSB_TYPING]  # keys are relative MSB paths
         opened_hkxbhds = {"h": {}, "l": {}}  # type: dict[str, dict[Path, Binder]]  # keys are relative HKXBHD paths
-        edited_part_names = {}  # type: dict[str, set[str]]  # keys are map stems
+        edited_part_names = {}  # type: dict[str, set[str]]  # keys are MSB stems (which may differ from 'map' stems)
         return_strings = set()
 
         for hkx_parent in context.selected_objects:
@@ -560,14 +560,18 @@ class ExportMSBMapCollision(LoggingOperator):
                     return self.error(
                         f"Parent object '{hkx_parent.parent.name}' does not start with a valid map stem."
                     )
+                # Get oldest version of map for HKXBHD file.
+                map_stem = settings.get_oldest_map_stem_version(map_stem)
             else:
-                map_stem = settings.map_stem
+                # Get oldest version of map for HKXBHD file.
+                map_stem = settings.get_oldest_map_stem_version()
 
-            relative_msb_path = settings.get_relative_msb_path(map_stem)
+            relative_msb_path = settings.get_relative_msb_path(map_stem)  # will use latest map version
+            msb_stem = relative_msb_path.stem
 
             # Get model file stem from MSB (must contain matching part).
             collision_part_name = get_bl_obj_stem(hkx_parent)
-            if map_stem not in opened_msbs:
+            if relative_msb_path not in opened_msbs:
                 # Open new MSB.
                 try:
                     msb_path = settings.prepare_project_file(relative_msb_path, False, must_exist=True)
@@ -584,12 +588,12 @@ class ExportMSBMapCollision(LoggingOperator):
                 msb_part = msb.collisions.find_entry_name(collision_part_name)
             except KeyError:
                 self.error(
-                    f"Collision part '{collision_part_name}' not found in MSB for map {map_stem}."
+                    f"Collision part '{collision_part_name}' not found in MSB {msb_stem} for map {map_stem}."
                 )
                 continue
             if not msb_part.model.name:
                 self.error(
-                    f"Collision part '{collision_part_name}' in MSB for map {map_stem} has no model name."
+                    f"Collision part '{collision_part_name}' in MSB {msb_stem} for map {map_stem} has no model name."
                 )
                 continue
 
@@ -601,7 +605,7 @@ class ExportMSBMapCollision(LoggingOperator):
                 # Update MSB model name.
                 msb_part.model.set_name_from_model_file_stem(hkx_entry_stem)
 
-            edited_msb_part_names = edited_part_names.setdefault(map_stem, set())
+            edited_msb_part_names = edited_part_names.setdefault(msb_stem, set())
             if collision_part_name in edited_msb_part_names:
                 self.warning(
                     f"Navmesh part '{collision_part_name}' was exported more than once in selected meshes."
@@ -612,7 +616,7 @@ class ExportMSBMapCollision(LoggingOperator):
             if (model_file_stem := hkx_parent.get("Model File Stem", None)) is not None:
                 if model_file_stem != hkx_entry_stem:
                     self.warning(
-                        f"Collision part '{hkx_entry_stem}' in MSB for map {map_stem} has model name "
+                        f"Collision part '{hkx_entry_stem}' in MSB {msb_stem} for map {map_stem} has model name "
                         f"'{msb_part.model.name}' but Blender mesh 'Model File Stem' is '{model_file_stem}'. "
                         f"Prioritizing HKX stem from MSB model name; you may want to update the Blender mesh."
                     )

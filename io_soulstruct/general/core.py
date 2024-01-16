@@ -32,10 +32,17 @@ _SETTINGS_PATH = Path(__file__).parent.parent / "SoulstructSettings.json"
 # Associates a game 'map' path and/or project 'map' path with a list of map choice enums.
 _MAP_STEM_ENUM = CachedEnum()
 
+# Redirect files that do and do not use the latest version of map files (e.g. to handle Darkroot Garden in DS1).
+# Managed in 100% sync with `_MAP_STEM_ENUM` and only used if `SoulstructSettings.smart_map_version_handling == True`.
+_NEW_TO_OLD_MAP = {}  # e.g. {"m12_00_00_01": "m12_00_00_00"}
+_OLD_TO_NEW_MAP = {}  # e.g. {"m12_00_00_00": "m12_00_00_01"}
+
 
 def CLEAR_MAP_STEM_ENUM():
-    global _MAP_STEM_ENUM
+    global _MAP_STEM_ENUM, _NEW_TO_OLD_MAP, _OLD_TO_NEW_MAP
     _MAP_STEM_ENUM = CachedEnum()
+    _NEW_TO_OLD_MAP = {}
+    _OLD_TO_NEW_MAP = {}
 
 
 # Global holder for games that front-end users can currently select (or have auto-detected) for the `game` enum.
@@ -43,6 +50,18 @@ SUPPORTED_GAMES = [
     DARK_SOULS_PTDE,
     DARK_SOULS_DSR,
 ]
+
+
+# Currently hard-coding maps that we expect to need versioning logic for, as it doesn't apply to m99 maps, etc.
+_VERSIONED_MAPS = {
+    DARK_SOULS_PTDE.variable_name: ("m12_00_00",),
+    DARK_SOULS_DSR.variable_name: ("m12_00_00",),
+}
+
+
+# Indicates which file types prefer OLD versions of the map, and which prefer NEW.
+_USE_OLD_MAP_VERSION = (".flver", ".hkxbhd", ".hkxbdt")
+_USE_NEW_MAP_VERSION = (".msb", ".nvmbnd", ".mcg", ".mcp")
 
 
 # noinspection PyUnusedLocal
@@ -54,7 +73,7 @@ def _get_map_stem_items(self, context: bpy.types.Context) -> list[tuple[str, str
     destination file itself, these suffixes are not used in any way internally.
     """
 
-    global _MAP_STEM_ENUM
+    global _MAP_STEM_ENUM, _NEW_TO_OLD_MAP, _OLD_TO_NEW_MAP
 
     settings = SoulstructSettings.from_context(context)
     game_directory = settings.game_directory
@@ -64,6 +83,8 @@ def _get_map_stem_items(self, context: bpy.types.Context) -> list[tuple[str, str
 
     if not is_path_and_dir(game_map_dir_path) and not is_path_and_dir(project_map_dir_path):
         _MAP_STEM_ENUM = CachedEnum()  # reset
+        _NEW_TO_OLD_MAP = {}
+        _OLD_TO_NEW_MAP = {}
         return _MAP_STEM_ENUM.items
 
     if _MAP_STEM_ENUM.is_valid(game_map_dir_path, project_map_dir_path):
@@ -120,6 +141,23 @@ def _get_map_stem_items(self, context: bpy.types.Context) -> list[tuple[str, str
         (name, f"{name} (P)", f"Map {name} (in project only)")
         for name in sorted(set(project_map_stem_names) - set(shared_map_stem_names))
     ]
+
+    # Check for map stem version redirects when using 'smart' map version handling.
+    # TODO: Functions currently assume that a matching MSB exists for each 'map' subdirectory.
+    _NEW_TO_OLD_MAP = {}
+    _OLD_TO_NEW_MAP = {}
+    found_map_stems = set(map_stem for map_stem, _, _ in map_stems)
+    if settings.game_enum in _VERSIONED_MAPS:
+        for map_stem, _, _ in map_stems:
+            if map_stem.startswith(_VERSIONED_MAPS[settings.game_enum]):
+                if map_stem.endswith("00"):
+                    new_map_stem = map_stem[:-2] + "01"
+                    if new_map_stem in found_map_stems:
+                        _OLD_TO_NEW_MAP[map_stem] = new_map_stem
+                elif map_stem.endswith("01"):
+                    old_map_stem = map_stem[:-2] + "00"
+                    if old_map_stem in found_map_stems:
+                        _NEW_TO_OLD_MAP[map_stem] = old_map_stem
 
     _MAP_STEM_ENUM = CachedEnum(game_map_dir_path, project_map_dir_path, map_stems)
     return _MAP_STEM_ENUM.items
@@ -246,6 +284,15 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         default=True,
     )
 
+    smart_map_version_handling: bpy.props.BoolProperty(
+        name="Use Smart Map Version Handling",
+        description="If enabled, Blender auto-import/export will always use the latest versions of MSB, NVMBND, MCG, "
+                    "and MCP map files, but will still use the original versions of FLVER and HKXBHD/BDT files. This "
+                    "is the correct way to handle files for Darkroot Garden in DS1. Selecting map m12_00_00_00 vs. "
+                    "m12_00_00_01 in the dropdown will therefore have no effect on auto-import/export",
+        default=True,
+    )
+
     # endregion
 
     @staticmethod
@@ -302,15 +349,16 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         game_path = Path(self.str_game_directory, *parts)
         return self._process_path(game_path, dcx_type)
 
-    def get_game_map_path(self, *parts, dcx_type: DCXType = None) -> Path | None:
+    def get_game_map_path(self, *parts, dcx_type: DCXType = None, map_stem="") -> Path | None:
         """Get the `map/{map_stem}` path, and optionally further, in the game directory.
 
         If `dcx_type` is given (including `Null`), the path will be processed by that DCX type. Otherwise, the known
         game specific/default DCX type for the file type will be used.
         """
-        if not self.str_game_directory or self.map_stem in {"", "0"}:
+        map_stem = self._process_map_stem_version(map_stem or self.map_stem, *parts)
+        if not self.str_game_directory or map_stem in {"", "0"}:
             return None
-        map_path = Path(self.str_game_directory, f"map/{self.map_stem}", *parts)
+        map_path = Path(self.str_game_directory, f"map/{map_stem}", *parts)
         return self._process_path(map_path, dcx_type)
 
     def get_game_msb_path(self, map_stem="") -> Path | None:
@@ -331,15 +379,16 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         project_path = Path(self.str_project_directory, *parts)
         return self._process_path(project_path, dcx_type)
 
-    def get_project_map_path(self, *parts, dcx_type: DCXType = None) -> Path | None:
+    def get_project_map_path(self, *parts, dcx_type: DCXType = None, map_stem="") -> Path | None:
         """Get the `map/{map_stem}` path, and optionally further, in the project directory.
 
         If `dcx_type` is given (including `Null`), the path will be processed by that DCX type. Otherwise, the known
         game specific/default DCX type for the file type will be used.
         """
-        if not self.str_project_directory or self.map_stem in {"", "0"}:
+        map_stem = self._process_map_stem_version(map_stem or self.map_stem, *parts)
+        if not self.str_project_directory or map_stem in {"", "0"}:
             return None
-        map_path = Path(self.str_project_directory, f"map/{self.map_stem}", *parts)
+        map_path = Path(self.str_project_directory, f"map/{map_stem}", *parts)
         return self._process_path(map_path, dcx_type)
 
     def get_project_msb_path(self, map_stem="") -> Path | None:
@@ -348,6 +397,20 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         if not self.str_project_directory or map_stem in {"", "0"}:
             return None
         return self.get_project_path(self.get_relative_msb_path(map_stem))
+
+    def get_oldest_map_stem_version(self, map_stem=""):
+        """Check if `smart_map_version_handling` is enabled and return the oldest version of the map stem if so."""
+        map_stem = map_stem or self.map_stem
+        if self.smart_map_version_handling and map_stem in _NEW_TO_OLD_MAP:
+            return _NEW_TO_OLD_MAP[map_stem]
+        return map_stem
+
+    def get_latest_map_stem_version(self, map_stem=""):
+        """Check if `smart_map_version_handling` is enabled and return the latest version of the map stem if so."""
+        map_stem = map_stem or self.map_stem
+        if self.smart_map_version_handling and map_stem in _OLD_TO_NEW_MAP:
+            return _OLD_TO_NEW_MAP[map_stem]
+        return map_stem
 
     def get_import_file_path(self, *parts: str | Path, dcx_type: DCXType = None) -> Path:
         """Try to get file path relative to project or game directory first, depending on `prefer_import_from_project`,
@@ -387,11 +450,17 @@ class SoulstructSettings(bpy.types.PropertyGroup):
                 return path
         raise NotADirectoryError(f"Directory not found in project or game directory: {parts}")
 
-    def get_import_map_path(self, *parts: str | Path) -> Path | None:
-        """Get the `map_stem` 'map' directory path, and optionally further, in the preferred directory."""
-        if self.map_stem in {"", "0"}:
+    def get_import_map_path(self, *parts: str | Path, map_stem="") -> Path | None:
+        """Get the `map_stem` 'map' directory path, and optionally further, in the preferred directory.
+
+        If `smart_map_version_handling` is enabled, this will redirect to the earliest or latest version of the map if
+        the file is a known versioned type.
+        """
+        map_stem = self._process_map_stem_version(map_stem or self.map_stem, *parts)
+        if map_stem in {"", "0"}:
             return None
-        map_path = Path(f"map/{self.map_stem}", *parts)
+
+        map_path = Path(f"map/{map_stem}", *parts)
         if "." in map_path.name:
             return self.get_import_file_path(map_path)
         return self.get_import_dir_path(map_path)
@@ -421,10 +490,15 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         raise FileNotFoundError(f"File not found in project or game directory: {parts}")
 
     def get_relative_msb_path(self, map_stem="") -> Path | None:
-        """Get relative MSB path of given `map_stem` (or selected by default) for selected game."""
+        """Get relative MSB path of given `map_stem` (or selected by default) for selected game.
+
+        If `smart_map_version_handling` is enabled, this will redirect to the latest version of the MSB.
+        """
         map_stem = map_stem or self.map_stem
         if map_stem in {"", "0"}:
             return None
+        # Check if a new MSB version exists to redirect to.
+        map_stem = _OLD_TO_NEW_MAP.get(map_stem, map_stem)
         return self.game.process_dcx_path(
             Path(self.game.default_file_paths["MapStudioDirectory"], f"{map_stem}.msb")
         )
@@ -700,6 +774,20 @@ class SoulstructSettings(bpy.types.PropertyGroup):
             return from_bundled()
         return None
 
+    def _process_map_stem_version(self, map_stem: str, *parts: str | Path):
+        if not self.smart_map_version_handling or not parts:
+            return map_stem
+
+        # Check if an older or newer version of the map exists to redirect to, depending on file type.
+        last_part = str(parts[-1]).lower().removesuffix(".dcx")
+        if map_stem in _OLD_TO_NEW_MAP and last_part.endswith(_USE_NEW_MAP_VERSION):
+            # Redirect to NEW map version.
+            return _OLD_TO_NEW_MAP[map_stem]
+        elif map_stem in _NEW_TO_OLD_MAP and last_part.endswith(_USE_OLD_MAP_VERSION):
+            # Redirect to OLD map version.
+            return _NEW_TO_OLD_MAP[map_stem]
+        return map_stem
+
     def load_settings(self):
         """Read settings from JSON file and set them in the scene."""
         try:
@@ -722,11 +810,12 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         self.write_cached_pngs = json_settings.get("write_cached_pngs", True)
         self.import_bak_file = json_settings.get("import_bak_file", False)
         self.detect_map_from_parent = json_settings.get("detect_map_from_parent", True)
+        self.smart_map_version_handling = json_settings.get("smart_map_version_handling", True)
 
     def save_settings(self):
         """Write settings from scene to JSON file."""
         current_settings = {
-            key.lstrip("_"): getattr(self, key)
+            key: getattr(self, key)
             for key in (
                 "game_enum",
                 "str_game_directory",
@@ -741,6 +830,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):
                 "write_cached_pngs",
                 "import_bak_file",
                 "detect_map_from_parent",
+                "smart_map_version_handling",
             )
         }
         write_json(_SETTINGS_PATH, current_settings, indent=4)

@@ -245,7 +245,7 @@ class ExportNVMIntoNVMBND(LoggingOperator):
             return self.error(
                 "No game map directory specified in Soulstruct settings and `Detect Map from Parent` is disabled."
             )
-        default_map_path = Path(f"map/{settings.map_stem}") if settings.map_stem else None
+        default_map_path = Path(f"map/{settings.get_latest_map_stem_version()}") if settings.map_stem else None
 
         # TODO: Not needed for meshes only?
         if bpy.ops.object.mode_set.poll():
@@ -269,9 +269,11 @@ class ExportNVMIntoNVMBND(LoggingOperator):
                     return self.error(
                         f"Parent object '{bl_mesh_obj.parent.name}' does not start with a valid map stem."
                     )
+                # NVMBND files come from latest 'map' version.
+                map_stem = settings.get_latest_map_stem_version(map_stem)
                 relative_nvmbnd_path = Path(f"map/{map_stem}/{map_stem}.nvmbnd")
             else:
-                map_stem = settings.map_stem
+                map_stem = settings.get_latest_map_stem_version()
                 relative_nvmbnd_path = default_map_path / f"{map_stem}.nvmbnd"
 
             if relative_nvmbnd_path not in opened_nvmbnds:
@@ -352,7 +354,7 @@ class ExportNVMMSBPart(LoggingOperator):
             return self.error(
                 "No game map directory specified in Soulstruct settings and `Detect Map from Parent` is disabled."
             )
-        default_map_path = Path(f"map/{settings.map_stem}") if settings.map_stem else None
+        default_map_path = Path(f"map/{settings.get_latest_map_stem_version()}") if settings.map_stem else None
 
         # TODO: Not needed for meshes only?
         if bpy.ops.object.mode_set.poll():
@@ -362,7 +364,7 @@ class ExportNVMMSBPart(LoggingOperator):
 
         opened_nvmbnds = {}  # type: dict[str, Binder]
         opened_msbs = {}  # type: dict[Path, MSB_TYPING]
-        edited_part_names = {}  # type: dict[Path, set[str]]
+        edited_part_names = {}  # type: dict[str, set[str]]
 
         for bl_mesh_obj in context.selected_objects:
 
@@ -379,9 +381,11 @@ class ExportNVMMSBPart(LoggingOperator):
                     return self.error(
                         f"Parent object '{bl_mesh_obj.parent.name}' does not start with a valid map stem."
                     )
+                # NVMBND files come from latest 'map' version.
+                map_stem = settings.get_latest_map_stem_version(map_stem)
                 relative_nvmbnd_path = Path(f"map/{map_stem}/{map_stem}.nvmbnd")
             else:
-                map_stem = settings.map_stem
+                map_stem = settings.get_latest_map_stem_version()
                 relative_nvmbnd_path = default_map_path / f"{map_stem}.nvmbnd"
 
             if map_stem not in opened_nvmbnds:
@@ -399,25 +403,34 @@ class ExportNVMMSBPart(LoggingOperator):
 
             # Get model file stem from MSB (must contain matching part).
             navmesh_part_name = get_bl_obj_stem(bl_mesh_obj)  # could be the same as the file stem
-            relative_msb_path = settings.get_relative_msb_path(map_stem)
-            msb_path = settings.prepare_project_file(relative_msb_path, False, must_exist=True)
-            msb = opened_msbs.setdefault(
-                relative_msb_path,
-                get_cached_file(msb_path, settings.get_game_msb_class()),
-            )  # type: MSB_TYPING
+            relative_msb_path = settings.get_relative_msb_path(map_stem)  # will also use latest MSB version
+            msb_stem = relative_msb_path.stem
+
+            if relative_msb_path not in opened_msbs:
+                # Open new MSB.
+                try:
+                    msb_path = settings.prepare_project_file(relative_msb_path, False, must_exist=True)
+                except FileNotFoundError as ex:
+                    self.error(
+                        f"Could not find MSB file '{relative_msb_path}' for map '{map_stem}'. Error: {ex}"
+                    )
+                    continue
+                opened_msbs[relative_msb_path] = get_cached_file(msb_path, settings.get_game_msb_class())
+
+            msb = opened_msbs[relative_msb_path]  # type: MSB_TYPING
 
             try:
                 msb_part = msb.navmeshes.find_entry_name(navmesh_part_name)
             except KeyError:
                 return self.error(
-                    f"Navmesh part '{navmesh_part_name}' not found in MSB '{msb_path}'."
+                    f"Navmesh part '{navmesh_part_name}' not found in MSB {msb_stem}."
                 )
             if not msb_part.model.name:
                 return self.error(
-                    f"Navmesh part '{navmesh_part_name}' in MSB '{msb_path}' has no model name."
+                    f"Navmesh part '{navmesh_part_name}' in MSB {msb_stem} has no model name."
                 )
 
-            edited_msb_part_names = edited_part_names.setdefault(msb_path, set())
+            edited_msb_part_names = edited_part_names.setdefault(msb_stem, set())
             if navmesh_part_name in edited_msb_part_names:
                 self.warning(
                     f"Navmesh part '{navmesh_part_name}' was exported more than once in selected meshes."
@@ -432,7 +445,7 @@ class ExportNVMMSBPart(LoggingOperator):
                 if (model_file_stem := bl_mesh_obj.get("Model File Stem", None)) is not None:
                     if model_file_stem != model_stem:
                         self.warning(
-                            f"Navmesh part '{navmesh_part_name}' in MSB '{msb_path}' has model name "
+                            f"Navmesh part '{navmesh_part_name}' in MSB {msb_stem} has model name "
                             f"'{msb_part.model.name}' but Blender mesh 'Model File Stem' is '{model_file_stem}'. "
                             f"Using NVM stem from MSB model name; you may want to update the Blender mesh."
                         )

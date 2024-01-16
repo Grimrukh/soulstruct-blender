@@ -106,18 +106,20 @@ class CachedEnum:
         entry_name_pattern: re.Pattern,
         use_value_source_suffix=True,
         desc_callback: tp.Callable[[str], str] = None,
+        is_split_binder=False,
     ) -> CachedEnum:
         """Scan a Binder's entries and cache them by path."""
+        from io_soulstruct.general.cached import get_cached_file, get_cached_bxf
 
         items_1 = []
-        if binder_path_1.is_file():
-            binder_1 = Binder.from_path(binder_path_1)
+        if is_path_and_file(binder_path_1):
+            binder_1 = get_cached_bxf(binder_path_1) if is_split_binder else get_cached_file(binder_path_1)
             for e in binder_1.find_entries_matching_name(entry_name_pattern):
                 desc = e.minimal_stem if desc_callback is None else desc_callback(e.minimal_stem)
                 items_1.append((e.name, e.minimal_stem, desc))
 
         if is_path_and_file(binder_path_2):
-            binder_2 = Binder.from_path(binder_path_2)
+            binder_2 = get_cached_bxf(binder_path_2) if is_split_binder else get_cached_file(binder_path_2)
             items_2 = []
             for e in binder_2.find_entries_matching_name(entry_name_pattern):
                 desc = e.minimal_stem if desc_callback is None else desc_callback(e.minimal_stem)

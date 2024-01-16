@@ -93,7 +93,8 @@ def get_msb_map_piece_items(self, context):
     key = "MSB_MAP_PIECE"
 
     settings = SoulstructSettings.from_context(context)
-    msb_path = settings.get_import_msb_path()  # we use preferred import location only
+    # We only check the preferred import location. Will automatically use latest version of MSB if option enabled.
+    msb_path = settings.get_import_msb_path()
     if not is_path_and_file(msb_path):
         return _clear_items(key).items
 
@@ -129,13 +130,14 @@ def get_msb_map_piece_items(self, context):
 # noinspection PyUnusedLocal
 def get_nvm_items(self, context):
     """Collect navmesh NVM entries in selected game map's 'mAA_BB_CC_DD.nvmbnd' binder."""
-    # TODO: Need to collect entries from both game (G) and project (P) and indicate their source in the enum value.
     key = "NVM"
 
     settings = SoulstructSettings.from_context(context)
+    # We use the latest map version for NVM files.
+    map_stem = settings.get_latest_map_stem_version()
 
-    game_nvmbnd_path = settings.get_game_map_path(f"{settings.map_stem}.nvmbnd")
-    project_nvmbnd_path = settings.get_project_map_path(f"{settings.map_stem}.nvmbnd")
+    game_nvmbnd_path = settings.get_game_map_path(f"{map_stem}.nvmbnd")
+    project_nvmbnd_path = settings.get_project_map_path(f"{map_stem}.nvmbnd")
     if not is_path_and_file(game_nvmbnd_path) and not is_path_and_file(project_nvmbnd_path):
         return _clear_items(key).items
 
@@ -148,6 +150,7 @@ def get_nvm_items(self, context):
             project_nvmbnd_path,
             pattern,
             use_value_source_suffix=True,
+            is_split_binder=False,
         )
     return cached.items
 
@@ -162,7 +165,7 @@ def get_nvm_part_items(self, context):
     key = "MSB_NAVMESH"
 
     settings = SoulstructSettings.from_context(context)
-    msb_path = settings.get_import_msb_path()  # we use preferred import location only
+    msb_path = settings.get_import_msb_path()  # we use preferred import location only (and latest version)
     if not is_path_and_file(msb_path):
         return _clear_items(key).items
 
@@ -200,12 +203,16 @@ def get_hkx_map_collision_items(self, context):
     """Collect (hi-res) map collision HKX entries in selected game map's 'hAA_BB_CC_DD.hkxbhd' binder.
 
     Finds entries in both game and project directories, and indicates their source in the enum value.
+
+    TODO: Why does this function run every time the UI seems to draw? It should only run when the dropdown is clicked!
     """
     key = "HKX_MAP_COLLISION"
 
     settings = SoulstructSettings.from_context(context)
-    game_map_path = settings.get_game_map_path()
-    project_map_path = settings.get_project_map_path()
+    map_stem = settings.get_oldest_map_stem_version()
+
+    game_map_path = settings.get_game_map_path(map_stem=map_stem)
+    project_map_path = settings.get_project_map_path(map_stem=map_stem)
     if not is_path_and_dir(game_map_path) and not is_path_and_dir(project_map_path):
         return _clear_items(key).items
 
@@ -220,11 +227,11 @@ def get_hkx_map_collision_items(self, context):
         # return _scan_loose_files(key, map_path, "h*.hkx")
         return _clear_items(key).items
     elif settings.is_game(DARK_SOULS_DSR):
-        # Compressed HKX files inside HKXBHD binder.
-        game_hkxbhd_path = game_map_path / f"h{settings.map_stem[1:]}.hkxbhd"  # no DCX
+        # Compressed HKX files inside HKXBHD binder. We use the OLDEST map version.
+        game_hkxbhd_path = game_map_path / f"h{map_stem[1:]}.hkxbhd"  # no DCX
         if not game_hkxbhd_path.is_file():
             game_hkxbhd_path = None
-        project_hkxbhd_path = project_map_path / f"h{settings.map_stem[1:]}.hkxbhd"  # no DCX
+        project_hkxbhd_path = project_map_path / f"h{map_stem[1:]}.hkxbhd"  # no DCX
         if not project_hkxbhd_path.is_file():
             project_hkxbhd_path = None
         pattern = re.compile(r".*\.hkx\.dcx")
@@ -233,6 +240,7 @@ def get_hkx_map_collision_items(self, context):
             project_hkxbhd_path,
             pattern,
             use_value_source_suffix=True,
+            is_split_binder=True,
         )
         return cached.items
 
@@ -246,7 +254,7 @@ def get_msb_hkx_map_collision_items(self, context):
     key = "MSB_HKX_MAP_COLLISION"
 
     settings = SoulstructSettings.from_context(context)
-    msb_path = settings.get_import_msb_path()  # we use preferred import location only
+    msb_path = settings.get_import_msb_path()  # we use preferred import location only (and latest version)
     if not is_path_and_file(msb_path):
         return _clear_items(key).items
 

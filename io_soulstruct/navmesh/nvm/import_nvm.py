@@ -349,18 +349,21 @@ class ImportNVMFromNVMBND(LoggingOperator):
         if nvm_entry_name in {"", "0"}:
             return self.error("No NVM entry selected.")
 
+        # NVMBND files are sourced from the latest 'map' subfolder version.
+        map_stem = settings.get_latest_map_stem_version()
+
         # Import source may depend on suffix of entry enum.
         if nvm_entry_name.endswith(" (G)"):
             nvm_entry_name = nvm_entry_name.removesuffix(" (G)")
-            nvmbnd_path = settings.get_game_map_path(f"{settings.map_stem}.nvmbnd")
+            nvmbnd_path = settings.get_game_map_path(f"{map_stem}.nvmbnd")
         elif nvm_entry_name.endswith(" (P)"):
             nvm_entry_name = nvm_entry_name.removesuffix(" (P)")
-            nvmbnd_path = settings.get_project_map_path(f"{settings.map_stem}.nvmbnd")
+            nvmbnd_path = settings.get_project_map_path(f"{map_stem}.nvmbnd")
         else:  # no suffix, so we use whichever source is preferred
-            nvmbnd_path = settings.get_import_map_path(f"{settings.map_stem}.nvmbnd")
+            nvmbnd_path = settings.get_import_map_path(f"{map_stem}.nvmbnd")
 
         if not is_path_and_file(nvmbnd_path):  # validation
-            return self.error(f"Could not find NVMBND file for map '{settings.map_stem}': {nvmbnd_path}")
+            return self.error(f"Could not find NVMBND file for map '{map_stem}': {nvmbnd_path}")
 
         bl_name = nvm_entry_name.split(".")[0]
 
@@ -374,7 +377,7 @@ class ImportNVMFromNVMBND(LoggingOperator):
             nvmbnd_path, nvm_entry.minimal_stem, bl_name, nvm_entry.to_binary_file(NVM)
         )
 
-        parent_obj = find_or_create_bl_empty(f"{settings.map_stem} Navmeshes", context)
+        parent_obj = find_or_create_bl_empty(f"{map_stem} Navmeshes", context)
 
         importer = NVMImporter(
             self,
@@ -440,15 +443,16 @@ class ImportNVMMSBPart(LoggingOperator):
         if settings.game_variable_name != "DARK_SOULS_DSR":
             return self.error("MSB Navmesh import from game is only available for Dark Souls Remastered.")
 
-        nvmbnd_path = settings.get_import_map_path(f"{settings.map_stem}.nvmbnd")
+        map_stem = settings.get_latest_map_stem_version()  # NVMBNDs come from latest map version
+        nvmbnd_path = settings.get_import_map_path(f"{map_stem}.nvmbnd")
         if not nvmbnd_path or not nvmbnd_path.is_file():
-            return self.error(f"Could not find NVMBND file for map '{settings.map_stem}': {nvmbnd_path}")
+            return self.error(f"Could not find NVMBND file for map '{map_stem}': {nvmbnd_path}")
 
         try:
             part_name, nvm_stem = context.scene.soulstruct_game_enums.nvm_parts.split("|")
         except ValueError:
             return self.error("Invalid MSB navmesh selection.")
-        msb_path = settings.get_import_msb_path()
+        msb_path = settings.get_import_msb_path()  # will use newest MSB version
         msb = get_cached_file(msb_path, settings.get_game_msb_class())  # type: MSB_TYPING
 
         # Get MSB part transform.
@@ -468,7 +472,7 @@ class ImportNVMMSBPart(LoggingOperator):
             nvmbnd_path, nvm_entry.minimal_stem, bl_name, nvm_entry.to_binary_file(NVM)
         )
 
-        parent_obj = find_or_create_bl_empty(f"{settings.map_stem} Navmeshes", context)
+        parent_obj = find_or_create_bl_empty(f"{map_stem} Navmeshes", context)
 
         importer = NVMImporter(
             self,

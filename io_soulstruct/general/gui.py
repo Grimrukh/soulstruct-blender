@@ -36,6 +36,7 @@ class _GlobalSettingsPanel_ViewMixin:
         layout.row().prop(settings, "import_bak_file")
         layout.row().prop(settings, "prefer_import_from_project")
         layout.row().prop(settings, "also_export_to_game")
+        layout.row().prop(settings, "smart_map_version_handling")
         layout.row().operator(ClearCachedLists.bl_idname, text="Refresh File/Folder Dropdowns")
 
         layout.row().prop(settings, "map_stem")

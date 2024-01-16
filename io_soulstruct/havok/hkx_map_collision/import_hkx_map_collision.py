@@ -442,24 +442,27 @@ class ImportHKXMapCollisionFromHKXBHD(LoggingOperator):
         if hkx_entry_name in {"", "0"}:
             return self.error("No HKX map collision entry selected.")
 
+        # Get oldest version of map folder, if option enabled.
+        map_stem = settings.get_oldest_map_stem_version()
+
         # Import source may depend on suffix of entry enum.
         # BXF file never has DCX.
         if hkx_entry_name.endswith(" (G)"):
             hkx_entry_name = hkx_entry_name.removesuffix(" (G)")
-            hkxbhd_path = settings.get_game_map_path(f"h{settings.map_stem[1:]}.hkxbhd")
-            hkxbdt_path = settings.get_game_map_path(f"h{settings.map_stem[1:]}.hkxbdt")
+            hkxbhd_path = settings.get_game_map_path(f"h{map_stem[1:]}.hkxbhd")
+            hkxbdt_path = settings.get_game_map_path(f"h{map_stem[1:]}.hkxbdt")
         elif hkx_entry_name.endswith(" (P)"):
             hkx_entry_name = hkx_entry_name.removesuffix(" (P)")
-            hkxbhd_path = settings.get_project_map_path(f"h{settings.map_stem[1:]}.hkxbhd")
-            hkxbdt_path = settings.get_project_map_path(f"h{settings.map_stem[1:]}.hkxbdt")
+            hkxbhd_path = settings.get_project_map_path(f"h{map_stem[1:]}.hkxbhd")
+            hkxbdt_path = settings.get_project_map_path(f"h{map_stem[1:]}.hkxbdt")
         else:  # no suffix, so we use whichever source is preferred
-            hkxbhd_path = settings.get_import_map_path(f"h{settings.map_stem[1:]}.hkxbhd")
-            hkxbdt_path = settings.get_import_map_path(f"h{settings.map_stem[1:]}.hkxbdt")
+            hkxbhd_path = settings.get_import_map_path(f"h{map_stem[1:]}.hkxbhd")
+            hkxbdt_path = settings.get_import_map_path(f"h{map_stem[1:]}.hkxbdt")
 
         if not is_path_and_file(hkxbhd_path):
-            return self.error(f"Could not find HKXBHD header file for map '{settings.map_stem}': {hkxbhd_path}")
+            return self.error(f"Could not find HKXBHD header file for map '{map_stem}': {hkxbhd_path}")
         if not is_path_and_file(hkxbdt_path):
-            return self.error(f"Could not find HKXBDT data file for map '{settings.map_stem}': {hkxbdt_path}")
+            return self.error(f"Could not find HKXBDT data file for map '{map_stem}': {hkxbdt_path}")
 
         bl_name = hkx_entry_name.split(".")[0]
 
@@ -520,7 +523,7 @@ class ImportHKXMapCollisionFromHKXBHD(LoggingOperator):
                 traceback.print_exc()  # for inspection in Blender console
                 return self.error(f"Cannot import other-res HKX for {import_info.path}. Error: {ex}")
 
-        map_parent = find_or_create_bl_empty(f"{settings.map_stem} Collisions", context)
+        map_parent = find_or_create_bl_empty(f"{map_stem} Collisions", context)
         hkx_parent.parent = map_parent
 
         p = time.perf_counter() - start_time
@@ -562,17 +565,20 @@ class ImportMSBMapCollision(LoggingOperator):
         settings.save_settings()
         game_lists = context.scene.soulstruct_game_enums  # type: SoulstructGameEnums
 
-        import_map_path = settings.get_import_map_path()
+        import_map_path = settings.get_import_map_path()  # no version handling needed
         if not import_map_path:  # validation
             return self.error("Game directory and map stem must be set in Blender's Soulstruct global settings.")
 
+        # Get oldest version of map folder, if option enabled.
+        map_stem = settings.get_oldest_map_stem_version()
+
         # BXF file never has DCX.
-        hkxbhd_path = settings.get_import_map_path(f"h{settings.map_stem[1:]}.hkxbhd")
-        hkxbdt_path = settings.get_import_map_path(f"h{settings.map_stem[1:]}.hkxbdt")
+        hkxbhd_path = settings.get_import_map_path(f"h{map_stem[1:]}.hkxbhd")
+        hkxbdt_path = settings.get_import_map_path(f"h{map_stem[1:]}.hkxbdt")
         if not hkxbhd_path.is_file():
-            return self.error(f"Could not find HKXBHD header file for map '{settings.map_stem}': {hkxbhd_path}")
+            return self.error(f"Could not find HKXBHD header file for map '{map_stem}': {hkxbhd_path}")
         if not hkxbdt_path.is_file():
-            return self.error(f"Could not find HKXBDT data file for map '{settings.map_stem}': {hkxbdt_path}")
+            return self.error(f"Could not find HKXBDT data file for map '{map_stem}': {hkxbdt_path}")
 
         try:
             part_name, hkx_stem = game_lists.hkx_map_collision_parts.split("|")
@@ -649,7 +655,7 @@ class ImportMSBMapCollision(LoggingOperator):
         hkx_parent.rotation_euler = transform.bl_rotate
         hkx_parent.scale = transform.bl_scale
 
-        map_parent = find_or_create_bl_empty(f"{settings.map_stem} Collisions", context)
+        map_parent = find_or_create_bl_empty(f"{map_stem} Collisions", context)
         hkx_parent.parent = map_parent
 
         hkx_parent["Model File Stem"] = hkx_model_name

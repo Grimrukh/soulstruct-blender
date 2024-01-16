@@ -241,7 +241,9 @@ class ImportMapPieceFLVER(BaseFLVERImportOperator):
 
     def invoke(self, context, _event):
         """Set the initial directory based on Global Settings."""
-        map_path = self.settings(context).get_import_map_path()
+        settings = self.settings(context)
+        # Map Piece FLVERs come from the oldest version of the map.
+        map_path = settings.get_import_map_path(map_stem=settings.get_oldest_map_stem_version())
         if map_path and Path(map_path).is_dir():
             self.directory = str(map_path)
             context.window_manager.fileselect_add(self)
@@ -397,7 +399,7 @@ class ImportMapPieceMSBPart(LoggingOperator):
             part_name, flver_stem = context.scene.soulstruct_game_enums.map_piece_parts.split("|")
         except ValueError:
             return self.error("Invalid MSB map piece selection.")
-        msb_path = settings.get_import_msb_path()
+        msb_path = settings.get_import_msb_path()  # will automatically use latest MSB version if known and enabled
 
         # Get MSB part transform.
         msb = get_cached_file(msb_path, settings.get_game_msb_class())  # type: MSB_TYPING
@@ -507,7 +509,7 @@ class ImportAllMapPieceMSBParts(LoggingOperator):
             case _:  # should never happen
                 return self.error(f"Invalid MSB part name match mode: {flver_import_settings.msb_part_name_match_mode}")
 
-        msb_path = settings.get_import_msb_path()
+        msb_path = settings.get_import_msb_path()  # will automatically use latest MSB version if known and enabled
         msb = get_cached_file(msb_path, settings.get_game_msb_class())  # type: MSB_TYPING
 
         # Maps FLVER model stems to Armature and Mesh already created.

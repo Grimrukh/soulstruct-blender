@@ -408,6 +408,7 @@ class ExportMapPieceFLVERs(LoggingOperator):
                         f"game map specified in Soulstruct plugin settings."
                     )
                 map_stem = parent.name.split(" ")[0]
+                map_stem = settings.get_oldest_map_stem_version(map_stem)  # FLVER uses original map folder ('_00')
                 if not MAP_STEM_RE.match(map_stem):
                     return self.error(f"Parent object '{parent.name}' does not start with a valid map stem.")
                 relative_map_path = Path(f"map/{map_stem}")
@@ -820,7 +821,7 @@ class ExportMapPieceMSBParts(LoggingOperator):
             return self.error(
                 "No game map directory specified in Soulstruct settings and `Detect Map from Parent` is disabled."
             )
-        default_map_path = Path(f"map/{settings.map_stem}") if settings.map_stem else None
+        default_map_path = Path(f"map/{settings.get_oldest_map_stem_version()}") if settings.map_stem else None
 
         flver_export_settings = context.scene.flver_export_settings  # type: FLVERExportSettings
         flver_dcx_type = settings.game.get_dcx_type("flver")
@@ -831,7 +832,7 @@ class ExportMapPieceMSBParts(LoggingOperator):
 
         map_area_textures = {}  # maps area stems 'mAA' to dictionaries of Blender images to export
         opened_msbs = {}  # type: dict[Path, MSB_TYPING]
-        edited_part_names = {}  # type: dict[Path, set[str]]
+        edited_part_names = {}  # type: dict[str, set[str]]  # keys are MSB stems (which may differ from 'map' stems)
 
         for mesh, armature in meshes_armatures:
 
@@ -843,36 +844,45 @@ class ExportMapPieceMSBParts(LoggingOperator):
                         f"game map specified in Soulstruct plugin settings."
                     )
                 map_stem = parent.name.split(" ")[0]
+                map_stem = settings.get_oldest_map_stem_version(map_stem)  # FLVER uses original map folder ('_00')
                 if not MAP_STEM_RE.match(map_stem):
                     return self.error(f"Parent object '{parent.name}' does not start with a valid map stem.")
                 relative_map_path = Path(f"map/{map_stem}")
             else:
-                map_stem = settings.map_stem  # guaranteed from above check
+                map_stem = settings.get_oldest_map_stem_version()  # guaranteed from above check
                 relative_map_path = default_map_path
 
             # Get model file stem from MSB (must contain matching part).
             map_piece_part_name = get_default_flver_stem(mesh, armature, self)  # could be the same as the file stem
 
-            relative_msb_path = settings.get_relative_msb_path(map_stem)
-            msb_path = settings.prepare_project_file(relative_msb_path)
+            relative_msb_path = settings.get_relative_msb_path(map_stem)  # will use latest MSB version
+            msb_stem = relative_msb_path.stem
 
-            msb = opened_msbs.setdefault(
-                relative_msb_path,
-                get_cached_file(msb_path, settings.get_game_msb_class()),
-            )  # type: MSB_TYPING
+            if relative_msb_path not in opened_msbs:
+                # Open new MSB.
+                try:
+                    msb_path = settings.prepare_project_file(relative_msb_path, False, must_exist=True)
+                except FileNotFoundError as ex:
+                    self.error(
+                        f"Could not find MSB file '{relative_msb_path}' for map '{map_stem}'. Error: {ex}"
+                    )
+                    continue
+                opened_msbs[relative_msb_path] = get_cached_file(msb_path, settings.get_game_msb_class())
+
+            msb = opened_msbs[relative_msb_path]  # type: MSB_TYPING
 
             try:
                 msb_part = msb.map_pieces.find_entry_name(map_piece_part_name)
             except KeyError:
                 return self.error(
-                    f"Map piece part '{map_piece_part_name}' not found in MSB '{msb_path}'."
+                    f"Map piece part '{map_piece_part_name}' not found in MSB '{msb_stem}'."
                 )
             if not msb_part.model.name:
                 return self.error(
-                    f"Map piece part '{map_piece_part_name}' in MSB '{msb_path}' has no model name."
+                    f"Map piece part '{map_piece_part_name}' in MSB '{msb_stem}' has no model name."
                 )
 
-            edited_msb_part_names = edited_part_names.setdefault(msb_path, set())
+            edited_msb_part_names = edited_part_names.setdefault(msb_stem, set())
             if map_piece_part_name in edited_msb_part_names:
                 self.warning(
                     f"Map Piece part '{map_piece_part_name}' was exported more than once in selected meshes."
@@ -887,7 +897,7 @@ class ExportMapPieceMSBParts(LoggingOperator):
                 if (model_file_stem := mesh.get("Model File Stem", None)) is not None:
                     if model_file_stem != model_stem:
                         self.warning(
-                            f"Map piece part '{map_piece_part_name}' in MSB '{msb_path}' has model name "
+                            f"Map piece part '{map_piece_part_name}' in MSB {msb_stem} has model name "
                             f"'{msb_part.model.name}' but Blender mesh 'Model File Stem' is '{model_file_stem}'. "
                             f"Using FLVER stem from MSB model name; you may want to update the Blender mesh."
                         )
