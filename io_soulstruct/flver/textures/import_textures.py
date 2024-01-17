@@ -578,10 +578,10 @@ def import_png_as_image(
     if write_png_directory is None:
         # Use a temporarily file.
         write_png_path = Path(f"~/AppData/Local/Temp/{image_name}.png").expanduser()
-        delete_png = True
+        is_temp_png = True
     else:
         write_png_path = write_png_directory / f"{image_name}.png"
-        delete_png = False
+        is_temp_png = False
 
     write_png_path.write_bytes(png_data)
 
@@ -592,17 +592,20 @@ def import_png_as_image(
         bl_image = bpy.data.images[image_name]
     except KeyError:
         bl_image = bpy.data.images.load(str(write_png_path))
-        bl_image.pack()  # embed PNG in `.blend` file
+        bl_image.pack()  # embed PNG in Blend file
     else:
         # TODO: doesn't work (size doesn't update, e.g.)
         if bl_image.packed_file:
             bl_image.unpack(method="USE_ORIGINAL")
         bl_image.filepath_raw = str(write_png_path)
         bl_image.file_format = "PNG"
+        bl_image.source = "FILE"
         bl_image.reload()
-        bl_image.pack()  # re-embed PNG in `.blend` file
+        if is_temp_png:
+            # Re-pack temporary PNG into Blend file rather than leaving it linked to non-temp cached PNG file.
+            bl_image.pack()
 
-    if delete_png:
+    if is_temp_png:
         write_png_path.unlink(missing_ok=True)
 
     return bl_image

@@ -199,7 +199,7 @@ class ImportHKXCutscene(LoggingOperator, ImportHelper):
                 self,
                 context,
                 settings,
-                texture_manager=texture_manager,
+                texture_import_manager=texture_manager,
             )
 
             for part_name, flver in flvers_to_import.items():

@@ -158,9 +158,10 @@ class BaseFLVERImportOperator(LoggingImportOperator):
             self,
             context,
             settings,
-            texture_manager=texture_manager,
+            texture_import_manager=texture_manager,
         )
 
+        bl_mesh = None
         for bl_name, flver in flvers:
 
             try:
@@ -171,11 +172,12 @@ class BaseFLVERImportOperator(LoggingImportOperator):
                 traceback.print_exc()  # for inspection in Blender console
                 return self.error(f"Cannot import FLVER: {bl_name}. Error: {ex}")
 
-            # Select newly imported Armature.
-            if bl_armature:
-                self.set_active_obj(bl_armature)
-
         self.info(f"Imported {len(flvers)} FLVER(s) in {time.perf_counter() - start_time:.3f} seconds.")
+
+        # Select and frame view on (final) newly imported Mesh.
+        if bl_mesh:
+            self.set_active_obj(bl_mesh)
+            bpy.ops.view3d.view_selected(use_all_regions=False)
 
         return {"FINISHED"}
 
@@ -431,7 +433,7 @@ class ImportMapPieceMSBPart(LoggingOperator):
             self,
             context,
             settings,
-            texture_manager=texture_manager,
+            texture_import_manager=texture_manager,
         )
 
         try:
@@ -450,14 +452,14 @@ class ImportMapPieceMSBPart(LoggingOperator):
         bl_armature.parent = map_piece_parent
 
         # Set transform.
-        if transform is not None:
-            bl_armature.location = transform.bl_translate
-            bl_armature.rotation_euler = transform.bl_rotate
-            bl_armature.scale = transform.bl_scale
+        bl_armature.location = transform.bl_translate
+        bl_armature.rotation_euler = transform.bl_rotate
+        bl_armature.scale = transform.bl_scale
 
-        # Select newly imported armature.
-        if bl_armature:
-            self.set_active_obj(bl_armature)
+        # Select and frame view on (final) newly imported Mesh.
+        if bl_mesh:
+            self.set_active_obj(bl_mesh)
+            bpy.ops.view3d.view_selected(use_all_regions=False)
 
         self.info(f"Imported map piece FLVER in {time.perf_counter() - start_time:.3f} seconds.")
 
@@ -519,10 +521,12 @@ class ImportAllMapPieceMSBParts(LoggingOperator):
             self,
             context,
             settings,
-            texture_manager=texture_manager,
+            texture_import_manager=texture_manager,
         )
 
         part_count = 0
+
+        bl_mesh = None  # for getting final mesh to select
 
         for map_piece_part in msb.map_pieces:
 
@@ -604,6 +608,11 @@ class ImportAllMapPieceMSBParts(LoggingOperator):
             f"{time.perf_counter() - start_time:.3f} seconds."
         )
 
+        # Select and frame view on (final) newly imported Mesh.
+        if bl_mesh:
+            self.set_active_obj(bl_mesh)
+            bpy.ops.view3d.view_selected(use_all_regions=False)
+
         return {"FINISHED"}
 
     @staticmethod
@@ -625,7 +634,7 @@ class FLVERBatchImporter:
     operator: LoggingOperator
     context: bpy.types.Context
     settings: SoulstructSettings
-    texture_manager: TextureImportManager | None = None
+    texture_import_manager: TextureImportManager | None = None
 
     # Loaded from `settings` if not given.
     mtdbnd: BaseMTDBND | None = None
@@ -747,19 +756,23 @@ class FLVERBatchImporter:
         armature_mod.show_in_editmode = True
         armature_mod.show_on_cage = True
 
-    def create_materials(self, flver: FLVER, material_blend_mode: str) -> tuple[list[int], list[list[str]]]:
+    def create_materials(
+        self,
+        flver: FLVER,
+        material_blend_mode: str,
+    ) -> tuple[list[int], list[list[str]]]:
         """Create Blender materials needed for `flver`.
 
         Returns a list of Blender material indices for each submesh, and a list of UV layer names for each Blender
         material (NOT each submesh).
         """
-        if self.texture_manager or self.settings.png_cache_directory:
+        if self.texture_import_manager or self.settings.png_cache_directory:
             p = time.perf_counter()
-            self.new_images = self.load_texture_images(self.texture_manager)
+            self.new_images = self.load_texture_images(self.texture_import_manager)
             if self.new_images:
                 self.operator.info(f"Loaded {len(self.new_images)} textures in {time.perf_counter() - p:.3f} seconds.")
         else:
-            self.warning("No TPF files or DDS dump folder given. No textures loaded for FLVER.")
+            self.operator.info("No imported textures or PNG cache folder given. No textures loaded for FLVER.")
 
         # Maps FLVER submeshes to their Blender material index to store per-face in the merged mesh.
         # Submeshes that originally indexed the same FLVER material may have different Blender 'variant' materials that
@@ -815,6 +828,7 @@ class FLVERBatchImporter:
                     material_info=flver_material_infos[material_hash],
                     submesh=submesh,
                     blend_mode=material_blend_mode,
+                    warn_missing_textures=self.texture_import_manager is not None,
                 )  # type: bpy.types.Material
 
                 submesh_bl_material_indices.append(bl_material_index)
@@ -882,7 +896,7 @@ class FLVERBatchImporter:
         return bl_armature_obj
 
     def load_texture_images(self, texture_manager: TextureImportManager = None) -> list[bpy.types.Image]:
-        """Load texture images from either `png_cache` folder or TPFs found with `texture_manager`.
+        """Load texture images from either `png_cache` folder or TPFs found with `texture_import_manager`.
 
         Will NEVER load an image that is already in Blender's data, regardless of image type (identified by stem only).
         """
@@ -933,12 +947,17 @@ class FLVERBatchImporter:
                 write_png_directory = Path(self.settings.png_cache_directory)
             else:
                 write_png_directory = None
-            print(f"# INFO: Converted images in {perf_counter() - t} s (cached = {self.settings.write_cached_pngs})")
+            self.operator.info(
+                f"Converted images in {perf_counter() - t} s (cached = {self.settings.write_cached_pngs})"
+            )
             for texture_stem, png_data in zip(textures_to_load.keys(), all_png_data):
                 if png_data is None:
                     continue  # failed to convert this texture
                 bl_image = import_png_as_image(
-                    texture_stem, png_data, write_png_directory, replace_existing=texture_stem in image_stems_to_replace
+                    texture_stem,
+                    png_data,
+                    write_png_directory,
+                    replace_existing=texture_stem in image_stems_to_replace,
                 )
                 new_loaded_images.append(bl_image)
 

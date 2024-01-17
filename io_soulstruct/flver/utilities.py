@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 __all__ = [
+    "FLVERError",
     "FLVERImportError",
     "FLVERExportError",
     "PrintGameTransform",
     "DummyInfo",
     "parse_dummy_name",
+    "parse_flver_obj",
+    "get_default_flver_stem",
+    "get_selected_flver",
+    "get_selected_flvers",
     "HideAllDummiesOperator",
     "ShowAllDummiesOperator",
     "get_flvers_from_binder",
@@ -19,6 +24,7 @@ import re
 import typing as tp
 from pathlib import Path
 
+import bpy
 from mathutils import Euler, Matrix
 
 from soulstruct import Binder, FLVER
@@ -31,12 +37,16 @@ from io_soulstruct.utilities import (
 from io_soulstruct.general.cached import get_cached_file
 
 
-class FLVERImportError(Exception):
+class FLVERError(Exception):
+    """Exception raised by a FLVER-based operator error."""
+
+
+class FLVERImportError(FLVERError):
     """Exception raised during FLVER import."""
     pass
 
 
-class FLVERExportError(Exception):
+class FLVERExportError(FLVERError):
     """Exception raised during FLVER export."""
     pass
 
@@ -87,7 +97,7 @@ class PrintGameTransform(LoggingOperator):
     """Simple operator that prints the Blender transform of a selected object to console in game coordinates."""
     bl_idname = "io_scene_soulstruct.print_game_transform"
     bl_label = "Print Game Transform"
-    bl_description = "Print the selected object's transform in game coordinates to console."
+    bl_description = "Print the selected object's transform in game coordinates to Blender console"
 
     @classmethod
     def poll(cls, context):
@@ -133,6 +143,59 @@ def parse_dummy_name(dummy_name: str) -> DummyInfo | None:
         model_name=match.group("model_name"),
         reference_id=int(match.group("reference_id")[1:-1]),  # exclude brackets in regex group
     )
+
+
+def parse_flver_obj(obj: bpy.types.Object) -> tuple[bpy.types.MeshObject, bpy.types.ArmatureObject | None]:
+    """Parse a Blender object into a Mesh and (optional) Armature object."""
+    if obj.type == "MESH":
+        mesh = obj
+        armature = mesh.parent if mesh.parent is not None and mesh.parent.type == "ARMATURE" else None
+    elif obj.type == "ARMATURE":
+        armature = obj
+        mesh_name = f"{obj.name} Mesh"
+        mesh_children = [child for child in armature.children if child.type == "MESH" and child.name == mesh_name]
+        if not mesh_children:
+            raise FLVERExportError(
+                f"Armature '{armature.name}' has no Mesh child '{mesh_name}'. Please create it, even if empty, "
+                f"and assign it any required FLVER custom properties such as 'Version', 'Unicode', etc."
+            )
+        mesh = mesh_children[0]
+    else:
+        raise FLVERExportError(f"Selected object '{obj.name}' is not a Mesh or Armature.")
+
+    return mesh, armature
+
+
+def get_default_flver_stem(
+    mesh: bpy.types.MeshObject, armature: bpy.types.ArmatureObject = None, operator: LoggingOperator = None
+) -> str:
+    """Returns the name that should be used (by default) for the exported FLVER, warning if the Mesh and Armature
+    objects have different names."""
+    name = mesh.name.split(".")[0].split(" ")[0]
+    if armature is not None and (armature_name := armature.name.split(" ")[0]) != name:
+        if operator:
+            operator.warning(
+                f"Mesh '{name}' and Armature '{armature_name}' do not use the same FLVER name. Using Armature name."
+            )
+        return armature_name
+    return name
+
+
+def get_selected_flver(context) -> tuple[bpy.types.MeshObject, bpy.types.ArmatureObject | None]:
+    """Get the Mesh and (optional) Armature components of a single selected FLVER object of either type."""
+    if not context.selected_objects:
+        raise FLVERError("No FLVER Mesh or Armature selected.")
+    elif len(context.selected_objects) > 1:
+        raise FLVERError("Multiple objects selected. Exactly one FLVER Mesh or Armature must be selected.")
+    obj = context.selected_objects[0]
+    return parse_flver_obj(obj)
+
+
+def get_selected_flvers(context) -> list[tuple[bpy.types.MeshObject, bpy.types.ArmatureObject | None]]:
+    """Get the Mesh and (optional) Armature components of ALL selected FLVER objects of either type."""
+    if not context.selected_objects:
+        raise FLVERError("No FLVER Meshes or Armatures selected.")
+    return [parse_flver_obj(obj) for obj in context.selected_objects]
 
 
 def get_flvers_from_binder(binder: Binder, file_path: Path, allow_multiple=False) -> list[FLVER]:

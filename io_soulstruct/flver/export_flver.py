@@ -79,59 +79,6 @@ class FLVERExportSettings(bpy.types.PropertyGroup):
     )
 
 
-def parse_flver_obj(obj: bpy.types.Object) -> tuple[bpy.types.MeshObject, bpy.types.ArmatureObject | None]:
-    """Parse a Blender object into a Mesh and (optional) Armature object."""
-    if obj.type == "MESH":
-        mesh = obj
-        armature = mesh.parent if mesh.parent is not None and mesh.parent.type == "ARMATURE" else None
-    elif obj.type == "ARMATURE":
-        armature = obj
-        mesh_name = f"{obj.name} Mesh"
-        mesh_children = [child for child in armature.children if child.type == "MESH" and child.name == mesh_name]
-        if not mesh_children:
-            raise FLVERExportError(
-                f"Armature '{armature.name}' has no Mesh child '{mesh_name}'. Please create it, even if empty, "
-                f"and assign it any required FLVER custom properties such as 'Version', 'Unicode', etc."
-            )
-        mesh = mesh_children[0]
-    else:
-        raise FLVERExportError(f"Selected object '{obj.name}' is not a Mesh or Armature.")
-
-    return mesh, armature
-
-
-def get_selected_flver(context) -> tuple[bpy.types.MeshObject, bpy.types.ArmatureObject | None]:
-    """Get the Mesh and (optional) Armature components of a single selected FLVER object of either type."""
-    if not context.selected_objects:
-        raise FLVERExportError("No FLVER Mesh or Armature selected.")
-    elif len(context.selected_objects) > 1:
-        raise FLVERExportError("Multiple objects selected. Exactly one FLVER Mesh or Armature must be selected.")
-    obj = context.selected_objects[0]
-    return parse_flver_obj(obj)
-
-
-def get_selected_flvers(context) -> list[tuple[bpy.types.MeshObject, bpy.types.ArmatureObject | None]]:
-    """Get the Mesh and (optional) Armature components of ALL selected FLVER objects of either type."""
-    if not context.selected_objects:
-        raise FLVERExportError("No FLVER Meshes or Armatures selectesd.")
-    return [parse_flver_obj(obj) for obj in context.selected_objects]
-
-
-def get_default_flver_stem(
-    mesh: bpy.types.MeshObject, armature: bpy.types.ArmatureObject = None, operator: LoggingOperator = None
-) -> str:
-    """Returns the name that should be used (by default) for the exported FLVER, warning if the Mesh and Armature
-    objects have different names."""
-    name = mesh.name.split(".")[0].split(" ")[0]
-    if armature is not None and (armature_name := armature.name.split(" ")[0]) != name:
-        if operator:
-            operator.warning(
-                f"Mesh '{name}' and Armature '{armature_name}' do not use the same FLVER name. Using Armature name."
-            )
-        return armature_name
-    return name
-
-
 # region Generic Exporters
 
 class ExportStandaloneFLVER(LoggingOperator, ExportHelper):
@@ -174,7 +121,7 @@ class ExportStandaloneFLVER(LoggingOperator, ExportHelper):
     def execute(self, context):
         try:
             mesh, armature = get_selected_flver(context)
-        except FLVERExportError as ex:
+        except FLVERError as ex:
             return self.error(str(ex))
         settings = self.settings(context)
 
@@ -269,7 +216,7 @@ class ExportFLVERIntoBinder(LoggingOperator, ExportHelper):
     def execute(self, context):
         try:
             mesh, armature = get_selected_flver(context)
-        except FLVERExportError as ex:
+        except FLVERError as ex:
             return self.error(str(ex))
 
         flver_stem = get_default_flver_stem(mesh, armature, self)
@@ -374,7 +321,7 @@ class ExportMapPieceFLVERs(LoggingOperator):
     def execute(self, context):
         try:
             meshes_armatures = get_selected_flvers(context)
-        except FLVERExportError as ex:
+        except FLVERError as ex:
             return self.error(str(ex))
 
         settings = self.settings(context)
@@ -811,7 +758,7 @@ class ExportMapPieceMSBParts(LoggingOperator):
 
         try:
             meshes_armatures = get_selected_flvers(context)
-        except FLVERExportError as ex:
+        except FLVERError as ex:
             return self.error(str(ex))
 
         # TODO: Later games (e.g. Elden Ring) use Binders like 'mapbnd' for map pieces, but this is not yet supported.
@@ -1671,10 +1618,10 @@ class FLVERBatchExporter:
         )
         # TODO: Read `GXItem` custom properties.
 
-        node_textures = {node.name: node for node in bl_material.node_tree.nodes if node.type == "TEX_IMAGE"}
+        texture_nodes = {node.name: node for node in bl_material.node_tree.nodes if node.type == "TEX_IMAGE"}
         flver_textures = []
         for sampler_type in material_info.sampler_types:
-            if sampler_type not in node_textures:
+            if sampler_type not in texture_nodes:
                 # Only 'g_DetailBumpmap' can always be omitted from node tree entirely, as it's always empty (in DS1).
                 if sampler_type != "g_DetailBumpmap":
                     raise FLVERExportError(
@@ -1685,7 +1632,7 @@ class FLVERBatchExporter:
                 else:
                     texture_path = ""  # missing
             else:
-                tex_node = node_textures.pop(sampler_type)
+                tex_node = texture_nodes.pop(sampler_type)
                 if tex_node.image is None:
                     if sampler_type != "g_DetailBumpmap" and not export_settings.allow_missing_textures:
                         raise FLVERExportError(
@@ -1710,8 +1657,8 @@ class FLVERBatchExporter:
 
         # TODO: Haven't quite figured out what the deal is with g_DetailBumpmap being present or absent, but for
         #  now, I'm allowing it to be written to the FLVER automatically.
-        if "g_DetailBumpmap" in node_textures:
-            tex_node = node_textures.pop("g_DetailBumpmap")
+        if "g_DetailBumpmap" in texture_nodes:
+            tex_node = texture_nodes.pop("g_DetailBumpmap")
             if tex_node.image is None:
                 texture_path = ""  # missing (fine)
             else:
@@ -1724,16 +1671,16 @@ class FLVERBatchExporter:
             )
             flver_textures.append(flver_texture)
 
-        if node_textures:
+        if texture_nodes:
             # Unknown node textures remain.
             if not export_settings.allow_unknown_texture_types:
                 raise FLVERExportError(
                     f"Unknown texture types (node names) in material '{bl_material.name}': "
-                    f"{list(node_textures.keys())}. You can enable 'Allow Unknown Texture Types' to export it anyway."
+                    f"{list(texture_nodes.keys())}. You can enable 'Allow Unknown Texture Types' to export it anyway."
                 )
             # TODO: Currently assuming that FLVER material texture order doesn't matter (due to texture type).
             #  If it does, we'll need to sort them here, probably based on node location Y.
-            for unk_texture_type, tex_node in node_textures.items():
+            for unk_texture_type, tex_node in texture_nodes.items():
                 sampler_type = tex_node.name
                 if not tex_node.image:
                     if not export_settings.allow_missing_textures:

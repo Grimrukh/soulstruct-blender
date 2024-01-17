@@ -6,6 +6,8 @@ __all__ = [
     "ActivateUVMap1",
     "ActivateUVMap2",
     "ActivateUVMap3",
+    "FindMissingTexturesInPNGCache",
+    "SelectMeshChildren",
     "draw_dummy_ids",
 ]
 
@@ -16,7 +18,7 @@ import blf
 from bpy_extras.view3d_utils import location_3d_to_region_2d
 
 from io_soulstruct.utilities.operators import LoggingOperator
-from .utilities import parse_dummy_name
+from .utilities import FLVERError, parse_dummy_name, get_selected_flvers
 
 
 class FLVERToolSettings(bpy.types.PropertyGroup):
@@ -147,6 +149,91 @@ class ActivateUVMap3(ActivateUVMap):
     bl_description = "Set the UV Editor texture to 'UVMap3', usually the light map"
 
     UV_LAYER_NAME = "UVMap3"
+
+
+class FindMissingTexturesInPNGCache(LoggingOperator):
+    """Iterate over all texture nodes used by all materials of one or more selected FLVER meshes and (if currently a 1x1
+    dummy texture) find that PNG file in the PNG cache directory.
+
+    This modified the Blender Image data, so obviously, it will affect all models/materials that use this texture.
+
+    Note that this will link the texture to the cached PNG file, rather than packing the image data into the Blend file.
+    """
+    bl_idname = "mesh.find_missing_textures_in_png_cache"
+    bl_label = "Find Missing Textures in PNG Cache"
+    bl_description = "Find missing texture names used by materials of selected FLVERs in PNG cache"
+
+    @classmethod
+    def poll(cls, context):
+        return context.active_object and context.active_object.type in {"ARMATURE", "MESH"}
+
+    def execute(self, context):
+
+        settings = self.settings(context)
+
+        try:
+            meshes_armatures = get_selected_flvers(context)
+        except FLVERError as ex:
+            return self.error(str(ex))
+
+        meshes_data = [mesh.data for mesh, _ in meshes_armatures]
+        checked_image_names = set()  # to avoid looking for the same PNG twice
+
+        for mesh_data in meshes_data:
+            for bl_material in mesh_data.materials:
+                texture_nodes = [
+                    node for node in bl_material.node_tree.nodes
+                    if node.type == "TEX_IMAGE" and node.image is not None
+                ]
+                for node in texture_nodes:
+                    image = node.image  # type: bpy.types.Image
+                    if image.size[0] != 1 or image.size[1] != 1:
+                        continue
+                    # This is a dummy texture. Try to find it in the PNG cache.
+                    image_name = image.name
+                    if image_name.endswith(".dds"):
+                        image_name = image_name[:-4] + ".png"
+                    elif not image_name.endswith(".png"):
+                        image_name += ".png"
+                    if image_name in checked_image_names:
+                        continue
+                    checked_image_names.add(image_name)
+                    png_path = settings.png_cache_directory / image_name
+                    if png_path.is_file():
+                        image.filepath = str(png_path)
+                        image.source = "FILE"
+                        image.reload()
+                        self.info(f"Found and linked texture file '{image_name}' in PNG cache.")
+                    else:
+                        self.warning(f"Could not find texture file '{image_name}' in PNG cache.")
+
+        return {"FINISHED"}
+
+
+class SelectMeshChildren(LoggingOperator):
+    """Simple operator that iterates over selected objects, selects all MESH children of any ARMATURES, and deselects
+    anything else that isn't a MESH."""
+    bl_idname = "object.select_mesh_children"
+    bl_label = "Select Mesh Children"
+    bl_description = "Select all immediate Mesh children of selected objects and deselect all non-Meshes"
+
+    @classmethod
+    def poll(cls, context):
+        return context.active_object and context.active_object.type in {"ARMATURE", "MESH"}
+
+    def execute(self, context):
+        for obj in context.selected_objects:
+            for child in obj.children:
+                if child.type == "MESH":
+                    child.select_set(True)
+            if obj.type != "MESH":
+                obj.select_set(False)
+
+        if context.selected_objects[0]:
+            # Set active object to first selected object.
+            bpy.context.view_layer.objects.active = context.selected_objects[0]
+
+        return {"FINISHED"}
 
 
 def draw_dummy_ids():

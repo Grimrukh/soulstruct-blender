@@ -113,13 +113,13 @@ class CachedEnum:
 
         items_1 = []
         if is_path_and_file(binder_path_1):
-            binder_1 = get_cached_bxf(binder_path_1) if is_split_binder else get_cached_file(binder_path_1)
+            binder_1 = get_cached_bxf(binder_path_1) if is_split_binder else get_cached_file(binder_path_1, Binder)
             for e in binder_1.find_entries_matching_name(entry_name_pattern):
                 desc = e.minimal_stem if desc_callback is None else desc_callback(e.minimal_stem)
                 items_1.append((e.name, e.minimal_stem, desc))
 
         if is_path_and_file(binder_path_2):
-            binder_2 = get_cached_bxf(binder_path_2) if is_split_binder else get_cached_file(binder_path_2)
+            binder_2 = get_cached_bxf(binder_path_2) if is_split_binder else get_cached_file(binder_path_2, Binder)
             items_2 = []
             for e in binder_2.find_entries_matching_name(entry_name_pattern):
                 desc = e.minimal_stem if desc_callback is None else desc_callback(e.minimal_stem)

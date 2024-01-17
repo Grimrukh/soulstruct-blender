@@ -114,6 +114,8 @@ CLASSES = (
     ActivateUVMap1,
     ActivateUVMap2,
     ActivateUVMap3,
+    FindMissingTexturesInPNGCache,
+    SelectMeshChildren,
 
     ImportTextures,
     BakeLightmapSettings,

@@ -29,6 +29,8 @@ __all__ = [
     "ActivateUVMap1",
     "ActivateUVMap2",
     "ActivateUVMap3",
+    "FindMissingTexturesInPNGCache",
+    "SelectMeshChildren",
     "ImportTextures",
     "BakeLightmapSettings",
     "BakeLightmapTextures",
@@ -213,15 +215,19 @@ class FLVERToolsPanel(bpy.types.Panel):
         # textures_box.operator(ExportTexturesIntoBinder.bl_idname)
 
         misc_operators_box = self.layout.box()
+
         misc_operators_box.label(text="Move Mesh Selection:")
         misc_operators_box.prop(context.scene.mesh_move_settings, "new_material_index")
         misc_operators_box.operator(CutMeshSelectionOperator.bl_idname)
+
         misc_operators_box.label(text="Set Vertex Alpha:")
         misc_operators_box.prop(context.scene.flver_settings, "vertex_alpha")
         misc_operators_box.operator(SetVertexAlpha.bl_idname)
 
-        misc_box = self.layout.box()
-        misc_box.operator(PrintGameTransform.bl_idname)
+        misc_operators_box.label(text="Other Tools:")
+        misc_operators_box.operator(FindMissingTexturesInPNGCache.bl_idname)
+        misc_operators_box.operator(SelectMeshChildren.bl_idname)
+        misc_operators_box.operator(PrintGameTransform.bl_idname)
 
 
 class FLVERUVMapsPanel(bpy.types.Panel):

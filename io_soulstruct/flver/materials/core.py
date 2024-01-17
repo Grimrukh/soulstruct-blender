@@ -28,6 +28,7 @@ def get_submesh_blender_material(
     material_info: BaseMaterialShaderInfo,
     submesh: Submesh,
     blend_mode="HASHED",
+    warn_missing_textures=True,
 ) -> bpy.types.Material:
     """Create a new material in the current Blender scene from a FLVER material.
 
@@ -67,7 +68,7 @@ def get_submesh_blender_material(
         bl_material[f"GXItem[{i}] Data"] = repr(gx_item.data)
 
     # Try to build shader nodetree.
-    builder = NodeTreeBuilder(operator, bl_material)
+    builder = NodeTreeBuilder(operator, bl_material, warn_missing_textures)
     builder.build(material_info, material.get_texture_dict())
 
     return bl_material
@@ -80,6 +81,7 @@ class NodeTreeBuilder:
     material: bpy.types.Material
     tree: bpy.types.NodeTree
     output: bpy.types.Node
+    warn_missing_textures: bool
 
     vertex_colors_node: bpy.types.Node
     uv_nodes: dict[str, bpy.types.Node]
@@ -93,11 +95,12 @@ class NodeTreeBuilder:
     BSDF_X = -50
     MIX_X, MIX_Y = 100, 300  # only one (max)
 
-    def __init__(self, operator: LoggingOperator, material: bpy.types.Material):
+    def __init__(self, operator: LoggingOperator, material: bpy.types.Material, warn_missing_textures: bool):
         self.operator = operator
         self.material = material
         self.tree = material.node_tree
         self.output = self.tree.nodes["Material Output"]
+        self.warn_missing_textures = warn_missing_textures
 
         # Auto-decremented Y coordinates for each node type (so newer nodes are further down).
         self.uv_y = 1000
