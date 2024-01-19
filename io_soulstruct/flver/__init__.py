@@ -96,6 +96,7 @@ class FLVERImportPanel(bpy.types.Panel):
         msb_import_box.operator(ImportMapPieceMSBPart.bl_idname, text="Import Map Piece Part")
         msb_import_box.prop(context.scene.flver_import_settings, "msb_part_name_match")
         msb_import_box.prop(context.scene.flver_import_settings, "msb_part_name_match_mode")
+        msb_import_box.prop(context.scene.flver_import_settings, "include_pattern_in_parent_name")
         msb_import_box.operator(ImportAllMapPieceMSBParts.bl_idname, text="Import ALL Matching Parts")
 
 

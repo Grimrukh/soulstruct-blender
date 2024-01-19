@@ -113,6 +113,12 @@ class FLVERImportSettings(bpy.types.PropertyGroup):
         default="GLOB",
     )
 
+    include_pattern_in_parent_name: bpy.props.BoolProperty(
+        name="Include Pattern in Parent Name",
+        description="Include the glob/regex pattern in the name of the parent object for imported MSB parts",
+        default=True,
+    )
+
 
 class BaseFLVERImportOperator(LoggingImportOperator):
 
@@ -511,6 +517,7 @@ class ImportAllMapPieceMSBParts(LoggingOperator):
             case _:  # should never happen
                 return self.error(f"Invalid MSB part name match mode: {flver_import_settings.msb_part_name_match_mode}")
 
+        map_stem = settings.get_oldest_map_stem_version()  # for FLVERs
         msb_path = settings.get_import_msb_path()  # will automatically use latest MSB version if known and enabled
         msb = get_cached_file(msb_path, settings.get_game_msb_class())  # type: MSB_TYPING
 
@@ -527,6 +534,7 @@ class ImportAllMapPieceMSBParts(LoggingOperator):
         part_count = 0
 
         bl_mesh = None  # for getting final mesh to select
+        map_piece_parent = None  # found/created by first part
 
         for map_piece_part in msb.map_pieces:
 
@@ -534,7 +542,7 @@ class ImportAllMapPieceMSBParts(LoggingOperator):
                 # MSB map piece name (part, not model) does not match glob/regex.
                 continue
 
-            model_stem = map_piece_part.model.get_model_file_stem(settings.map_stem)
+            model_stem = map_piece_part.model.get_model_file_stem(map_stem)
             transform = Transform.from_msb_part(map_piece_part)
 
             if self.link_model_data and model_stem in loaded_models:
@@ -589,8 +597,14 @@ class ImportAllMapPieceMSBParts(LoggingOperator):
             # Set 'Model File Stem' to ensure the model file stem is recorded, since the object name is the part name.
             bl_mesh["Model File Stem"] = model_stem
 
-            # Find or create Map Piece parent.
-            map_piece_parent = find_or_create_bl_empty(f"{settings.map_stem} Map Pieces", context)
+            if not map_piece_parent:
+                # Find or create Map Piece parent for all imported parts.
+                if flver_import_settings.include_pattern_in_parent_name:
+                    parent_name = f"{map_stem} Map Pieces ({part_name_match})"
+                else:
+                    parent_name = f"{map_stem} Map Pieces"
+                map_piece_parent = find_or_create_bl_empty(parent_name, context)
+
             bl_armature.parent = map_piece_parent
 
             # Set transform.
