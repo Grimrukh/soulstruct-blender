@@ -507,7 +507,7 @@ class NVMExporter:
         This is much simpler than FLVER or HKX map collision mesh export. Note that the navmesh name is not needed, as
         it appears nowhere in the NVM binary file.
         """
-        nvm_verts = np.array([vert.co for vert in bl_mesh_obj.data.vertices])
+        nvm_verts = np.array([vert.co for vert in bl_mesh_obj.data.vertices], dtype=np.float32)
         # Swap Y and Z coordinates.
         nvm_verts[:, [1, 2]] = nvm_verts[:, [2, 1]]
 
