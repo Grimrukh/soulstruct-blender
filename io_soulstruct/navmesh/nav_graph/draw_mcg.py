@@ -14,6 +14,12 @@ from bpy_extras.view3d_utils import location_3d_to_region_2d
 from gpu_extras.batch import batch_for_shader
 
 
+if bpy.app.version[0] == 4:
+    UNIFORM_COLOR_SHADER = "UNIFORM_COLOR"
+else:
+    UNIFORM_COLOR_SHADER = "3D_UNIFORM_COLOR"
+
+
 class MCGDrawSettings(bpy.types.PropertyGroup):
     mcg_parent_name: bpy.props.StringProperty(name="MCG Parent", default="")
     mcg_graph_draw_enabled: bpy.props.BoolProperty(name="Draw Graph", default=True)
@@ -64,7 +70,8 @@ def draw_mcg_nodes():
 
     points = [node.location for node in nodes]
 
-    shader = gpu.shader.from_builtin("3D_UNIFORM_COLOR")
+    shader = gpu.shader.from_builtin(UNIFORM_COLOR_SHADER)
+
     gpu.state.blend_set("ALPHA")
     gpu.state.depth_test_set("LESS_EQUAL")
     gpu.state.point_size_set(10)
@@ -184,7 +191,7 @@ def draw_mcg_edges():
     except AttributeError:
         color = (0.5, 1.0, 0.5, 1.0)
 
-    shader = gpu.shader.from_builtin("3D_UNIFORM_COLOR")
+    shader = gpu.shader.from_builtin(UNIFORM_COLOR_SHADER)
     # gpu.state.blend_set("ALPHA")
 
     all_edge_vertex_pairs = []
