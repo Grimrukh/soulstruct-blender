@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 __all__ = [
+    "NVMImportSettings",
     "ImportNVM",
     "ImportNVMWithBinderChoice",
     "ImportNVMFromNVMBND",
     "ImportNVMMSBPart",
+    "ImportAllNVMMSBParts",
     "ExportLooseNVM",
     "ExportNVMIntoBinder",
     "ExportNVMIntoNVMBND",
@@ -20,10 +22,13 @@ __all__ = [
     "NVM_PT_ds1_navmesh_import",
     "NVM_PT_ds1_navmesh_export",
     "NVM_PT_ds1_navmesh_tools",
+
     "NavmeshFaceSettings",
     "AddNVMFaceFlags",
     "RemoveNVMFaceFlags",
     "SetNVMFaceObstacleCount",
+    "ResetNVMFaceInfo",
+
     "MCGDrawSettings",
     "draw_mcg_nodes",
     "draw_mcg_node_labels",
@@ -89,6 +94,10 @@ class NVM_PT_ds1_navmesh_import(bpy.types.Panel):
         msb_box.label(text="Game MSB Part Import")
         msb_box.prop(context.scene.soulstruct_game_enums, "nvm_parts")
         msb_box.operator(ImportNVMMSBPart.bl_idname)
+        msb_box.prop(context.scene.nvm_import_settings, "msb_part_name_match")
+        msb_box.prop(context.scene.nvm_import_settings, "msb_part_name_match_mode")
+        msb_box.prop(context.scene.nvm_import_settings, "include_pattern_in_parent_name")
+        msb_box.operator(ImportAllNVMMSBParts.bl_idname, text="Import ALL Matching Parts")
 
 
 class NVM_PT_ds1_navmesh_export(bpy.types.Panel):
@@ -158,7 +167,8 @@ class NVM_PT_ds1_navmesh_tools(bpy.types.Panel):
         selected_faces_box = self.layout.box()
         # noinspection PyTypeChecker
         obj = context.edit_object
-        if obj and obj.type == 'MESH' and bpy.context.mode == 'EDIT_MESH':
+        if obj and obj.name.startswith("n") and obj.type == 'MESH' and bpy.context.mode == 'EDIT_MESH':
+            self.layout.operator(ResetNVMFaceInfo.bl_idname)
             obj: bpy.types.MeshObject
             bm = bmesh.from_edit_mesh(obj.data)
             try:

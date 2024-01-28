@@ -6,6 +6,7 @@ __all__ = [
     "AddNVMFaceFlags",
     "RemoveNVMFaceFlags",
     "SetNVMFaceObstacleCount",
+    "ResetNVMFaceInfo",
 ]
 
 import bmesh
@@ -143,5 +144,47 @@ class SetNVMFaceObstacleCount(bpy.types.Operator):
                 face[obstacle_count_layer] = props.obstacle_count
 
             bmesh.update_edit_mesh(obj.data)
+
+        return {"FINISHED"}
+
+
+class ResetNVMFaceInfo(bpy.types.Operator):
+    """Reset all NVM face flags and obstacle counts to default, and create face layers if missing.
+
+    Useful for turning a newly created Blender mesh into a Navmesh.
+    """
+    bl_idname = "object.reset_nvm_face_info"
+    bl_label = "Reset NVM Face Info"
+    
+    DEFAULT_FLAGS = 0
+    DEFAULT_OBSTACLE_COUNT = 0
+
+    @classmethod
+    def poll(cls, context):
+        return context.edit_object is not None and context.mode == "EDIT_MESH"
+
+    # noinspection PyMethodMayBeStatic
+    def execute(self, context):
+        # noinspection PyTypeChecker
+        obj = context.edit_object
+        if obj is None or obj.type != "MESH":
+            return {"CANCELLED"}
+
+        obj: bpy.types.MeshObject
+        bm = bmesh.from_edit_mesh(obj.data)
+
+        # TODO: Can probably use `verify()`.
+        flags_layer = bm.faces.layers.int.get("nvm_face_flags")
+        if flags_layer is None:
+            flags_layer = bm.faces.layers.int.new("nvm_face_flags")
+        obstacle_count_layer = bm.faces.layers.int.get("nvm_face_obstacle_count")
+        if obstacle_count_layer is None:
+            obstacle_count_layer = bm.faces.layers.int.new("nvm_face_obstacle_count")
+
+        for f_i, face in enumerate(bm.faces):
+            face[flags_layer] = self.DEFAULT_FLAGS
+            face[obstacle_count_layer] = self.DEFAULT_OBSTACLE_COUNT
+
+        bmesh.update_edit_mesh(obj.data)
 
         return {"FINISHED"}

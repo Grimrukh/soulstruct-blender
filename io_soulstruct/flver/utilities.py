@@ -111,7 +111,7 @@ class PrintGameTransform(LoggingOperator):
             print(
                 f"FromSoftware game transform of object '{obj.name}':\n"
                 f"    translate = {repr(bl_transform.game_translate)}\n"
-                f"    rotate = {repr(bl_transform.game_rotate_rad)}\n"
+                f"    rotate = {repr(bl_transform.game_rotate_deg)}  # degrees\n"
                 f"    scale = {repr(bl_transform.game_scale)}"
             )
         return {"FINISHED"}

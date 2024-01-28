@@ -11,9 +11,16 @@ This file format is only used in DeS and DS1 (PTDE/DSR).
 from __future__ import annotations
 
 __all__ = [
-    "ImportNVM", "ImportNVMWithBinderChoice", "ImportNVMFromNVMBND", "ImportNVMMSBPart"
+    "NVMImportSettings",
+    "ImportNVM",
+    "ImportNVMWithBinderChoice",
+    "ImportNVMFromNVMBND",
+    "ImportNVMMSBPart",
+    "ImportAllNVMMSBParts",
 ]
 
+import fnmatch
+import re
 import time
 import traceback
 import typing as tp
@@ -48,6 +55,33 @@ class NVMImportChoiceInfo(tp.NamedTuple):
     """Holds information about a Binder entry choice that the user will make in deferred operator."""
     path: Path  # Binder path
     entries: list[BinderEntry]  # entries from which user must choose
+
+
+
+class NVMImportSettings(bpy.types.PropertyGroup):
+    """Common NVM import settings."""
+
+    msb_part_name_match: bpy.props.StringProperty(
+        name="MSB Part Name Match",
+        description="Glob/Regex for filtering MSB part names when importing all parts",
+        default="*",
+    )
+
+    msb_part_name_match_mode: bpy.props.EnumProperty(
+        name="MSB Part Name Match Mode",
+        description="Whether to use glob or regex for MSB part name matching",
+        items=[
+            ("GLOB", "Glob", "Use glob for MSB part name matching"),
+            ("REGEX", "Regex", "Use regex for MSB part name matching"),
+        ],
+        default="GLOB",
+    )
+
+    include_pattern_in_parent_name: bpy.props.BoolProperty(
+        name="Include Pattern in Parent Name",
+        description="Include the glob/regex pattern in the name of the parent object for imported MSB parts",
+        default=True,
+    )
 
 
 class ImportNVMMixin:
@@ -189,14 +223,7 @@ class ImportNVM(LoggingOperator, ImportHelper, ImportNVMMixin):
                     new_non_choice_import_infos = [NVMImportInfo(file_path, model_file_stem, model_file_stem, nvm)]
                     import_infos.extend(new_non_choice_import_infos)
 
-        parent_obj = None
-
-        importer = NVMImporter(
-            self,
-            context,
-            use_linked_duplicates=False,
-            parent_obj=parent_obj,
-        )
+        importer = NVMImporter(self, context)
 
         for import_info in import_infos:
 
@@ -377,19 +404,12 @@ class ImportNVMFromNVMBND(LoggingOperator):
             nvmbnd_path, nvm_entry.minimal_stem, bl_name, nvm_entry.to_binary_file(NVM)
         )
 
-        parent_obj = find_or_create_bl_empty(f"{map_stem} Navmeshes", context)
-
-        importer = NVMImporter(
-            self,
-            context,
-            use_linked_duplicates=False,
-            parent_obj=parent_obj,
-        )
+        importer = NVMImporter(self, context)
 
         self.info(f"Importing NVM model {import_info.model_file_stem} as '{import_info.bl_name}'.")
 
         try:
-            importer.import_nvm(
+            bl_nvm = importer.import_nvm(
                 import_info,
                 use_material=self.use_material,
                 create_quadtree_boxes=self.create_quadtree_boxes,
@@ -400,6 +420,8 @@ class ImportNVMFromNVMBND(LoggingOperator):
                 bpy.data.objects.remove(obj)
             traceback.print_exc()  # for inspection in Blender console
             return self.error(f"Cannot import NVM: {import_info.path}. Error: {ex}")
+
+        bl_nvm.parent_obj = find_or_create_bl_empty(f"{map_stem} Navmeshes", context)
 
         p = time.perf_counter() - start_time
         self.info(f"Finished importing NVM {nvm_entry_name} from {nvmbnd_path.name} in {p} s.")
@@ -472,19 +494,12 @@ class ImportNVMMSBPart(LoggingOperator):
             nvmbnd_path, nvm_entry.minimal_stem, bl_name, nvm_entry.to_binary_file(NVM)
         )
 
-        parent_obj = find_or_create_bl_empty(f"{map_stem} Navmeshes", context)
-
-        importer = NVMImporter(
-            self,
-            context,
-            use_linked_duplicates=False,
-            parent_obj=parent_obj,
-        )
+        importer = NVMImporter(self, context,)
 
         self.info(f"Importing NVM model {import_info.model_file_stem} as '{import_info.bl_name}'.")
 
         try:
-            nvm_obj = importer.import_nvm(
+            bl_nvm = importer.import_nvm(
                 import_info,
                 use_material=self.use_material,
                 create_quadtree_boxes=self.create_quadtree_boxes,
@@ -497,14 +512,168 @@ class ImportNVMMSBPart(LoggingOperator):
             return self.error(f"Cannot import NVM: {import_info.path}. Error: {ex}")
 
         # Assign detected MSB transform to navmesh.
-        nvm_obj.location = transform.bl_translate
-        nvm_obj.rotation_euler = transform.bl_rotate
-        nvm_obj.scale = transform.bl_scale
+        bl_nvm.location = transform.bl_translate
+        bl_nvm.rotation_euler = transform.bl_rotate
+        bl_nvm.scale = transform.bl_scale
         # Assign Model File Stem to navmesh.
-        nvm_obj["Model File Stem"] = import_info.model_file_stem
+        bl_nvm["Model File Stem"] = import_info.model_file_stem
+        # Create/find map parent.
+        bl_nvm.parent = find_or_create_bl_empty(f"{map_stem} Navmeshes", context)
 
         p = time.perf_counter() - start_time
         self.info(f"Finished importing NVM {nvm_entry_name} from {nvmbnd_path.name} in {p} s.")
+
+        return {"FINISHED"}
+
+
+class ImportAllNVMMSBParts(LoggingOperator):
+    """Import a NVM from the current selected value of listed game MSB navmesh entries."""
+    bl_idname = "import_scene.all_msb_nvm"
+    bl_label = "Import All Navmesh Parts"
+    bl_description = "Import NVM mesh and MSB transform of every MSB Navmesh part"
+
+    # TODO: Currently no way to change these property defaults in GUI.
+
+    # TODO: Linking model data is not permitted for NVMs. No two MSB parts should use the same NVM!
+
+    use_material: bpy.props.BoolProperty(
+        name="Use Material",
+        description="If enabled, 'NVM' material will be assigned or created for all imported navmeshes",
+        default=True,
+    )
+
+    create_quadtree_boxes: bpy.props.BoolProperty(
+        name="Create Quadtree Boxes",
+        description="If enabled, create quadtree boxes for all imported navmeshes",
+        default=False,
+    )
+
+    @classmethod
+    def poll(cls, context):
+        settings = cls.settings(context)
+        if settings.game_variable_name != "DARK_SOULS_DSR":
+            return False
+        msb_path = settings.get_import_msb_path()
+        if not is_path_and_file(msb_path):
+            return False
+        return True  # MSB exists
+
+    def execute(self, context):
+
+        start_time = time.perf_counter()
+
+        settings = self.settings(context)
+        settings.save_settings()
+        if settings.game_variable_name != "DARK_SOULS_DSR":
+            return self.error("MSB Navmesh import from game is only available for Dark Souls Remastered.")
+
+        nvm_import_settings = context.scene.nvm_import_settings  # type: NVMImportSettings
+
+        part_name_match = nvm_import_settings.msb_part_name_match
+        match nvm_import_settings.msb_part_name_match_mode:
+            case "GLOB":
+                def is_name_match(name: str):
+                    return part_name_match in {"", "*"} or fnmatch.fnmatch(name, part_name_match)
+            case "REGEX":
+                pattern = re.compile(part_name_match)
+
+                def is_name_match(name: str):
+                    return part_name_match == "" or re.match(pattern, name)
+            case _:  # should never happen
+                return self.error(
+                    f"Invalid MSB part name match mode: {nvm_import_settings.msb_part_name_match_mode}"
+                )
+
+        map_stem = settings.get_latest_map_stem_version()  # NVMBNDs come from latest map version
+        nvmbnd_path = settings.get_import_map_path(f"{map_stem}.nvmbnd")
+        if not nvmbnd_path or not nvmbnd_path.is_file():
+            return self.error(f"Could not find NVMBND file for map '{map_stem}': {nvmbnd_path}")
+
+        msb_path = settings.get_import_msb_path()  # will use newest MSB version
+        msb = get_cached_file(msb_path, settings.get_game_msb_class())  # type: MSB_TYPING
+        nvmbnd = Binder.from_path(nvmbnd_path)
+
+        loaded_models = {}
+        part_count = 0
+        navmesh_parent = None  # found/created by first part
+
+        importer = NVMImporter(self, context)
+
+        for navmesh_part in msb.navmeshes:
+
+            if not is_name_match(navmesh_part.name):
+                # MSB navmesh name (part, not model) does not match glob/regex.
+                continue
+
+            if navmesh_part.model.name in loaded_models:
+                first_part = loaded_models[navmesh_part.model.name]
+                self.warning(
+                    f"MSB navmesh part '{navmesh_part.name}' uses model '{navmesh_part.model.name}', which has "
+                    f"already been loaded from MSB part '{first_part}'. No two MSB Navmesh parts should use the same "
+                    f"NVM asset; try duplicating the NVM and and change the MSB model name first."
+                )
+                continue
+
+
+            transform = Transform.from_msb_part(navmesh_part)
+            nvm_stem = navmesh_part.model.get_model_file_stem(map_stem)
+
+            nvm_entry_name = f"{nvm_stem}.nvm"  # no DCX in DSR
+
+            try:
+                nvm_entry = nvmbnd.find_entry_name(nvm_entry_name)
+            except EntryNotFoundError:
+                return self.error(f"Could not find NVM entry '{nvm_entry_name}' in NVMBND file '{nvmbnd_path.name}'.")
+
+            import_info = NVMImportInfo(
+                nvmbnd_path, nvm_entry.minimal_stem, navmesh_part.name, nvm_entry.to_binary_file(NVM)
+            )
+
+            self.info(f"Importing NVM model {import_info.model_file_stem} as '{import_info.bl_name}'.")
+
+            try:
+                nvm_obj = importer.import_nvm(
+                    import_info,
+                    use_material=self.use_material,
+                    create_quadtree_boxes=self.create_quadtree_boxes,
+                )
+            except Exception as ex:
+                # Delete any objects created prior to exception.
+                for obj in importer.all_bl_objs:
+                    bpy.data.objects.remove(obj)
+                traceback.print_exc()  # for inspection in Blender console
+                return self.error(f"Cannot import NVM: {import_info.path}. Error: {ex}")
+
+            # Assign detected MSB transform to navmesh.
+            nvm_obj.location = transform.bl_translate
+            nvm_obj.rotation_euler = transform.bl_rotate
+            nvm_obj.scale = transform.bl_scale
+
+            if not navmesh_parent:
+                # Find or create parent for all imported parts.
+                if nvm_import_settings.include_pattern_in_parent_name:
+                    parent_name = f"{map_stem} Navmeshes ({part_name_match})"
+                else:
+                    parent_name = f"{map_stem} Navmeshes"
+                navmesh_parent = find_or_create_bl_empty(parent_name, context)
+            nvm_obj.parent = navmesh_parent
+
+            # Assign Model File Stem to navmesh.
+            nvm_obj["Model File Stem"] = import_info.model_file_stem
+
+            # Record model usage.
+            loaded_models[navmesh_part.model.name] = navmesh_part.name
+
+            part_count += 1
+
+        if part_count == 0:
+            self.warning(f"No MSB Navmesh parts found (filter: '{part_name_match}').")
+            return {"CANCELLED"}
+
+        self.info(
+            f"Imported {len(loaded_models)} NVM models and {part_count} / {len(msb.navmeshes)} MSB Navmesh parts in "
+            f"{time.perf_counter() - start_time:.3f} seconds (filter: '{part_name_match}')."
+        )
 
         return {"FINISHED"}
 
@@ -514,40 +683,24 @@ class NVMImporter:
 
     nvm: NVM | None
     bl_name: str
-    use_linked_duplicates: bool
 
-    parent_obj: bpy.types.Object | None
     imported_models: dict[str, bpy.types.Object]  # model file stem -> Blender object
 
     def __init__(
         self,
         operator: LoggingOperator,
         context,
-        use_linked_duplicates=False,
-        parent_obj: bpy.types.Object | None = None,
     ):
         self.operator = operator
         self.context = context
-        self.use_linked_duplicates = use_linked_duplicates
 
-        self.parent_obj = parent_obj
         self.all_bl_objs = []
         self.imported_models = {}
 
-    def import_nvm(self, import_info: NVMImportInfo, use_material=True, create_quadtree_boxes=False):
+    def import_nvm(
+        self, import_info: NVMImportInfo, use_material=True, create_quadtree_boxes=False
+    ) -> bpy.types.MeshObject:
         """Read a NVM into a collection of Blender mesh objects."""
-
-        if self.use_linked_duplicates and import_info.model_file_stem in self.imported_models:
-            # Model already imported. Create a linked duplicate Blender object.
-            mesh_data = self.imported_models[import_info.model_file_stem].data
-            duplicate_obj = bpy.data.objects.new(import_info.bl_name, mesh_data)
-            self.context.scene.collection.objects.link(duplicate_obj)
-            self.all_bl_objs = [duplicate_obj]
-            if self.parent_obj:
-                duplicate_obj.parent = self.parent_obj
-            if create_quadtree_boxes:
-                self.create_nvm_quadtree(duplicate_obj, import_info.nvm, import_info.bl_name)
-            return duplicate_obj
 
         # Set mode to OBJECT and deselect all objects.
         if bpy.ops.object.mode_set.poll():
@@ -564,7 +717,8 @@ class NVMImporter:
         edges = []  # no edges in NVM
         faces = [triangle.vertex_indices for triangle in nvm.triangles]
         bl_mesh.from_pydata(vertices, edges, faces)
-        mesh_obj = bpy.data.objects.new(import_info.bl_name, bl_mesh)
+        # noinspection PyTypeChecker
+        mesh_obj = bpy.data.objects.new(import_info.bl_name, bl_mesh)  # type: bpy.types.MeshObject
         self.context.scene.collection.objects.link(mesh_obj)
         self.all_bl_objs = [mesh_obj]
 
@@ -599,9 +753,6 @@ class NVMImporter:
             self.create_nvm_quadtree(mesh_obj, nvm, import_info.bl_name)
 
         self.imported_models[import_info.model_file_stem] = mesh_obj
-
-        if self.parent_obj:
-            mesh_obj.parent = self.parent_obj
 
         return mesh_obj
 

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 __all__ = [
+    "HKXMapCollisionImportSettings",
     "ImportHKXMapCollision",
     "ImportHKXMapCollisionWithBinderChoice",
     "ImportHKXMapCollisionFromHKXBHD",
-    "ImportMSBMapCollision",
+    "ImportMSBMapCollisionPart",
+    "ImportAllMSBMapCollisionsParts",
 
     "ExportLooseHKXMapCollision",
     "ExportHKXMapCollisionIntoBinder",
@@ -70,7 +72,11 @@ class HKX_COLLISION_PT_hkx_map_collisions(bpy.types.Panel):
             msb_import_box = import_box.box()
             msb_import_box.label(text="Game MSB Part Import")
             msb_import_box.prop(context.scene.soulstruct_game_enums, "hkx_map_collision_parts")
-            msb_import_box.operator(ImportMSBMapCollision.bl_idname, text="Import Collision Part")
+            msb_import_box.operator(ImportMSBMapCollisionPart.bl_idname, text="Import Collision Part")
+            msb_import_box.prop(context.scene.map_collision_import_settings, "msb_part_name_match")
+            msb_import_box.prop(context.scene.map_collision_import_settings, "msb_part_name_match_mode")
+            msb_import_box.prop(context.scene.map_collision_import_settings, "include_pattern_in_parent_name")
+            msb_import_box.operator(ImportAllMSBMapCollisionsParts.bl_idname, text="Import ALL Matching Parts")
 
         export_box = self.layout.box()
         export_box.operator(ExportLooseHKXMapCollision.bl_idname)

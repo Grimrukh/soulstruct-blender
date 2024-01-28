@@ -130,10 +130,12 @@ CLASSES = (
     FLVERUVMapsPanel,
 
     GlobalSettingsPanel_NavmeshView,
+    NVMImportSettings,
     ImportNVM,
     ImportNVMWithBinderChoice,
     ImportNVMFromNVMBND,
     ImportNVMMSBPart,
+    ImportAllNVMMSBParts,
     ExportLooseNVM,
     ExportNVMIntoBinder,
     ExportNVMIntoNVMBND,
@@ -154,6 +156,7 @@ CLASSES = (
     AddNVMFaceFlags,
     RemoveNVMFaceFlags,
     SetNVMFaceObstacleCount,
+    ResetNVMFaceInfo,
     MCGDrawSettings,
 )
 
@@ -166,10 +169,12 @@ if soulstruct_havok:
     HAVOK_CLASSES = (
         GlobalSettingsPanel_HavokView,
 
+        HKXMapCollisionImportSettings,
         ImportHKXMapCollision,
         ImportHKXMapCollisionWithBinderChoice,
         ImportHKXMapCollisionFromHKXBHD,
-        ImportMSBMapCollision,
+        ImportMSBMapCollisionPart,
+        ImportAllMSBMapCollisionsParts,
 
         ImportHKXAnimation,
         ImportHKXAnimationWithBinderChoice,
@@ -243,6 +248,7 @@ def register():
     bpy.types.Scene.flver_export_settings = bpy.props.PointerProperty(type=FLVERExportSettings)
     bpy.types.Scene.texture_export_settings = bpy.props.PointerProperty(type=TextureExportSettings)
     bpy.types.Scene.bake_lightmap_settings = bpy.props.PointerProperty(type=BakeLightmapSettings)
+    bpy.types.Scene.nvm_import_settings = bpy.props.PointerProperty(type=NVMImportSettings)
     bpy.types.Scene.navmesh_face_settings = bpy.props.PointerProperty(type=NavmeshFaceSettings)
     bpy.types.Scene.mcg_draw_settings = bpy.props.PointerProperty(type=MCGDrawSettings)
     bpy.types.Scene.mesh_move_settings = bpy.props.PointerProperty(type=MeshMoveSettings)
@@ -270,6 +276,8 @@ def register():
             bpy.utils.register_class(cls)
         bpy.types.TOPBAR_MT_file_import.append(havok_menu_func_import)
         bpy.types.TOPBAR_MT_file_export.append(havok_menu_func_export)
+
+        bpy.types.Scene.map_collision_import_settings = bpy.props.PointerProperty(type=HKXMapCollisionImportSettings)
 
 
 def unregister():

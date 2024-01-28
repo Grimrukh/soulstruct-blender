@@ -100,9 +100,10 @@ class QuickImportMCG(LoggingOperator):
     def execute(self, context):
 
         settings = self.settings(context)
-        if not settings.map_stem:
+        map_stem = settings.get_latest_map_stem_version()  # MCG uses latest
+        if not map_stem:
             return
-        mcg_path = settings.get_game_map_path(f"{settings.map_stem}.mcg")
+        mcg_path = settings.get_game_map_path(f"{map_stem}.mcg")
         if not mcg_path.is_file():
             return self.error(f"Could not find MCG file '{mcg_path}'.")
         msb_path = settings.get_game_msb_path()
@@ -124,7 +125,7 @@ class QuickImportMCG(LoggingOperator):
         # mcg.set_navmesh_references(msb.navmeshes)
 
         importer = MCGImporter(self, context)
-        importer.import_mcg(mcg, map_stem=settings.map_stem, navmesh_part_names=navmesh_part_names)
+        importer.import_mcg(mcg, map_stem=map_stem, navmesh_part_names=navmesh_part_names)
 
         return {'FINISHED'}
 

@@ -1,8 +1,10 @@
 __all__ = [
+    "NVMImportSettings",
     "ImportNVM",
     "ImportNVMWithBinderChoice",
     "ImportNVMFromNVMBND",
     "ImportNVMMSBPart",
+    "ImportAllNVMMSBParts",
 
     "ExportLooseNVM",
     "ExportNVMIntoBinder",
@@ -14,6 +16,7 @@ __all__ = [
     "AddNVMFaceFlags",
     "RemoveNVMFaceFlags",
     "SetNVMFaceObstacleCount",
+    "ResetNVMFaceInfo",
 ]
 
 from .import_nvm import *

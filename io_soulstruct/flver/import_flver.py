@@ -475,12 +475,12 @@ class ImportMapPieceMSBPart(LoggingOperator):
 class ImportAllMapPieceMSBParts(LoggingOperator):
     """Import ALL MSB map piece parts and their transforms. Will take a long time!"""
     bl_idname = "import_scene.all_msb_map_piece_flver"
-    bl_label = "Import All Map Piece Parts (SLOW)"
+    bl_label = "Import All Map Piece Parts"
     bl_description = "Import FLVER model and MSB transform of every Map Piece MSB part (SLOW)"
 
     link_model_data: bpy.props.BoolProperty(
         name="Link Model Data",
-        description="Use instances of Armature and Mesh data for repeated models instead of duplicating objects",
+        description="Use instances of Armature and Mesh data for repeated models instead of duplicating the same asset",
         default=True,
     )
 
@@ -517,12 +517,19 @@ class ImportAllMapPieceMSBParts(LoggingOperator):
             case _:  # should never happen
                 return self.error(f"Invalid MSB part name match mode: {flver_import_settings.msb_part_name_match_mode}")
 
+        import_map_path = settings.get_import_map_path()  # no version handling needed
+        if not import_map_path:  # validation
+            return self.error("Game directory and map stem must be set in Blender's Soulstruct global settings.")
+
         map_stem = settings.get_oldest_map_stem_version()  # for FLVERs
         msb_path = settings.get_import_msb_path()  # will automatically use latest MSB version if known and enabled
         msb = get_cached_file(msb_path, settings.get_game_msb_class())  # type: MSB_TYPING
 
         # Maps FLVER model stems to Armature and Mesh already created.
         loaded_models = {}  # type: dict[str, tuple[bpy.types.ArmatureObject, bpy.types.MeshObject]]
+        part_count = 0
+        bl_mesh = None  # for getting final mesh to select
+        map_piece_parent = None  # found/created by first part
 
         importer = FLVERBatchImporter(
             self,
@@ -530,11 +537,6 @@ class ImportAllMapPieceMSBParts(LoggingOperator):
             settings,
             texture_import_manager=texture_manager,
         )
-
-        part_count = 0
-
-        bl_mesh = None  # for getting final mesh to select
-        map_piece_parent = None  # found/created by first part
 
         for map_piece_part in msb.map_pieces:
 
@@ -594,6 +596,9 @@ class ImportAllMapPieceMSBParts(LoggingOperator):
                     self.error(f"Cannot import FLVER: {flver_path.name}. Error: {ex}")
                     continue
 
+                # Record model for future Part instances.
+                loaded_models[model_stem] = (bl_armature, bl_mesh)
+
             # Set 'Model File Stem' to ensure the model file stem is recorded, since the object name is the part name.
             bl_mesh["Model File Stem"] = model_stem
 
@@ -608,18 +613,19 @@ class ImportAllMapPieceMSBParts(LoggingOperator):
             bl_armature.parent = map_piece_parent
 
             # Set transform.
-            if transform is not None:
-                bl_armature.location = transform.bl_translate
-                bl_armature.rotation_euler = transform.bl_rotate
-                bl_armature.scale = transform.bl_scale
+            bl_armature.location = transform.bl_translate
+            bl_armature.rotation_euler = transform.bl_rotate
+            bl_armature.scale = transform.bl_scale
 
-            # Record model for future Part instances.
-            loaded_models[model_stem] = (bl_armature, bl_mesh)
             part_count += 1
 
+        if part_count == 0:
+            self.warning(f"No MSB Map Piece parts found (filter: '{part_name_match}').")
+            return {"CANCELLED"}
+
         self.info(
-            f"Imported {len(loaded_models)} map piece FLVER models and {part_count} / {len(msb.map_pieces)} Parts in "
-            f"{time.perf_counter() - start_time:.3f} seconds."
+            f"Imported {len(loaded_models)} map piece FLVER models and {part_count} / {len(msb.map_pieces)} MSB Map "
+            f"Piece parts in {time.perf_counter() - start_time:.3f} seconds (filter: '{part_name_match}')."
         )
 
         # Select and frame view on (final) newly imported Mesh.
