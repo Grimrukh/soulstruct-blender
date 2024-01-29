@@ -10,6 +10,7 @@ __all__ = [
     "ExportNVMIntoBinder",
     "ExportNVMIntoNVMBND",
     "ExportNVMMSBPart",
+    "ExportAllNVMMSBParts",
 
     "NavmeshFaceSettings",
     "RefreshFaceIndices",

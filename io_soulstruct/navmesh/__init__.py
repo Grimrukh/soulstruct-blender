@@ -11,6 +11,7 @@ __all__ = [
     "ExportNVMIntoBinder",
     "ExportNVMIntoNVMBND",
     "ExportNVMMSBPart",
+    "ExportAllNVMMSBParts",
 
     "ImportMCP",
     "QuickImportMCP",
@@ -134,6 +135,8 @@ class NVM_PT_ds1_navmesh_export(bpy.types.Panel):
             context.scene.soulstruct_settings, "detect_map_from_parent", text="Detect Map from Parent"
         )
         msb_box.operator(ExportNVMMSBPart.bl_idname)
+        msb_box.label(text="Game MSB and NVMBND Complete Export")
+        msb_box.operator(ExportAllNVMMSBParts.bl_idname)
 
 
 class NVM_PT_ds1_navmesh_tools(bpy.types.Panel):

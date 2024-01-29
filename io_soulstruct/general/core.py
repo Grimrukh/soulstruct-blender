@@ -530,7 +530,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):
             self._export_file(operator, file, relative_path, class_name)
         except Exception as e:
             traceback.print_exc()
-            operator.report({"ERROR"}, f"Failed to export {class_name} file: {e}")
+            operator.report({"ERROR"}, f"Failed to export {class_name if class_name else '<unknown>'} file: {e}")
             return {"CANCELLED"}
 
         # Clear enums so any new files/folders/entries can be detected.

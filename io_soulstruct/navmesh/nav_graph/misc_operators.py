@@ -142,11 +142,7 @@ def create_mcg_edge(context, data):
 def set_node_navmesh_name_triangles(context, a_or_b: str):
     node = context.selected_objects[0]
     name_prop = f"Navmesh {a_or_b} Name"
-    if node.get(name_prop, None) is None:
-        raise MCGEdgeCreationError(f"Selected node does not have a '{name_prop}' property.")
     triangles_prop = f"Navmesh {a_or_b} Triangles"
-    if node.get(triangles_prop, None) is None:
-        raise MCGEdgeCreationError(f"Selected node does not have a '{triangles_prop}' property.")
     navmesh = context.edit_object
     node[name_prop] = navmesh.name
     bm = bmesh.from_edit_mesh(navmesh.data)

@@ -91,7 +91,6 @@ class HKX_COLLISION_PT_hkx_map_collisions(bpy.types.Panel):
             msb_export_box = export_box.box()
             msb_export_box.label(text="Game MSB Part Export")
             msb_export_box.prop(context.scene.soulstruct_settings, "detect_map_from_parent")
-            msb_export_box.prop(context.scene.soulstruct_game_enums, "hkx_map_collision_parts")
             msb_export_box.operator(ExportMSBMapCollision.bl_idname, text="Export Collision Part")
 
         misc_operators_box = self.layout.box()

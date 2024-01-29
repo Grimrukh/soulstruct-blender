@@ -1,6 +1,12 @@
 from __future__ import annotations
 
-__all__ = ["ExportLooseNVM", "ExportNVMIntoBinder", "ExportNVMIntoNVMBND", "ExportNVMMSBPart"]
+__all__ = [
+    "ExportLooseNVM",
+    "ExportNVMIntoBinder",
+    "ExportNVMIntoNVMBND",
+    "ExportNVMMSBPart",
+    "ExportAllNVMMSBParts",
+]
 
 import traceback
 from pathlib import Path
@@ -15,11 +21,15 @@ import bmesh
 
 from soulstruct.containers import Binder, BinderEntry
 from soulstruct.dcx import DCXType
+from soulstruct.base.maps.msb.utils import GroupBitSet128
 from soulstruct.darksouls1r.maps.navmesh.nvm import NVM, NVMTriangle, NVMEventEntity
+from soulstruct.darksouls1r.maps.navmesh.nvmbnd import NVMBND
+from soulstruct.darksouls1r.maps.models import MSBNavmeshModel
+from soulstruct.darksouls1r.maps.parts import MSBNavmesh
 
 from io_soulstruct.general.cached import get_cached_file
 from io_soulstruct.utilities.operators import LoggingOperator, get_dcx_enum_property
-from io_soulstruct.utilities.misc import MAP_STEM_RE, get_bl_obj_stem
+from io_soulstruct.utilities.misc import MAP_STEM_RE, get_bl_obj_stem, natural_keys
 from io_soulstruct.utilities.conversion import BlenderTransform
 
 if tp.TYPE_CHECKING:
@@ -485,6 +495,169 @@ class ExportNVMMSBPart(LoggingOperator):
             for i, entry in enumerate(nvmbnd.entries):
                 entry.entry_id = i
             settings.export_file(self, nvmbnd, nvmbnd.path.relative_to(settings.game_directory))
+
+        return {"FINISHED"}
+
+
+class ExportAllNVMMSBParts(LoggingOperator):
+
+    bl_idname = "export_scene.all_msb_nvm"
+    bl_label = "Export All Navmesh Parts"
+    bl_description = ("Fully replace MSB navmesh models and parts in selected game map MSB/NVMBND with children of "
+                      "selected Blender object. Make sure you are exporting ALL of this map's navmeshes at once")
+
+    # Always overwrites existing NVM parts and NVMBND entries.
+
+    # TODO: Can't disable, but leaving here for now.
+    prefer_new_model_file_stem: BoolProperty(
+        name="Prefer New Model File Stem",
+        description="Use the 'Model File Stem' property on the Blender mesh parent to update the model file stem in "
+                    "the MSB and determine the NVM entry stem to write. If disabled, the MSB model name will be used.",
+        default=True,
+    )
+
+    @classmethod
+    def poll(cls, context):
+        """Parent of one or more 'n*' Meshes selected."""
+        return (
+            cls.settings(context).game_variable_name == "DARK_SOULS_DSR"
+            and len(context.selected_objects) == 1
+            and len(context.selected_objects[0].children) >= 1
+            and all(child.type == "MESH" and child.name[0] == "n" for child in context.selected_objects[0].children)
+        )
+
+    def execute(self, context):
+        settings = self.settings(context)
+        if settings.game_variable_name != "DARK_SOULS_DSR":
+            return self.error("Quick MSB Navmesh export is only supported for Dark Souls: Remastered.")
+
+        if not self.poll(context):
+            return self.error("Children of object selected for MSB model/part export are not all valid 'n' meshes.")
+
+        if not settings.map_stem and not settings.detect_map_from_parent:
+            return self.error(
+                "No game map directory specified in Soulstruct settings and `Detect Map from Parent` is disabled."
+            )
+        default_map_path = Path(f"map/{settings.get_latest_map_stem_version()}") if settings.map_stem else None
+
+        # TODO: Not needed for meshes only?
+        if bpy.ops.object.mode_set.poll():
+            bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
+
+        bl_parent = context.selected_objects[0]
+
+        if settings.detect_map_from_parent:
+            map_stem = bl_parent.name.split(" ")[0]
+            if not MAP_STEM_RE.match(map_stem):
+                return self.error(
+                    f"Selected parent object '{bl_parent.name}' does not start with a valid map stem."
+                )
+            # NVMBND files come from latest 'map' version.
+            map_stem = settings.get_latest_map_stem_version(map_stem)
+            # SIB path comes from oldest 'map' version.
+            sib_map_stem = settings.get_oldest_map_stem_version(map_stem)
+            relative_nvmbnd_path = Path(f"map/{map_stem}/{map_stem}.nvmbnd")
+        else:
+            # Use Soulstruct selected map.
+            map_stem = settings.get_latest_map_stem_version()
+            sib_map_stem = settings.get_oldest_map_stem_version(map_stem)
+            relative_nvmbnd_path = default_map_path / f"{map_stem}.nvmbnd"
+
+        exporter = NVMExporter(self, context)
+
+        nvmbnd = NVMBND(map_stem=map_stem)
+        msb_new_models = {}
+        part_sib_path = f"N:\\FRPG\\data\\Model\\map\\{sib_map_stem}\\sib\\n_layout.SIB"
+
+        relative_msb_path = settings.get_relative_msb_path(map_stem)  # will also use latest MSB version
+        try:
+            msb_path = settings.prepare_project_file(relative_msb_path, False, must_exist=True)
+        except FileNotFoundError as ex:
+            return self.error(
+                f"Could not find MSB file '{relative_msb_path}' for map '{map_stem}'. Error: {ex}"
+            )
+        msb = get_cached_file(msb_path, settings.get_game_msb_class())  # type: MSB_TYPING
+
+        # Erase all MSB Navmesh models and parts. (No other MSB entries should reference navmeshes.)
+        msb.navmeshes.clear()
+        msb.navmesh_models.clear()
+
+        children = list(bl_parent.children)
+        children.sort(key=lambda o: natural_keys(o.name))  # ensure child order matches Blender hierarchy order
+
+        for bl_mesh_obj in children:
+
+            bl_mesh_obj: bpy.types.MeshObject
+
+            # Get model file stem from MSB (must contain matching part).
+            navmesh_part_name = get_bl_obj_stem(bl_mesh_obj)  # could be the same as the file stem
+
+            # Get navmesh groups by parsing part name.
+            # TODO: Check 'Navmesh Group' property?
+            navmesh_group = bl_mesh_obj.get("Navmesh Group", None)  # type: int
+            if navmesh_group is None:
+                try:
+                    navmesh_group = int(navmesh_part_name[1:5])  # model ID
+                except ValueError:
+                    return self.error(
+                        f"Could not parse model ID of Blender navmesh '{navmesh_part_name}' to use as navmesh group."
+                    )
+
+            nvm_entry_stem = bl_mesh_obj.get("Model File Stem", None) if self.prefer_new_model_file_stem else None
+            if not nvm_entry_stem:  # could be None or empty string
+                # Use first seven characters of part name (e.g. 'n1234B0') and map area suffix (e.g. 'A12').
+                nvm_entry_stem = navmesh_part_name[:7] + f"A{map_stem[1:3]}"
+            msb_model_name = nvm_entry_stem[:7]  # no area suffix
+
+            bl_transform = BlenderTransform.from_bl_obj(bl_mesh_obj)
+
+            if msb_model_name in msb_new_models:
+                # NVM and MSB model already created. Retrieve MSB model entry.
+                msb_navmesh_model = msb_new_models[msb_model_name]
+                self.warning(f"Multiple Navmesh parts use NVM model '{nvm_entry_stem}'. This is highly unusual!")
+            else:
+                # Create NVM model and MSB model entry.
+                msb_navmesh_model = MSBNavmeshModel(
+                    name=msb_model_name,
+                    sib_path=f"N:\\FRPG\\data\\Model\\map\\{sib_map_stem}\\navimesh\\{msb_model_name}.SIB"
+                )
+                msb.navmesh_models.append(msb_navmesh_model)
+                try:
+                    nvm = exporter.export_nvm(bl_mesh_obj)
+                except Exception as ex:
+                    traceback.print_exc()
+                    return self.error(f"Cannot get exported NVM. Error: {ex}")
+                else:
+                    nvm.dcx_type = DCXType.Null  # no DCX compression inside NVMBND
+
+                nvmbnd.nvms[nvm_entry_stem] = nvm
+                msb_new_models[msb_model_name] = msb_navmesh_model
+
+            # Create MSB part entry.
+            msb_navmesh_part = MSBNavmesh(
+                name=navmesh_part_name,
+                model=msb_navmesh_model,
+                sib_path=part_sib_path,
+                navmesh_groups=GroupBitSet128({navmesh_group}),
+                # Set transform (usually identity).
+                translate=bl_transform.game_translate,
+                rotate=bl_transform.game_rotate_deg,
+                scale=bl_transform.game_scale,
+            )
+            msb.navmeshes.append(msb_navmesh_part)
+
+        # Sort models, just in case any weird custom names were used.
+        msb.navmeshes.sort_by_name()
+
+        # Write MSB.
+        settings.export_file(self, msb, relative_msb_path)
+        # Write NVMBND.
+        settings.export_file(self, nvmbnd, relative_nvmbnd_path)
+
+        self.info(
+            f"Exported complete list of MSB navmeshes and NVM models to {map_stem}: "
+            f"{len(msb.navmeshes)} parts using {len(msb.navmesh_models)} models."
+        )
 
         return {"FINISHED"}
 

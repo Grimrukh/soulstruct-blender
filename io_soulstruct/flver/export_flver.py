@@ -431,6 +431,7 @@ class BaseGameFLVERBinderExportOperator(LoggingOperator):
             raise FLVERExportError(f"Cannot create exported FLVER from Blender Mesh '{model_stem}'. Error: {ex}")
 
         flver.dcx_type = DCXType.Null  # no DCX inside any Binder here
+        # noinspection PyTypeChecker
         return model_stem, binder, flver, exporter
 
     def export_textures_to_binder_tpf(
@@ -1217,10 +1218,10 @@ class FLVERBatchExporter:
             #  data (pink lines in 3D View overlay) and writes them to `loop.normal`.
             mesh_data.calc_tangents(uvmap="UVMap1")
             # bl_mesh_data.calc_normals_split()
-        except RuntimeError:
+        except RuntimeError as ex:
             raise RuntimeError(
                 "Could not calculate vertex tangents from 'UVMap1'. Make sure the mesh is triangulated and not "
-                "empty (delete any empty mesh)."
+                f"empty (delete any empty mesh). Error: {ex}"
             )
 
         # 4. Construct arrays from Blender data and pass into a new `MergedMesh`.

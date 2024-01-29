@@ -140,6 +140,8 @@ CLASSES = (
     ExportNVMIntoBinder,
     ExportNVMIntoNVMBND,
     ExportNVMMSBPart,
+    ExportAllNVMMSBParts,
+
     ImportMCP,
     QuickImportMCP,
     ImportMCG,
