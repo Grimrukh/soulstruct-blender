@@ -216,10 +216,6 @@ def get_hkx_map_collision_items(self, context):
     if not is_path_and_dir(game_map_path) and not is_path_and_dir(project_map_path):
         return _clear_items(key).items
 
-    cached = GAME_FILE_ENUMS[key]
-    if cached.is_valid(game_map_path, project_map_path):
-        return cached.items  # use cached items
-
     if settings.is_game(DARK_SOULS_PTDE):
         # Loose HKX files. TODO: Need code for finding adjacent loose lo-res collisions as well.
         # TODO: Easily found, but I haven't finished map collision support for Havok 2010 yet.
@@ -234,6 +230,9 @@ def get_hkx_map_collision_items(self, context):
         project_hkxbhd_path = project_map_path / f"h{map_stem[1:]}.hkxbhd"  # no DCX
         if not project_hkxbhd_path.is_file():
             project_hkxbhd_path = None
+        cached = GAME_FILE_ENUMS[key]
+        if cached.is_valid(game_hkxbhd_path, project_hkxbhd_path):
+            return cached.items  # use cached items
         pattern = re.compile(r".*\.hkx\.dcx")
         cached = GAME_FILE_ENUMS[key] = CachedEnum.from_binder_entries(
             game_hkxbhd_path,
