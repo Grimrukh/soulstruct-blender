@@ -21,6 +21,7 @@ from pathlib import Path
 
 import numpy as np
 
+import bmesh
 import bpy
 from bpy.props import StringProperty, FloatProperty, BoolProperty, IntProperty
 from bpy_extras.io_utils import ExportHelper
@@ -362,7 +363,7 @@ class ExportMapPieceFLVERs(LoggingOperator):
             else:
                 relative_map_path = default_map_path
 
-            model_stem = get_default_flver_stem(mesh, armature, self)
+            model_stem = mesh.get("Model File Stem", get_default_flver_stem(mesh, armature, self))
 
             try:
                 flver = exporter.export_flver(mesh, armature, bl_name=model_stem)
@@ -984,6 +985,21 @@ class FLVERBatchExporter:
         armature: bpy.types.ArmatureObject | None,
         bl_name: str,
         default_bone_name: str = None,
+    ):
+        try:
+            return self._export_flver(mesh, armature, bl_name, default_bone_name)
+        finally:
+            try:
+                bpy.data.meshes.remove(bpy.data.meshes["__TEMP_FLVER__"])
+            except KeyError:
+                pass
+
+    def _export_flver(
+        self,
+        mesh: bpy.types.MeshObject,
+        armature: bpy.types.ArmatureObject | None,
+        bl_name: str,
+        default_bone_name: str = None,
     ) -> FLVER:
         """Create an entire FLVER from Blender Mesh and (optional) Armature objects.
 
@@ -1204,8 +1220,19 @@ class FLVERBatchExporter:
             all_uv_layer_names_set |= set(material_uv_layer_names)
         uv_layer_names = sorted(all_uv_layer_names_set)  # e.g. ["UVMap1", "UVMap2", "UVMap3"]
 
+        # Automatically triangulate the mesh.
+        bm = bmesh.new()
+        bm.from_mesh(bl_mesh.data)
+        bmesh.ops.triangulate(bm, faces=bm.faces[:], quad_method="BEAUTY", ngon_method="BEAUTY")
+        tri_mesh_data = bpy.data.meshes.new("__TEMP_FLVER__")  # will be deleted during `finally` block of caller
+        # Probably not necessary, but we copy material slots over, just case it causes `face.material_index` problems.
+        for bl_mat in bl_mesh.data.materials:
+            tri_mesh_data.materials.append(bl_mat)
+        bm.to_mesh(tri_mesh_data)
+        bm.free()
+        del bm
+
         # 3. Prepare Mesh data.
-        mesh_data = bl_mesh.data  # type: bpy.types.Mesh
         # TODO: The tangent and bitangent of each vertex should be calculated from the UV map that is effectively
         #  serving as the normal map ('_n' displacement texture) for that vertex. However, for multi-texture mesh
         #  materials, vertex alpha blends two normal maps together, so the UV map for (bi)tangents will vary across
@@ -1216,7 +1243,7 @@ class FLVERBatchExporter:
             # TODO: This function calls the required `calc_normals_split()` automatically, but if it was replaced,
             #  a separate call of that would be needed to write the (rather inaccessible) custom split per-loop normal
             #  data (pink lines in 3D View overlay) and writes them to `loop.normal`.
-            mesh_data.calc_tangents(uvmap="UVMap1")
+            tri_mesh_data.calc_tangents(uvmap="UVMap1")
             # bl_mesh_data.calc_normals_split()
         except RuntimeError as ex:
             raise RuntimeError(
@@ -1228,7 +1255,7 @@ class FLVERBatchExporter:
 
         # Slow part number 1: iterating over every Blender vertex to retrieve its position and bone weights/indices.
         # We at least know the size of the array in advance.
-        vertex_count = len(mesh_data.vertices)
+        vertex_count = len(tri_mesh_data.vertices)
         vertex_data_dtype = [
             ("position", "f", 3),  # TODO: support 4D position
             ("bone_weights", "f", 4),
@@ -1247,7 +1274,10 @@ class FLVERBatchExporter:
         #  retrieval of vertex bones, though, it's unlikely a simple `position` array assignment would remove the need.
         # TODO: Surely I can use `vertices.foreach_get("co" / "groups")`?
         p = time.perf_counter()
-        for i, vertex in enumerate(mesh_data.vertices):
+
+        # NOTE: We iterate over the original, non-triangulated mesh, as the vertices should be the same and these
+        # vertices have their bone vertex groups (which cannot easily be transferred to the triangulated copy).
+        for i, vertex in enumerate(bl_mesh.data.vertices):
             vertex_positions[i] = vertex.co  # TODO: would use `foreach_get` but still have to iterate for bones?
 
             bone_indices = []  # global (splitter will make them local to submesh if appropriate)
@@ -1316,9 +1346,10 @@ class FLVERBatchExporter:
         self.info(f"Constructed combined vertex array in {time.perf_counter() - p} s.")
 
         # TODO: Again, due to the unfortunate need to access Python attributes one by one, we need a `for` loop.
+        # NOTE: We now iterate over the faces of the triangulated copy. Material index has been properly triangulated.
         p = time.perf_counter()
-        faces = np.empty((len(mesh_data.polygons), 4), dtype=np.int32)
-        for i, face in enumerate(mesh_data.polygons):
+        faces = np.empty((len(tri_mesh_data.polygons), 4), dtype=np.int32)
+        for i, face in enumerate(tri_mesh_data.polygons):
             try:
                 faces[i] = [*face.loop_indices, face.material_index]
             except ValueError:
@@ -1328,9 +1359,10 @@ class FLVERBatchExporter:
                 )
         self.info(f"Constructed combined face array with {len(faces)} rows in {time.perf_counter() - p} s.")
 
-        # Finally, we iterate over loops and construct their arrays.
+        # Finally, we iterate over (triangulated) loops and construct their arrays. Note that loop UV and vertex color
+        # data IS copied over during the triangulation. Obviously, we will just have more loops.
         p = time.perf_counter()
-        loop_count = len(mesh_data.loops)
+        loop_count = len(tri_mesh_data.loops)
 
         # UV arrays correspond to FLVER-wide sorted UV layer names.
         loop_uvs = [
@@ -1339,7 +1371,8 @@ class FLVERBatchExporter:
         ]
 
         try:
-            loop_colors_layer = mesh_data.vertex_colors["VertexColors"]
+            # Vertex colors have been triangulated.
+            loop_colors_layer = tri_mesh_data.vertex_colors["VertexColors"]
         except KeyError:
             self.warning(f"FLVER mesh '{bl_mesh.name}' has no 'VertexColors' data layer. Using black.")
             loop_colors_layer = None
@@ -1361,21 +1394,21 @@ class FLVERBatchExporter:
         loop_tangents = np.empty((loop_count, 3), dtype=np.float32)
         loop_bitangents = np.empty((loop_count, 3), dtype=np.float32)
 
-        mesh_data.loops.foreach_get("vertex_index", loop_vertex_indices)
-        mesh_data.loops.foreach_get("normal", loop_normals.ravel())
-        mesh_data.loops.foreach_get("tangent", loop_tangents.ravel())
+        tri_mesh_data.loops.foreach_get("vertex_index", loop_vertex_indices)
+        tri_mesh_data.loops.foreach_get("normal", loop_normals.ravel())
+        tri_mesh_data.loops.foreach_get("tangent", loop_tangents.ravel())
         # TODO: 99% sure that `bitangent` data in DS1 is used to store tangent data for the second texture group.
         #  So it should be calculated from "tangent" for loops that actually use it... ugh.
-        mesh_data.loops.foreach_get("bitangent", loop_bitangents.ravel())
+        tri_mesh_data.loops.foreach_get("bitangent", loop_bitangents.ravel())
         if loop_colors_layer:
             loop_colors_layer.data.foreach_get("color", loop_vertex_color.ravel())
         for uv_i, uv_layer_name in enumerate(uv_layer_names):
-            uv_layer = bl_mesh.data.uv_layers[uv_layer_name]
+            uv_layer = tri_mesh_data.uv_layers[uv_layer_name]
             if len(uv_layer.data) == 0:
                 raise FLVERExportError(f"UV layer {uv_layer.name} contains no data.")
             uv_layer.data.foreach_get("uv", loop_uvs[uv_i].ravel())
 
-        # Add `w` components to tangents and bitangents (-1).
+        # Add default `w` components to tangents and bitangents (-1).
         minus_one = np.full((loop_count, 1), -1, dtype=np.float32)
         loop_tangents = np.concatenate((loop_tangents, minus_one), axis=1)
         loop_bitangents = np.concatenate((loop_bitangents, minus_one), axis=1)
@@ -1394,6 +1427,7 @@ class FLVERBatchExporter:
             faces=faces,
         )
 
+        # Apply Blender -> FromSoft transformations.
         merged_mesh.swap_vertex_yz(tangents=True, bitangents=True)
         merged_mesh.invert_vertex_uv(invert_u=False, invert_v=True)
 
