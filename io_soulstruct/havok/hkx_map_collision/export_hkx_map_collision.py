@@ -481,6 +481,8 @@ class ExportHKXMapCollisionIntoHKXBHD(LoggingOperator):
 
         for opened_res_hkxbhds in opened_hkxbhds.values():
             for relative_hkxbhd_path, hkxbhd in opened_res_hkxbhds.items():
+                # Sort entries by name.
+                hkxbhd.entries.sort(key=lambda e: e.name)
                 return_strings |= settings.export_file(self, hkxbhd, relative_hkxbhd_path)
 
         return {"FINISHED"} if "FINISHED" in return_strings else {"CANCELLED"}  # at least one success
@@ -689,6 +691,8 @@ class ExportMSBMapCollision(LoggingOperator):
 
         for opened_res_hkxbhds in opened_hkxbhds.values():
             for relative_hkxbhd_path, hkxbhd in opened_res_hkxbhds.items():
+                # Sort entries by name.
+                hkxbhd.entries.sort(key=lambda e: e.name)
                 return_strings |= settings.export_file(self, hkxbhd, relative_hkxbhd_path)
 
         for relative_msb_path, msb in opened_msbs.items():
