@@ -21,7 +21,7 @@ from soulstruct.dcx import DCXType
 from soulstruct.games import *
 from soulstruct.utilities.files import read_json, write_json, create_bak
 
-from io_soulstruct.utilities.misc import CachedEnum, is_path_and_file, is_path_and_dir
+from io_soulstruct.utilities.misc import CachedEnumItems, is_path_and_file, is_path_and_dir
 
 if tp.TYPE_CHECKING:
     from io_soulstruct.type_checking import MSB_TYPING, MATBINBND_TYPING
@@ -30,7 +30,7 @@ if tp.TYPE_CHECKING:
 _SETTINGS_PATH = Path(__file__).parent.parent / "SoulstructSettings.json"
 
 # Associates a game 'map' path and/or project 'map' path with a list of map choice enums.
-_MAP_STEM_ENUM = CachedEnum()
+_MAP_STEM_ENUM = CachedEnumItems()
 
 # Redirect files that do and do not use the latest version of map files (e.g. to handle Darkroot Garden in DS1).
 # Managed in 100% sync with `_MAP_STEM_ENUM` and only used if `SoulstructSettings.smart_map_version_handling == True`.
@@ -40,9 +40,10 @@ _OLD_TO_NEW_MAP = {}  # e.g. {"m12_00_00_00": "m12_00_00_01"}
 
 def CLEAR_MAP_STEM_ENUM():
     global _MAP_STEM_ENUM, _NEW_TO_OLD_MAP, _OLD_TO_NEW_MAP
-    _MAP_STEM_ENUM = CachedEnum()
+    _MAP_STEM_ENUM = CachedEnumItems()
     _NEW_TO_OLD_MAP = {}
     _OLD_TO_NEW_MAP = {}
+    # TODO: Would love to reset map stem enum value to "0" here, but it doesn't seem to reliably be an option yet.
 
 
 # Global holder for games that front-end users can currently select (or have auto-detected) for the `game` enum.
@@ -71,6 +72,8 @@ def _get_map_stem_items(self, context: bpy.types.Context) -> list[tuple[str, str
     Stems that are in the game or project directory ONLY are marked with a (G) or (P) suffix, respectively. However,
     since this map stem is only used to generate file paths and each import/export operation resolves the source or
     destination file itself, these suffixes are not used in any way internally.
+
+    TODO: If this proves too problematic, I can always hard-code the list of available maps for each game, of course.
     """
 
     global _MAP_STEM_ENUM, _NEW_TO_OLD_MAP, _OLD_TO_NEW_MAP
@@ -82,7 +85,7 @@ def _get_map_stem_items(self, context: bpy.types.Context) -> list[tuple[str, str
     project_map_dir_path = Path(project_directory, "map") if project_directory else None
 
     if not is_path_and_dir(game_map_dir_path) and not is_path_and_dir(project_map_dir_path):
-        _MAP_STEM_ENUM = CachedEnum()  # reset
+        _MAP_STEM_ENUM = CachedEnumItems()  # reset
         _NEW_TO_OLD_MAP = {}
         _OLD_TO_NEW_MAP = {}
         return _MAP_STEM_ENUM.items
@@ -159,8 +162,15 @@ def _get_map_stem_items(self, context: bpy.types.Context) -> list[tuple[str, str
                     if old_map_stem in found_map_stems:
                         _NEW_TO_OLD_MAP[map_stem] = old_map_stem
 
-    _MAP_STEM_ENUM = CachedEnum(game_map_dir_path, project_map_dir_path, map_stems)
+    _MAP_STEM_ENUM = CachedEnumItems(game_map_dir_path, project_map_dir_path, map_stems)
     return _MAP_STEM_ENUM.items
+
+
+# noinspection PyUnusedLocal
+def _update_map_stem(self, context):
+    """Reset all selected game enums to "None" ("0"), as they will all change for a new map."""
+    for key in bpy.context.scene.soulstruct_game_enums.__annotations__:
+        setattr(bpy.context.scene.soulstruct_game_enums, key, "0")
 
 
 class SoulstructSettings(bpy.types.PropertyGroup):
@@ -222,6 +232,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         name="Map Stem",
         description="Directory in game/project 'map' folder to use when importing or exporting map assets",
         items=_get_map_stem_items,
+        update=_update_map_stem,
     )
 
     str_mtdbnd_path: bpy.props.StringProperty(
@@ -549,15 +560,17 @@ class SoulstructSettings(bpy.types.PropertyGroup):
             written = file.write(project_path)
             operator.info(f"Exported {class_name} to: {written}")
             if self.game_directory and self.also_export_to_game:
-                # Copy to game directory.
-                game_path = self.get_game_path(relative_path)
-                if game_path.is_file():
-                    create_bak(game_path)  # we may be about to replace it
-                    operator.info(f"Created backup file in game directory: {game_path}")
-                else:
-                    game_path.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(project_path, game_path)
-                operator.info(f"Copied exported {class_name} to game directory: {game_path}")
+                # Copy all written files to game directory.
+                for written_path in written:
+                    written_relative_path = written_path.relative_to(self.project_directory)
+                    game_path = self.get_game_path(written_relative_path)
+                    if game_path.is_file():
+                        create_bak(game_path)  # we may be about to replace it
+                        operator.info(f"Created backup file in game directory: {game_path}")
+                    else:
+                        game_path.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(written_path, game_path)
+                    operator.info(f"Copied exported {class_name} file to game directory: {game_path}")
         elif self.game_directory and self.also_export_to_game:
             game_path = self.get_game_path(relative_path)
             game_path.parent.mkdir(parents=True, exist_ok=True)
@@ -714,7 +727,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         """Load `MTDBND` from custom path, standard location in game directory, or bundled Soulstruct file."""
 
         try:
-            mtdbnd_class = self.game.from_game_submodule_import("models.mtd", "MTDBND")
+            mtdbnd_class = self.game.from_game_submodule_import("models.mtd", "MTDBND")  # type: tp.Type[MTDBND]
         except ImportError:
             mtdbnd_class = MTDBND
 

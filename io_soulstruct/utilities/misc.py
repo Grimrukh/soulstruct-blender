@@ -2,7 +2,7 @@ from __future__ import annotations
 
 __all__ = [
     "MAP_STEM_RE",
-    "CachedEnum",
+    "CachedEnumItems",
     "get_bl_obj_stem",
     "get_bl_prop",
     "is_uniform",
@@ -29,8 +29,16 @@ MAP_STEM_RE = re.compile(r"^m(?P<area>\d\d)_(?P<block>\d\d)_(?P<cc>\d\d)_(?P<dd>
 
 
 @dataclass(slots=True, frozen=True)
-class CachedEnum:
-    """Cache enum values by a game and/or project path."""
+class CachedEnumItems:
+    """Cache enum values by a game and/or project path.
+
+    Blender's UI draw method calls dynamic enum item getters *constantly*, not just when, say, the dropdown is clicked.
+    Since our enum options often depend on scanning folders or opening Binders, this is unacceptable, so this class
+    exists to do Blender's job and cache the results by the paths used to retrieve the items.
+
+    Note that when an enum DOES change, the caller should also reset the selected enum value to 0, generally, as the
+    new list of items may be shorter than the old one, causing a ton of "invalid index" warnings in the Blender console.
+    """
 
     import_path_1: Path | None = None
     import_path_2: Path | None = None
@@ -44,7 +52,7 @@ class CachedEnum:
             self.items.insert(0, ("0", "None", "None"))
 
     def is_valid(self, import_path_1: Path | None, import_path_2: Path | None) -> bool:
-        """Compares both import paths to ensure they are the same as those used to create this CachedEnum."""
+        """Compares both import paths to ensure they are the same as those used to create this CachedEnumItems."""
         return self.import_path_1 == import_path_1 and self.import_path_2 == import_path_2
 
     @classmethod
@@ -55,7 +63,7 @@ class CachedEnum:
         glob: str,
         use_value_source_suffix=True,
         desc_callback: tp.Callable[[str], str] = None,
-    ) -> CachedEnum:
+    ) -> CachedEnumItems:
         """Scan a directory for files and cache them by path."""
         items_1 = []
         if is_path_and_dir(scan_directory_1):
@@ -96,7 +104,7 @@ class CachedEnum:
         else:
             items = items_1
 
-        return CachedEnum(scan_directory_1, scan_directory_2, items)
+        return CachedEnumItems(scan_directory_1, scan_directory_2, items)
 
     @classmethod
     def from_binder_entries(
@@ -107,7 +115,7 @@ class CachedEnum:
         use_value_source_suffix=True,
         desc_callback: tp.Callable[[str], str] = None,
         is_split_binder=False,
-    ) -> CachedEnum:
+    ) -> CachedEnumItems:
         """Scan a Binder's entries and cache them by path."""
         from io_soulstruct.general.cached import get_cached_file, get_cached_bxf
 
@@ -156,7 +164,7 @@ class CachedEnum:
         else:
             items = items_1
 
-        return CachedEnum(binder_path_1, binder_path_2, items)
+        return CachedEnumItems(binder_path_1, binder_path_2, items)
 
 
 def get_bl_obj_stem(bl_obj: bpy.types.Object) -> str:

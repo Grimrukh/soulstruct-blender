@@ -12,7 +12,7 @@ import bpy
 
 from soulstruct.games import *
 
-from io_soulstruct.utilities.misc import CachedEnum, is_path_and_file, is_path_and_dir
+from io_soulstruct.utilities.misc import CachedEnumItems, is_path_and_file, is_path_and_dir
 from .cached import get_cached_file
 from .core import SoulstructSettings
 
@@ -21,35 +21,39 @@ if tp.TYPE_CHECKING:
 
 # Global variable to keep enum references alive, and the game and/or project paths used to cache them.
 # NOTE: Only used for Binder and MSB entries at the moment, as loose files can just be selected from the file browser.
-GAME_FILE_ENUMS = {
-    # Loose files
-    "MAP_PIECE": CachedEnum(),
-    "CHRBND": CachedEnum(),
-    "OBJBND": CachedEnum(),
-    "PARTSBND": CachedEnum(),
+GAME_FILE_ENUM_ITEMS = {
+    # Loose files (unused; directory browser is much better)
+    # "map_piece": CachedEnumItems(),
+    # "chrbnd": CachedEnumItems(),
+    # "objbnd": CachedEnumItems(),
+    # "partsbnd": CachedEnumItems(),
 
     # Loose Binder entries
-    "NVM": CachedEnum(),
-    "HKX_MAP_COLLISION": CachedEnum(),
+    "nvm": CachedEnumItems(),
+    "hkx_map_collision": CachedEnumItems(),
 
     # MSB parts
-    "MSB_MAP_PIECE": CachedEnum(),
-    "MSB_NAVMESH": CachedEnum(),
-    "MSB_HKX_MAP_COLLISION": CachedEnum(),
+    "map_piece_parts": CachedEnumItems(),
+    "nvm_parts": CachedEnumItems(),
+    "hkx_map_collision_parts": CachedEnumItems(),
 
-}  # type: dict[str, CachedEnum]
+}  # type: dict[str, CachedEnumItems]
 
 
-def _clear_items(key: str) -> CachedEnum:
-    """Clear cached enum items for the given key."""
-    GAME_FILE_ENUMS[key] = CachedEnum()
-    return GAME_FILE_ENUMS[key]
+def _clear_items(key: str) -> CachedEnumItems:
+    """Clear cached enum items for the given key.
+    
+    NOTE: Would love to reset the enum value to "None" here, but as this is called from the enum items callback, which
+    is generally called during Blender `draw()`, this isn't possible. Instead, we do it when `map_stem` is updated.
+    """
+    GAME_FILE_ENUM_ITEMS[key] = CachedEnumItems()
+    return GAME_FILE_ENUM_ITEMS[key]
 
 
 def CLEAR_GAME_FILE_ENUMS():
     """Forcibly clear all cached enum items (e.g. after a file export)."""
-    for key in GAME_FILE_ENUMS:
-        GAME_FILE_ENUMS[key] = CachedEnum()
+    for key in GAME_FILE_ENUM_ITEMS:
+        GAME_FILE_ENUM_ITEMS[key] = CachedEnumItems()
 
 
 # noinspection PyUnusedLocal
@@ -58,7 +62,7 @@ def get_map_piece_items(self, context):
 
     TODO: Not used anymore, but leaving this here as a potential future template.
     """
-    key = "MAP_PIECE"
+    key = "map_piece"
 
     settings = SoulstructSettings.from_context(context)
     game_map_directory = settings.get_import_map_path()
@@ -68,9 +72,9 @@ def get_map_piece_items(self, context):
 
     # Find all map piece FLVER files in map directory.
     flver_glob = settings.game.process_dcx_path("*.flver")
-    cached = GAME_FILE_ENUMS[key]
+    cached = GAME_FILE_ENUM_ITEMS[key]
     if not cached.is_valid(game_map_directory, project_map_directory):
-        cached = GAME_FILE_ENUMS[key] = CachedEnum.from_loose_files(
+        cached = GAME_FILE_ENUM_ITEMS[key] = CachedEnumItems.from_loose_files(
             game_map_directory,
             project_map_directory,
             flver_glob,
@@ -90,7 +94,7 @@ def get_msb_map_piece_items(self, context):
      enum pop-up window. I'm thinking of writing all the parts as file names to a temporarily folder and then using the
      file browser to select one of those, then deleting the temp folder afterward.
     """
-    key = "MSB_MAP_PIECE"
+    key = "map_piece_parts"
 
     settings = SoulstructSettings.from_context(context)
     # We only check the preferred import location. Will automatically use latest version of MSB if option enabled.
@@ -100,7 +104,7 @@ def get_msb_map_piece_items(self, context):
 
     # Open MSB and find all Map Piece parts. NOTE: We don't check here if the part's model is a valid file.
     # It's up to the importer to handle and report that error case.
-    cached = GAME_FILE_ENUMS[key]
+    cached = GAME_FILE_ENUM_ITEMS[key]
     if cached.is_valid(msb_path, None):
         # Use cached enum items.
         # NOTE: Even if the MSB is written from Blender, Soulstruct cannot add or remove parts (yet).
@@ -123,14 +127,14 @@ def get_msb_map_piece_items(self, context):
         )
 
     # NOTE: The cache key is the preferred imported MSB path only.
-    cached = GAME_FILE_ENUMS[key] = CachedEnum(msb_path, None, items)
+    cached = GAME_FILE_ENUM_ITEMS[key] = CachedEnumItems(msb_path, None, items)
     return cached.items
 
 
 # noinspection PyUnusedLocal
 def get_nvm_items(self, context):
     """Collect navmesh NVM entries in selected game map's 'mAA_BB_CC_DD.nvmbnd' binder."""
-    key = "NVM"
+    key = "nvm"
 
     settings = SoulstructSettings.from_context(context)
     # We use the latest map version for NVM files.
@@ -141,11 +145,11 @@ def get_nvm_items(self, context):
     if not is_path_and_file(game_nvmbnd_path) and not is_path_and_file(project_nvmbnd_path):
         return _clear_items(key).items
 
-    cached = GAME_FILE_ENUMS[key]
+    cached = GAME_FILE_ENUM_ITEMS[key]
     if not cached.is_valid(game_nvmbnd_path, project_nvmbnd_path):
         # Find all NVM entries in map NVMBND. (Never compressed.)
         pattern = re.compile(r".*\.nvm$")
-        cached = GAME_FILE_ENUMS[key] = CachedEnum.from_binder_entries(
+        cached = GAME_FILE_ENUM_ITEMS[key] = CachedEnumItems.from_binder_entries(
             game_nvmbnd_path,
             project_nvmbnd_path,
             pattern,
@@ -162,7 +166,7 @@ def get_nvm_part_items(self, context):
     TODO: Only set up for DS1.
     TODO: See Map Pieces above re: too many parts to display.
     """
-    key = "MSB_NAVMESH"
+    key = "nvm_parts"
 
     settings = SoulstructSettings.from_context(context)
     msb_path = settings.get_import_msb_path()  # we use preferred import location only (and latest version)
@@ -171,7 +175,7 @@ def get_nvm_part_items(self, context):
 
     # Open MSB and find all Navmesh parts. NOTE: We don't check here if the part's model is a valid file.
     # It's up to the importer to handle and report that error case.
-    cached = GAME_FILE_ENUMS[key]
+    cached = GAME_FILE_ENUM_ITEMS[key]
     if cached.is_valid(msb_path, None):
         # Use cached enum items.
         # NOTE: Even if the MSB is written from Blender, Soulstruct cannot add or remove parts (yet).
@@ -194,7 +198,7 @@ def get_nvm_part_items(self, context):
         )
 
     # NOTE: The cache key is the MSB path.
-    cached = GAME_FILE_ENUMS[key] = CachedEnum(msb_path, None, items)
+    cached = GAME_FILE_ENUM_ITEMS[key] = CachedEnumItems(msb_path, None, items)
     return cached.items
 
 
@@ -206,7 +210,7 @@ def get_hkx_map_collision_items(self, context):
 
     TODO: Why does this function run every time the UI seems to draw? It should only run when the dropdown is clicked!
     """
-    key = "HKX_MAP_COLLISION"
+    key = "hkx_map_collision"
 
     settings = SoulstructSettings.from_context(context)
     map_stem = settings.get_oldest_map_stem_version()
@@ -230,11 +234,11 @@ def get_hkx_map_collision_items(self, context):
         project_hkxbhd_path = project_map_path / f"h{map_stem[1:]}.hkxbhd"  # no DCX
         if not project_hkxbhd_path.is_file():
             project_hkxbhd_path = None
-        cached = GAME_FILE_ENUMS[key]
+        cached = GAME_FILE_ENUM_ITEMS[key]
         if cached.is_valid(game_hkxbhd_path, project_hkxbhd_path):
             return cached.items  # use cached items
         pattern = re.compile(r".*\.hkx\.dcx")
-        cached = GAME_FILE_ENUMS[key] = CachedEnum.from_binder_entries(
+        cached = GAME_FILE_ENUM_ITEMS[key] = CachedEnumItems.from_binder_entries(
             game_hkxbhd_path,
             project_hkxbhd_path,
             pattern,
@@ -250,14 +254,14 @@ def get_hkx_map_collision_items(self, context):
 # noinspection PyUnusedLocal
 def get_msb_hkx_map_collision_items(self, context):
     """Collect `MSBCollision` parts from selected game map's MSB."""
-    key = "MSB_HKX_MAP_COLLISION"
+    key = "hkx_map_collision_parts"
 
     settings = SoulstructSettings.from_context(context)
     msb_path = settings.get_import_msb_path()  # we use preferred import location only (and latest version)
     if not is_path_and_file(msb_path):
         return _clear_items(key).items
 
-    cached = GAME_FILE_ENUMS[key]
+    cached = GAME_FILE_ENUM_ITEMS[key]
     if cached.is_valid(msb_path, None):
         # Use cached enum items.
         # NOTE: Even if the MSB is written from Blender, Soulstruct cannot add or remove parts (yet).
@@ -283,12 +287,14 @@ def get_msb_hkx_map_collision_items(self, context):
         )
 
     # NOTE: The cache key is the MSB path.
-    cached = GAME_FILE_ENUMS[key] = CachedEnum(msb_path, None, items)
+    cached = GAME_FILE_ENUM_ITEMS[key] = CachedEnumItems(msb_path, None, items)
     return cached.items
 
 
 class SoulstructGameEnums(bpy.types.PropertyGroup):
     """Files, Binder entries, and MSB entries of various types found in the game directory via on-demand scan."""
+
+    # Currently no enums for loose files. Using browser instead.
 
     # region Binder Entries
 

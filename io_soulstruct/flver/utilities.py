@@ -118,7 +118,7 @@ class PrintGameTransform(LoggingOperator):
 
 
 DUMMY_NAME_RE = re.compile(  # accepts and ignores Blender '.001' suffix and anything else after the `[ref_id]` in name
-    r"^(?P<model_name>.+)(( +)|\|)[Dd]ummy(?P<index><\d+>)? *(?P<reference_id>\[\d+\]) *(\.\d+)?$"
+    r"^(?P<model_name>.+ *[ |])?[Dd]ummy(?P<index><\d+>)? *(?P<reference_id>\[\d+\]) *(\.\d+)?$"
 )
 
 
@@ -128,7 +128,7 @@ class DummyInfo(tp.NamedTuple):
 
 
 def parse_dummy_name(dummy_name: str) -> DummyInfo | None:
-    """Validate a FLVER dummy object name and return its extracted `model_name` and `reference_id`.
+    """Validate a FLVER dummy object name and return its extracted `model_name` (optional) and `reference_id`.
 
     The index in the dummy name is not used or required - it is only created by the importer to preserve the order of
     dummies by default.
@@ -138,9 +138,11 @@ def parse_dummy_name(dummy_name: str) -> DummyInfo | None:
     match = DUMMY_NAME_RE.match(dummy_name)
     if not match:
         return None  # invalid name
-
+    model_name = match.group("model_name")  # could be None
+    if model_name:
+        model_name = model_name.rstrip(" |")
     return DummyInfo(
-        model_name=match.group("model_name"),
+        model_name=model_name,
         reference_id=int(match.group("reference_id")[1:-1]),  # exclude brackets in regex group
     )
 

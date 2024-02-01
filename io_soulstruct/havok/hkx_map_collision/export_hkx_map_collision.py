@@ -14,6 +14,7 @@ from pathlib import Path
 
 import numpy as np
 
+import bmesh
 import bpy
 from bpy.props import StringProperty, BoolProperty, IntProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
@@ -441,6 +442,7 @@ class ExportHKXMapCollisionIntoHKXBHD(LoggingOperator):
 
             for r in "hl":
                 meshes = res_meshes[r]
+                res_entry_stem = f"{r}{hkx_entry_stem[1:]}"
                 if not meshes:
                     continue
                 opened_res_hkxbhds = opened_hkxbhds[r]
@@ -469,7 +471,7 @@ class ExportHKXMapCollisionIntoHKXBHD(LoggingOperator):
                     export_hkx_to_binder(
                         bl_meshes=meshes,
                         hkxbhd=hkxbhd,
-                        hkx_entry_stem=hkx_entry_stem,
+                        hkx_entry_stem=res_entry_stem,
                         map_stem=map_stem,
                         **export_kwargs,
                     )
@@ -647,6 +649,7 @@ class ExportMSBMapCollision(LoggingOperator):
 
             for r in "hl":
                 meshes = res_meshes[r]
+                res_entry_stem = f"{r}{hkx_entry_stem[1:]}"
                 if not meshes:
                     continue
                 opened_res_hkxbhds = opened_hkxbhds[r]
@@ -675,10 +678,11 @@ class ExportMSBMapCollision(LoggingOperator):
                     export_hkx_to_binder(
                         bl_meshes=meshes,
                         hkxbhd=hkxbhd,
-                        hkx_entry_stem=hkx_entry_stem,
+                        hkx_entry_stem=res_entry_stem,
                         map_stem=map_stem,
                         **export_kwargs,
                     )
+                    print(f"Exported HKX '{res_entry_stem}' to '{relative_hkxbhd_path}'")
                 except Exception as ex:
                     traceback.print_exc()
                     self.error(f"Could not execute HKX export to Binder. Error: {ex}")
@@ -821,7 +825,13 @@ class HKXMapCollisionExporter:
         print(f"# WARNING: {msg}")
 
     @staticmethod
-    def export_hkx_map_collision(bl_meshes, name: str) -> MapCollisionHKX:
+    def _clear_temp_hkx():
+        try:
+            bpy.data.meshes.remove(bpy.data.meshes["__TEMP_HKX__"])
+        except KeyError:
+            pass
+
+    def export_hkx_map_collision(self, bl_meshes, name: str) -> MapCollisionHKX:
         """Create HKX from Blender meshes (subparts).
 
         `name` is needed to set internally to the HKX file (though it probably doesn't impact gameplay).
@@ -846,18 +856,27 @@ class HKXMapCollisionExporter:
                 material_index = get_bl_prop(bl_mesh, "Material Index", int, default=0)
             hkx_material_indices.append(material_index)
 
+            self._clear_temp_hkx()
+
+            # Automatically triangulate the mesh.
+            bm = bmesh.new()
+            bm.from_mesh(bl_mesh.data)
+            bmesh.ops.triangulate(bm, faces=bm.faces[:], quad_method="BEAUTY", ngon_method="BEAUTY")
+            tri_mesh_data = bpy.data.meshes.new("__TEMP_HKX__")
+            # No need to copy materials over (no UV, etc.)
+            bm.to_mesh(tri_mesh_data)
+            bm.free()
+            del bm
+
             # Swap Y and Z coordinates.
-            hkx_verts_list = [[vert.co.x, vert.co.z, vert.co.y] for vert in bl_mesh.data.vertices]
+            hkx_verts_list = [[vert.co.x, vert.co.z, vert.co.y] for vert in tri_mesh_data.vertices]
             hkx_verts = np.array(hkx_verts_list, dtype=np.float32)
-            hkx_faces = np.empty((len(bl_mesh.data.polygons), 3), dtype=np.uint32)
-            for i, face in enumerate(bl_mesh.data.polygons):
-                if len(face.vertices) != 3:
-                    raise ValueError(
-                        f"Found a non-triangular mesh face in HKX (index {i}). Mesh must be triangulated first."
-                    )
-                hkx_faces[i] = face.vertices
+            hkx_faces = np.empty((len(tri_mesh_data.polygons), 3), dtype=np.uint32)  # we know all faces are triangles
+            tri_mesh_data.polygons.foreach_get("vertices", hkx_faces.ravel())
 
             hkx_meshes.append((hkx_verts, hkx_faces))
+
+        self._clear_temp_hkx()
 
         hkx = MapCollisionHKX.from_meshes(
             meshes=hkx_meshes,

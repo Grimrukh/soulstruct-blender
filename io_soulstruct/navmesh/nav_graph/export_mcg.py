@@ -5,6 +5,7 @@ __all__ = ["ExportMCG", "QuickExportMCGMCP"]
 import traceback
 from pathlib import Path
 
+import bpy
 from bpy.props import StringProperty, BoolProperty
 from bpy_extras.io_utils import ExportHelper
 
@@ -198,10 +199,12 @@ class QuickExportMCGMCP(LoggingOperator):
             return self.error("No Empty with Edges and Nodes child Empties selected for MCG export.")
         if len(selected_objs) > 1:
             return self.error("More than one object cannot be selected for MCG export.")
-        
+
+        mcg_parent = selected_objs[0]
+
         settings = self.settings(context)
         if settings.detect_map_from_parent:
-            map_stem = selected_objs[0].parent.name.split(" ")[0]
+            map_stem = mcg_parent.name.split(" ")[0]
         elif settings.map_stem:
             map_stem = settings.map_stem
         else:
@@ -229,7 +232,7 @@ class QuickExportMCGMCP(LoggingOperator):
             )
         
         node_parent = edge_parent = None
-        for child in selected_objs[0].children:
+        for child in mcg_parent.children:
             if "Nodes" in child.name:
                 node_parent = child
             elif "Edges" in child.name:
@@ -299,8 +302,8 @@ class MCGExporter:
 
     def export_mcg(
         self,
-        bl_nodes,
-        bl_edges,
+        bl_nodes: list[bpy.types.Object],
+        bl_edges: list[bpy.types.Object],
         navmesh_part_indices: dict[str, int],
         map_id: tuple[int, int, int, int],
     ) -> MCG:
@@ -322,19 +325,21 @@ class MCGExporter:
             else:
                 raise MCGExportError(f"Node '{bl_node.name}' does not start with '{node_prefix}'.")
 
-        nodes = []
-        node_navmesh_triangles = []  # list of dicts that map EXACTLY two navmesh names to triangles for edges to write
+        # List of all created nodes in the order they will be written in the file.
+        nodes = []  # type: list[MCGNode]
+
+        # List of dicts that map EXACTLY two navmesh names to triangles for edges to write (as Soulstruct stores the
+        # triangle indices on the nodes rather than the edges).
+        node_navmesh_triangles = []  # type: list[dict[str, list[int]]]
         for bl_node in bl_nodes:
             node = MCGNode(
                 translate=BL_TO_GAME_VECTOR3(bl_node.location),
                 unknown_offset=get_bl_prop(bl_node, "Unk Offset", int, default=0),
             )
-            node_navmesh_info = {}
-            for navmesh_key in ("A", "B"):
-                navmesh_name = get_bl_prop(bl_node, f"Navmesh {navmesh_key} Name", str)
-                navmesh_triangles = get_bl_prop(bl_node, f"Navmesh {navmesh_key} Triangles", tuple, callback=list)
-                node_navmesh_info[navmesh_name] = navmesh_triangles
-            if dead_end_navmesh_name := get_bl_prop(bl_node, "Dead End Navmesh Name", str):
+
+            # Check dead end navmesh. Property is optional; absent implies no dead end, so both Navmesh A and Navmesh B
+            # must be defined below. Otherwise, if a dead end navmesh is given, only Navmesh A must be defined.
+            if dead_end_navmesh_name := get_bl_prop(bl_node, "Dead End Navmesh Name", str, default=""):
                 try:
                     node.dead_end_navmesh_index = navmesh_part_indices[dead_end_navmesh_name]
                 except KeyError:
@@ -343,6 +348,23 @@ class MCGExporter:
                     )
             else:
                 node.dead_end_navmesh_index = -1
+
+            node_navmesh_info = {}
+
+            # Get navmesh A (must ALWAYS be present).
+            navmesh_a_name = get_bl_prop(bl_node, f"Navmesh A Name", str)
+            navmesh_a_triangles = get_bl_prop(bl_node, f"Navmesh A Triangles", tuple, callback=list)
+            node_navmesh_info[navmesh_a_name] = navmesh_a_triangles
+
+            # Get navmesh B (if node doesn't have a dead end navmesh).
+            if not dead_end_navmesh_name:
+                navmesh_b_name = get_bl_prop(bl_node, f"Navmesh B Name", str)
+                navmesh_b_triangles = get_bl_prop(bl_node, f"Navmesh B Triangles", tuple, callback=list)
+                node_navmesh_info[navmesh_b_name] = navmesh_b_triangles
+            elif get_bl_prop(bl_node, f"Navmesh B Name", str, default=""):
+                raise MCGExportError(
+                    f"Node '{bl_node.name}' has a Dead End Navmesh but also specifies a Navmesh B name."
+                )
 
             nodes.append(node)
             node_navmesh_triangles.append(node_navmesh_info)
