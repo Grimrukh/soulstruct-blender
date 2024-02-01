@@ -85,6 +85,21 @@ class HKXMapCollisionImportSettings(bpy.types.PropertyGroup):
     )
 
 
+# HSV values for HKX materials, out of 360/100/100.
+HKX_MATERIAL_COLORS = {
+    0: (0, 0, 100),  # default (white)
+    1: (24, 75, 70),  # rock (orange)
+    2: (130, 0, 40),  # stone (grey)
+    3: (114, 58, 57),  # grass (green)
+    4: (36, 86, 43),  # wood (dark brown)
+
+    20: (214, 75, 64),  # under shallow water (light blue)
+    21: (230, 85, 64),  # under deep water (dark blue)
+
+    40: (50, 68, 80),  # trigger only (yellow)
+}
+
+
 class ImportHKXMapCollision(LoggingOperator, ImportHelper):
     bl_idname = "import_scene.hkx_map_collision"
     bl_label = "Import Map Collision"
@@ -968,23 +983,32 @@ class HKXMapCollisionImporter:
             mesh_name = f"{submesh_name_prefix} {i}"
             bl_mesh = self.create_mesh_obj(vertices, faces, material_indices[i], mesh_name)
             if use_material:
-                material_name = "HKX Hi" if is_hi_res else "HKX Lo"
-                material_name += " (Mat 1)" if material_indices[i] == 1 else " (Not Mat 1)"
-                try:
-                    bl_material = bpy.data.materials[material_name]
-                except KeyError:
-                    # Create basic material: orange (lo) or blue (hi/other), lighter for material 1 (most common).
-                    # Hue rotates between 10 values. Material index 1 (very common) is mapped to nice blue hue 0.6.
-                    hue = 0.1 * ((material_indices[i] + 5) % 10)
-                    saturation = 0.8 if is_hi_res else 0.4
-                    value = 0.5
-                    color = hsv_color(hue, saturation, value)
-                    # NOTE: Not using wireframe in collision materials (unlike navmesh) as there is no per-face data.
-                    bl_material = create_basic_material(material_name, color, wireframe_pixel_width=0.0)
+                bl_material = self.create_hkx_material(material_indices[i], is_hi_res)
                 bl_mesh.data.materials.append(bl_material)
             bl_meshes.append(bl_mesh)
 
         return hkx_parent, bl_meshes
+
+    @staticmethod
+    def create_hkx_material(hkx_material_index: int, is_hi_res: bool) -> bpy.types.Material:
+        material_name = f"HKX Material {hkx_material_index} ({'Hi' if is_hi_res else 'Lo'})"
+        try:
+            return bpy.data.materials[material_name]
+        except KeyError:
+            pass
+        offset_100, mod_index = divmod(hkx_material_index, 100)
+        h, s, v = HKX_MATERIAL_COLORS.get(mod_index, (340, 74, 70))  # defaults to red
+        if offset_100 > 0:  # rotate hue by 10 degrees for each 100 in material index
+            h = (h + 10 * offset_100) % 360
+        h /= 360.0
+        s /= 100.0
+        v /= 100.0
+        if not is_hi_res:  # darken for lo-res
+            v /= 2
+        color = hsv_color(h, s, v)  # alpha = 1.0
+        # NOTE: Not using wireframe in collision materials (unlike navmesh) as there is no per-face data.
+        return create_basic_material(material_name, color, wireframe_pixel_width=0.0)
+
 
     def create_mesh_obj(
         self,
