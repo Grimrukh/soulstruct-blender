@@ -7,32 +7,20 @@ __all__ = [
     "get_basis_matrix",
 ]
 
-from mathutils import Matrix, Euler, Quaternion as BlenderQuaternion
+from mathutils import Matrix, Quaternion as BlenderQuaternion
 
-from soulstruct_havok.utilities.maths import Matrix3, TRSTransform, Quaternion as GameQuaternion
+from soulstruct_havok.utilities.maths import TRSTransform, Quaternion as GameQuaternion
 
 from io_soulstruct.utilities.conversion import GAME_TO_BL_VECTOR, BL_TO_GAME_VECTOR3
 
 
 def GAME_TO_BL_QUAT(quaternion: GameQuaternion) -> BlenderQuaternion:
-    """NOTE: Blender Euler rotation mode should be 'XYZ' (corresponding to game 'XZY')."""
-
-    # TODO: Skipping stupid Euler route.
-    # game_euler = quaternion.to_euler_angles(radians=True)
-    # bl_euler = Euler((-game_euler.x, -game_euler.z, -game_euler.y))
-    # return bl_euler.to_quaternion()
-
+    """Convert a game `Quaternion` to a Blender `Quaternion`."""
     return BlenderQuaternion((quaternion.w, -quaternion.x, -quaternion.z, -quaternion.y))
 
 
 def BL_TO_GAME_QUAT(quaternion: BlenderQuaternion) -> GameQuaternion:
-    """NOTE: Blender Euler rotation mode should be 'XYZ' (corresponding to game 'XZY')."""
-
-    # TODO: Skipping stupid Euler route.
-    # bl_euler = quaternion.to_euler("XYZ")
-    # game_rotmat3 = Matrix3.from_euler_angles((-bl_euler.x, -bl_euler.z, -bl_euler.y), radians=True)
-    # return GameQuaternion.from_matrix3(game_rotmat3)
-
+    """Convert a Blender `Quaternion` to a game `Quaternion`."""
     return GameQuaternion((-quaternion.x, -quaternion.z, -quaternion.y, quaternion.w))
 
 

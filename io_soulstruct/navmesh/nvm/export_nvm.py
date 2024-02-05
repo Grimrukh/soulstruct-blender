@@ -315,7 +315,8 @@ class ExportNVMIntoNVMBND(LoggingOperator):
                 new_id=nvmbnd.highest_entry_id + 1,
                 new_path=f"{map_stem}\\{nvm_entry_name}",
                 new_flags=0x2,
-            ).set_from_binary_file(nvm)
+                new_data=nvm,
+            )
 
         for relative_nvmbnd_path, nvmbnd in opened_nvmbnds.items():
             nvmbnd.entries = list(sorted(nvmbnd.entries, key=lambda e: e.name))
@@ -482,7 +483,8 @@ class ExportNVMMSBPart(LoggingOperator):
                 new_id=nvmbnd.highest_entry_id + 1,
                 new_path=f"{map_stem}\\{nvm_entry_name}",
                 new_flags=0x2,
-            ).set_from_binary_file(nvm)
+                new_data=nvm,
+            )
 
         for relative_msb_path, msb in opened_msbs.items():
             # Write MSB.

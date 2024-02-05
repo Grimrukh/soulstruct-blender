@@ -515,13 +515,6 @@ class HKXAnimationImporter:
                 # `arma_frames`. This scaling stacks with the intrinsic `bone_frame_scaling` (e.g. 2 for 60 FPS).
                 root_motion_frame_scaling *= len(arma_frames) / (len(root_motion) - 1)
 
-        print("Imported transforms:")
-        for bone in arma_frames[0].keys():
-            print(f"BONE:")
-            for i in range(3):
-                trs = arma_frames[i][bone]
-                print(f"    {bone} {i}: {trs.rotation}")
-
         action_name = f"{self.model_name}|{animation_name}"
         action = None  # type: bpy.types.Action | None
         original_location = self.bl_armature.location.copy()  # TODO: not necessary with batch method?
