@@ -16,18 +16,24 @@ from io_soulstruct.utilities.conversion import GAME_TO_BL_VECTOR, BL_TO_GAME_VEC
 
 def GAME_TO_BL_QUAT(quaternion: GameQuaternion) -> BlenderQuaternion:
     """NOTE: Blender Euler rotation mode should be 'XYZ' (corresponding to game 'XZY')."""
-    # TODO: There must be a way to modify a quaternion in a way that is equivalent to negating all three Euler angles
-    #  (and swapping Y and Z), but I can't find it.
-    game_euler = quaternion.to_euler_angles(radians=True)
-    bl_euler = Euler((-game_euler.x, -game_euler.z, -game_euler.y))
-    return bl_euler.to_quaternion()
+
+    # TODO: Skipping stupid Euler route.
+    # game_euler = quaternion.to_euler_angles(radians=True)
+    # bl_euler = Euler((-game_euler.x, -game_euler.z, -game_euler.y))
+    # return bl_euler.to_quaternion()
+
+    return BlenderQuaternion((quaternion.w, -quaternion.x, -quaternion.z, -quaternion.y))
 
 
 def BL_TO_GAME_QUAT(quaternion: BlenderQuaternion) -> GameQuaternion:
     """NOTE: Blender Euler rotation mode should be 'XYZ' (corresponding to game 'XZY')."""
-    bl_euler = quaternion.to_euler("XYZ")
-    game_rotmat3 = Matrix3.from_euler_angles((-bl_euler.x, -bl_euler.z, -bl_euler.y), radians=True)
-    return GameQuaternion.from_matrix3(game_rotmat3)
+
+    # TODO: Skipping stupid Euler route.
+    # bl_euler = quaternion.to_euler("XYZ")
+    # game_rotmat3 = Matrix3.from_euler_angles((-bl_euler.x, -bl_euler.z, -bl_euler.y), radians=True)
+    # return GameQuaternion.from_matrix3(game_rotmat3)
+
+    return GameQuaternion((-quaternion.x, -quaternion.z, -quaternion.y, quaternion.w))
 
 
 def GAME_TRS_TO_BL_MATRIX(transform: TRSTransform) -> Matrix:

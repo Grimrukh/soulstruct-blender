@@ -206,7 +206,7 @@ class ExportHKXAnimationIntoBinder(LoggingOperator, ImportHelper):
         animation_hkx.dcx_type = dcx_type
         entry_path = self.default_entry_path + animation_name + (".hkx" if dcx_type == DCXType.Null else ".hkx.dcx")
         # Update or create binder entry.
-        binder.set_default_entry(self.animation_id, new_path=entry_path, new_data=bytes(animation_hkx))
+        binder.set_default_entry(self.animation_id, new_path=entry_path).set_from_binary_file(animation_hkx)
 
         # Write modified binder back.
         binder.write()
@@ -300,7 +300,7 @@ class QuickExportCharacterHKXAnimation(LoggingOperator):
                 f"Animation ID {animation_id} is too large for game {settings.game}. Max is {'9' * max_digits}."
             )
 
-        self.info(f"Exporting animation '{animation_name} into ANIBND '{anibnd_path.name}'...")
+        self.info(f"Exporting animation '{animation_name}' into ANIBND '{anibnd_path.name}'...")
 
         current_frame = context.scene.frame_current
         try:
@@ -317,8 +317,8 @@ class QuickExportCharacterHKXAnimation(LoggingOperator):
         )
 
         # Update or create binder entry.
-        anibnd.set_default_entry(animation_id, new_path=entry_path, new_data=animation_hkx)
-        self.info(f"Successfully exported animation {animation_name} into ANIBND {anibnd_path.name}.")
+        anibnd.set_default_entry(animation_id, new_path=entry_path).set_from_binary_file(animation_hkx)
+        self.info(f"Successfully exported animation '{animation_name}' into ANIBND {anibnd_path.name}.")
 
         # Write modified ANIBND.
         return settings.export_file(self, anibnd, Path(f"chr/{anibnd_path.name}"))
@@ -426,7 +426,7 @@ class QuickExportObjectHKXAnimation(LoggingOperator):
         )
 
         # Update or create binder entry.
-        anibnd.set_default_entry(animation_id, new_path=entry_path, new_data=bytes(animation_hkx))
+        anibnd.set_default_entry(animation_id, new_path=entry_path).set_from_binary_file(animation_hkx)
 
         # Write modified ANIBND entry back.
         anibnd_entry.set_from_binary_file(anibnd)
@@ -459,6 +459,9 @@ def create_animation_hkx(skeleton_hkx: SkeletonHKX, bl_armature, from_60_fps: bo
     # Animation track order will match Blender bone order (which should come from FLVER).
     track_bone_mapping = list(range(len(skeleton_hkx.skeleton.bones)))
 
+    # Store last bone TRS for rotation negation.
+    last_bone_trs = {bone.name: TRSTransform.identity() for bone in skeleton_hkx.skeleton.bones}
+
     # Evaluate all curves at every frame.
     for i, frame in enumerate(range(start_frame, end_frame + 1)):
 
@@ -484,6 +487,12 @@ def create_animation_hkx(skeleton_hkx: SkeletonHKX, bl_armature, from_60_fps: bo
             except KeyError:
                 raise HKXAnimationExportError(f"Bone '{bone.name}' in HKX skeleton not found in Blender armature.")
             armature_space_transform = BL_MATRIX_TO_GAME_TRS(bl_bone.matrix)
+            if i > 0:
+                # Negate rotation quaternion if dot product is negative.
+                dot = np.dot(armature_space_transform.rotation.data, last_bone_trs[bone.name].rotation.data)
+                if dot < 0:
+                    armature_space_transform.rotation = -armature_space_transform.rotation
+            last_bone_trs[bone.name] = armature_space_transform
             armature_space_frame.append(armature_space_transform)
 
         armature_space_frames.append(armature_space_frame)

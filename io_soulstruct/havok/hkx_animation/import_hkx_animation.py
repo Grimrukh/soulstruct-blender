@@ -506,7 +506,7 @@ class HKXAnimationImporter:
         bone_frame_scaling = 2 if self.to_60_fps else 1
         root_motion_frame_scaling = bone_frame_scaling
         if root_motion is not None:
-            if len(root_motion) < 1:
+            if len(root_motion) == 0:
                 # Weird, but we'll leave default scaling and put any single root motion keyframe at 0.
                 pass
             elif len(root_motion) != len(arma_frames):
@@ -515,19 +515,27 @@ class HKXAnimationImporter:
                 # `arma_frames`. This scaling stacks with the intrinsic `bone_frame_scaling` (e.g. 2 for 60 FPS).
                 root_motion_frame_scaling *= len(arma_frames) / (len(root_motion) - 1)
 
+        print("Imported transforms:")
+        for bone in arma_frames[0].keys():
+            print(f"BONE:")
+            for i in range(3):
+                trs = arma_frames[i][bone]
+                print(f"    {bone} {i}: {trs.rotation}")
+
         action_name = f"{self.model_name}|{animation_name}"
-        action = None
-        original_location = self.bl_armature.location.copy()
+        action = None  # type: bpy.types.Action | None
+        original_location = self.bl_armature.location.copy()  # TODO: not necessary with batch method?
         try:
             self.bl_armature.animation_data_create()
             self.bl_armature.animation_data.action = action = bpy.data.actions.new(name=action_name)
             bone_basis_samples = self._get_bone_basis_samples(arma_frames)
-            self._add_keyframes_batch(bone_basis_samples, root_motion, bone_frame_scaling, root_motion_frame_scaling)
+            self._add_keyframes_batch(
+                action, bone_basis_samples, root_motion, bone_frame_scaling, root_motion_frame_scaling
+            )
         except Exception:
             if action:
                 bpy.data.actions.remove(action)
             self.bl_armature.location = original_location  # reset location (i.e. erase last root motion)
-            # TODO: should reset last bone transforms (`matrix_basis`) as well
             raise
 
         # Ensure action is not deleted when not in use.
@@ -544,17 +552,9 @@ class HKXAnimationImporter:
     def _get_bone_basis_samples(
         self, arma_frames: list[dict[str, TRSTransform]]
     ) -> dict[str, list[list[float]]]:
-        """Convert a Havok HKX animation file to a Blender action (with fully-sampled keyframes).
-
-        The action to add keyframes to should already be the active action on `self.bl_armature`. This is required to
-        use the `keyframe_insert()` method, which allows full-Vector and full-Quaternion keyframes to be inserted and
-        have Blender properly interpolate (e.g. Quaternion slerp) between them, which it cannot do if we use FCurves and
-        set the `keyframe_points` directly for each coordinate.
-
-        We also use `self.bl_armature` to properly set the `matrix_basis` of each pose bone relative to the bone resting
-        positions (set to the edit bones).
-
-        TODO: Does not support changes in Blender bone names (e.g. '<DUPE>' suffix).
+        """Convert a list of armature-space frames (mapping bone names to transforms in that frame) to an outer
+        dictionary that maps bone names to a list of frames that are each defined by ten floats (location XYZ, rotation
+        quaternion, scale XYZ) in basis space.
         """
         # Convert armature-space frame data to Blender `(location, rotation_quaternion, scale)` tuples.
         # Note that we decompose the basis matrices so that quaternion discontinuities are handled properly.
@@ -607,24 +607,23 @@ class HKXAnimationImporter:
 
         return bone_basis_samples
 
+    @staticmethod
     def _add_keyframes_batch(
-        self,
+        action: bpy.types.Action,
         bone_basis_samples: dict[str, list[list[float]]],
         root_motion: np.ndarray | None,
         bone_frame_scaling: float,
         root_motion_frame_scaling: float,
     ):
-        """
-        Faster method of adding all bone and (optional) root keyframe data.
+        """Faster method of adding all bone and (optional) root keyframe data.
 
         Constructs `FCurves` with known length and uses `foreach_set` to batch-set all the `.co` attributes of the
         curve keyframe points at once.
 
         `bone_basis_samples` maps bone names to ten lists of floats (location_x, location_y, etc.).
         """
-        action = self.bl_armature.animation_data.action
 
-        # Initialize FCurves for root motion and bones
+        # Initialize FCurves for root motion and bones.
         if root_motion is not None:
             root_fcurves = [action.fcurves.new(data_path="location", index=i) for i in range(3)]
             root_fcurves.append(action.fcurves.new(data_path="rotation_euler", index=2))  # z-axis rotation in Blender
