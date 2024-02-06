@@ -557,7 +557,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         if self.project_directory:
             project_path = self.get_project_path(relative_path)
             project_path.parent.mkdir(parents=True, exist_ok=True)
-            written = file.write(project_path)
+            written = file.write(project_path)  # will create '.bak' if appropriate
             operator.info(f"Exported {class_name} to: {written}")
             if self.game_directory and self.also_export_to_game:
                 # Copy all written files to game directory.
@@ -637,6 +637,62 @@ class SoulstructSettings(bpy.types.PropertyGroup):
             operator.warning(
                 f"Cannot export {class_name} file. Project directory is not set and game directory is either not "
                 f"set or 'Also Export to Game' is disabled."
+            )
+
+    def export_text_file(self, operator: LoggingOperator, text: str, relative_path: Path, encoding="utf-8") -> set[str]:
+        """Write `text` string to `relative_path` in project directory (if given) and optionally also to game directory
+        if `also_export_to_game` is enabled.
+        """
+        from .game_enums import CLEAR_GAME_FILE_ENUMS
+
+        if relative_path.is_absolute():
+            # Indicates a mistake in an operator.
+            raise ValueError(f"Relative path for export must be relative to game root, not absolute: {relative_path}")
+        try:
+            self._export_text_file(operator, text, relative_path, encoding)
+        except Exception as e:
+            traceback.print_exc()
+            operator.report({"ERROR"}, f"Failed to export text file: {e}")
+            return {"CANCELLED"}
+
+        # Clear enums so any new files/folders/entries can be detected.
+        # Probably not necessary for writing text files, but still good practice.
+        CLEAR_MAP_STEM_ENUM()
+        CLEAR_GAME_FILE_ENUMS()
+
+        return {"FINISHED"}
+
+    def _export_text_file(self, operator: LoggingOperator, text: str, relative_path: Path, encoding: str):
+
+        if self.project_directory:
+            project_path = self.get_project_path(relative_path, dcx_type=DCXType.Null)
+            project_path.parent.mkdir(parents=True, exist_ok=True)
+            if project_path.is_file():
+                create_bak(project_path)
+                operator.info(f"Created backup file in project directory: {project_path}")
+            with project_path.open("w", encoding=encoding) as f:
+                f.write(text)
+            operator.info(f"Exported text file to: {project_path}")
+            if self.game_directory and self.also_export_to_game:
+                # We still do a copy operation rather than a second write, so file metadata matches.
+                game_path = self.get_game_path(relative_path, dcx_type=DCXType.Null)
+                if game_path.is_file():
+                    create_bak(game_path)  # we may be about to replace it
+                    operator.info(f"Created backup file in game directory: {game_path}")
+                else:
+                    game_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(project_path, game_path)
+                operator.info(f"Copied exported text file to game directory: {game_path}")
+        elif self.game_directory and self.also_export_to_game:
+            game_path = self.get_game_path(relative_path, dcx_type=DCXType.Null)
+            game_path.parent.mkdir(parents=True, exist_ok=True)
+            with game_path.open("w", encoding=encoding) as f:
+                f.write(text)
+            operator.info(f"Exported text file to game directory only: {game_path}")
+        else:
+            operator.warning(
+                f"Cannot export text file: {relative_path}. Project directory is not set and game directory is either "
+                f"not set or 'Also Export to Game' is disabled."
             )
 
     def prepare_project_file(

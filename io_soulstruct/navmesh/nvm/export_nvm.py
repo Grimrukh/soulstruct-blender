@@ -514,6 +514,12 @@ class ExportAllNVMMSBParts(LoggingOperator):
         default=True,
     )
 
+    write_nvmdump: BoolProperty(
+        name="Write NVM Dump",
+        description="Write a NVMDUMP text file next to the NVMBND with the NVM data for each navmesh MSB part",
+        default=True,
+    )
+
     @classmethod
     def poll(cls, context):
         """Parent of one or more 'n*' Meshes selected."""
@@ -595,7 +601,7 @@ class ExportAllNVMMSBParts(LoggingOperator):
             navmesh_group = bl_mesh_obj.get("Navmesh Group", None)  # type: int
             if navmesh_group is None:
                 try:
-                    navmesh_group = int(navmesh_part_name[1:5])  # model ID
+                    navmesh_group = int(navmesh_part_name[1:5]) % 1000  # model ID (modulo 1000)
                 except ValueError:
                     return self.error(
                         f"Could not parse model ID of Blender navmesh '{navmesh_part_name}' to use as navmesh group."
@@ -651,6 +657,12 @@ class ExportAllNVMMSBParts(LoggingOperator):
         settings.export_file(self, msb, relative_msb_path)
         # Write NVMBND.
         settings.export_file(self, nvmbnd, relative_nvmbnd_path)
+
+        if self.write_nvmdump:
+            relative_nvmdump_path = relative_nvmbnd_path.with_name(f"{map_stem}.nvmdump")
+            nvmdump = msb.get_nvmdump(map_stem)
+            settings.export_text_file(self, nvmdump, relative_nvmdump_path)
+            self.info(f"Exported NVMDUMP file next to NVMBND: {relative_nvmdump_path.name}")
 
         self.info(
             f"Exported complete list of MSB navmeshes and NVM models to {map_stem}: "
