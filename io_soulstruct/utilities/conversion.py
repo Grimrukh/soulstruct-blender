@@ -91,8 +91,8 @@ class Transform:
     radians: bool = False
 
     @classmethod
-    def from_msb_part(cls, part) -> Transform:
-        return cls(part.translate, part.rotate, part.scale)
+    def from_msb_entry(cls, entry) -> Transform:
+        return cls(entry.translate, entry.rotate, getattr(entry, "scale", Vector3.one()))
 
     @property
     def bl_translate(self) -> Vector:

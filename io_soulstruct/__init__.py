@@ -21,12 +21,19 @@ if addon_modules_path not in sys.path:
 # Reload all Soulstruct modules, then all modules in this add-on (except this script).
 for module_name in list(sys.modules.keys()):
     if "io_soulstruct" not in module_name and "soulstruct" in module_name.split(".")[0]:
-        importlib.reload(sys.modules[module_name])
+        try:
+            importlib.reload(sys.modules[module_name])
+        except ImportError:
+            pass
 for module_name in list(sys.modules.keys()):
     if module_name != "io_soulstruct" and "io_soulstruct" in module_name.split(".")[0]:  # don't reload THIS module
-        importlib.reload(sys.modules[module_name])
+        try:
+            importlib.reload(sys.modules[module_name])
+        except ImportError:
+            pass
 
 from io_soulstruct.flver import *
+from io_soulstruct.msb import *
 from io_soulstruct.navmesh import *
 from io_soulstruct.misc_operators import *
 from io_soulstruct.general import *
@@ -71,6 +78,7 @@ def menu_func_view3d_mt(self, context):
 
 # Classes to register.
 CLASSES = (
+    # region FLVER
     SoulstructSettings,
     SoulstructGameEnums,
     GlobalSettingsPanel,
@@ -93,8 +101,6 @@ CLASSES = (
     ImportObjectFLVER,
     ImportEquipmentFLVER,
     FLVERImportSettings,
-    ImportMapPieceMSBPart,
-    ImportAllMapPieceMSBParts,
 
     HideAllDummiesOperator,
     ShowAllDummiesOperator,
@@ -107,7 +113,6 @@ CLASSES = (
     ExportCharacterFLVER,
     ExportObjectFLVER,
     ExportEquipmentFLVER,
-    ExportMapPieceMSBParts,
 
     FLVERToolSettings,
     SetVertexAlpha,
@@ -128,26 +133,43 @@ CLASSES = (
     # FLVERLightmapsPanel,  # TODO: not quite ready
     FLVERToolsPanel,
     FLVERUVMapsPanel,
+    # endregion
 
+    # region MSB
+    GlobalSettingsPanel_MSBView,
+    MSBImportSettings,
+    ImportMSBMapPiece,
+    ImportAllMSBMapPieces,
+    # Collisions below.
+    ImportMSBNavmesh,
+    ImportAllMSBNavmeshes,
+    ImportAllMSBCharacters,
+
+    MSBExportSettings,
+    ExportMSBMapPieces,
+    # Collisions below.
+    ExportMSBNavmeshes,
+    ExportCompleteMapNavigation,
+
+    MSBImportPanel,
+    MSBExportPanel,
+    # endregion
+
+    # region Navmesh
     GlobalSettingsPanel_NavmeshView,
-    NVMImportSettings,
     ImportNVM,
     ImportNVMWithBinderChoice,
     ImportNVMFromNVMBND,
-    ImportNVMMSBPart,
-    ImportAllNVMMSBParts,
     ExportLooseNVM,
     ExportNVMIntoBinder,
     ExportNVMIntoNVMBND,
-    ExportNVMMSBPart,
-    ExportAllNVMMSBParts,
 
     ImportMCP,
     QuickImportMCP,
     ImportMCG,
     QuickImportMCG,
     ExportMCG,
-    QuickExportMCGMCP,
+    ExportMCGMCPToMap,
     CreateMCGEdgeOperator,
     SetNodeNavmeshATriangles,
     SetNodeNavmeshBTriangles,
@@ -160,6 +182,7 @@ CLASSES = (
     SetNVMFaceObstacleCount,
     ResetNVMFaceInfo,
     MCGDrawSettings,
+    # endregion
 )
 
 if soulstruct_havok:
@@ -175,8 +198,6 @@ if soulstruct_havok:
         ImportHKXMapCollision,
         ImportHKXMapCollisionWithBinderChoice,
         ImportHKXMapCollisionFromHKXBHD,
-        ImportMSBMapCollisionPart,
-        ImportAllMSBMapCollisionsParts,
 
         ImportHKXAnimation,
         ImportHKXAnimationWithBinderChoice,
@@ -194,8 +215,12 @@ if soulstruct_havok:
         ExportLooseHKXMapCollision,
         ExportHKXMapCollisionIntoBinder,
         ExportHKXMapCollisionIntoHKXBHD,
-        ExportMSBMapCollision,
         HKX_COLLISION_PT_hkx_map_collisions,
+
+        # MSB
+        ImportMSBMapCollision,
+        ImportAllMSBMapCollisions,
+        ExportMSBCollisions,
 
         # TODO: Cutscene operators need a bit more work.
         # ImportHKXCutscene,
@@ -246,15 +271,19 @@ def register():
 
     bpy.types.Scene.soulstruct_settings = bpy.props.PointerProperty(type=SoulstructSettings)
     bpy.types.Scene.soulstruct_game_enums = bpy.props.PointerProperty(type=SoulstructGameEnums)
+
     bpy.types.Scene.flver_import_settings = bpy.props.PointerProperty(type=FLVERImportSettings)
     bpy.types.Scene.flver_export_settings = bpy.props.PointerProperty(type=FLVERExportSettings)
     bpy.types.Scene.texture_export_settings = bpy.props.PointerProperty(type=TextureExportSettings)
     bpy.types.Scene.bake_lightmap_settings = bpy.props.PointerProperty(type=BakeLightmapSettings)
-    bpy.types.Scene.nvm_import_settings = bpy.props.PointerProperty(type=NVMImportSettings)
+    bpy.types.Scene.flver_tool_settings = bpy.props.PointerProperty(type=FLVERToolSettings)
+    bpy.types.Scene.mesh_move_settings = bpy.props.PointerProperty(type=MeshMoveSettings)
+
+    bpy.types.Scene.msb_import_settings = bpy.props.PointerProperty(type=MSBImportSettings)
+    bpy.types.Scene.msb_export_settings = bpy.props.PointerProperty(type=MSBExportSettings)
+
     bpy.types.Scene.navmesh_face_settings = bpy.props.PointerProperty(type=NavmeshFaceSettings)
     bpy.types.Scene.mcg_draw_settings = bpy.props.PointerProperty(type=MCGDrawSettings)
-    bpy.types.Scene.mesh_move_settings = bpy.props.PointerProperty(type=MeshMoveSettings)
-    bpy.types.Scene.flver_settings = bpy.props.PointerProperty(type=FLVERToolSettings)
 
     bpy.app.handlers.load_post.append(load_handler)
     LOAD_POST_HANDLERS.append(load_handler)
@@ -304,7 +333,7 @@ def unregister():
     del bpy.types.Scene.navmesh_face_settings
     del bpy.types.Scene.mcg_draw_settings
     del bpy.types.Scene.mesh_move_settings
-    del bpy.types.Scene.flver_settings
+    del bpy.types.Scene.flver_tool_settings
 
     for handler in LOAD_POST_HANDLERS:
         bpy.app.handlers.load_post.remove(handler)

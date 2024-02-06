@@ -7,8 +7,6 @@ __all__ = [
     "ImportCharacterFLVER",
     "ImportObjectFLVER",
     "ImportEquipmentFLVER",
-    "ImportMapPieceMSBPart",
-    "ImportAllMapPieceMSBParts",
 
     "HideAllDummiesOperator",
     "ShowAllDummiesOperator",
@@ -22,7 +20,6 @@ __all__ = [
     "ExportCharacterFLVER",
     "ExportObjectFLVER",
     "ExportEquipmentFLVER",
-    "ExportMapPieceMSBParts",
 
     "FLVERToolSettings",
     "SetVertexAlpha",
@@ -48,20 +45,13 @@ import bpy
 
 from io_soulstruct.misc_operators import CutMeshSelectionOperator
 
-from .import_flver import *
-from .export_flver import *
+from .flver_import import *
+from .flver_export import *
 from .misc_operators import *
 from .textures.import_textures import *
 from .textures.export_textures import *
 from .textures.lightmaps import *
 from .utilities import *
-
-
-def CUSTOM_ENUM(choices):
-    CUSTOM_ENUM.choices = choices
-
-
-CUSTOM_ENUM.choices = []
 
 
 class FLVERImportPanel(bpy.types.Panel):
@@ -75,29 +65,14 @@ class FLVERImportPanel(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-        layout.operator(ImportFLVER.bl_idname)
+        layout.operator(ImportFLVER.bl_idname, text="Import Any FLVER")
 
         game_import_box = layout.box()
-        game_import_box.label(text="Game Model Import")
+        game_import_box.label(text="Import from Game/Project")
         game_import_box.operator(ImportMapPieceFLVER.bl_idname)
         game_import_box.operator(ImportCharacterFLVER.bl_idname)
         game_import_box.operator(ImportObjectFLVER.bl_idname)
         game_import_box.operator(ImportEquipmentFLVER.bl_idname)
-
-        msb_import_box = layout.box()
-        msb_import_box.label(text="Game MSB Part Import")
-        for prop in (
-            "import_textures",
-            "material_blend_mode",
-            "base_edit_bone_length",
-        ):
-            msb_import_box.prop(context.scene.flver_import_settings, prop)
-        msb_import_box.prop(context.scene.soulstruct_game_enums, "map_piece_parts")
-        msb_import_box.operator(ImportMapPieceMSBPart.bl_idname, text="Import Map Piece Part")
-        msb_import_box.prop(context.scene.flver_import_settings, "msb_part_name_match")
-        msb_import_box.prop(context.scene.flver_import_settings, "msb_part_name_match_mode")
-        msb_import_box.prop(context.scene.flver_import_settings, "include_pattern_in_parent_name")
-        msb_import_box.operator(ImportAllMapPieceMSBParts.bl_idname, text="Import ALL Matching Parts")
 
 
 class FLVERExportPanel(bpy.types.Panel):
@@ -113,22 +88,18 @@ class FLVERExportPanel(bpy.types.Panel):
         layout = self.layout
         for prop in ("base_edit_bone_length", "allow_missing_textures", "allow_unknown_texture_types"):
             layout.prop(context.scene.flver_export_settings, prop)
-        layout.operator(ExportStandaloneFLVER.bl_idname)
+        layout.operator(ExportStandaloneFLVER.bl_idname, text="Export Loose FLVER")
         layout.operator(ExportFLVERIntoBinder.bl_idname)
 
         game_export_box = layout.box()
-        game_export_box.label(text="Game Model Export")
-        game_export_box.prop(context.scene.soulstruct_settings, "detect_map_from_parent")
+        game_export_box.label(text="Export to Project/Game")
+        game_export_box.prop(context.scene.soulstruct_settings, "detect_map_from_collection")
         game_export_box.prop(context.scene.flver_export_settings, "export_textures")
 
         game_export_box.operator(ExportMapPieceFLVERs.bl_idname)
         game_export_box.operator(ExportCharacterFLVER.bl_idname)
         game_export_box.operator(ExportObjectFLVER.bl_idname)
         game_export_box.operator(ExportEquipmentFLVER.bl_idname)
-
-        msb_export_box = layout.box()
-        msb_export_box.label(text="Game MSB Part Export")
-        msb_export_box.operator(ExportMapPieceMSBParts.bl_idname)
 
 
 class TextureExportSettingsPanel(bpy.types.Panel):
@@ -206,8 +177,8 @@ class FLVERToolsPanel(bpy.types.Panel):
 
         dummy_box = self.layout.box()
         dummy_box.label(text="Dummy Tools")
-        dummy_box.prop(context.scene.flver_settings, "dummy_id_draw_enabled", text="Draw Dummy IDs")
-        dummy_box.prop(context.scene.flver_settings, "dummy_id_font_size", text="Dummy ID Font Size")
+        dummy_box.prop(context.scene.flver_tool_settings, "dummy_id_draw_enabled", text="Draw Dummy IDs")
+        dummy_box.prop(context.scene.flver_tool_settings, "dummy_id_font_size", text="Dummy ID Font Size")
         dummy_box.operator(HideAllDummiesOperator.bl_idname)
         dummy_box.operator(ShowAllDummiesOperator.bl_idname)
 
@@ -222,7 +193,7 @@ class FLVERToolsPanel(bpy.types.Panel):
         misc_operators_box.operator(CutMeshSelectionOperator.bl_idname)
 
         misc_operators_box.label(text="Set Vertex Alpha:")
-        misc_operators_box.prop(context.scene.flver_settings, "vertex_alpha")
+        misc_operators_box.prop(context.scene.flver_tool_settings, "vertex_alpha")
         misc_operators_box.operator(SetVertexAlpha.bl_idname)
 
         misc_operators_box.label(text="Other Tools:")

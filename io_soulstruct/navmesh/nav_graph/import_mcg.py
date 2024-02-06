@@ -162,16 +162,16 @@ class MCGImporter:
             bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
 
         mcg_parent = bpy.data.objects.new(f"{map_stem} MCG", None)  # empty parent for MCG node and edge parents
-        self.context.collection.objects.link(mcg_parent)
+        self.context.scene.collection.objects.link(mcg_parent)
         self.all_bl_objs.append(mcg_parent)
         
         node_parent = bpy.data.objects.new(f"{map_stem} Nodes", None)
-        self.context.collection.objects.link(node_parent)
+        self.context.scene.collection.objects.link(node_parent)
         self.all_bl_objs.append(node_parent)
         node_parent.parent = mcg_parent
         
         edge_parent = bpy.data.objects.new(f"{map_stem} Edges", None)
-        self.context.collection.objects.link(edge_parent)
+        self.context.scene.collection.objects.link(edge_parent)
         self.all_bl_objs.append(edge_parent)
         edge_parent.parent = mcg_parent
 
@@ -190,7 +190,7 @@ class MCGImporter:
             name = f"{map_stem} Node {i}"
 
             bl_node = self.create_node(node, name)
-            self.context.collection.objects.link(bl_node)
+            self.context.scene.collection.objects.link(bl_node)
             self.all_bl_objs.append(bl_node)
             bl_node.parent = node_parent
             
@@ -236,7 +236,7 @@ class MCGImporter:
             # The start and end node indices are enough to uniquely identify an edge.
             name = f"{map_stem} Edge ({node_a_index} -> {node_b_index}) <{navmesh_name}>"
             bl_edge = self.create_edge(edge, name)
-            self.context.collection.objects.link(bl_edge)
+            self.context.scene.collection.objects.link(bl_edge)
             self.all_bl_objs.append(bl_edge)
             bl_edge.parent = edge_parent
 

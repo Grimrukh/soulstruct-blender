@@ -7,6 +7,7 @@ __all__ = [
     "export_images_to_multiple_tpfs",
     "export_images_to_tpfbhd",
     "export_images_to_map_area_tpfbhds",
+    "export_map_area_textures",
     "bl_image_to_dds",
     "bl_images_to_dds",
 ]
@@ -22,6 +23,7 @@ from soulstruct.containers.tpf import TPF, TPFTexture, TPFPlatform
 from soulstruct.base.textures.texconv import texconv, batch_texconv_to_dds
 from soulstruct.dcx import DCXType
 
+from io_soulstruct.general import SoulstructSettings
 from io_soulstruct.utilities import LoggingOperator, LoggingImportOperator
 
 
@@ -477,6 +479,56 @@ def export_images_to_map_area_tpfbhds(
     operator.info(f"Exported {success_count} textures to {tpfbhd_index} TPFBHDs in map area {map_area}.")
 
     return tpfbhds
+
+
+def export_map_area_textures(
+    operator: LoggingOperator,
+    context: bpy.types.Context,
+    settings: SoulstructSettings,
+    map_area_textures: dict[str, dict[str, bpy.types.Image]],
+):
+    tpf_dcx_type = settings.game.get_dcx_type("tpf")  # TPFs inside map TPFBXFs use standard game DCX
+    # TODO: When to use 'mAA_9999.tpf.dcx'? Never?
+    for area, area_textures in map_area_textures.items():
+        import_area_dir = settings.get_game_path(f"map/{area}")
+        export_area_dir = settings.get_project_path(f"map/{area}")
+        if not export_area_dir and not settings.also_export_to_game:
+            # Should be caught by `settings.can_export` check in poll, but making extra sure here that any sort
+            # of TPFBHD export is possible before the expensive DDS conversion call below.
+            operator.error("Map textures not exported: game export path not set and export-to-import disabled.")
+            return  # no point checking other areas
+        if not (import_area_dir and import_area_dir.is_dir()) and not (export_area_dir and export_area_dir.is_dir()):
+            operator.error(
+                f"Textures not written. Cannot find map texture Binders to modify from either export "
+                f"(preferred) or import (backup) map area directory: 'map/{area}"
+            )
+            continue
+        if export_area_dir and import_area_dir and import_area_dir.is_dir():
+            # Copy initial TPFBHDs/BDTs from import directory (will not overwrite existing).
+            # Will raise a `FileNotFoundError` if import file does not exist.
+            for tpfbhd_path in import_area_dir.glob("*.tpfbhd"):
+                settings.prepare_project_file(Path(f"map/{area}/{tpfbhd_path.name}"), False, True)
+            for tpfbdt_path in import_area_dir.glob("*.tpfbdt"):
+                settings.prepare_project_file(Path(f"map/{area}/{tpfbdt_path.name}"), False, True)
+
+        # We prefer to start with the TPFBHDs from the export directory (potentially just copied from import).
+        if export_area_dir and export_area_dir.is_dir():
+            map_area_dir = export_area_dir
+        else:
+            map_area_dir = import_area_dir
+
+        if not map_area_dir or not map_area_dir.is_dir():
+            operator.error(
+                f"Textures not written. Cannot load map texture Binders from missing map area directory: "
+                f"{map_area_dir}"
+            )
+            continue
+        map_tpfbhds = export_images_to_map_area_tpfbhds(
+            context, operator, map_area_dir, area_textures, tpf_dcx_type
+        )
+        for tpfbhd in map_tpfbhds:
+            relative_tpfbhd_path = Path(f"map/{area}/{tpfbhd.path.name}")
+            settings.export_file(operator, tpfbhd, relative_tpfbhd_path)
 
 
 def bl_image_to_dds(

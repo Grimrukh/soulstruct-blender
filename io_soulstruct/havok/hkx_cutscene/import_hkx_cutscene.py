@@ -22,7 +22,7 @@ from soulstruct_havok.wrappers.hkx2015 import RemoBND
 
 from io_soulstruct.utilities.conversion import Transform, GAME_TO_BL_VECTOR, GAME_TO_BL_EULER
 from io_soulstruct.utilities.operators import LoggingOperator
-from io_soulstruct.flver.import_flver import FLVERBatchImporter
+from io_soulstruct.flver.flver_import import FLVERImporter
 from io_soulstruct.flver.textures.import_textures import TextureImportManager
 from io_soulstruct.havok.utilities import GAME_TRS_TO_BL_MATRIX, get_basis_matrix
 from .utilities import HKXCutsceneImportError
@@ -195,7 +195,7 @@ class ImportHKXCutscene(LoggingOperator, ImportHelper):
         # Load FLVERs.
         if flvers_to_import:
 
-            flver_importer = FLVERBatchImporter(
+            flver_importer = FLVERImporter(
                 self,
                 context,
                 settings,
@@ -212,7 +212,7 @@ class ImportHKXCutscene(LoggingOperator, ImportHelper):
                 )
                 part_armatures[part_name] = part_armature
                 if isinstance(msb_part, MSBMapPiece):
-                    transform = Transform.from_msb_part(msb_part)
+                    transform = Transform.from_msb_entry(msb_part)
                     part_armature.location = transform.bl_translate
                     part_armature.rotation_euler = transform.bl_rotate
                     part_armature.scale = transform.bl_scale

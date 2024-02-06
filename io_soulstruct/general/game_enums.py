@@ -33,9 +33,9 @@ GAME_FILE_ENUM_ITEMS = {
     "hkx_map_collision": CachedEnumItems(),
 
     # MSB parts
-    "map_piece_parts": CachedEnumItems(),
-    "nvm_parts": CachedEnumItems(),
-    "hkx_map_collision_parts": CachedEnumItems(),
+    "map_piece_part": CachedEnumItems(),
+    "navmesh_part": CachedEnumItems(),
+    "hkx_map_collision_part": CachedEnumItems(),
 
 }  # type: dict[str, CachedEnumItems]
 
@@ -94,7 +94,7 @@ def get_msb_map_piece_items(self, context):
      enum pop-up window. I'm thinking of writing all the parts as file names to a temporarily folder and then using the
      file browser to select one of those, then deleting the temp folder afterward.
     """
-    key = "map_piece_parts"
+    key = "map_piece_part"
 
     settings = SoulstructSettings.from_context(context)
     # We only check the preferred import location. Will automatically use latest version of MSB if option enabled.
@@ -121,9 +121,8 @@ def get_msb_map_piece_items(self, context):
         if not map_piece_part.model:
             continue  # part is missing MSB model
         full_model_name = map_piece_part.model.get_model_file_stem(settings.map_stem)
-        identifier = f"{map_piece_part.name}|{full_model_name}"
         items.append(
-            (identifier, map_piece_part.name, f"{map_piece_part.name} (Model {full_model_name})")
+            (map_piece_part.name, map_piece_part.name, f"{map_piece_part.name} (Model {full_model_name})")
         )
 
     # NOTE: The cache key is the preferred imported MSB path only.
@@ -160,13 +159,13 @@ def get_nvm_items(self, context):
 
 
 # noinspection PyUnusedLocal
-def get_nvm_part_items(self, context):
+def get_navmesh_part_items(self, context):
     """Collect MSB Navmesh entries in selected game map's MSB.
 
     TODO: Only set up for DS1.
     TODO: See Map Pieces above re: too many parts to display.
     """
-    key = "nvm_parts"
+    key = "navmesh_part"
 
     settings = SoulstructSettings.from_context(context)
     msb_path = settings.get_import_msb_path()  # we use preferred import location only (and latest version)
@@ -192,9 +191,8 @@ def get_nvm_part_items(self, context):
         if not navmesh_part.model:
             continue
         full_model_name = navmesh_part.model.get_model_file_stem(settings.map_stem)
-        identifier = f"{navmesh_part.name}|{full_model_name}"
         items.append(
-            (identifier, navmesh_part.name, f"{navmesh_part.name} (Model {full_model_name})")
+            (navmesh_part.name, navmesh_part.name, f"{navmesh_part.name} (Model {full_model_name})")
         )
 
     # NOTE: The cache key is the MSB path.
@@ -254,7 +252,7 @@ def get_hkx_map_collision_items(self, context):
 # noinspection PyUnusedLocal
 def get_msb_hkx_map_collision_items(self, context):
     """Collect `MSBCollision` parts from selected game map's MSB."""
-    key = "hkx_map_collision_parts"
+    key = "hkx_map_collision_part"
 
     settings = SoulstructSettings.from_context(context)
     msb_path = settings.get_import_msb_path()  # we use preferred import location only (and latest version)
@@ -281,9 +279,8 @@ def get_msb_hkx_map_collision_items(self, context):
         if not collision_part.model:
             continue  # part is missing MSB model
         full_model_name = collision_part.model.get_model_file_stem(settings.map_stem)
-        identifier = f"{collision_part.name}|{full_model_name}"
         items.append(
-            (identifier, collision_part.name, f"{collision_part.name} (Model {full_model_name})")
+            (collision_part.name, collision_part.name, f"{collision_part.name} (Model {full_model_name})")
         )
 
     # NOTE: The cache key is the MSB path.
@@ -312,17 +309,17 @@ class SoulstructGameEnums(bpy.types.PropertyGroup):
 
     # region MSB Parts
 
-    map_piece_parts: bpy.props.EnumProperty(
+    map_piece_part: bpy.props.EnumProperty(
         name="MSB Map Piece Part",
         items=get_msb_map_piece_items,
     )
 
-    nvm_parts: bpy.props.EnumProperty(
+    navmesh_part: bpy.props.EnumProperty(
         name="MSB Navmesh Part",
-        items=get_nvm_part_items,
+        items=get_navmesh_part_items,
     )
 
-    hkx_map_collision_parts: bpy.props.EnumProperty(
+    hkx_map_collision_part: bpy.props.EnumProperty(
         name="MSB Map Collision Part",
         items=get_msb_hkx_map_collision_items,
     )

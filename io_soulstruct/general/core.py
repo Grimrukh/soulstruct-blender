@@ -21,7 +21,7 @@ from soulstruct.dcx import DCXType
 from soulstruct.games import *
 from soulstruct.utilities.files import read_json, write_json, create_bak
 
-from io_soulstruct.utilities.misc import CachedEnumItems, is_path_and_file, is_path_and_dir
+from io_soulstruct.utilities.misc import CachedEnumItems, is_path_and_file, is_path_and_dir, get_collection_map_stem
 
 if tp.TYPE_CHECKING:
     from io_soulstruct.type_checking import MSB_TYPING, MATBINBND_TYPING
@@ -288,10 +288,10 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         default=False,
     )
 
-    detect_map_from_parent: bpy.props.BoolProperty(
-        name="Detect Map from Parent",
-        description="Detect map stem (e.g. 'm10_00_00_00') from name of selected objects' Blender parent(s) when "
-                    "auto-exporting map assets",
+    detect_map_from_collection: bpy.props.BoolProperty(
+        name="Detect Map from Collection",
+        description="Detect map stem (e.g. 'm10_00_00_00') from name of first map-like Blender collection name of "
+                    "selected objects when exporting map assets",
         default=True,
     )
 
@@ -757,6 +757,20 @@ class SoulstructSettings(bpy.types.PropertyGroup):
 
         return project_path
 
+    def get_map_stem_for_export(self, obj: bpy.types.Object = None, oldest=False, latest=False) -> str:
+        """Get map stem for export based on `obj` name, or fall back to settings map stem."""
+        if oldest and latest:
+            raise ValueError("Cannot specify both `oldest` and `latest` as True.")
+        if obj and self.detect_map_from_collection:
+            map_stem = get_collection_map_stem(obj)
+        else:
+            map_stem = self.map_stem
+        if oldest:
+            map_stem = self.get_oldest_map_stem_version(map_stem)
+        elif latest:
+            map_stem = self.get_latest_map_stem_version(map_stem)
+        return map_stem
+
     def get_game_msb_class(self) -> type[MSB_TYPING]:
         """Get the `MSB` class associated with the selected game."""
         try:
@@ -878,7 +892,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         self.read_cached_pngs = json_settings.get("read_cached_pngs", True)
         self.write_cached_pngs = json_settings.get("write_cached_pngs", True)
         self.import_bak_file = json_settings.get("import_bak_file", False)
-        self.detect_map_from_parent = json_settings.get("detect_map_from_parent", True)
+        self.detect_map_from_collection = json_settings.get("detect_map_from_collection", True)
         self.smart_map_version_handling = json_settings.get("smart_map_version_handling", True)
 
     def save_settings(self):
@@ -898,7 +912,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):
                 "read_cached_pngs",
                 "write_cached_pngs",
                 "import_bak_file",
-                "detect_map_from_parent",
+                "detect_map_from_collection",
                 "smart_map_version_handling",
             )
         }

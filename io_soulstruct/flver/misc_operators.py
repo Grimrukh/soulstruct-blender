@@ -64,7 +64,7 @@ class SetVertexAlpha(LoggingOperator):
 
         for i, loop in enumerate(mesh.data.loops):
             if loop.vertex_index in vertex_indices:
-                vertex_colors.data[i].color[3] = context.scene.flver_settings.vertex_alpha
+                vertex_colors.data[i].color[3] = context.scene.flver_tool_settings.vertex_alpha
 
         # Go back to EDIT mode
         bpy.ops.object.mode_set(mode="EDIT")
@@ -238,7 +238,7 @@ class SelectMeshChildren(LoggingOperator):
 
 def draw_dummy_ids():
     """Draw the numeric reference IDs of all Dummy children of selected FLVER."""
-    settings = bpy.context.scene.flver_settings  # type: FLVERToolSettings
+    settings = bpy.context.scene.flver_tool_settings  # type: FLVERToolSettings
     if not settings.dummy_id_draw_enabled:
         return
 
@@ -258,7 +258,7 @@ def draw_dummy_ids():
 
     font_id = 0
     try:
-        blf.size(font_id, bpy.context.scene.flver_settings.dummy_id_font_size)
+        blf.size(font_id, bpy.context.scene.flver_tool_settings.dummy_id_font_size)
     except AttributeError:
         blf.size(font_id, 16)  # default
     blf.color(font_id, 1, 1, 1, 1)  # white

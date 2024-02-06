@@ -130,7 +130,7 @@ def create_mcg_edge(context, data):
         collection.objects.link(bl_edge)
     if not mcg_parent.users_collection:
         # Add to context collection if parent has no collections.
-        context.collection.objects.link(bl_edge)
+        context.scene.collection.objects.link(bl_edge)
 
     # Initial cost is twice the distance between the nodes.
     bl_edge["Cost"] = 2 * length

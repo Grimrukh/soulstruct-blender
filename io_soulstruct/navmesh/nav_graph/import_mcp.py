@@ -113,7 +113,7 @@ class MCPImporter:
             bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
 
         mcp_parent = bpy.data.objects.new(bl_name, None)  # empty parent for all AABB meshes
-        self.context.collection.objects.link(mcp_parent)
+        self.context.scene.collection.objects.link(mcp_parent)
         self.all_bl_objs.append(mcp_parent)
 
         for i, aabb in enumerate(mcp.aabbs):

@@ -3,6 +3,7 @@ from __future__ import annotations
 __all__ = [
     "GlobalSettingsPanel",
     "GlobalSettingsPanel_FLVERView",
+    "GlobalSettingsPanel_MSBView",
     "GlobalSettingsPanel_NavmeshView",
     "GlobalSettingsPanel_HavokView",
 ]
@@ -77,6 +78,15 @@ class GlobalSettingsPanel_FLVERView(bpy.types.Panel, _GlobalSettingsPanel_ViewMi
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "Soulstruct FLVER"
+
+
+class GlobalSettingsPanel_MSBView(bpy.types.Panel, _GlobalSettingsPanel_ViewMixin):
+    """VIEW properties panel for Soulstruct global settings."""
+    bl_label = "General Settings"
+    bl_idname = "VIEW_PT_soulstruct_settings_msb"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "Soulstruct MSB"
 
 
 class GlobalSettingsPanel_NavmeshView(bpy.types.Panel, _GlobalSettingsPanel_ViewMixin):

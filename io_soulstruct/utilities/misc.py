@@ -7,9 +7,10 @@ __all__ = [
     "get_bl_prop",
     "is_uniform",
     "natural_keys",
-    "find_or_create_bl_empty",
+    "get_collection",
     "is_path_and_file",
     "is_path_and_dir",
+    "get_collection_map_stem",
 ]
 
 import math
@@ -217,16 +218,15 @@ def natural_keys(text: str):
     return [atoi(c) for c in re.split(r"(\d+)", text)]
 
 
-def find_or_create_bl_empty(name: str, context):
-    """Find Blender object `name` or create an Empty object with that name in the current scene."""
+def get_collection(name: str, parent_collection: bpy.types.Collection = None) -> bpy.types.Collection:
+    """Find or create collection `name`."""
     try:
-        obj = bpy.data.objects[name]
+        return bpy.data.collections[name]
     except KeyError:
-        obj = bpy.data.objects.new(name, None)
-        if context is None:
-            context = bpy.context
-        context.scene.collection.objects.link(obj)
-    return obj
+        collection = bpy.data.collections.new(name)
+        if parent_collection:
+            parent_collection.children.link(collection)
+        return collection
 
 
 def is_path_and_file(path: str | Path | None) -> bool:
@@ -241,3 +241,18 @@ def is_path_and_dir(path: str | Path | None) -> bool:
     if path is None:
         return False
     return Path(path).is_dir()
+
+
+def get_collection_map_stem(obj: bpy.types.Object) -> str:
+    if not obj.users_collection:
+        raise ValueError(f"Object '{obj.name}' is not in any Blender collection.")
+    map_stem = None
+    for collection in obj.users_collection:
+        new_match = MAP_STEM_RE.match(collection.name.split(" ")[0])
+        if new_match:
+            if map_stem:
+                raise ValueError(f"Object '{obj.name}' is in multiple Blender collections that match map stem pattern.")
+            map_stem = collection.name.split(" ")[0]
+    if not map_stem:
+        raise ValueError(f"Object '{obj.name}' is not in a Blender collection that matches map stem pattern.")
+    return map_stem

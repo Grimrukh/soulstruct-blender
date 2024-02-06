@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 __all__ = [
-    "NVMImportError",
-    "NVMExportError",
     "ANY_NVM_NAME_RE",
     "STANDARD_NVM_STEM_RE",
     "NVMBND_NAME_RE",
@@ -24,16 +22,6 @@ from soulstruct.darksouls1r.maps.navmesh import NavmeshType
 
 from io_soulstruct.utilities import Transform
 from io_soulstruct.utilities.materials import hsv_color, create_basic_material
-
-
-class NVMImportError(Exception):
-    """Exception raised during NVM import."""
-    pass
-
-
-class NVMExportError(Exception):
-    """Exception raised during NVM export."""
-    pass
 
 
 NVM_MESH_TYPING = tuple[list[tp.Sequence[float]], list[tp.Sequence[int]]]
@@ -94,7 +82,7 @@ def get_navmesh_msb_transforms(
             matches.append(navmesh)
     if not matches:
         raise ValueError(f"Cannot find any MSB Navmesh entries using MSB model '{msb_model_name}'.")
-    transforms = [(m.name, Transform.from_msb_part(m)) for m in matches]
+    transforms = [(m.name, Transform.from_msb_entry(m)) for m in matches]
     return transforms
 
 

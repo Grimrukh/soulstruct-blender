@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-__all__ = ["ExportMCG", "QuickExportMCGMCP"]
+__all__ = ["ExportMCG", "ExportMCGMCPToMap"]
 
 import traceback
 from pathlib import Path
@@ -158,14 +158,21 @@ class ExportMCG(LoggingOperator, ExportHelper):
         return {"FINISHED"}
 
 
-class QuickExportMCGMCP(LoggingOperator):
+class ExportMCGMCPToMap(LoggingOperator):
     """Export MCG from a Blender object containing a Nodes parent and an Edges parent, and regenerate MCP.
 
     Can optionally use MSB and NVMBND to auto-generate MCP file as well, as MCP connectivity is inferred from MCG nodes.
     """
-    bl_idname = "export_scene.quick_mcg"
-    bl_label = "Export MCG + MCP"
+    bl_idname = "export_scene.map_mcg_mcp"
+    bl_label = "Export MCG + MCP to Map"
     bl_description = "Export Blender lists of nodes/edges to MCG graph file and refresh MCP file in selected game map"
+
+    # This setting is exposed in the GUI panel.
+    detect_map_from_parent: bpy.props.BoolProperty(
+        name="Detect Map from Parent",
+        description="Use the map stem from the selected MCG to detect the map to export to, rather than map settings",
+        default=True,
+    )
 
     @classmethod
     def poll(cls, context):
@@ -177,8 +184,6 @@ class QuickExportMCGMCP(LoggingOperator):
         if not settings.can_auto_export:
             return False
         if not settings.is_game(DARK_SOULS_DSR):
-            return False
-        if not settings.detect_map_from_parent and not settings.map_stem:
             return False
         if len(context.selected_objects) != 1:
             return False
@@ -203,7 +208,7 @@ class QuickExportMCGMCP(LoggingOperator):
         mcg_parent = selected_objs[0]
 
         settings = self.settings(context)
-        if settings.detect_map_from_parent:
+        if self.detect_map_from_parent:
             map_stem = mcg_parent.name.split(" ")[0]
         elif settings.map_stem:
             map_stem = settings.map_stem

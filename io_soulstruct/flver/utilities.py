@@ -236,7 +236,7 @@ def get_map_piece_msb_transforms(flver_path: Path, msb_path: Path = None) -> lis
             matches.append(map_piece)
     if not matches:
         raise ValueError(f"Cannot find any MSB Map Piece entries using model '{flver_path.name}'.")
-    transforms = [(m.name, Transform.from_msb_part(m)) for m in matches]
+    transforms = [(m.name, Transform.from_msb_entry(m)) for m in matches]
     return transforms
 
 

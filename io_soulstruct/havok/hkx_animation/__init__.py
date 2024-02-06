@@ -51,7 +51,7 @@ class HKX_ANIMATION_PT_hkx_animations(bpy.types.Panel):
         import_box.operator(ImportHKXAnimation.bl_idname)
 
         quick_import_box = import_box.box()
-        quick_import_box.label(text="Quick Game Import")
+        quick_import_box.label(text="Import from Game/Project")
         quick_import_box.prop(context.scene.soulstruct_settings, "import_bak_file", text="From .BAK File")
         quick_import_box.operator(ImportCharacterHKXAnimation.bl_idname)
         quick_import_box.operator(ImportObjectHKXAnimation.bl_idname)
@@ -61,7 +61,7 @@ class HKX_ANIMATION_PT_hkx_animations(bpy.types.Panel):
         export_box.operator(ExportHKXAnimationIntoBinder.bl_idname)
 
         quick_export_box = export_box.box()
-        quick_export_box.label(text="Quick Game Export")
+        quick_export_box.label(text="Export to Project/Game")
         quick_export_box.operator(QuickExportCharacterHKXAnimation.bl_idname)
         quick_export_box.operator(QuickExportObjectHKXAnimation.bl_idname)
 

@@ -1,24 +1,20 @@
 from __future__ import annotations
 
 __all__ = [
-    "NVMImportSettings",
     "ImportNVM",
     "ImportNVMWithBinderChoice",
     "ImportNVMFromNVMBND",
-    "ImportNVMMSBPart",
-    "ImportAllNVMMSBParts",
+
     "ExportLooseNVM",
     "ExportNVMIntoBinder",
     "ExportNVMIntoNVMBND",
-    "ExportNVMMSBPart",
-    "ExportAllNVMMSBParts",
 
     "ImportMCP",
     "QuickImportMCP",
     "ImportMCG",
     "QuickImportMCG",
     "ExportMCG",
-    "QuickExportMCGMCP",
+    "ExportMCGMCPToMap",
 
     "NVM_PT_ds1_navmesh_import",
     "NVM_PT_ds1_navmesh_export",
@@ -84,21 +80,12 @@ class NVM_PT_ds1_navmesh_import(bpy.types.Panel):
         import_loose_box.operator(ImportMCP.bl_idname)
 
         quick_box = self.layout.box()
-        quick_box.label(text="Game Navmesh Import")
+        quick_box.label(text="From Game/Project")
         quick_box.prop(context.scene.soulstruct_settings, "import_bak_file", text="From .BAK File")
         quick_box.prop(context.scene.soulstruct_game_enums, "nvm")
         quick_box.operator(ImportNVMFromNVMBND.bl_idname)
         quick_box.operator(QuickImportMCG.bl_idname)
         quick_box.operator(QuickImportMCP.bl_idname)
-
-        msb_box = self.layout.box()
-        msb_box.label(text="Game MSB Part Import")
-        msb_box.prop(context.scene.soulstruct_game_enums, "nvm_parts")
-        msb_box.operator(ImportNVMMSBPart.bl_idname)
-        msb_box.prop(context.scene.nvm_import_settings, "msb_part_name_match")
-        msb_box.prop(context.scene.nvm_import_settings, "msb_part_name_match_mode")
-        msb_box.prop(context.scene.nvm_import_settings, "include_pattern_in_parent_name")
-        msb_box.operator(ImportAllNVMMSBParts.bl_idname, text="Import ALL Matching Parts")
 
 
 class NVM_PT_ds1_navmesh_export(bpy.types.Panel):
@@ -121,22 +108,14 @@ class NVM_PT_ds1_navmesh_export(bpy.types.Panel):
         export_box.operator(ExportNVMIntoBinder.bl_idname)
         export_box.operator(ExportMCG.bl_idname, text="Export MCG + MCP")
 
-        quick_box = self.layout.box()
-        quick_box.label(text="Game Navmesh Export")
-        quick_box.prop(
-            context.scene.soulstruct_settings, "detect_map_from_parent", text="Detect Map from Parent"
+        map_export_box = self.layout.box()
+        map_export_box.label(text="Export to Map")
+        map_export_box.prop(context.scene.soulstruct_settings, "detect_map_from_collection")
+        map_export_box.operator(ExportNVMIntoNVMBND.bl_idname)
+        map_export_box.prop(
+            context.window_manager.operator_properties_last(ExportMCGMCPToMap.bl_idname), "detect_map_from_parent"
         )
-        quick_box.operator(ExportNVMIntoNVMBND.bl_idname)
-        quick_box.operator(QuickExportMCGMCP.bl_idname)
-
-        msb_box = self.layout.box()
-        msb_box.label(text="Game MSB Part Export")
-        msb_box.prop(
-            context.scene.soulstruct_settings, "detect_map_from_parent", text="Detect Map from Parent"
-        )
-        msb_box.operator(ExportNVMMSBPart.bl_idname)
-        msb_box.label(text="Game MSB and NVMBND Complete Export")
-        msb_box.operator(ExportAllNVMMSBParts.bl_idname)
+        map_export_box.operator(ExportMCGMCPToMap.bl_idname)
 
 
 class NVM_PT_ds1_navmesh_tools(bpy.types.Panel):
