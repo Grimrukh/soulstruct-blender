@@ -266,8 +266,8 @@ def get_collection_map_stem(obj: bpy.types.Object) -> str:
 def find_model_name(
     operator: LoggingOperator,
     obj: bpy.types.Object,
-    warn_property_mismatch=True,
     process_default_model_name: tp.Callable[[str], str] = None,
+    warn_property_mismatch=True,
 ) -> str:
     """Try to retrieve the model name from the object's custom properties, falling back to the object's name with
     optional processing. This works the same way for all types of model assets (FLVER, HKK, NVM).
@@ -290,9 +290,20 @@ def find_model_name(
     return prop_model_name or default_model_name
 
 
-def process_model_name_map_area(map_stem: str) -> tp.Callable[[str], str]:
+def process_model_name_map_area(map_stem: str, split_underscore=True) -> tp.Callable[[str], str]:
     """Construct a process callback for `find_model_name` that adds the area suffix to the model name if missing.
+
+    If `split_underscore = True` (default), everything at and after the first underscore will also be discarded.
 
     TODO: Currently assumes DS1 format, i.e. seven characters without area and ten characters with.
     """
-    return lambda model_name: f"{model_name}A{map_stem[1:3]}" if len(model_name) == 7 else model_name
+
+    def process_default_model_name(model_name: str) -> str:
+        if split_underscore:
+            model_name = model_name.split("_")[0]
+        if len(model_name) == 7:
+            return f"{model_name}A{map_stem[1:3]}"
+        print(model_name)
+        return model_name
+
+    return process_default_model_name

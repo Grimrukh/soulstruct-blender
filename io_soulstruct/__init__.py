@@ -35,13 +35,14 @@ from io_soulstruct.misc_operators import *
 from io_soulstruct.general import *
 
 # TODO: Currently asserting that `soulstruct_havok` is installed, but this is not necessary for all add-ons.
-import soulstruct_havok
-
+from io_soulstruct.havok.hkx_map_collision import *
+from io_soulstruct.havok.hkx_animation import *
+from io_soulstruct.havok.hkx_cutscene import *
 
 bl_info = {
     "name": "Soulstruct",
     "author": "Scott Mooney (Grimrukh)",
-    "version": (1, 0, 0),
+    "version": (1, 5, 0),
     "blender": (3, 5, 0),
     "location": "File > Import-Export",
     "description": "Import, manipulate, and export FromSoftware/Havok assets",
@@ -131,27 +132,6 @@ CLASSES = (
     FLVERUVMapsPanel,
     # endregion
 
-    # region MSB
-    GlobalSettingsPanel_MSBView,
-    MSBImportSettings,
-    ImportMSBMapPiece,
-    ImportAllMSBMapPieces,
-    # Collisions below.
-    ImportMSBNavmesh,
-    ImportAllMSBNavmeshes,
-    ImportMSBCharacter,
-    ImportAllMSBCharacters,
-
-    MSBExportSettings,
-    ExportMSBMapPieces,
-    # Collisions below.
-    ExportMSBNavmeshes,
-    ExportCompleteMapNavigation,
-
-    MSBImportPanel,
-    MSBExportPanel,
-    # endregion
-
     # region Navmesh
     GlobalSettingsPanel_NavmeshView,
     ImportNVM,
@@ -180,72 +160,87 @@ CLASSES = (
     ResetNVMFaceInfo,
     MCGDrawSettings,
     # endregion
+
+    # region Havok
+    GlobalSettingsPanel_HavokView,
+
+    HKXMapCollisionImportSettings,
+    ImportHKXMapCollision,
+    ImportHKXMapCollisionWithBinderChoice,
+    ImportHKXMapCollisionFromHKXBHD,
+
+    ImportHKXAnimation,
+    ImportHKXAnimationWithBinderChoice,
+    ImportCharacterHKXAnimation,
+    ImportObjectHKXAnimation,
+    ExportLooseHKXAnimation,
+    ExportHKXAnimationIntoBinder,
+    QuickExportCharacterHKXAnimation,
+    QuickExportObjectHKXAnimation,
+
+    ArmatureActionChoiceOperator,
+    SelectArmatureActionOperator,
+    HKX_ANIMATION_PT_hkx_animations,
+
+    ExportLooseHKXMapCollision,
+    ExportHKXMapCollisionIntoBinder,
+    ExportHKXMapCollisionIntoHKXBHD,
+    HKX_COLLISION_PT_hkx_map_collisions,
+
+    SelectHiResFaces,
+    SelectLoResFaces,
+
+    # TODO: Cutscene operators need a bit more work.
+    # ImportHKXCutscene,
+    # ExportHKXCutscene,
+    # HKX_CUTSCENE_PT_hkx_cutscene_tools,
+
+    # region MSB
+    GlobalSettingsPanel_MSBView,
+    MSBImportSettings,
+    ImportMSBMapPiece,
+    ImportAllMSBMapPieces,
+    ImportMSBMapCollision,
+    ImportAllMSBMapCollisions,
+    ImportMSBNavmesh,
+    ImportAllMSBNavmeshes,
+    ImportMSBCharacter,
+    ImportAllMSBCharacters,
+    ImportMSBPoint,
+    ImportMSBVolume,
+    ImportAllMSBPoints,
+    ImportAllMSBVolumes,
+    RegionDrawSettings,
+
+    MSBExportSettings,
+    ExportMSBMapPieces,
+    ExportMSBCollisions,
+    ExportMSBNavmeshes,
+    ExportCompleteMapNavigation,
+
+    MSBImportPanel,
+    MSBExportPanel,
+    MSBToolsPanel,
+    # endregion
+
+    # endregion
 )
 
-if soulstruct_havok:
-    from io_soulstruct.havok.hkx_map_collision import *
-    from io_soulstruct.havok.hkx_animation import *
-    from io_soulstruct.havok.hkx_cutscene import *
 
-    # Extra Havok classes to register.
-    HAVOK_CLASSES = (
-        GlobalSettingsPanel_HavokView,
+# noinspection PyUnusedLocal
+def havok_menu_func_import(self, context):
+    self.layout.operator(ImportHKXMapCollision.bl_idname, text="HKX Collision (.hkx/.hkxbhd)")
+    self.layout.operator(ImportHKXAnimation.bl_idname, text="HKX Animation (.hkx/.hkxbhd)")
+    # self.layout.operator(ImportHKXCutscene.bl_idname, text="HKX Cutscene (.remobnd)")
 
-        HKXMapCollisionImportSettings,
-        ImportHKXMapCollision,
-        ImportHKXMapCollisionWithBinderChoice,
-        ImportHKXMapCollisionFromHKXBHD,
 
-        ImportHKXAnimation,
-        ImportHKXAnimationWithBinderChoice,
-        ImportCharacterHKXAnimation,
-        ImportObjectHKXAnimation,
-        ExportLooseHKXAnimation,
-        ExportHKXAnimationIntoBinder,
-        QuickExportCharacterHKXAnimation,
-        QuickExportObjectHKXAnimation,
-
-        ArmatureActionChoiceOperator,
-        SelectArmatureActionOperator,
-        HKX_ANIMATION_PT_hkx_animations,
-
-        ExportLooseHKXMapCollision,
-        ExportHKXMapCollisionIntoBinder,
-        ExportHKXMapCollisionIntoHKXBHD,
-        HKX_COLLISION_PT_hkx_map_collisions,
-
-        SelectHiResFaces,
-        SelectLoResFaces,
-
-        # MSB
-        ImportMSBMapCollision,
-        ImportAllMSBMapCollisions,
-        ExportMSBCollisions,
-
-        # TODO: Cutscene operators need a bit more work.
-        # ImportHKXCutscene,
-        # ExportHKXCutscene,
-        # HKX_CUTSCENE_PT_hkx_cutscene_tools,
-    )
-
-    # noinspection PyUnusedLocal
-    def havok_menu_func_import(self, context):
-        self.layout.operator(ImportHKXMapCollision.bl_idname, text="HKX Collision (.hkx/.hkxbhd)")
-        self.layout.operator(ImportHKXAnimation.bl_idname, text="HKX Animation (.hkx/.hkxbhd)")
-        # self.layout.operator(ImportHKXCutscene.bl_idname, text="HKX Cutscene (.remobnd)")
-
-    # noinspection PyUnusedLocal
-    def havok_menu_func_export(self, context):
-        self.layout.operator(ExportLooseHKXMapCollision.bl_idname, text="HKX Collision (.hkx)")
-        self.layout.operator(ExportHKXMapCollisionIntoBinder.bl_idname, text="HKX Collision to Binder (.hkxbhd)")
-        self.layout.operator(ExportLooseHKXAnimation.bl_idname, text="HKX Animation (.hkx)")
-        self.layout.operator(ExportHKXAnimationIntoBinder.bl_idname, text="HKX Animation to Binder (.hkxbhd)")
-        # self.layout.operator(ExportHKXCutscene.bl_idname, text="HKX Cutscene (.remobnd)")
-
-else:
-    HAVOK_CLASSES = ()
-    havok_menu_func_import = None
-    havok_menu_func_export = None
+# noinspection PyUnusedLocal
+def havok_menu_func_export(self, context):
+    self.layout.operator(ExportLooseHKXMapCollision.bl_idname, text="HKX Collision (.hkx)")
+    self.layout.operator(ExportHKXMapCollisionIntoBinder.bl_idname, text="HKX Collision to Binder (.hkxbhd)")
+    self.layout.operator(ExportLooseHKXAnimation.bl_idname, text="HKX Animation (.hkx)")
+    self.layout.operator(ExportHKXAnimationIntoBinder.bl_idname, text="HKX Animation to Binder (.hkxbhd)")
+    # self.layout.operator(ExportHKXCutscene.bl_idname, text="HKX Cutscene (.remobnd)")
 
 
 LOAD_POST_HANDLERS = []
@@ -281,6 +276,7 @@ def register():
 
     bpy.types.Scene.msb_import_settings = bpy.props.PointerProperty(type=MSBImportSettings)
     bpy.types.Scene.msb_export_settings = bpy.props.PointerProperty(type=MSBExportSettings)
+    bpy.types.Scene.region_draw_settings = bpy.props.PointerProperty(type=RegionDrawSettings)
 
     bpy.types.Scene.navmesh_face_settings = bpy.props.PointerProperty(type=NavmeshFaceSettings)
     bpy.types.Scene.mcg_draw_settings = bpy.props.PointerProperty(type=MCGDrawSettings)
@@ -302,13 +298,14 @@ def register():
         bpy.types.SpaceView3D.draw_handler_add(draw_mcg_edges, (), "WINDOW", "POST_VIEW")
     )
 
-    if HAVOK_CLASSES:
-        for cls in HAVOK_CLASSES:
-            bpy.utils.register_class(cls)
-        bpy.types.TOPBAR_MT_file_import.append(havok_menu_func_import)
-        bpy.types.TOPBAR_MT_file_export.append(havok_menu_func_export)
+    SPACE_VIEW_3D_HANDLERS.append(
+        bpy.types.SpaceView3D.draw_handler_add(draw_regions, (), "WINDOW", "POST_VIEW")
+    )
 
-        bpy.types.Scene.map_collision_import_settings = bpy.props.PointerProperty(type=HKXMapCollisionImportSettings)
+    bpy.types.TOPBAR_MT_file_import.append(havok_menu_func_import)
+    bpy.types.TOPBAR_MT_file_export.append(havok_menu_func_export)
+
+    bpy.types.Scene.map_collision_import_settings = bpy.props.PointerProperty(type=HKXMapCollisionImportSettings)
 
 
 def unregister():
@@ -317,12 +314,8 @@ def unregister():
     bpy.types.TOPBAR_MT_file_import.remove(menu_func_import)
     bpy.types.TOPBAR_MT_file_export.remove(menu_func_export)
     bpy.types.VIEW3D_MT_object.remove(menu_func_view3d_mt)
-
-    if HAVOK_CLASSES:
-        for cls in reversed(HAVOK_CLASSES):
-            bpy.utils.unregister_class(cls)
-        bpy.types.TOPBAR_MT_file_import.remove(havok_menu_func_import)
-        bpy.types.TOPBAR_MT_file_export.remove(havok_menu_func_export)
+    bpy.types.TOPBAR_MT_file_import.remove(havok_menu_func_import)
+    bpy.types.TOPBAR_MT_file_export.remove(havok_menu_func_export)
 
     del bpy.types.Scene.soulstruct_settings
     del bpy.types.Scene.soulstruct_game_enums
@@ -334,6 +327,9 @@ def unregister():
     del bpy.types.Scene.mcg_draw_settings
     del bpy.types.Scene.mesh_move_settings
     del bpy.types.Scene.flver_tool_settings
+    del bpy.types.Scene.msb_import_settings
+    del bpy.types.Scene.msb_export_settings
+    del bpy.types.Scene.region_draw_settings
 
     for handler in LOAD_POST_HANDLERS:
         bpy.app.handlers.load_post.remove(handler)

@@ -35,13 +35,13 @@ class FLVERImportSettings(bpy.types.PropertyGroup):
         min=0.01,
     )
 
-    msb_part_name_match: bpy.props.StringProperty(
+    msb_entry_name_match: bpy.props.StringProperty(
         name="MSB Part Name Match",
         description="Glob/Regex for filtering MSB part names when importing all parts",
         default="*",
     )
 
-    msb_part_name_match_mode: bpy.props.EnumProperty(
+    msb_entry_name_match_mode: bpy.props.EnumProperty(
         name="MSB Part Name Match Mode",
         description="Whether to use glob or regex for MSB part name matching",
         items=[

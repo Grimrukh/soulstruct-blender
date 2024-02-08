@@ -52,7 +52,7 @@ class ExportLooseNVM(LoggingOperator, ExportHelper):
             return super().invoke(context, _event)
 
         obj = context.selected_objects[0]
-        model_name = find_model_name(self, obj)
+        model_name = find_model_name(self, obj, warn_property_mismatch=False)
         settings = self.settings(context)
         self.filepath = settings.game.process_dcx_path(f"{model_name}.nvm")
         context.window_manager.fileselect_add(self)
@@ -149,7 +149,7 @@ class ExportNVMIntoBinder(LoggingOperator, ImportHelper):
         exporter = NVMExporter(self, context)
 
         for nvm_model in selected_objs:
-            model_name = find_model_name(self, nvm_model)  # cannot add map area automatically
+            model_name = find_model_name(self, nvm_model, warn_property_mismatch=False)  # can't auto-detect map
 
             try:
                 nvm = exporter.export_nvm(nvm_model)
@@ -270,7 +270,7 @@ class ExportNVMIntoNVMBND(LoggingOperator):
             else:
                 nvmbnd = opened_nvmbnds[relative_nvmbnd_path]
 
-            model_name = find_model_name(self, nvm_model)
+            model_name = find_model_name(self, nvm_model, process_model_name_map_area(map_stem))
 
             try:
                 nvm = exporter.export_nvm(nvm_model)

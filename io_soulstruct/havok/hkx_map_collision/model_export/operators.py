@@ -61,7 +61,7 @@ class ExportLooseHKXMapCollision(LoggingOperator, ExportHelper):
             return super().invoke(context, _event)
 
         mesh = context.selected_objects[0]
-        model_name = find_model_name(self, mesh)
+        model_name = find_model_name(self, mesh, warn_property_mismatch=False)
         settings = self.settings(context)
         self.filepath = settings.game.process_dcx_path(f"{model_name}.hkx")
         context.window_manager.fileselect_add(self)
@@ -207,7 +207,7 @@ class ExportHKXMapCollisionIntoBinder(LoggingOperator, ImportHelper):
         # noinspection PyTypeChecker
         hkx_model = context.selected_objects[0]  # type: bpy.types.MeshObject
 
-        model_name = find_model_name(self, hkx_model)  # can't automatically add map area
+        model_name = find_model_name(self, hkx_model, warn_property_mismatch=False)  # can't automatically add map area
         if not LOOSE_HKX_COLLISION_NAME_RE.match(model_name):
             self.warning(
                 f"HKX map collision model name '{model_name}' should generally be 'h....B.A..' or 'l....B.A..'."

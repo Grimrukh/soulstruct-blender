@@ -64,6 +64,7 @@ def import_map_piece_model(
         settings,
         texture_import_manager=texture_manager,
         collection=get_collection(f"{map_stem} Map Piece Models", context.scene.collection),
+        mtdbnd=settings.get_mtdbnd(operator),
     )
 
     try:

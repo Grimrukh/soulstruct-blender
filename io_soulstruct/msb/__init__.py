@@ -8,6 +8,13 @@ __all__ = [
     "ImportAllMSBNavmeshes",
     "ImportMSBCharacter",
     "ImportAllMSBCharacters",
+    "ImportMSBPoint",
+    "ImportMSBVolume",
+    "ImportAllMSBPoints",
+    "ImportAllMSBVolumes",
+
+    "RegionDrawSettings",
+    "draw_regions",
 
     "MSBExportSettings",
     "ExportMSBMapPieces",
@@ -17,6 +24,7 @@ __all__ = [
 
     "MSBImportPanel",
     "MSBExportPanel",
+    "MSBToolsPanel",
 ]
 
 from .msb_import import *
@@ -37,8 +45,8 @@ class MSBImportPanel(bpy.types.Panel):
     def draw(self, context):
         msb_settings_box = self.layout.box()
         msb_settings_box.label(text="MSB Import Settings")
-        msb_settings_box.prop(context.scene.msb_import_settings, "part_name_match")
-        msb_settings_box.prop(context.scene.msb_import_settings, "part_name_match_mode")
+        msb_settings_box.prop(context.scene.msb_import_settings, "entry_name_match")
+        msb_settings_box.prop(context.scene.msb_import_settings, "entry_name_match_mode")
         msb_settings_box.prop(context.scene.msb_import_settings, "include_pattern_in_parent_name")
 
         map_piece_box = self.layout.box()
@@ -76,6 +84,14 @@ class MSBImportPanel(bpy.types.Panel):
         character_box.label(text="WARNING: Very slow!")
         character_box.operator(ImportAllMSBCharacters.bl_idname)
 
+        region_box = self.layout.box()
+        region_box.prop(context.scene.soulstruct_game_enums, "point_region", text="Point")
+        region_box.operator(ImportMSBPoint.bl_idname)
+        region_box.operator(ImportAllMSBPoints.bl_idname)
+        region_box.prop(context.scene.soulstruct_game_enums, "volume_region", text="Volume")
+        region_box.operator(ImportMSBVolume.bl_idname)
+        region_box.operator(ImportAllMSBVolumes.bl_idname)
+
 
 class MSBExportPanel(bpy.types.Panel):
     """Panel for Soulstruct MSB export operators."""
@@ -112,3 +128,19 @@ class MSBExportPanel(bpy.types.Panel):
         navmesh_box.operator(ExportMSBNavmeshes.bl_idname)
         navmesh_box.label(text="Complete MSB Navmeshes + NVMBND + NVMDUMP Export:")
         navmesh_box.operator(ExportCompleteMapNavigation.bl_idname)
+
+
+class MSBToolsPanel(bpy.types.Panel):
+    """Panel for Soulstruct MSB tool settings/operators."""
+    bl_label = "MSB Tools"
+    bl_idname = "SCENE_PT_msb_tools"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "Soulstruct MSB"
+    bl_options = {'DEFAULT_CLOSED'}
+
+    def draw(self, context):
+        region_draw_box = self.layout.box()
+        region_draw_box.label(text="FLVER Export Settings")
+        for prop in RegionDrawSettings.__annotations__:
+            region_draw_box.prop(context.scene.region_draw_settings, prop)

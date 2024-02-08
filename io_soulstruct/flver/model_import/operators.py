@@ -94,6 +94,7 @@ class BaseFLVERImportOperator(LoggingImportOperator):
             context,
             settings,
             texture_import_manager=texture_manager,
+            mtdbnd=settings.get_mtdbnd(self),
         )
 
         bl_mesh = None

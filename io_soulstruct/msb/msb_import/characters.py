@@ -49,6 +49,7 @@ def import_character_model(
         settings,
         texture_import_manager=texture_manager,
         collection=get_collection("Character Models", context.scene.collection),
+        mtdbnd=settings.get_mtdbnd(operator),
     )
 
     try:

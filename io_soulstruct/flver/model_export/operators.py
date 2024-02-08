@@ -66,7 +66,7 @@ class ExportStandaloneFLVER(LoggingOperator, ExportHelper):
             return super().invoke(context, _event)
 
         obj = context.selected_objects[0]
-        model_name = find_model_name(self, obj)
+        model_name = find_model_name(self, obj, warn_property_mismatch=False)
         settings = self.settings(context)
         self.filepath = settings.game.process_dcx_path(f"{model_name}.flver")
         context.window_manager.fileselect_add(self)

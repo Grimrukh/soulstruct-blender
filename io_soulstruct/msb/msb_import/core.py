@@ -190,14 +190,14 @@ class BaseImportMSBPart(LoggingOperator):
 
         if part_count == 0:
             self.warning(
-                f"No MSB {self.PART_TYPE_NAME} parts found with {msb_import_settings.part_name_match_mode} filter: "
-                f"'{msb_import_settings.part_name_match}'"
+                f"No MSB {self.PART_TYPE_NAME} parts found with {msb_import_settings.entry_name_match_mode} filter: "
+                f"'{msb_import_settings.entry_name_match}'"
             )
             return {"CANCELLED"}
 
         self.info(
             f"Imported {part_count} / {len(part_list)} MSB {self.PART_TYPE_NAME} parts in "
-            f"{time.perf_counter() - start_time:.3f} seconds (filter: '{msb_import_settings.part_name_match}')."
+            f"{time.perf_counter() - start_time:.3f} seconds (filter: '{msb_import_settings.entry_name_match}')."
         )
 
         # No change in view after importing all parts.

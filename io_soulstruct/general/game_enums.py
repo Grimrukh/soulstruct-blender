@@ -32,11 +32,13 @@ GAME_FILE_ENUM_ITEMS = {
     "nvm": CachedEnumItems(),
     "hkx_map_collision": CachedEnumItems(),
 
-    # MSB parts
+    # MSB entries
     "map_piece_part": CachedEnumItems(),
     "navmesh_part": CachedEnumItems(),
     "hkx_map_collision_part": CachedEnumItems(),
     "character_part": CachedEnumItems(),
+    "point_region": CachedEnumItems(),
+    "volume_region": CachedEnumItems(),
 
 }  # type: dict[str, CachedEnumItems]
 
@@ -329,6 +331,77 @@ def get_msb_character_items(self, context):
     return cached.items
 
 
+# noinspection PyUnusedLocal
+def get_point_region_items(self, context):
+    """Collect `MSBRegionPoint` parts from selected game map's MSB."""
+    key = "point_region"
+
+    settings = SoulstructSettings.from_context(context)
+    msb_path = settings.get_import_msb_path()  # we use preferred import location only (and latest version)
+    if not is_path_and_file(msb_path):
+        return _clear_items(key).items
+
+    cached = GAME_FILE_ENUM_ITEMS[key]
+    if cached.is_valid(msb_path, None):
+        # Use cached enum items.
+        # NOTE: Even if the MSB is written from Blender, Soulstruct cannot add or remove parts (yet).
+        return cached.items
+
+    # Open MSB and find all regions.
+
+    try:
+        msb_class = settings.get_game_msb_class()
+        msb = get_cached_file(msb_path, msb_class)  # type: MSB_TYPING
+    except (FileNotFoundError, ValueError) as ex:
+        return _clear_items(key).items
+
+    items = []
+    for point_region in msb.points:
+        items.append(
+            (point_region.name, point_region.name, f"{point_region.name} (EID {point_region.entity_id})")
+        )
+
+    # NOTE: The cache key is the MSB path.
+    cached = GAME_FILE_ENUM_ITEMS[key] = CachedEnumItems(msb_path, None, items)
+    return cached.items
+
+
+# noinspection PyUnusedLocal
+def get_volume_region_items(self, context):
+    """Collect `MSBRegionSphere`, `Cylinder`, and `Box` parts from selected game map's MSB."""
+    key = "volume_region"
+
+    settings = SoulstructSettings.from_context(context)
+    msb_path = settings.get_import_msb_path()  # we use preferred import location only (and latest version)
+    if not is_path_and_file(msb_path):
+        return _clear_items(key).items
+
+    cached = GAME_FILE_ENUM_ITEMS[key]
+    if cached.is_valid(msb_path, None):
+        # Use cached enum items.
+        # NOTE: Even if the MSB is written from Blender, Soulstruct cannot add or remove parts (yet).
+        return cached.items
+
+    # Open MSB and find all regions.
+
+    try:
+        msb_class = settings.get_game_msb_class()
+        msb = get_cached_file(msb_path, msb_class)  # type: MSB_TYPING
+    except (FileNotFoundError, ValueError) as ex:
+        return _clear_items(key).items
+
+    items = []
+    for shape, region_list in (("Sphere", msb.spheres), ("Cylinder", msb.cylinders), ("Box", msb.boxes)):
+        for region in region_list:
+            items.append(
+                (region.name, f"{region.name} ({shape})", f"{region.name} ({shape}, EID {region.entity_id})")
+            )
+
+    # NOTE: The cache key is the MSB path.
+    cached = GAME_FILE_ENUM_ITEMS[key] = CachedEnumItems(msb_path, None, items)
+    return cached.items
+
+
 class SoulstructGameEnums(bpy.types.PropertyGroup):
     """Files, Binder entries, and MSB entries of various types found in the game directory via on-demand scan."""
 
@@ -348,7 +421,7 @@ class SoulstructGameEnums(bpy.types.PropertyGroup):
 
     # endregion
 
-    # region MSB Parts
+    # region MSB Entries
 
     map_piece_part: bpy.props.EnumProperty(
         name="MSB Map Piece Part",
@@ -368,6 +441,16 @@ class SoulstructGameEnums(bpy.types.PropertyGroup):
     character_part: bpy.props.EnumProperty(
         name="MSB Character Part",
         items=get_msb_character_items,
+    )
+
+    point_region: bpy.props.EnumProperty(
+        name="MSB Point Region",
+        items=get_point_region_items,
+    )
+
+    volume_region: bpy.props.EnumProperty(
+        name="MSB Volume Region",
+        items=get_volume_region_items,
     )
 
     # endregion
