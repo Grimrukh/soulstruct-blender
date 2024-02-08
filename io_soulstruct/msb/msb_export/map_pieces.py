@@ -8,11 +8,9 @@ import traceback
 import typing as tp
 from pathlib import Path
 
-import bpy
-
 from io_soulstruct.general.cached import get_cached_file
 from io_soulstruct.utilities import *
-from io_soulstruct.flver.flver_export import FLVERExporter, FLVERExportSettings
+from io_soulstruct.flver.model_export import FLVERExporter, FLVERExportSettings
 from io_soulstruct.flver.textures.export_textures import export_map_area_textures
 from io_soulstruct.flver.utilities import *
 from .core import *
@@ -99,6 +97,13 @@ class ExportMSBMapPieces(LoggingOperator):
 
             msb = opened_msbs[relative_msb_path]  # type: MSB_TYPING
 
+            edited_msb_part_names = edited_part_names.setdefault(msb_stem, set())
+            if map_piece_part_name in edited_msb_part_names:
+                self.warning(
+                    f"Map Piece part '{map_piece_part_name}' was exported more than once in selected meshes."
+                )
+            edited_msb_part_names.add(map_piece_part_name)
+
             try:
                 msb_part = msb.map_pieces.find_entry_name(map_piece_part_name)
             except KeyError:
@@ -110,46 +115,14 @@ class ExportMSBMapPieces(LoggingOperator):
                     f"Map piece part '{map_piece_part_name}' in MSB '{msb_stem}' has no model name."
                 )
 
-            edited_msb_part_names = edited_part_names.setdefault(msb_stem, set())
-            if map_piece_part_name in edited_msb_part_names:
+            model_name = find_model_name(self, armature or mesh, process_model_name_map_area(map_stem))
+            msb_model_name = msb_part.model.get_model_file_stem(map_stem)
+            if model_name != msb_model_name:
+                # We update the MSB model name even if exporting MSB data only.
                 self.warning(
-                    f"Map Piece part '{map_piece_part_name}' was exported more than once in selected meshes."
+                    f"Updating Map Piece model name of MSB part '{map_piece_part_name}' to '{model_name}'."
                 )
-            edited_msb_part_names.add(map_piece_part_name)
-
-            # We get the Blender model stem and the existing MSB model stem, warn if they don't match, and then choose
-            # based on the value of `prefer_new_model_name` (currently stuck at True).
-
-            # If 'Model Name' is not defined, model stem uses the 'stem' of the object name and suffix 'AXX'. We
-            # warn if these don't match, as it's easy to forget to update.
-            dummy_material_prefix = get_default_flver_stem(mesh, armature, self)
-            default_file_stem = dummy_material_prefix + f"A{map_stem[1:3]}"
-            blender_file_stem = mesh.get("Model Name", default_file_stem)
-            msb_model_file_stem = msb_part.model.get_model_file_stem(map_stem)
-
-            if blender_file_stem != msb_model_file_stem:
-                if msb_export_settings.prefer_new_model_name:
-                    new_model_file_stem = blender_file_stem
-                    self.warning(
-                        f"Replacing existing MSB model file stem '{msb_model_file_stem}' with new file stem "
-                        f"'{blender_file_stem}'."
-                    )
-                    if blender_file_stem != default_file_stem:
-                        self.warning(
-                            f"Custom model file stem '{blender_file_stem}' will override non-matching stem from object "
-                            f"name '{default_file_stem}'."
-                        )
-                    # Update MSB model name (game-dependent format, usually without area suffix present in FLVER file stem).
-                    msb_part.model.set_name_from_model_file_stem(new_model_file_stem)
-                else:
-                    new_model_file_stem = msb_model_file_stem
-                    self.warning(
-                        f"Ignoring new file stem '{blender_file_stem}' and keeping existing MSB model file stem "
-                        f"'{msb_model_file_stem}' for FLVER."
-                    )
-                    # No need to update MSB model name.
-            else:
-                new_model_file_stem = blender_file_stem  # matches MSB
+                msb_part.model.set_name_from_model_file_stem(model_name)
 
             # Update part transform in MSB.
             obj_to_msb_entry_transform(armature or mesh, msb_part)
@@ -159,18 +132,18 @@ class ExportMSBMapPieces(LoggingOperator):
                     flver = exporter.export_flver(
                         mesh,
                         armature,
-                        dummy_material_prefix,  # taken from current Mesh name; may not match exported file stem
+                        dummy_material_prefix=model_name,  # TODO: annoying if this gets out of date?
                         dummy_prefix_must_match=False,  # Map Pieces export ALL dummy children
-                        default_bone_name=new_model_file_stem,  # Map Piece can omit Blender Armature/bones
+                        default_bone_name=model_name,  # Map Piece can omit Blender Armature/bones
                     )
                 except Exception as ex:
                     traceback.print_exc()
                     return self.error(
-                        f"Cannot get exported FLVER '{new_model_file_stem}' from {mesh.name}. Error: {ex}"
+                        f"Cannot get exported FLVER '{model_name}' from {mesh.name}. Error: {ex}"
                     )
                 flver.dcx_type = flver_dcx_type
                 # TODO: Elden Ring will need MAPBND export.
-                settings.export_file(self, flver, relative_map_path / f"{new_model_file_stem}.flver")
+                settings.export_file(self, flver, relative_map_path / f"{model_name}.flver")
 
                 if flver_export_settings.export_textures:
                     # Collect all Blender images for batched map area export.

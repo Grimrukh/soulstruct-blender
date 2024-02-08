@@ -128,7 +128,7 @@ class ImportHKXMapCollision(LoggingOperator, ImportHelper):
 
             if self.load_other_resolution and new_non_choice_import_infos:
                 for import_info in new_non_choice_import_infos:
-                    other_res_hkx = load_other_res_hkx(self, file_path, import_info, is_binder)
+                    other_res_hkx = load_other_res_hkx(self, file_path, import_info.hkx_name, is_binder)
                     if other_res_hkx:
                         other_res_hkxs[(import_info.path, import_info.hkx_name)] = other_res_hkx
 
@@ -155,30 +155,13 @@ class ImportHKXMapCollision(LoggingOperator, ImportHelper):
 
             # Import single HKX.
             try:
-                hkx_parent, _ = importer.import_hkx(hkx, bl_name=hkx_model_name, use_material=self.use_material)
+                importer.import_hkx(hkx, model_name=hkx_model_name, lo_hkx=other_res_hkx)
             except Exception as ex:
                 # Delete any objects created prior to exception.
                 for obj in importer.all_bl_objs:
                     bpy.data.objects.remove(obj)
                 traceback.print_exc()  # for inspection in Blender console
                 return self.error(f"Cannot import HKX: {import_info.path}. Error: {ex}")
-
-            if other_res_hkx is not None:
-                # Import other-res HKX.
-                other_res_hkx_model_name = other_res_hkx.path.name.split(".")[0]
-                try:
-                    importer.import_hkx(
-                        other_res_hkx,
-                        bl_name=other_res_hkx_model_name,
-                        use_material=self.use_material,
-                        existing_parent=hkx_parent,
-                    )
-                except Exception as ex:
-                    # Delete any objects created prior to exception.
-                    for obj in importer.all_bl_objs:
-                        bpy.data.objects.remove(obj)
-                    traceback.print_exc()  # for inspection in Blender console
-                    return self.error(f"Cannot import other-res HKX for {import_info.path}. Error: {ex}")
 
         return {"FINISHED"}
 
@@ -284,7 +267,7 @@ class ImportHKXMapCollisionWithBinderChoice(LoggingOperator):
             other_res_hkx = load_other_res_hkx(
                 operator=self,
                 file_path=self.binder_file_path,
-                import_info=import_info,
+                hkx_name=import_info.hkx_name,
                 is_binder=True,
             )
         else:
@@ -294,26 +277,12 @@ class ImportHKXMapCollisionWithBinderChoice(LoggingOperator):
         self.importer.context = context
 
         try:
-            hkx_parent, _ = self.importer.import_hkx(hkx, bl_name=hkx_model_name)
+            self.importer.import_hkx(hkx, model_name=hkx_model_name, lo_hkx=other_res_hkx)
         except Exception as ex:
             for obj in self.importer.all_bl_objs:
                 bpy.data.objects.remove(obj)
             traceback.print_exc()
             return self.error(f"Cannot import HKX {hkx_model_name} from '{self.binder_file_path.name}'. Error: {ex}")
-
-        if other_res_hkx is not None:
-            # Import other-resolution HKX.
-            other_res_hkx_model_name = other_res_hkx.path.name.split(".")[0]
-            try:
-                self.importer.import_hkx(other_res_hkx, bl_name=other_res_hkx_model_name, existing_parent=hkx_parent)
-            except Exception as ex:
-                for obj in self.importer.all_bl_objs:
-                    bpy.data.objects.remove(obj)
-                traceback.print_exc()
-                return self.error(
-                    f"Cannot import other-resolution HKX {other_res_hkx_model_name} from "
-                    f"'{self.binder_file_path.name}'. Error: {ex}"
-                )
 
         return {"FINISHED"}
 
@@ -414,22 +383,24 @@ class ImportHKXMapCollisionFromHKXBHD(LoggingOperator):
             (import_info.path, import_info.hkx_name): load_other_res_hkx(
                 operator=self,
                 file_path=import_info.path,
-                import_info=import_info,
+                hkx_name=import_info.hkx_name,
                 is_binder=True,
             )
         }  # type: dict[tuple[Path, str], MapCollisionHKX]
 
-        importer = HKXMapCollisionImporter(self, context)
+        collection = get_collection(f"{map_stem} Collisions", context.scene.collection)
+        importer = HKXMapCollisionImporter(self, context, collection=collection)
 
         hkx = import_info.hkx
         hkx_model_name = import_info.hkx_name.split(".")[0]
         other_res_hkx = other_res_hkxs.get((import_info.path, import_info.hkx_name), None)
+        # TODO: Ensure here that `hkx` is hi and `other_res_hkx` is lo. Swap if necessary.
 
         self.info(f"Importing HKX '{hkx_model_name}' as '{bl_name}'.")
 
         # Import single HKX.
         try:
-            hkx_parent, _ = importer.import_hkx(hkx, bl_name=bl_name, use_material=self.use_material)
+            hkx_model = importer.import_hkx(hkx, model_name=bl_name, lo_hkx=other_res_hkx)
         except Exception as ex:
             # Delete any objects created prior to exception.
             for obj in importer.all_bl_objs:
@@ -437,27 +408,13 @@ class ImportHKXMapCollisionFromHKXBHD(LoggingOperator):
             traceback.print_exc()  # for inspection in Blender console
             return self.error(f"Cannot import HKX: {import_info.path}. Error: {ex}")
 
-        if other_res_hkx is not None:
-            # Import other-res HKX.
-            other_res_hkx_model_name = other_res_hkx.path.name.split(".")[0]
-            try:
-                hkx_parent, _ = importer.import_hkx(
-                    other_res_hkx,
-                    bl_name=other_res_hkx_model_name,
-                    use_material=self.use_material,
-                    existing_parent=hkx_parent,
-                )
-            except Exception as ex:
-                # Delete any objects created prior to exception.
-                for obj in importer.all_bl_objs:
-                    bpy.data.objects.remove(obj)
-                traceback.print_exc()  # for inspection in Blender console
-                return self.error(f"Cannot import other-res HKX for {import_info.path}. Error: {ex}")
-
-        collection = get_collection(f"{map_stem} Collisions", context.scene.collection)
-        collection.objects.link(hkx_parent)
-
         p = time.perf_counter() - start_time
-        self.info(f"Finished importing HKX map collision {hkx_entry_name} from {hkxbhd_path.name} in {p} s.")
+        self.info(
+            f"Imported HKX map collision '{hkx_model.name}' from {hkx_entry_name} in {hkxbhd_path.name} in {p} s."
+        )
+
+        # Select and frame view on newly imported Mesh.
+        self.set_active_obj(hkx_model)
+        bpy.ops.view3d.view_selected(use_all_regions=False)
 
         return {"FINISHED"}

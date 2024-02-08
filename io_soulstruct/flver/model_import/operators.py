@@ -265,7 +265,15 @@ class ImportObjectFLVER(BaseFLVERImportOperator):
 
 
 class ImportEquipmentFLVER(BaseFLVERImportOperator):
-    """Import weapon/armor FLVER from a `partsbnd` binder and attach it to selected armature (c0000)."""
+    """Import weapon/armor FLVER from a `partsbnd` Binder.
+
+    NOTE: Earlier versions of Soulstruct forced you to select an imported `c0000` model, and the mesh and dummies of
+    this equipment FLVER would be parented to that model. However, this was actually destructive, as it prevented the
+    user from viewing or editing the partial c0000 Armature that is actually present in the equipment FLVER.
+
+    If you want to animate equipment with c0000 animations, you can simply set those animations to this FLVER -- the
+    Armature bones should all be compatible.
+    """
     bl_idname = "import_scene.equipment_flver"
     bl_label = "Import Equipment"
     bl_description = "Import equipment FLVER from a PARTSBND in selected game 'parts' directory"

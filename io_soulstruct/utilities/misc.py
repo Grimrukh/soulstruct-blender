@@ -11,6 +11,8 @@ __all__ = [
     "is_path_and_file",
     "is_path_and_dir",
     "get_collection_map_stem",
+    "find_model_name",
+    "process_model_name_map_area",
 ]
 
 import math
@@ -24,6 +26,9 @@ from mathutils import Vector
 
 from soulstruct.containers import Binder
 from soulstruct.utilities.maths import Vector3
+
+if tp.TYPE_CHECKING:
+    from .operators import LoggingOperator
 
 
 MAP_STEM_RE = re.compile(r"^m(?P<area>\d\d)_(?P<block>\d\d)_(?P<cc>\d\d)_(?P<dd>\d\d)$")
@@ -256,3 +261,38 @@ def get_collection_map_stem(obj: bpy.types.Object) -> str:
     if not map_stem:
         raise ValueError(f"Object '{obj.name}' is not in a Blender collection that matches map stem pattern.")
     return map_stem
+
+
+def find_model_name(
+    operator: LoggingOperator,
+    obj: bpy.types.Object,
+    warn_property_mismatch=True,
+    process_default_model_name: tp.Callable[[str], str] = None,
+) -> str:
+    """Try to retrieve the model name from the object's custom properties, falling back to the object's name with
+    optional processing. This works the same way for all types of model assets (FLVER, HKK, NVM).
+
+    If the 'Model Name' custom property exists and does NOT match the default model name from the processed object name,
+    a warning may be issued with the given `operator`.
+    """
+    default_model_name = get_bl_obj_stem(obj)
+    if process_default_model_name:
+        default_model_name = process_default_model_name(default_model_name)
+
+    prop_model_name = obj.get("Model Name", None)
+    if warn_property_mismatch and prop_model_name is not None and prop_model_name != default_model_name:
+        operator.warning(
+            f"Object '{obj.name}' has custom property 'Model Name' set to '{prop_model_name}', but the default "
+            f"model name extracted from its Blender name is '{default_model_name}'."
+        )
+
+    # NOTE: Will return default model name if property model name is `None` or empty string.
+    return prop_model_name or default_model_name
+
+
+def process_model_name_map_area(map_stem: str) -> tp.Callable[[str], str]:
+    """Construct a process callback for `find_model_name` that adds the area suffix to the model name if missing.
+
+    TODO: Currently assumes DS1 format, i.e. seven characters without area and ten characters with.
+    """
+    return lambda model_name: f"{model_name}A{map_stem[1:3]}" if len(model_name) == 7 else model_name

@@ -89,21 +89,8 @@ class FLVERImporter:
         self.new_images.clear()
         self.new_materials.clear()
 
-    def import_flver(
-        self,
-        flver: FLVER,
-        name: str,
-    ) -> tuple[bpy.types.ArmatureObject, bpy.types.MeshObject]:
-        """Read a FLVER into a Blender mesh and Armature.
-
-        If `existing_armature` is passed, the skeleton of `flver` will not be imported as a new Armature, and the FLVER
-        mesh will be rigged to the bones of `existing_armature` instead (e.g. for parenting equipment models to c0000).
-        Dummies should generally not be present in these FLVERs, but if they do exist, they will also be parented to the
-        armature with their original FLVER name as a prefix to distinguish them from the dummies of `existing_armature`.
-        In this mode, if `flver` vertices are weighted to any bones not in `existing_armature`, they will be ignored and
-        a warning will be logged.
-        """
-        # start_time = time.perf_counter()
+    def import_flver(self, flver: FLVER, name: str) -> tuple[bpy.types.ArmatureObject, bpy.types.MeshObject]:
+        """Read a FLVER into a Blender Armature and child Mesh."""
 
         self.flver = flver
         self.name = name
@@ -124,7 +111,6 @@ class FLVERImporter:
         import_settings = self.context.scene.flver_import_settings  # type: FLVERImportSettings
 
         bl_armature_obj = self.create_armature(import_settings.base_edit_bone_length)
-        dummy_prefix = ""
         self.new_objs.append(bl_armature_obj)
 
         submesh_bl_material_indices, bl_material_uv_layer_names = self.create_materials(
@@ -135,25 +121,22 @@ class FLVERImporter:
             flver, self.name, submesh_bl_material_indices, bl_material_uv_layer_names
         )
 
-        # Assign basic FLVER header information as custom props.
-        # TODO: Configure a full-exporter dropdown/choice of game version that defaults as many of these as possible.
-        #  - `Version` and `Unicode` can be detected from selected game, and possibly the other unknowns
-        #  - `Is Big Endian` can be a global settings bool
-        bl_flver_mesh["Is Big Endian"] = flver.big_endian  # bool
-        bl_flver_mesh["Version"] = flver.version.name  # str
-        bl_flver_mesh["Unicode"] = flver.unicode  # bool
-        bl_flver_mesh["Unk x4a"] = flver.unk_x4a  # bool
-        bl_flver_mesh["Unk x4c"] = flver.unk_x4c  # int
-        bl_flver_mesh["Unk x5c"] = flver.unk_x5c  # int
-        bl_flver_mesh["Unk x5d"] = flver.unk_x5d  # int
-        bl_flver_mesh["Unk x68"] = flver.unk_x68  # int
+        # Assign basic FLVER header information as custom props on the Armature.
+        bl_armature_obj["Is Big Endian"] = flver.big_endian  # bool
+        bl_armature_obj["Version"] = flver.version.name  # str
+        bl_armature_obj["Unicode"] = flver.unicode  # bool
+        bl_armature_obj["Unk x4a"] = flver.unk_x4a  # bool
+        bl_armature_obj["Unk x4c"] = flver.unk_x4c  # int
+        bl_armature_obj["Unk x5c"] = flver.unk_x5c  # int
+        bl_armature_obj["Unk x5d"] = flver.unk_x5d  # int
+        bl_armature_obj["Unk x68"] = flver.unk_x68  # int
 
         # Parent mesh to armature. This is critical for proper animation behavior (especially with root motion).
         bl_flver_mesh.parent = bl_armature_obj
         self.create_mesh_armature_modifier(bl_flver_mesh, bl_armature_obj)
 
         for i, dummy in enumerate(flver.dummies):
-            self.create_dummy(dummy, index=i, bl_armature=bl_armature_obj, dummy_prefix=dummy_prefix)
+            self.create_dummy(dummy, index=i, bl_armature=bl_armature_obj)
 
         # self.operator.info(f"Created FLVER Blender mesh '{name}' in {time.perf_counter() - start_time:.3f} seconds.")
 
@@ -762,7 +745,7 @@ class FLVERImporter:
             pose_bone.scale = GAME_TO_BL_VECTOR(game_bone.scale)
 
     def create_dummy(
-        self, game_dummy: Dummy, index: int, bl_armature: bpy.types.ArmatureObject, dummy_prefix=""
+        self, game_dummy: Dummy, index: int, bl_armature: bpy.types.ArmatureObject
     ) -> bpy.types.Object:
         """Create an empty object that represents a FLVER 'dummy' (a generic 3D point).
 
@@ -774,10 +757,7 @@ class FLVERImporter:
         As much as I'd like to nest them under another empty object, to properly attach them to the armature, they have
         to be direct children.
         """
-        if dummy_prefix:
-            name = f"[{dummy_prefix}] {self.name} Dummy<{index}> [{game_dummy.reference_id}]"
-        else:
-            name = f"{self.name} Dummy<{index}> [{game_dummy.reference_id}]"
+        name = f"{self.name} Dummy<{index}> [{game_dummy.reference_id}]"
         bl_dummy = self.create_obj(name)  # no data (Empty)
         bl_dummy.parent = bl_armature
         bl_dummy.empty_display_type = "ARROWS"  # best display type/size I've found (single arrow not sufficient)

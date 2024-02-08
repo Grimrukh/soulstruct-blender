@@ -63,13 +63,6 @@ class FLVERExporter:
         if self.matbinbnd is None:
             self.matbinbnd = self.settings.get_matbinbnd(self.operator)
 
-    @staticmethod
-    def _clear_temp_flver():
-        try:
-            bpy.data.meshes.remove(bpy.data.meshes["__TEMP_FLVER__"])
-        except KeyError:
-            pass
-
     def export_flver(
         self,
         mesh: bpy.types.MeshObject,
@@ -78,14 +71,15 @@ class FLVERExporter:
         dummy_prefix_must_match: bool,
         default_bone_name="",
     ) -> FLVER:
-        """Create an entire FLVER from Blender Mesh and (optional) Armature objects.
+        """Create an entire FLVER from a Blender Mesh and (optional) parent Armature.
 
-        The Mesh and Armature can have any number of Empty children, which are exported as dummies provided they have
+        The Mesh and/or Armature can have any number of Empty children, which are exported as dummies provided they have
         the appropriate custom data (created upon Soulstruct import). Note that only dummies parented to the Armature
         can be attached to Armature bones (which most will, realistically).
 
         If `armature` is None, a default skeleton with a single bone at the model's origin will be created (which is why
-        `default_bone_name` must be passed in). This is fine for 99% of map pieces, for example.
+        `default_bone_name` must be passed in). This is fine for 99% of map pieces, for example. In this case, any
+        non-default FLVER header properties such as 'Version' should be present on the Mesh instead of the Armature.
 
         `dummy_material_prefix` is used to strip disambiguating prefixes from the Blender dummy children and materials
         used by this mesh. If `dummy_prefix_must_match = True`, then only dummy children that start with this prefix
@@ -96,8 +90,8 @@ class FLVERExporter:
         at the origin and used for all vertices. Otherwise, an Armature must be present and all vertices must be
         weighted to one or more bones in it.
 
-        If the Mesh object is missing certain 'FLVER' custom properties (see `get_flver_props`), they will be exported
-        with default values based on the current selected game, if able.
+        If the Armature (or unrigged Mesh) object is missing certain 'FLVER' custom properties (see `get_flver_props`),
+        they will be exported with default values based on the current selected game, if able.
 
         TODO: Currently only really tested for DS1 FLVERs.
         """
@@ -108,7 +102,7 @@ class FLVERExporter:
         if armature is not None and armature.type != "ARMATURE":
             raise FLVERExportError("`armature` object passed to FLVER exporter must be an Armature or `None`.")
 
-        flver = FLVER(**self.get_flver_props(mesh, self.settings.game))
+        flver = FLVER(**self.get_flver_props(armature or mesh, self.settings.game))
 
         bl_dummies = self.collect_dummies(
             mesh, armature, prefix=dummy_material_prefix, prefix_must_match=dummy_prefix_must_match
@@ -143,7 +137,6 @@ class FLVERExporter:
         # Make `mesh` the active object again.
         self.context.view_layer.objects.active = mesh
 
-        # noinspection PyUnresolvedReferences
         for bl_dummy, dummy_info in bl_dummies:
             flver_dummy = self.export_dummy(bl_dummy, dummy_info.reference_id, bl_bone_names, bl_bone_data)
             # Mark attach/parent bones as used. TODO: Set more specific flags in later games (2 here).
@@ -199,6 +192,7 @@ class FLVERExporter:
         # TODO: Partially redundant since splitter does this for submeshes automatically. Only need FLVER-wide bounds.
         flver.refresh_bounding_boxes()
 
+        self._clear_temp_flver()
 
         return flver
 
@@ -209,13 +203,15 @@ class FLVERExporter:
         prefix: str,
         prefix_must_match: bool,
     ) -> list[tuple[bpy.types.Object, DummyInfo]]:
-        """Collect all Empty children of the Mesh and Armature objects with valid Dummy names including prefix
-        `model_name`, and return them as a list of tuples of the form `(bl_empty, dummy_info)`.
+        """Collect all Empty children of the Mesh and Armature objects with valid Dummy names that start with prefix
+        `prefix` if `prefix_must_match` = True.
+
+        Returns collected dummies them as a list of tuples of the form `(bl_empty, dummy_info)`.
 
         Dummies parented to the Mesh, rather than the Armature, will NOT be attached to any bones (though may still have
         custom `Parent Bone Name` data).
 
-        Note that no dummies need exist in a FLVER (e.g. map pieces).
+        Note that no dummies need to exist in a FLVER (e.g. map pieces).
         """
         bl_dummies = []  # type: list[tuple[bpy.types.Object, DummyInfo]]
         empty_children = [child for child in mesh.children if child.type == "EMPTY"]
@@ -304,19 +300,12 @@ class FLVERExporter:
             all_uv_layer_names_set |= set(material_uv_layer_names)
         uv_layer_names = sorted(all_uv_layer_names_set)  # e.g. ["UVMap1", "UVMap2", "UVMap3"]
 
-        # Automatically triangulate the mesh.
-        bm = bmesh.new()
-        bm.from_mesh(bl_mesh.data)
-        bmesh.ops.triangulate(bm, faces=bm.faces[:], quad_method="BEAUTY", ngon_method="BEAUTY")
-        tri_mesh_data = bpy.data.meshes.new("__TEMP_FLVER__")  # will be deleted during `finally` block of caller
-        # Probably not necessary, but we copy material slots over, just case it causes `face.material_index` problems.
-        for bl_mat in bl_mesh.data.materials:
-            tri_mesh_data.materials.append(bl_mat)
-        bm.to_mesh(tri_mesh_data)
-        bm.free()
-        del bm
-
-        # 3. Prepare Mesh data.
+        # 3. Create a triangulated copy of the mesh, so the user doesn't have to triangulate it themselves (though they
+        #  may want to do this anyway for absolute approval of the final asset). Custom split normals are copied to the
+        #  triangulated mesh using an applied Data Transfer modifier. Materials are copied over. Nothing else needs to
+        #  be copied, as it is either done automatically by triangulation (e.g. UVs) or is part of the unchanged vertex
+        #  data (e.g. bone weights) in the original mesh.
+        tri_mesh_data = self.create_triangulated_mesh(bl_mesh)
         # TODO: The tangent and bitangent of each vertex should be calculated from the UV map that is effectively
         #  serving as the normal map ('_n' displacement texture) for that vertex. However, for multi-texture mesh
         #  materials, vertex alpha blends two normal maps together, so the UV map for (bi)tangents will vary across
@@ -326,7 +315,7 @@ class FLVERExporter:
         try:
             # TODO: This function calls the required `calc_normals_split()` automatically, but if it was replaced,
             #  a separate call of that would be needed to write the (rather inaccessible) custom split per-loop normal
-            #  data (pink lines in 3D View overlay) and writes them to `loop.normal`.
+            #  data (pink lines in 3D View overlay) to each `loop.normal`.
             tri_mesh_data.calc_tangents(uvmap="UVMap1")
             # bl_mesh_data.calc_normals_split()
         except RuntimeError as ex:
@@ -469,8 +458,8 @@ class FLVERExporter:
 
         loop_vertex_indices = np.empty(loop_count, dtype=np.int32)
         loop_normals = np.empty((loop_count, 3), dtype=np.float32)
-        # TODO: Not exporting any real normal_w data yet. If used as a fake bone weight, it should be stored in a custom
-        #  data layer.
+        # TODO: Not exporting any real `normal_w` data yet. If used as a fake bone weight, it should be stored in a
+        #  custom data layer or something.
         loop_normals_w = np.full((loop_count, 1), 127, dtype=np.uint8)
         # TODO: could check combined `dtype` now to skip these if not needed by any materials.
         #  (Related: mark these arrays as optional attributes in `MergedMesh`.)
@@ -523,6 +512,46 @@ class FLVERExporter:
             unused_bone_indices_are_minus_one=True,
         )
         self.info(f"Split mesh into {len(flver.submeshes)} submeshes in {time.perf_counter() - p} s.")
+
+    def create_triangulated_mesh(self, bl_mesh: bpy.types.MeshObject) -> bpy.types.Mesh:
+        """Use `bmesh` and the Data Transfer Modifier to create a temporary triangulated copy of the mesh (required
+        for FLVER models) that retains/interpolates critical information like custom split normals and vertex groups."""
+
+        # Automatically triangulate the mesh.
+        bm = bmesh.new()
+        bm.from_mesh(bl_mesh.data)
+        bmesh.ops.triangulate(bm, faces=bm.faces[:], quad_method="BEAUTY", ngon_method="BEAUTY")
+        tri_mesh_data = bpy.data.meshes.new("__TEMP_FLVER__")  # will be deleted during `finally` block of caller
+        tri_mesh_data.use_auto_smooth = True
+        # Probably not necessary, but we copy material slots over, just case it causes `face.material_index` problems.
+        for bl_mat in bl_mesh.data.materials:
+            tri_mesh_data.materials.append(bl_mat)
+        bm.to_mesh(tri_mesh_data)
+        bm.free()
+        del bm
+
+        # Create an object for the mesh so we can apply the Data Transfer modifier to it.
+        # noinspection PyTypeChecker
+        tri_mesh_obj = bpy.data.objects.new("__TEMP_FLVER_OBJ__", tri_mesh_data)  # type: bpy.types.MeshObject
+        self.context.collection.objects.link(tri_mesh_obj)
+
+        # Add the Data Transfer Modifier to the triangulated mesh object.
+        # noinspection PyTypeChecker
+        data_transfer_mod = tri_mesh_obj.modifiers.new(
+            name="__TEMP_FLVER_DATA_TRANSFER__", type="DATA_TRANSFER"
+        )  # type: bpy.types.DataTransferModifier
+        data_transfer_mod.object = bl_mesh
+        # Enable custom normal data transfer and set the appropriate options.
+        data_transfer_mod.use_loop_data = True
+        data_transfer_mod.data_types_loops = {"CUSTOM_NORMAL"}
+        data_transfer_mod.loop_mapping = "NEAREST_POLYNOR"  # best for simple triangulation
+
+        # Apply the modifier.
+        bpy.context.view_layer.objects.active = tri_mesh_obj  # set the triangulated mesh as active
+        bpy.ops.object.modifier_apply(modifier=data_transfer_mod.name)
+
+        # Return the mesh data.
+        return tri_mesh_obj.data
 
     def create_bones(
         self,
@@ -824,10 +853,25 @@ class FLVERExporter:
 
         return flver_material
 
-    def get_flver_props(self, bl_flver: bpy.types.MeshObject, game: Game) -> dict[str, tp.Any]:
+    def get_flver_props(self, bl_obj: bpy.types.MeshObject, game: Game) -> dict[str, tp.Any]:
+        """Retrieve FLVER properties from custom properties on given object, which will be the Armature if present and
+        Mesh otherwise (permitted for basic Map Pieces).
+
+        If 'Model Name' property is present, that Blender model object will be found and used instead. That object must
+        exist if its name is specified.
+        """
+
+        if source_model_name := bl_obj.get("Model Name", None):
+            try:
+                bl_obj = bpy.data.objects[source_model_name]
+            except KeyError:
+                raise FLVERExportError(
+                    f"FLVER mesh '{bl_obj.name}' has 'Model Name' property set to non-existent object "
+                    f"{source_model_name}'. Cannot find FLVER properties or dummies for export."
+                )
 
         try:
-            version_str = bl_flver["Version"]
+            version_str = bl_obj["Version"]
         except KeyError:
             # Default is game-dependent.
             try:
@@ -835,7 +879,7 @@ class FLVERExporter:
             except KeyError:
                 raise ValueError(
                     f"Do not know default FLVER Version for game {game}. You must set 'Version' yourself on FLVER "
-                    f"mesh '{bl_flver.name}' before exporting. It must be one of: {', '.join(v.name for v in Version)}"
+                    f"object '{bl_obj.name}' before exporting. It must be one of: {', '.join(v.name for v in Version)}"
                 )
         else:
             try:
@@ -847,14 +891,14 @@ class FLVERExporter:
 
         # TODO: Any other game-specific fields?
         return dict(
-            big_endian=get_bl_prop(bl_flver, "Is Big Endian", bool, default=False),
+            big_endian=get_bl_prop(bl_obj, "Is Big Endian", bool, default=False),
             version=version,
-            unicode=get_bl_prop(bl_flver, "Unicode", bool, default=True),
-            unk_x4a=get_bl_prop(bl_flver, "Unk x4a", bool, default=False),
-            unk_x4c=get_bl_prop(bl_flver, "Unk x4c", int, default=0),
-            unk_x5c=get_bl_prop(bl_flver, "Unk x5c", int, default=0),
-            unk_x5d=get_bl_prop(bl_flver, "Unk x5d", int, default=0),
-            unk_x68=get_bl_prop(bl_flver, "Unk x68", int, default=0),
+            unicode=get_bl_prop(bl_obj, "Unicode", bool, default=True),
+            unk_x4a=get_bl_prop(bl_obj, "Unk x4a", bool, default=False),
+            unk_x4c=get_bl_prop(bl_obj, "Unk x4c", int, default=0),
+            unk_x5c=get_bl_prop(bl_obj, "Unk x5c", int, default=0),
+            unk_x5d=get_bl_prop(bl_obj, "Unk x5d", int, default=0),
+            unk_x68=get_bl_prop(bl_obj, "Unk x68", int, default=0),
         )
 
     def warning(self, msg: str):
@@ -896,3 +940,15 @@ class FLVERExporter:
                 "Soulstruct will read all bone data from EditBones for export."
             )
         return read_bone_type
+
+    @staticmethod
+    def _clear_temp_flver():
+        try:
+            bpy.data.objects.remove(bpy.data.objects["__TEMP_FLVER_OBJ__"])
+        except KeyError:
+            pass
+
+        try:
+            bpy.data.meshes.remove(bpy.data.meshes["__TEMP_FLVER__"])
+        except KeyError:
+            pass

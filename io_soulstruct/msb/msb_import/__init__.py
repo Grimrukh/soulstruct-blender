@@ -10,6 +10,7 @@ __all__ = [
     "ImportMSBNavmesh",
     "ImportAllMSBNavmeshes",
 
+    "ImportMSBCharacter",
     "ImportAllMSBCharacters",
 ]
 

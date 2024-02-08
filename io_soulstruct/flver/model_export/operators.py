@@ -66,9 +66,9 @@ class ExportStandaloneFLVER(LoggingOperator, ExportHelper):
             return super().invoke(context, _event)
 
         obj = context.selected_objects[0]
-        if obj.get("Model Name", None) is not None:
-            self.filepath = obj["Model Name"] + ".flver"
-        self.filepath = obj.name.split(" ")[0].split(".")[0] + ".flver"
+        model_name = find_model_name(self, obj)
+        settings = self.settings(context)
+        self.filepath = settings.game.process_dcx_path(f"{model_name}.flver")
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
 
@@ -310,24 +310,17 @@ class ExportMapPieceFLVERs(LoggingOperator):
             map_stem = settings.get_map_stem_for_export(armature or mesh, oldest=True)
             relative_map_path = Path(f"map/{map_stem}")
 
-            # If 'Model Name' is not defined, model stem uses the 'stem' of the object name and area suffix 'AXX'.
-            blender_stem = get_default_flver_stem(mesh, armature, self)
-            default_file_stem = blender_stem + f"A{relative_map_path.name[1:3]}"
-            model_file_stem = mesh.get("Model Name", default_file_stem)
-            if model_file_stem != default_file_stem:
-                self.warning(
-                    f"Custom property 'Model Name' '{model_file_stem}' will override conflicting name from object "
-                    f"name '{default_file_stem}'."
-                )
+            model_name = find_model_name(self, armature or mesh, process_model_name_map_area(relative_map_path.name))
 
             try:
-                flver = exporter.export_flver(mesh, armature, blender_stem, False, model_file_stem)
+                # We also pass the model name as the default bone name.
+                flver = exporter.export_flver(mesh, armature, model_name, False, model_name)
             except Exception as ex:
                 traceback.print_exc()
-                return self.error(f"Cannot export Map Piece FLVER '{model_file_stem}' from {mesh.name}. Error: {ex}")
+                return self.error(f"Cannot export Map Piece FLVER '{model_name}' from {mesh.name}. Error: {ex}")
 
             flver.dcx_type = flver_dcx_type
-            settings.export_file(self, flver, relative_map_path / f"{model_file_stem}.flver")
+            settings.export_file(self, flver, relative_map_path / f"{model_name}.flver")
 
             if flver_export_settings.export_textures:
                 # Collect all Blender images for batched map area export.
@@ -408,6 +401,13 @@ class BaseGameFLVERBinderExportOperator(LoggingOperator):
         self.info(f"Exported {len(multi_tpf.textures)} textures into multi-texture TPF in {binder.cls_name}.")
         return True
 
+    @staticmethod
+    def is_armature_or_mesh_with_arma_parent(obj: bpy.types.Object):
+        """Tests for permitted `obj` typing for export as a FLVER requiring an Armature."""
+        if obj.type == "ARMATURE":
+            return True
+        return obj.type == "MESH" and obj.parent and obj.parent.type == "ARMATURE"
+
 
 class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
     """Export a single FLVER model from a Blender mesh into same-named CHRBND in the game directory."""
@@ -424,7 +424,7 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
         return (
             cls.settings(context).can_auto_export
             and len(context.selected_objects) == 1
-            and context.selected_objects[0].type == "ARMATURE"
+            and cls.is_armature_or_mesh_with_arma_parent(context.selected_objects[0])
             and context.selected_objects[0].name.startswith("c")  # TODO: could require 'c####' template also
         )
 
@@ -440,9 +440,9 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
             )
         except FLVERExportError as ex:
             return self.error(str(ex))
+        chrbnd.flvers[model_stem] = flver
 
         flver_export_settings = context.scene.flver_export_settings  # type: FLVERExportSettings
-
         if not flver_export_settings.export_textures:
             # Export CHRBND now with FLVER.
             return settings.export_file(self, chrbnd, Path(f"chr/{model_stem}.chrbnd"))
@@ -609,7 +609,7 @@ class ExportObjectFLVER(BaseGameFLVERBinderExportOperator):
         return (
             cls.settings(context).can_auto_export
             and len(context.selected_objects) == 1
-            and context.selected_objects[0].type == "ARMATURE"
+            and cls.is_armature_or_mesh_with_arma_parent(context.selected_objects[0])
             and context.selected_objects[0].name.startswith("o")  # TODO: could require 'o####{_#}' template also
         )
 
@@ -648,7 +648,7 @@ class ExportEquipmentFLVER(BaseGameFLVERBinderExportOperator):
         return (
             cls.settings(context).can_auto_export
             and len(context.selected_objects) == 1
-            and context.selected_objects[0].type == "ARMATURE"
+            and cls.is_armature_or_mesh_with_arma_parent(context.selected_objects[0])
             # No restriction on name.
         )
 

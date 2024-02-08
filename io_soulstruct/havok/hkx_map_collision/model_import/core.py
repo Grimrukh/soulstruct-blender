@@ -26,9 +26,10 @@ from io_soulstruct.utilities.materials import *
 HKX_MATERIAL_COLORS = {
     0: (0, 0, 100),  # default (white)
     1: (24, 75, 70),  # rock (orange)
-    2: (130, 0, 40),  # stone (grey)
+    2: (130, 0, 10),  # stone (dark grey)
     3: (114, 58, 57),  # grass (green)
     4: (36, 86, 43),  # wood (dark brown)
+    9: (179, 66, 64),  # metal (cyan)
 
     20: (214, 75, 64),  # under shallow water (light blue)
     21: (230, 85, 64),  # under deep water (dark blue)
@@ -45,15 +46,15 @@ class HKXImportInfo(tp.NamedTuple):
 
 
 def load_other_res_hkx(
-    operator: LoggingOperator, file_path: Path, import_info: HKXImportInfo, is_binder: bool
+    operator: LoggingOperator, file_path: Path, hkx_name: str, is_binder: bool
 ) -> MapCollisionHKX | None:
-    match import_info.hkx_name[0]:
+    match hkx_name[0]:
         case "h":
             other_res = "l"
         case "l":
             other_res = "h"
         case _:
-            operator.warning(f"Could not determine resolution (h/l) of HKX '{import_info.hkx_name}'.")
+            operator.warning(f"Could not determine resolution (h/l) of HKX '{hkx_name}'.")
             return None
     if is_binder:
         # Look for other-resolution binder and find matching other-res HKX entry.
@@ -64,7 +65,7 @@ def load_other_res_hkx(
             )
             return None
         other_res_binder = Binder.from_path(other_res_binder_path)
-        other_hkx_name = f"{other_res}{import_info.hkx_name[1:]}"
+        other_hkx_name = f"{other_res}{hkx_name[1:]}"
         try:
             other_res_hkx_entry = other_res_binder.find_entry_name(other_hkx_name)
         except EntryNotFoundError:
@@ -114,8 +115,6 @@ class HKXMapCollisionImporter:
     collection: bpy.types.Collection = None
 
     # Set per import.
-    hkx: MapCollisionHKX | None = None
-    bl_name: str = ""
     all_bl_objs: list[bpy.types.Object] = field(default_factory=list)
 
     def __post_init__(self):
@@ -123,15 +122,98 @@ class HKXMapCollisionImporter:
             self.collection = self.context.scene.collection
 
     def import_hkx(
+        self,
+        hi_hkx: MapCollisionHKX,
+        model_name: str,
+        lo_hkx: MapCollisionHKX = None,
+    ) -> bpy.types.MeshObject:
+        """Read a HKX or two (hi/lo) HKXs into a single Blender mesh, with materials representing res/submeshes."""
+
+        meshes = hi_hkx.to_meshes()
+        hkx_material_indices = hi_hkx.map_collision_physics_data.get_subpart_materials()
+
+        # Construct Blender materials corresponding to HKX res and material indices and collect indices.
+        bl_materials = []  # type: list[bpy.types.Material]
+        hkx_to_bl_material_indices = {}  # type: dict[tuple[bool, int], int]
+        submesh_bl_materials = []  # matches length of `submeshes`
+        for i in hkx_material_indices:
+            if (True, i) not in hkx_to_bl_material_indices:
+                # New hi-res Blender material.
+                hkx_to_bl_material_indices[True, i] = len(bl_materials)
+                bl_material = self.get_hkx_material(i, True)
+                bl_materials.append(bl_material)
+            submesh_bl_materials.append(hkx_to_bl_material_indices[True, i])
+
+        vertices, faces, face_materials = self.join_hkx_meshes(meshes, submesh_bl_materials)
+
+        if lo_hkx:
+            lo_submeshes = lo_hkx.to_meshes()
+            lo_hkx_material_indices = lo_hkx.map_collision_physics_data.get_subpart_materials()
+            lo_submesh_bl_materials = []  # matches length of `lo_submeshes`
+            # Continue building `bl_materials` list and `hkx_to_bl_material_indices` dict from hi-res above.
+            for i in lo_hkx_material_indices:
+                if (False, i) not in hkx_to_bl_material_indices:
+                    # New lo-res Blender material.
+                    hkx_to_bl_material_indices[False, i] = len(bl_materials)
+                    bl_material = self.get_hkx_material(i, False)
+                    bl_materials.append(bl_material)
+                lo_submesh_bl_materials.append(hkx_to_bl_material_indices[False, i])
+
+            lo_vertices, lo_faces, lo_face_materials = self.join_hkx_meshes(
+                lo_submeshes, lo_submesh_bl_materials, initial_offset=len(vertices)
+            )
+            vertices = np.row_stack((vertices, lo_vertices))
+            faces = np.row_stack((faces, lo_faces))
+            face_materials = np.concatenate([face_materials, lo_face_materials])
+
+        # Swap vertex Y and Z coordinates.
+        vertices = np.c_[vertices[:, 0], vertices[:, 2], vertices[:, 1]]
+
+        bl_mesh = bpy.data.meshes.new(name=model_name)
+        edges = []  # no edges in HKX
+        bl_mesh.from_pydata(vertices, edges, faces)
+        for material in bl_materials:
+            bl_mesh.materials.append(material)
+        bl_mesh.polygons.foreach_set("material_index", face_materials)
+        bl_mesh_obj = bpy.data.objects.new(model_name, bl_mesh)
+
+        self.collection.objects.link(bl_mesh_obj)
+        self.all_bl_objs = [bl_mesh_obj]
+
+        # noinspection PyTypeChecker
+        return bl_mesh_obj
+
+    @staticmethod
+    def join_hkx_meshes(
+        meshes: list[tuple[np.ndarray, np.ndarray]], bl_material_indices: tp.Sequence[int], initial_offset=0
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Concatenate all vertices and faces from a list of meshes by offsetting the face indices.
+
+        Also returns array of face material indices for use with `foreach_set()` by simply coping the corresponding
+        `bl_material_indices` element to all faces.
+        """
+        if len(meshes) != len(bl_material_indices):
+            raise ValueError("Number of HKX meshes and material indices must match.")
+        vert_stack = []
+        face_stack = []
+        face_materials = []
+        offset = initial_offset
+        for (vertices, faces), material_index in zip(meshes, bl_material_indices, strict=True):
+            face_stack.append(faces + offset)
+            vert_stack.append(vertices)
+            face_materials.extend([material_index] * len(faces))
+            offset += len(vertices)
+        vertices = np.row_stack(vert_stack)
+        faces = np.row_stack(face_stack)
+        return vertices, faces, np.array(face_materials)
+
+    def import_multimesh_hkx(
         self, hkx: MapCollisionHKX, bl_name: str, use_material=True, existing_parent=None
     ) -> tuple[bpy.types.Object, list[bpy.types.MeshObject]]:
         """Read a HKX into a collection of Blender mesh objects.
 
         TODO: Create only one mesh and use material slots? Unsure.
         """
-        self.hkx = hkx
-        self.bl_name = bl_name  # should not have extensions (e.g. `h0100B0A10`)
-
         # Set mode to OBJECT and deselect all objects.
         if bpy.ops.object.mode_set.poll():
             bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
@@ -145,11 +227,11 @@ class HKXMapCollisionImporter:
         else:
             # Empty parent.
             hkx_parent = bpy.data.objects.new(bl_name, None)
-            self.context.scene.collection.objects.link(hkx_parent)
+            self.collection.objects.link(hkx_parent)
             self.all_bl_objs = [hkx_parent]
 
-        meshes = self.hkx.to_meshes()
-        material_indices = self.hkx.map_collision_physics_data.get_subpart_materials()
+        meshes = hkx.to_meshes()
+        material_indices = hkx.map_collision_physics_data.get_subpart_materials()
         if bl_name.startswith("h"):
             is_hi_res = True
         elif bl_name.startswith("l"):
@@ -170,15 +252,27 @@ class HKXMapCollisionImporter:
             mesh_name = f"{submesh_name_prefix} {i}"
             bl_mesh = self.create_mesh_obj(vertices, faces, material_indices[i], mesh_name)
             if use_material:
-                bl_material = self.create_hkx_material(material_indices[i], is_hi_res)
+                bl_material = self.get_hkx_material(material_indices[i], is_hi_res)
                 bl_mesh.data.materials.append(bl_material)
             bl_meshes.append(bl_mesh)
 
         return hkx_parent, bl_meshes
 
     @staticmethod
-    def create_hkx_material(hkx_material_index: int, is_hi_res: bool) -> bpy.types.Material:
-        material_name = f"HKX Material {hkx_material_index} ({'Hi' if is_hi_res else 'Lo'})"
+    def get_hkx_material(hkx_material_index: int, is_hi_res: bool) -> bpy.types.Material:
+        material_name = f"HKX {hkx_material_index} ({'Hi' if is_hi_res else 'Lo'})"
+        try:
+            material_offset, material_base = divmod(hkx_material_index, 100)
+            hkx_material_enum = MapCollisionHKX.MapCollisionMaterial(material_base)
+        except ValueError:
+            pass
+        else:
+            # Add material enum name to material name. Will be ignored on export.
+            if material_offset == 0:
+                material_name = f"{material_name} <{hkx_material_enum.name}>"
+            else:
+                material_name = f"{material_name} <{hkx_material_enum.name} + {100 * material_offset}>"
+
         try:
             return bpy.data.materials[material_name]
         except KeyError:
@@ -195,7 +289,6 @@ class HKXMapCollisionImporter:
         color = hsv_color(h, s, v)  # alpha = 1.0
         # NOTE: Not using wireframe in collision materials (unlike navmesh) as there is no per-face data.
         return create_basic_material(material_name, color, wireframe_pixel_width=0.0)
-
 
     def create_mesh_obj(
         self,

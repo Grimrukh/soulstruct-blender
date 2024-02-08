@@ -19,18 +19,14 @@ if addon_modules_path not in sys.path:
     sys.path.append(addon_modules_path)
 
 # Reload all Soulstruct modules, then all modules in this add-on (except this script).
+# NOTE: This is IMPORTANT when using 'Reload Scripts' in Blender, as it is otherwise prone to partial re-imports of
+# Soulstruct that duplicate classes and cause wild bugs with `isinstance`, etc.
 for module_name in list(sys.modules.keys()):
     if "io_soulstruct" not in module_name and "soulstruct" in module_name.split(".")[0]:
-        try:
-            importlib.reload(sys.modules[module_name])
-        except ImportError:
-            pass
+        importlib.reload(sys.modules[module_name])
 for module_name in list(sys.modules.keys()):
     if module_name != "io_soulstruct" and "io_soulstruct" in module_name.split(".")[0]:  # don't reload THIS module
-        try:
-            importlib.reload(sys.modules[module_name])
-        except ImportError:
-            pass
+        importlib.reload(sys.modules[module_name])
 
 from io_soulstruct.flver import *
 from io_soulstruct.msb import *
@@ -143,6 +139,7 @@ CLASSES = (
     # Collisions below.
     ImportMSBNavmesh,
     ImportAllMSBNavmeshes,
+    ImportMSBCharacter,
     ImportAllMSBCharacters,
 
     MSBExportSettings,
@@ -216,6 +213,9 @@ if soulstruct_havok:
         ExportHKXMapCollisionIntoBinder,
         ExportHKXMapCollisionIntoHKXBHD,
         HKX_COLLISION_PT_hkx_map_collisions,
+
+        SelectHiResFaces,
+        SelectLoResFaces,
 
         # MSB
         ImportMSBMapCollision,

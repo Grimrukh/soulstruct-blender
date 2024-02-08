@@ -10,6 +10,9 @@ __all__ = [
     "ExportHKXMapCollisionIntoBinder",
     "ExportHKXMapCollisionIntoHKXBHD",
 
+    "SelectHiResFaces",
+    "SelectLoResFaces",
+
     "HKX_COLLISION_PT_hkx_map_collisions",
 ]
 
@@ -36,6 +39,7 @@ if "HKX_PT_hkx_tools" in locals():
 
 from .model_import import *
 from .model_export import *
+from .misc_operators import *
 
 from io_soulstruct.misc_operators import CopyMeshSelectionOperator
 
@@ -77,5 +81,7 @@ class HKX_COLLISION_PT_hkx_map_collisions(bpy.types.Panel):
             quick_export_box.operator(ExportHKXMapCollisionIntoHKXBHD.bl_idname)
 
         misc_operators_box = self.layout.box()
+        misc_operators_box.operator(SelectHiResFaces.bl_idname)
+        misc_operators_box.operator(SelectLoResFaces.bl_idname)
         # Useful in particular for creating HKX map collisions (e.g. from FLVER or high <> low res).
         misc_operators_box.operator(CopyMeshSelectionOperator.bl_idname)

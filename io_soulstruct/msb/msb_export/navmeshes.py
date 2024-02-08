@@ -11,7 +11,6 @@ from pathlib import Path
 
 import bpy
 
-from soulstruct.containers import Binder
 from soulstruct.dcx import DCXType
 from soulstruct.base.maps.msb.utils import GroupBitSet128
 from soulstruct.darksouls1r.maps.models import MSBNavmeshModel
@@ -78,7 +77,7 @@ class ExportMSBNavmeshes(LoggingOperator):
             bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
 
         exporter = NVMExporter(self, context) if not msb_export_settings.export_msb_data_only else None
-        opened_nvmbnds = {}  # type: dict[str, Binder]
+        opened_nvmbnds = {}  # type: dict[str, NVMBND]
 
         opened_msbs = {}  # type: dict[Path, MSB_TYPING]
         edited_part_names = {}  # type: dict[str, set[str]]
@@ -99,7 +98,7 @@ class ExportMSBNavmeshes(LoggingOperator):
                         self.error(f"Cannot find NVMBND: {relative_nvmbnd_path}. Error: {ex}")
                         continue
                     try:
-                        nvmbnd = opened_nvmbnds[map_stem] = Binder.from_path(nvmbnd_path)
+                        nvmbnd = opened_nvmbnds[map_stem] = NVMBND.from_path(nvmbnd_path)
                     except Exception as ex:
                         self.error(f"Could not load NVMBND for map '{map_stem}'. Error: {ex}")
                         continue
@@ -126,6 +125,13 @@ class ExportMSBNavmeshes(LoggingOperator):
 
             msb = opened_msbs[relative_msb_path]  # type: MSB_TYPING
 
+            edited_msb_part_names = edited_part_names.setdefault(msb_stem, set())
+            if navmesh_part_name in edited_msb_part_names:
+                self.warning(
+                    f"Navmesh part '{navmesh_part_name}' was exported more than once in selected meshes."
+                )
+            edited_msb_part_names.add(navmesh_part_name)
+
             try:
                 msb_part = msb.navmeshes.find_entry_name(navmesh_part_name)
             except KeyError:
@@ -137,28 +143,14 @@ class ExportMSBNavmeshes(LoggingOperator):
                     f"Navmesh part '{navmesh_part_name}' in MSB {msb_stem} has no model name."
                 )
 
-            edited_msb_part_names = edited_part_names.setdefault(msb_stem, set())
-            if navmesh_part_name in edited_msb_part_names:
+            model_name = find_model_name(self, nvm_instance, process_model_name_map_area(map_stem))
+            msb_model_name = msb_part.model.get_model_file_stem(map_stem)
+            if model_name != msb_model_name:
+                # We update the MSB model name even if exporting MSB data only.
                 self.warning(
-                    f"Navmesh part '{navmesh_part_name}' was exported more than once in selected meshes."
+                    f"Updating Navmesh model name of MSB part '{navmesh_part_name}' to '{model_name}'."
                 )
-            edited_msb_part_names.add(navmesh_part_name)
-
-            model_stem = nvm_instance.get("Model Name", None) if msb_export_settings.prefer_new_model_name else None
-            if not model_stem:  # could be None or empty string
-                # Use existing MSB model name.
-                model_stem = msb_part.model.get_model_file_stem(map_stem)
-                # Warn if MSB model stem does not match (non-preferred) Blender object property.
-                if (model_file_stem := nvm_instance.get("Model Name", None)) is not None:
-                    if model_file_stem != model_stem:
-                        self.warning(
-                            f"Navmesh part '{navmesh_part_name}' in MSB {msb_stem} has model name "
-                            f"'{msb_part.model.name}' but Blender mesh 'Model Name' is '{model_file_stem}'. "
-                            f"Using NVM stem from MSB model name; you may want to update the Blender mesh."
-                        )
-            else:
-                # Update MSB model name (game-dependent format).
-                msb_part.model.set_name_from_model_file_stem(model_stem)
+                msb_part.model.set_name_from_model_file_stem(model_name)
 
             obj_to_msb_entry_transform(nvm_instance, msb_part)
 
@@ -170,13 +162,7 @@ class ExportMSBNavmeshes(LoggingOperator):
                     return self.error(f"Cannot get exported NVM. Error: {ex}")
                 else:
                     nvm.dcx_type = DCXType.Null  # no DCX compression inside NVMBND
-                nvm_entry_name = f"{model_stem}.nvm"
-                nvmbnd.set_default_entry(
-                    nvm_entry_name,
-                    new_id=nvmbnd.highest_entry_id + 1,
-                    new_path=f"{map_stem}\\{nvm_entry_name}",
-                    new_flags=0x2,
-                ).set_from_binary_file(nvm)
+                nvmbnd.nvms[model_name] = nvm  # no file suffix needed in `NVMBND` keys
 
         for relative_msb_path, msb in opened_msbs.items():
             # Write MSB.
@@ -288,14 +274,12 @@ class ExportCompleteMapNavigation(LoggingOperator):
             navmesh_part_name = get_bl_obj_stem(nvm_instance)  # could be the same as the file stem
             navmesh_group = get_navmesh_group(nvm_instance)
 
-            model_name = nvm_instance.get("Model Name", None) if msb_export_settings.prefer_new_model_name else None
-            if not model_name:  # could be None or empty string
-                # Use first seven characters of part name (e.g. 'n1234B0') and map area suffix (e.g. 'A12').
-                model_name = navmesh_part_name[:7] + f"A{map_stem[1:3]}"
+            model_name = find_model_name(self, nvm_instance, process_model_name_map_area(map_stem))
             msb_model_name = model_name[:7]  # no area suffix
 
             if msb_model_name in msb_new_models:
-                # NVM and MSB model already created. Retrieve MSB model entry.
+                # NVM and MSB model already created. Retrieve MSB model entry. (Note that this is the only operator
+                # that does this check currently.)
                 msb_navmesh_model = msb_new_models[msb_model_name]
                 self.warning(
                     f"Multiple Navmesh parts use MSB model '{msb_model_name}' (NVM model {model_name}). "

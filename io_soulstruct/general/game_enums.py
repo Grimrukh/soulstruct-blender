@@ -36,6 +36,7 @@ GAME_FILE_ENUM_ITEMS = {
     "map_piece_part": CachedEnumItems(),
     "navmesh_part": CachedEnumItems(),
     "hkx_map_collision_part": CachedEnumItems(),
+    "character_part": CachedEnumItems(),
 
 }  # type: dict[str, CachedEnumItems]
 
@@ -288,6 +289,46 @@ def get_msb_hkx_map_collision_items(self, context):
     return cached.items
 
 
+
+# noinspection PyUnusedLocal
+def get_msb_character_items(self, context):
+    """Collect `MSBCharacter` parts from selected game map's MSB."""
+    key = "character_part"
+
+    settings = SoulstructSettings.from_context(context)
+    msb_path = settings.get_import_msb_path()  # we use preferred import location only (and latest version)
+    if not is_path_and_file(msb_path):
+        return _clear_items(key).items
+
+    cached = GAME_FILE_ENUM_ITEMS[key]
+    if cached.is_valid(msb_path, None):
+        # Use cached enum items.
+        # NOTE: Even if the MSB is written from Blender, Soulstruct cannot add or remove parts (yet).
+        return cached.items
+
+    # Open MSB and find all Map Piece parts. NOTE: We don't check here if the part's model is a valid file.
+    # It's up to the importer to handle and report that error case.
+
+    try:
+        msb_class = settings.get_game_msb_class()
+        msb = get_cached_file(msb_path, msb_class)  # type: MSB_TYPING
+    except (FileNotFoundError, ValueError) as ex:
+        return _clear_items(key).items
+
+    items = []
+    for character_part in msb.characters:
+        if not character_part.model:
+            continue  # part is missing MSB model
+        full_model_name = character_part.model
+        items.append(
+            (character_part.name, character_part.name, f"{character_part.name} (Model {full_model_name})")
+        )
+
+    # NOTE: The cache key is the MSB path.
+    cached = GAME_FILE_ENUM_ITEMS[key] = CachedEnumItems(msb_path, None, items)
+    return cached.items
+
+
 class SoulstructGameEnums(bpy.types.PropertyGroup):
     """Files, Binder entries, and MSB entries of various types found in the game directory via on-demand scan."""
 
@@ -322,6 +363,11 @@ class SoulstructGameEnums(bpy.types.PropertyGroup):
     hkx_map_collision_part: bpy.props.EnumProperty(
         name="MSB Map Collision Part",
         items=get_msb_hkx_map_collision_items,
+    )
+
+    character_part: bpy.props.EnumProperty(
+        name="MSB Character Part",
+        items=get_msb_character_items,
     )
 
     # endregion

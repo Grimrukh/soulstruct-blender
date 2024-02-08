@@ -45,8 +45,8 @@ import bpy
 
 from io_soulstruct.misc_operators import CutMeshSelectionOperator
 
-from .flver_import import *
-from .flver_export import *
+from .model_import import *
+from .model_export import *
 from .misc_operators import *
 from .textures.import_textures import *
 from .textures.export_textures import *

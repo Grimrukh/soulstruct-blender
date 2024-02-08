@@ -6,6 +6,7 @@ __all__ = [
     "ImportAllMSBMapCollisions",
     "ImportMSBNavmesh",
     "ImportAllMSBNavmeshes",
+    "ImportMSBCharacter",
     "ImportAllMSBCharacters",
 
     "MSBExportSettings",
@@ -69,7 +70,9 @@ class MSBImportPanel(bpy.types.Panel):
         navmesh_box.operator(ImportAllMSBNavmeshes.bl_idname)
 
         character_box = self.layout.box()
-        # character_box.operator(ImportMSBCharacter.bl_idname)
+        character_box.prop(context.scene.soulstruct_game_enums, "character_part", text="Character")
+        character_box.operator(ImportMSBCharacter.bl_idname)
+        # TODO: confirmation dialog for below
         character_box.label(text="WARNING: Very slow!")
         character_box.operator(ImportAllMSBCharacters.bl_idname)
 

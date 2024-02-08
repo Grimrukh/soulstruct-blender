@@ -22,7 +22,7 @@ from soulstruct_havok.wrappers.hkx2015 import RemoBND
 
 from io_soulstruct.utilities.conversion import Transform, GAME_TO_BL_VECTOR, GAME_TO_BL_EULER
 from io_soulstruct.utilities.operators import LoggingOperator
-from io_soulstruct.flver.flver_import import FLVERImporter
+from io_soulstruct.flver.model_import import FLVERImporter
 from io_soulstruct.flver.textures.import_textures import TextureImportManager
 from io_soulstruct.havok.utilities import GAME_TRS_TO_BL_MATRIX, get_basis_matrix
 from .utilities import HKXCutsceneImportError
