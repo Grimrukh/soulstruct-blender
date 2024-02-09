@@ -1,9 +1,7 @@
 __all__ = [
     "HKXMapCollisionImportError",
     "HKXImportInfo",
-    "load_other_res_hkx",
-    "HKXMapCollisionImporter",
-    "HKXMapCollisionImportSettings",
+    "import_hkx_model",
 
     "HKXMapCollisionImportError",
     "ImportHKXMapCollision",
@@ -13,4 +11,3 @@ __all__ = [
 
 from .core import *
 from .operators import *
-from .settings import *

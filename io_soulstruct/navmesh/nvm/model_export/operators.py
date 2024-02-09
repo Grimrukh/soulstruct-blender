@@ -63,16 +63,10 @@ class ExportLooseNVM(LoggingOperator, ExportHelper):
             return self.error("No valid Mesh selected for NVM export.")
 
         # noinspection PyTypeChecker
-        bl_mesh_obj = context.selected_objects[0]  # type: bpy.types.MeshObject
-
-        # TODO: Not needed for meshes only?
-        if bpy.ops.object.mode_set.poll():
-            bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
-
-        exporter = NVMExporter(self, context)
+        nvm_model = context.selected_objects[0]  # type: bpy.types.MeshObject
 
         try:
-            nvm = exporter.export_nvm(bl_mesh_obj)
+            nvm = export_nvm_model(self, nvm_model)
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Cannot get exported NVM. Error: {ex}")
@@ -146,13 +140,11 @@ class ExportNVMIntoBinder(LoggingOperator, ImportHelper):
         if bpy.ops.object.mode_set.poll():
             bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
 
-        exporter = NVMExporter(self, context)
-
         for nvm_model in selected_objs:
             model_name = find_model_name(self, nvm_model, warn_property_mismatch=False)  # can't auto-detect map
 
             try:
-                nvm = exporter.export_nvm(nvm_model)
+                nvm = export_nvm_model(self, nvm_model)
             except Exception as ex:
                 traceback.print_exc()
                 return self.error(f"Cannot get exported NVM. Error: {ex}")
@@ -246,8 +238,6 @@ class ExportNVMIntoNVMBND(LoggingOperator):
         if bpy.ops.object.mode_set.poll():
             bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
 
-        exporter = NVMExporter(self, context)
-
         opened_nvmbnds = {}  # type: dict[Path, NVMBND]
         for nvm_model in context.selected_objects:
             nvm_model: bpy.types.MeshObject
@@ -273,7 +263,7 @@ class ExportNVMIntoNVMBND(LoggingOperator):
             model_name = find_model_name(self, nvm_model, process_model_name_map_area(map_stem))
 
             try:
-                nvm = exporter.export_nvm(nvm_model)
+                nvm = export_nvm_model(self, nvm_model)
             except Exception as ex:
                 traceback.print_exc()
                 self.error(f"Cannot get exported NVM. Error: {ex}")

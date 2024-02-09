@@ -1,6 +1,6 @@
 __all__ = [
     "NVMExportError",
-    "NVMExporter",
+    "export_nvm_model",
 
     "ExportLooseNVM",
     "ExportNVMIntoBinder",

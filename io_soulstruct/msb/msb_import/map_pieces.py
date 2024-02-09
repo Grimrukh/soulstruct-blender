@@ -121,9 +121,13 @@ class ImportAllMSBMapPieces(BaseImportMSBMapPiece):
     """Import ALL MSB map piece parts and their transforms. Will probably take a long time!"""
     bl_idname = "import_scene.all_msb_map_piece_parts"
     bl_label = "Import All Map Piece Parts"
-    bl_description = "Import FLVER model and MSB transform of every Map Piece MSB part (SLOW)"
+    bl_description = ("Import FLVER model and MSB transform of every Map Piece MSB part. Very slow, especially when "
+                      "importing textures (see console output for progress)")
 
     GAME_ENUM_NAME = None
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_confirm(self, event)
 
     def execute(self, context):
         return self.import_all_parts(context)

@@ -144,9 +144,12 @@ class ImportAllMSBNavmeshes(BaseImportMSBNavmesh):
     """Import a NVM from the current selected value of listed game MSB navmesh entries."""
     bl_idname = "import_scene.all_msb_navmesh_parts"
     bl_label = "Import All Navmesh Parts"
-    bl_description = "Import NVM mesh and MSB transform of every MSB Navmesh part"
+    bl_description = "Import NVM mesh and MSB transform of every MSB Navmesh part. Still quite fast"
 
     GAME_ENUM_NAME = None
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_confirm(self, event)
 
     # TODO: used to warn when the same navmesh model was used by multiple MSB parts:
     # if navmesh_part.model.name in used_model_names:

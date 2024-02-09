@@ -25,9 +25,10 @@ from pathlib import Path
 import bpy
 from bpy_extras.io_utils import ImportHelper
 
-from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
+from soulstruct.containers import BinderEntry
 
 from soulstruct_havok.wrappers.hkx2015 import MapCollisionHKX
+from soulstruct_havok.wrappers.hkx2015.hkx_binder import BothResHKXBHD
 
 from io_soulstruct.general import SoulstructGameEnums
 from io_soulstruct.utilities import *
@@ -35,19 +36,15 @@ from .core import *
 
 
 HKX_NAME_RE = re.compile(r".*\.hkx(\.dcx)?")
-HKX_BINDER_RE = re.compile(r"^.*?\.hkxbhd(\.dcx)?$")
-
-
-class HKXImportChoiceInfo(tp.NamedTuple):
-    """Holds information about a Binder entry choice that the user will make in deferred operator."""
-    path: Path  # Binder path
-    entries: list[BinderEntry]  # entries from which user must choose
+HKXBHD_NAME_RE = re.compile(r"^[hl].*\.hkxbhd(\.dcx)?$")
 
 
 class ImportHKXMapCollision(LoggingOperator, ImportHelper):
+    """Most generic importer. Loads standalone HKX files or HKX entries from a HKXBHD Binder (one/all)."""
+
     bl_idname = "import_scene.hkx_map_collision"
     bl_label = "Import Map Collision"
-    bl_description = "Import a HKX map collision file. Can import from BHD/BDT binders and handles DCX compression"
+    bl_description = "Import a HKX map collision file. Can import from HKXBHD split Binders and handles DCX compression"
 
     filename_ext = ".hkx"
 
@@ -71,19 +68,6 @@ class ImportHKXMapCollision(LoggingOperator, ImportHelper):
         default=False,
     )
 
-    load_other_resolution: bpy.props.BoolProperty(
-        name="Load Other Resolution",
-        description="Try to load the other resolution (Hi/Lo) of the selected HKX (possibly in another Binder) and "
-                    "parent them under the same empty object with optional MSB transform",
-        default=True,
-    )
-
-    use_material: bpy.props.BoolProperty(
-        name="Use Material",
-        description="If enabled, 'HKX Hi' or 'HKX Lo' material will be assigned or created for all collision meshes",
-        default=True,
-    )
-
     files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'})
     directory: bpy.props.StringProperty(options={'HIDDEN'})
 
@@ -99,119 +83,97 @@ class ImportHKXMapCollision(LoggingOperator, ImportHelper):
     def execute(self, context):
 
         file_paths = [Path(self.directory, file.name) for file in self.files]
-        import_infos = []  # type: list[HKXImportInfo | HKXImportChoiceInfo]
-
-        # If `load_other_resolutions = True`, this maps actual opened file paths to their other-res HKX files.
-        # NOTE: Does NOT handle paths that need an entry to be chosen by the user (with queued Binder entries).
-        # Those will be handled in the 'BinderChoice' operator.
-        other_res_hkxs = {}  # type: dict[tuple[Path, str], MapCollisionHKX]
+        import_infos = []  # type: list[HKXImportInfo | BothResHKXBHD]
 
         for file_path in file_paths:
 
-            new_non_choice_import_infos = []
-            is_binder = HKX_BINDER_RE.match(file_path.name) is not None
-
-            if is_binder:
-                binder = Binder.from_path(file_path)
-                new_import_infos = self.load_from_binder(binder, file_path)
-                import_infos.extend(new_import_infos)
-                new_non_choice_import_infos = [info for info in new_import_infos if isinstance(info, HKXImportInfo)]
+            if HKXBHD_NAME_RE.match(file_path.name):
+                both_res_hkxbhd = BothResHKXBHD.from_map_path(file_path.parent)
+                if self.import_all_from_binder:
+                    both_res_hkxbhd.hi_res.load_all()
+                    both_res_hkxbhd.lo_res.load_all()
+                    import_infos.extend([
+                        HKXImportInfo(f"h{hkx_stem}", hi_hkx, lo_hkx)
+                        for hkx_stem, (hi_hkx, lo_hkx) in both_res_hkxbhd.get_both_res_dict()
+                    ])
+                elif self.collision_model_id != -1:
+                    hi_hkx_entries = [
+                        entry for entry in both_res_hkxbhd.hi_res.entries if self.check_hkx_entry_model_id(entry)
+                    ]
+                    if not hi_hkx_entries:
+                        raise HKXMapCollisionImportError(
+                            f"Found no entry with model ID {self.collision_model_id} in hi-res HKXBHD."
+                        )
+                    if len(hi_hkx_entries) > 1:
+                        raise HKXMapCollisionImportError(
+                            f"Found multiple entries with model ID {self.collision_model_id} in hi-res HKXBHD."
+                        )
+                    lo_hkx_entries = [
+                        entry for entry in both_res_hkxbhd.lo_res.entries if self.check_hkx_entry_model_id(entry)
+                    ]
+                    if not lo_hkx_entries:
+                        raise HKXMapCollisionImportError(
+                            f"Found no entry with model ID {self.collision_model_id} in lo-res HKXBHD."
+                        )
+                    if len(lo_hkx_entries) > 1:
+                        raise HKXMapCollisionImportError(
+                            f"Found multiple entries with model ID {self.collision_model_id} in lo-res HKXBHD."
+                        )
+                    # Import single specified collision model.
+                    import_infos.append(
+                        HKXImportInfo(
+                            hi_hkx_entries[0].minimal_stem,
+                            hi_hkx_entries[0].to_binary_file(MapCollisionHKX),
+                            lo_hkx_entries[0].to_binary_file(MapCollisionHKX),
+                        )
+                    )
+                else:
+                    # Defer through Binder choice operator.
+                    import_infos.append(both_res_hkxbhd)
             else:
-                # Loose HKX.
+                # Loose HKX. Load directly and search for other res loose file.
                 try:
                     hkx = MapCollisionHKX.from_path(file_path)
                 except Exception as ex:
                     self.warning(f"Error occurred while reading HKX file '{file_path.name}': {ex}")
                 else:
-                    new_non_choice_import_infos = [HKXImportInfo(file_path, file_path.name, hkx)]
-                    import_infos.extend(new_non_choice_import_infos)
-
-            if self.load_other_resolution and new_non_choice_import_infos:
-                for import_info in new_non_choice_import_infos:
-                    other_res_hkx = load_other_res_hkx(self, file_path, import_info.hkx_name, is_binder)
-                    if other_res_hkx:
-                        other_res_hkxs[(import_info.path, import_info.hkx_name)] = other_res_hkx
-
-        importer = HKXMapCollisionImporter(self, context)
+                    if file_path.name.startswith("h"):
+                        hi_hkx = hkx
+                        try:
+                            lo_hkx = MapCollisionHKX.from_path(file_path.parent / f"l{file_path.name[1:]}")
+                        except FileNotFoundError:
+                            self.warning(f"Could not find matching 'lo' HKX next to '{file_path.name}'.")
+                            lo_hkx = None
+                    elif file_path.name.startswith("l"):
+                        lo_hkx = hkx
+                        try:
+                            hi_hkx = MapCollisionHKX.from_path(file_path.parent / f"h{file_path.name[1:]}")
+                        except FileNotFoundError:
+                            self.warning(f"Could not find matching 'hi' HKX next to '{file_path.name}'.")
+                            hi_hkx = None
+                    else:
+                        hi_hkx = hkx  # treat unknown file name as hi-res
+                        lo_hkx = None
+                    import_infos.append(HKXImportInfo(file_path.name.split(".")[0], hi_hkx, lo_hkx))
 
         for import_info in import_infos:
 
-            if isinstance(import_info, HKXImportChoiceInfo):
+            if isinstance(import_info, BothResHKXBHD):
                 # Defer through entry selection operator.
-                ImportHKXMapCollisionWithBinderChoice.run(
-                    importer=importer,
-                    binder_file_path=import_info.path,
-                    load_other_resolution=self.load_other_resolution,
-                    use_material=self.use_material,
-                    hkx_entries=import_info.entries,
-                )
+                ImportHKXMapCollisionWithBinderChoice.run(import_info)
                 continue
 
-            hkx = import_info.hkx
-            hkx_model_name = import_info.hkx_name.split(".")[0]
-            other_res_hkx = other_res_hkxs.get((import_info.path, import_info.hkx_name), None)
-
-            self.info(f"Importing HKX: {hkx_model_name}")
+            self.info(f"Importing HKX: {import_info.model_name}")
 
             # Import single HKX.
             try:
-                importer.import_hkx(hkx, model_name=hkx_model_name, lo_hkx=other_res_hkx)
+                hkx_model = import_hkx_model(import_info.hi_hkx, import_info.model_name, lo_hkx=import_info.lo_hkx)
             except Exception as ex:
-                # Delete any objects created prior to exception.
-                for obj in importer.all_bl_objs:
-                    bpy.data.objects.remove(obj)
                 traceback.print_exc()  # for inspection in Blender console
-                return self.error(f"Cannot import HKX: {import_info.path}. Error: {ex}")
+                return self.error(f"Cannot import HKX: {import_info.model_name}. Error: {ex}")
+            context.scene.collection.objects.link(hkx_model)
 
         return {"FINISHED"}
-
-    def load_from_binder(self, binder: Binder, file_path: Path) -> list[HKXImportInfo | HKXImportChoiceInfo]:
-        """Load one or more `MapCollisionHKX` files from a `Binder` and queue them for import.
-
-        Will queue up a list of Binder entries if `self.import_all_from_binder` is False and `collision_model_id`
-        import setting is -1.
-
-        Returns a list of `HKXImportInfo` or `HKXImportChoiceInfo` objects, depending on whether the Binder contains
-        multiple entries that the user may need to choose from.
-        """
-        # Find HKX entry.
-        hkx_entries = binder.find_entries_matching_name(HKX_NAME_RE)
-        if not hkx_entries:
-            raise HKXMapCollisionImportError(f"Cannot find any '.hkx{{.dcx}}' files in binder {file_path}.")
-        # Filter by `collision_model_id` if needed.
-        if self.collision_model_id != -1:
-            hkx_entries = [entry for entry in hkx_entries if self.check_hkx_entry_model_id(entry)]
-        if not hkx_entries:
-            raise HKXMapCollisionImportError(
-                f"Found '.hkx{{.dcx}}' files, but none with model ID {self.collision_model_id} in binder {file_path}."
-            )
-
-        if len(hkx_entries) > 1:
-            # Binder contains multiple (matching) entries.
-            if self.import_all_from_binder:
-                # Load all detected/matching KX entries in binder and queue them for import.
-                new_import_infos = []  # type: list[HKXImportInfo]
-                for entry in hkx_entries:
-                    try:
-                        hkx = entry.to_binary_file(MapCollisionHKX)
-                    except Exception as ex:
-                        self.warning(f"Error occurred while reading HKX Binder entry '{entry.name}': {ex}")
-                    else:
-                        hkx.path = Path(entry.name)  # also done in `GameFile`, but explicitly needed below
-                        new_import_infos.append(HKXImportInfo(file_path, entry.name, hkx))
-                return new_import_infos
-
-            # Queue up all matching Binder entries instead of loaded HKX instances; user will choose entry in pop-up.
-            return [HKXImportChoiceInfo(file_path, hkx_entries)]
-
-        # Binder only contains one (matching) HKX.
-        try:
-            hkx = hkx_entries[0].to_binary_file(MapCollisionHKX)
-        except Exception as ex:
-            self.warning(f"Error occurred while reading HKX Binder entry '{hkx_entries[0].name}': {ex}")
-            return []
-
-        return [HKXImportInfo(file_path, hkx_entries[0].name, hkx)]
 
     def check_hkx_entry_model_id(self, hkx_entry: BinderEntry) -> bool:
         """Checks if the given HKX Binder entry matches the given collision model ID."""
@@ -236,12 +198,8 @@ class ImportHKXMapCollisionWithBinderChoice(LoggingOperator):
     bl_label = "Choose HKX Collision Binder Entry"
 
     # For deferred import in `execute()`.
-    importer: tp.Optional[HKXMapCollisionImporter] = None
-    binder_file_path: Path = Path()
+    both_res_hkxbhd: BothResHKXBHD = None
     enum_options: list[tuple[tp.Any, str, str]] = []
-    load_other_resolution: bool = False
-    use_material: bool = True
-    hkx_entries: tp.Sequence[BinderEntry] = []
 
     choices_enum: bpy.props.EnumProperty(items=get_binder_entry_choices)
 
@@ -256,51 +214,36 @@ class ImportHKXMapCollisionWithBinderChoice(LoggingOperator):
         col.prop(self, "choices_enum", expand=False)
 
     def execute(self, context):
-        choice = int(self.choices_enum)
-        entry = self.hkx_entries[choice]
-
-        hkx = entry.to_binary_file(MapCollisionHKX)
-        import_info = HKXImportInfo(self.binder_file_path, entry.name, hkx)
-        hkx_model_name = entry.name.split(".")[0]
-
-        if self.load_other_resolution:
-            other_res_hkx = load_other_res_hkx(
-                operator=self,
-                file_path=self.binder_file_path,
-                hkx_name=import_info.hkx_name,
-                is_binder=True,
-            )
-        else:
-            other_res_hkx = None
-
-        self.importer.operator = self
-        self.importer.context = context
+        model_name = f"h{self.choices_enum.split('.')[0]}"
+        hi_hkx, lo_hkx = self.both_res_hkxbhd.get_both_hkx(
+            model_name,
+            allow_missing_hi=True,
+            allow_missing_lo=True,
+        )
 
         try:
-            self.importer.import_hkx(hkx, model_name=hkx_model_name, lo_hkx=other_res_hkx)
+            hkx_model = import_hkx_model(hi_hkx, model_name, lo_hkx=lo_hkx)
         except Exception as ex:
-            for obj in self.importer.all_bl_objs:
-                bpy.data.objects.remove(obj)
             traceback.print_exc()
-            return self.error(f"Cannot import HKX {hkx_model_name} from '{self.binder_file_path.name}'. Error: {ex}")
+            return self.error(
+                f"Cannot import HKX '{model_name}' from '{self.both_res_hkxbhd.path}'. Error: {ex}"
+            )
+        context.scene.collection.objects.link(hkx_model)
 
         return {"FINISHED"}
 
     @classmethod
-    def run(
-        cls,
-        importer: HKXMapCollisionImporter,
-        binder_file_path: Path,
-        load_other_resolution: bool,
-        use_material: bool,
-        hkx_entries: list[BinderEntry],
-    ):
-        cls.importer = importer
-        cls.binder_file_path = binder_file_path
-        cls.enum_options = [(str(i), entry.name, "") for i, entry in enumerate(hkx_entries)]
-        cls.load_other_resolution = load_other_resolution
-        cls.use_material = use_material
-        cls.hkx_entries = hkx_entries
+    def run(cls, both_res_hkxbhd: BothResHKXBHD):
+        cls.both_res_hkxbhd = both_res_hkxbhd
+        enum_options = []
+        for model_id, (hi_name, lo_name) in both_res_hkxbhd.get_both_res_entries_dict().items():
+            if not hi_name:
+                enum_options.append((model_id, lo_name, "Lo-res collision only"))
+            elif not lo_name:
+                enum_options.append((model_id, hi_name, "Hi-res collision only"))
+            else:
+                enum_options.append((model_id, hi_name, "Both hi-res and lo-res collision"))
+        cls.enum_options = enum_options
         # noinspection PyUnresolvedReferences
         bpy.ops.wm.hkx_map_collision_binder_choice_operator("INVOKE_DEFAULT")
 
@@ -309,21 +252,6 @@ class ImportHKXMapCollisionFromHKXBHD(LoggingOperator):
     bl_idname = "import_scene.hkx_map_collision_entry"
     bl_label = "Import Map Collision"
     bl_description = "Import selected HKX map collision entry from selected game map HKXBHD"
-
-    # TODO: No way to change these properties.
-
-    load_other_resolution: bpy.props.BoolProperty(
-        name="Load Other Resolution",
-        description="Try to load the other resolution (Hi/Lo) of the selected HKX (possibly in another Binder) and "
-                    "parent them under the same empty object with optional MSB transform",
-        default=True,
-    )
-
-    use_material: bpy.props.BoolProperty(
-        name="Use Material",
-        description="If enabled, 'HKX Hi' or 'HKX Lo' material will be assigned or created for all collision meshes",
-        default=True,
-    )
 
     @classmethod
     def poll(cls, context):
@@ -345,72 +273,31 @@ class ImportHKXMapCollisionFromHKXBHD(LoggingOperator):
         # Get oldest version of map folder, if option enabled.
         map_stem = settings.get_oldest_map_stem_version()
 
-        # Import source may depend on suffix of entry enum.
-        # BXF file never has DCX.
-        if hkx_entry_name.endswith(" (G)"):
-            hkx_entry_name = hkx_entry_name.removesuffix(" (G)")
-            hkxbhd_path = settings.get_game_map_path(f"h{map_stem[1:]}.hkxbhd")
-            hkxbdt_path = settings.get_game_map_path(f"h{map_stem[1:]}.hkxbdt")
-        elif hkx_entry_name.endswith(" (P)"):
-            hkx_entry_name = hkx_entry_name.removesuffix(" (P)")
-            hkxbhd_path = settings.get_project_map_path(f"h{map_stem[1:]}.hkxbhd")
-            hkxbdt_path = settings.get_project_map_path(f"h{map_stem[1:]}.hkxbdt")
-        else:  # no suffix, so we use whichever source is preferred
-            hkxbhd_path = settings.get_import_map_path(f"h{map_stem[1:]}.hkxbhd")
-            hkxbdt_path = settings.get_import_map_path(f"h{map_stem[1:]}.hkxbdt")
-
-        if not is_path_and_file(hkxbhd_path):
-            return self.error(f"Could not find HKXBHD header file for map '{map_stem}': {hkxbhd_path}")
-        if not is_path_and_file(hkxbdt_path):
-            return self.error(f"Could not find HKXBDT data file for map '{map_stem}': {hkxbdt_path}")
-
-        bl_name = hkx_entry_name.split(".")[0]
-
-        hkxbxf = Binder.from_path(hkxbhd_path)
         try:
-            hkx_entry = hkxbxf.find_entry_name(hkx_entry_name)
-        except EntryNotFoundError:
-            return self.error(
-                f"Could not find HKX map collision entry '{hkx_entry_name}' in HKXBHD file '{hkxbhd_path.name}'."
-            )
-
-        import_info = HKXImportInfo(hkxbhd_path, hkx_entry.name, hkx_entry.to_binary_file(MapCollisionHKX))
-
-        # If `load_other_resolutions = True`, this maps actual opened file paths to their other-res HKX files.
-        # NOTE: Does NOT handle paths that need an entry to be chosen by the user (with queued Binder entries).
-        # Those will be handled in the 'BinderChoice' operator.
-        other_res_hkxs = {
-            (import_info.path, import_info.hkx_name): load_other_res_hkx(
-                operator=self,
-                file_path=import_info.path,
-                hkx_name=import_info.hkx_name,
-                is_binder=True,
-            )
-        }  # type: dict[tuple[Path, str], MapCollisionHKX]
-
-        collection = get_collection(f"{map_stem} Collisions", context.scene.collection)
-        importer = HKXMapCollisionImporter(self, context, collection=collection)
-
-        hkx = import_info.hkx
-        hkx_model_name = import_info.hkx_name.split(".")[0]
-        other_res_hkx = other_res_hkxs.get((import_info.path, import_info.hkx_name), None)
-        # TODO: Ensure here that `hkx` is hi and `other_res_hkx` is lo. Swap if necessary.
-
-        self.info(f"Importing HKX '{hkx_model_name}' as '{bl_name}'.")
+            # Import source may depend on suffix of entry enum.
+            if hkx_entry_name.endswith(" (G)"):
+                both_res_hkxbhd = BothResHKXBHD.from_map_path(settings.get_game_map_path(map_stem=map_stem))
+            elif hkx_entry_name.endswith(" (P)"):
+                both_res_hkxbhd = BothResHKXBHD.from_map_path(settings.get_project_map_path(map_stem=map_stem))
+            else:  # no suffix, so we use whichever source is preferred
+                both_res_hkxbhd = BothResHKXBHD.from_map_path(settings.get_import_map_path(map_stem=map_stem))
+        except Exception as ex:
+            return self.error(f"Could not load HKXBHD for map '{map_stem}'. Error: {ex}")
 
         # Import single HKX.
+        model_name = hkx_entry_name.split(".")[0]
+        hi_hkx, lo_hkx = both_res_hkxbhd.get_both_hkx(model_name)
         try:
-            hkx_model = importer.import_hkx(hkx, model_name=bl_name, lo_hkx=other_res_hkx)
+            hkx_model = import_hkx_model(hi_hkx, model_name, lo_hkx=lo_hkx)
         except Exception as ex:
-            # Delete any objects created prior to exception.
-            for obj in importer.all_bl_objs:
-                bpy.data.objects.remove(obj)
             traceback.print_exc()  # for inspection in Blender console
-            return self.error(f"Cannot import HKX: {import_info.path}. Error: {ex}")
+            return self.error(f"Cannot import HKX '{model_name}' from HKXBHDs in {map_stem}. Error: {ex}")
+        collection = get_collection(f"{map_stem} Collisions", context.scene.collection)
+        collection.objects.link(hkx_model)
 
         p = time.perf_counter() - start_time
         self.info(
-            f"Imported HKX map collision '{hkx_model.name}' from {hkx_entry_name} in {hkxbhd_path.name} in {p} s."
+            f"Imported HKX map collision '{hkx_model.name}' from {model_name} in map {map_stem} in {p} s."
         )
 
         # Select and frame view on newly imported Mesh.

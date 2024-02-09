@@ -18,6 +18,8 @@ addon_modules_path = str((Path(__file__).parent / "../io_soulstruct_lib").resolv
 if addon_modules_path not in sys.path:
     sys.path.append(addon_modules_path)
 
+# TODO: I suspect that 'Reload Scripts' in Blender eventually breaks the `colorama` module, causing a recursion limit.
+
 # Reload all Soulstruct modules, then all modules in this add-on (except this script).
 # NOTE: This is IMPORTANT when using 'Reload Scripts' in Blender, as it is otherwise prone to partial re-imports of
 # Soulstruct that duplicate classes and cause wild bugs with `isinstance`, etc.
@@ -164,7 +166,6 @@ CLASSES = (
     # region Havok
     GlobalSettingsPanel_HavokView,
 
-    HKXMapCollisionImportSettings,
     ImportHKXMapCollision,
     ImportHKXMapCollisionWithBinderChoice,
     ImportHKXMapCollisionFromHKXBHD,
@@ -221,6 +222,7 @@ CLASSES = (
     MSBImportPanel,
     MSBExportPanel,
     MSBToolsPanel,
+    MSBRegionPanel,
     # endregion
 
     # endregion
@@ -243,6 +245,24 @@ def havok_menu_func_export(self, context):
     # self.layout.operator(ExportHKXCutscene.bl_idname, text="HKX Cutscene (.remobnd)")
 
 
+SCENE_POINTERS = dict(
+    soulstruct_settings=SoulstructSettings,
+    soulstruct_game_enums=SoulstructGameEnums,
+    flver_import_settings=FLVERImportSettings,
+    flver_export_settings=FLVERExportSettings,
+    texture_export_settings=TextureExportSettings,
+    bake_lightmap_settings=BakeLightmapSettings,
+    flver_tool_settings=FLVERToolSettings,
+    mesh_move_settings=MeshMoveSettings,
+    navmesh_face_settings=NavmeshFaceSettings,
+    mcg_draw_settings=MCGDrawSettings,
+    msb_import_settings=MSBImportSettings,
+    msb_export_settings=MSBExportSettings,
+    region_draw_settings=RegionDrawSettings,
+)
+
+
+SCENE_ATTRIBUTES = []
 LOAD_POST_HANDLERS = []
 SPACE_VIEW_3D_HANDLERS = []
 
@@ -264,22 +284,24 @@ def register():
     bpy.types.TOPBAR_MT_file_export.append(menu_func_export)
     bpy.types.VIEW3D_MT_object.append(menu_func_view3d_mt)
 
-    bpy.types.Scene.soulstruct_settings = bpy.props.PointerProperty(type=SoulstructSettings)
-    bpy.types.Scene.soulstruct_game_enums = bpy.props.PointerProperty(type=SoulstructGameEnums)
+    for prop_name, prop_type in SCENE_POINTERS.items():
+        setattr(bpy.types.Scene, prop_name, bpy.props.PointerProperty(type=prop_type))
+        SCENE_ATTRIBUTES.append(prop_name)
 
-    bpy.types.Scene.flver_import_settings = bpy.props.PointerProperty(type=FLVERImportSettings)
-    bpy.types.Scene.flver_export_settings = bpy.props.PointerProperty(type=FLVERExportSettings)
-    bpy.types.Scene.texture_export_settings = bpy.props.PointerProperty(type=TextureExportSettings)
-    bpy.types.Scene.bake_lightmap_settings = bpy.props.PointerProperty(type=BakeLightmapSettings)
-    bpy.types.Scene.flver_tool_settings = bpy.props.PointerProperty(type=FLVERToolSettings)
-    bpy.types.Scene.mesh_move_settings = bpy.props.PointerProperty(type=MeshMoveSettings)
-
-    bpy.types.Scene.msb_import_settings = bpy.props.PointerProperty(type=MSBImportSettings)
-    bpy.types.Scene.msb_export_settings = bpy.props.PointerProperty(type=MSBExportSettings)
-    bpy.types.Scene.region_draw_settings = bpy.props.PointerProperty(type=RegionDrawSettings)
-
-    bpy.types.Scene.navmesh_face_settings = bpy.props.PointerProperty(type=NavmeshFaceSettings)
-    bpy.types.Scene.mcg_draw_settings = bpy.props.PointerProperty(type=MCGDrawSettings)
+    # region Other Type Extensions
+    bpy.types.Object.region_shape = bpy.props.EnumProperty(
+        items=[
+            ("None", "None", "Not a region object"),
+            ("Point", "Point", "Point with location and rotation only"),
+            # NOTE: 2D region shapes not supported (never used in game AFAIK).
+            ("Sphere", "Sphere", "Volume region defined by radius (max of X/Y/Z scale)"),
+            ("Cylinder", "Cylinder", "Volume region defined by radius (max of X/Y scale) and height (Z scale)"),
+            ("Box", "Box", "Volume region defined by X/Y/Z scale"),
+        ],
+        name="Region Shape",
+        default="None",
+    )
+    # endregion
 
     bpy.app.handlers.load_post.append(load_handler)
     LOAD_POST_HANDLERS.append(load_handler)
@@ -299,13 +321,11 @@ def register():
     )
 
     SPACE_VIEW_3D_HANDLERS.append(
-        bpy.types.SpaceView3D.draw_handler_add(draw_regions, (), "WINDOW", "POST_VIEW")
+        bpy.types.SpaceView3D.draw_handler_add(draw_region_volumes, (), "WINDOW", "POST_VIEW")
     )
 
     bpy.types.TOPBAR_MT_file_import.append(havok_menu_func_import)
     bpy.types.TOPBAR_MT_file_export.append(havok_menu_func_export)
-
-    bpy.types.Scene.map_collision_import_settings = bpy.props.PointerProperty(type=HKXMapCollisionImportSettings)
 
 
 def unregister():
@@ -317,19 +337,12 @@ def unregister():
     bpy.types.TOPBAR_MT_file_import.remove(havok_menu_func_import)
     bpy.types.TOPBAR_MT_file_export.remove(havok_menu_func_export)
 
-    del bpy.types.Scene.soulstruct_settings
-    del bpy.types.Scene.soulstruct_game_enums
-    del bpy.types.Scene.flver_import_settings
-    del bpy.types.Scene.flver_export_settings
-    del bpy.types.Scene.texture_export_settings
-    del bpy.types.Scene.bake_lightmap_settings
-    del bpy.types.Scene.navmesh_face_settings
-    del bpy.types.Scene.mcg_draw_settings
-    del bpy.types.Scene.mesh_move_settings
-    del bpy.types.Scene.flver_tool_settings
-    del bpy.types.Scene.msb_import_settings
-    del bpy.types.Scene.msb_export_settings
-    del bpy.types.Scene.region_draw_settings
+    for prop_name in SCENE_ATTRIBUTES:
+        delattr(bpy.types.Scene, prop_name)
+    SCENE_ATTRIBUTES.clear()
+
+    # noinspection PyUnresolvedReferences
+    del bpy.types.Object.region_shape
 
     for handler in LOAD_POST_HANDLERS:
         bpy.app.handlers.load_post.remove(handler)

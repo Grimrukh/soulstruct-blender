@@ -11,15 +11,16 @@ from pathlib import Path
 
 import bpy
 
-from soulstruct.dcx import DCXType
 from soulstruct.base.maps.msb.utils import GroupBitSet128
 from soulstruct.darksouls1r.maps.models import MSBNavmeshModel
 from soulstruct.darksouls1r.maps.parts import MSBNavmesh
 from soulstruct.darksouls1r.maps.navmesh import NVMBND
+from soulstruct.dcx import DCXType
+from soulstruct.games import DARK_SOULS_DSR
 
 from io_soulstruct.general.cached import get_cached_file
 from io_soulstruct.utilities import *
-from io_soulstruct.navmesh.nvm import NVMExporter, NVMExportError
+from io_soulstruct.navmesh.nvm.model_export import *
 from .core import obj_to_msb_entry_transform
 from .settings import MSBExportSettings
 
@@ -72,15 +73,9 @@ class ExportMSBNavmeshes(LoggingOperator):
                 "No game map directory specified in Soulstruct settings and `Detect Map from Collection` is disabled."
             )
 
-        # TODO: Not needed for meshes only?
-        if bpy.ops.object.mode_set.poll():
-            bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
-
-        exporter = NVMExporter(self, context) if not msb_export_settings.export_msb_data_only else None
-        opened_nvmbnds = {}  # type: dict[str, NVMBND]
-
         opened_msbs = {}  # type: dict[Path, MSB_TYPING]
         edited_part_names = {}  # type: dict[str, set[str]]
+        opened_nvmbnds = {}  # type: dict[str, NVMBND]
 
         for nvm_instance in context.selected_objects:
 
@@ -90,7 +85,7 @@ class ExportMSBNavmeshes(LoggingOperator):
             map_stem = settings.get_map_stem_for_export(nvm_instance, latest=True)
             relative_nvmbnd_path = Path(f"map/{map_stem}/{map_stem}.nvmbnd")
 
-            if exporter:
+            if msb_export_settings.export_model_files:
                 if map_stem not in opened_nvmbnds:
                     try:
                         nvmbnd_path = settings.prepare_project_file(relative_nvmbnd_path, False, must_exist=True)
@@ -154,9 +149,9 @@ class ExportMSBNavmeshes(LoggingOperator):
 
             obj_to_msb_entry_transform(nvm_instance, msb_part)
 
-            if exporter:
+            if msb_export_settings.export_model_files:
                 try:
-                    nvm = exporter.export_nvm(nvm_instance)
+                    nvm = export_nvm_model(self, nvm_instance)
                 except Exception as ex:
                     traceback.print_exc()
                     return self.error(f"Cannot get exported NVM. Error: {ex}")
@@ -168,7 +163,7 @@ class ExportMSBNavmeshes(LoggingOperator):
             # Write MSB.
             settings.export_file(self, msb, relative_msb_path)
 
-        if exporter:
+        if msb_export_settings.export_model_files:
             for nvmbnd in opened_nvmbnds.values():
                 nvmbnd.entries = list(sorted(nvmbnd.entries, key=lambda e: e.name))
                 for i, entry in enumerate(nvmbnd.entries):
@@ -200,11 +195,16 @@ class ExportCompleteMapNavigation(LoggingOperator):
 
     @classmethod
     def poll(cls, context):
-        """Parent of one or more 'n*' Meshes selected."""
+        """Collection of "Navmeshes" with one or more 'n*' Meshes is active."""
         return (
-            cls.settings(context).game_variable_name == "DARK_SOULS_DSR"
-            and context.collection and context.collection.name.endswith("Navmeshes")
+            cls.settings(context).is_game(DARK_SOULS_DSR)
+            and context.collection and "Navmeshes" in context.collection.name
+            and len(context.collection.objects) > 0
+            and all(obj.type == "MESH" and obj.name[0] == "n" for obj in context.collection.objects)
         )
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
 
     def execute(self, context):
         settings = self.settings(context)
@@ -247,12 +247,11 @@ class ExportCompleteMapNavigation(LoggingOperator):
         part_sib_path = f"N:\\FRPG\\data\\Model\\map\\{sib_map_stem}\\sib\\n_layout.SIB"
         msb_new_models = {}  # avoid adding duplicate MSB models
 
-        if not msb_export_settings.export_msb_data_only:
+        if msb_export_settings.export_model_files:
             relative_nvmbnd_path = Path(f"map/{map_stem}/{map_stem}.nvmbnd")
-            exporter = NVMExporter(self, context)
             nvmbnd = NVMBND(map_stem=map_stem)
         else:
-            relative_nvmbnd_path = exporter = nvmbnd = None
+            relative_nvmbnd_path = nvmbnd = None
 
         relative_msb_path = settings.get_relative_msb_path(map_stem)  # will also use latest MSB version
         try:
@@ -295,7 +294,7 @@ class ExportCompleteMapNavigation(LoggingOperator):
 
                 if nvmbnd:
                     try:
-                        nvm = exporter.export_nvm(nvm_instance)
+                        nvm = export_nvm_model(self, nvm_instance)
                     except Exception as ex_:
                         traceback.print_exc()
                         # We return here; no files will have been written.
@@ -334,12 +333,12 @@ class ExportCompleteMapNavigation(LoggingOperator):
             settings.export_text_file(self, nvmdump, relative_nvmdump_path)
             self.info(f"Exported NVMDUMP file next to NVMBND: {relative_nvmdump_path.name}")
 
-        if msb_export_settings.export_msb_data_only:
-            self.info(f"Exported complete list of MSB navmeshes to {map_stem}. No NVM models exported.")
-        else:
+        if msb_export_settings.export_model_files:
             self.info(
                 f"Exported complete list of MSB navmeshes and NVM models to {map_stem}: "
                 f"{len(msb.navmeshes)} parts using {len(msb.navmesh_models)} models."
             )
+        else:
+            self.info(f"Exported complete list of MSB navmeshes to {map_stem}. No NVM models exported.")
 
         return {"FINISHED"}

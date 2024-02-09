@@ -105,9 +105,13 @@ class ImportAllMSBCharacters(BaseImportMSBCharacter):
     """Import ALL MSB Character parts and their transforms. Will probably take a long time!"""
     bl_idname = "import_scene.all_msb_character_parts"
     bl_label = "Import All Character Parts"
-    bl_description = "Import FLVER model and MSB transform of every MSB Character part (SLOW)"
+    bl_description = ("Import FLVER model and MSB transform of every MSB Character part. Very slow, especially when "
+                      "textures are imported (see console output for progress)")
 
     GAME_ENUM_NAME = None
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_confirm(self, event)
 
     def execute(self, context):
         return self.import_all_parts(context)
