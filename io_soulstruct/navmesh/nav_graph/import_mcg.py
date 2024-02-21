@@ -177,13 +177,14 @@ class MCGImporter:
 
         # Actual MCG binary file stores navmesh node triangle indices for every edge, which is extremely redundant, as
         # every node touches exactly two navmeshes and its connected edges in each of those two navmeshes always use
-        # consistent triangles. So we store them on the NODES in Blender and write them back to edges on export. (This
-        # is strictly a Blender thing - the Soulstruct `MCGEdge` classes still hold their node triangle indices - but
-        # does use a Soulstruct `MCG` method to verify the triangles used on a node-by-node basis rather than by edge.)
+        # consistent triangles (in a valid MCG file). So we store them on the NODES in Blender and write them back to
+        # edges on export. (This is strictly a Blender thing - the Soulstruct `MCGEdge` classes still hold their node
+        # triangle indices - but does use a Soulstruct `MCG` method to verify the triangles used on a node-by-node basis
+        # rather than by edge.)
         # NOTE: If a node uses inconsistent triangles in different edges in the same navmesh, the first indices will be
-        # used a warning logged. If a node seemingly has edges in more than two navmeshes, import will fail, as the MCG
-        # file is not valid (for DS1 at least).
-        node_triangle_indices = mcg.get_navmesh_triangles_by_node()
+        # used and a warning logged. If a node seemingly has edges in more than two navmeshes, import will fail, as the
+        # MCG file is not valid (for DS1 at least).
+        node_triangle_indices = mcg.get_navmesh_triangles_by_node(allow_clashes=True)
 
         for i, (node, triangle_indices) in enumerate(zip(mcg.nodes, node_triangle_indices)):
             node: MCGNode
