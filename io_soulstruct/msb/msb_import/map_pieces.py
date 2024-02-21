@@ -100,9 +100,11 @@ class BaseImportMSBMapPiece(BaseImportMSBPart):
     ) -> bpy.types.Object:
         model_name = part.model.get_model_file_stem(map_stem)
         armature, mesh = get_map_piece_model(self, context, settings, map_stem, model_name)
-        part_armature, part_mesh = create_flver_model_instance(context, armature, mesh, part.name, collection)
+        part_armature, part_mesh = create_flver_model_instance(
+            context, armature, mesh, part.name, collection, copy_pose=True
+        )
         msb_entry_to_obj_transform(part, part_armature)
-        return part_armature  # only return root object
+        return part_mesh  # return mesh to center view on
 
 
 class ImportMSBMapPiece(BaseImportMSBMapPiece):

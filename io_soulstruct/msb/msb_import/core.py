@@ -55,12 +55,15 @@ def create_flver_model_instance(
     mesh: bpy.types.MeshObject,
     linked_name: str,
     collection: bpy.types.Collection,
+    copy_pose=False,
 ) -> tuple[bpy.types.ArmatureObject | None, bpy.types.MeshObject]:
     """Create armature (optional) and mesh objects that link to the given armature and mesh data.
 
     NOTE: Does NOT copy dummy children from the source model. These aren't needed for linked MSB part instances, and
     will be found in the source model when exported (using 'Model Name') if needed. (Of course, Map Pieces in early
     games don't have dummies anyway.)
+
+    If `copy_pose = True`, all bone pose data will be manually copied (typically only for Map Pieces).
     """
 
     linked_mesh_obj = bpy.data.objects.new(f"{linked_name} Mesh" if armature else linked_name, mesh.data)
@@ -69,6 +72,17 @@ def create_flver_model_instance(
     if armature:
         linked_armature_obj = bpy.data.objects.new(linked_name, armature.data)
         collection.objects.link(linked_armature_obj)
+
+        if copy_pose:
+            # Copy pose bone transforms.
+            context.view_layer.update()  # need Blender to create `linked_armature_obj.pose` now
+            for pose_bone in linked_armature_obj.pose.bones:
+                source_bone = armature.pose.bones[pose_bone.name]
+                pose_bone.rotation_mode = "QUATERNION"  # should be default but being explicit
+                pose_bone.location = source_bone.location
+                pose_bone.rotation_quaternion = source_bone.rotation_quaternion
+                pose_bone.scale = source_bone.scale
+
         # Parent mesh to armature. This is critical for proper animation behavior (especially with root motion).
         linked_mesh_obj.parent = linked_armature_obj
         if bpy.ops.object.select_all.poll():

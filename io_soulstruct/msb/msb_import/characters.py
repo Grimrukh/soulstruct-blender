@@ -87,7 +87,7 @@ class BaseImportMSBCharacter(BaseImportMSBPart):
         part_armature, part_mesh = create_flver_model_instance(context, armature, mesh, part.name, collection)
         msb_entry_to_obj_transform(part, part_armature)
         part_armature["Draw Parent Name"] = part.draw_parent.name if part.draw_parent else ""
-        return part_armature  # only return root object
+        return part_armature  # return armature to center view on
 
 class ImportMSBCharacter(BaseImportMSBCharacter):
     """Import ALL MSB Character parts and their transforms. Will probably take a long time!"""
