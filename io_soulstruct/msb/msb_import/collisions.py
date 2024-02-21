@@ -47,12 +47,11 @@ def import_collision_model(
 
     NOTE: `map_stem` should already be set to oldest version if option is enabled. This function is agnostic.
     """
-    if not settings.get_import_map_path():  # validation
-        raise HKXMapCollisionImportError(
-            "Game directory and map stem must be set in Blender's Soulstruct global settings."
-        )
 
-    both_res_hkxbhd = BothResHKXBHD.from_map_path(map_stem)
+    # NOTE: Hi and lo-res binders could come from different import folders (project vs. game).
+    hi_res_hkxbhd_path = settings.get_import_map_path(f"h{map_stem[1:]}.hkxbhd")
+    lo_res_hkxbhd_path = settings.get_import_map_path(f"l{map_stem[1:]}.hkxbhd")
+    both_res_hkxbhd = BothResHKXBHD.from_both_paths(hi_res_hkxbhd_path, lo_res_hkxbhd_path)
     hi_hkx, lo_hkx = both_res_hkxbhd.get_both_hkx(model_name)
     collection = get_collection(f"{map_stem} Collision Models", context.scene.collection)
 

@@ -117,6 +117,7 @@ class BaseImportMSBNavmesh(BaseImportMSBPart):
     PART_TYPE_NAME = "Navmesh"
     PART_TYPE_NAME_PLURAL = "Navmeshes"
     MSB_LIST_NAME = "navmeshes"
+    USE_LATEST_MAP_FOLDER = True
 
     def _create_part_instance(
         self, context, settings: SoulstructSettings, map_stem: str, part: MSBNavmesh, collection: bpy.types.Collection

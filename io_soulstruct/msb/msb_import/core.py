@@ -118,6 +118,7 @@ class BaseImportMSBPart(LoggingOperator):
     PART_TYPE_NAME_PLURAL: str  # e.g. 'Characters'
     MSB_LIST_NAME: str  # e.g. 'characters'
     GAME_ENUM_NAME: str | None  # e.g. 'character_part' or `None` for all-part importers
+    USE_LATEST_MAP_FOLDER: bool = False  # only true for NVM assets in DS1
 
     @classmethod
     def poll(cls, context):
@@ -146,6 +147,7 @@ class BaseImportMSBPart(LoggingOperator):
 
         # We always use the latest MSB, if the setting is enabled.
         msb_stem = settings.get_latest_map_stem_version()
+        map_stem = settings.get_oldest_map_stem_version() if not self.USE_LATEST_MAP_FOLDER else msb_stem
         msb_path = settings.get_import_msb_path()  # will automatically use latest MSB version if known and enabled
         msb = get_cached_file(msb_path, settings.get_game_msb_class())  # type: MSB_TYPING
         collection_name = msb_import_settings.get_collection_name(msb_stem, self.PART_TYPE_NAME_PLURAL)
@@ -160,7 +162,7 @@ class BaseImportMSBPart(LoggingOperator):
 
         try:
             # NOTE: Instance creator may not always use `map_stem` (e.g. characters).
-            instance = self._create_part_instance(context, settings, msb_stem, part, part_collection)
+            instance = self._create_part_instance(context, settings, map_stem, part, part_collection)
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Failed to import MSB {self.PART_TYPE_NAME} part '{part.name}': {ex}")
@@ -184,6 +186,7 @@ class BaseImportMSBPart(LoggingOperator):
         msb_import_settings = context.scene.msb_import_settings  # type: MSBImportSettings
         is_name_match = msb_import_settings.get_name_match_filter()
         msb_stem = settings.get_latest_map_stem_version()
+        map_stem = settings.get_oldest_map_stem_version() if not self.USE_LATEST_MAP_FOLDER else msb_stem
         msb_path = settings.get_import_msb_path()  # will automatically use latest MSB version if known and enabled
         msb = get_cached_file(msb_path, settings.get_game_msb_class())  # type: MSB_TYPING
         collection_name = msb_import_settings.get_collection_name(msb_stem, self.PART_TYPE_NAME_PLURAL)
@@ -194,7 +197,7 @@ class BaseImportMSBPart(LoggingOperator):
 
         for part in [part for part in part_list if is_name_match(part.name)]:
             try:
-                self._create_part_instance(context, settings, msb_stem, part, part_collection)
+                self._create_part_instance(context, settings, map_stem, part, part_collection)
             except Exception as ex:
                 traceback.print_exc()
                 self.error(f"Failed to import MSB {self.PART_TYPE_NAME} part '{part.name}': {ex}")

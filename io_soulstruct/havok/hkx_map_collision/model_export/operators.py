@@ -332,7 +332,7 @@ class ExportHKXMapCollisionIntoHKXBHD(LoggingOperator):
             if map_stem not in opened_both_res_hkxbhds:
                 for res in ("h", "l"):
                     for suffix in ("hkxbhd", "hkxbdt"):
-                        relative_path = Path(f"map/{map_stem}/{res}{map_stem}.{suffix}")
+                        relative_path = Path(f"map/{map_stem}/{res}{map_stem[1:]}.{suffix}")
                         try:
                             settings.prepare_project_file(relative_path, must_exist=True)
                         except FileNotFoundError as ex:
@@ -348,11 +348,13 @@ class ExportHKXMapCollisionIntoHKXBHD(LoggingOperator):
             opened_both_res_hkxbhds[map_stem].lo_res.set_hkx(lo_name, lo_hkx)
 
         for map_stem, both_res_hkxbhd in opened_both_res_hkxbhds.items():
+            print(both_res_hkxbhd.hi_res.hkxs.keys())
+            print(both_res_hkxbhd.lo_res.hkxs.keys())
             return_strings |= settings.export_file(
-                self, both_res_hkxbhd.hi_res, Path(f"map/{map_stem}/h{map_stem}.hkxbhd")
+                self, both_res_hkxbhd.hi_res, Path(f"map/{map_stem}/h{map_stem[1:]}.hkxbhd")
             )
             return_strings |= settings.export_file(
-                self, both_res_hkxbhd.lo_res, Path(f"map/{map_stem}/l{map_stem}.hkxbhd")
+                self, both_res_hkxbhd.lo_res, Path(f"map/{map_stem}/l{map_stem[1:]}.hkxbhd")
             )
 
         return {"FINISHED"} if "FINISHED" in return_strings else {"CANCELLED"}  # at least one success

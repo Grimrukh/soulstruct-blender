@@ -135,10 +135,10 @@ class ExportMSBCollisions(LoggingOperator):
         if msb_export_settings.export_model_files:
             for map_stem, both_res_hkxbhd in opened_both_res_hkxbhds.items():
                 return_strings |= settings.export_file(
-                    self, both_res_hkxbhd.hi_res, Path(f"map/{map_stem}/h{map_stem}.hkxbhd")
+                    self, both_res_hkxbhd.hi_res, Path(f"map/{map_stem}/h{map_stem[1:]}.hkxbhd")
                 )
                 return_strings |= settings.export_file(
-                    self, both_res_hkxbhd.lo_res, Path(f"map/{map_stem}/l{map_stem}.hkxbhd")
+                    self, both_res_hkxbhd.lo_res, Path(f"map/{map_stem}/l{map_stem[1:]}.hkxbhd")
                 )
 
         for relative_msb_path, msb in opened_msbs.items():
@@ -174,7 +174,7 @@ class ExportMSBCollisions(LoggingOperator):
         if map_stem not in opened_both_res_hkxbhds:
             for res in "hl":
                 for suffix in ("hkxbhd", "hkxbdt"):
-                    relative_path = Path(f"map/{map_stem}/{res}{map_stem}.{suffix}")  # no DCX
+                    relative_path = Path(f"map/{map_stem}/{res}{map_stem[1:]}.{suffix}")  # no DCX
                     try:
                         settings.prepare_project_file(relative_path, False, must_exist=True)
                     except FileNotFoundError as ex:
