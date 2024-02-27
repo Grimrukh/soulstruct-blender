@@ -220,7 +220,7 @@ class ImportCharacterFLVER(BaseFLVERImportOperator):
 
     @classmethod
     def poll(cls, context):
-        return bool(cls.settings(context).get_import_dir_path("chr"))
+        return cls.settings(context).has_import_dir_path("chr")
 
     def invoke(self, context, _event):
         chr_dir = self.settings(context).get_import_dir_path("chr")
@@ -252,7 +252,10 @@ class ImportObjectFLVER(BaseFLVERImportOperator):
 
     @classmethod
     def poll(cls, context):
-        return bool(cls.settings(context).get_import_dir_path("obj"))
+        settings = cls.settings(context)
+        if settings.game_variable_name == "ELDEN_RING":
+            return False  # has 'assets' instead
+        return settings.has_import_dir_path("obj")
 
     def invoke(self, context, _event):
         obj_dir = self.settings(context).get_import_dir_path("obj")
@@ -292,7 +295,7 @@ class ImportEquipmentFLVER(BaseFLVERImportOperator):
 
     @classmethod
     def poll(cls, context):
-        return bool(cls.settings(context).get_import_dir_path("parts"))
+        return cls.settings(context).has_import_dir_path("parts")
 
     def invoke(self, context, _event):
         parts_dir = self.settings(context).get_import_dir_path("parts")

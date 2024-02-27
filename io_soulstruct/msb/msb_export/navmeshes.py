@@ -88,7 +88,7 @@ class ExportMSBNavmeshes(LoggingOperator):
             if msb_export_settings.export_model_files:
                 if map_stem not in opened_nvmbnds:
                     try:
-                        nvmbnd_path = settings.prepare_project_file(relative_nvmbnd_path, False, must_exist=True)
+                        nvmbnd_path = settings.prepare_project_file(relative_nvmbnd_path, must_exist=True)
                     except FileNotFoundError as ex:
                         self.error(f"Cannot find NVMBND: {relative_nvmbnd_path}. Error: {ex}")
                         continue
@@ -108,9 +108,9 @@ class ExportMSBNavmeshes(LoggingOperator):
             msb_stem = relative_msb_path.stem
 
             if relative_msb_path not in opened_msbs:
-                # Open new MSB.
+                # Open new MSB. We start with the game MSB unless `Prefer Import from Project` is enabled.
                 try:
-                    msb_path = settings.prepare_project_file(relative_msb_path, False, must_exist=True)
+                    msb_path = settings.prepare_project_file(relative_msb_path, must_exist=True)
                 except FileNotFoundError as ex:
                     self.error(
                         f"Could not find MSB file '{relative_msb_path}' for map '{map_stem}'. Error: {ex}"
@@ -224,11 +224,11 @@ class ExportCompleteMapNavigation(LoggingOperator):
         if bpy.ops.object.mode_set.poll():
             bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
 
-        nvm_instances = [
+        navmesh_part_instances = [
             mesh for mesh in context.collection.objects if mesh.type == "MESH" and mesh.name[0] == "n"
         ]  # type: list[bpy.types.MeshObject]
 
-        if not nvm_instances:
+        if not navmesh_part_instances:
             return self.error(f"No 'n*' meshes found in selected collection '{context.collection.name}'.")
 
         if settings.detect_map_from_collection:
@@ -255,7 +255,8 @@ class ExportCompleteMapNavigation(LoggingOperator):
 
         relative_msb_path = settings.get_relative_msb_path(map_stem)  # will also use latest MSB version
         try:
-            msb_path = settings.prepare_project_file(relative_msb_path, False, must_exist=True)
+            # We start with the game MSB unless `Prefer Import from Project` is enabled.
+            msb_path = settings.prepare_project_file(relative_msb_path, must_exist=True)
         except FileNotFoundError as ex:
             return self.error(
                 f"Could not find MSB file '{relative_msb_path}' for map '{map_stem}'. Error: {ex}"
@@ -266,14 +267,16 @@ class ExportCompleteMapNavigation(LoggingOperator):
         msb.navmeshes.clear()
         msb.navmesh_models.clear()
 
-        nvm_instances.sort(key=lambda o: natural_keys(o.name))  # ensure child order matches Blender hierarchy order
+        # Sort MSB navmesh parts so that they match Blender's hierarchy order. Remember that this is important, because
+        # binary MCG and MCP files will index these MSB navmeshes directly!
+        navmesh_part_instances.sort(key=lambda o: natural_keys(o.name))
 
-        for nvm_instance in nvm_instances:
+        for navmesh_part_instance in navmesh_part_instances:
 
-            navmesh_part_name = get_bl_obj_stem(nvm_instance)  # could be the same as the file stem
-            navmesh_group = get_navmesh_group(nvm_instance)
+            navmesh_part_name = get_bl_obj_stem(navmesh_part_instance)  # could be the same as the file stem
+            navmesh_group = get_navmesh_group(navmesh_part_instance)
 
-            model_name = find_model_name(self, nvm_instance, process_model_name_map_area(map_stem))
+            model_name = find_model_name(self, navmesh_part_instance, process_model_name_map_area(map_stem))
             msb_model_name = model_name[:7]  # no area suffix
 
             if msb_model_name in msb_new_models:
@@ -294,7 +297,7 @@ class ExportCompleteMapNavigation(LoggingOperator):
 
                 if nvmbnd:
                     try:
-                        nvm = export_nvm_model(self, nvm_instance)
+                        nvm = export_nvm_model(self, navmesh_part_instance)
                     except Exception as ex_:
                         traceback.print_exc()
                         # We return here; no files will have been written.
@@ -312,12 +315,12 @@ class ExportCompleteMapNavigation(LoggingOperator):
                 navmesh_groups=GroupBitSet128({navmesh_group}),
                 # Transform set below.
             )
-            obj_to_msb_entry_transform(nvm_instance, msb_navmesh_part)
+            obj_to_msb_entry_transform(navmesh_part_instance, msb_navmesh_part)
             msb.navmeshes.append(msb_navmesh_part)
 
-        # Sort both models and parts, just in case any weird custom names were used.
+        # Sort models parts, just in case any weird custom names were used. We don't sort parts because their order
+        # matters for MCG/MCP indexing, which should be checked by the user.
         msb.navmesh_models.sort_by_name()
-        msb.navmeshes.sort_by_name()
 
         # Write MSB.
         settings.export_file(self, msb, relative_msb_path)

@@ -23,13 +23,13 @@ import bpy
 
 if "HKX_ANIMATION_PT_hkx_tools" in locals():
     importlib.reload(sys.modules["io_soulstruct.hkx_animation.utilities"])
-    importlib.reload(sys.modules["io_soulstruct.hkx_animation.import_hkx_animation"])
-    importlib.reload(sys.modules["io_soulstruct.hkx_animation.select_hkx_animation"])
-    importlib.reload(sys.modules["io_soulstruct.hkx_animation.export_hkx_animation"])
+    importlib.reload(sys.modules["io_soulstruct.hkx_animation.anim_import"])
+    importlib.reload(sys.modules["io_soulstruct.hkx_animation.anim_export"])
+    importlib.reload(sys.modules["io_soulstruct.hkx_animation.misc_operators"])
 
-from .import_hkx_animation import *
-from .export_hkx_animation import *
-from .select_hkx_animation import *
+from .anim_import import *
+from .anim_export import *
+from .misc_operators import *
 
 
 class HKX_ANIMATION_PT_hkx_animations(bpy.types.Panel):
@@ -43,8 +43,8 @@ class HKX_ANIMATION_PT_hkx_animations(bpy.types.Panel):
     # noinspection PyUnusedLocal
     def draw(self, context):
         settings = context.scene.soulstruct_settings
-        if settings.game_variable_name != "DARK_SOULS_DSR":
-            self.layout.label(text="Dark Souls: Remastered only.")
+        if settings.game_variable_name not in {"DARK_SOULS_DSR", "ELDEN_RING"}:
+            self.layout.label(text="Import/Export for DSR and ER only.")
             return
 
         import_box = self.layout.box()
@@ -55,6 +55,10 @@ class HKX_ANIMATION_PT_hkx_animations(bpy.types.Panel):
         quick_import_box.prop(context.scene.soulstruct_settings, "import_bak_file", text="From .BAK File")
         quick_import_box.operator(ImportCharacterHKXAnimation.bl_idname)
         quick_import_box.operator(ImportObjectHKXAnimation.bl_idname)
+
+        if settings.game_variable_name not in {"DARK_SOULS_DSR"}:
+            self.layout.label(text="Export for DSR only.")
+            return
 
         export_box = self.layout.box()
         export_box.operator(ExportLooseHKXAnimation.bl_idname)

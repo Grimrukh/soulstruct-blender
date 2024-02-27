@@ -43,6 +43,8 @@ class FLVERExporter:
         DARK_SOULS_DSR.variable_name: Version.DarkSouls_A,
         BLOODBORNE.variable_name: Version.Bloodborne_DS3_A,
         DARK_SOULS_3.variable_name: Version.Bloodborne_DS3_A,
+        SEKIRO.variable_name: Version.Sekiro_EldenRing,
+        ELDEN_RING.variable_name: Version.Sekiro_EldenRing,
     }
 
     operator: LoggingOperator
@@ -58,9 +60,9 @@ class FLVERExporter:
     collected_texture_images: dict[str, bpy.types.Image] = field(default_factory=dict)
 
     def __post_init__(self):
-        if self.mtdbnd is None:
+        if self.mtdbnd is None and not self.settings.is_game(ELDEN_RING):
             self.mtdbnd = self.settings.get_mtdbnd(self.operator)
-        if self.matbinbnd is None:
+        if self.matbinbnd is None and self.settings.is_game(ELDEN_RING):
             self.matbinbnd = self.settings.get_matbinbnd(self.operator)
 
     def export_flver(
@@ -151,10 +153,10 @@ class FLVERExporter:
             material_infos = []
             for bl_material in mesh.data.materials:
                 try:
-                    mtd_name = Path(bl_material["MTD Path"]).name
+                    mtd_name = Path(bl_material["Mat Def Path"]).name
                 except KeyError:
                     raise FLVERExportError(
-                        f"Material '{bl_material.name}' has no 'MTD Path' custom property. "
+                        f"Material '{bl_material.name}' has no 'Mat Def Path' custom property. "
                         f"Cannot export FLVER."
                     )
                 material_infos.append(
@@ -294,18 +296,19 @@ class FLVERExporter:
 
         # 2. Extract UV layers.
         # Maps UV layer names to lists of `MeshUVLoop` instances (so they're converted only once across all materials).
-        all_uv_layer_names_set = set()
+        uv_layer_indices_set = set()
         for material_info in material_infos:
-            material_uv_layer_names = material_info.get_uv_layer_names()
-            all_uv_layer_names_set |= set(material_uv_layer_names)
-        uv_layer_names = sorted(all_uv_layer_names_set)  # e.g. ["UVMap1", "UVMap2", "UVMap3"]
+            uv_layer_indices_set |= set(f"UVMap{i}" for i in material_info.used_uv_indices)
+        uv_layer_names = sorted(uv_layer_indices_set)  # e.g. ["UVMap1", "UVMap2", "UVMap3"]
 
         # 3. Create a triangulated copy of the mesh, so the user doesn't have to triangulate it themselves (though they
         #  may want to do this anyway for absolute approval of the final asset). Custom split normals are copied to the
-        #  triangulated mesh using an applied Data Transfer modifier. Materials are copied over. Nothing else needs to
-        #  be copied, as it is either done automatically by triangulation (e.g. UVs) or is part of the unchanged vertex
-        #  data (e.g. bone weights) in the original mesh.
-        tri_mesh_data = self.create_triangulated_mesh(bl_mesh)
+        #  triangulated mesh using an applied Data Transfer modifier (UPDATE: disabled for now as it ruins sharp edges
+        #  even for existing triangles). Materials are copied over. Nothing else needs to be copied, as it is either
+        #  done automatically by triangulation (e.g. UVs) or is part of the unchanged vertex data (e.g. bone weights) in
+        #  the original mesh.
+        tri_mesh_data = self.create_triangulated_mesh(bl_mesh, do_data_transfer=False)
+
         # TODO: The tangent and bitangent of each vertex should be calculated from the UV map that is effectively
         #  serving as the normal map ('_n' displacement texture) for that vertex. However, for multi-texture mesh
         #  materials, vertex alpha blends two normal maps together, so the UV map for (bi)tangents will vary across
@@ -316,11 +319,11 @@ class FLVERExporter:
             # TODO: This function calls the required `calc_normals_split()` automatically, but if it was replaced,
             #  a separate call of that would be needed to write the (rather inaccessible) custom split per-loop normal
             #  data (pink lines in 3D View overlay) to each `loop.normal`.
-            tri_mesh_data.calc_tangents(uvmap="UVMap1")
+            tri_mesh_data.calc_tangents(uvmap="UVMap0")
             # bl_mesh_data.calc_normals_split()
         except RuntimeError as ex:
             raise RuntimeError(
-                "Could not calculate vertex tangents from 'UVMap1'. Make sure the mesh is triangulated and not "
+                "Could not calculate vertex tangents from 'UVMap0'. Make sure the mesh is triangulated and not "
                 f"empty (delete any empty mesh). Error: {ex}"
             )
 
@@ -443,18 +446,26 @@ class FLVERExporter:
             for _ in uv_layer_names
         ]
 
+        # Vertex color layer count is harder to auto-detect. TODO: `material_info` should figure it out.
+        # TODO: Currently asserting 'VertexColors1' and exporting 'VertexColors2' IFF it exists.
+        loop_colors = []
         try:
             # Vertex colors have been triangulated.
-            loop_colors_layer = tri_mesh_data.vertex_colors["VertexColors"]
+            colors_layer_0 = tri_mesh_data.vertex_colors["VertexColors0"]
         except KeyError:
-            self.warning(f"FLVER mesh '{bl_mesh.name}' has no 'VertexColors' data layer. Using black.")
-            loop_colors_layer = None
+            self.warning(f"FLVER mesh '{bl_mesh.name}' has no 'VertexColors0' data layer. Using black.")
+            colors_layer_0 = None
             # Default to black with alpha 1.
             black = np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32)
-            loop_vertex_color = np.tile(black, (loop_count, 1))
+            loop_colors.append(np.tile(black, (loop_count, 1)))
         else:
             # Prepare for loop filling.
-            loop_vertex_color = np.empty((loop_count, 4), dtype=np.float32)
+            loop_colors.append(np.empty((loop_count, 4), dtype=np.float32))
+
+        try:
+            colors_layer_1 = tri_mesh_data.vertex_colors["VertexColors1"]
+        except KeyError:
+            colors_layer_1 = None
 
         loop_vertex_indices = np.empty(loop_count, dtype=np.int32)
         loop_normals = np.empty((loop_count, 3), dtype=np.float32)
@@ -470,16 +481,18 @@ class FLVERExporter:
         tri_mesh_data.loops.foreach_get("vertex_index", loop_vertex_indices)
         tri_mesh_data.loops.foreach_get("normal", loop_normals.ravel())
         tri_mesh_data.loops.foreach_get("tangent", loop_tangents.ravel())
-        # TODO: 99% sure that `bitangent` data in DS1 is used to store tangent data for the second texture group.
-        #  So it should be calculated from "tangent" for loops that actually use it... ugh.
+        # TODO: 99% sure that `bitangent` data in DS1 is used to store tangent data for the second texture group, which
+        #  later games do simply by using a second tangent buffer.
         tri_mesh_data.loops.foreach_get("bitangent", loop_bitangents.ravel())
-        if loop_colors_layer:
-            loop_colors_layer.data.foreach_get("color", loop_vertex_color.ravel())
-        for uv_i, uv_layer_name in enumerate(uv_layer_names):
+        if colors_layer_0:
+            colors_layer_0.data.foreach_get("color", loop_colors[0].ravel())
+        if colors_layer_1:
+            colors_layer_1.data.foreach_get("color", loop_colors[1].ravel())
+        for global_uv_i, uv_layer_name in enumerate(uv_layer_names):
             uv_layer = tri_mesh_data.uv_layers[uv_layer_name]
             if len(uv_layer.data) == 0:
                 raise FLVERExportError(f"UV layer {uv_layer.name} contains no data.")
-            uv_layer.data.foreach_get("uv", loop_uvs[uv_i].ravel())
+            uv_layer.data.foreach_get("uv", loop_uvs[global_uv_i].ravel())
 
         # Add default `w` components to tangents and bitangents (-1).
         minus_one = np.full((loop_count, 1), -1, dtype=np.float32)
@@ -495,7 +508,7 @@ class FLVERExporter:
             loop_normals_w=loop_normals_w,
             loop_tangents=[loop_tangents],
             loop_bitangents=loop_bitangents,
-            loop_vertex_colors=[loop_vertex_color],
+            loop_vertex_colors=loop_colors,
             loop_uvs=loop_uvs,
             faces=faces,
         )
@@ -513,7 +526,11 @@ class FLVERExporter:
         )
         self.info(f"Split mesh into {len(flver.submeshes)} submeshes in {time.perf_counter() - p} s.")
 
-    def create_triangulated_mesh(self, bl_mesh: bpy.types.MeshObject) -> bpy.types.Mesh:
+    def create_triangulated_mesh(
+        self,
+        bl_mesh: bpy.types.MeshObject,
+        do_data_transfer: bool = False,
+    ) -> bpy.types.Mesh:
         """Use `bmesh` and the Data Transfer Modifier to create a temporary triangulated copy of the mesh (required
         for FLVER models) that retains/interpolates critical information like custom split normals and vertex groups."""
 
@@ -535,20 +552,27 @@ class FLVERExporter:
         tri_mesh_obj = bpy.data.objects.new("__TEMP_FLVER_OBJ__", tri_mesh_data)  # type: bpy.types.MeshObject
         self.context.collection.objects.link(tri_mesh_obj)
 
-        # Add the Data Transfer Modifier to the triangulated mesh object.
-        # noinspection PyTypeChecker
-        data_transfer_mod = tri_mesh_obj.modifiers.new(
-            name="__TEMP_FLVER_DATA_TRANSFER__", type="DATA_TRANSFER"
-        )  # type: bpy.types.DataTransferModifier
-        data_transfer_mod.object = bl_mesh
-        # Enable custom normal data transfer and set the appropriate options.
-        data_transfer_mod.use_loop_data = True
-        data_transfer_mod.data_types_loops = {"CUSTOM_NORMAL"}
-        data_transfer_mod.loop_mapping = "NEAREST_POLYNOR"  # best for simple triangulation
-
-        # Apply the modifier.
-        bpy.context.view_layer.objects.active = tri_mesh_obj  # set the triangulated mesh as active
-        bpy.ops.object.modifier_apply(modifier=data_transfer_mod.name)
+        if do_data_transfer:
+            # Add the Data Transfer Modifier to the triangulated mesh object.
+            # TODO: This requires the new triangulated mesh to EXACTLY overlap the original mesh, so we should set its
+            #  transform. (Any parent offsets will be hard to deal with, though...)
+            # noinspection PyTypeChecker
+            data_transfer_mod = tri_mesh_obj.modifiers.new(
+                name="__TEMP_FLVER_DATA_TRANSFER__", type="DATA_TRANSFER"
+            )  # type: bpy.types.DataTransferModifier
+            data_transfer_mod.object = bl_mesh
+            # Enable custom normal data transfer and set the appropriate options.
+            data_transfer_mod.use_loop_data = True
+            data_transfer_mod.data_types_loops = {"CUSTOM_NORMAL"}
+            if len(tri_mesh_data.loops) == len(bl_mesh.data.loops):
+                # Triangulation did not change the number of loops, so we can map custom normals directly.
+                # TODO: Do I even need to transfer any data? I think the triangulation will have done it all.
+                data_transfer_mod.loop_mapping = "TOPOLOGY"
+            else:
+                data_transfer_mod.loop_mapping = "NEAREST_POLYNOR"  # best for simple triangulation
+            # Apply the modifier.
+            bpy.context.view_layer.objects.active = tri_mesh_obj  # set the triangulated mesh as active
+            bpy.ops.object.modifier_apply(modifier=data_transfer_mod.name)
 
         # Return the mesh data.
         return tri_mesh_obj.data
@@ -761,7 +785,7 @@ class FLVERExporter:
         flver_material = Material(
             name=name,
             flags=get_bl_prop(bl_material, "Flags", int),
-            mtd_path=get_bl_prop(bl_material, "MTD Path", str),
+            mat_def_path=get_bl_prop(bl_material, "Mat Def Path", str),
             unk_x18=get_bl_prop(bl_material, "Unk x18", int, default=0),
         )
         # TODO: Read `GXItem` custom properties.

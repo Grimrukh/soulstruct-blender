@@ -28,13 +28,17 @@ def get_armature_frames(
     animation_hkx: AnimationHKX, skeleton_hkx: SkeletonHKX, track_bone_names: list[str]
 ) -> list[dict[str, TRSTransform]]:
     """Get a list of animation frame dictionaries, which each map bone names to armature-space transforms that frame."""
-    # Create ANIBND with just this animation (always using dummy/default ID 0).
+
+    # Create ANIBND with just this animation (always using dummy/default ID 0) to get advanced method access.
     anibnd = ANIBND(skeleton_hkx=skeleton_hkx, animations_hkx={0: animation_hkx}, default_anim_id=0)
     arma_frames = []
     for frame_index in range(len(anibnd[0].interleaved_data)):
         track_transforms = anibnd.get_all_armature_space_transforms_in_frame(frame_index)
         # Get dictionary mapping Blender bone names to (game) armature space transforms this frame.
-        frame_dict = {track_bone_names[i]: transform for i, transform in enumerate(track_transforms)}
+        frame_dict = {}
+        for track_index, transform in enumerate(track_transforms):
+            bone_name = track_bone_names[track_index]
+            frame_dict[bone_name] = transform
         arma_frames.append(frame_dict)
     return arma_frames
 

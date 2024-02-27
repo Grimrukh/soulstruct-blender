@@ -59,8 +59,10 @@ class HideAllDummiesOperator(LoggingOperator):
 
     @classmethod
     def poll(cls, context):
-        """At least one Blender Mesh selected."""
-        return len(context.selected_objects) > 0 and all(obj.type == "MESH" for obj in context.selected_objects)
+        try:
+            return context.selected_objects[0].type == "ARMATURE"
+        except IndexError:
+            return False
 
     # noinspection PyMethodMayBeStatic
     def execute(self, context):

@@ -2,6 +2,7 @@ from soulstruct import FLVER, Path, Binder
 
 
 WB_PATH = Path("C:/Steam/steamapps/common/DARK SOULS REMASTERED (Workbench)")
+ER_PATH = Path("C:/Steam/steamapps/common/ELDEN RING/Game")
 
 
 def test_artorias():
@@ -31,5 +32,30 @@ def test_artorias():
     # artorias_binder.write()
 
 
+def test_blaidd():
+    from soulstruct.eldenring.models.matbin import MATBINBND
+    matbinbnd = MATBINBND.from_bundled()
+
+    model = "c2140"
+    chrbnd_path = ER_PATH / f"chr/{model}.chrbnd.dcx"
+    flver = FLVER.from_binder_path(chrbnd_path, f"{model}.flver")
+
+    submesh = flver.submeshes[0]
+
+    print(submesh.material)
+    print(submesh.vertices[:10])
+    print(submesh.vertices.dtype.names)
+    uv_layer_count = len([f for f in submesh.vertices.dtype.names if "uv" in f])
+
+    # TODO: Trying to figure out how to tell which MATBIN samplers go in which "UV group", so I know which FLVER UV
+    #  layer to plug in to that sampler node in Blender shader.
+    matbin = matbinbnd.get_matbin(submesh.material.mat_def_name)
+    print(matbin)
+    for sampler in matbin.samplers:
+        print(sampler)
+    print(f"FLVER submesh UV layer count = {uv_layer_count}")
+
+
 if __name__ == '__main__':
-    test_artorias()
+    # test_artorias()
+    test_blaidd()

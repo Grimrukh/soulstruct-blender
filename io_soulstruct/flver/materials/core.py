@@ -8,8 +8,9 @@ import typing as tp
 
 import bpy
 
-from soulstruct.base.models.flver.material import Material, Texture
+from soulstruct.base.models.flver.material import Material
 from soulstruct.base.models.flver.submesh import Submesh
+from soulstruct.utilities.maths import Vector2
 
 from io_soulstruct.utilities.operators import LoggingOperator
 from .material_info import *
@@ -24,9 +25,11 @@ else:
 def get_submesh_blender_material(
     operator: LoggingOperator,
     material: Material,
+    texture_stem_dict: dict[str, str],
     material_name: str,
     material_info: BaseMaterialShaderInfo,
     submesh: Submesh,
+    vertex_color_count: int,
     blend_mode="HASHED",
     warn_missing_textures=True,
 ) -> bpy.types.Material:
@@ -43,7 +46,7 @@ def get_submesh_blender_material(
 
     # Critical `Material` information stored in custom properties.
     bl_material["Flags"] = material.flags  # int
-    bl_material["MTD Path"] = material.mtd_path  # str
+    bl_material["Mat Def Path"] = material.mat_def_path  # str
     bl_material["Unk x18"] = material.unk_x18  # int
     # NOTE: Texture path prefixes not stored, as they aren't actually needed in the TPFBHDs.
 
@@ -69,7 +72,7 @@ def get_submesh_blender_material(
 
     # Try to build shader nodetree.
     builder = NodeTreeBuilder(operator, bl_material, warn_missing_textures)
-    builder.build(material_info, material.get_texture_dict())
+    builder.build(material_info, texture_stem_dict, vertex_color_count)
 
     return bl_material
 
@@ -83,13 +86,14 @@ class NodeTreeBuilder:
     output: bpy.types.Node
     warn_missing_textures: bool
 
-    vertex_colors_node: bpy.types.Node
+    vertex_colors_nodes: list[bpy.types.Node]
     uv_nodes: dict[str, bpy.types.Node]
     tex_image_nodes: dict[str, bpy.types.Node]
 
     # X coordinates of node type columns.
     VERTEX_COLORS_X = -950
-    UV_X = -750
+    UV_X = -950
+    SCALE_X = -750
     TEX_X = -550
     OVERLAY_X = -250  # includes Normal Map node for 'g_Bumpmap'
     BSDF_X = -50
@@ -107,22 +111,39 @@ class NodeTreeBuilder:
         self.tex_y = 1000
         self.bsdf_y = 1000
 
-    def build(self, material_info: BaseMaterialShaderInfo, texture_dict: dict[str, Texture]):
+    def build(
+        self,
+        material_info: BaseMaterialShaderInfo,
+        texture_stem_dict: dict[str, str],
+        vertex_color_count: int,
+    ):
 
         # Wipe default nodes (except output).
         self.tree.nodes.remove(self.tree.nodes["Principled BSDF"])
         self.tree.links.clear()
 
         # Build vertex color, UV, and texture nodes.
-        # TODO: Support multiple colors.
-        self.vertex_colors_node = self.add_vertex_colors_node()
-        self.build_shader_uv_texture_nodes(material_info, texture_dict)
+        self.vertex_colors_nodes = [self.add_vertex_colors_node(i) for i in range(vertex_color_count)]
+        try:
+            self.build_shader_uv_texture_nodes(material_info, texture_stem_dict)
+        except KeyError as ex:
+            self.operator.warning(
+                f"Could not build UV coordinate nodes for material with shader {material_info.shader_stem}. Error: {ex}"
+            )
+            return  # don't bother trying to build full shader below
 
         # Build out the rest of the nodetree, which is game-dependent.
         if isinstance(material_info, DS1MaterialShaderInfo):
             self.build_ds1_shader(material_info)
         elif isinstance(material_info, BBMaterialShaderInfo):
             self.build_bb_shader(material_info)
+        elif isinstance(material_info, ERMaterialShaderInfo):
+            try:
+                self.build_er_shader(material_info)
+            except Exception as ex:
+                self.operator.warning(
+                    f"Cannot yet build shader for Elden Ring shader: {material_info.shader_stem}. Error: {ex}"
+                )
         else:
             self.operator.warning(
                 f"Cannot yet build shader for unknown shader info class '{material_info.__class__.__name__}'."
@@ -131,20 +152,20 @@ class NodeTreeBuilder:
     def build_shader_uv_texture_nodes(
         self,
         material_info: BaseMaterialShaderInfo,
-        texture_dict: dict[str, Texture],
+        texture_stem_dict: dict[str, str],
     ):
         """Build UV and texture nodes. Shared across all games."""
         self.uv_nodes = {}
         self.tex_image_nodes = {}  # type: dict[str, bpy.types.Node]
 
         missing_textures = list(material_info.sampler_types)
-        for texture_type, texture in texture_dict.items():
+        for texture_type, texture_stem in texture_stem_dict.items():
             if texture_type not in material_info.sampler_types:
                 self.operator.warning(
                     f"Texture type '{texture_type}' does not seem to be supported by shader "
-                    f"'{material_info.shader_name}'. Creating FLVER material texture node anyway (with no UV input).",
+                    f"'{material_info.shader_stem}'. Creating FLVER material texture node anyway with UV index 1.",
                 )
-                uv_index = None
+                uv_index = 1
             elif texture_type not in missing_textures:
                 self.operator.warning(
                     f"Texture type '{texture_type}' was given multiple times in FLVER material, which is invalid. "
@@ -152,10 +173,18 @@ class NodeTreeBuilder:
                 )
                 continue
             else:
+                # Found expected sampler type for the first time.
                 missing_textures.remove(texture_type)
-                uv_index = material_info.sampler_type_uv_indices[texture_type]
+                try:
+                    uv_index = material_info.sampler_type_uv_indices[texture_type]
+                except KeyError:
+                    self.operator.warning(
+                        f"Sampler type '{texture_type}' is missing a UV index in the material shader info. "
+                        f"Creating FLVER material texture node anyway (with no UV input).",
+                    )
+                    uv_index = None
 
-            if not texture.path:
+            if not texture_stem:
                 # Empty texture in FLVER (e.g. 'g_DetailBumpmap' in every single DS1 FLVER).
                 tex_image_node = self.add_tex_image_node(texture_type, None)
                 self.tex_image_nodes[texture_type] = tex_image_node
@@ -165,16 +194,16 @@ class NodeTreeBuilder:
             # TODO: 'DetailBump_01_n' texture seems to be missing from characters' `g_DetailBumpmap` slot. Handle?
             #  I think it's in some common texture bunch, potentially?
 
-            for image_name in (f"{texture.stem}", f"{texture.stem}.png", f"{texture.stem}.dds"):
+            for image_name in (f"{texture_stem}", f"{texture_stem}.png", f"{texture_stem}.dds"):
                 if image_name in bpy.data.images:
                     bl_image = bpy.data.images[image_name]
                     break
             else:
                 # Create empty Blender image.
-                bl_image = bpy.data.images.new(name=texture.stem, width=1, height=1, alpha=True)
+                bl_image = bpy.data.images.new(name=texture_stem, width=1, height=1, alpha=True)
                 bl_image.pixels = [1.0, 0.0, 1.0, 1.0]  # magenta
                 self.operator.warning(
-                    f"Could not find texture '{texture.stem}' in Blender image data. "
+                    f"Could not find texture '{texture_stem}' in Blender image data. "
                     f"Created 1x1 magenta texture for node."
                 )
 
@@ -185,7 +214,14 @@ class NodeTreeBuilder:
                 # Connect to appropriate UV node, creating it if necessary.
                 uv_map_name = f"UVMap{uv_index}"
                 uv_node = self.uv_nodes.setdefault(uv_map_name, self.add_uv_node(uv_map_name))
-                self.link(uv_node.outputs["Vector"], tex_image_node.inputs["Vector"])
+
+                if isinstance(material_info, ERMaterialShaderInfo):
+                    uv_scale = material_info.sampler_uv_scales[texture_type]
+                    uv_scale_node = self.add_tex_scale_node(uv_scale, tex_image_node.location.y)
+                    self.link(uv_node.outputs["Vector"], uv_scale_node.inputs[0])
+                    self.link(uv_scale_node.outputs["Vector"], tex_image_node.inputs["Vector"])
+                else:
+                    self.link(uv_node.outputs["Vector"], tex_image_node.inputs["Vector"])
 
     def build_ds1_shader(self, material_info: DS1MaterialShaderInfo):
         """Attempt to craft a faithful shader for a DS1 material."""
@@ -204,7 +240,7 @@ class NodeTreeBuilder:
 
             self.link(bumpmap_node.outputs["Color"], normal_map_node.inputs["Color"])
             self.link(normal_map_node.outputs["Normal"], glass.inputs["Normal"])
-            self.link(self.vertex_colors_node.outputs["Alpha"], water_mix.inputs["Fac"])
+            self.link(self.vertex_colors_nodes[0].outputs["Alpha"], water_mix.inputs["Fac"])
             return
 
         # TODO: Sketch for snow shader:
@@ -218,7 +254,7 @@ class NodeTreeBuilder:
 
         # Standard shader: one or two Principled BSDFs mixed 50/50, or one Principled BSDF mixed with a Transparent BSDF
         # for alpha-supporting shaders (includes edge shaders currently).
-        bsdf_nodes[0] = self.add_principled_bsdf_node("Texture Slot 1")
+        bsdf_nodes[0] = self.add_principled_bsdf_node("Texture Slot 0")
         if material_info.slot_count > 1:
             if material_info.slot_count > 2:
                 self.operator.warning("Cannot yet set up DS1 Blender shader for more than two texture groups.")
@@ -226,7 +262,7 @@ class NodeTreeBuilder:
             mix_node = self.new("ShaderNodeMixShader", location=(self.MIX_X, self.MIX_Y))
             self.link(bsdf_nodes[0].outputs["BSDF"], mix_node.inputs[1])
             self.link(bsdf_nodes[1].outputs["BSDF"], mix_node.inputs[2])
-            self.link(self.vertex_colors_node.outputs["Alpha"], mix_node.inputs["Fac"])
+            self.link(self.vertex_colors_nodes[0].outputs["Alpha"], mix_node.inputs["Fac"])
             self.link_to_output_surface(mix_node.outputs["Shader"])
         elif material_info.alpha or material_info.edge:
             # Mix main Principled BSDF with a Transparent BSDF using vertex alpha.
@@ -235,7 +271,7 @@ class NodeTreeBuilder:
             mix_node = self.new("ShaderNodeMixShader", location=(self.MIX_X, self.MIX_Y))
             self.link(transparent_node.outputs["BSDF"], mix_node.inputs[1])
             self.link(bsdf_nodes[0].outputs["BSDF"], mix_node.inputs[2])  # more vertex alpha -> more opacity
-            self.link(self.vertex_colors_node.outputs["Alpha"], mix_node.inputs["Fac"])
+            self.link(self.vertex_colors_nodes[0].outputs["Alpha"], mix_node.inputs["Fac"])
             self.link_to_output_surface(mix_node.outputs["Shader"])
         else:
             self.link_to_output_surface(bsdf_nodes[0].outputs["BSDF"])
@@ -323,12 +359,12 @@ class NodeTreeBuilder:
 
             self.link(bumpmap_node.outputs["Color"], normal_map_node.inputs["Color"])
             self.link(normal_map_node.outputs["Normal"], glass.inputs["Normal"])
-            self.link(self.vertex_colors_node.outputs["Alpha"], water_mix.inputs["Fac"])
+            self.link(self.vertex_colors_nodes[0].outputs["Alpha"], water_mix.inputs["Fac"])
             return
 
         # Standard shader: one or two Principled BSDFs mixed 50/50, or one Principled BSDF mixed with a Transparent BSDF
         # for alpha-supporting shaders (includes edge shaders currently).
-        bsdf_nodes[0] = self.add_principled_bsdf_node("Texture Slot 1")
+        bsdf_nodes[0] = self.add_principled_bsdf_node("Texture Slot 0")
         if material_info.slot_count > 1:
             if material_info.slot_count > 2:
                 self.operator.warning("Cannot yet set up DS1 Blender shader for more than two texture groups.")
@@ -341,7 +377,7 @@ class NodeTreeBuilder:
                 self.link(blend_mask_node.outputs["Color"], mix_node.inputs["Fac"])
             else:
                 # NOTE: May not be correct; unsure if vertex colors are used if g_BlendMaskTexture is not present.
-                self.link(self.vertex_colors_node.outputs["Alpha"], mix_node.inputs["Fac"])
+                self.link(self.vertex_colors_nodes[0].outputs["Alpha"], mix_node.inputs["Fac"])
             self.link_to_output_surface(mix_node.outputs["Shader"])
         elif material_info.alpha or material_info.edge:
             # Mix main Principled BSDF with a Transparent BSDF using vertex alpha.
@@ -350,7 +386,7 @@ class NodeTreeBuilder:
             mix_node = self.new("ShaderNodeMixShader", location=(self.MIX_X, self.MIX_Y))
             self.link(transparent_node.outputs["BSDF"], mix_node.inputs[1])
             self.link(bsdf_nodes[0].outputs["BSDF"], mix_node.inputs[2])  # more vertex alpha -> more opacity
-            self.link(self.vertex_colors_node.outputs["Alpha"], mix_node.inputs["Fac"])
+            self.link(self.vertex_colors_nodes[0].outputs["Alpha"], mix_node.inputs["Fac"])
             self.link_to_output_surface(mix_node.outputs["Shader"])
         else:
             self.link_to_output_surface(bsdf_nodes[0].outputs["BSDF"])
@@ -423,6 +459,67 @@ class NodeTreeBuilder:
             self.link(bumpmap_node.outputs["Color"], normal_map_node.inputs["Color"])
             self.link(normal_map_node.outputs["Normal"], bsdf_node.inputs["Normal"])
 
+    def build_er_shader(self, material_info: ERMaterialShaderInfo):
+        """Attempt to craft a faithful shader for an Elden Ring material."""
+
+        bsdf_nodes = [None, None, None]  # type: list[bpy.types.Node | None]
+        bsdf_nodes[0] = self.add_principled_bsdf_node("Texture Slot 0")
+
+        # TODO: How to use Vertex Colors? Maybe more shader-dependent.
+
+        if material_info.slot_count > 1:
+            bsdf_nodes[1] = self.add_principled_bsdf_node("Texture Slot 1")
+        if material_info.slot_count > 2:
+            bsdf_nodes[2] = self.add_principled_bsdf_node("Texture Slot 2")
+        if material_info.slot_count > 3:
+            self.operator.warning("Cannot yet set up Blender shader for more than two texture groups.")
+
+        if material_info.slot_count == 3:
+            # Mix second and third BSDF nodes.
+            mix_2_3_node = self.new("ShaderNodeMixShader", location=(self.MIX_X - 100, self.MIX_Y - 100))
+            self.link(bsdf_nodes[1].outputs["BSDF"], mix_2_3_node.inputs[1])
+            self.link(bsdf_nodes[2].outputs["BSDF"], mix_2_3_node.inputs[2])
+            # Mix first BSDF node with mix of second and third.
+            mix_1_2_3_node = self.new("ShaderNodeMixShader", location=(self.MIX_X, self.MIX_Y))
+            self.link(bsdf_nodes[0].outputs["BSDF"], mix_1_2_3_node.inputs[1])
+            self.link(mix_2_3_node.outputs["Shader"], mix_1_2_3_node.inputs[2])
+            self.link_to_output_surface(mix_1_2_3_node.outputs["Shader"])
+        elif material_info.slot_count == 2:
+            # Just mix first and second BSDF nodes.
+            mix_node = self.new("ShaderNodeMixShader", location=(self.MIX_X, self.MIX_Y))
+            self.link(bsdf_nodes[0].outputs["BSDF"], mix_node.inputs[1])
+            self.link(bsdf_nodes[1].outputs["BSDF"], mix_node.inputs[2])
+            self.link_to_output_surface(mix_node.outputs["Shader"])
+        else:
+            self.link_to_output_surface(bsdf_nodes[0].outputs["BSDF"])
+
+        for sampler_type, tex_image_node in self.tex_image_nodes.items():
+            if tex_image_node.image is None:
+                tex_image_node.hide = True
+                continue  # no shader setup
+            uv_index = material_info.sampler_type_uv_indices[sampler_type]
+            group_index = material_info.sampler_uv_groups[sampler_type]
+            if group_index == 1:
+                bsdf_node = bsdf_nodes[0]
+            elif group_index == 2:
+                bsdf_node = bsdf_nodes[1]
+            elif group_index == 3:
+                bsdf_node = bsdf_nodes[2]
+            else:
+                continue  # no shader setup
+            if not bsdf_node:
+                continue  # not enough slots detected
+
+            if "AlbedoMap" in sampler_type:
+                self.link(tex_image_node.outputs["Color"], bsdf_node.inputs["Base Color"])
+                self.link(tex_image_node.outputs["Alpha"], bsdf_node.inputs["Alpha"])
+            if "MetallicMap" in sampler_type:
+                self.link(tex_image_node.outputs["Color"], bsdf_node.inputs["Metallic"])
+            if "NormalMap" in sampler_type:
+                normal_map_node = self.add_normal_map_node(f"UVMap{uv_index}", tex_image_node.location[1])
+                self.link(tex_image_node.outputs["Color"], normal_map_node.inputs["Color"])
+                self.link(normal_map_node.outputs["Normal"], bsdf_node.inputs["Normal"])
+
     # region Builder Methods
 
     def new(
@@ -450,12 +547,12 @@ class NodeTreeBuilder:
     def link_to_output_displacement(self, node_output) -> bpy.types.NodeLink:
         return self.link(node_output, self.output.inputs["Displacement"])
 
-    def add_vertex_colors_node(self) -> bpy.types.Node:
+    def add_vertex_colors_node(self, index: int) -> bpy.types.Node:
         return self.new(
             "ShaderNodeAttribute",
-            location=(self.OVERLAY_X, 1200),
-            name="VertexColors",
-            attribute_name="VertexColors",
+            location=(self.OVERLAY_X, 1200 + index * 200),
+            name=f"VertexColors{index}",
+            attribute_name=f"VertexColors{index}",
         )
 
     def add_uv_node(self, uv_map_name: str):
@@ -468,6 +565,16 @@ class NodeTreeBuilder:
             label=uv_map_name,
         )
         self.uv_y -= 1000
+        return node
+
+    def add_tex_scale_node(self, scale: Vector2, node_y: float):
+        node = self.new(
+            "ShaderNodeVectorMath",
+            location=(self.SCALE_X, node_y),
+            operation="MULTIPLY",
+            label="UV Scale",
+        )
+        node.inputs[1].default_value = [scale.x, scale.y, 1.0]
         return node
 
     def add_tex_image_node(self, texture_type: str, image: bpy.types.Image | None):

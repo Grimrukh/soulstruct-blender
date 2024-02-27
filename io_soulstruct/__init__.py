@@ -77,7 +77,7 @@ def menu_func_view3d_mt(self, context):
 
 # Classes to register.
 CLASSES = (
-    # region FLVER
+    # region Basic
     SoulstructSettings,
     SoulstructGameEnums,
     GlobalSettingsPanel,
@@ -89,11 +89,15 @@ CLASSES = (
     SelectCustomMTDBNDFile,
     SelectCustomMATBINBNDFile,
     ClearCachedLists,
-
+    # endregion
+    
+    # region Misc. Operators
     MeshMoveSettings,
     CopyMeshSelectionOperator,
     CutMeshSelectionOperator,
+    # endregion
 
+    # region FLVER / Materials / Textures
     ImportFLVER,
     ImportMapPieceFLVER,
     ImportCharacterFLVER,
@@ -134,35 +138,6 @@ CLASSES = (
     FLVERUVMapsPanel,
     # endregion
 
-    # region Navmesh
-    GlobalSettingsPanel_NavmeshView,
-    ImportNVM,
-    ImportNVMWithBinderChoice,
-    ImportNVMFromNVMBND,
-    ExportLooseNVM,
-    ExportNVMIntoBinder,
-    ExportNVMIntoNVMBND,
-
-    ImportMCP,
-    QuickImportMCP,
-    ImportMCG,
-    QuickImportMCG,
-    ExportMCG,
-    ExportMCGMCPToMap,
-    CreateMCGEdgeOperator,
-    SetNodeNavmeshATriangles,
-    SetNodeNavmeshBTriangles,
-    NVM_PT_ds1_navmesh_import,
-    NVM_PT_ds1_navmesh_export,
-    NVM_PT_ds1_navmesh_tools,
-    NavmeshFaceSettings,
-    AddNVMFaceFlags,
-    RemoveNVMFaceFlags,
-    SetNVMFaceObstacleCount,
-    ResetNVMFaceInfo,
-    MCGDrawSettings,
-    # endregion
-
     # region Havok
     GlobalSettingsPanel_HavokView,
 
@@ -195,6 +170,36 @@ CLASSES = (
     # ImportHKXCutscene,
     # ExportHKXCutscene,
     # HKX_CUTSCENE_PT_hkx_cutscene_tools,
+    # endregion
+
+    # region Navmesh
+    GlobalSettingsPanel_NavmeshView,
+    ImportNVM,
+    ImportNVMWithBinderChoice,
+    ImportNVMFromNVMBND,
+    ExportLooseNVM,
+    ExportNVMIntoBinder,
+    ExportNVMIntoNVMBND,
+
+    ImportMCP,
+    QuickImportMCP,
+    ImportMCG,
+    QuickImportMCG,
+    ExportMCG,
+    ExportMCGMCPToMap,
+    CreateMCGEdgeOperator,
+    SetNodeNavmeshATriangles,
+    SetNodeNavmeshBTriangles,
+    NVM_PT_ds1_navmesh_import,
+    NVM_PT_ds1_navmesh_export,
+    NVM_PT_ds1_navmesh_tools,
+    NavmeshFaceSettings,
+    AddNVMFaceFlags,
+    RemoveNVMFaceFlags,
+    SetNVMFaceObstacleCount,
+    ResetNVMFaceInfo,
+    MCGDrawSettings,
+    # endregion
 
     # region MSB
     GlobalSettingsPanel_MSBView,
@@ -223,8 +228,6 @@ CLASSES = (
     MSBExportPanel,
     MSBToolsPanel,
     MSBRegionPanel,
-    # endregion
-
     # endregion
 )
 

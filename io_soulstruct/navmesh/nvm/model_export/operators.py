@@ -247,8 +247,9 @@ class ExportNVMIntoNVMBND(LoggingOperator):
             relative_nvmbnd_path = Path(f"map/{map_stem}/{map_stem}.nvmbnd")
 
             if relative_nvmbnd_path not in opened_nvmbnds:
+                # Open new NVMBND. We start with the game NVMBND unless `Prefer Import from Project` is enabled.
                 try:
-                    nvmbnd_path = settings.prepare_project_file(relative_nvmbnd_path, False, must_exist=True)
+                    nvmbnd_path = settings.prepare_project_file(relative_nvmbnd_path, must_exist=True)
                 except FileNotFoundError as ex:
                     self.error(f"Cannot find NVMBND: {relative_nvmbnd_path}. Error: {ex}")
                     continue

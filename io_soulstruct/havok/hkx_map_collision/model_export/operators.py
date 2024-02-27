@@ -346,6 +346,7 @@ class ExportHKXMapCollisionIntoHKXBHD(LoggingOperator):
 
             opened_both_res_hkxbhds[map_stem].hi_res.set_hkx(hi_name, hi_hkx)
             opened_both_res_hkxbhds[map_stem].lo_res.set_hkx(lo_name, lo_hkx)
+            self.info(f"Added HKX {hi_name} and {lo_name} to {map_stem} HKXBHDs.")
 
         for map_stem, both_res_hkxbhd in opened_both_res_hkxbhds.items():
             return_strings |= settings.export_file(

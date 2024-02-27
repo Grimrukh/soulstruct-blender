@@ -193,9 +193,9 @@ class BakeLightmapTextures(LoggingOperator):
         bl_material = material_slot.material
 
         try:
-            mtd_name = Path(bl_material["MTD Path"]).name
+            mtd_name = Path(bl_material["Mat Def Path"]).name
         except KeyError:
-            raise ValueError(f"Material '{bl_material.name}' of mesh {mesh.name} has no 'MTD Path' property.")
+            raise ValueError(f"Material '{bl_material.name}' of mesh {mesh.name} has no 'Mat Def Path' property.")
         material_info = DS1MaterialShaderInfo.from_mtdbnd_or_name(self, mtd_name, mtdbnd)
 
         texture_node_name = bake_settings.texture_node_name

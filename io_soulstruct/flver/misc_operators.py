@@ -22,6 +22,11 @@ from .utilities import FLVERError, parse_dummy_name, get_selected_flvers
 
 
 class FLVERToolSettings(bpy.types.PropertyGroup):
+    vertex_color_layer_name: bpy.props.StringProperty(
+        name="Vertex Color Layer",
+        description="Name of the vertex color layer to use for setting vertex alpha",
+        default="VertexColors1",
+    )
     vertex_alpha: bpy.props.FloatProperty(
         name="Alpha",
         description="Alpha value to set for selected vertices",
@@ -47,27 +52,26 @@ class SetVertexAlpha(LoggingOperator):
         if context.mode != "EDIT_MESH":
             return self.error("Please enter Edit Mode to use this operator.")
 
-        # Go to OBJECT mode
+        tool_settings = context.scene.flver_tool_settings  # type: FLVERToolSettings
+
         bpy.ops.object.mode_set(mode="OBJECT")
+        try:
+            # noinspection PyTypeChecker
+            mesh = context.active_object  # type: bpy.types.MeshObject
+            if mesh is None or mesh.type != "MESH":
+                return self.error("Please select a Mesh object.")
 
-        # noinspection PyTypeChecker
-        mesh = context.active_object  # type: bpy.types.MeshObject
-        if mesh is None or mesh.type != "MESH":
-            return self.error("Please select a Mesh object.")
+            vertex_indices = [v.index for v in mesh.data.vertices if v.select]
+            vertex_colors = mesh.data.vertex_colors[tool_settings.vertex_color_layer_name]
+            if not vertex_colors:
+                return self.error(f"Mesh does not have a '{tool_settings.vertex_color_layer_name}' vertex color layer.")
 
-        # Get selected vertices
-        vertex_indices = [v.index for v in mesh.data.vertices if v.select]
-
-        vertex_colors = mesh.data.vertex_colors["VertexColors"]
-        if not vertex_colors:
-            return self.error("Mesh does not have a 'VertexColors' layer (which is the name used by FLVERs).")
-
-        for i, loop in enumerate(mesh.data.loops):
-            if loop.vertex_index in vertex_indices:
-                vertex_colors.data[i].color[3] = context.scene.flver_tool_settings.vertex_alpha
-
-        # Go back to EDIT mode
-        bpy.ops.object.mode_set(mode="EDIT")
+            alpha = tool_settings.vertex_alpha
+            for i, loop in enumerate(mesh.data.loops):
+                if loop.vertex_index in vertex_indices:
+                    vertex_colors.data[i].color[3] = alpha
+        finally:
+            bpy.ops.object.mode_set(mode="EDIT")
 
         return {"FINISHED"}
 

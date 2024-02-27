@@ -14,25 +14,48 @@ import traceback
 import typing as tp
 from pathlib import Path
 
-import numpy as np
-
 import bpy
 from bpy_extras.io_utils import ImportHelper
-from mathutils import Quaternion as BlenderQuaternion
 
 from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
+from soulstruct.eldenring.containers import DivBinder
 
-from soulstruct_havok.utilities.maths import TRSTransform
-from soulstruct_havok.wrappers.hkx2015 import AnimationHKX, SkeletonHKX
+from soulstruct_havok.core import HKX
+from soulstruct_havok.wrappers import hkx2015
+from soulstruct_havok.wrappers import hkx2018
 
 from io_soulstruct.utilities import *
-from io_soulstruct.havok.utilities import GAME_TRS_TO_BL_MATRIX, get_basis_matrix
-from .utilities import *
+from io_soulstruct.havok.hkx_animation.utilities import *
+from .core import HKXAnimationImporter
 
 ANIBND_RE = re.compile(r"^.*?\.anibnd(\.dcx)?$")
 c0000_ANIBND_RE = re.compile(r"^c0000_.*\.anibnd(\.dcx)?$")
 OBJBND_RE = re.compile(r"^.*?\.objbnd(\.dcx)?$")
 SKELETON_ENTRY_RE = re.compile(r"skeleton\.hkx(\.dcx)?", flags=re.IGNORECASE)
+
+
+SKELETON_TYPING = tp.Union[hkx2015.SkeletonHKX, hkx2018.SkeletonHKX]
+ANIMATION_TYPING = tp.Union[hkx2015.AnimationHKX, hkx2018.AnimationHKX]
+
+
+def read_animation_hkx_entry(hkx_entry: BinderEntry, compendium: HKX = None) -> ANIMATION_TYPING:
+    data = hkx_entry.get_uncompressed_data()
+    version = data[0x10:0x18]
+    if version == b"20180100":  # ER
+        return hkx2018.AnimationHKX.from_bytes(data, compendium=compendium)
+    elif version == b"20150100":  # DSR
+        return hkx2015.AnimationHKX.from_bytes(data, compendium=compendium)
+    raise ValueError(f"Cannot support this HKX animation file version in Soulstruct and/or Blender: {version}")
+
+
+def read_skeleton_hkx_entry(hkx_entry: BinderEntry, compendium: HKX = None) -> SKELETON_TYPING:
+    data = hkx_entry.get_uncompressed_data()
+    version = data[0x10:0x18]
+    if version == b"20180100":  # ER
+        return hkx2018.SkeletonHKX.from_bytes(data, compendium=compendium)
+    elif version == b"20150100":  # DSR
+        return hkx2015.SkeletonHKX.from_bytes(data, compendium=compendium)
+    raise ValueError(f"Cannot support this HKX skeleton file version in Soulstruct and/or Blender: {version}")
 
 
 class ImportHKXAnimationMixin:
@@ -56,14 +79,18 @@ class ImportHKXAnimationMixin:
     )
 
     def scan_entries(
-        self, anim_hkx_entries: list[BinderEntry], file_path: Path, skeleton_hkx: SkeletonHKX
-    ) -> list[tuple[Path, SkeletonHKX, AnimationHKX | list[BinderEntry]]]:
+        self,
+        anim_hkx_entries: list[BinderEntry],
+        file_path: Path,
+        skeleton_hkx: SKELETON_TYPING,
+        compendium: HKX = None,
+    ) -> list[tuple[Path, SKELETON_TYPING, ANIMATION_TYPING | list[BinderEntry]]]:
         if len(anim_hkx_entries) > 1:
             if self.import_all_animations:
                 hkxs_with_paths = []
                 for entry in anim_hkx_entries:
                     try:
-                        animation_hkx = entry.to_binary_file(AnimationHKX)
+                        animation_hkx = read_animation_hkx_entry(entry, compendium)
                     except Exception as ex:
                         self.warning(f"Error occurred while reading HKX Binder entry '{entry.name}': {ex}")
                     else:
@@ -74,20 +101,31 @@ class ImportHKXAnimationMixin:
             return [(file_path, skeleton_hkx, anim_hkx_entries)]
 
         try:
-            animation_hkx = anim_hkx_entries[0].to_binary_file(AnimationHKX)
+            animation_hkx = read_animation_hkx_entry(anim_hkx_entries[0], compendium)
         except Exception as ex:
             self.warning(f"Error occurred while reading HKX Binder entry '{anim_hkx_entries[0].name}': {ex}")
             return []
 
         return [(file_path, skeleton_hkx, animation_hkx)]
 
+    def load_binder_compendium(self, binder: Binder) -> HKX | None:
+        """Try to find compendium HKX. Div Binders may have multiple, but they should be identical, so we use first."""
+        try:
+            compendium_entry = binder.find_entry_matching_name(r".*\.compendium")
+        except EntryNotFoundError:
+            self.info("Did not find any compendium HKX in Binder.")
+            return None
+        else:
+            self.info(f"Loading compendium HKX from entry: {compendium_entry.name}")
+            return HKX.from_binder_entry(compendium_entry)
+
     def import_hkx(
         self,
         bl_armature: bpy.types.ArmatureObject,
         importer: HKXAnimationImporter,
         file_path: Path,
-        skeleton_hkx: SkeletonHKX,
-        animation_hkx: AnimationHKX,
+        skeleton_hkx: SKELETON_TYPING,
+        animation_hkx: ANIMATION_TYPING,
     ) -> set[str]:
         anim_name = animation_hkx.path.name.split(".")[0]
 
@@ -166,43 +204,46 @@ class ImportHKXAnimation(LoggingOperator, ImportHelper, ImportHKXAnimationMixin)
         bl_armature = context.selected_objects[0]  # type: bpy.types.ArmatureObject
 
         file_paths = [Path(self.directory, file.name) for file in self.files]
-        hkxs_with_paths = []  # type: list[tuple[Path, SkeletonHKX, AnimationHKX | list[BinderEntry]]]
+        hkxs_with_paths = []  # type: list[tuple[Path, SKELETON_TYPING, ANIMATION_TYPING | list[BinderEntry]]]
+        compendium = None
 
         for file_path in file_paths:
 
             if OBJBND_RE.match(file_path.name):
                 # Get ANIBND from OBJBND.
-                objbnd = Binder.from_path(file_path)
+                objbnd = DivBinder.from_path(file_path)
                 anibnd_entry = objbnd.find_entry_matching_name(r".*\.anibnd(\.dcx)?")
                 if not anibnd_entry:
                     return self.error("OBJBND binder does not contain an ANIBND binder.")
-                skeleton_anibnd = anibnd = Binder.from_binder_entry(anibnd_entry)
+                skeleton_anibnd = anibnd = DivBinder.from_binder_entry(anibnd_entry)
             elif ANIBND_RE.match(file_path.name):
-                anibnd = Binder.from_path(file_path)
+                anibnd = DivBinder.from_path(file_path)
                 if c0000_match := c0000_ANIBND_RE.match(file_path.name):
                     # c0000 skeleton is in base `c0000.anibnd{.dcx}` file.
-                    skeleton_anibnd = Binder.from_path(file_path.parent / f"c0000.anibnd{c0000_match.group(1)}")
+                    skeleton_anibnd = DivBinder.from_path(file_path.parent / f"c0000.anibnd{c0000_match.group(1)}")
                 else:
                     skeleton_anibnd = anibnd
             else:
-                # TODO: Currently require Skeleton.HKX, so have to use ANIBND.
+                # TODO: Currently require skeleton HKX and possibly compendium, so have to use ANIBND.
                 #  Have another deferred operator that lets you choose a loose Skeleton file after a loose animation.
                 return self.error(
                     "Must import animation from an ANIBND containing a skeleton HKX file or an OBJBND with an ANIBND."
                 )
 
+            compendium = self.load_binder_compendium(anibnd)
+
             # Find skeleton entry.
             skeleton_entry = skeleton_anibnd[SKELETON_ENTRY_RE]
             if not skeleton_entry:
                 return self.error("Must import animation from an ANIBND containing a skeleton HKX file.")
-            skeleton_hkx = SkeletonHKX.from_binder_entry(skeleton_entry)
+            skeleton_hkx = read_skeleton_hkx_entry(skeleton_entry, compendium)
 
             # Find animation HKX entry/entries.
             anim_hkx_entries = anibnd.find_entries_matching_name(r"a.*\.hkx(\.dcx)?")
             if not anim_hkx_entries:
                 return self.error(f"Cannot find any HKX animation files in binder {file_path}.")
 
-            hkxs_with_paths += self.scan_entries(anim_hkx_entries, file_path, skeleton_hkx)
+            hkxs_with_paths += self.scan_entries(anim_hkx_entries, file_path, skeleton_hkx, compendium)
 
         importer = HKXAnimationImporter(self, context, bl_armature, bl_armature.name, self.to_60_fps)
 
@@ -216,6 +257,7 @@ class ImportHKXAnimation(LoggingOperator, ImportHelper, ImportHKXAnimationMixin)
                     hkx_entries=hkx_or_entries,
                     bl_armature=bl_armature,
                     skeleton_hkx=skeleton_hkx,
+                    compendium=compendium,
                 )
                 continue
             try:
@@ -247,7 +289,8 @@ class ImportHKXAnimationWithBinderChoice(LoggingOperator):
     enum_options: list[tuple[tp.Any, str, str]] = []
     hkx_entries: tp.Sequence[BinderEntry] = []
     bl_armature = None
-    skeleton_hkx: SkeletonHKX | None = None
+    skeleton_hkx: SKELETON_TYPING | None = None
+    compendium: HKX | None = None
 
     choices_enum: bpy.props.EnumProperty(items=get_binder_entry_choices)
 
@@ -266,7 +309,7 @@ class ImportHKXAnimationWithBinderChoice(LoggingOperator):
         entry = self.hkx_entries[choice]
 
         p = time.perf_counter()
-        animation_hkx = entry.to_binary_file(AnimationHKX)
+        animation_hkx = read_animation_hkx_entry(entry, self.compendium)
         self.info(f"Read `AnimationHKX` Binder entry '{entry.name}' in {time.perf_counter() - p:.4f} seconds.")
 
         anim_name = entry.name.split(".")[0]
@@ -312,7 +355,8 @@ class ImportHKXAnimationWithBinderChoice(LoggingOperator):
         binder_file_path: Path,
         hkx_entries: list[BinderEntry],
         bl_armature,
-        skeleton_hkx: SkeletonHKX,
+        skeleton_hkx: SKELETON_TYPING,
+        compendium: HKX | None,
     ):
         cls.importer = importer
         cls.binder_file_path = binder_file_path
@@ -320,6 +364,7 @@ class ImportHKXAnimationWithBinderChoice(LoggingOperator):
         cls.hkx_entries = hkx_entries
         cls.bl_armature = bl_armature
         cls.skeleton_hkx = skeleton_hkx
+        cls.compendium = compendium
         # noinspection PyUnresolvedReferences
         bpy.ops.wm.hkx_animation_binder_choice_operator("INVOKE_DEFAULT")
 
@@ -355,23 +400,25 @@ class ImportCharacterHKXAnimation(LoggingOperator, ImportHKXAnimationMixin):
         if not anibnd_path or not anibnd_path.is_file():
             return self.error(f"Cannot find ANIBND for character '{character_name}' in game directory.")
 
-        skeleton_anibnd = anibnd = Binder.from_path(anibnd_path)
+        skeleton_anibnd = anibnd = DivBinder.from_path(anibnd_path)
         # TODO: Support c0000 automatic import. Combine all sub-ANIBND entries into one big choice list?
         self.info(f"Importing animation(s) from ANIBND: {anibnd_path}")
+
+        compendium = self.load_binder_compendium(anibnd)
 
         # Find skeleton entry.
         try:
             skeleton_entry = skeleton_anibnd[SKELETON_ENTRY_RE]
         except EntryNotFoundError:
             raise HKXAnimationImportError(f"ANIBND of character '{character_name}' has no skeleton HKX file.")
-        skeleton_hkx = SkeletonHKX.from_binder_entry(skeleton_entry)
+        skeleton_hkx = read_skeleton_hkx_entry(skeleton_entry, compendium)
 
         # Find animation HKX entry/entries.
         anim_hkx_entries = anibnd.find_entries_matching_name(r"a.*\.hkx(\.dcx)?")
         if not anim_hkx_entries:
             raise HKXAnimationImportError(f"Cannot find any HKX animation files in binder {anibnd_path}.")
 
-        hkxs_with_paths = self.scan_entries(anim_hkx_entries, anibnd_path, skeleton_hkx)
+        hkxs_with_paths = self.scan_entries(anim_hkx_entries, anibnd_path, skeleton_hkx, compendium)
 
         importer = HKXAnimationImporter(self, context, bl_armature, bl_armature.name, self.to_60_fps)
 
@@ -385,6 +432,7 @@ class ImportCharacterHKXAnimation(LoggingOperator, ImportHKXAnimationMixin):
                     hkx_entries=hkx_or_entries,
                     bl_armature=bl_armature,
                     skeleton_hkx=skeleton_hkx,
+                    compendium=compendium,
                 )
                 continue
             try:
@@ -425,21 +473,23 @@ class ImportObjectHKXAnimation(LoggingOperator, ImportHKXAnimationMixin):
         if not objbnd_path or not objbnd_path.is_file():
             return self.error(f"Cannot find OBJBND for '{object_name}' in game directory.")
 
-        objbnd = Binder.from_path(objbnd_path)
+        objbnd = DivBinder.from_path(objbnd_path)
 
         # Find ANIBND entry inside OBJBND.
         try:
             anibnd_entry = objbnd[f"{object_name}.anibnd"]
         except EntryNotFoundError:
             return self.error(f"OBJBND of object '{object_name}' has no ANIBND.")
-        skeleton_anibnd = anibnd = Binder.from_binder_entry(anibnd_entry)
+        skeleton_anibnd = anibnd = DivBinder.from_binder_entry(anibnd_entry)
+
+        compendium = self.load_binder_compendium(anibnd)
 
         # Find skeleton entry.
         try:
             skeleton_entry = skeleton_anibnd[SKELETON_ENTRY_RE]
         except EntryNotFoundError:
             return self.error(f"ANIBND of object '{object_name}' has no skeleton HKX file.")
-        skeleton_hkx = SkeletonHKX.from_binder_entry(skeleton_entry)
+        skeleton_hkx = read_skeleton_hkx_entry(skeleton_entry, compendium)
 
         self.info(f"Importing animation(s) from ANIBND inside OBJBND: {objbnd}")
 
@@ -462,6 +512,7 @@ class ImportObjectHKXAnimation(LoggingOperator, ImportHKXAnimationMixin):
                     hkx_entries=hkx_or_entries,
                     bl_armature=bl_armature,
                     skeleton_hkx=skeleton_hkx,
+                    compendium=compendium,
                 )
                 continue
             try:
@@ -471,199 +522,3 @@ class ImportObjectHKXAnimation(LoggingOperator, ImportHKXAnimationMixin):
                 self.error(f"Error occurred while importing HKX animation: {ex}")
 
         return {"FINISHED"} if "FINISHED" in return_strings else {"CANCELLED"}  # at least one finished
-
-
-class HKXAnimationImporter:
-    """Manages imports for a batch of HKX animation files imported simultaneously."""
-
-    FAST = {"FAST"}
-
-    model_name: str
-    to_60_fps: bool
-
-    def __init__(
-        self,
-        operator: LoggingOperator,
-        context,
-        bl_armature: bpy.types.ArmatureObject,
-        model_name: str,
-        to_60_fps: bool,
-    ):
-        self.operator = operator
-        self.context = context
-
-        self.bl_armature = bl_armature
-        self.model_name = model_name
-        self.to_60_fps = to_60_fps
-
-    def create_action(
-        self,
-        animation_name: str,
-        arma_frames: list[dict[str, TRSTransform]],
-        root_motion: None | np.ndarray = None,
-    ):
-        """Import single animation HKX."""
-        bone_frame_scaling = 2 if self.to_60_fps else 1
-        root_motion_frame_scaling = bone_frame_scaling
-        if root_motion is not None:
-            if len(root_motion) == 0:
-                # Weird, but we'll leave default scaling and put any single root motion keyframe at 0.
-                pass
-            elif len(root_motion) != len(arma_frames):
-                # Root motion is at a lesser (or possibly greater?) sample rate than bone animation. For example, if
-                # only two root motion samples are given, they will be scaled to match the first and last frame of
-                # `arma_frames`. This scaling stacks with the intrinsic `bone_frame_scaling` (e.g. 2 for 60 FPS).
-                root_motion_frame_scaling *= len(arma_frames) / (len(root_motion) - 1)
-
-        action_name = f"{self.model_name}|{animation_name}"
-        action = None  # type: bpy.types.Action | None
-        original_location = self.bl_armature.location.copy()  # TODO: not necessary with batch method?
-        try:
-            self.bl_armature.animation_data_create()
-            self.bl_armature.animation_data.action = action = bpy.data.actions.new(name=action_name)
-            bone_basis_samples = self._get_bone_basis_samples(arma_frames)
-            self._add_keyframes_batch(
-                action, bone_basis_samples, root_motion, bone_frame_scaling, root_motion_frame_scaling
-            )
-        except Exception:
-            if action:
-                bpy.data.actions.remove(action)
-            self.bl_armature.location = original_location  # reset location (i.e. erase last root motion)
-            raise
-
-        # Ensure action is not deleted when not in use.
-        action.use_fake_user = True
-        # Update all F-curves and make them cycle.
-        for fcurve in action.fcurves:
-            fcurve.modifiers.new("CYCLES")  # default settings are fine
-            fcurve.update()
-        # Update Blender timeline start/stop times.
-        bpy.context.scene.frame_start = int(action.frame_range[0])
-        bpy.context.scene.frame_end = int(action.frame_range[1])
-        bpy.context.scene.frame_set(bpy.context.scene.frame_start)
-
-    def _get_bone_basis_samples(
-        self, arma_frames: list[dict[str, TRSTransform]]
-    ) -> dict[str, list[list[float]]]:
-        """Convert a list of armature-space frames (mapping bone names to transforms in that frame) to an outer
-        dictionary that maps bone names to a list of frames that are each defined by ten floats (location XYZ, rotation
-        quaternion, scale XYZ) in basis space.
-        """
-        # Convert armature-space frame data to Blender `(location, rotation_quaternion, scale)` tuples.
-        # Note that we decompose the basis matrices so that quaternion discontinuities are handled properly.
-        last_frame_rotations = {}  # type: dict[str, BlenderQuaternion]
-
-        bone_basis_samples = {
-            bone_name: [[] for _ in range(10)] for bone_name in arma_frames[0].keys()
-        }  # type: dict[str, list[list[float]]]
-
-        # We'll be using the inverted local matrices of each bone on every frame to calculate their basis matrices.
-        cached_local_inv_matrices = {
-            bone.name: bone.matrix_local.inverted()
-            for bone in self.bl_armature.data.bones
-        }
-
-        for frame in arma_frames:
-            bl_arma_matrices = {
-                bone_name: GAME_TRS_TO_BL_MATRIX(transform) for bone_name, transform in frame.items()
-            }
-            cached_arma_inv_matrices = {}  # cached for frame as needed
-
-            for bone_name, bl_arma_matrix in bl_arma_matrices.items():
-                basis_samples = bone_basis_samples[bone_name]
-
-                bl_edit_bone = self.bl_armature.data.bones[bone_name]
-
-                if bl_edit_bone.parent is not None and bl_edit_bone.parent.name not in cached_arma_inv_matrices:
-                    # Cache parent's inverted armature matrix (may be needed by other sibling bones this frame).
-                    parent_name = bl_edit_bone.parent.name
-                    cached_arma_inv_matrices[parent_name] = bl_arma_matrices[parent_name].inverted()
-
-                bl_basis_matrix = get_basis_matrix(
-                    self.bl_armature,
-                    bone_name,
-                    bl_arma_matrix,
-                    cached_local_inv_matrices,
-                    cached_arma_inv_matrices,
-                )
-
-                t, r, s = bl_basis_matrix.decompose()
-
-                if bone_name in last_frame_rotations:
-                    if last_frame_rotations[bone_name].dot(r) < 0:
-                        r.negate()  # negate quaternion to avoid discontinuity (reverse direction of rotation)
-
-                for samples, sample_float in zip(basis_samples, [t.x, t.y, t.z, r.w, r.x, r.y, r.z, s.x, s.y, s.z]):
-                    samples.append(sample_float)
-
-                last_frame_rotations[bone_name] = r
-
-        return bone_basis_samples
-
-    @staticmethod
-    def _add_keyframes_batch(
-        action: bpy.types.Action,
-        bone_basis_samples: dict[str, list[list[float]]],
-        root_motion: np.ndarray | None,
-        bone_frame_scaling: float,
-        root_motion_frame_scaling: float,
-    ):
-        """Faster method of adding all bone and (optional) root keyframe data.
-
-        Constructs `FCurves` with known length and uses `foreach_set` to batch-set all the `.co` attributes of the
-        curve keyframe points at once.
-
-        `bone_basis_samples` maps bone names to ten lists of floats (location_x, location_y, etc.).
-        """
-
-        # Initialize FCurves for root motion and bones.
-        if root_motion is not None:
-            root_fcurves = [action.fcurves.new(data_path="location", index=i) for i in range(3)]
-            root_fcurves.append(action.fcurves.new(data_path="rotation_euler", index=2))  # z-axis rotation in Blender
-        else:
-            root_fcurves = []
-
-        bone_fcurves = {}
-        for bone_name in bone_basis_samples.keys():
-            bone_fcurves[bone_name] = []  # ten FCurves per bone
-            bone_fcurves[bone_name] += [
-                action.fcurves.new(data_path=f"pose.bones[\"{bone_name}\"].location", index=i)
-                for i in range(3)
-            ]
-            bone_fcurves[bone_name] += [
-                action.fcurves.new(data_path=f"pose.bones[\"{bone_name}\"].rotation_quaternion", index=i)
-                for i in range(4)
-            ]
-            bone_fcurves[bone_name] += [
-                action.fcurves.new(data_path=f"pose.bones[\"{bone_name}\"].scale", index=i)
-                for i in range(3)
-            ]
-
-        # Build lists of FCurve keyframe points by initializing their size and using `foreach_set`.
-        # Each keyframe point has a `.co` attribute to which we set `(bl_frame_index, value)` (per dimension).
-        # `foreach_set` requires that we flatten the list of tuples to be assigned, a la:
-        #    `[bl_frame_index_0, value_0, bl_frame_index_1, value_1, ...]`
-        # which we do with a list comprehension.
-        if root_fcurves:
-            # NOTE: There may be less root motion samples than bone animation samples. We spread the root motion samples
-            # out to match the bone animation frames using `root_motion_frame_scaling` (done by caller).
-            for col, fcurve in enumerate(root_fcurves):  # x, y, z, -rz (from game ry)
-                dim_samples = root_motion[:, col]  # one dimension of root motion
-                fcurve.keyframe_points.add(count=len(dim_samples))
-                root_dim_flat = [
-                    x
-                    for frame_index, sample_float in enumerate(dim_samples)
-                    for x in [frame_index * root_motion_frame_scaling, sample_float]
-                ]
-                fcurve.keyframe_points.foreach_set("co", root_dim_flat)
-
-        for bone_name, bone_transform_fcurves in bone_fcurves.items():
-            basis_samples = bone_basis_samples[bone_name]
-            for bone_fcurve, samples in zip(bone_transform_fcurves, basis_samples, strict=True):
-                bone_fcurve.keyframe_points.add(count=len(samples))
-                bone_dim_flat = [
-                    x
-                    for frame_index, sample_float in enumerate(samples)
-                    for x in [frame_index * bone_frame_scaling, sample_float]
-                ]
-                bone_fcurve.keyframe_points.foreach_set("co", bone_dim_flat)

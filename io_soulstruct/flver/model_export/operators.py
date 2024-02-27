@@ -112,7 +112,7 @@ class ExportStandaloneFLVER(LoggingOperator, ExportHelper):
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Cannot write exported FLVER. Error: {ex}")
-        self.info(f"Exported FLVER to: {written_path}")
+        self.info(f"Exported FLVER to: {written_path[0]}")
 
         return {"FINISHED"}
 
@@ -363,7 +363,7 @@ class BaseGameFLVERBinderExportOperator(LoggingOperator):
         # We prepare and retrieve the binder to be exported into.
         relative_binder_path = Path(binder_path_template.format(model_stem=model_stem))
         try:
-            binder_path = settings.prepare_project_file(relative_binder_path, overwrite_existing=False, must_exist=True)
+            binder_path = settings.prepare_project_file(relative_binder_path, must_exist=True)
         except FileNotFoundError as ex:
             raise FLVERExportError(
                 f"Cannot find {cls_name} binder for {model_stem}: {relative_binder_path}. Error: {ex}"

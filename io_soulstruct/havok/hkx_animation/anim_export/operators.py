@@ -11,8 +11,6 @@ import re
 import traceback
 from pathlib import Path
 
-import numpy as np
-
 import bpy
 from bpy.props import StringProperty, BoolProperty, IntProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
@@ -20,16 +18,13 @@ from bpy_extras.io_utils import ImportHelper, ExportHelper
 from soulstruct.containers import Binder, EntryNotFoundError
 from soulstruct.dcx import DCXType
 from soulstruct.games import DARK_SOULS_DSR
-from soulstruct_havok.wrappers.hkx2015 import SkeletonHKX, AnimationHKX
-from soulstruct_havok.utilities.maths import TRSTransform
+from soulstruct_havok.wrappers.hkx2015 import SkeletonHKX
 
 from io_soulstruct.utilities import *
-from io_soulstruct.havok.utilities import BL_MATRIX_TO_GAME_TRS
-from .utilities import *
+from io_soulstruct.havok.hkx_animation.utilities import *
+from .core import create_animation_hkx
 
 
-ACTION_NAME_RE = re.compile(r"^(.*)\|(a[\d_]+)(\.\d+)?$")
-BONE_DATA_PATH_RE = re.compile(r"pose\.bones\[(\w+)]\.(location|rotation_quaterion|scale)")
 SKELETON_ENTRY_RE = re.compile(r"skeleton\.hkx", re.IGNORECASE)
 
 
@@ -268,7 +263,7 @@ class QuickExportCharacterHKXAnimation(LoggingOperator):
 
         relative_anibnd_path = Path(f"chr/{character_name}.anibnd")
         try:
-            anibnd_path = settings.prepare_project_file(relative_anibnd_path, False, must_exist=True)
+            anibnd_path = settings.prepare_project_file(relative_anibnd_path, must_exist=True)
         except FileNotFoundError as ex:
             return self.error(f"Cannot find ANIBND for character {character_name}: {ex}")
 
@@ -372,7 +367,7 @@ class QuickExportObjectHKXAnimation(LoggingOperator):
         # Get OBJBND to modify from project (preferred) or game directory.
         relative_objbnd_path = Path(f"obj/{object_name}.objbnd")
         try:
-            objbnd_path = settings.prepare_project_file(relative_objbnd_path, False, must_exist=True)
+            objbnd_path = settings.prepare_project_file(relative_objbnd_path, must_exist=True)
         except FileNotFoundError:
             return self.error(f"Cannot find OBJBND for object {object_name}.")
         objbnd = Binder.from_path(objbnd_path)
@@ -433,83 +428,3 @@ class QuickExportObjectHKXAnimation(LoggingOperator):
 
         # Export modified OBJBND.
         return settings.export_file(self, objbnd, Path(f"obj/{objbnd_path.name}"))
-
-
-def create_animation_hkx(skeleton_hkx: SkeletonHKX, bl_armature, from_60_fps: bool) -> AnimationHKX:
-    if bl_armature.animation_data is None:
-        raise HKXAnimationExportError(f"Armature '{bl_armature.name}' has no animation data.")
-    action = bl_armature.animation_data.action
-    if action is None:
-        raise HKXAnimationExportError(f"Armature '{bl_armature.name}' has no action assigned to its animation data.")
-
-    # TODO: Technically, animation export only needs a start/end frame range, since it samples location/bone pose
-    #  on every single frame anyway and does NOT need to actually use the action FCurves!
-
-    # Determine the frame range.
-    # TODO: Export bool option to just read from current scene values, rather than checking action.
-    start_frame = int(min(fcurve.range()[0] for fcurve in action.fcurves))
-    end_frame = int(max(fcurve.range()[1] for fcurve in action.fcurves))
-
-    # All frame interleaved transforms, in armature space.
-    root_motion_samples = []  # type: list[tuple[float, float, float, float]]
-    armature_space_frames = []  # type: list[list[TRSTransform]]
-
-    has_root_motion = False
-
-    # Animation track order will match Blender bone order (which should come from FLVER).
-    track_bone_mapping = list(range(len(skeleton_hkx.skeleton.bones)))
-
-    # Store last bone TRS for rotation negation.
-    last_bone_trs = {bone.name: TRSTransform.identity() for bone in skeleton_hkx.skeleton.bones}
-
-    # Evaluate all curves at every frame.
-    for i, frame in enumerate(range(start_frame, end_frame + 1)):
-
-        if from_60_fps and i % 2 == 1:
-            # Skip every second frame to convert 60 FPS to 30 FPS (frame 0 should generally be keyframed).
-            continue
-
-        bpy.context.scene.frame_set(frame)
-        armature_space_frame = []  # type: list[TRSTransform]
-
-        # We collect root motion vectors, as we're not sure if any root motion exists yet.
-        loc = bl_armature.location
-        rot = bl_armature.rotation_euler
-        root_motion_sample = (loc[0], loc[1], loc[2], rot[2])  # XYZ and Z rotation (soon to be game Y)
-        root_motion_samples.append(root_motion_sample)
-        if not has_root_motion and len(root_motion_samples) >= 2 and root_motion_samples[-1] != root_motion_samples[-2]:
-            # Some actual root motion has appeared.
-            has_root_motion = True
-
-        for bone in skeleton_hkx.skeleton.bones:
-            try:
-                bl_bone = bl_armature.pose.bones[bone.name]
-            except KeyError:
-                raise HKXAnimationExportError(f"Bone '{bone.name}' in HKX skeleton not found in Blender armature.")
-            armature_space_transform = BL_MATRIX_TO_GAME_TRS(bl_bone.matrix)
-            if i > 0:
-                # Negate rotation quaternion if dot product is negative.
-                dot = np.dot(armature_space_transform.rotation.data, last_bone_trs[bone.name].rotation.data)
-                if dot < 0:
-                    armature_space_transform.rotation = -armature_space_transform.rotation
-            last_bone_trs[bone.name] = armature_space_transform
-            armature_space_frame.append(armature_space_transform)
-
-        armature_space_frames.append(armature_space_frame)
-
-    if has_root_motion:
-        root_motion = np.array(root_motion_samples, dtype=np.float32)
-        # Swap Y and Z and negate rotation.
-        root_motion = np.c_[root_motion[:, 0], root_motion[:, 2], root_motion[:, 1], -root_motion[:, 3]]
-    else:
-        root_motion = None
-
-    animation_hkx = AnimationHKX.from_dsr_interleaved_template(
-        skeleton_hkx=skeleton_hkx,
-        interleaved_data=armature_space_frames,
-        transform_track_to_bone_indices=track_bone_mapping,
-        root_motion=root_motion,
-        is_armature_space=True,
-    )
-
-    return animation_hkx

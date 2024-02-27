@@ -295,9 +295,13 @@ class TextureImportManager:
     # Holds TPF stems that have already been opened and scanned, so they aren't checked again.
     _scanned_tpf_sources: set[str] = field(default_factory=set)
 
-    def find_flver_textures(self, flver_source_path: Path, flver_binder: Binder = None):
-        """Register known game Binders/TPFs to be opened as needed."""
-        source_name = Path(flver_source_path).name.removesuffix(".dcx")
+    def find_flver_textures(self, flver_source_path: Path, flver_binder: Binder = None, prefer_hi_res=True):
+        """Register known game Binders/TPFs to be opened as needed.
+
+        `flver_source_path` is the path to the Binder file containing the FLVER, or loose FLVER file.
+        `flver_binder` is the Binder object that contains the FLVER, if it has already been opened.
+        """
+        source_name = Path(flver_source_path).name.removesuffix(".dcx")  # e.g. 'c1234.chrbnd' or 'm1234B0A10.flver'
         source_dir = flver_source_path.parent
 
         # MAP PIECES
@@ -328,8 +332,9 @@ class TextureImportManager:
                 elif self.settings.is_game(DARK_SOULS_3, SEKIRO):
                     self._find_texbnd(source_dir, model_stem=source_name.split(".")[0], res="")  # no res
                 elif self.settings.is_game(ELDEN_RING):
-                    # TODO: Option for low/high res. Using low for now.
-                    self._find_texbnd(source_dir, model_stem=source_name.split(".")[0], res="_l")
+                    res = "_h" if prefer_hi_res else "_l"
+                    self._find_texbnd(source_dir, model_stem=source_name.split(".")[0], res=res)
+                    self._find_common_body(source_dir)
             else:
                 _LOGGER.warning(
                     f"Opened CHRBND '{flver_source_path}' should have been passed to TextureImportManager! Will not be "
@@ -541,10 +546,22 @@ class TextureImportManager:
             self._scanned_binder_paths.add(texbnd_path)
             texbnd = Binder.from_path(texbnd_path)
             for tpf_entry in texbnd.find_entries_matching_name(TPF_RE):
-                # These are very likely to be used by the FLVER, but we still queue them up rather than open them now.
+                # Multi-texture TPF; we unpack it now.
                 tpf_stem = tpf_entry.name.split(".")[0]
-                if tpf_stem not in self._scanned_tpf_sources:
-                    self._pending_tpf_sources.setdefault(tpf_stem, tpf_entry)
+                texbnd_tpf = TPF.from_binder_entry(tpf_entry)
+                self._scanned_tpf_sources.add(tpf_stem)
+                for texture in texbnd_tpf.textures:
+                    self._tpf_textures.setdefault(texture.name, texture)
+
+    def _find_common_body(self, source_dir):
+        """Find 'parts/common_body.tpf.dcx' character TPFs. Used by many non-c0000 characters."""
+        common_body_path = source_dir / "../parts/common_body.tpf.dcx"
+        if not "common_body" in self._scanned_tpf_sources and common_body_path.is_file():
+            # Multi-texture TPF; we unpack it now.
+            self._scanned_tpf_sources.add("common_body")
+            common_body = TPF.from_path(common_body_path)
+            for texture in common_body.textures:
+                self._tpf_textures.setdefault(texture.name, texture)
 
     def _find_parts_common_tpfs(self, source_dir: Path):
         """Find and immediately load all textures inside multi-texture 'Common' TPFs (e.g. player skin)."""

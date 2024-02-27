@@ -743,11 +743,11 @@ def scan_chr_layouts():
         flver = chrbnd[200].to_binary_file(FLVER)
         for submesh in flver.submeshes:
             material = submesh.material
-            if material.mtd_name not in mtd_and_layout:
-                mtd_and_layout[material.mtd_name] = set()
+            if material.mat_def_name not in mtd_and_layout:
+                mtd_and_layout[material.mat_def_name] = set()
             layout = submesh.vertex_arrays[0].layout
             layout_str = ", ".join(str(m) for m in layout)
-            mtd_and_layout[material.mtd_name].add(layout_str)
+            mtd_and_layout[material.mat_def_name].add(layout_str)
 
     print("{")
     for mtd_name, layouts in mtd_and_layout.items():
@@ -772,7 +772,7 @@ def scan_chr():
         flver = chrbnd[200].to_binary_file(FLVER)
         for submesh in flver.submeshes:
             texture_types = [tex.texture_type for tex in submesh.material.textures]
-            mtd_and_texture_types.append((Path(submesh.material.mtd_path).stem, texture_types))
+            mtd_and_texture_types.append((Path(submesh.material.mat_def_path).stem, texture_types))
 
     for mtd_texture_types in mtd_and_texture_types:
         print(mtd_texture_types)
@@ -789,7 +789,7 @@ def scan_map():
             flver = FLVER.from_path(flver_path)
             for submesh in flver.submeshes:
                 texture_types = [tex.texture_type for tex in submesh.material.textures]
-                f.write(f"    ('{Path(submesh.material.mtd_path).stem}', {texture_types}),\n")
+                f.write(f"    ('{Path(submesh.material.mat_def_path).stem}', {texture_types}),\n")
         f.write("}\n")
 
 
@@ -804,11 +804,11 @@ def scan_map_layouts():
         flver = FLVER.from_path(flver_path)
         for submesh in flver.submeshes:
             material = submesh.material
-            if material.mtd_name not in mtd_and_layout:
-                mtd_and_layout[material.mtd_name] = set()
+            if material.mat_def_name not in mtd_and_layout:
+                mtd_and_layout[material.mat_def_name] = set()
             layout = submesh.vertex_arrays[0].layout
             layout_str = ", ".join(str(m) for m in layout)
-            mtd_and_layout[material.mtd_name].add(layout_str)
+            mtd_and_layout[material.mat_def_name].add(layout_str)
 
     print("{")
     for mtd_name in sorted(mtd_and_layout):

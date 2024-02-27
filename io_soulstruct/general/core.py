@@ -50,6 +50,8 @@ def CLEAR_MAP_STEM_ENUM():
 SUPPORTED_GAMES = [
     DARK_SOULS_PTDE,
     DARK_SOULS_DSR,
+    BLOODBORNE,
+    ELDEN_RING,
 ]
 
 
@@ -461,6 +463,13 @@ class SoulstructSettings(bpy.types.PropertyGroup):
                 return path
         raise NotADirectoryError(f"Directory not found in project or game directory: {parts}")
 
+    def has_import_dir_path(self, *parts: str | Path) -> bool:
+        """Check if import directory path exists."""
+        try:
+            return bool(self.get_import_dir_path(*parts))
+        except NotADirectoryError:
+            return False
+
     def get_import_map_path(self, *parts: str | Path, map_stem="") -> Path | None:
         """Get the `map_stem` 'map' directory path, and optionally further, in the preferred directory.
 
@@ -696,23 +705,36 @@ class SoulstructSettings(bpy.types.PropertyGroup):
             )
 
     def prepare_project_file(
-        self, relative_path: Path, overwrite_existing=False, must_exist=False, dcx_type: DCXType = None
+        self,
+        relative_path: Path,
+        overwrite_existing: bool = None,
+        must_exist=False,
+        dcx_type: DCXType = None,
     ) -> Path | None:
         """Copy file from game directory to project directory, if both are set.
 
-        Useful for creating initial Binders in project directory that are only being partially modified with new
-        exported entries.
+        Useful for creating initial Binders and MSBs in project directory that are only being partially modified with
+        new exported entries.
 
         Does nothing if project directory is not set, in which case you are either exporting to the game directory only
-        or will likely hit an exception later on due.
-
-        If `overwrite_existing` is `False` (default), the file will not be copied if it already exists in the project
-        directory. If `must_exist` is `True`, the file must already exist in the project directory or successfully be
-        copied from the game directory (assuming the project directory is set).
+        or will likely hit an exception later on.
 
         Never creates a `.bak` backup file.
+
+        Args:
+            relative_path: Path relative to game root directory.
+            overwrite_existing: If `False`, the file will not be copied if it already exists in the project directory.
+                If `True`, the file will always be copied, overwriting any existing project file.
+                If `None` (default), the file will be copied if and only if `prefer_import_from_project = False`, so
+                that the initial file used comes from the game.
+            must_exist: If `True`, the file must already exist in the project directory or successfully be copied from
+                the game directory (assuming the project directory is set).
+            dcx_type: If given, will manually override the file type's DCX type.
         """
         from .game_enums import CLEAR_GAME_FILE_ENUMS
+
+        if overwrite_existing is None:
+            overwrite_existing = not self.prefer_import_from_project
 
         game_path = self.get_game_path(relative_path, dcx_type=dcx_type)
         project_path = self.get_project_path(relative_path, dcx_type=dcx_type)
@@ -817,7 +839,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):
                 if mtdbnd_path:  # found
                     break
 
-        if mtdbnd_path.is_file():
+        if is_path_and_file(mtdbnd_path):
             return mtdbnd_class.from_path(mtdbnd_path)
 
         from_bundled = getattr(mtdbnd_class, "from_bundled", None)
@@ -848,7 +870,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):
                     operator.info(f"Found MATBINBND in {label} directory: {matbinbnd_path}")
                     break
 
-        if matbinbnd_path.is_file():
+        if is_path_and_file(matbinbnd_path):
             return matbinbnd_class.from_path(matbinbnd_path)
 
         from_bundled = getattr(matbinbnd_class, "from_bundled", None)

@@ -82,9 +82,9 @@ class ExportMSBCollisions(LoggingOperator):
             # Get model file stem from MSB (must contain matching part).
             collision_part_name = get_bl_obj_stem(hkx_model)
             if relative_msb_path not in opened_msbs:
-                # Open new MSB.
+                # Open new MSB. We start with the game MSB unless `Prefer Import from Project` is enabled.
                 try:
-                    msb_path = settings.prepare_project_file(relative_msb_path, False, must_exist=True)
+                    msb_path = settings.prepare_project_file(relative_msb_path)
                 except FileNotFoundError as ex:
                     self.error(
                         f"Could not find MSB file '{relative_msb_path}' for map '{map_stem}'. Error: {ex}"
@@ -172,16 +172,22 @@ class ExportMSBCollisions(LoggingOperator):
         lo_hkx.dcx_type = dcx_type
 
         if map_stem not in opened_both_res_hkxbhds:
+            # Open both-res HKXBHDs for this map.
+            relative_map_path = Path(f"map/{map_stem}")
             for res in "hl":
                 for suffix in ("hkxbhd", "hkxbdt"):
-                    relative_path = Path(f"map/{map_stem}/{res}{map_stem[1:]}.{suffix}")  # no DCX
+                    relative_path = relative_map_path / f"{res}{map_stem[1:]}.{suffix}"  # no DCX
                     try:
-                        settings.prepare_project_file(relative_path, False, must_exist=True)
+                        settings.prepare_project_file(relative_path, must_exist=True)
                     except FileNotFoundError as ex:
                         raise HKXMapCollisionExportError(
                             f"Could not find file '{relative_path}' for map '{map_stem}'. Error: {ex}"
                         )
-            opened_both_res_hkxbhds[map_stem] = BothResHKXBHD.from_map_path(map_stem)
+            # We start with import path Binders. If we are exporting to the project, the `prepare` calls above will have
+            # created the initial Binders there already, replacing them with the current game ones if `Prefer Import
+            # from Project` is disabled.
+            import_map_path = settings.get_import_map_path(map_stem)
+            opened_both_res_hkxbhds[map_stem] = BothResHKXBHD.from_map_path(import_map_path)
 
         opened_both_res_hkxbhds[map_stem].hi_res.set_hkx(hi_name, hi_hkx)
         opened_both_res_hkxbhds[map_stem].lo_res.set_hkx(lo_name, lo_hkx)

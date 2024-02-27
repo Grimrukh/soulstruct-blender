@@ -61,7 +61,7 @@ class ExportMSBMapPieces(LoggingOperator):
         msb_export_settings = context.scene.msb_export_settings  # type: MSBExportSettings
 
         self.to_object_mode()
-        if not msb_export_settings.export_msb_data_only:
+        if msb_export_settings.export_model_files:
             exporter = FLVERExporter(self, context, settings, settings.get_mtdbnd(self))
         else:
             exporter = None
@@ -85,9 +85,9 @@ class ExportMSBMapPieces(LoggingOperator):
             msb_stem = relative_msb_path.stem
 
             if relative_msb_path not in opened_msbs:
-                # Open new MSB.
+                # Open new MSB. We start with the game MSB unless `Prefer Import from Project` is enabled.
                 try:
-                    msb_path = settings.prepare_project_file(relative_msb_path, False, must_exist=True)
+                    msb_path = settings.prepare_project_file(relative_msb_path)
                 except FileNotFoundError as ex:
                     self.error(
                         f"Could not find MSB file '{relative_msb_path}' for map '{map_stem}'. Error: {ex}"

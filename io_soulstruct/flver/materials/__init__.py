@@ -3,6 +3,7 @@ __all__ = [
     "BaseMaterialShaderInfo",
     "DS1MaterialShaderInfo",
     "BBMaterialShaderInfo",
+    "ERMaterialShaderInfo",
 ]
 
 from .core import *
