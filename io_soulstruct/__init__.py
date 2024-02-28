@@ -119,9 +119,9 @@ CLASSES = (
 
     FLVERToolSettings,
     SetVertexAlpha,
+    ActivateUVMap0,
     ActivateUVMap1,
     ActivateUVMap2,
-    ActivateUVMap3,
     FindMissingTexturesInPNGCache,
     SelectMeshChildren,
 

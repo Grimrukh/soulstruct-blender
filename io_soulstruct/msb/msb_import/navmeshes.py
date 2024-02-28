@@ -22,6 +22,7 @@ from .core import *
 
 if tp.TYPE_CHECKING:
     from soulstruct.darksouls1r.maps.parts import MSBNavmesh  # TODO: use multi-game typing
+    from soulstruct.base.models.mtd import MTDBND
     from io_soulstruct.general import SoulstructSettings
 
 
@@ -67,7 +68,6 @@ def import_navmesh_model(
 
     collection = get_collection("Navmesh Models", context.scene.collection)
     importer = NVMImporter(operator, context, collection=collection)
-    operator.info(f"Importing NVM model {import_info.model_file_stem} as '{import_info.bl_name}'.")
 
     try:
         nvm_model = importer.import_nvm(
@@ -82,6 +82,8 @@ def import_navmesh_model(
         traceback.print_exc()  # for inspection in Blender console
         raise NVMImportError(f"Cannot import NVM: {import_info.path}. Error: {ex}")
 
+    # TODO: NVM import is so fast that this just slows the console down when importing all navmeshes.
+    # operator.info(f"Imported NVM model {import_info.model_file_stem} as '{import_info.bl_name}'.")
 
     return nvm_model
 
@@ -93,9 +95,7 @@ def get_navmesh_model(
     try:
         return find_navmesh_model(map_stem, model_name)
     except MissingModelError:
-        t = time.perf_counter()
         nvm_model = import_navmesh_model(operator, context, settings, map_stem, model_name)
-        operator.info(f"Imported {map_stem} Navmesh model '{model_name}' in {time.perf_counter() - t:.3f} seconds.")
         return nvm_model
 
 
@@ -120,7 +120,13 @@ class BaseImportMSBNavmesh(BaseImportMSBPart):
     USE_LATEST_MAP_FOLDER = True
 
     def _create_part_instance(
-        self, context, settings: SoulstructSettings, map_stem: str, part: MSBNavmesh, collection: bpy.types.Collection
+        self,
+        context,
+        settings: SoulstructSettings,
+        map_stem: str,
+        part: MSBNavmesh,
+        collection: bpy.types.Collection,
+        mtdbnd: MTDBND | None = None,
     ) -> bpy.types.Object:
         model_name = part.model.get_model_file_stem(map_stem)
         nvm_model = get_navmesh_model(self, context, settings, map_stem, model_name)

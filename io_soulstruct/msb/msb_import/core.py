@@ -24,6 +24,7 @@ from .settings import MSBImportSettings
 if tp.TYPE_CHECKING:
     from soulstruct.base.maps.msb.parts import BaseMSBPart
     from soulstruct.base.maps.msb.regions import BaseMSBRegion
+    from soulstruct.base.models.mtd import MTDBND
     from io_soulstruct.type_checking import MSB_TYPING
 
 
@@ -119,6 +120,7 @@ class BaseImportMSBPart(LoggingOperator):
     MSB_LIST_NAME: str  # e.g. 'characters'
     GAME_ENUM_NAME: str | None  # e.g. 'character_part' or `None` for all-part importers
     USE_LATEST_MAP_FOLDER: bool = False  # only true for NVM assets in DS1
+    USE_MTDBND: bool = False  # only true for DS3
 
     @classmethod
     def poll(cls, context):
@@ -194,10 +196,11 @@ class BaseImportMSBPart(LoggingOperator):
 
         part_list = getattr(msb, self.MSB_LIST_NAME)
         part_count = 0
+        mtdbnd = settings.get_mtdbnd(self) if self.USE_MTDBND else None
 
         for part in [part for part in part_list if is_name_match(part.name)]:
             try:
-                self._create_part_instance(context, settings, map_stem, part, part_collection)
+                self._create_part_instance(context, settings, map_stem, part, part_collection, mtdbnd=mtdbnd)
             except Exception as ex:
                 traceback.print_exc()
                 self.error(f"Failed to import MSB {self.PART_TYPE_NAME} part '{part.name}': {ex}")
@@ -222,7 +225,13 @@ class BaseImportMSBPart(LoggingOperator):
         return {"FINISHED"}
 
     def _create_part_instance(
-        self, context, settings: SoulstructSettings, map_stem: str, part: BaseMSBPart, collection: bpy.types.Collection
+        self,
+        context,
+        settings: SoulstructSettings,
+        map_stem: str,
+        part: BaseMSBPart,
+        collection: bpy.types.Collection,
+        mtdbnd: MTDBND | None = None,
     ) -> bpy.types.Object:
         """Get or create model and create a linked instance with relevant MSB part data (transform, etc.)."""
         raise NotImplementedError

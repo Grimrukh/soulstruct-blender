@@ -43,7 +43,7 @@ class BaseMaterialShaderInfo(abc.ABC):
     @property
     def used_uv_indices(self) -> list[int]:
         """Sorted set of UV indices used by all samplers."""
-        return list(set(self.sampler_type_uv_indices.values()))
+        return sorted(set(self.sampler_type_uv_indices.values()))
 
     # region Abstract Methods/Properties
 
@@ -152,6 +152,15 @@ class DS1MaterialShaderInfo(BaseMaterialShaderInfo):
     has_snow_roughness: bool = False
 
     mtd_name: str = ""
+
+    @property
+    def used_uv_indices(self) -> list[int]:
+        sampler_uv_indices = set(self.sampler_type_uv_indices.values())
+        if "Foliage" in self.mtd_name or "Ivy" in self.mtd_name:
+            # Foliage and Ivy shaders use wind animation data in UV. We put it in maps 3 and 4.
+            # Note that the second UV here (4) is often all zero in the FLVER, but it does exist.
+            sampler_uv_indices |= {3, 4}
+        return sorted(sampler_uv_indices)
 
     @classmethod
     def from_mtd(cls, mtd: MTD):

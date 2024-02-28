@@ -236,7 +236,7 @@ class NodeTreeBuilder:
             self.link(glass.outputs[0], water_mix.inputs[2])
 
             bumpmap_node = self.tex_image_nodes["g_Bumpmap"]
-            normal_map_node = self.add_normal_map_node("UVMap1", bumpmap_node.location[1])
+            normal_map_node = self.add_normal_map_node("UVMap0", bumpmap_node.location[1])
 
             self.link(bumpmap_node.outputs["Color"], normal_map_node.inputs["Color"])
             self.link(normal_map_node.outputs["Normal"], glass.inputs["Normal"])
@@ -246,7 +246,7 @@ class NodeTreeBuilder:
         # TODO: Sketch for snow shader:
         #  - Create a Diffuse BSDF shader with HSV (0.75, 0.3, 1.0) (blue tint).
         #  - Mix g_Bumpmap_2 and (if present) g_Bumpmap_3 with Mix RGB.
-        #  - Plug into Normal Map using UVMap1 (always UVMap1, regardless of what MTD says - though this is handled).
+        #  - Plug into Normal Map using UVMap0 (always UVMap0, regardless of what MTD says - though this is handled).
         #  - Create a Mix Shader for the standard textures and new Diffuse snow BSDF. Plug into material output.
         #  - Use Math node to raise VertexColors alpha to exponent 10 and use that as Fac of the Mix Shader.
         #     - This shows roughly where the snow will be created without completely obscuring the underlying texture.
@@ -319,8 +319,8 @@ class NodeTreeBuilder:
         if "g_Height" in self.tex_image_nodes:
             # 'g_Height' is an actual height map (not normals, like 'g_Bumpmap').
             height_node = self.tex_image_nodes["g_Height"]
-            # NOTE: In my observation so far, this always uses UVMap1 (i.e. never the second texture in a two-slot mat).
-            self.link(self.uv_nodes["UVMap1"].outputs["Vector"], height_node.inputs["Vector"])
+            # NOTE: In my observation so far, this always uses UVMap0 (i.e. never the second texture in a two-slot mat).
+            self.link(self.uv_nodes["UVMap0"].outputs["Vector"], height_node.inputs["Vector"])
             self.link_to_output_displacement(height_node.outputs["Color"])
 
         for texture_type, bsdf_node in zip(("g_Bumpmap", "g_Bumpmap_2"), bsdf_nodes):
@@ -355,7 +355,7 @@ class NodeTreeBuilder:
             self.link(glass.outputs[0], water_mix.inputs[2])
 
             bumpmap_node = self.tex_image_nodes["g_BumpmapTexture"]
-            normal_map_node = self.add_normal_map_node("UVMap1", bumpmap_node.location[1])
+            normal_map_node = self.add_normal_map_node("UVMap0", bumpmap_node.location[1])
 
             self.link(bumpmap_node.outputs["Color"], normal_map_node.inputs["Color"])
             self.link(normal_map_node.outputs["Normal"], glass.inputs["Normal"])
@@ -442,8 +442,8 @@ class NodeTreeBuilder:
         # if "g_Height" in self.tex_image_nodes:
         #     # 'g_Height' is an actual height map (not normals, like 'g_Bumpmap').
         #     height_node = self.tex_image_nodes["g_Height"]
-        #     # NOTE: In my observation so far, this always uses UVMap1 (i.e. never the second texture in two-slot mat).
-        #     self.link(self.uv_nodes["UVMap1"].outputs["Vector"], height_node.inputs["Vector"])
+        #     # NOTE: In my observation so far, this always uses UVMap0 (i.e. never the second texture in two-slot mat).
+        #     self.link(self.uv_nodes["UVMap0"].outputs["Vector"], height_node.inputs["Vector"])
         #     self.link_to_output_displacement(height_node.outputs["Color"])
 
         for texture_type, bsdf_node in zip(("g_BumpmapTexture", "g_BumpmapTexture2"), bsdf_nodes):

@@ -3,9 +3,9 @@ from __future__ import annotations
 __all__ = [
     "FLVERToolSettings",
     "SetVertexAlpha",
+    "ActivateUVMap0",
     "ActivateUVMap1",
     "ActivateUVMap2",
-    "ActivateUVMap3",
     "FindMissingTexturesInPNGCache",
     "SelectMeshChildren",
     "draw_dummy_ids",
@@ -131,28 +131,28 @@ class ActivateUVMap(LoggingOperator):
         return set_uv_editor_texture(context, self.UV_LAYER_NAME)
 
 
+class ActivateUVMap0(ActivateUVMap):
+    bl_idname = "object.activate_uv_map_0"
+    bl_label = "Activate UV Map 0"
+    bl_description = "Set the UV Editor texture to 'UVMap0', usually the first texture"
+
+    UV_LAYER_NAME = "UVMap0"
+
+
 class ActivateUVMap1(ActivateUVMap):
     bl_idname = "object.activate_uv_map_1"
-    bl_label = "Activate UV Map 1"
-    bl_description = "Set the UV Editor texture to 'UVMap1', usually the first texture"
+    bl_label = "Activate UV Map 2"
+    bl_description = "Set the UV Editor texture to 'UVMap2', usually the second texture"
 
     UV_LAYER_NAME = "UVMap1"
 
 
 class ActivateUVMap2(ActivateUVMap):
     bl_idname = "object.activate_uv_map_2"
-    bl_label = "Activate UV Map 2"
-    bl_description = "Set the UV Editor texture to 'UVMap2', usually the second texture"
-
-    UV_LAYER_NAME = "UVMap2"
-
-
-class ActivateUVMap3(ActivateUVMap):
-    bl_idname = "object.activate_uv_map_3"
     bl_label = "Activate UV Map 3"
     bl_description = "Set the UV Editor texture to 'UVMap3', usually the light map"
 
-    UV_LAYER_NAME = "UVMap3"
+    UV_LAYER_NAME = "UVMap2"
 
 
 class FindMissingTexturesInPNGCache(LoggingOperator):

@@ -22,6 +22,7 @@ from .core import *
 
 if tp.TYPE_CHECKING:
     from soulstruct.darksouls1r.maps.parts import MSBCharacter  # TODO: use multi-game typing
+    from soulstruct.base.models.mtd import MTDBND
     from io_soulstruct.general import SoulstructSettings
 
 
@@ -79,9 +80,16 @@ class BaseImportMSBCharacter(BaseImportMSBPart):
     PART_TYPE_NAME = "Character"
     PART_TYPE_NAME_PLURAL = "Characters"
     MSB_LIST_NAME = "characters"
+    USE_MTDBND = True
 
     def _create_part_instance(
-        self, context, settings: SoulstructSettings, map_stem: str, part: MSBCharacter, collection: bpy.types.Collection
+        self,
+        context,
+        settings: SoulstructSettings,
+        map_stem: str,
+        part: MSBCharacter,
+        collection: bpy.types.Collection,
+        mtdbnd: MTDBND | None = None,
     ) -> bpy.types.Object:
         armature, mesh = get_character_model(self, context, settings, part.model.name)  # NOT map-specific
         part_armature, part_mesh = create_flver_model_instance(context, armature, mesh, part.name, collection)

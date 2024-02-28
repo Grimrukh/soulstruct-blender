@@ -21,6 +21,7 @@ from .core import *
 
 if tp.TYPE_CHECKING:
     from soulstruct.darksouls1r.maps.parts import MSBCollision  # TODO: use multi-game typing
+    from soulstruct.base.models.mtd import MTDBND
     from io_soulstruct.general import SoulstructSettings
 
 
@@ -65,7 +66,8 @@ def import_collision_model(
         )
     collection.objects.link(hkx_model)
 
-    operator.info(f"Imported HKX '{hkx_model.name}' from model '{model_name}' in map {map_stem}.")
+    # TODO: HKX import is so fast that this just slows the console down when importing all collisions.
+    # operator.info(f"Imported HKX '{hkx_model.name}' from model '{model_name}' in map {map_stem}.")
 
     return hkx_model
 
@@ -76,9 +78,7 @@ def get_collision_model(
     try:
         return find_map_collision_model(map_stem, model_name)
     except MissingModelError:
-        t = time.perf_counter()
         hkx_model = import_collision_model(operator, context, settings, map_stem, model_name)
-        operator.info(f"Imported {map_stem} Collision model '{model_name}' in {time.perf_counter() - t:.3f} seconds.")
         return hkx_model
 
 
@@ -102,7 +102,13 @@ class BaseImportMSBCollision(BaseImportMSBPart):
     MSB_LIST_NAME = "collisions"
 
     def _create_part_instance(
-        self, context, settings: SoulstructSettings, map_stem: str, part: MSBCollision, collection: bpy.types.Collection
+        self,
+        context,
+        settings: SoulstructSettings,
+        map_stem: str,
+        part: MSBCollision,
+        collection: bpy.types.Collection,
+        mtdbnd: MTDBND | None = None,
     ) -> bpy.types.Object:
         model_name = part.model.get_model_file_stem(map_stem)
         hkx_model = get_collision_model(self, context, settings, map_stem, model_name)
