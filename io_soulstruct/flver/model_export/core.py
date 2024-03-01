@@ -15,8 +15,7 @@ import bmesh
 import bpy
 
 from soulstruct.base.models.flver import FLVER, Version, FLVERBone, FLVERBoneUsageFlags, Material, Texture, Dummy
-from soulstruct.base.models.flver.vertex_array import *
-from soulstruct.base.models.flver.mesh_tools import MergedMesh
+from soulstruct.base.models.flver.mesh_tools import MergedMesh, SplitSubmeshDef
 from soulstruct.games import *
 from soulstruct.utilities.maths import Vector3, Matrix3
 
@@ -97,7 +96,7 @@ class FLVERExporter:
 
         TODO: Currently only really tested for DS1 FLVERs.
         """
-        self._clear_temp_flver()
+        self.clear_temp_flver()
 
         if mesh.type != "MESH":
             raise FLVERExportError("`mesh` object passed to FLVER exporter must be a Mesh.")
@@ -194,7 +193,8 @@ class FLVERExporter:
         # TODO: Partially redundant since splitter does this for submeshes automatically. Only need FLVER-wide bounds.
         flver.refresh_bounding_boxes()
 
-        self._clear_temp_flver()
+        # Should be called in `finally` block by caller anyway.
+        self.clear_temp_flver()
 
         return flver
 
@@ -275,7 +275,7 @@ class FLVERExporter:
         # 1. Create per-submesh info. Note that every Blender material index is guaranteed to be mapped to AT LEAST ONE
         #    split `Submesh` in the exported FLVER (more if submesh bone maximum is exceeded). This allows the user to
         #    also split their submeshes manually in Blender, if they wish.
-        submesh_info = []  # type: list[tuple[Material, VertexArrayLayout, dict[str, tp.Any]]]
+        submesh_info = []  # type: list[SplitSubmeshDef]
         for material_info, bl_material in zip(material_infos, bl_mesh.data.materials):
             # Some Blender materials may be variants representing distinct Submesh/FaceSet properties; these will be
             # mapped to the same FLVER `Material`/`VertexArrayLayout` combo (created here).
@@ -290,16 +290,31 @@ class FLVERExporter:
                 "use_backface_culling": bl_material.use_backface_culling,
                 "uses_bounding_box": True,  # TODO: assumption (DS1 and likely all later games)
             }
-
-            submesh_info.append((flver_material, array_layout, submesh_kwargs))
+            submesh_info.append(SplitSubmeshDef(
+                flver_material, array_layout, submesh_kwargs, [layer.name for layer in material_info.used_uv_layers]
+            ))
             self.operator.info(f"Created FLVER material: {flver_material.name}")
 
-        # 2. Extract UV layers.
-        # Maps UV layer names to lists of `MeshUVLoop` instances (so they're converted only once across all materials).
-        uv_layer_indices_set = set()
-        for material_info in material_infos:
-            uv_layer_indices_set |= set(f"UVMap{i}" for i in material_info.used_uv_indices)
-        uv_layer_names = sorted(uv_layer_indices_set)  # e.g. ["UVMap1", "UVMap2", "UVMap3"]
+        # 2. Validate UV layers: ensure all required material UV layer names are present, and warn if any unexpected
+        #    Blender UV layers are present.
+        bl_uv_layer_names = bl_mesh.data.uv_layers.keys()
+        bl_uv_layer_names_set = set(bl_uv_layer_names)
+        used_uv_layer_names = set()
+        for material_info, bl_material in zip(material_infos, bl_mesh.data.materials):
+            for used_layer in material_info.used_uv_layers:
+                if used_layer.name not in bl_uv_layer_names:
+                    raise FLVERExportError(
+                        f"Material '{bl_material.name}' with shader {material_info.shader_stem} requires UV layer "
+                        f"'{used_layer.name}', which is missing in Blender."
+                    )
+                if used_layer.name in bl_uv_layer_names_set:
+                    bl_uv_layer_names_set.remove(used_layer.name)
+                used_uv_layer_names.add(used_layer.name)
+        for remaining_bl_uv_layer_name in bl_uv_layer_names_set:
+            self.warning(
+                f"UV layer '{remaining_bl_uv_layer_name}' is present in Blender mesh '{bl_mesh.name}' but is not "
+                f"used by any material shader."
+            )
 
         # 3. Create a triangulated copy of the mesh, so the user doesn't have to triangulate it themselves (though they
         #  may want to do this anyway for absolute approval of the final asset). Custom split normals are copied to the
@@ -319,12 +334,12 @@ class FLVERExporter:
             # TODO: This function calls the required `calc_normals_split()` automatically, but if it was replaced,
             #  a separate call of that would be needed to write the (rather inaccessible) custom split per-loop normal
             #  data (pink lines in 3D View overlay) to each `loop.normal`.
-            tri_mesh_data.calc_tangents(uvmap="UVMap0")
+            tri_mesh_data.calc_tangents(uvmap="UVTexture0")
             # bl_mesh_data.calc_normals_split()
         except RuntimeError as ex:
             raise RuntimeError(
-                "Could not calculate vertex tangents from 'UVMap0'. Make sure the mesh is triangulated and not "
-                f"empty (delete any empty mesh). Error: {ex}"
+                f"Could not calculate vertex tangents from 'UVTexture0', which every FLVER mesh should have. Make sure "
+                f"the mesh is triangulated and not empty (delete any empty mesh). Error: {ex}"
             )
 
         # 4. Construct arrays from Blender data and pass into a new `MergedMesh`.
@@ -441,10 +456,11 @@ class FLVERExporter:
         loop_count = len(tri_mesh_data.loops)
 
         # UV arrays correspond to FLVER-wide sorted UV layer names.
-        loop_uvs = [
-            np.zeros((loop_count, 2), dtype=np.float32)  # default: 0.0 (each material may only use a subset of UVs)
-            for _ in uv_layer_names
-        ]
+        # Default UV data is 0.0 (each material may only use a subset of UVs).
+        loop_uvs = {
+            uv_layer_name: np.zeros((loop_count, 2), dtype=np.float32)
+            for uv_layer_name in used_uv_layer_names
+        }
 
         # Vertex color layer count is harder to auto-detect. TODO: `material_info` should figure it out.
         # TODO: Currently asserting 'VertexColors1' and exporting 'VertexColors2' IFF it exists.
@@ -488,11 +504,11 @@ class FLVERExporter:
             colors_layer_0.data.foreach_get("color", loop_colors[0].ravel())
         if colors_layer_1:
             colors_layer_1.data.foreach_get("color", loop_colors[1].ravel())
-        for global_uv_i, uv_layer_name in enumerate(uv_layer_names):
+        for uv_layer_name in used_uv_layer_names:
             uv_layer = tri_mesh_data.uv_layers[uv_layer_name]
             if len(uv_layer.data) == 0:
                 raise FLVERExportError(f"UV layer {uv_layer.name} contains no data.")
-            uv_layer.data.foreach_get("uv", loop_uvs[global_uv_i].ravel())
+            uv_layer.data.foreach_get("uv", loop_uvs[uv_layer_name].ravel())
 
         # Add default `w` components to tangents and bitangents (-1).
         minus_one = np.full((loop_count, 1), -1, dtype=np.float32)
@@ -966,7 +982,7 @@ class FLVERExporter:
         return read_bone_type
 
     @staticmethod
-    def _clear_temp_flver():
+    def clear_temp_flver():
         try:
             bpy.data.objects.remove(bpy.data.objects["__TEMP_FLVER_OBJ__"])
         except KeyError:

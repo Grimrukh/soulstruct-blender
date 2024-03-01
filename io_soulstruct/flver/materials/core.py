@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 __all__ = [
-    "get_submesh_blender_material",
+    "create_submesh_blender_material",
 ]
 
 import typing as tp
@@ -22,7 +22,7 @@ else:
     PRINCIPLED_SPEC_INPUT = "Specular"
 
 
-def get_submesh_blender_material(
+def create_submesh_blender_material(
     operator: LoggingOperator,
     material: Material,
     texture_stem_dict: dict[str, str],
@@ -33,10 +33,16 @@ def get_submesh_blender_material(
     blend_mode="HASHED",
     warn_missing_textures=True,
 ) -> bpy.types.Material:
-    """Create a new material in the current Blender scene from a FLVER material.
+    """Create a new Blender material from a FLVER material.
 
     Will use material texture stems to search for PNG or DDS images in the Blender image data. If no image is found,
     the texture will be left unassigned in the material.
+
+    Attempts to build a Blender node tree for the material. The only critical information stored in the node tree is the
+    sampler names (node labels) and image names (image node `Image` names) of the `ShaderNodeTexImage` nodes created.
+    We attempt to connect those textures to UV maps and BSDF nodes, but this is just an attempt to replicate the game
+    engine's shaders, and is not needed for FLVER export. (NOTE: Elden Ring tends to store texture paths in MATBIN files
+    rather than in the FLVER materials, so even the texture names may not be used on export.)
     """
 
     bl_material = bpy.data.materials.new(name=material_name)
@@ -54,7 +60,8 @@ def get_submesh_blender_material(
     bl_material["Is Bind Pose"] = submesh.is_bind_pose
     # NOTE: This index is sometimes invalid for vanilla map FLVERs (e.g., 1 when there is only one bone).
     bl_material["Default Bone Index"] = submesh.default_bone_index
-    # Currently, main face set is simply copied to all additional face sets on export.
+    # TODO: Currently, main face set is simply copied to all additional face sets on export. This is fine for early
+    #  games, but probably not for, say, Elden Ring map pieces.
     bl_material["Face Set Count"] = len(submesh.face_sets)
     bl_material.use_backface_culling = submesh.use_backface_culling
 
@@ -163,9 +170,9 @@ class NodeTreeBuilder:
             if texture_type not in material_info.sampler_types:
                 self.operator.warning(
                     f"Texture type '{texture_type}' does not seem to be supported by shader "
-                    f"'{material_info.shader_stem}'. Creating FLVER material texture node anyway with UV index 1.",
+                    f"'{material_info.shader_stem}'. Texture node created, but with no UV layer input.",
                 )
-                uv_index = 1
+                uv_layer_name = None
             elif texture_type not in missing_textures:
                 self.operator.warning(
                     f"Texture type '{texture_type}' was given multiple times in FLVER material, which is invalid. "
@@ -176,13 +183,13 @@ class NodeTreeBuilder:
                 # Found expected sampler type for the first time.
                 missing_textures.remove(texture_type)
                 try:
-                    uv_index = material_info.sampler_type_uv_indices[texture_type]
+                    uv_layer_name = material_info.sampler_type_uv_layers[texture_type].name
                 except KeyError:
                     self.operator.warning(
                         f"Sampler type '{texture_type}' is missing a UV index in the material shader info. "
-                        f"Creating FLVER material texture node anyway (with no UV input).",
+                        f"Texture node created, but with no UV layer input.",
                     )
-                    uv_index = None
+                    uv_layer_name = None
 
             if not texture_stem:
                 # Empty texture in FLVER (e.g. 'g_DetailBumpmap' in every single DS1 FLVER).
@@ -210,10 +217,9 @@ class NodeTreeBuilder:
             tex_image_node = self.add_tex_image_node(texture_type, bl_image)
             self.tex_image_nodes[texture_type] = tex_image_node
 
-            if uv_index is not None:
+            if uv_layer_name is not None:
                 # Connect to appropriate UV node, creating it if necessary.
-                uv_map_name = f"UVMap{uv_index}"
-                uv_node = self.uv_nodes.setdefault(uv_map_name, self.add_uv_node(uv_map_name))
+                uv_node = self.uv_nodes.setdefault(uv_layer_name, self.add_uv_node(uv_layer_name))
 
                 if isinstance(material_info, ERMaterialShaderInfo):
                     uv_scale = material_info.sampler_uv_scales[texture_type]
@@ -236,7 +242,7 @@ class NodeTreeBuilder:
             self.link(glass.outputs[0], water_mix.inputs[2])
 
             bumpmap_node = self.tex_image_nodes["g_Bumpmap"]
-            normal_map_node = self.add_normal_map_node("UVMap0", bumpmap_node.location[1])
+            normal_map_node = self.add_normal_map_node("UVTexture0", bumpmap_node.location[1])
 
             self.link(bumpmap_node.outputs["Color"], normal_map_node.inputs["Color"])
             self.link(normal_map_node.outputs["Normal"], glass.inputs["Normal"])
@@ -246,7 +252,7 @@ class NodeTreeBuilder:
         # TODO: Sketch for snow shader:
         #  - Create a Diffuse BSDF shader with HSV (0.75, 0.3, 1.0) (blue tint).
         #  - Mix g_Bumpmap_2 and (if present) g_Bumpmap_3 with Mix RGB.
-        #  - Plug into Normal Map using UVMap0 (always UVMap0, regardless of what MTD says - though this is handled).
+        #  - Plug into Normal Map using UVTexture0 (regardless of what MTD says - though this is handled).
         #  - Create a Mix Shader for the standard textures and new Diffuse snow BSDF. Plug into material output.
         #  - Use Math node to raise VertexColors alpha to exponent 10 and use that as Fac of the Mix Shader.
         #     - This shows roughly where the snow will be created without completely obscuring the underlying texture.
@@ -278,13 +284,13 @@ class NodeTreeBuilder:
 
         if "g_Lightmap" in self.tex_image_nodes:
             lightmap_node = self.tex_image_nodes["g_Lightmap"]
-            for texture_type in ("g_Diffuse", "g_Specular", "g_Diffuse_2", "g_Specular_2"):
-                if texture_type not in self.tex_image_nodes:
+            for sampler_type in ("g_Diffuse", "g_Specular", "g_Diffuse_2", "g_Specular_2"):
+                if sampler_type not in self.tex_image_nodes:
                     continue
-                bsdf_node = bsdf_nodes[1] if texture_type.endswith("_2") else bsdf_nodes[0]
+                bsdf_node = bsdf_nodes[1] if sampler_type.endswith("_2") else bsdf_nodes[0]
                 if bsdf_node is None:
                     continue  # TODO: bad state
-                tex_image_node = self.tex_image_nodes[texture_type]
+                tex_image_node = self.tex_image_nodes[sampler_type]
                 overlay_node_y = tex_image_node.location[1]
                 overlay_node = self.new(
                     "ShaderNodeMixRGB", location=(self.OVERLAY_X, overlay_node_y), blend_type="OVERLAY"
@@ -292,25 +298,25 @@ class NodeTreeBuilder:
                 self.link(tex_image_node.outputs["Color"], overlay_node.inputs["Color1"])
                 self.link(lightmap_node.outputs["Color"], overlay_node.inputs["Color2"])  # order is important!
 
-                if texture_type.startswith("g_Diffuse"):
+                if sampler_type.startswith("g_Diffuse"):
                     bsdf_input = "Base Color"
                 else:  # g_Specular
                     bsdf_input = PRINCIPLED_SPEC_INPUT
 
                 self.link(overlay_node.outputs["Color"], bsdf_node.inputs[bsdf_input])
-                if texture_type.startswith("g_Diffuse"):
+                if sampler_type.startswith("g_Diffuse"):
                     # Plug diffuse alpha into BSDF alpha.
                     self.link(tex_image_node.outputs["Alpha"], bsdf_node.inputs["Alpha"])
         else:
             # Plug diffuse and specular textures directly into Principled BSDF.
-            for texture_type in ("g_Diffuse", "g_Specular", "g_Diffuse_2", "g_Specular_2"):
-                if texture_type not in self.tex_image_nodes:
+            for sampler_type in ("g_Diffuse", "g_Specular", "g_Diffuse_2", "g_Specular_2"):
+                if sampler_type not in self.tex_image_nodes:
                     continue
-                bsdf_node = bsdf_nodes[1] if texture_type.endswith("_2") else bsdf_nodes[0]
+                bsdf_node = bsdf_nodes[1] if sampler_type.endswith("_2") else bsdf_nodes[0]
                 if bsdf_node is None:
                     continue  # TODO: bad state
-                tex_image_node = self.tex_image_nodes[texture_type]
-                if texture_type.startswith("g_Diffuse"):
+                tex_image_node = self.tex_image_nodes[sampler_type]
+                if sampler_type.startswith("g_Diffuse"):
                     self.link(tex_image_node.outputs["Color"], bsdf_node.inputs["Base Color"])
                     self.link(tex_image_node.outputs["Alpha"], bsdf_node.inputs["Alpha"])
                 else:  # g_Specular[_2]
@@ -319,20 +325,26 @@ class NodeTreeBuilder:
         if "g_Height" in self.tex_image_nodes:
             # 'g_Height' is an actual height map (not normals, like 'g_Bumpmap').
             height_node = self.tex_image_nodes["g_Height"]
-            # NOTE: In my observation so far, this always uses UVMap0 (i.e. never the second texture in a two-slot mat).
-            self.link(self.uv_nodes["UVMap0"].outputs["Vector"], height_node.inputs["Vector"])
+            # NOTE: In my observation so far, this always uses UVTexture0 (i.e. never the second texture).
+            self.link(self.uv_nodes["UVTexture0"].outputs["Vector"], height_node.inputs["Vector"])
             self.link_to_output_displacement(height_node.outputs["Color"])
 
-        for texture_type, bsdf_node in zip(("g_Bumpmap", "g_Bumpmap_2"), bsdf_nodes):
-            if texture_type not in self.tex_image_nodes or texture_type not in material_info.sampler_types:
+        for sampler_type, bsdf_node in zip(("g_Bumpmap", "g_Bumpmap_2"), bsdf_nodes):
+            if sampler_type not in self.tex_image_nodes or sampler_type not in material_info.sampler_types:
                 continue
             if bsdf_node is None:
                 continue  # TODO: bad state
             # Create normal map node.
-            bumpmap_node = self.tex_image_nodes[texture_type]
-            uv_index = material_info.sampler_type_uv_indices[texture_type]
-            uv_map_name = f"UVMap{uv_index}"
-            normal_map_node = self.add_normal_map_node(uv_map_name, bumpmap_node.location[1])
+            bumpmap_node = self.tex_image_nodes[sampler_type]
+            try:
+                uv_layer_name = material_info.sampler_type_uv_layers[sampler_type].name
+            except KeyError:
+                self.operator.warning(
+                    f"Normal texture type '{sampler_type}' is missing a UV index in the material shader info. "
+                    f"Cannot create normal map node to connect to BDSF.",
+                )
+                continue
+            normal_map_node = self.add_normal_map_node(uv_layer_name, bumpmap_node.location[1])
             self.link(bumpmap_node.outputs["Color"], normal_map_node.inputs["Color"])
             self.link(normal_map_node.outputs["Normal"], bsdf_node.inputs["Normal"])
 
@@ -355,7 +367,7 @@ class NodeTreeBuilder:
             self.link(glass.outputs[0], water_mix.inputs[2])
 
             bumpmap_node = self.tex_image_nodes["g_BumpmapTexture"]
-            normal_map_node = self.add_normal_map_node("UVMap0", bumpmap_node.location[1])
+            normal_map_node = self.add_normal_map_node("UVTexture0", bumpmap_node.location[1])
 
             self.link(bumpmap_node.outputs["Color"], normal_map_node.inputs["Color"])
             self.link(normal_map_node.outputs["Normal"], glass.inputs["Normal"])
@@ -393,16 +405,16 @@ class NodeTreeBuilder:
 
         if "g_LightmapTexture" in self.tex_image_nodes:
             lightmap_node = self.tex_image_nodes["g_LightmapTexture"]
-            for texture_type in (
+            for sampler_type in (
                 "g_DiffuseTexture", "g_SpecularTexture", "g_ShininessTexture",
                 "g_DiffuseTexture2", "g_SpecularTexture2", "g_ShininessTexture2",
             ):
-                if texture_type not in self.tex_image_nodes:
+                if sampler_type not in self.tex_image_nodes:
                     continue
-                bsdf_node = bsdf_nodes[1] if texture_type.endswith("_2") else bsdf_nodes[0]
+                bsdf_node = bsdf_nodes[1] if sampler_type.endswith("_2") else bsdf_nodes[0]
                 if bsdf_node is None:
                     continue  # TODO: bad state
-                tex_image_node = self.tex_image_nodes[texture_type]
+                tex_image_node = self.tex_image_nodes[sampler_type]
                 overlay_node_y = tex_image_node.location[1]
                 overlay_node = self.new(
                     "ShaderNodeMixRGB", location=(self.OVERLAY_X, overlay_node_y), blend_type="OVERLAY"
@@ -410,30 +422,30 @@ class NodeTreeBuilder:
                 self.link(tex_image_node.outputs["Color"], overlay_node.inputs["Color1"])
                 self.link(lightmap_node.outputs["Color"], overlay_node.inputs["Color2"])  # order is important!
 
-                if texture_type.startswith("g_DiffuseTexture"):
+                if sampler_type.startswith("g_DiffuseTexture"):
                     self.link(overlay_node.outputs["Color"], bsdf_node.inputs["Base Color"])
                     self.link(tex_image_node.outputs["Alpha"], bsdf_node.inputs["Alpha"])
-                elif texture_type.startswith("g_ShininessTexture"):
+                elif sampler_type.startswith("g_ShininessTexture"):
                     self.link(overlay_node.outputs["Color"], bsdf_node.inputs["Sheen"])
                 else:  # g_SpecularTexture[2]
                     self.link(overlay_node.outputs["Color"], bsdf_node.inputs[PRINCIPLED_SPEC_INPUT])
 
         else:
             # Plug diffuse and specular textures directly into Principled BSDF.
-            for texture_type in (
+            for sampler_type in (
                 "g_DiffuseTexture", "g_SpecularTexture", "g_ShininessTexture",
                 "g_DiffuseTexture2", "g_SpecularTexture2", "g_ShininessTexture2",
             ):
-                if texture_type not in self.tex_image_nodes:
+                if sampler_type not in self.tex_image_nodes:
                     continue
-                bsdf_node = bsdf_nodes[1] if texture_type.endswith("2") else bsdf_nodes[0]
+                bsdf_node = bsdf_nodes[1] if sampler_type.endswith("2") else bsdf_nodes[0]
                 if bsdf_node is None:
                     continue  # TODO: bad state
-                tex_image_node = self.tex_image_nodes[texture_type]
-                if texture_type.startswith("g_DiffuseTexture"):
+                tex_image_node = self.tex_image_nodes[sampler_type]
+                if sampler_type.startswith("g_DiffuseTexture"):
                     self.link(tex_image_node.outputs["Color"], bsdf_node.inputs["Base Color"])
                     self.link(tex_image_node.outputs["Alpha"], bsdf_node.inputs["Alpha"])
-                elif texture_type.startswith("g_ShininessTexture"):
+                elif sampler_type.startswith("g_ShininessTexture"):
                     self.link(tex_image_node.outputs["Color"], bsdf_node.inputs["Sheen"])
                 else:  # g_SpecularTexture[2]
                     self.link(tex_image_node.outputs["Color"], bsdf_node.inputs[PRINCIPLED_SPEC_INPUT])
@@ -442,20 +454,26 @@ class NodeTreeBuilder:
         # if "g_Height" in self.tex_image_nodes:
         #     # 'g_Height' is an actual height map (not normals, like 'g_Bumpmap').
         #     height_node = self.tex_image_nodes["g_Height"]
-        #     # NOTE: In my observation so far, this always uses UVMap0 (i.e. never the second texture in two-slot mat).
-        #     self.link(self.uv_nodes["UVMap0"].outputs["Vector"], height_node.inputs["Vector"])
+        #     # NOTE: In my observation so far, this always uses UVTexture0 (i.e. never the second texture).
+        #     self.link(self.uv_nodes["UVTexture0"].outputs["Vector"], height_node.inputs["Vector"])
         #     self.link_to_output_displacement(height_node.outputs["Color"])
 
-        for texture_type, bsdf_node in zip(("g_BumpmapTexture", "g_BumpmapTexture2"), bsdf_nodes):
-            if texture_type not in self.tex_image_nodes or texture_type not in material_info.sampler_types:
+        for sampler_type, bsdf_node in zip(("g_BumpmapTexture", "g_BumpmapTexture2"), bsdf_nodes):
+            if sampler_type not in self.tex_image_nodes or sampler_type not in material_info.sampler_types:
                 continue
             if bsdf_node is None:
                 continue  # TODO: bad state
             # Create normal map node.
-            bumpmap_node = self.tex_image_nodes[texture_type]
-            uv_index = material_info.sampler_type_uv_indices[texture_type]
-            uv_map_name = f"UVMap{uv_index}"
-            normal_map_node = self.add_normal_map_node(uv_map_name, bumpmap_node.location[1])
+            bumpmap_node = self.tex_image_nodes[sampler_type]
+            try:
+                uv_layer_name = material_info.sampler_type_uv_layers[sampler_type].name
+            except KeyError:
+                self.operator.warning(
+                    f"Normal texture type '{sampler_type}' is missing a UV index in the material shader info. "
+                    f"Cannot create normal map node to connect to BDSF.",
+                )
+                continue
+            normal_map_node = self.add_normal_map_node(uv_layer_name, bumpmap_node.location[1])
             self.link(bumpmap_node.outputs["Color"], normal_map_node.inputs["Color"])
             self.link(normal_map_node.outputs["Normal"], bsdf_node.inputs["Normal"])
 
@@ -497,7 +515,6 @@ class NodeTreeBuilder:
             if tex_image_node.image is None:
                 tex_image_node.hide = True
                 continue  # no shader setup
-            uv_index = material_info.sampler_type_uv_indices[sampler_type]
             group_index = material_info.sampler_uv_groups[sampler_type]
             if group_index == 1:
                 bsdf_node = bsdf_nodes[0]
@@ -516,7 +533,15 @@ class NodeTreeBuilder:
             if "MetallicMap" in sampler_type:
                 self.link(tex_image_node.outputs["Color"], bsdf_node.inputs["Metallic"])
             if "NormalMap" in sampler_type:
-                normal_map_node = self.add_normal_map_node(f"UVMap{uv_index}", tex_image_node.location[1])
+                try:
+                    uv_layer_name = material_info.sampler_type_uv_layers[sampler_type].name
+                except KeyError:
+                    self.operator.warning(
+                        f"Normal texture type '{sampler_type}' is missing a UV index in the material shader info. "
+                        f"Cannot create normal map node to connect to BDSF.",
+                    )
+                    continue
+                normal_map_node = self.add_normal_map_node(uv_layer_name, tex_image_node.location[1])
                 self.link(tex_image_node.outputs["Color"], normal_map_node.inputs["Color"])
                 self.link(normal_map_node.outputs["Normal"], bsdf_node.inputs["Normal"])
 

@@ -104,6 +104,8 @@ class ExportStandaloneFLVER(LoggingOperator, ExportHelper):
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Cannot get exported FLVER. Error: {ex}")
+        finally:
+            exporter.clear_temp_flver()
 
         flver.dcx_type = dcx_type
         try:
@@ -235,6 +237,8 @@ class ExportFLVERIntoBinder(LoggingOperator, ExportHelper):
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Cannot create exported FLVER from Blender Mesh '{blender_stem}'. Error: {ex}")
+        finally:
+            exporter.clear_temp_flver()
 
         flver.dcx_type = dcx_type
 
@@ -318,6 +322,8 @@ class ExportMapPieceFLVERs(LoggingOperator):
             except Exception as ex:
                 traceback.print_exc()
                 return self.error(f"Cannot export Map Piece FLVER '{model_name}' from {mesh.name}. Error: {ex}")
+            finally:
+                exporter.clear_temp_flver()
 
             flver.dcx_type = flver_dcx_type
             settings.export_file(self, flver, relative_map_path / f"{model_name}.flver")
@@ -380,6 +386,8 @@ class BaseGameFLVERBinderExportOperator(LoggingOperator):
         except Exception as ex:
             traceback.print_exc()
             raise FLVERExportError(f"Cannot create exported FLVER from Blender Mesh '{model_stem}'. Error: {ex}")
+        finally:
+            exporter.clear_temp_flver()
 
         flver.dcx_type = DCXType.Null  # no DCX inside any Binder here
         # noinspection PyTypeChecker

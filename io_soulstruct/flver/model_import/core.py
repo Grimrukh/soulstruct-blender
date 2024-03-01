@@ -14,7 +14,7 @@ import bpy
 import bpy.ops
 from mathutils import Vector, Matrix
 
-from soulstruct.base.models.flver import FLVER, FLVERBone, FLVERBoneUsageFlags, Dummy
+from soulstruct.base.models.flver import FLVER, FLVERBone, FLVERBoneUsageFlags, Dummy, Material
 from soulstruct.base.models.flver.mesh_tools import MergedMesh
 from soulstruct.containers.tpf import TPFTexture, batch_get_tpf_texture_png_data
 from soulstruct.games import *
@@ -113,12 +113,12 @@ class FLVERImporter:
         bl_armature_obj = self.create_armature(import_settings.base_edit_bone_length)
         self.new_objs.append(bl_armature_obj)
 
-        submesh_bl_material_indices, bl_material_uv_indices = self.create_materials(
+        submesh_bl_material_indices, bl_material_uv_layer_names = self.create_materials(
             flver, import_settings.material_blend_mode
         )
 
         bl_flver_mesh = self.create_flver_mesh(
-            flver, self.name, submesh_bl_material_indices, bl_material_uv_indices
+            flver, self.name, submesh_bl_material_indices, bl_material_uv_layer_names
         )
 
         # Assign basic FLVER header information as custom props on the Armature.
@@ -154,7 +154,7 @@ class FLVERImporter:
         self,
         flver: FLVER,
         material_blend_mode: str,
-    ) -> tuple[list[int], list[list[int]]]:
+    ) -> tuple[list[int], list[list[str]]]:
         """Create Blender materials needed for `flver`.
 
         Returns a list of Blender material indices for each submesh, and a list of UV layer names for each Blender
@@ -178,8 +178,8 @@ class FLVERImporter:
         # Conversely, Submeshes that only serve to handle per-submesh bone maximums (e.g. 38 in DS1) will use the same
         # Blender material and be split again automatically on export (but likely not in an indentical way!).
         submesh_bl_material_indices = []
-        # UV map indices used by each Blender material index (NOT each FLVER submesh).
-        bl_material_uv_indices = []  # type: list[list[int]]
+        # UV layer names used by each Blender material index (NOT each FLVER submesh).
+        bl_material_uv_layer_names = []  # type: list[list[str]]
 
         # Map FLVER material hashes to the indices of variant Blender materials sourced from them, which hold distinct
         # Submesh/FaceSet properties.
@@ -210,7 +210,7 @@ class FLVERImporter:
 
         self.new_materials = []
         for submesh, submesh_textures in zip(flver.submeshes, all_submesh_texture_stems, strict=True):
-            material = submesh.material
+            material = submesh.material  # type: Material
             material_hash = hash(material)  # NOTE: if there are duplicate FLVER materials, this will combine them
             vertex_color_count = len([f for f in submesh.vertices.dtype.names if "color" in f])
 
@@ -222,12 +222,19 @@ class FLVERImporter:
                 #  export/import and because it is so useless anyway.
                 flver_material_index = len(flver_material_hash_variants)
                 bl_material_index = len(self.new_materials)
-                bl_material = get_submesh_blender_material(
+                material_info = flver_material_infos[material_hash]
+
+                # Create a relatively informative material name.
+                bl_material_name = (
+                    f"{self.name} {flver_material_index} {material.mat_def_stem} ({material_info.shader_stem})"
+                )
+
+                bl_material = create_submesh_blender_material(
                     self.operator,
                     material,
                     submesh_textures,
-                    material_name=f"{self.name} Material {flver_material_index}",  # no Variant suffix
-                    material_info=flver_material_infos[material_hash],
+                    material_name=bl_material_name,
+                    material_info=material_info,
                     submesh=submesh,
                     vertex_color_count=vertex_color_count,
                     blend_mode=material_blend_mode,
@@ -238,8 +245,9 @@ class FLVERImporter:
                 flver_material_hash_variants[material_hash] = [bl_material_index]
 
                 self.new_materials.append(bl_material)
-                bl_material_uv_indices.append(flver_material_infos[material_hash].used_uv_indices)
-
+                bl_material_uv_layer_names.append(
+                    [layer.name for layer in flver_material_infos[material_hash].used_uv_layers]
+                )
                 continue
 
             existing_variant_bl_indices = flver_material_hash_variants[material_hash]
@@ -267,8 +275,8 @@ class FLVERImporter:
             # No match found. New Blender material variant is needed to hold unique submesh data.
             variant_index = len(existing_variant_bl_indices)
             first_material = self.new_materials[existing_variant_bl_indices[0]]
-            variant_name = first_material.name + f" <Variant {variant_index}>"
-            bl_material = get_submesh_blender_material(
+            variant_name = first_material.name + f" <V{variant_index}>"
+            bl_material = create_submesh_blender_material(
                 self.operator,
                 material,
                 submesh_textures,
@@ -283,9 +291,11 @@ class FLVERImporter:
             submesh_bl_material_indices.append(new_bl_material_index)
             flver_material_hash_variants[material_hash].append(new_bl_material_index)
             self.new_materials.append(bl_material)
-            bl_material_uv_indices.append(flver_material_infos[material_hash].used_uv_indices)
+            bl_material_uv_layer_names.append(
+                [layer.name for layer in flver_material_infos[material_hash].used_uv_layers]
+            )
 
-        return submesh_bl_material_indices, bl_material_uv_indices
+        return submesh_bl_material_indices, bl_material_uv_layer_names
 
     def get_submesh_flver_textures(self) -> list[dict[str, str]]:
         """For each submesh, get a dictionary mapping sampler names (e.g. 'g_Diffuse') to texture path names (e.g.
@@ -401,7 +411,7 @@ class FLVERImporter:
         flver: FLVER,
         name: str,
         submesh_bl_material_indices: list[int],
-        bl_material_uv_indices: list[list[int]],
+        bl_material_uv_layer_names: list[list[str]],
     ) -> bpy.types.MeshObject:
         """Create a single Blender mesh that combines all FLVER submeshes, using multiple material slots.
 
@@ -448,7 +458,7 @@ class FLVERImporter:
         merged_mesh = MergedMesh.from_flver(
             flver,
             submesh_bl_material_indices,
-            material_uv_indices=bl_material_uv_indices,
+            material_uv_layer_names=bl_material_uv_layer_names,
         )
         # self.operator.info(f"Merged FLVER submeshes in {time.perf_counter() - p} s")
 
@@ -532,13 +542,13 @@ class FLVERImporter:
         bm.free()
 
         # Create and populate UV and vertex color data layers.
-        for uv_i, merged_loop_uv_array in enumerate(merged_mesh.loop_uvs):
-            uv_layer_name = f"UVMap{uv_i}"
-            self.operator.info(f"Creating UV layer: {uv_layer_name}")
+        for i, (uv_layer_name, merged_loop_uv_array) in enumerate(merged_mesh.loop_uvs.items()):
+            self.operator.info(f"Creating UV layer {i}: {uv_layer_name}")
             uv_layer = bl_mesh.uv_layers.new(name=uv_layer_name, do_init=False)
             loop_uv_data = merged_loop_uv_array[valid_loop_indices].ravel()
             uv_layer.data.foreach_set("uv", loop_uv_data)
         for i, merged_color_array in enumerate(merged_mesh.loop_vertex_colors):
+            self.operator.info(f"Creating Vertex Colors layer {i}: VertexColors{i}")
             color_layer = bl_mesh.vertex_colors.new(name=f"VertexColors{i}")
             loop_color_data = merged_color_array[valid_loop_indices].ravel()
             color_layer.data.foreach_set("color", loop_color_data)

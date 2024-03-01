@@ -23,9 +23,9 @@ __all__ = [
 
     "FLVERToolSettings",
     "SetVertexAlpha",
-    "ActivateUVMap0",
-    "ActivateUVMap1",
-    "ActivateUVMap2",
+    "ActivateUVTexture0",
+    "ActivateUVTexture1",
+    "ActiveUVLightmap",
     "FindMissingTexturesInPNGCache",
     "SelectMeshChildren",
     "ImportTextures",
@@ -213,6 +213,6 @@ class FLVERUVMapsPanel(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-        layout.operator(ActivateUVMap0.bl_idname)
-        layout.operator(ActivateUVMap1.bl_idname)
-        layout.operator(ActivateUVMap2.bl_idname)
+        layout.operator(ActivateUVTexture0.bl_idname)
+        layout.operator(ActivateUVTexture1.bl_idname)
+        layout.operator(ActiveUVLightmap.bl_idname)

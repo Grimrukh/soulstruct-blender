@@ -1,5 +1,5 @@
 __all__ = [
-    "get_submesh_blender_material",
+    "create_submesh_blender_material",
     "BaseMaterialShaderInfo",
     "DS1MaterialShaderInfo",
     "BBMaterialShaderInfo",

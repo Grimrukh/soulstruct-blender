@@ -90,7 +90,7 @@ CLASSES = (
     SelectCustomMATBINBNDFile,
     ClearCachedLists,
     # endregion
-    
+
     # region Misc. Operators
     MeshMoveSettings,
     CopyMeshSelectionOperator,
@@ -119,9 +119,9 @@ CLASSES = (
 
     FLVERToolSettings,
     SetVertexAlpha,
-    ActivateUVMap0,
-    ActivateUVMap1,
-    ActivateUVMap2,
+    ActivateUVTexture0,
+    ActivateUVTexture1,
+    ActiveUVLightmap,
     FindMissingTexturesInPNGCache,
     SelectMeshChildren,
 

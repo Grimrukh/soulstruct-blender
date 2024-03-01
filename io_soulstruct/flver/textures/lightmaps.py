@@ -21,7 +21,7 @@ class BakeLightmapSettings(bpy.types.PropertyGroup):
     uv_layer_name: bpy.props.StringProperty(
         name="UV Layer Name",
         description="Name of UV layer to use for baking (leave empty to use active UV layer)",
-        default="UVMap3",
+        default="UVLightmap",
     )
 
     texture_node_name: bpy.props.StringProperty(
