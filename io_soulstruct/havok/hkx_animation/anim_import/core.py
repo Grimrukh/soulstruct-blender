@@ -5,7 +5,7 @@ __all__ = ["HKXAnimationImporter"]
 import numpy as np
 
 import bpy
-from mathutils import Quaternion as BlenderQuaternion
+from mathutils import Matrix, Quaternion as BlenderQuaternion
 
 from soulstruct_havok.utilities.maths import TRSTransform
 
@@ -104,6 +104,8 @@ class HKXAnimationImporter:
         }
 
         for frame in arma_frames:
+
+            # Get Blender armature space 4x4 transform `Matrix` for each bone.
             bl_arma_matrices = {
                 bone_name: GAME_TRS_TO_BL_MATRIX(transform) for bone_name, transform in frame.items()
             }
@@ -114,10 +116,18 @@ class HKXAnimationImporter:
 
                 bl_edit_bone = self.bl_armature.data.bones[bone_name]
 
-                if bl_edit_bone.parent is not None and bl_edit_bone.parent.name not in cached_arma_inv_matrices:
+                if (
+                    bl_edit_bone.parent is not None
+                    and bl_edit_bone.parent.name not in cached_arma_inv_matrices
+                ):
                     # Cache parent's inverted armature matrix (may be needed by other sibling bones this frame).
+                    # Note that as FLVER and HKX skeleton hierarchies may be different, the FLVER (Blender Armature)
+                    # parent bone may not even be animated, in which case we just use an identity matrix.
                     parent_name = bl_edit_bone.parent.name
-                    cached_arma_inv_matrices[parent_name] = bl_arma_matrices[parent_name].inverted()
+                    if parent_name in bl_arma_matrices:
+                        cached_arma_inv_matrices[parent_name] = bl_arma_matrices[parent_name].inverted()
+                    else:
+                        cached_arma_inv_matrices[parent_name] = Matrix.Identity(4)
 
                 bl_basis_matrix = get_basis_matrix(
                     self.bl_armature,

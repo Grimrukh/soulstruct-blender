@@ -21,8 +21,7 @@ from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
 from soulstruct.eldenring.containers import DivBinder
 
 from soulstruct_havok.core import HKX
-from soulstruct_havok.wrappers import hkx2015
-from soulstruct_havok.wrappers import hkx2018
+from soulstruct_havok.wrappers import hkx2015, hkx2016, hkx2018
 
 from io_soulstruct.utilities import *
 from io_soulstruct.havok.hkx_animation.utilities import *
@@ -34,8 +33,8 @@ OBJBND_RE = re.compile(r"^.*?\.objbnd(\.dcx)?$")
 SKELETON_ENTRY_RE = re.compile(r"skeleton\.hkx(\.dcx)?", flags=re.IGNORECASE)
 
 
-SKELETON_TYPING = tp.Union[hkx2015.SkeletonHKX, hkx2018.SkeletonHKX]
-ANIMATION_TYPING = tp.Union[hkx2015.AnimationHKX, hkx2018.AnimationHKX]
+SKELETON_TYPING = tp.Union[hkx2015.SkeletonHKX, hkx2016.SkeletonHKX, hkx2018.SkeletonHKX]
+ANIMATION_TYPING = tp.Union[hkx2015.AnimationHKX, hkx2016.AnimationHKX, hkx2018.AnimationHKX]
 
 
 def read_animation_hkx_entry(hkx_entry: BinderEntry, compendium: HKX = None) -> ANIMATION_TYPING:
@@ -45,6 +44,8 @@ def read_animation_hkx_entry(hkx_entry: BinderEntry, compendium: HKX = None) -> 
         return hkx2018.AnimationHKX.from_bytes(data, compendium=compendium)
     elif version == b"20150100":  # DSR
         return hkx2015.AnimationHKX.from_bytes(data, compendium=compendium)
+    elif version == b"20160100":
+        return hkx2016.AnimationHKX.from_bytes(data, compendium=compendium)
     raise ValueError(f"Cannot support this HKX animation file version in Soulstruct and/or Blender: {version}")
 
 
@@ -55,6 +56,8 @@ def read_skeleton_hkx_entry(hkx_entry: BinderEntry, compendium: HKX = None) -> S
         return hkx2018.SkeletonHKX.from_bytes(data, compendium=compendium)
     elif version == b"20150100":  # DSR
         return hkx2015.SkeletonHKX.from_bytes(data, compendium=compendium)
+    elif version == b"20160100":
+        return hkx2016.SkeletonHKX.from_bytes(data, compendium=compendium)
     raise ValueError(f"Cannot support this HKX skeleton file version in Soulstruct and/or Blender: {version}")
 
 
