@@ -22,6 +22,10 @@ from io_soulstruct.utilities import *
 from .core import *
 
 
+def could_be_collision_model(obj: bpy.types.Object) -> bool:
+    return obj.type == "MESH" or (obj.type == "EMPTY" and any(c.type == "MESH" for c in obj.children))
+
+
 class ExportLooseHKXMapCollision(LoggingOperator, ExportHelper):
     """Export 'hi' and/or 'lo' HKX from a selection of Blender meshes."""
     bl_idname = "export_scene.hkx_map_collision"
@@ -53,7 +57,7 @@ class ExportLooseHKXMapCollision(LoggingOperator, ExportHelper):
             return False  # TODO: DS1R only.
         if len(context.selected_objects) != 1:
             return False
-        if context.selected_objects[0].type != "MESH":
+        if not could_be_collision_model(context.selected_objects[0]):
             return False
         return True
 
@@ -176,7 +180,7 @@ class ExportHKXMapCollisionIntoBinder(LoggingOperator, ImportHelper):
             return False  # TODO: DS1R only.
         if len(context.selected_objects) != 1:
             return False
-        if context.selected_objects[0].type != "MESH":
+        if not could_be_collision_model(context.selected_objects[0]):
             return False
         return True
 
@@ -262,7 +266,7 @@ class ExportHKXMapCollisionIntoHKXBHD(LoggingOperator):
         if not context.selected_objects:
             return False
         for obj in context.selected_objects:
-            if obj.type != "MESH":
+            if not could_be_collision_model(obj):
                 return False
         return True
 

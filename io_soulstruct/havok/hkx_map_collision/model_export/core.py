@@ -276,11 +276,12 @@ def _export_hkx_map_collision_split(
         bm.free()
         del bm
 
-        # Easy: we use vertices and polygons directly.
+        # Easy: we use vertices and polygons directly (swapping vertex Y and Z).
         vertices = np.empty((len(tri_mesh_data.vertices), 3), dtype=np.float32)
-        tri_mesh_data.vertices.foreach_set("co", vertices.ravel())
+        tri_mesh_data.vertices.foreach_get("co", vertices.ravel())
+        vertices = np.c_[vertices[:, 0], vertices[:, 2], vertices[:, 1]]
         faces = np.empty((len(tri_mesh_data.polygons), 3), dtype=np.uint32)
-        tri_mesh_data.polygons.foreach_set("vertices", faces.ravel())
+        tri_mesh_data.polygons.foreach_get("vertices", faces.ravel())
 
         # Append meshes and materials to the correct resolution list.
         meshes, hkx_material_indices = (

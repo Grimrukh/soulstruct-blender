@@ -64,7 +64,7 @@ def import_hkx_model_split(
         if key in hkx_to_bl_materials:
             return hkx_to_bl_materials[key]
         # New Blender material for this res and index.
-        _bl_material = get_hkx_material(hkx_mat_index, True)
+        _bl_material = get_hkx_material(hkx_mat_index, is_hi_res)
         hkx_to_bl_materials[key] = _bl_material
         return _bl_material
 
