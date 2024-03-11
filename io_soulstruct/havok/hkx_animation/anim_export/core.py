@@ -2,23 +2,43 @@ from __future__ import annotations
 
 __all__ = ["create_animation_hkx"]
 
+import typing as tp
+
 import numpy as np
 
 import bpy
 
-from soulstruct_havok.wrappers.hkx2015 import SkeletonHKX, AnimationHKX
+from soulstruct_havok.wrappers import hkx2015, hkx2016, hkx2018
 from soulstruct_havok.utilities.maths import TRSTransform
 
 from io_soulstruct.havok.utilities import BL_MATRIX_TO_GAME_TRS
 from io_soulstruct.havok.hkx_animation.utilities import *
 
 
-def create_animation_hkx(skeleton_hkx: SkeletonHKX, bl_armature, from_60_fps: bool) -> AnimationHKX:
+SKELETON_TYPING = tp.Union[hkx2015.SkeletonHKX, hkx2016.SkeletonHKX, hkx2018.SkeletonHKX]
+ANIMATION_TYPING = tp.Union[hkx2015.AnimationHKX, hkx2016.AnimationHKX, hkx2018.AnimationHKX]
+
+
+def create_animation_hkx(skeleton_hkx: SKELETON_TYPING, bl_armature, from_60_fps: bool) -> ANIMATION_TYPING:
+    """Animation data is easier to export from Blender than import, as we can just read the bone transforms on each
+    frame in Armature space directly (contrasted with needing to resolve each basis Matrix when importing).
+
+    The `skeleton_hkx` Havok type version is used to determine the returned `AnimationHKX` Havok type version.
+    """
     if bl_armature.animation_data is None:
         raise HKXAnimationExportError(f"Armature '{bl_armature.name}' has no animation data.")
     action = bl_armature.animation_data.action
     if action is None:
         raise HKXAnimationExportError(f"Armature '{bl_armature.name}' has no action assigned to its animation data.")
+
+    if skeleton_hkx.hk_version.startswith("2015"):
+        animation_hkx_type = hkx2015.AnimationHKX
+    elif skeleton_hkx.hk_version.startswith("2016"):
+        animation_hkx_type = hkx2016.AnimationHKX
+    elif skeleton_hkx.hk_version.startswith("2018"):
+        animation_hkx_type = hkx2018.AnimationHKX
+    else:
+        raise HKXAnimationExportError(f"Unrecognized skeleton HKX version '{skeleton_hkx.hk_version}'.")
 
     # TODO: Technically, animation export only needs a start/end frame range, since it samples location/bone pose
     #  on every single frame anyway and does NOT need to actually use the action FCurves!
@@ -82,7 +102,7 @@ def create_animation_hkx(skeleton_hkx: SkeletonHKX, bl_armature, from_60_fps: bo
     else:
         root_motion = None
 
-    animation_hkx = AnimationHKX.from_dsr_interleaved_template(
+    animation_hkx = animation_hkx_type.from_dsr_interleaved_template(
         skeleton_hkx=skeleton_hkx,
         interleaved_data=armature_space_frames,
         transform_track_to_bone_indices=track_bone_mapping,

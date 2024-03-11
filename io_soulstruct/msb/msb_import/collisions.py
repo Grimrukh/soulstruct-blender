@@ -6,7 +6,6 @@ __all__ = [
     "ImportAllMSBMapCollisions",
 ]
 
-import time
 import traceback
 import typing as tp
 
@@ -56,15 +55,22 @@ def import_collision_model(
     hi_hkx, lo_hkx = both_res_hkxbhd.get_both_hkx(model_name)
     collection = get_collection(f"{map_stem} Collision Models", context.scene.collection)
 
+    collision_import_settings = context.scene.hkx_map_collision_import_settings  # type: HKXMapCollisionImportSettings
+
     # Import single HKX.
     try:
-        hkx_model = import_hkx_model(hi_hkx, model_name=model_name, lo_hkx=lo_hkx)
+        if collision_import_settings.merge_submeshes:
+            hkx_model = import_hkx_model_merged(hi_hkx, model_name=model_name, lo_hkx=lo_hkx)
+        else:
+            hkx_model = import_hkx_model_split(hi_hkx, model_name=model_name, lo_hkx=lo_hkx)
     except Exception as ex:
         traceback.print_exc()  # for inspection in Blender console
         raise HKXMapCollisionImportError(
             f"Cannot import HKX '{model_name}' from HKXBHDs in map {map_stem}. Error: {ex}"
         )
     collection.objects.link(hkx_model)
+    for child in hkx_model.children:
+        collection.objects.link(child)
 
     # TODO: HKX import is so fast that this just slows the console down when importing all collisions.
     # operator.info(f"Imported HKX '{hkx_model.name}' from model '{model_name}' in map {map_stem}.")
@@ -86,10 +92,18 @@ def create_collision_model_instance(
     hkx_model: bpy.types.MeshObject,
     linked_name: str,
     collection: bpy.types.Collection,
-) -> bpy.types.MeshObject:
+) -> bpy.types.MeshObject | bpy.types.Object:
     """Create linked HKX model instance mesh."""
     # noinspection PyTypeChecker
-    hkx_instance = bpy.data.objects.new(linked_name, hkx_model.data)  # type: bpy.types.MeshObject
+    hkx_instance = bpy.data.objects.new(linked_name, hkx_model.data)  # type: bpy.types.MeshObject | bpy.types.Object
+    if hkx_instance.type == "EMPTY":
+        # Add instances of submesh children.
+        for child in hkx_model.children:
+            if child.type == "MESH":
+                linked_child_name = f"{linked_name} {child.name.split(' ', 1)[1]}"
+                hkx_submesh_instance = bpy.data.objects.new(linked_child_name, child.data)
+                collection.objects.link(hkx_submesh_instance)
+                hkx_submesh_instance.parent = hkx_instance
     hkx_instance["Model Name"] = hkx_model.name
     collection.objects.link(hkx_instance)
     return hkx_instance

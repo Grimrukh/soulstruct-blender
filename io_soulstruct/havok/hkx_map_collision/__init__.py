@@ -4,6 +4,7 @@ __all__ = [
     "ImportHKXMapCollision",
     "ImportHKXMapCollisionWithBinderChoice",
     "ImportHKXMapCollisionFromHKXBHD",
+    "HKXMapCollisionImportSettings",
 
     "ExportLooseHKXMapCollision",
     "ExportHKXMapCollisionIntoBinder",
@@ -66,6 +67,7 @@ class HKX_COLLISION_PT_hkx_map_collisions(bpy.types.Panel):
         if game_name == "DARK_SOULS_DSR":
             quick_import_box = import_box.box()
             quick_import_box.label(text="Import from Game/Project Map")
+            quick_import_box.prop(context.scene.hkx_map_collision_import_settings, "merge_submeshes")
             quick_import_box.prop(context.scene.soulstruct_game_enums, "hkx_map_collision")
             quick_import_box.operator(ImportHKXMapCollisionFromHKXBHD.bl_idname)
 

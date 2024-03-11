@@ -33,6 +33,7 @@ from soulstruct_havok.wrappers.hkx2015.hkx_binder import BothResHKXBHD
 from io_soulstruct.general import SoulstructGameEnums
 from io_soulstruct.utilities import *
 from .core import *
+from .settings import *
 
 
 HKX_NAME_RE = re.compile(r".*\.hkx(\.dcx)?")
@@ -65,6 +66,12 @@ class ImportHKXMapCollision(LoggingOperator, ImportHelper):
         name="Import All From Binder",
         description="If a Binder file is opened, import all HKX files rather than being prompted to select one. "
                     "Will only import HKX files that match 'Collision Model ID' (if not -1)",
+        default=False,
+    )
+
+    merge_submeshes: bpy.props.BoolProperty(
+        name="Merge Submeshes",
+        description="Merge all submeshes into a single mesh, using material to define submeshes",
         default=False,
     )
 
@@ -160,18 +167,29 @@ class ImportHKXMapCollision(LoggingOperator, ImportHelper):
 
             if isinstance(import_info, BothResHKXBHD):
                 # Defer through entry selection operator.
-                ImportHKXMapCollisionWithBinderChoice.run(import_info)
+                ImportHKXMapCollisionWithBinderChoice.run(import_info, self.merge_submeshes)
                 continue
 
             self.info(f"Importing HKX: {import_info.model_name}")
 
             # Import single HKX.
             try:
-                hkx_model = import_hkx_model(import_info.hi_hkx, import_info.model_name, lo_hkx=import_info.lo_hkx)
+                if self.merge_submeshes:
+                    # Single mesh object.
+                    hkx_model = import_hkx_model_merged(
+                        import_info.hi_hkx, import_info.model_name, lo_hkx=import_info.lo_hkx
+                    )
+                else:
+                    # Empty parent of submesh objects.
+                    hkx_model = import_hkx_model_split(
+                        import_info.hi_hkx, import_info.model_name, lo_hkx=import_info.lo_hkx
+                    )
             except Exception as ex:
                 traceback.print_exc()  # for inspection in Blender console
                 return self.error(f"Cannot import HKX: {import_info.model_name}. Error: {ex}")
             context.scene.collection.objects.link(hkx_model)
+            for child in hkx_model.children:
+                context.scene.collection.objects.link(child)
 
         return {"FINISHED"}
 
@@ -199,6 +217,7 @@ class ImportHKXMapCollisionWithBinderChoice(LoggingOperator):
 
     # For deferred import in `execute()`.
     both_res_hkxbhd: BothResHKXBHD = None
+    merge_submeshes: bool = False
     enum_options: list[tuple[tp.Any, str, str]] = []
 
     choices_enum: bpy.props.EnumProperty(items=get_binder_entry_choices)
@@ -222,18 +241,26 @@ class ImportHKXMapCollisionWithBinderChoice(LoggingOperator):
         )
 
         try:
-            hkx_model = import_hkx_model(hi_hkx, model_name, lo_hkx=lo_hkx)
+            if self.merge_submeshes:
+                # Single mesh object.
+                hkx_model = import_hkx_model_merged(hi_hkx, model_name, lo_hkx)
+            else:
+                # Empty parent of submesh objects.
+                hkx_model = import_hkx_model_split(hi_hkx, model_name, lo_hkx)
         except Exception as ex:
             traceback.print_exc()
             return self.error(
                 f"Cannot import HKX '{model_name}' from '{self.both_res_hkxbhd.path}'. Error: {ex}"
             )
         context.scene.collection.objects.link(hkx_model)
+        for child in hkx_model.children:
+            context.scene.collection.objects.link(child)
 
         return {"FINISHED"}
 
     @classmethod
-    def run(cls, both_res_hkxbhd: BothResHKXBHD):
+    def run(cls, both_res_hkxbhd: BothResHKXBHD, merge_submeshes: bool):
+        cls.merge_submeshes = merge_submeshes
         cls.both_res_hkxbhd = both_res_hkxbhd
         enum_options = []
         for model_id, (hi_name, lo_name) in both_res_hkxbhd.get_both_res_entries_dict().items():
@@ -273,6 +300,8 @@ class ImportHKXMapCollisionFromHKXBHD(LoggingOperator):
         # Get oldest version of map folder, if option enabled.
         map_stem = settings.get_oldest_map_stem_version()
 
+        collision_import_settings = context.scene.hkx_map_collision_import_settings  # type: HKXMapCollisionImportSettings
+
         try:
             # Import source may depend on suffix of entry enum.
             if hkx_entry_name.endswith(" (G)"):
@@ -288,12 +317,19 @@ class ImportHKXMapCollisionFromHKXBHD(LoggingOperator):
         model_name = hkx_entry_name.split(".")[0]
         hi_hkx, lo_hkx = both_res_hkxbhd.get_both_hkx(model_name)
         try:
-            hkx_model = import_hkx_model(hi_hkx, model_name, lo_hkx=lo_hkx)
+            if collision_import_settings.merge_submeshes:
+                # Single mesh object.
+                hkx_model = import_hkx_model_merged(hi_hkx, model_name, lo_hkx)
+            else:
+                # Empty parent of submesh objects.
+                hkx_model = import_hkx_model_split(hi_hkx, model_name, lo_hkx)
         except Exception as ex:
             traceback.print_exc()  # for inspection in Blender console
             return self.error(f"Cannot import HKX '{model_name}' from HKXBHDs in {map_stem}. Error: {ex}")
         collection = get_collection(f"{map_stem} Collisions", context.scene.collection)
         collection.objects.link(hkx_model)
+        for child in hkx_model.children:
+            collection.objects.link(child)
 
         p = time.perf_counter() - start_time
         self.info(
@@ -302,6 +338,7 @@ class ImportHKXMapCollisionFromHKXBHD(LoggingOperator):
 
         # Select and frame view on newly imported Mesh.
         self.set_active_obj(hkx_model)
-        bpy.ops.view3d.view_selected(use_all_regions=False)
+        if collision_import_settings.merge_submeshes:
+            bpy.ops.view3d.view_selected(use_all_regions=False)
 
         return {"FINISHED"}

@@ -3,7 +3,8 @@ from __future__ import annotations
 __all__ = [
     "HKXImportInfo",
     "HKXMapCollisionImportError",
-    "import_hkx_model",
+    "import_hkx_model_split",
+    "import_hkx_model_merged",
 ]
 
 import typing as tp
@@ -44,45 +45,111 @@ class HKXMapCollisionImportError(Exception):
     pass
 
 
-def import_hkx_model(
+def import_hkx_model_split(
+    hi_hkx: MapCollisionHKX,
+    model_name: str,
+    lo_hkx: MapCollisionHKX = None,
+) -> bpy.types.Object:
+    """Read a HKX or two (hi/lo) HKXs into submesh child Blender meshes of a single Empty parent."""
+
+    hi_submeshes = hi_hkx.to_meshes()
+    hi_hkx_material_indices = hi_hkx.map_collision_physics_data.get_subpart_materials()
+
+    # Maps `(is_hi, hkx_mat_index)` to Blender materials.
+    hkx_to_bl_materials = {}  # type: dict[tuple[bool, int], bpy.types.Material]
+    submesh_objs = []
+
+    def get_bl_mat(is_hi_res: bool, hkx_mat_index: int) -> bpy.types.Material:
+        key = (is_hi_res, hkx_mat_index)
+        if key in hkx_to_bl_materials:
+            return hkx_to_bl_materials[key]
+        # New Blender material for this res and index.
+        _bl_material = get_hkx_material(hkx_mat_index, True)
+        hkx_to_bl_materials[key] = _bl_material
+        return _bl_material
+
+    # Construct Blender materials corresponding to HKX res and material indices and collect indices.
+    for i, ((vertices, faces), hkx_material_index) in enumerate(zip(hi_submeshes, hi_hkx_material_indices)):
+        bl_material = get_bl_mat(True, hkx_material_index)
+        # Swap vertex Y and Z coordinates.
+        vertices = np.c_[vertices[:, 0], vertices[:, 2], vertices[:, 1]]
+        name = f"{model_name} Hi Submesh {i}"
+        bl_mesh = bpy.data.meshes.new(name=f"{name} Mesh")
+        edges = []  # no edges in HKX
+        bl_mesh.from_pydata(vertices, edges, faces)
+        bl_mesh.materials.append(bl_material)
+        submesh_model_obj = bpy.data.objects.new(name, bl_mesh)
+        submesh_objs.append(submesh_model_obj)
+
+    if lo_hkx:
+        lo_submeshes = lo_hkx.to_meshes()
+        lo_hkx_material_indices = lo_hkx.map_collision_physics_data.get_subpart_materials()
+
+        for i, ((vertices, faces), hkx_material_index) in enumerate(zip(lo_submeshes, lo_hkx_material_indices)):
+            print(f"Making lo submesh {i} with mat index {hkx_material_index}")
+            bl_material = get_bl_mat(False, hkx_material_index)
+            # Swap vertex Y and Z coordinates.
+            vertices = np.c_[vertices[:, 0], vertices[:, 2], vertices[:, 1]]
+            name = f"{model_name} Lo Submesh {i}"
+            bl_mesh = bpy.data.meshes.new(name=f"{name} Mesh")
+            edges = []  # no edges in HKX
+            bl_mesh.from_pydata(vertices, edges, faces)
+            bl_mesh.materials.append(bl_material)
+            submesh_model_obj = bpy.data.objects.new(name, bl_mesh)
+            submesh_objs.append(submesh_model_obj)
+
+    # Create empty parent.
+    hkx_model = bpy.data.objects.new(model_name, None)
+    for submesh_obj in submesh_objs:
+        submesh_obj.parent = hkx_model
+
+    return hkx_model
+
+
+def import_hkx_model_merged(
     hi_hkx: MapCollisionHKX,
     model_name: str,
     lo_hkx: MapCollisionHKX = None,
 ) -> bpy.types.MeshObject:
     """Read a HKX or two (hi/lo) HKXs into a single Blender mesh, with materials representing res/submeshes."""
 
-    meshes = hi_hkx.to_meshes()
+    hi_submeshes = hi_hkx.to_meshes()
     hkx_material_indices = hi_hkx.map_collision_physics_data.get_subpart_materials()
 
-    # Construct Blender materials corresponding to HKX res and material indices and collect indices.
-    bl_materials = []  # type: list[bpy.types.Material]
+    # Maps `(is_hi, hkx_mat_index)` to Blender material index for both resolutions.
     hkx_to_bl_material_indices = {}  # type: dict[tuple[bool, int], int]
-    submesh_bl_materials = []  # matches length of `submeshes`
-    for i in hkx_material_indices:
-        if (True, i) not in hkx_to_bl_material_indices:
-            # New hi-res Blender material.
-            hkx_to_bl_material_indices[True, i] = len(bl_materials)
-            bl_material = get_hkx_material(i, True)
-            bl_materials.append(bl_material)
-        submesh_bl_materials.append(hkx_to_bl_material_indices[True, i])
+    # Blender materials, into which the above values index.
+    bl_materials = []  # type: list[bpy.types.Material]
 
-    vertices, faces, face_materials = join_hkx_meshes(meshes, submesh_bl_materials)
+    def get_bl_mat_index(is_hi_res: bool, hkx_mat_index: int) -> int:
+        key = (is_hi_res, hkx_mat_index)
+        if key in hkx_to_bl_material_indices:
+            return hkx_to_bl_material_indices[key]
+        # New Blender material for this res and index.
+        _i = hkx_to_bl_material_indices[key] = len(bl_materials)
+        _bl_material = get_hkx_material(hkx_mat_index, is_hi_res)
+        bl_materials.append(_bl_material)
+        return _i
+
+    # Construct Blender materials corresponding to HKX res and material indices and collect indices.
+    hi_bl_mat_indices = []  # matches length of `hi_submeshes`
+    for i in hkx_material_indices:
+        bl_mat_index = get_bl_mat_index(True, i)
+        hi_bl_mat_indices.append(bl_mat_index)
+
+    vertices, faces, face_materials = join_hkx_meshes(hi_submeshes, hi_bl_mat_indices)
 
     if lo_hkx:
         lo_submeshes = lo_hkx.to_meshes()
         lo_hkx_material_indices = lo_hkx.map_collision_physics_data.get_subpart_materials()
-        lo_submesh_bl_materials = []  # matches length of `lo_submeshes`
+        lo_bl_mat_indices = []  # matches length of `lo_submeshes`
         # Continue building `bl_materials` list and `hkx_to_bl_material_indices` dict from hi-res above.
         for i in lo_hkx_material_indices:
-            if (False, i) not in hkx_to_bl_material_indices:
-                # New lo-res Blender material.
-                hkx_to_bl_material_indices[False, i] = len(bl_materials)
-                bl_material = get_hkx_material(i, False)
-                bl_materials.append(bl_material)
-            lo_submesh_bl_materials.append(hkx_to_bl_material_indices[False, i])
+            bl_mat_index = get_bl_mat_index(False, i)
+            lo_bl_mat_indices.append(bl_mat_index)
 
         lo_vertices, lo_faces, lo_face_materials = join_hkx_meshes(
-            lo_submeshes, lo_submesh_bl_materials, initial_offset=len(vertices)
+            lo_submeshes, lo_bl_mat_indices, initial_offset=len(vertices)
         )
         vertices = np.row_stack((vertices, lo_vertices))
         faces = np.row_stack((faces, lo_faces))

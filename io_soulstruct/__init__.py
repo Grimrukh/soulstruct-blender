@@ -144,6 +144,7 @@ CLASSES = (
     ImportHKXMapCollision,
     ImportHKXMapCollisionWithBinderChoice,
     ImportHKXMapCollisionFromHKXBHD,
+    HKXMapCollisionImportSettings,
 
     ImportHKXAnimation,
     ImportHKXAnimationWithBinderChoice,
@@ -257,6 +258,7 @@ SCENE_POINTERS = dict(
     bake_lightmap_settings=BakeLightmapSettings,
     flver_tool_settings=FLVERToolSettings,
     mesh_move_settings=MeshMoveSettings,
+    hkx_map_collision_import_settings=HKXMapCollisionImportSettings,
     navmesh_face_settings=NavmeshFaceSettings,
     mcg_draw_settings=MCGDrawSettings,
     msb_import_settings=MSBImportSettings,

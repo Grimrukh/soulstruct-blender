@@ -61,6 +61,11 @@ class MSBImportPanel(bpy.types.Panel):
         map_piece_box.operator(ImportAllMSBMapPieces.bl_idname)  # uses confirmation dialog
 
         collision_box = self.layout.box()
+        collision_box.label(text="Map Collision Import Settings")
+        for prop in (
+            "merge_submeshes",
+        ):
+            collision_box.prop(context.scene.hkx_map_collision_import_settings, prop)
         collision_box.prop(context.scene.soulstruct_game_enums, "hkx_map_collision_part", text="Collision")
         collision_box.operator(ImportMSBMapCollision.bl_idname)
         collision_box.operator(ImportAllMSBMapCollisions.bl_idname)  # uses confirmation dialog
