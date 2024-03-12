@@ -35,6 +35,7 @@ class MSBExportPanel(bpy.types.Panel):
             "base_edit_bone_length",
             "allow_missing_textures",
             "allow_unknown_texture_types",
+            "normal_tangent_dot_max",
         ):
             flver_export_settings_box.prop(context.scene.flver_export_settings, prop)
 

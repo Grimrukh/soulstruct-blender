@@ -95,6 +95,7 @@ class FLVERExportPanel(bpy.types.Panel):
         game_export_box.label(text="Export to Project/Game")
         game_export_box.prop(context.scene.soulstruct_settings, "detect_map_from_collection")
         game_export_box.prop(context.scene.flver_export_settings, "export_textures")
+        game_export_box.prop(context.scene.flver_export_settings, "normal_tangent_dot_max")
 
         game_export_box.operator(ExportMapPieceFLVERs.bl_idname)
         game_export_box.operator(ExportCharacterFLVER.bl_idname)

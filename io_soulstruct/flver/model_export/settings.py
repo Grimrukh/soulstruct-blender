@@ -34,3 +34,15 @@ class FLVERExportSettings(bpy.types.PropertyGroup):
         description="Allow and export Blender texture nodes that have non-MTD-defined texture types",
         default=False,
     )
+
+    normal_tangent_dot_max: bpy.props.FloatProperty(
+        name="Normal/Tangent Dot Max",
+        description="Maximum dot product between vertex normal and tangent vectors to NOT merge them on export. "
+                    "Default of 0.999 corresponds to 2.56 degrees. Lower values will merge face corners into the same "
+                    "vertices more aggressively. Value 1.0 will do no merging, which speeds up export but inflates "
+                    "FLVER size with more duplicate vertices",
+        default=0.999,
+        precision=4,
+        min=0.0,
+        max=1.0,
+    )

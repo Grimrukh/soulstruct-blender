@@ -98,6 +98,8 @@ class FLVERExporter:
         """
         self.clear_temp_flver()
 
+        export_settings = self.context.scene.flver_export_settings  # type: FLVERExportSettings
+
         if mesh.type != "MESH":
             raise FLVERExportError("`mesh` object passed to FLVER exporter must be a Mesh.")
         if armature is not None and armature.type != "ARMATURE":
@@ -179,6 +181,7 @@ class FLVERExporter:
             bl_bone_names,
             use_chr_layout=read_bone_type == "EDIT",
             strip_bl_material_prefix=dummy_material_prefix,
+            normal_tangent_dot_max=export_settings.normal_tangent_dot_max,
             material_infos=material_infos,
         )
 
@@ -263,6 +266,7 @@ class FLVERExporter:
         bl_bone_names: list[str],
         use_chr_layout: bool,
         strip_bl_material_prefix: str,
+        normal_tangent_dot_max: float,
         material_infos: list[BaseMaterialShaderInfo],
     ):
         """
@@ -539,6 +543,9 @@ class FLVERExporter:
             use_submesh_bone_indices=True,  # TODO: for DS1
             max_bones_per_submesh=38,  # TODO: for DS1
             unused_bone_indices_are_minus_one=True,
+            normal_tangent_dot_threshold=normal_tangent_dot_max,
+            # NOTE: DS1 has a maximum submesh vertex count of 65535, as face vertex indices must be 16-bit globally.
+            max_submesh_vertex_count=65535 if self.settings.is_game(DARK_SOULS_PTDE, DARK_SOULS_DSR) else 0,
         )
         self.info(f"Split mesh into {len(flver.submeshes)} submeshes in {time.perf_counter() - p} s.")
 
