@@ -22,7 +22,17 @@ __all__ = [
     "ExportEquipmentFLVER",
 
     "FLVERToolSettings",
+    "CopyToNewFLVER",
+    "CreateFLVERInstance",
+    "RenameFLVER",
+    "CreateEmptyMapPieceFLVER",
+    "SetSmoothCustomNormals",
     "SetVertexAlpha",
+    "InvertVertexAlpha",
+
+    "MaterialToolSettings",
+    "SetMaterialTexture0",
+    "SetMaterialTexture1",
     "ActivateUVTexture0",
     "ActivateUVTexture1",
     "ActiveUVLightmap",
@@ -37,14 +47,18 @@ __all__ = [
     "FLVERExportPanel",
     "TextureExportSettingsPanel",
     "FLVERLightmapsPanel",
-    "FLVERToolsPanel",
+    "FLVERMeshToolsPanel",
+    "FLVERMaterialToolsPanel",
+    "FLVERDummyToolsPanel",
+    "FLVEROtherToolsPanel",
     "FLVERUVMapsPanel",
 ]
 
 import bpy
 
-from io_soulstruct.misc_operators import CutMeshSelectionOperator
+from io_soulstruct.misc_operators import CopyMeshSelectionOperator, CutMeshSelectionOperator
 
+from .materials.misc_operators import *
 from .model_import import *
 from .model_export import *
 from .misc_operators import *
@@ -95,6 +109,7 @@ class FLVERExportPanel(bpy.types.Panel):
         game_export_box.label(text="Export to Project/Game")
         game_export_box.prop(context.scene.soulstruct_settings, "detect_map_from_collection")
         game_export_box.prop(context.scene.flver_export_settings, "export_textures")
+        game_export_box.prop(context.scene.flver_export_settings, "create_lod_face_sets")
         game_export_box.prop(context.scene.flver_export_settings, "normal_tangent_dot_max")
 
         game_export_box.operator(ExportMapPieceFLVERs.bl_idname)
@@ -166,9 +181,9 @@ class FLVERLightmapsPanel(bpy.types.Panel):
         layout.operator(BakeLightmapTextures.bl_idname)
 
 
-class FLVERToolsPanel(bpy.types.Panel):
-    bl_label = "FLVER Tools"
-    bl_idname = "SCENE_PT_flver_tools"
+class FLVERMeshToolsPanel(bpy.types.Panel):
+    bl_label = "FLVER Mesh Tools"
+    bl_idname = "SCENE_PT_flver_mesh_tools"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "Soulstruct FLVER"
@@ -176,31 +191,86 @@ class FLVERToolsPanel(bpy.types.Panel):
 
     def draw(self, context):
 
-        dummy_box = self.layout.box()
-        dummy_box.label(text="Dummy Tools")
-        dummy_box.prop(context.scene.flver_tool_settings, "dummy_id_draw_enabled", text="Draw Dummy IDs")
-        dummy_box.prop(context.scene.flver_tool_settings, "dummy_id_font_size", text="Dummy ID Font Size")
-        dummy_box.operator(HideAllDummiesOperator.bl_idname)
-        dummy_box.operator(ShowAllDummiesOperator.bl_idname)
+        polish_box = self.layout.box()
+        polish_box.label(text="Select/Polish Mesh:")
+        polish_box.operator(SelectMeshChildren.bl_idname)
+        polish_box.operator(SetSmoothCustomNormals.bl_idname)
+
+        move_box = self.layout.box()
+        move_box.label(text="Move Mesh:")
+        move_box.prop(context.scene.mesh_move_settings, "new_material_index")
+        move_box.operator(CopyMeshSelectionOperator.bl_idname)
+        move_box.operator(CutMeshSelectionOperator.bl_idname)
+        move_box.prop(context.scene.flver_tool_settings, "new_flver_model_name")
+        move_box.operator(CopyToNewFLVER.bl_idname)
+
+        vertex_color_box = self.layout.box()
+        vertex_color_box.label(text="Vertex Colors:")
+        vertex_color_box.prop(context.scene.flver_tool_settings, "vertex_color_layer_name")
+        vertex_color_box.prop(context.scene.flver_tool_settings, "set_selected_face_vertex_alpha_only")
+        vertex_color_box.operator(InvertVertexAlpha.bl_idname)
+        vertex_color_box.prop(context.scene.flver_tool_settings, "vertex_alpha")
+        vertex_color_box.operator(SetVertexAlpha.bl_idname)
+
+
+class FLVERMaterialToolsPanel(bpy.types.Panel):
+    bl_label = "FLVER Material Tools"
+    bl_idname = "SCENE_PT_flver_material_tools"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "Soulstruct FLVER"
+    bl_options = {'DEFAULT_CLOSED'}
+
+    def draw(self, context):
+
+        material_box = self.layout.box()
+        material_box.label(text="Material Tools")
+        selected_object = context.object
+        if selected_object and selected_object.active_material:
+            material_box.label(text=selected_object.active_material.name)
+        else:
+            material_box.label(text="No Material Selected.")
+        material_box.prop(context.scene.material_tool_settings, "albedo_image")
+        material_box.operator(SetMaterialTexture0.bl_idname)
+        material_box.operator(SetMaterialTexture1.bl_idname)
 
         textures_box = self.layout.box()
         textures_box.operator(ImportTextures.bl_idname)
+        textures_box.operator(FindMissingTexturesInPNGCache.bl_idname)
         # textures_box.operator(ExportTexturesIntoBinder.bl_idname)
 
-        misc_operators_box = self.layout.box()
 
-        misc_operators_box.label(text="Move Mesh Selection:")
-        misc_operators_box.prop(context.scene.mesh_move_settings, "new_material_index")
-        misc_operators_box.operator(CutMeshSelectionOperator.bl_idname)
+class FLVERDummyToolsPanel(bpy.types.Panel):
+    bl_label = "FLVER Dummy Tools"
+    bl_idname = "SCENE_PT_flver_dummy_tools"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "Soulstruct FLVER"
+    bl_options = {'DEFAULT_CLOSED'}
 
-        misc_operators_box.label(text="Set Vertex Alpha:")
-        misc_operators_box.prop(context.scene.flver_tool_settings, "vertex_alpha")
-        misc_operators_box.operator(SetVertexAlpha.bl_idname)
+    def draw(self, context):
+        layout = self.layout
+        layout.prop(context.scene.flver_tool_settings, "dummy_id_draw_enabled", text="Draw Dummy IDs")
+        layout.prop(context.scene.flver_tool_settings, "dummy_id_font_size", text="Dummy ID Font Size")
+        layout.operator(HideAllDummiesOperator.bl_idname)
+        layout.operator(ShowAllDummiesOperator.bl_idname)
 
-        misc_operators_box.label(text="Other Tools:")
-        misc_operators_box.operator(FindMissingTexturesInPNGCache.bl_idname)
-        misc_operators_box.operator(SelectMeshChildren.bl_idname)
-        misc_operators_box.operator(PrintGameTransform.bl_idname)
+
+class FLVEROtherToolsPanel(bpy.types.Panel):
+    bl_label = "FLVER Other Tools"
+    bl_idname = "SCENE_PT_flver_other_tools"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "Soulstruct FLVER"
+    bl_options = {'DEFAULT_CLOSED'}
+
+    def draw(self, context):
+        layout = self.layout
+        layout.operator(CreateFLVERInstance.bl_idname)
+        layout.prop(context.scene.flver_tool_settings, "new_flver_model_name")
+        layout.operator(RenameFLVER.bl_idname)
+        layout.operator(CreateEmptyMapPieceFLVER.bl_idname)
+        layout.operator(PrintGameTransform.bl_idname)
 
 
 class FLVERUVMapsPanel(bpy.types.Panel):

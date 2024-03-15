@@ -19,6 +19,57 @@ class MeshMoveSettings(bpy.types.PropertyGroup):
     )
 
 
+def move_mesh_selection(
+    operator: LoggingOperator,
+    context: bpy.types.Context,
+    duplicate: bool,
+) -> set[str]:
+    """Either cut (`duplicate = False`) or copy selected faces of edited mesh to another Mesh."""
+
+    # Identify edited and non-edited meshes
+    # noinspection PyTypeChecker
+    source_mesh = context.edit_object  # type: bpy.types.MeshObject
+    # noinspection PyTypeChecker
+    dest_mesh = [
+        obj for obj in context.selected_objects if obj != source_mesh
+    ][0]  # type: bpy.types.MeshObject
+
+    mesh_move_settings = bpy.context.scene.mesh_move_settings  # type: MeshMoveSettings
+
+    # Duplicate selected vertices, edges, and faces in the edited mesh
+    bpy.ops.object.mode_set(mode="EDIT")
+    if duplicate:
+        bpy.ops.mesh.duplicate()
+    bpy.ops.mesh.separate(type="SELECTED")
+
+    # Switch to OBJECT mode and identify the newly created object
+    bpy.ops.object.mode_set(mode="OBJECT")
+    try:
+        # noinspection PyTypeChecker
+        temp_obj = [
+            obj for obj in context.selected_objects
+            if obj != source_mesh and obj != dest_mesh
+        ][0]  # type: bpy.types.MeshObject
+    except IndexError:
+        return operator.error("Could not identify temporary mesh object used for copy operation.")
+
+    if mesh_move_settings.new_material_index > -1:
+        # Change materials of temp object to materials of destination object, and assign new material index to all.
+        temp_obj.data.materials.clear()
+        for dest_mat in dest_mesh.data.materials:
+            temp_obj.data.materials.append(dest_mat)
+        for poly in temp_obj.data.polygons:
+            poly.material_index = mesh_move_settings.new_material_index
+
+    # Join the newly created mesh to the dest mesh.
+    operator.deselect_all()
+    dest_mesh.select_set(True)
+    temp_obj.select_set(True)
+    context.view_layer.objects.active = dest_mesh
+    bpy.ops.object.join()
+
+    return {"FINISHED"}
+
 class CopyMeshSelectionOperator(LoggingOperator):
     bl_idname = "object.copy_mesh_selection"
     bl_label = "Copy Edit Mesh Selection to Mesh"
@@ -33,55 +84,10 @@ class CopyMeshSelectionOperator(LoggingOperator):
         )
 
     def execute(self, context):
-        # Check if two objects are selected
-        if len(context.selected_objects) != 2:
-            return self.error("Please select exactly two mesh objects.")
+        if not self.poll(context):
+            return self.error("Please select exactly two Mesh objects, one in Edit Mode.")
 
-        # Identify edited and non-edited meshes
-        edited_mesh_obj = context.edit_object
-        # noinspection PyTypeChecker
-        dest_msh_obj = [
-            obj for obj in context.selected_objects if obj != edited_mesh_obj
-        ][0]  # type: bpy.types.MeshObject
-
-        # Check if both are mesh objects
-        if edited_mesh_obj.type != "MESH" or dest_msh_obj.type != "MESH":
-            return self.error("Both selected objects must be of type 'MESH'.")
-
-        settings = bpy.context.scene.mesh_move_settings  # type: MeshMoveSettings
-
-        # Duplicate selected vertices, edges, and faces in the edited mesh
-        bpy.ops.object.mode_set(mode="EDIT")
-        bpy.ops.mesh.duplicate()
-        bpy.ops.mesh.separate(type="SELECTED")
-
-        # Switch to OBJECT mode and identify the newly created object
-        bpy.ops.object.mode_set(mode="OBJECT")
-        try:
-            # noinspection PyTypeChecker
-            temp_obj = [
-                obj for obj in context.selected_objects
-                if obj != edited_mesh_obj and obj != dest_msh_obj
-            ][0]  # type: bpy.types.MeshObject
-        except IndexError:
-            return self.error("Could not identify temporary mesh object used for copy operation.")
-
-        if settings.new_material_index > -1:
-            # Change materials of temp object to materials of destination object, and assign new material index to all.
-            temp_obj.data.materials.clear()
-            for dest_mat in dest_msh_obj.data.materials:
-                temp_obj.data.materials.append(dest_mat)
-            for poly in temp_obj.data.polygons:
-                poly.material_index = 0
-
-        # Join the newly created mesh to the non-edited mesh.
-        self.deselect_all()
-        dest_msh_obj.select_set(True)
-        temp_obj.select_set(True)
-        context.view_layer.objects.active = dest_msh_obj  # copy target
-        bpy.ops.object.join()
-
-        return {"FINISHED"}
+        return move_mesh_selection(self, context, duplicate=True)
 
 
 class CutMeshSelectionOperator(LoggingOperator):
@@ -98,51 +104,7 @@ class CutMeshSelectionOperator(LoggingOperator):
         )
 
     def execute(self, context):
-        # Check if two objects are selected
-        if len(context.selected_objects) != 2:
-            return self.error("Please select exactly two mesh objects.")
+        if not self.poll(context):
+            return self.error("Please select exactly two Mesh objects, one in Edit Mode.")
 
-        # Identify edited and non-edited meshes
-        edited_mesh_obj = context.edit_object
-        # noinspection PyTypeChecker
-        dest_msh_obj = [
-            obj for obj in context.selected_objects if obj != edited_mesh_obj
-        ][0]  # type: bpy.types.MeshObject
-
-        # Check if both are mesh objects
-        if edited_mesh_obj.type != "MESH" or dest_msh_obj.type != "MESH":
-            return self.error("Both selected objects must be of type 'MESH'.")
-
-        settings = bpy.context.scene.mesh_move_settings  # type: MeshMoveSettings
-
-        # Separate selected vertices, edges, and faces in the edited mesh WITHOUT duplicating them
-        bpy.ops.object.mode_set(mode="EDIT")
-        bpy.ops.mesh.separate(type="SELECTED")
-
-        # Switch to OBJECT mode and identify the newly created object
-        bpy.ops.object.mode_set(mode="OBJECT")
-        try:
-            # noinspection PyTypeChecker
-            temp_obj = [
-                obj for obj in context.selected_objects
-                if obj != edited_mesh_obj and obj != dest_msh_obj
-            ][0]  # type: bpy.types.MeshObject
-        except IndexError:
-            return self.error("Could not identify temporary mesh object used for copy operation.")
-
-        if settings.new_material_index > -1:
-            # Change materials of temp object to materials of destination object, and assign new material index to all.
-            temp_obj.data.materials.clear()
-            for dest_mat in dest_msh_obj.data.materials:
-                temp_obj.data.materials.append(dest_mat)
-            for poly in temp_obj.data.polygons:
-                poly.material_index = 0
-
-        # Join the newly created mesh to the non-edited mesh
-        bpy.ops.object.select_all(action="DESELECT")
-        dest_msh_obj.select_set(True)
-        temp_obj.select_set(True)
-        context.view_layer.objects.active = dest_msh_obj  # copy target
-        bpy.ops.object.join()
-
-        return {"FINISHED"}
+        return move_mesh_selection(self, context, duplicate=False)

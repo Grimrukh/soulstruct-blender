@@ -14,7 +14,6 @@ from dataclasses import dataclass, field
 from enum import IntEnum
 from pathlib import Path
 
-
 from soulstruct.base.models.flver.vertex_array import *
 from soulstruct.base.models.mtd import MTD, MTDShaderCategory
 from soulstruct.darksouls1r.models.mtd import MTDBND
@@ -25,16 +24,57 @@ from soulstruct.utilities.maths import Vector2
 from io_soulstruct.utilities.operators import LoggingOperator
 
 
+class SamplerNames(tp.NamedTuple):
+    """Names of standard samplers for a given game, e.g. `ALBEDO_0 = 'g_Diffuse'`."""
+
+    ALBEDO_0: str  # aka 'Diffuse'
+    SPECULAR_0: str  # aka 'Metallic', 'Reflective'
+    SHININESS_0: str  # aka 'Sheen'; not used by early games
+    NORMAL_0: str  # aka 'Bumpmap'
+
+    ALBEDO_1: str
+    SPECULAR_1: str
+    SHININESS_1: str  # not used by early games
+    NORMAL_1: str
+
+    BLEND_01: str  # not used by early games (vertex color alpha used to blend)
+    DISPLACEMENT: str  # aka 'Height'
+    LIGHTMAP: str
+    DETAIL_NORMAL: str
+
+    def get_color_dict(self, include_normals=False) -> dict[str, str]:
+        """Get only the color-related samplers, with normals NOT included by default."""
+        return {
+            key: value
+            for key, value in self._asdict().items()
+            if key.startswith(("ALBEDO", "SPECULAR", "SHININESS"))
+            or (include_normals and key.startswith("NORMAL"))
+        }
+
+    def as_reverse_dict(self) -> dict[str, str]:
+        return {value: key for key, value in self._asdict().items() if value}
+    
+    def get(self, item: int | str) -> str:
+        """Convenient access."""
+        if isinstance(item, int):
+            return self[item]
+        return self._asdict()[item]
+
+
 @dataclass(slots=True)
 class BaseMaterialShaderInfo(abc.ABC):
     """Various summarized properties that tell Soulstruct how to generate FLVER vertex array layouts and Blender
     shader node trees (for appearance purposes only!)."""
 
+    UVLayer: tp.ClassVar[type[IntEnum]]
+    SAMPLER_NAMES: tp.ClassVar[SamplerNames]
+    PRINCIPLED_INPUTS: tp.ClassVar[dict[str, str]]
+
     shader_stem: str
-    # List of sampler types that FLVER material is expected to have, in order.
-    sampler_types: list[str] = field(default_factory=list)
-    # Ordered dict mapping sampler type names like 'g_Diffuse' to their FLVER-wide UV layer enum.
-    sampler_type_uv_layers: dict[str, IntEnum] = field(default_factory=dict)
+    # List of sampler names that FLVER material is expected to have, in order (e.g. 'g_Diffuse').
+    sampler_names: list[str] = field(default_factory=list)
+    # Ordered dict mapping sampler names like 'g_Diffuse' to their FLVER-wide UV layer enum.
+    sampler_name_uv_layers: dict[str, IntEnum] = field(default_factory=dict)
 
     # Unknown value to write to generated `VertexArrayLayout` elements.
     type_unk_x00: int = 0
@@ -46,7 +86,7 @@ class BaseMaterialShaderInfo(abc.ABC):
     def used_uv_layers(self) -> list[IntEnum]:
         """Value-sorted set of UV layer enums (indices and names) used by all samplers and any other shader function
         (e.g. foliage wind animation), which subclasses will define in overrides."""
-        return sorted(set(self.sampler_type_uv_layers.values()), key=lambda x: x.value)
+        return sorted(set(self.sampler_name_uv_layers.values()), key=lambda x: x.value)
 
     # region Abstract Methods/Properties
 
@@ -81,6 +121,21 @@ class DS1MaterialShaderInfo(BaseMaterialShaderInfo):
         UVWindData0 = 3
         UVWindData1 = 4
 
+    SAMPLER_NAMES: tp.ClassVar[SamplerNames] = SamplerNames(
+        ALBEDO_0="g_Diffuse",
+        SPECULAR_0="g_Specular",
+        SHININESS_0="",
+        NORMAL_0="g_Bumpmap",
+        ALBEDO_1="g_Diffuse_2",
+        SPECULAR_1="g_Specular_2",
+        SHININESS_1="",
+        NORMAL_1="g_Bumpmap_2",
+        BLEND_01="",  # vertex alpha used
+        DISPLACEMENT="g_Height",
+        LIGHTMAP="g_Lightmap",
+        DETAIL_NORMAL="g_DetailBumpmap",
+    )
+
     MTD_DSBH_RE: tp.ClassVar[re.Pattern] = re.compile(r".*\[(D)?(S)?(B)?(H)?\].*")  # TODO: support 'T' (translucency)
     MTD_M_RE: tp.ClassVar[re.Pattern] = re.compile(r".*\[(M|ML|LM)\].*")  # two texture slots (Multiple)
     MTD_L_RE: tp.ClassVar[re.Pattern] = re.compile(r".*\[(L|ML|LM)\].*")  # lightmap texture slot
@@ -88,7 +143,7 @@ class DS1MaterialShaderInfo(BaseMaterialShaderInfo):
     MTD_Dn_RE: tp.ClassVar[re.Pattern] = re.compile(r".*\[Dn\].*")  # unshaded
     # Checked separately: [Dn] (g_Diffuse only), [We] (g_Bumpmap only)
 
-    # TODO: Hardcoding a set of 'foliage' shader prefixes I've encountered in DSR.
+    # TODO: Hardcoding a set of 'foliage' shader prefixes I've encountered in DSR so we can use MTD name.
     MTD_FOLIAGE_PREFIXES: tp.ClassVar[set[str]] = {
         "M_2Foliage",
     }
@@ -153,8 +208,6 @@ class DS1MaterialShaderInfo(BaseMaterialShaderInfo):
     # TODO: Some shaders simply don't use the always-empty 'g_DetailBumpmap', but I can find no reliable way to detect
     #  this from their MTD names alone. I may have to guess that they do unless the MTD file is provided.
 
-    spec: bool = False
-    detb: bool = False  # I don't think these shaders are used in DS1. Also `g_EnvSpcSlotNo = 2`...
     shader_category: MTDShaderCategory = MTDShaderCategory.PHN
 
     # Has one or two extra 'g_Bumpmap' textures and 'g_Snow[Roughness/MetalMask/DiffuseF0]' params.
@@ -164,11 +217,14 @@ class DS1MaterialShaderInfo(BaseMaterialShaderInfo):
     mtd_name: str = ""
 
     @property
+    def has_wind_data_uv(self) -> bool:
+        return self.shader_category in {MTDShaderCategory.FOLIAGE, MTDShaderCategory.IVY}
+
+    @property
     def used_uv_layers(self) -> list[IntEnum]:
-        all_uv_layers = set(self.sampler_type_uv_layers.values())
-        if "Foliage" in self.mtd_name or "Ivy" in self.mtd_name:
-            # Foliage and Ivy shaders use two arrays of UV wind animation data. We put them in global UV 3 and 4.
-            # Note that the second wind UV here (4) is often all zero in the FLVER, but it does exist.
+        all_uv_layers = set(self.sampler_name_uv_layers.values())
+        if self.has_wind_data_uv:
+            # Note that `UVWindData1` here (UV global index 4) is often all zeroes in the FLVER, but it does exist.
             all_uv_layers.add(self.UVLayer.UVWindData0)
             all_uv_layers.add(self.UVLayer.UVWindData1)
         return sorted(all_uv_layers, key=lambda x: x.value)
@@ -192,30 +248,22 @@ class DS1MaterialShaderInfo(BaseMaterialShaderInfo):
             # NOTE: Each MTD may not use certain UV indices -- e.g. 'g_Lightmap' always uses UV index 3, even if there
             # is no second texture slot to use UV index 2. This is obviously desirable to keep the same UV layouts
             # together, and we do the same in Blender.
-            info.sampler_types.append(sampler.sampler_type)
+            info.sampler_names.append(sampler.sampler_type)
             if info.shader_category == MTDShaderCategory.SNOW and sampler.sampler_type == "g_Bumpmap_2":
                 # Unfortunate known case of LIES in DS1. This texture says it uses UV index 2 (1-indexed) but actually
                 # uses the first UV index, even if you add a second UV array manually.
-                info.sampler_type_uv_layers[sampler.sampler_type] = cls.UVLayer.UVTexture0
+                info.sampler_name_uv_layers[sampler.sampler_type] = cls.UVLayer.UVTexture0
                 continue
 
             # Normal texture (1, 2) or lightmap (3).
             uv_index = sampler.uv_index - 1  # 1-indexed -> 0-indexed
-            info.sampler_type_uv_layers[sampler.sampler_type] = cls.UVLayer(uv_index)
+            info.sampler_name_uv_layers[sampler.sampler_type] = cls.UVLayer(uv_index)
 
         blend_mode = mtd.get_param("g_BlendMode", default=0)
         if blend_mode == 1:
             info.edge = True
         elif blend_mode == 2:
             info.alpha = True
-
-        env_spc_slot_no = mtd.get_param("g_EnvSpcSlotNo", default=0)
-        if env_spc_slot_no == 1:
-            info.spec = True
-
-        detail_bump_power = mtd.get_param("g_DetailBump_BumpPower", default=0.0)
-        if detail_bump_power > 0.0:
-            info.detb = True
 
         # TODO: PTDE and DS1R differ here. Only the latter uses 'g_Bumpmap_3'.
         info.has_snow_roughness = mtd.has_param("g_SnowRoughness")  # only present in some Snow shaders
@@ -234,25 +282,25 @@ class DS1MaterialShaderInfo(BaseMaterialShaderInfo):
 
         if dsbh_match := cls.MTD_DSBH_RE.match(mtd_stem):
             if dsbh_match.group(1):
-                info.sampler_types.append("g_Diffuse")
-                info.sampler_type_uv_layers["g_Diffuse"] = cls.UVLayer.UVTexture0
+                info.sampler_names.append("g_Diffuse")
+                info.sampler_name_uv_layers["g_Diffuse"] = cls.UVLayer.UVTexture0
             if dsbh_match.group(2):
-                info.sampler_types.append("g_Specular")
-                info.sampler_type_uv_layers["g_Specular"] = cls.UVLayer.UVTexture0
+                info.sampler_names.append("g_Specular")
+                info.sampler_name_uv_layers["g_Specular"] = cls.UVLayer.UVTexture0
             if dsbh_match.group(3):
-                info.sampler_types.append("g_Bumpmap")
-                info.sampler_type_uv_layers["g_Bumpmap"] = cls.UVLayer.UVTexture0
+                info.sampler_names.append("g_Bumpmap")
+                info.sampler_name_uv_layers["g_Bumpmap"] = cls.UVLayer.UVTexture0
             if dsbh_match.group(4):
-                info.sampler_types.append("g_Height")
-                info.sampler_type_uv_layers["g_Height"] = cls.UVLayer.UVTexture0
+                info.sampler_names.append("g_Height")
+                info.sampler_name_uv_layers["g_Height"] = cls.UVLayer.UVTexture0
         elif cls.MTD_Dn_RE.match(mtd_stem) or cls.MTD_N_RE.match(mtd_stem) or mtd_stem in cls.NORMAL_TO_ALPHA_STEMS:
             # Unshaded skyboxes, mist, some trees, etc.
-            info.sampler_types.append("g_Diffuse")
-            info.sampler_type_uv_layers["g_Diffuse"] = cls.UVLayer.UVTexture0
+            info.sampler_names.append("g_Diffuse")
+            info.sampler_name_uv_layers["g_Diffuse"] = cls.UVLayer.UVTexture0
         elif "[We]" in mtd_stem or mtd_stem in cls.WATER_STEMS:
             # Water has a Bumpmap only.
-            info.sampler_types.append("g_Bumpmap")
-            info.sampler_type_uv_layers["g_Bumpmap"] = cls.UVLayer.UVTexture0
+            info.sampler_names.append("g_Bumpmap")
+            info.sampler_name_uv_layers["g_Bumpmap"] = cls.UVLayer.UVTexture0
         else:
             operator.warning(
                 f"Unusual MTD name '{mtd_name}' could not be parsed for its textures. You may need to define it in "
@@ -260,15 +308,15 @@ class DS1MaterialShaderInfo(BaseMaterialShaderInfo):
             )
 
         if cls.MTD_M_RE.match(mtd_stem):
-            for sampler_type, _ in info.sampler_type_uv_layers:
+            for sampler_type, _ in info.sampler_name_uv_layers:
                 # Second slot for each texture type.
-                info.sampler_types.append(sampler_type + "_2")
-                info.sampler_type_uv_layers[sampler_type + "_2"] = cls.UVLayer.UVTexture1
+                info.sampler_names.append(sampler_type + "_2")
+                info.sampler_name_uv_layers[sampler_type + "_2"] = cls.UVLayer.UVTexture1
 
         if cls.MTD_L_RE.match(mtd_stem):
             # Lightmap is present. Use third slot even if there's no second texture slot.
-            info.sampler_types.append("g_Lightmap")
-            info.sampler_type_uv_layers["g_Lightmap"] = cls.UVLayer.UVLightmap
+            info.sampler_names.append("g_Lightmap")
+            info.sampler_name_uv_layers["g_Lightmap"] = cls.UVLayer.UVLightmap
 
         if "[We]" in mtd_stem or mtd_stem in cls.WATER_STEMS:
             info.shader_category = MTDShaderCategory.WATER
@@ -288,15 +336,13 @@ class DS1MaterialShaderInfo(BaseMaterialShaderInfo):
 
         info.alpha = "_Alp" in mtd_stem
         info.edge = "_Edge" in mtd_stem
-        info.spec = "_Spec" in mtd_stem
-        info.detb = "_DetB" in mtd_stem
 
-        if "g_Bumpmap" in info.sampler_type_uv_layers:
+        if "g_Bumpmap" in info.sampler_name_uv_layers:
             # Add useless 'g_DetailBumpmap' for completion.
             # TODO: Some shaders, even with 'g_Bumpmap', do not have this. I have no way to detect from the name.
             #  Currently assuming that it doesn't matter at all if FLVERs have an (empty) texture definition for it.
-            info.sampler_types.append("g_DetailBumpmap")
-            info.sampler_type_uv_layers["g_DetailBumpmap"] = cls.UVLayer.UVTexture0  # always
+            info.sampler_names.append("g_DetailBumpmap")
+            info.sampler_name_uv_layers["g_DetailBumpmap"] = cls.UVLayer.UVTexture0  # always
 
         return info
 
@@ -320,7 +366,7 @@ class DS1MaterialShaderInfo(BaseMaterialShaderInfo):
 
     @property
     def slot_count(self) -> int:
-        return sum([sampler_type.startswith("g_Diffuse") for sampler_type in self.sampler_types])
+        return sum([sampler_type.startswith("g_Diffuse") for sampler_type in self.sampler_names])
 
     @property
     def is_water(self):
@@ -329,7 +375,7 @@ class DS1MaterialShaderInfo(BaseMaterialShaderInfo):
     @property
     def has_tangent(self):
         """Present IFF bumpmaps are present."""
-        return any(sampler.startswith("g_Bumpmap") for sampler in self.sampler_type_uv_layers)
+        return any(sampler.startswith("g_Bumpmap") for sampler in self.sampler_name_uv_layers)
 
     @property
     def has_bitangent(self):
@@ -341,11 +387,11 @@ class DS1MaterialShaderInfo(BaseMaterialShaderInfo):
 
     @property
     def has_lightmap(self):
-        return "g_Lightmap" in self.sampler_type_uv_layers
+        return "g_Lightmap" in self.sampler_name_uv_layers
 
     @property
     def has_detail_bumpmap(self):
-        return "g_DetailBumpmap" in self.sampler_type_uv_layers
+        return "g_DetailBumpmap" in self.sampler_name_uv_layers
 
     def get_map_piece_layout(self) -> VertexArrayLayout:
         """Get a standard DS1 map piece layout with the given number of UV layers."""
@@ -422,6 +468,21 @@ class BBMaterialShaderInfo(BaseMaterialShaderInfo):
         UVWindData0 = 3
         UVWindData1 = 4
 
+    SAMPLER_NAMES: tp.ClassVar[SamplerNames] = SamplerNames(
+        ALBEDO_0="g_DiffuseTexture",  # A
+        SPECULAR_0="g_SpecularTexture",  # R
+        SHININESS_0="g_ShininessTexture",  # S
+        NORMAL_0="g_BumpmapTexture",  # N
+        ALBEDO_1="g_DiffuseTexture2",  # NOTE: no underscore before 2 in Bloodborne
+        SPECULAR_1="g_SpecularTexture2",
+        SHININESS_1="g_ShininessTexture2",
+        NORMAL_1="g_Bumpmap2",
+        BLEND_01="g_BlendMaskTexture",
+        DISPLACEMENT="g_DisplacementTexture",
+        LIGHTMAP="g_LightmapTexture",
+        DETAIL_NORMAL="g_DetailBumpmapTexture",  # TODO: confirm (if even used)
+    )
+
     ARSN_RE: tp.ClassVar[re.Pattern] = re.compile(r".*\[(A)?(R)?(S)?(N)?\].*")
     M_RE: tp.ClassVar[re.Pattern] = re.compile(r".*_m(_.*|$)")  # two texture slots (Multiple)
     L_RE: tp.ClassVar[re.Pattern] = re.compile(r".*_l(_.*|$)")  # lightmap texture slot
@@ -450,20 +511,16 @@ class BBMaterialShaderInfo(BaseMaterialShaderInfo):
             # NOTE: Each MTD may not use certain UV indices -- e.g. 'g_Lightmap' always uses UV index 3, even if there
             # is no second texture slot to use UV index 2. This is obviously desirable to keep the same UV layouts
             # together, and we do the same in Blender.
-            info.sampler_types.append(sampler.sampler_type)
+            info.sampler_names.append(sampler.sampler_type)
             # TODO: Check for 'UV index lies' like in `FRPG_Snow` shader in DS1.
             uv_index = sampler.uv_index - 1  # 1-indexed -> 0-indexed
-            info.sampler_type_uv_layers[sampler.sampler_type] = cls.UVLayer(uv_index)
+            info.sampler_name_uv_layers[sampler.sampler_type] = cls.UVLayer(uv_index)
 
         blend_mode = mtd.get_param("g_BlendMode", default=0)
         if blend_mode == 1:
             info.edge = True
         elif blend_mode == 2:
             info.alpha = True
-
-        env_spc_slot_no = mtd.get_param("g_EnvSpcSlotNo", default=0)
-        if env_spc_slot_no == 1:
-            info.spec = True
 
         return info
 
@@ -480,25 +537,25 @@ class BBMaterialShaderInfo(BaseMaterialShaderInfo):
         if arsn_match := cls.ARSN_RE.match(mtd_stem):
             # NOTE: The 'ARSN' initials don't match up with the sampler slot names (except Shininess).
             if arsn_match.group(1):
-                info.sampler_types.append("g_DiffuseTexture")  # Albedo
-                info.sampler_type_uv_layers["g_DiffuseTexture"] = cls.UVLayer.UVTexture0
+                info.sampler_names.append("g_DiffuseTexture")  # Albedo
+                info.sampler_name_uv_layers["g_DiffuseTexture"] = cls.UVLayer.UVTexture0
             if arsn_match.group(2):
-                info.sampler_types.append("g_SpecularTexture")  # Reflective
-                info.sampler_type_uv_layers["g_SpecularTexture"] = cls.UVLayer.UVTexture0
+                info.sampler_names.append("g_SpecularTexture")  # Reflective
+                info.sampler_name_uv_layers["g_SpecularTexture"] = cls.UVLayer.UVTexture0
             if arsn_match.group(3):
-                info.sampler_types.append("g_ShininessTexture")  # Shininess
-                info.sampler_type_uv_layers["g_ShininessTexture2"] = cls.UVLayer.UVTexture0
+                info.sampler_names.append("g_ShininessTexture")  # Shininess
+                info.sampler_name_uv_layers["g_ShininessTexture2"] = cls.UVLayer.UVTexture0
             if arsn_match.group(4):
-                info.sampler_types.append("g_BumpmapTexture")  # Normal
-                info.sampler_type_uv_layers["g_BumpmapTexture"] = cls.UVLayer.UVTexture0
+                info.sampler_names.append("g_BumpmapTexture")  # Normal
+                info.sampler_name_uv_layers["g_BumpmapTexture"] = cls.UVLayer.UVTexture0
         elif cls.Dn_RE.match(mtd_stem):
             # Unshaded skyboxes, mist, some trees, etc.
-            info.sampler_types.append("g_DiffuseTexture")
-            info.sampler_type_uv_layers["g_DiffuseTexture"] = cls.UVLayer.UVTexture0
+            info.sampler_names.append("g_DiffuseTexture")
+            info.sampler_name_uv_layers["g_DiffuseTexture"] = cls.UVLayer.UVTexture0
         # TODO: water samplers?
         # elif "[We]" in mtd_stem or mtd_stem in cls.WATER_STEMS:
         #     # Water has a Bumpmap only.
-        #     info.sampler_types.append("g_BumpmapTexture")
+        #     info.sampler_names.append("g_BumpmapTexture")
         #     info.sampler_type_uv_indices["g_BumpmapTexture"] = 1
         else:
             operator.warning(
@@ -507,15 +564,15 @@ class BBMaterialShaderInfo(BaseMaterialShaderInfo):
             )
 
         if cls.M_RE.match(mtd_stem):
-            for sampler_type in info.sampler_type_uv_layers:
+            for sampler_type in info.sampler_name_uv_layers:
                 # Second slot for each texture type.
-                info.sampler_types.append(sampler_type + "2")  # no underscore
-                info.sampler_type_uv_layers[sampler_type + "2"] = cls.UVLayer.UVTexture1
+                info.sampler_names.append(sampler_type + "2")  # no underscore
+                info.sampler_name_uv_layers[sampler_type + "2"] = cls.UVLayer.UVTexture1
 
         if cls.L_RE.match(mtd_stem):
             # Lightmap is present. Slot is 3 even if there's no second texture slot.
-            info.sampler_types.append("g_Lightmap")
-            info.sampler_type_uv_layers["g_Lightmap"] = cls.UVLayer.UVLightmap
+            info.sampler_names.append("g_Lightmap")
+            info.sampler_name_uv_layers["g_Lightmap"] = cls.UVLayer.UVLightmap
 
         # TODO: needs work
         if "water" in mtd_stem.lower():
@@ -526,14 +583,13 @@ class BBMaterialShaderInfo(BaseMaterialShaderInfo):
 
         info.alpha = "_alp" in mtd_stem.lower()
         info.edge = "_edge" in mtd_stem.lower()
-        info.spec = False
 
-        if "g_Bumpmap" in info.sampler_type_uv_layers:
+        if "g_Bumpmap" in info.sampler_name_uv_layers:
             # Add useless 'g_DetailBumpmap' for completion.
             # TODO: Some shaders, even with 'g_Bumpmap', do not have this. I have no way to detect from the name.
             #  Currently assuming that it doesn't matter at all if FLVERs have an (empty) texture definition for it.
-            info.sampler_types.append("g_DetailBumpmap")
-            info.sampler_type_uv_layers["g_DetailBumpmap"] = cls.UVLayer.UVTexture0  # always
+            info.sampler_names.append("g_DetailBumpmap")
+            info.sampler_name_uv_layers["g_DetailBumpmap"] = cls.UVLayer.UVTexture0  # always
 
         return info
 
@@ -557,7 +613,7 @@ class BBMaterialShaderInfo(BaseMaterialShaderInfo):
 
     @property
     def slot_count(self) -> int:
-        return sum([sampler_type.startswith("g_Diffuse") for sampler_type in self.sampler_types])
+        return sum([sampler_type.startswith("g_Diffuse") for sampler_type in self.sampler_names])
 
     @property
     def is_water(self):
@@ -566,7 +622,7 @@ class BBMaterialShaderInfo(BaseMaterialShaderInfo):
     @property
     def has_tangent(self):
         """Present IFF bumpmaps are present."""
-        return any(sampler.startswith("g_Bumpmap") for sampler in self.sampler_type_uv_layers)
+        return any(sampler.startswith("g_Bumpmap") for sampler in self.sampler_name_uv_layers)
 
     @property
     def has_bitangent(self):
@@ -575,14 +631,14 @@ class BBMaterialShaderInfo(BaseMaterialShaderInfo):
 
     @property
     def has_lightmap(self):
-        return "g_Lightmap" in self.sampler_type_uv_layers
+        return "g_Lightmap" in self.sampler_name_uv_layers
 
     @property
     def has_detail_bumpmap(self):
-        return "g_DetailBumpmap" in self.sampler_type_uv_layers
+        return "g_DetailBumpmap" in self.sampler_name_uv_layers
 
     def get_map_piece_layout(self) -> VertexArrayLayout:
-        """Get a standard DS1 map piece layout."""
+        """Get a standard BB map piece layout. TODO: Confirm. Also, does BB still use Bitangent or Tangent x2?"""
 
         data_types = [  # always present
             VertexPosition(VertexDataFormatEnum.Float3, 0),
@@ -603,10 +659,6 @@ class BBMaterialShaderInfo(BaseMaterialShaderInfo):
 
         # Calculate total UV map count and use a combination of UVPair and UV format members below.
         uv_count = len(self.used_uv_layers)
-        if uv_count > 4:
-            # TODO: Might be an unnecessary assertion. True for DS1, for sure.
-            raise ValueError(f"Cannot have more than 4 UV maps in a vertex array (got {uv_count}).")
-
         uv_member_index = 0
         while uv_count > 0:  # extra UVs
             # For odd counts, single UV member is added first.
@@ -626,7 +678,7 @@ class BBMaterialShaderInfo(BaseMaterialShaderInfo):
         return VertexArrayLayout(data_types)
 
     def get_character_layout(self) -> VertexArrayLayout:
-        """Get a standard vertex array layout for character (and probably object) materials in DS1."""
+        """Get a standard vertex array layout for character (and probably object) materials in BB. TODO: Confirm."""
         data_types = [
             VertexPosition(VertexDataFormatEnum.Float3, 0),
             VertexBoneIndices(VertexDataFormatEnum.FourBytesB, 0),
@@ -656,6 +708,22 @@ class ERMaterialShaderInfo(BaseMaterialShaderInfo):
         UVBlend01 = 1
         UVTexture1 = 2
         # TODO
+
+    # TODO: Elden Ring sampler names contain other indices and junk.
+    SAMPLER_NAMES: tp.ClassVar[SamplerNames] = SamplerNames(
+        ALBEDO_0="g_DiffuseTexture",
+        SPECULAR_0="g_SpecularTexture",
+        SHININESS_0="g_ShininessTexture",
+        NORMAL_0="g_BumpmapTexture",
+        ALBEDO_1="g_DiffuseTexture2",
+        SPECULAR_1="g_SpecularTexture2",
+        SHININESS_1="g_ShininessTexture2",
+        NORMAL_1="g_BumpmapTexture2",
+        BLEND_01="g_BlendMaskTexture",
+        LIGHTMAP="g_LightmapTexture",
+        DISPLACEMENT="",  # TODO
+        DETAIL_NORMAL="",  # TODO
+    )
 
     METAPARAMS: tp.ClassVar[dict[str, list[dict[str, str]]]] = read_json(
         Path(__file__).parent / "resources/er_shader_metaparams.json"
@@ -711,7 +779,7 @@ class ERMaterialShaderInfo(BaseMaterialShaderInfo):
         info = cls(shader_stem=matbin.shader_stem)
 
         for sampler in matbin.samplers:
-            info.sampler_types.append(sampler.sampler_type)
+            info.sampler_names.append(sampler.sampler_type)
             # TODO: How to detect UV index in ER?
 
         # Still here, like in MTD.
@@ -745,7 +813,7 @@ class ERMaterialShaderInfo(BaseMaterialShaderInfo):
                 grouped_sampler_types.setdefault(group_name, []).append(sampler["name"])
 
         # Start with default UV layers.
-        info.sampler_type_uv_layers = {sampler.sampler_type: cls.UVLayer.UVTexture0 for sampler in matbin.samplers}
+        info.sampler_name_uv_layers = {sampler.sampler_type: cls.UVLayer.UVTexture0 for sampler in matbin.samplers}
 
         first_texture_found = False  # first group uses UV index 0; remainder all use index 2 for non-blend textures
         for group_name in sorted(grouped_sampler_types):
@@ -770,15 +838,15 @@ class ERMaterialShaderInfo(BaseMaterialShaderInfo):
                 is_fur_blur = False
                 for sampler in sampler_types:
                     if "albedo" in sampler.lower() or "metallic" in sampler.lower() or "normal" in sampler.lower():
-                        info.sampler_type_uv_layers[sampler] = (
+                        info.sampler_name_uv_layers[sampler] = (
                             cls.UVLayer.UVTexture0 if not first_texture_found else cls.UVLayer.UVTexture1
                         )
                         if "furblurnoise" in str(matbin.get_sampler_path(sampler)):
                             is_fur_blur = True
                     elif "mask" in sampler.lower():  # will catch "blendmask"
-                        info.sampler_type_uv_layers[sampler] = cls.UVLayer.UVBlend01
+                        info.sampler_name_uv_layers[sampler] = cls.UVLayer.UVBlend01
                     elif "mask3" in sampler.lower():
-                        info.sampler_type_uv_layers[sampler] = cls.UVLayer.UVTexture0  # being explicit
+                        info.sampler_name_uv_layers[sampler] = cls.UVLayer.UVTexture0  # being explicit
                     # Otherwise, leave as default 0.
                 if not is_fur_blur:
                     first_texture_found = True
@@ -786,7 +854,7 @@ class ERMaterialShaderInfo(BaseMaterialShaderInfo):
                 # Just check for blend samplers and leave others as UV index 0.
                 for sampler in sampler_types:
                     if "mask" in sampler.lower():  # will catch "blendmask"
-                        info.sampler_type_uv_layers[sampler] = cls.UVLayer.UVBlend01
+                        info.sampler_name_uv_layers[sampler] = cls.UVLayer.UVBlend01
 
         # TODO: Notes.
         #  - The sampler types have prefixes from the shader stem, with square brackets replaced by underscores,

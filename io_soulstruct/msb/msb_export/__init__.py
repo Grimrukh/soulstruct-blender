@@ -32,6 +32,7 @@ class MSBExportPanel(bpy.types.Panel):
 
         for prop in (
             "export_textures",
+            "create_lod_face_sets",
             "base_edit_bone_length",
             "allow_missing_textures",
             "allow_unknown_texture_types",

@@ -34,7 +34,7 @@ from pathlib import Path
 import bpy
 import bpy.ops
 
-from soulstruct.base.models.flver import FLVER
+from soulstruct.base.models.flver import FLVER, Version
 from soulstruct.containers import Binder
 
 from io_soulstruct.utilities import *
@@ -67,6 +67,7 @@ class BaseFLVERImportOperator(LoggingImportOperator):
         texture_manager = TextureImportManager(self.settings(context))
 
         import_settings = context.scene.flver_import_settings  # type: FLVERImportSettings
+        use_matbinbnd = False  # auto-set if first FLVER is from Sekiro/Elden Ring
 
         for source_path in self.file_paths:
 
@@ -79,6 +80,8 @@ class BaseFLVERImportOperator(LoggingImportOperator):
                     for flver in binder_flvers:
                         self.find_extra_textures(source_path, flver, texture_manager)
                 for flver in binder_flvers:
+                    if flver.version == Version.Sekiro_EldenRing:
+                        use_matbinbnd = True
                     flvers.append((flver.path.name.split(".")[0], flver))
             else:  # e.g. loose Map Piece FLVER
                 flver = FLVER.from_path(source_path)
@@ -87,6 +90,11 @@ class BaseFLVERImportOperator(LoggingImportOperator):
                     self.find_extra_textures(source_path, flver, texture_manager)
                 flvers.append((source_path.name.split(".")[0], flver))
 
+        if use_matbinbnd:
+            self.info("Using MATBINBND for Sekiro/Elden Ring FLVERs.")
+        else:
+            self.info("Using MTDBND for pre-Sekiro FLVERs.")
+
         settings = self.settings(context)
         settings.save_settings()
         importer = FLVERImporter(
@@ -94,7 +102,8 @@ class BaseFLVERImportOperator(LoggingImportOperator):
             context,
             settings,
             texture_import_manager=texture_manager,
-            mtdbnd=settings.get_mtdbnd(self),
+            mtdbnd=settings.get_mtdbnd(self) if not use_matbinbnd else None,
+            matbinbnd=settings.get_matbinbnd(self) if use_matbinbnd else None,
         )
 
         bl_mesh = None

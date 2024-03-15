@@ -180,8 +180,8 @@ class FLVERExporter:
             mesh,
             bl_bone_names,
             use_chr_layout=read_bone_type == "EDIT",
-            strip_bl_material_prefix=dummy_material_prefix,
             normal_tangent_dot_max=export_settings.normal_tangent_dot_max,
+            create_lod_face_sets=export_settings.create_lod_face_sets,
             material_infos=material_infos,
         )
 
@@ -265,8 +265,8 @@ class FLVERExporter:
         bl_mesh: bpy.types.MeshObject,
         bl_bone_names: list[str],
         use_chr_layout: bool,
-        strip_bl_material_prefix: str,
         normal_tangent_dot_max: float,
+        create_lod_face_sets: bool,
         material_infos: list[BaseMaterialShaderInfo],
     ):
         """
@@ -283,16 +283,20 @@ class FLVERExporter:
         for material_info, bl_material in zip(material_infos, bl_mesh.data.materials):
             # Some Blender materials may be variants representing distinct Submesh/FaceSet properties; these will be
             # mapped to the same FLVER `Material`/`VertexArrayLayout` combo (created here).
-            flver_material = self.export_material(bl_material, material_info, strip_bl_material_prefix)
+            flver_material = self.export_material(bl_material, material_info)
             if use_chr_layout:
                 array_layout = material_info.get_character_layout()
             else:
                 array_layout = material_info.get_map_piece_layout()
+            # We only respect 'Face Set Count' if requested in export options. (Duplicating the main face set is only
+            # viable in older games with low-res meshes, but those same games don't even really need LODs anyway.)
+            face_set_count = get_bl_prop(bl_material, "Face Set Count", int, default=1) if create_lod_face_sets else 1
             submesh_kwargs = {
                 "is_bind_pose": get_bl_prop(bl_material, "Is Bind Pose", int, default=use_chr_layout, callback=bool),
                 "default_bone_index": get_bl_prop(bl_material, "Default Bone Index", int, default=0),
                 "use_backface_culling": bl_material.use_backface_culling,
                 "uses_bounding_box": True,  # TODO: assumption (DS1 and likely all later games)
+                "face_set_count": face_set_count,
             }
             submesh_info.append(SplitSubmeshDef(
                 flver_material, array_layout, submesh_kwargs, [layer.name for layer in material_info.used_uv_layers]
@@ -572,7 +576,7 @@ class FLVERExporter:
 
         # Create an object for the mesh so we can apply the Data Transfer modifier to it.
         # noinspection PyTypeChecker
-        tri_mesh_obj = bpy.data.objects.new("__TEMP_FLVER_OBJ__", tri_mesh_data)  # type: bpy.types.MeshObject
+        tri_mesh_obj = new_mesh_object("__TEMP_FLVER_OBJ__", tri_mesh_data)
         self.context.collection.objects.link(tri_mesh_obj)
 
         if do_data_transfer:
@@ -790,7 +794,7 @@ class FLVERExporter:
         self,
         bl_material: bpy.types.Material,
         material_info: BaseMaterialShaderInfo,
-        prefix: str,
+        split_square_brackets=True,
     ) -> Material:
         """Create a FLVER material from Blender material custom properties and texture nodes.
 
@@ -801,7 +805,9 @@ class FLVERExporter:
         Texture paths are taken from the 'Path[]' custom property on the Blender material, if it exists. Otherwise, the
         texture name is used as the path, with '.tga' appended.
         """
-        name = bl_material.name.removeprefix(prefix).strip() if prefix else bl_material.name
+        name = bl_material.name
+        if split_square_brackets:
+            name = name.split("[")[0].rstrip()  # remove all the suffixes we added (plus any Blender duplicate suffix)
 
         export_settings = self.context.scene.flver_export_settings  # type: FLVERExportSettings
 
@@ -813,74 +819,102 @@ class FLVERExporter:
         )
         # TODO: Read `GXItem` custom properties.
 
-        texture_nodes = {node.name: node for node in bl_material.node_tree.nodes if node.type == "TEX_IMAGE"}
-        flver_textures = []
-        for sampler_type in material_info.sampler_types:
-            if sampler_type not in texture_nodes:
-                # Only 'g_DetailBumpmap' can always be omitted from node tree entirely, as it's always empty (in DS1).
-                if sampler_type != "g_DetailBumpmap":
-                    raise FLVERExportError(
-                        f"Could not find a shader node for required texture type '{sampler_type}' in material "
-                        f"'{bl_material.name}'. You must create an Image Texture node and give it this name, "
-                        f"then assign a Blender image to it. (You do not have to connect the node to any others.)"
+        # We read texture names for sampler types from the material node tree. The `material_info` lets us map common
+        # sampler names (e.g. 'ALBEDO_0') to their game-specific sampler names (e.g. 'g_Diffuse').
+        common_names = material_info.SAMPLER_NAMES._asdict()
+
+        # Build a dictionary mapping game-specific sampler names to their corresponding texture nodes.
+        texture_nodes = {}
+        for node in bl_material.node_tree.nodes:
+            if node.type != "TEX_IMAGE":
+                continue
+            if node.name in common_names:
+                # Redirect common name to game-specific name (if defined).
+                if not common_names[node.name]:
+                    self.warning(
+                        f"This game does not have a sampler name for common texture type '{node.name}'. Ignoring this "
+                        f"texture."
+                    )
+                texture_nodes[common_names[node.name]] = node
+            elif node.name in material_info.sampler_names:
+                # Node has a game-specific sampler name like 'g_Diffuse' (e.g. legacy). Use directly.
+                texture_nodes[node.name] = node
+            else:
+                # Unknown texture type (node name).
+                if not export_settings.allow_unknown_texture_types:
+                    self.warning(
+                        f"Unknown texture type (node name) in material '{bl_material.name}': {node.name}. You can "
+                        f"enable 'Allow Unknown Texture Types' to forcibly export it to the FLVER material as this "
+                        f"texture type."
                     )
                 else:
-                    texture_path = ""  # missing
+                    self.warning(
+                        f"Unknown texture type (node name) in material '{bl_material.name}': {node.name}. Exporting "
+                        f"to the FLVER material as this texture type."
+                    )
+                    texture_nodes[node.name] = node
+
+        flver_textures = []
+
+        # TODO: Expand for later games.
+        allowed_missing_sampler_names = {material_info.SAMPLER_NAMES.get("DETAIL_NORMAL")}
+
+        # We search for each texture this `material_info` expects.
+        for sampler_name in material_info.sampler_names:
+            if sampler_name not in texture_nodes:
+                if sampler_name not in allowed_missing_sampler_names:
+                    raise FLVERExportError(
+                        f"Could not find a shader node for required texture type '{sampler_name}' in material "
+                        f"'{bl_material.name}'. You must create an Image Texture node and give it this name, "
+                        f"then assign a Blender image to it (or leave the Image empty and enable 'Allow Missing "
+                        f"Textures'). You do not have to connect the node to any others."
+                    )
+                else:
+                    texture_path = ""  # always allowed to be missing
             else:
-                tex_node = texture_nodes.pop(sampler_type)
+                tex_node = texture_nodes.pop(sampler_name)
                 if tex_node.image is None:
-                    if sampler_type != "g_DetailBumpmap" and not export_settings.allow_missing_textures:
+                    if sampler_name not in allowed_missing_sampler_names and not export_settings.allow_missing_textures:
                         raise FLVERExportError(
-                            f"Texture node '{tex_node.name}' in material '{bl_material.name}' has no image assigned. "
+                            f"Texture node '{tex_node.name}' in material '{bl_material.name}' has no Image assigned. "
                             f"You must assign a Blender texture to this node, or enable 'Allow Missing Textures' in "
                             f"the FLVER export options."
                         )
                     texture_path = ""  # missing
                 else:
                     texture_stem = Path(tex_node.image.name).stem
-                    # Look for a custom 'Path[]' property on material, or default to lone texture name.
-                    # Note that DS1, at least, works fine when full texture paths are omitted.
+                    # Look for a custom 'Path[]' property on material for this texture stem, or default to lone texture
+                    # name. Note that DS1, at least, works fine when full texture paths are omitted.
+                    # TODO: Later games do not use TGA (e.g. Elden Ring uses TIF, although texture names generally
+                    #  aren't written to FLVER at all, as they appear in MATBIN).
+                    # TODO: For Elden Ring FLVER export, we could check if the texture name does NOT match the MATBIN,
+                    #  and write it to the FLVER as an override if so?
                     texture_path = bl_material.get(f"Path[{texture_stem}]", f"{texture_stem}.tga")
 
                     self.collected_texture_images[texture_stem] = tex_node.image
 
             flver_texture = Texture(
                 path=texture_path,
-                texture_type=sampler_type,
+                texture_type=sampler_name,
             )
             flver_textures.append(flver_texture)
 
-        # TODO: Haven't quite figured out what the deal is with g_DetailBumpmap being present or absent, but for
-        #  now, I'm allowing it to be written to the FLVER automatically.
-        if "g_DetailBumpmap" in texture_nodes:
-            tex_node = texture_nodes.pop("g_DetailBumpmap")
-            if tex_node.image is None:
-                texture_path = ""  # missing (fine)
-            else:
-                texture_stem = Path(tex_node.image.name).stem
-                texture_path = bl_material.get(f"Path[{texture_stem}]", f"{texture_stem}.tga")
-                self.collected_texture_images[texture_stem] = tex_node.image
-            flver_texture = Texture(
-                path=texture_path,
-                texture_type="g_DetailBumpmap",
-            )
-            flver_textures.append(flver_texture)
+        # TODO: Some DS1 FLVERs have an (empty) 'g_DetailBumpmap' texture even when their MTD shader does not use it.
+        #  I'm sure this is totally harmless behavior, but I don't bother exporting it if the MTD doesn't list it.
+
+        # Remove allowed missing names, so we never complain about them being 'unknown' below.
+        for sampler_name in allowed_missing_sampler_names:
+            texture_nodes.pop(sampler_name, None)
 
         if texture_nodes:
-            # Unknown node textures remain.
-            if not export_settings.allow_unknown_texture_types:
-                raise FLVERExportError(
-                    f"Unknown texture types (node names) in material '{bl_material.name}': "
-                    f"{list(texture_nodes.keys())}. You can enable 'Allow Unknown Texture Types' to export it anyway."
-                )
+            # Unknown node textures remain. We already warned about them when collecting nodes, so we just export now.
             # TODO: Currently assuming that FLVER material texture order doesn't matter (due to texture type).
             #  If it does, we'll need to sort them here, probably based on node location Y.
-            for unk_texture_type, tex_node in texture_nodes.items():
-                sampler_type = tex_node.name
+            for unk_sampler_name, tex_node in texture_nodes.items():
                 if not tex_node.image:
                     if not export_settings.allow_missing_textures:
                         raise FLVERExportError(
-                            f"Unknown texture node '{sampler_type}' in material '{bl_material.name}' has no image "
+                            f"Unknown texture node '{unk_sampler_name}' in material '{bl_material.name}' has no image "
                             f"assigned. You must assign a Blender texture to this node, or enable 'Allow Missing "
                             f"Textures' in the FLVER export options."
                         )
@@ -892,7 +926,7 @@ class FLVERExporter:
 
                 flver_texture = Texture(
                     path=texture_path,
-                    texture_type=sampler_type,
+                    texture_type=unk_sampler_name,
                 )
                 flver_textures.append(flver_texture)
 
@@ -900,7 +934,11 @@ class FLVERExporter:
 
         return flver_material
 
-    def get_flver_props(self, bl_obj: bpy.types.MeshObject, game: Game) -> dict[str, tp.Any]:
+    def get_flver_props(
+        self,
+        bl_obj: bpy.types.Object,
+        game: Game,
+    ) -> dict[str, tp.Any]:
         """Retrieve FLVER properties from custom properties on given object, which will be the Armature if present and
         Mesh otherwise (permitted for basic Map Pieces).
 

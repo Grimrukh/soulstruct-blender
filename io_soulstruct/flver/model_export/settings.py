@@ -16,6 +16,14 @@ class FLVERExportSettings(bpy.types.PropertyGroup):
         default=False,
     )
 
+    create_lod_face_sets: bpy.props.BoolProperty(
+        name="Create LOD Face Sets",
+        description="Duplicate exported meshes (face set 0) to additional LOD face sets based on each material's "
+                    "'Face Set Count'. Not recommended for later games with high-resolution meshes (unfortunately no "
+                    "good solution for this yet)",
+        default=False,
+    )
+
     base_edit_bone_length: bpy.props.FloatProperty(
         name="Base Edit Bone Length",
         description="Length of edit bones corresponding to bone scale 1",

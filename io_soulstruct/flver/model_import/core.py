@@ -142,10 +142,9 @@ class FLVERImporter:
 
         return bl_armature_obj, bl_flver_mesh  # might be used by other importers
 
-    def create_mesh_armature_modifier(self, bl_mesh: bpy.types.MeshObject, bl_armature: bpy.types.ArmatureObject):
-        self.operator.set_active_obj(bl_mesh)
-        bpy.ops.object.modifier_add(type="ARMATURE")
-        armature_mod = bl_mesh.modifiers["Armature"]
+    @staticmethod
+    def create_mesh_armature_modifier(bl_mesh: bpy.types.MeshObject, bl_armature: bpy.types.ArmatureObject):
+        armature_mod = bl_mesh.modifiers.new("Armature", "ARMATURE")
         armature_mod.object = bl_armature
         armature_mod.show_in_editmode = True
         armature_mod.show_on_cage = True
@@ -224,9 +223,10 @@ class FLVERImporter:
                 bl_material_index = len(self.new_materials)
                 material_info = flver_material_infos[material_hash]
 
-                # Create a relatively informative material name.
+                # Create a relatively informative material name. We use material index, mat def, and model name as a
+                # suffix to maximize the chances of a unique Blender name.
                 bl_material_name = (
-                    f"{self.name} {flver_material_index} {material.mat_def_stem} ({material_info.shader_stem})"
+                    f"{material.name} [{flver_material_index} | {material.mat_def_stem}) | {self.name}]"
                 )
 
                 bl_material = create_submesh_blender_material(
@@ -273,9 +273,25 @@ class FLVERImporter:
                 continue
 
             # No match found. New Blender material variant is needed to hold unique submesh data.
+            # Since the most common cause of a variant is backface culling being enabled vs. disabled, that difference
+            # gets its own prefix: we add ' <BC>' to the end of whichever variant has backface culling enabled.
             variant_index = len(existing_variant_bl_indices)
             first_material = self.new_materials[existing_variant_bl_indices[0]]
-            variant_name = first_material.name + f" <V{variant_index}>"
+            variant_name = first_material.name + f" <V{variant_index}>"  # may be replaced below
+
+            if (
+                bool(first_material["Is Bind Pose"]) == submesh.is_bind_pose
+                and first_material["Default Bone Index"] == submesh.default_bone_index
+                and first_material["Face Set Count"] == len(submesh.face_sets)
+                and first_material.use_backface_culling != submesh.use_backface_culling
+            ):
+                # Only difference is backface culling.
+                if first_material.use_backface_culling:
+                    variant_name = first_material.name  # swap with first material's name (no BC)
+                    first_material.name += f" <V{variant_index}, BC>"
+                else:
+                    variant_name = first_material.name + f" <V{variant_index}, BC>"  # instead of just variant index
+
             bl_material = create_submesh_blender_material(
                 self.operator,
                 material,
@@ -328,8 +344,10 @@ class FLVERImporter:
         self.operator.to_object_mode()
         self.operator.deselect_all()
 
-        bl_armature_data = bpy.data.armatures.new(f"{self.name} Armature")
-        bl_armature_obj = self.create_obj(f"{self.name}", bl_armature_data)
+        bl_armature_obj = new_armature_object(f"{self.name}", bpy.data.armatures.new(f"{self.name} Armature"))
+        self.collection.objects.link(bl_armature_obj)
+        self.new_objs.append(bl_armature_obj)
+
         self.create_bones(bl_armature_obj, base_edit_bone_length)
 
         # noinspection PyTypeChecker
@@ -445,13 +463,17 @@ class FLVERImporter:
 
         if not flver.submeshes:
             # FLVER has no meshes (e.g. c0000). Leave empty.
-            # noinspection PyTypeChecker
-            return self.create_obj(f"{name} Mesh <EMPTY>", bl_mesh)
+            bl_mesh_obj = new_mesh_object(f"{name} Mesh <EMPTY>", bl_mesh)
+            self.collection.objects.link(bl_mesh_obj)
+            self.new_objs.append(bl_mesh_obj)
+            return bl_mesh_obj
 
         if any(mesh.invalid_layout for mesh in flver.submeshes):
             # Corrupted submeshes (e.g. some DS1R map pieces). Leave empty.
-            # noinspection PyTypeChecker
-            return self.create_obj(f"{name} Mesh <INVALID>", bl_mesh)
+            bl_mesh_obj = new_mesh_object(f"{name} Mesh <INVALID>", bl_mesh)
+            self.collection.objects.link(bl_mesh_obj)
+            self.new_objs.append(bl_mesh_obj)
+            return bl_mesh_obj
 
         # p = time.perf_counter()
         # Create merged mesh.
@@ -464,8 +486,9 @@ class FLVERImporter:
 
         bl_vert_bone_weights, bl_vert_bone_indices = self.create_bm_mesh(bl_mesh, merged_mesh)
 
-        # noinspection PyTypeChecker
-        bl_mesh_obj = self.create_obj(f"{name} Mesh", bl_mesh)  # type: bpy.types.MeshObject
+        bl_mesh_obj = new_mesh_object(f"{name} Mesh", bl_mesh)
+        self.collection.objects.link(bl_mesh_obj)
+        self.new_objs.append(bl_mesh_obj)
 
         self.create_bone_vertex_groups(bl_mesh_obj, bl_vert_bone_weights, bl_vert_bone_indices)
 
@@ -485,9 +508,6 @@ class FLVERImporter:
 
         bm = bmesh.new()
         bm.from_mesh(bl_mesh)  # bring over UV and vertex color data layers
-
-        if len(merged_mesh.loop_vertex_colors) > 1:
-            self.warning("More than one vertex color layer detected. Only the first will be imported into Blender!")
 
         # CREATE BLENDER VERTICES
         for position in merged_mesh.vertex_data["position"]:
@@ -797,7 +817,18 @@ class FLVERImporter:
         to be direct children.
         """
         name = f"{self.name} Dummy<{index}> [{game_dummy.reference_id}]"
-        bl_dummy = self.create_obj(name)  # no data (Empty)
+        bl_dummy = new_empty_object(
+            name,
+            **{
+                "Color RGBA": game_dummy.color_rgba,  # RGBA  # TODO: Use in actual display somehow?
+                "Flag 1": game_dummy.flag_1,  # bool
+                "Use Upward Vector": game_dummy.use_upward_vector,  # bool
+                # NOTE: These two properties are only ever non-zero in Sekiro (and probably Elden Ring).
+                "Unk x30": game_dummy.unk_x30,  # int
+                "Unk x34": game_dummy.unk_x34,  # int
+            }
+        )
+
         bl_dummy.parent = bl_armature
         bl_dummy.empty_display_type = "ARROWS"  # best display type/size I've found (single arrow not sufficient)
         bl_dummy.empty_display_size = 0.05
@@ -829,23 +860,10 @@ class FLVERImporter:
         # attachment above.
         bl_dummy.matrix_world = Matrix.LocRotScale(bl_location, bl_rotation_euler, Vector((1.0, 1.0, 1.0)))
 
-        # NOTE: Reference ID not included as a property.
-        # bl_dummy["reference_id"] = dummy.reference_id  # int
-        bl_dummy["Color RGBA"] = game_dummy.color_rgba  # RGBA  # TODO: Use in actual display somehow?
-        bl_dummy["Flag 1"] = game_dummy.flag_1  # bool
-        bl_dummy["Use Upward Vector"] = game_dummy.use_upward_vector  # bool
-        # NOTE: These two properties are only ever non-zero in Sekiro (and probably Elden Ring).
-        bl_dummy["Unk x30"] = game_dummy.unk_x30  # int
-        bl_dummy["Unk x34"] = game_dummy.unk_x34  # int
+        self.collection.objects.link(bl_dummy)
+        self.new_objs.append(bl_dummy)
 
         return bl_dummy
-
-    def create_obj(self, name: str, data=None):
-        """Create a new Blender object with given `data` and link it to the scene's object collection."""
-        obj = bpy.data.objects.new(name, data)
-        self.collection.objects.link(obj)
-        self.new_objs.append(obj)
-        return obj
 
     def warning(self, msg: str):
         self.operator.warning(msg)

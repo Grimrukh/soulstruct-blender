@@ -54,7 +54,7 @@ def create_flver_model_instance(
     context,
     armature: bpy.types.ArmatureObject | None,
     mesh: bpy.types.MeshObject,
-    linked_name: str,
+    instance_name: str,
     collection: bpy.types.Collection,
     copy_pose=False,
 ) -> tuple[bpy.types.ArmatureObject | None, bpy.types.MeshObject]:
@@ -67,17 +67,17 @@ def create_flver_model_instance(
     If `copy_pose = True`, all bone pose data will be manually copied (typically only for Map Pieces).
     """
 
-    linked_mesh_obj = bpy.data.objects.new(f"{linked_name} Mesh" if armature else linked_name, mesh.data)
-    collection.objects.link(linked_mesh_obj)
+    instance_mesh_obj = bpy.data.objects.new(f"{instance_name} Mesh" if armature else instance_name, mesh.data)
+    collection.objects.link(instance_mesh_obj)
 
     if armature:
-        linked_armature_obj = bpy.data.objects.new(linked_name, armature.data)
-        collection.objects.link(linked_armature_obj)
+        instance_armature_obj = bpy.data.objects.new(instance_name, armature.data)
+        collection.objects.link(instance_armature_obj)
 
         if copy_pose:
             # Copy pose bone transforms.
             context.view_layer.update()  # need Blender to create `linked_armature_obj.pose` now
-            for pose_bone in linked_armature_obj.pose.bones:
+            for pose_bone in instance_armature_obj.pose.bones:
                 source_bone = armature.pose.bones[pose_bone.name]
                 pose_bone.rotation_mode = "QUATERNION"  # should be default but being explicit
                 pose_bone.location = source_bone.location
@@ -85,25 +85,25 @@ def create_flver_model_instance(
                 pose_bone.scale = source_bone.scale
 
         # Parent mesh to armature. This is critical for proper animation behavior (especially with root motion).
-        linked_mesh_obj.parent = linked_armature_obj
+        instance_mesh_obj.parent = instance_armature_obj
         if bpy.ops.object.select_all.poll():
             bpy.ops.object.select_all(action="DESELECT")
-        linked_mesh_obj.select_set(True)
-        context.view_layer.objects.active = linked_mesh_obj
+        instance_mesh_obj.select_set(True)
+        context.view_layer.objects.active = instance_mesh_obj
         bpy.ops.object.modifier_add(type="ARMATURE")
-        armature_mod = linked_mesh_obj.modifiers["Armature"]
-        armature_mod.object = linked_armature_obj
+        armature_mod = instance_mesh_obj.modifiers["Armature"]
+        armature_mod.object = instance_armature_obj
         armature_mod.show_in_editmode = True
         armature_mod.show_on_cage = True
-        linked_armature_obj["Model Name"] = armature.name  # used by exporter to find FLVER properties
+        instance_armature_obj["Model Name"] = armature.name  # used by exporter to find FLVER properties
         # noinspection PyTypeChecker
-        return linked_armature_obj, linked_mesh_obj
+        return instance_armature_obj, instance_mesh_obj
 
     # No armature: link Mesh instead.
-    linked_mesh_obj["Model Name"] = mesh.name  # used by exporter to find FLVER properties
+    instance_mesh_obj["Model Name"] = mesh.name  # used by exporter to find FLVER properties
 
     # noinspection PyTypeChecker
-    return None, linked_mesh_obj
+    return None, instance_mesh_obj
 
 
 def msb_entry_to_obj_transform(msb_entry: BaseMSBPart | BaseMSBRegion, obj: bpy.types.Object):

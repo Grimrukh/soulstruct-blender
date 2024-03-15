@@ -118,7 +118,16 @@ CLASSES = (
     ExportEquipmentFLVER,
 
     FLVERToolSettings,
+    CopyToNewFLVER,
+    CreateFLVERInstance,
+    RenameFLVER,
+    CreateEmptyMapPieceFLVER,
+    SetSmoothCustomNormals,
     SetVertexAlpha,
+    InvertVertexAlpha,
+    MaterialToolSettings,
+    SetMaterialTexture0,
+    SetMaterialTexture1,
     ActivateUVTexture0,
     ActivateUVTexture1,
     ActiveUVLightmap,
@@ -134,7 +143,10 @@ CLASSES = (
     FLVERExportPanel,
     TextureExportSettingsPanel,
     # FLVERLightmapsPanel,  # TODO: not quite ready
-    FLVERToolsPanel,
+    FLVERMeshToolsPanel,
+    FLVERMaterialToolsPanel,
+    FLVERDummyToolsPanel,
+    FLVEROtherToolsPanel,
     FLVERUVMapsPanel,
     # endregion
 
@@ -257,6 +269,7 @@ SCENE_POINTERS = dict(
     texture_export_settings=TextureExportSettings,
     bake_lightmap_settings=BakeLightmapSettings,
     flver_tool_settings=FLVERToolSettings,
+    material_tool_settings=MaterialToolSettings,
     mesh_move_settings=MeshMoveSettings,
     hkx_map_collision_import_settings=HKXMapCollisionImportSettings,
     navmesh_face_settings=NavmeshFaceSettings,
