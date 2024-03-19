@@ -69,7 +69,7 @@ def import_map_piece_model(
         context,
         settings,
         texture_import_manager=texture_manager,
-        collection=get_collection(f"{map_stem} Map Piece Models", context.scene.collection),
+        collection=get_collection(f"{map_stem} Map Piece Models", context.scene.collection, hide_viewport=True),
         mtdbnd=mtdbnd,
     )
 
@@ -92,7 +92,7 @@ def get_map_piece_model(
 ) -> tuple[bpy.types.ArmatureObject | None, bpy.types.MeshObject]:
     """Find or create actual Blender model armature/mesh data."""
     try:
-        return find_flver_model("Map Piece", model_name)
+        return find_flver_model(f"{map_stem} Map Piece", model_name)
     except MissingModelError:
         t = time.perf_counter()
         armature, mesh = import_map_piece_model(operator, context, settings, map_stem, model_name, mtdbnd)

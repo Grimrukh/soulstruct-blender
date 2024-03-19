@@ -283,6 +283,13 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         default=True,
     )
 
+    pack_image_data: bpy.props.BoolProperty(
+        name="Pack Image Data",
+        description="Pack Blender Image texture data into Blend file, rather than simply linking to the cached PNG "
+                    "image on disk (if it exists)",
+        default=False,
+    )
+
     import_bak_file: bpy.props.BoolProperty(
         name="Import BAK File",
         description="Import from '.bak' backup file when auto-importing from project/game directory. If enabled and a "
@@ -913,6 +920,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         self.str_png_cache_directory = json_settings.get("str_png_cache_directory", "")
         self.read_cached_pngs = json_settings.get("read_cached_pngs", True)
         self.write_cached_pngs = json_settings.get("write_cached_pngs", True)
+        self.pack_image_data = json_settings.get("pack_image_data", False)
         self.import_bak_file = json_settings.get("import_bak_file", False)
         self.detect_map_from_collection = json_settings.get("detect_map_from_collection", True)
         self.smart_map_version_handling = json_settings.get("smart_map_version_handling", True)
@@ -933,6 +941,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):
                 "str_png_cache_directory",
                 "read_cached_pngs",
                 "write_cached_pngs",
+                "pack_image_data",
                 "import_bak_file",
                 "detect_map_from_collection",
                 "smart_map_version_handling",

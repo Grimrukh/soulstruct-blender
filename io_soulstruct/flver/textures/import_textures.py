@@ -93,10 +93,18 @@ class ImportTextures(LoggingImportOperator):
         default="NONE",
     )
 
+    smart_texture_slot: bpy.props.IntProperty(
+        name="Smart Texture Group Slot",
+        description="Slot of texture group to assign new textures to in one of the 'Smart' assignment modes",
+        default=0,
+    )
+
     files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'})
     directory: bpy.props.StringProperty(options={'HIDDEN'})
 
     def execute(self, context):
+
+        # TODO: Respect general PNG cache settings, including optional data pack.
 
         all_bl_images = {}
 
@@ -146,51 +154,67 @@ class ImportTextures(LoggingImportOperator):
                 self.info(f"Set imported texture '{texture_name}' to {len(sel)} selected Image Texture node(s).")
             return {"FINISHED"}
 
+        # Smart assignment mode, either material-wide or among selected nodes only.
+
+        slot_suffix = f"_{self.smart_texture_slot}"
         if self.image_node_assignment_mode == "SMART_MATERIAL":
             # Get all nodes in material.
-            sel = [node for node in material_nt.nodes if node.bl_idname == "ShaderNodeTexImage"]
+            sel = [
+                node for node in material_nt.nodes
+                if node.bl_idname == "ShaderNodeTexImage" and node.name.endswith(slot_suffix)
+            ]
         elif self.image_node_assignment_mode == "SMART_TEXTURE":
-            # Get only selected nodes.
-            sel = [node for node in material_nt.nodes if node.select and node.bl_idname == "ShaderNodeTexImage"]
+            # Get only selected nodes in material.
+            sel = [
+                node for node in material_nt.nodes
+                if node.select and node.bl_idname == "ShaderNodeTexImage" and node.name.endswith(slot_suffix)
+            ]
         else:
             raise ValueError(f"Invalid image node assignment mode: {self.image_node_assignment_mode}")
 
         if not sel:
-            self.warning("No selected Image Texture nodes for assigning new texture(s).")
-
-        # Filter texture names to ensure only one of each texture type is present.
-        texture_types = {
-            "g_Diffuse": None,
-            "g_Specular": None,
-            "g_Bumpmap": None,
-            "g_Height": None,
-            "g_Lightmap": None,
-        }
-
-        def register_texture_type(tex_type: str, tex_name: str, check: tp.Callable[[str], bool]):
-            if not check(tex_name):
-                return False
-            if texture_types[tex_type] is not None:
+            if self.image_node_assignment_mode == "SMART_TEXTURE":
                 self.warning(
-                    f"Cannot smart-assign multiple '{tex_type}' textures at once. Ignoring texture: {tex_name}"
+                    f"No selected Image Texture nodes with name slot {self.smart_texture_slot} (e.g. "
+                    f"'ALBEDO_{self.smart_texture_slot}') for assigning new texture(s)."
                 )
             else:
-                texture_types[tex_type] = tex_name
+                self.warning(
+                    f"No material Image Texture nodes with name slot {self.smart_texture_slot} (e.g. "
+                    f"'ALBEDO_{self.smart_texture_slot}') for assigning new texture(s)."
+                )
+
+            return {"FINISHED"}
+
+        # Filter sampler names to ensure only one of each sampler is present.
+        sampler_texture_names = {key: "" for key in ("ALBEDO", "SPECULAR", "NORMAL", "HEIGHT", "LIGHTMAP")}
+
+        def register_sampler_name(sampler_name: str, tex_name: str, check: tp.Callable[[str], bool]):
+            if not check(tex_name):
+                return False
+            if sampler_texture_names[sampler_name]:
+                self.warning(
+                    f"Cannot smart-assign multiple '{sampler_name}' textures at once. Ignoring texture: {tex_name}"
+                )
+            else:
+                sampler_texture_names[sampler_name] = tex_name
             return True
 
         for texture_name, bl_image in all_bl_images.items():
             for args in (
-                ("g_Specular", texture_name, lambda name: name.endswith("_s")),
-                ("g_Bumpmap", texture_name, lambda name: name.endswith("_n")),
-                ("g_Height", texture_name, lambda name: name.endswith("_h")),
-                ("g_Lightmap", texture_name, lambda name: "_lit_" in name),
-                ("g_Diffuse", texture_name, lambda name: name.endswith("")),  # catch-all
+                ("SPECULAR", texture_name, lambda name: name.endswith("_s")),
+                ("NORMAL", texture_name, lambda name: name.endswith("_n")),
+                ("HEIGHT", texture_name, lambda name: name.endswith("_h")),
+                ("LIGHTMAP", texture_name, lambda name: "_lit_" in name),
+                ("ALBEDO", texture_name, lambda name: True),  # catch-all
             ):
-                if register_texture_type(*args):
+                if register_sampler_name(*args):
                     break  # found a match
 
+        # NOTE: It's not possible for NO texture to receive node homes here, because 'ALBEDO' is a catch-all.
+
         for image_node in sel:
-            for texture_type, bl_image in texture_types.items():
+            for texture_type, bl_image in sampler_texture_names.items():
                 if bl_image is None:
                     continue
                 if image_node.name.startswith(texture_type):
@@ -590,12 +614,22 @@ class TextureImportManager:
 
 
 def import_png_as_image(
-    image_name: str, png_data: bytes, write_png_directory: Path = None, replace_existing=False
+    image_name: str, png_data: bytes, write_png_directory: Path = None, replace_existing=False, pack_image_data=False
 ) -> bpy.types.Image:
+    """Import PNG data into Blender as an image, optionally replacing an existing image with the same name.
+
+    If `pack_image_data` is True and `write_png_directory` is given, the PNG data will be embedded in the `.blend` file.
+    Otherwise, it will be linked to the original PNG file.
+    """
     if write_png_directory is None:
         # Use a temporarily file.
         write_png_path = Path(f"~/AppData/Local/Temp/{image_name}.png").expanduser()
         is_temp_png = True
+        if not pack_image_data:
+            _LOGGER.warning(
+                "Must pack PNG image data into Blender file when `write_png_directory` is not given ('Write Cached "
+                "PNGs' disabled)."
+            )
     else:
         write_png_path = write_png_directory / f"{image_name}.png"
         is_temp_png = False
@@ -609,18 +643,17 @@ def import_png_as_image(
         bl_image = bpy.data.images[image_name]
     except KeyError:
         bl_image = bpy.data.images.load(str(write_png_path))
-        bl_image.pack()  # embed PNG in Blend file
+        if is_temp_png or pack_image_data:
+            bl_image.pack()  # embed PNG in Blend file
     else:
-        # TODO: doesn't work (size doesn't update, e.g.)
         if bl_image.packed_file:
             bl_image.unpack(method="USE_ORIGINAL")
         bl_image.filepath_raw = str(write_png_path)
         bl_image.file_format = "PNG"
         bl_image.source = "FILE"
         bl_image.reload()
-        if is_temp_png:
-            # Re-pack temporary PNG into Blend file rather than leaving it linked to non-temp cached PNG file.
-            bl_image.pack()
+        if is_temp_png or pack_image_data:
+            bl_image.pack()  # embed new PNG in Blend file
 
     if is_temp_png:
         write_png_path.unlink(missing_ok=True)

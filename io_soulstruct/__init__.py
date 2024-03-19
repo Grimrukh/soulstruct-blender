@@ -119,6 +119,8 @@ CLASSES = (
 
     FLVERToolSettings,
     CopyToNewFLVER,
+    DeleteFLVER,
+    DeleteFLVERAndData,
     CreateFLVERInstance,
     RenameFLVER,
     CreateEmptyMapPieceFLVER,

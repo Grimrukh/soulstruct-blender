@@ -345,7 +345,8 @@ class FLVERImporter:
         self.operator.deselect_all()
 
         bl_armature_obj = new_armature_object(f"{self.name}", bpy.data.armatures.new(f"{self.name} Armature"))
-        self.collection.objects.link(bl_armature_obj)
+        if self.collection:
+            self.collection.objects.link(bl_armature_obj)
         self.new_objs.append(bl_armature_obj)
 
         self.create_bones(bl_armature_obj, base_edit_bone_length)
@@ -383,6 +384,8 @@ class FLVERImporter:
                 png_path = Path(self.settings.png_cache_directory, f"{texture_stem}.png")
                 if png_path.is_file():
                     bl_image = bpy.data.images.load(str(png_path))
+                    if self.settings.pack_image_data:
+                        bl_image.pack()  # embed Image data into Blend file
                     new_loaded_images.append(bl_image)
                     bl_image_stems.add(texture_stem)
                     continue
@@ -419,6 +422,7 @@ class FLVERImporter:
                     png_data,
                     write_png_directory,
                     replace_existing=texture_stem in image_stems_to_replace,
+                    pack_image_data=self.settings.pack_image_data,
                 )
                 new_loaded_images.append(bl_image)
 
@@ -464,14 +468,16 @@ class FLVERImporter:
         if not flver.submeshes:
             # FLVER has no meshes (e.g. c0000). Leave empty.
             bl_mesh_obj = new_mesh_object(f"{name} Mesh <EMPTY>", bl_mesh)
-            self.collection.objects.link(bl_mesh_obj)
+            if self.collection:
+                self.collection.objects.link(bl_mesh_obj)
             self.new_objs.append(bl_mesh_obj)
             return bl_mesh_obj
 
         if any(mesh.invalid_layout for mesh in flver.submeshes):
             # Corrupted submeshes (e.g. some DS1R map pieces). Leave empty.
             bl_mesh_obj = new_mesh_object(f"{name} Mesh <INVALID>", bl_mesh)
-            self.collection.objects.link(bl_mesh_obj)
+            if self.collection:
+                self.collection.objects.link(bl_mesh_obj)
             self.new_objs.append(bl_mesh_obj)
             return bl_mesh_obj
 
@@ -487,7 +493,8 @@ class FLVERImporter:
         bl_vert_bone_weights, bl_vert_bone_indices = self.create_bm_mesh(bl_mesh, merged_mesh)
 
         bl_mesh_obj = new_mesh_object(f"{name} Mesh", bl_mesh)
-        self.collection.objects.link(bl_mesh_obj)
+        if self.collection:
+            self.collection.objects.link(bl_mesh_obj)
         self.new_objs.append(bl_mesh_obj)
 
         self.create_bone_vertex_groups(bl_mesh_obj, bl_vert_bone_weights, bl_vert_bone_indices)
@@ -563,12 +570,12 @@ class FLVERImporter:
 
         # Create and populate UV and vertex color data layers.
         for i, (uv_layer_name, merged_loop_uv_array) in enumerate(merged_mesh.loop_uvs.items()):
-            self.operator.info(f"Creating UV layer {i}: {uv_layer_name}")
+            # self.operator.info(f"Creating UV layer {i}: {uv_layer_name}")
             uv_layer = bl_mesh.uv_layers.new(name=uv_layer_name, do_init=False)
             loop_uv_data = merged_loop_uv_array[valid_loop_indices].ravel()
             uv_layer.data.foreach_set("uv", loop_uv_data)
         for i, merged_color_array in enumerate(merged_mesh.loop_vertex_colors):
-            self.operator.info(f"Creating Vertex Colors layer {i}: VertexColors{i}")
+            # self.operator.info(f"Creating Vertex Colors layer {i}: VertexColors{i}")
             color_layer = bl_mesh.vertex_colors.new(name=f"VertexColors{i}")
             loop_color_data = merged_color_array[valid_loop_indices].ravel()
             color_layer.data.foreach_set("color", loop_color_data)
@@ -689,6 +696,7 @@ class FLVERImporter:
         #  have their data written to PoseBones. The 'is_bind_pose' custom property of each mesh can likewise be used on
         #  export, once it's confirmed that the same bone does not appear in both types of mesh.
 
+        # We need edit mode to create `EditBones` below.
         self.context.view_layer.objects.active = bl_armature_obj
         if bpy.ops.object.mode_set.poll():
             bpy.ops.object.mode_set(mode="EDIT", toggle=False)

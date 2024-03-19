@@ -42,6 +42,8 @@ class SamplerNames(tp.NamedTuple):
     LIGHTMAP: str
     DETAIL_NORMAL: str
 
+    NORMAL_2: str = ""  # e.g. DS1R snow
+
     def get_color_dict(self, include_normals=False) -> dict[str, str]:
         """Get only the color-related samplers, with normals NOT included by default."""
         return {
@@ -99,13 +101,17 @@ class BaseMaterialShaderInfo(abc.ABC):
         ...
 
     @property
-    @abc.abstractmethod
     def is_water(self) -> bool:
-        ...
+        return False
+
+    @property
+    def is_snow(self) -> bool:
+        return False
 
     @property
     @abc.abstractmethod
     def slot_count(self) -> int:
+        """Usually just counts number of Albedo samplers."""
         ...
 
     # endregion
@@ -134,6 +140,7 @@ class DS1MaterialShaderInfo(BaseMaterialShaderInfo):
         DISPLACEMENT="g_Height",
         LIGHTMAP="g_Lightmap",
         DETAIL_NORMAL="g_DetailBumpmap",
+        NORMAL_2="g_Bumpmap_3",
     )
 
     MTD_DSBH_RE: tp.ClassVar[re.Pattern] = re.compile(r".*\[(D)?(S)?(B)?(H)?\].*")  # TODO: support 'T' (translucency)
@@ -371,6 +378,10 @@ class DS1MaterialShaderInfo(BaseMaterialShaderInfo):
     @property
     def is_water(self):
         return self.shader_category == MTDShaderCategory.WATER
+
+    @property
+    def is_snow(self) -> bool:
+        return self.shader_category == MTDShaderCategory.SNOW
 
     @property
     def has_tangent(self):

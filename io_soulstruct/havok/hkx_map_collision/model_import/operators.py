@@ -326,7 +326,7 @@ class ImportHKXMapCollisionFromHKXBHD(LoggingOperator):
         except Exception as ex:
             traceback.print_exc()  # for inspection in Blender console
             return self.error(f"Cannot import HKX '{model_name}' from HKXBHDs in {map_stem}. Error: {ex}")
-        collection = get_collection(f"{map_stem} Collisions", context.scene.collection)
+        collection = get_collection(f"{map_stem} Collision Models", context.scene.collection, hide_viewport=False)
         collection.objects.link(hkx_model)
         for child in hkx_model.children:
             collection.objects.link(child)

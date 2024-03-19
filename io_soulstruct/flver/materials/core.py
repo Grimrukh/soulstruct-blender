@@ -169,7 +169,7 @@ class NodeTreeBuilder:
         if special_built:
             return
 
-        # Build game-dependent shader.
+        # Build game-dependent or generic shader.
         try:
             if isinstance(material_info, ERMaterialShaderInfo):
                 self.build_er_shader(material_info)
@@ -250,6 +250,11 @@ class NodeTreeBuilder:
             tex_image_node = self.add_tex_image_node(node_name, image=bl_image, label=node_label)
             self.tex_image_nodes[node_name] = tex_image_node
 
+            # We take this opportunity to change the Color Space of non-Albedo textures to 'Non-Color'.
+            # NOTE: If the texture is used inconsistently across materials, this could change repeatedly.
+            if node_name.startswith(("SPECULAR", "NORMAL", "DISPLACEMENT")):
+                bl_image.colorspace_settings.name = "Non-Color"
+
             if uv_layer_name is not None:
                 # Connect to appropriate UV node, creating it if necessary.
                 if uv_layer_name in self.uv_nodes:
@@ -279,7 +284,7 @@ class NodeTreeBuilder:
             self.link(transparent.outputs[0], water_mix.inputs[1])
             self.link(glass.outputs[0], water_mix.inputs[2])
 
-            bumpmap_node = self.tex_image_nodes["NORMAL_0"]
+            normal_node = self.tex_image_nodes["NORMAL_0"]
             try:
                 uv_texture_0 = material_info.UVLayer["UVTexture0"].name
             except KeyError:
@@ -287,20 +292,76 @@ class NodeTreeBuilder:
                     "This game material info does not define 'UVTexture0' layer, which is required for water shader."
                 )
 
-            normal_map_node = self.add_normal_map_node(uv_texture_0, bumpmap_node.location[1])
-            self.link(bumpmap_node.outputs["Color"], normal_map_node.inputs["Color"])
+            normal_map_node = self.add_normal_map_node(uv_texture_0, normal_node.location[1])
+            self.link(normal_node.outputs["Color"], normal_map_node.inputs["Color"])
             self.link(normal_map_node.outputs["Normal"], glass.inputs["Normal"])
             self.link(self.vertex_colors_nodes[0].outputs["Alpha"], water_mix.inputs["Fac"])
             return True
 
-        # TODO: Sketch for snow shader:
-        #  - Create a Diffuse BSDF shader with HSV (0.75, 0.3, 1.0) (blue tint).
-        #  - Mix g_Bumpmap_2 and (if present) g_Bumpmap_3 with Mix RGB.
-        #  - Plug into Normal Map using UVTexture0 (regardless of what MTD says - though this is handled).
-        #  - Create a Mix Shader for the standard textures and new Diffuse snow BSDF. Plug into material output.
-        #  - Use Math node to raise VertexColors alpha to exponent 10 and use that as Fac of the Mix Shader.
-        #     - This shows roughly where the snow will be created without completely obscuring the underlying texture.
-        #  - If a lightmap is present, instead mix that mix shader with it!
+        if material_info.is_snow and material_info.slot_count == 1:
+
+            # Sketch for DS1R snow shader:
+            #  - Mix a standard Principled BSDF (main texture, e.g. ground) and a Diffuse BSDF shader for snow.
+            #  - Use 'ALBEDO_0' and 'SPECULAR_0' as usual for Principled.
+            #      - Mix 'LIGHTMAP' as overlay if present.
+            #  - Snow diffuse uses 'NORMAL_0' as "Color" and 'NORMAL_1' as "Normal" (mapped with UVTexture0).
+            #  - 'NORMAL_2' is actually the normal map for the Principled BSDF, but only appears in DS1R! Not PTDE.
+            #  - Mix shader nodes using vertex color alpha, raised with a Math node to the power of 4.0, which seems to
+            #    capture the snow effect best in my tuning.
+            #  - Create a Mix Shader for the standard textures and new Diffuse snow BSDF. Plug into material output.
+
+            bsdf_node = self.add_principled_bsdf_node("Texture Slot 0")
+            diffuse_bsdf_node = self.new("ShaderNodeBsdfDiffuse", location=(self.BSDF_X, self.bsdf_y))
+            self.bsdf_y -= 1000
+
+            # Mix Principled BSDF 0 with snow diffuse.
+            mix_node = self.new("ShaderNodeMixShader", location=(self.MIX_X, self.MIX_Y))
+            self.link(bsdf_node.outputs["BSDF"], mix_node.inputs[1])
+            self.link(diffuse_bsdf_node.outputs["BSDF"], mix_node.inputs[2])
+
+            # Raise vertex alpha to the power of 4.0 and use as mix Fac.
+            vertex_alpha_power = self.new(
+                "ShaderNodeMath", location=(self.BSDF_X, self.MIX_Y), operation="POWER", input_defaults={1: 4.0}
+            )
+            self.link(self.vertex_colors_nodes[0].outputs["Alpha"], vertex_alpha_power.inputs[0])
+            self.link(vertex_alpha_power.outputs[0], mix_node.inputs["Fac"])
+            self.link_to_output_surface(mix_node.outputs["Shader"])
+
+            # Create lightmap if present.
+            lightmap_node = self.tex_image_nodes.get("LIGHTMAP", None)
+
+            # Connect standard textures to Principled BSDF.
+            for common_type, sampler_name in material_info.SAMPLER_NAMES.get_color_dict(include_normals=False).items():
+                if common_type not in self.tex_image_nodes:
+                    continue
+                self.color_to_bsdf_node(
+                    material_info,
+                    common_type=common_type,
+                    sampler_name=sampler_name,
+                    bsdf_node=bsdf_node,
+                    lightmap_node=lightmap_node,
+                )
+
+            # NOTE: I don't think snow shaders EVER use displacement, but may as well check and handle it.
+            if "DISPLACEMENT" in self.tex_image_nodes:
+                disp_node = self.tex_image_nodes["DISPLACEMENT"]
+                self.link(self.uv_nodes["UVTexture0"].outputs["Vector"], disp_node.inputs["Vector"])
+                self.link_to_output_displacement(disp_node.outputs["Color"])
+
+            # Connect NORMAL_0 (snow diffuse color) and NORMAL_1 (snow diffuse normal) to diffuse node.
+            # TODO: Snow albedo texture is used with 'g_Bumpmap' for this shader! We just use it as albedo here.
+            snow_albedo_node = self.tex_image_nodes["NORMAL_0"]
+            self.link(snow_albedo_node.outputs["Color"], diffuse_bsdf_node.inputs["Color"])
+            # TODO: Snow MTD (in DS1R at least) incorrectly says to use UV index 1 for snow normal map, but that UV
+            #  layer doesn't even exist on the meshes that use it. MTD for DS1R should already fix that, but we force
+            #  'UVTexture0' here anyway to be safe, given the specificity of this code.
+            self.normal_to_bsdf_node("NORMAL_1", "UVTexture0", diffuse_bsdf_node, normal_map_strength=0.3)
+
+            if "NORMAL_2" in self.tex_image_nodes:
+                # Only known use of 'NORMAL_2' in DS1R, and it's the normal map of the main texture (e.g. ground).
+                self.normal_to_bsdf_node("NORMAL_2", "UVTexture0", bsdf_node)
+
+            return True
 
         return False
 
@@ -354,49 +415,27 @@ class NodeTreeBuilder:
         else:
             self.link_to_output_surface(bsdf_nodes[0].outputs["BSDF"])
 
-        if "LIGHTMAP" in self.tex_image_nodes:
-            # Use an overlay node to mix each non-normal input texture with lightmap.
-            lightmap_node = self.tex_image_nodes["LIGHTMAP"]
-        else:
-            lightmap_node = None
+        # Use an overlay node to mix each non-normal input texture with lightmap, if present.
+        lightmap_node = self.tex_image_nodes.get("LIGHTMAP", None)
 
-        for common_type, sampler_name in material_info.SAMPLER_NAMES._asdict().items():
+        for common_type, sampler_name in material_info.SAMPLER_NAMES.get_color_dict(include_normals=False).items():
             if common_type not in self.tex_image_nodes:
                 continue
             bsdf_node = bsdf_nodes[1] if common_type.endswith("_1") else bsdf_nodes[0]
             if bsdf_node is None:
                 raise MaterialCreationError(f"Bad state: no BSDF node found for sampler '{common_type}'.")
-            tex_image_node = self.tex_image_nodes[common_type]
-            if lightmap_node:
-                overlay_node_y = tex_image_node.location[1]
-                overlay_node = self.new(
-                    "ShaderNodeMixRGB", location=(self.POST_TEX_X, overlay_node_y), blend_type="OVERLAY"
-                )
-                self.link(tex_image_node.outputs["Color"], overlay_node.inputs["Color1"])
-                self.link(lightmap_node.outputs["Color"], overlay_node.inputs["Color2"])  # order is important!
-                color_output = overlay_node.outputs["Color"]
-            else:
-                color_output = tex_image_node.outputs["Color"]
-
-            if material_info.alpha or material_info.edge and common_type.startswith("ALBEDO"):
-                # We only use the alpha channel of the albedo texture for transparency if the shader supports it. We do
-                # NOT want to use alpha otherwise, as some textures lazily use transparent texture regions as black.
-                alpha_output = tex_image_node.outputs["Alpha"]
-            else:
-                alpha_output = None
             self.color_to_bsdf_node(
-                y=tex_image_node.location[1],
+                material_info,
                 common_type=common_type,
                 sampler_name=sampler_name,
-                color_output=color_output,
                 bsdf_node=bsdf_node,
-                alpha_output=alpha_output,
+                lightmap_node=lightmap_node,
             )
 
         if "DISPLACEMENT" in self.tex_image_nodes:
             # Texture is an actual height map (not just normals).
             disp_node = self.tex_image_nodes["DISPLACEMENT"]
-            # TODO: In my observation so far, this always uses UVTexture0 (i.e. never the second texture).
+            # TODO: In my observation so far (DS1), this always uses UVTexture0 (i.e. never the second texture).
             self.link(self.uv_nodes["UVTexture0"].outputs["Vector"], disp_node.inputs["Vector"])
             self.link_to_output_displacement(disp_node.outputs["Color"])
 
@@ -412,8 +451,6 @@ class NodeTreeBuilder:
             if bsdf_node is None:
                 raise MaterialCreationError(f"Bad state: no BSDF node found for sampler '{common_type}'.")
 
-            # Create normal map node.
-            normal_tex_node = self.tex_image_nodes[common_type]
             try:
                 uv_layer_name = material_info.sampler_name_uv_layers[sampler_name].name
             except KeyError:
@@ -422,23 +459,40 @@ class NodeTreeBuilder:
                     f"Cannot create normal map node to connect to BDSF.",
                 )
                 continue
-            normal_map_node = self.add_normal_map_node(uv_layer_name, normal_tex_node.location[1])
-            self.link(normal_tex_node.outputs["Color"], normal_map_node.inputs["Color"])
-            self.link(normal_map_node.outputs["Normal"], bsdf_node.inputs["Normal"])
+
+            self.normal_to_bsdf_node(common_type, uv_layer_name, bsdf_node)
 
     def color_to_bsdf_node(
         self,
-        y: int,
+        material_info: BaseMaterialShaderInfo,
         common_type: str,
         sampler_name: str,
-        color_output: bpy.types.NodeSocketColor,
         bsdf_node: bpy.types.ShaderNodeBsdfPrincipled,
-        alpha_output: bpy.types.NodeSocketFloat = None,
+        lightmap_node: bpy.types.ShaderNodeTexImage | None = None,
     ):
+        tex_image_node = self.tex_image_nodes[common_type]
+        if lightmap_node:
+            overlay_node_y = tex_image_node.location[1]
+            overlay_node = self.new(
+                "ShaderNodeMixRGB", location=(self.POST_TEX_X, overlay_node_y), blend_type="OVERLAY"
+            )
+            self.link(tex_image_node.outputs["Color"], overlay_node.inputs["Color1"])
+            self.link(lightmap_node.outputs["Color"], overlay_node.inputs["Color2"])  # order is important!
+            color_output = overlay_node.outputs["Color"]
+        else:
+            color_output = tex_image_node.outputs["Color"]
+
+        if material_info.alpha or material_info.edge and common_type.startswith("ALBEDO"):
+            # We only use the alpha channel of the albedo texture for transparency if the shader supports it. We do
+            # NOT want to use alpha otherwise, as some textures lazily use transparent texture regions as black.
+            alpha_output = tex_image_node.outputs["Alpha"]
+        else:
+            alpha_output = None
+
         if common_type.startswith("SPECULAR"):
             # Split specular texture into specular/roughness channels.
             self.specular_to_principled(
-                y,
+                tex_image_node.location[1],
                 color_output,
                 bsdf_node,
                 is_metallic="Metallic" in sampler_name,
@@ -450,6 +504,20 @@ class NodeTreeBuilder:
                 self.link(alpha_output, bsdf_node.inputs["Alpha"])
         elif common_type.startswith("SHEEN"):
             self.link(color_output, bsdf_node.inputs[PRINCIPLED_SHEEN_INPUT])
+
+    def normal_to_bsdf_node(
+        self,
+        common_type: str,
+        uv_layer_name: str,
+        bsdf_node: bpy.types.ShaderNodeBsdfPrincipled,
+        normal_map_strength=0.4,
+    ):
+        """Connect given normal node (by node name) to given BSDF node, via a normal map node."""
+        normal_tex_node = self.tex_image_nodes[common_type]
+        # Create normal map node.
+        normal_map_node = self.add_normal_map_node(uv_layer_name, normal_tex_node.location[1], normal_map_strength)
+        self.link(normal_tex_node.outputs["Color"], normal_map_node.inputs["Color"])
+        self.link(normal_map_node.outputs["Normal"], bsdf_node.inputs["Normal"])
 
     def build_er_shader(self, material_info: ERMaterialShaderInfo):
         """Attempt to craft a faithful shader for an Elden Ring material."""
@@ -645,13 +713,13 @@ class NodeTreeBuilder:
         self.bsdf_y -= 1000
         return node
 
-    def add_normal_map_node(self, uv_map_name: str, location_y: float):
+    def add_normal_map_node(self, uv_map_name: str, location_y: float, strength=0.4):
         return self.new(
             "ShaderNodeNormalMap",
             location=(self.POST_TEX_X, location_y),
             space="TANGENT",
             uv_map=uv_map_name,
-            input_defaults={"Strength": 0.4},
+            input_defaults={"Strength": strength},
         )
 
     # endregion

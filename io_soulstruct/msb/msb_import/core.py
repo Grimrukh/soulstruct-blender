@@ -153,7 +153,7 @@ class BaseImportMSBPart(LoggingOperator):
         msb_path = settings.get_import_msb_path()  # will automatically use latest MSB version if known and enabled
         msb = get_cached_file(msb_path, settings.get_game_msb_class())  # type: MSB_TYPING
         collection_name = msb_import_settings.get_collection_name(msb_stem, self.PART_TYPE_NAME_PLURAL)
-        part_collection = get_collection(collection_name, context.scene.collection)
+        part_collection = get_collection(collection_name, context.scene.collection, hide_viewport=True)
 
         # Get MSB part.
         part_list = getattr(msb, self.MSB_LIST_NAME)
@@ -192,7 +192,7 @@ class BaseImportMSBPart(LoggingOperator):
         msb_path = settings.get_import_msb_path()  # will automatically use latest MSB version if known and enabled
         msb = get_cached_file(msb_path, settings.get_game_msb_class())  # type: MSB_TYPING
         collection_name = msb_import_settings.get_collection_name(msb_stem, self.PART_TYPE_NAME_PLURAL)
-        part_collection = get_collection(collection_name, context.scene.collection)
+        part_collection = get_collection(collection_name, context.scene.collection, hide_viewport=True)
 
         part_list = getattr(msb, self.MSB_LIST_NAME)
         part_count = 0

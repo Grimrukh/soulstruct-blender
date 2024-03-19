@@ -23,6 +23,8 @@ __all__ = [
 
     "FLVERToolSettings",
     "CopyToNewFLVER",
+    "DeleteFLVER",
+    "DeleteFLVERAndData",
     "CreateFLVERInstance",
     "RenameFLVER",
     "CreateEmptyMapPieceFLVER",
@@ -266,6 +268,8 @@ class FLVEROtherToolsPanel(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
+        layout.operator(DeleteFLVER.bl_idname)
+        layout.operator(DeleteFLVERAndData.bl_idname)
         layout.operator(CreateFLVERInstance.bl_idname)
         layout.prop(context.scene.flver_tool_settings, "new_flver_model_name")
         layout.operator(RenameFLVER.bl_idname)

@@ -376,7 +376,7 @@ class ImportNVMFromNVMBND(LoggingOperator):
             traceback.print_exc()  # for inspection in Blender console
             return self.error(f"Cannot import NVM: {import_info.path}. Error: {ex}")
 
-        collection = get_collection(f"{map_stem} Navmeshes", context.scene.collection)
+        collection = get_collection(f"{map_stem} Navmesh Models", context.scene.collection, hide_viewport=False)
         collection.objects.link(bl_nvm)
 
         p = time.perf_counter() - start_time

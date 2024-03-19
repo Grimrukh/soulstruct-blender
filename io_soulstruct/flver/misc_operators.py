@@ -3,6 +3,8 @@ from __future__ import annotations
 __all__ = [
     "FLVERToolSettings",
     "CopyToNewFLVER",
+    "DeleteFLVER",
+    "DeleteFLVERAndData",
     "CreateFLVERInstance",
     "RenameFLVER",
     "CreateEmptyMapPieceFLVER",
@@ -140,6 +142,66 @@ class CopyToNewFLVER(LoggingOperator):
                     if new_dummy["Parent Bone Name"]:
                         parent_bone_index = bone_indices[new_dummy["Parent Bone Name"]]
                         new_dummy["Parent Bone Name"] = new_armature_obj.data.bones[parent_bone_index].name
+
+        return {"FINISHED"}
+
+
+class DeleteFLVER(LoggingOperator):
+
+    bl_idname = "object.delete_flver"
+    bl_label = "Delete FLVER (Objects)"
+    bl_description = "Delete Armature of selected FLVER and all its children"
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == "OBJECT" and context.active_object and context.active_object.type in {"ARMATURE", "MESH"}
+
+    def execute(self, context):
+        if not self.poll(context):
+            return self.error("Must select a Mesh or Armature in Object Mode.")
+
+        armature = context.active_object
+        if armature.type == "MESH":
+            armature = armature.parent
+            if armature.type != "ARMATURE":
+                return self.error("Selected object is not an Armature or a child of an Armature.")
+
+        for child in armature.children:
+            bpy.data.objects.remove(child)
+        bpy.data.objects.remove(armature)
+
+        return {"FINISHED"}
+
+
+class DeleteFLVERAndData(LoggingOperator):
+
+    bl_idname = "object.delete_flver_and_data"
+    bl_label = "Delete FLVER (Objects + Data)"
+    bl_description = "Delete Armature of selected FLVER and all its children, as well as their data blocks"
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == "OBJECT" and context.active_object and context.active_object.type in {"ARMATURE", "MESH"}
+
+    def execute(self, context):
+        if not self.poll(context):
+            return self.error("Must select a Mesh or Armature in Object Mode.")
+
+        # noinspection PyTypeChecker
+        armature = context.active_object
+        if armature.type in {"EMPTY", "MESH"}:
+            # noinspection PyTypeChecker
+            armature = armature.parent
+        if armature.type != "ARMATURE":
+            return self.error("Selected object is not an Armature or a child Mesh/Empty of an Armature.")
+        armature: bpy.types.ArmatureObject
+
+        for child in armature.children:
+            if child.type == "MESH":
+                bpy.data.meshes.remove(child.data)
+            bpy.data.objects.remove(child)
+        bpy.data.armatures.remove(armature.data)
+        bpy.data.objects.remove(armature)
 
         return {"FINISHED"}
 

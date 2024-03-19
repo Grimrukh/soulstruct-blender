@@ -65,7 +65,7 @@ def import_navmesh_model(
         nvmbnd_path, nvm_entry.minimal_stem, model_name, nvm_entry.to_binary_file(NVM)
     )
 
-    collection = get_collection(f"{map_stem} Navmesh Models", context.scene.collection)
+    collection = get_collection(f"{map_stem} Navmesh Models", context.scene.collection, hide_viewport=True)
     importer = NVMImporter(operator, context, collection=collection)
 
     try:

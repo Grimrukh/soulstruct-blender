@@ -104,6 +104,7 @@ class BaseFLVERImportOperator(LoggingImportOperator):
             texture_import_manager=texture_manager,
             mtdbnd=settings.get_mtdbnd(self) if not use_matbinbnd else None,
             matbinbnd=settings.get_matbinbnd(self) if use_matbinbnd else None,
+            collection=self.get_collection(context, Path(self.directory).name)
         )
 
         bl_mesh = None
@@ -125,6 +126,10 @@ class BaseFLVERImportOperator(LoggingImportOperator):
             bpy.ops.view3d.view_selected(use_all_regions=False)
 
         return {"FINISHED"}
+
+    def get_collection(self, context: bpy.types.Context, file_directory_name: str):
+        """Get collection to add imported FLVER to. Defaults to scene view layer collection."""
+        return context.view_layer.active_layer_collection.collection
 
     def find_extra_textures(self, flver_source_path: Path, flver: FLVER, texture_manager: TextureImportManager):
         """Can be overridden by importers for specific FLVER model types that know where their textures are."""
@@ -197,6 +202,10 @@ class ImportMapPieceFLVER(BaseFLVERImportOperator):
             return {'RUNNING_MODAL'}
         return super().invoke(context, _event)
 
+    def get_collection(self, context: bpy.types.Context, file_directory_name: str):
+        """Assumes file directory name is a map stem."""
+        return get_collection(f"{file_directory_name} Map Piece Models", context.scene.collection, hide_viewport=False)
+
     def find_extra_textures(self, flver_source_path: Path, flver: FLVER, texture_manager: TextureImportManager):
         """Check all textures in FLVER for specific map 'mAA_' prefix textures and register TPFBHDs in those maps."""
         area_re = re.compile(r"^m\d\d_")
@@ -241,6 +250,9 @@ class ImportCharacterFLVER(BaseFLVERImportOperator):
 
     # Base `execute` method is fine.
 
+    def get_collection(self, context: bpy.types.Context, file_directory_name: str):
+        return get_collection("Character Models", context.scene.collection, hide_viewport=False)
+
 
 class ImportObjectFLVER(BaseFLVERImportOperator):
     """Shortcut for browsing for OBJBND Binders in game 'obj' directory."""
@@ -275,6 +287,9 @@ class ImportObjectFLVER(BaseFLVERImportOperator):
         return super().invoke(context, _event)
 
     # Base `execute` method is fine.
+
+    def get_collection(self, context: bpy.types.Context, file_directory_name: str):
+        return get_collection("Object Models", context.scene.collection, hide_viewport=False)
 
 
 class ImportEquipmentFLVER(BaseFLVERImportOperator):
@@ -315,5 +330,8 @@ class ImportEquipmentFLVER(BaseFLVERImportOperator):
         return super().invoke(context, _event)
 
     # Base `execute` method is fine.
+
+    def get_collection(self, context: bpy.types.Context, file_directory_name: str):
+        return get_collection("Equipment Models", context.scene.collection, hide_viewport=False)
 
 # endregion

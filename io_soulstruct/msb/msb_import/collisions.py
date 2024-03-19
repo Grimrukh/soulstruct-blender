@@ -53,7 +53,7 @@ def import_collision_model(
     lo_res_hkxbhd_path = settings.get_import_map_path(f"l{map_stem[1:]}.hkxbhd")
     both_res_hkxbhd = BothResHKXBHD.from_both_paths(hi_res_hkxbhd_path, lo_res_hkxbhd_path)
     hi_hkx, lo_hkx = both_res_hkxbhd.get_both_hkx(model_name)
-    collection = get_collection(f"{map_stem} Collision Models", context.scene.collection)
+    collection = get_collection(f"{map_stem} Collision Models", context.scene.collection, hide_viewport=True)
 
     collision_import_settings = context.scene.hkx_map_collision_import_settings  # type: HKXMapCollisionImportSettings
 

@@ -223,14 +223,19 @@ def natural_keys(text: str):
     return [atoi(c) for c in re.split(r"(\d+)", text)]
 
 
-def get_collection(name: str, parent_collection: bpy.types.Collection = None) -> bpy.types.Collection:
-    """Find or create collection `name`."""
+def get_collection(
+    name: str,
+    parent_collection: bpy.types.Collection = None,
+    hide_viewport: bool = False,
+) -> bpy.types.Collection:
+    """Find or create collection `name`. If created, optionally hides collection in viewport (globally) as well."""
     try:
         return bpy.data.collections[name]
     except KeyError:
         collection = bpy.data.collections.new(name)
         if parent_collection:
             parent_collection.children.link(collection)
+        # TODO: `hide_viewport` objbreaks import, as we can't enter Edit Mode.
         return collection
 
 

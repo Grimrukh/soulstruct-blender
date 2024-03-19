@@ -115,7 +115,7 @@ class BaseImportMSBRegion(LoggingOperator):
         msb_path = settings.get_import_msb_path()  # will automatically use latest MSB version if known and enabled
         msb = get_cached_file(msb_path, settings.get_game_msb_class())  # type: MSB_TYPING
         collection_name = msb_import_settings.get_collection_name(msb_stem, self.REGION_TYPE_NAME_PLURAL)
-        region_collection = get_collection(collection_name, context.scene.collection)
+        region_collection = get_collection(collection_name, context.scene.collection)  # does NOT hide in viewport
 
         # Get MSB region.
         region_list = getattr(msb, self.MSB_LIST_NAMES[0])

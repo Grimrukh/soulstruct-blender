@@ -60,6 +60,7 @@ class _GlobalSettingsPanel_ViewMixin:
         split.column().operator(SelectPNGCacheDirectory.bl_idname, text="Browse")
         layout.row().prop(settings, "read_cached_pngs")
         layout.row().prop(settings, "write_cached_pngs")
+        layout.row().prop(settings, "pack_image_data")
 
 
 class GlobalSettingsPanel(bpy.types.Panel, _GlobalSettingsPanel_ViewMixin):
