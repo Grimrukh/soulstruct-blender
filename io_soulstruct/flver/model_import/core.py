@@ -599,15 +599,15 @@ class FLVERImporter:
     ):
         # Naming a vertex group after a Blender bone will automatically link it in the Armature modifier below.
         # NOTE: For imports that use an existing Armature (e.g. equipment), invalid bone names such as the root dummy
-        # equipment bones have already been removed from `bl_bone_names` here.
+        # equipment bones have already been removed from `bl_bone_names` here. TODO: I think this note is outdated.
         bone_vertex_groups = [
             bl_mesh_obj.vertex_groups.new(name=bone_name)
             for bone_name in self.bl_bone_names
         ]  # type: list[bpy.types.VertexGroup]
 
-        # Awkwardly, we need a separate call to `VertexGroups[bone_index].add(indices, weight)` for each combination
-        # of `bone_index` and `weight`, so the dictionary keys constructed above are a tuple of those two to minimize
-        # the number of Blender group `add()` calls needed at the end of this function.
+        # Awkwardly, we need a separate call to `bone_vertex_groups[bone_index].add(indices, weight)` for each combo
+        # of `bone_index` and `weight`, so the dictionary keys constructed below are a tuple of those two to minimize
+        # the number of `VertexGroup.add()` calls needed at the end of this function.
         bone_vertex_group_indices = {}  # type: dict[tuple[int, float], list[int]]
 
         # p = time.perf_counter()
@@ -827,7 +827,7 @@ class FLVERImporter:
         name = f"{self.name} Dummy<{index}> [{game_dummy.reference_id}]"
         bl_dummy = new_empty_object(
             name,
-            **{
+            props={
                 "Color RGBA": game_dummy.color_rgba,  # RGBA  # TODO: Use in actual display somehow?
                 "Flag 1": game_dummy.flag_1,  # bool
                 "Use Upward Vector": game_dummy.use_upward_vector,  # bool

@@ -31,6 +31,8 @@ __all__ = [
     "SetSmoothCustomNormals",
     "SetVertexAlpha",
     "InvertVertexAlpha",
+    "ReboneVertices",
+    "BakeBonePoseToVertices",
 
     "MaterialToolSettings",
     "SetMaterialTexture0",
@@ -38,6 +40,7 @@ __all__ = [
     "ActivateUVTexture0",
     "ActivateUVTexture1",
     "ActiveUVLightmap",
+    "FastUVUnwrap",
     "FindMissingTexturesInPNGCache",
     "SelectMeshChildren",
     "ImportTextures",
@@ -193,6 +196,8 @@ class FLVERMeshToolsPanel(bpy.types.Panel):
 
     def draw(self, context):
 
+        flver_tool_settings = context.scene.flver_tool_settings
+
         polish_box = self.layout.box()
         polish_box.label(text="Select/Polish Mesh:")
         polish_box.operator(SelectMeshChildren.bl_idname)
@@ -203,15 +208,33 @@ class FLVERMeshToolsPanel(bpy.types.Panel):
         move_box.prop(context.scene.mesh_move_settings, "new_material_index")
         move_box.operator(CopyMeshSelectionOperator.bl_idname)
         move_box.operator(CutMeshSelectionOperator.bl_idname)
-        move_box.prop(context.scene.flver_tool_settings, "new_flver_model_name")
+        move_box.prop(flver_tool_settings, "new_flver_model_name")
         move_box.operator(CopyToNewFLVER.bl_idname)
+
+        bone_box = self.layout.box()
+        bone_box.label(text="Bones:")
+        # Get armature or armature of mesh.
+        if (arma := context.object) and (
+            context.object.type == "ARMATURE"
+            or (context.object.type == "MESH" and (arma := context.object.find_armature()))
+        ):
+            bone_box.operator(BakeBonePoseToVertices.bl_idname)
+            bone_box.prop_search(flver_tool_settings, "rebone_target_bone", arma.data, "bones")
+            bone_box.operator(ReboneVertices.bl_idname)
+        else:
+            bone_box.label(text="No Armature found for selected object.")
+
+        uv_box = self.layout.box()
+        uv_box.label(text="UV Maps:")
+        uv_box.prop(context.scene.flver_tool_settings, "uv_scale")
+        uv_box.operator(FastUVUnwrap.bl_idname)
 
         vertex_color_box = self.layout.box()
         vertex_color_box.label(text="Vertex Colors:")
-        vertex_color_box.prop(context.scene.flver_tool_settings, "vertex_color_layer_name")
-        vertex_color_box.prop(context.scene.flver_tool_settings, "set_selected_face_vertex_alpha_only")
+        vertex_color_box.prop(flver_tool_settings, "vertex_color_layer_name")
+        vertex_color_box.prop(flver_tool_settings, "set_selected_face_vertex_alpha_only")
         vertex_color_box.operator(InvertVertexAlpha.bl_idname)
-        vertex_color_box.prop(context.scene.flver_tool_settings, "vertex_alpha")
+        vertex_color_box.prop(flver_tool_settings, "vertex_alpha")
         vertex_color_box.operator(SetVertexAlpha.bl_idname)
 
 

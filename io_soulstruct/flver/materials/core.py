@@ -304,8 +304,10 @@ class NodeTreeBuilder:
             #  - Mix a standard Principled BSDF (main texture, e.g. ground) and a Diffuse BSDF shader for snow.
             #  - Use 'ALBEDO_0' and 'SPECULAR_0' as usual for Principled.
             #      - Mix 'LIGHTMAP' as overlay if present.
-            #  - Snow diffuse uses 'NORMAL_0' as "Color" and 'NORMAL_1' as "Normal" (mapped with UVTexture0).
+            #  - Snow diffuse uses both 'NORMAL_0' (which is sometimes a diffuse snow texture!) and 'NORMAL_1' as
+            #    its BSDF normal input (mapped with UVTexture0). We mix these two textures 50/50 if given.
             #  - 'NORMAL_2' is actually the normal map for the Principled BSDF, but only appears in DS1R! Not PTDE.
+            #   TODO: Double check that it's not *NORMAL_1* (detailed bumpmap) that is missing in PTDE.
             #  - Mix shader nodes using vertex color alpha, raised with a Math node to the power of 4.0, which seems to
             #    capture the snow effect best in my tuning.
             #  - Create a Mix Shader for the standard textures and new Diffuse snow BSDF. Plug into material output.

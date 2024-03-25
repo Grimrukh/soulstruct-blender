@@ -11,9 +11,12 @@ __all__ = [
     "SetSmoothCustomNormals",
     "SetVertexAlpha",
     "InvertVertexAlpha",
+    "BakeBonePoseToVertices",
+    "ReboneVertices",
     "ActivateUVTexture0",
     "ActivateUVTexture1",
     "ActiveUVLightmap",
+    "FastUVUnwrap",
     "FindMissingTexturesInPNGCache",
     "SelectMeshChildren",
     "draw_dummy_ids",
@@ -22,9 +25,10 @@ __all__ = [
 import typing as tp
 
 import bpy
+import bmesh
 import blf
 from bpy_extras.view3d_utils import location_3d_to_region_2d
-from mathutils import Vector
+from mathutils import Matrix, Vector, Quaternion
 
 from io_soulstruct.utilities.operators import LoggingOperator
 from io_soulstruct.utilities.bpy_data import *
@@ -61,14 +65,26 @@ class FLVERToolSettings(bpy.types.PropertyGroup):
         default="",  # default is operator-dependent
     )
 
+    uv_scale: bpy.props.FloatProperty(
+        name="UV Scale",
+        description="Scale to apply to UVs after unwrapping",
+        default=1.0,
+        min=0.0,
+    )
+
+    rebone_target_bone: bpy.props.StringProperty(
+        name="Rebone Target Bone",
+        description="New bone (vertex group) to assign to vertices with 'Rebone Vertices' operator",
+    )
+
 
 class CopyToNewFLVER(LoggingOperator):
 
     bl_idname = "object.copy_to_new_flver"
     bl_label = "Copy to New FLVER"
     bl_description = ("Copy selected vertices, edges, and/or faces, their materials, and all FLVER bones and custom "
-                      "properties to a new FLVER model in same collection. Must be in Edit Mode. Will always duplicate "
-                      "data, NOT just create new instances")
+                      "properties to a new FLVER model in the active collection. Must be in Edit Mode. Will always "
+                      "duplicate data, NOT just create new instances")
 
     @classmethod
     def poll(cls, context):
@@ -80,16 +96,16 @@ class CopyToNewFLVER(LoggingOperator):
 
         tool_settings = context.scene.flver_tool_settings  # type: FLVERToolSettings
         # noinspection PyTypeChecker
-        mesh = context.active_object  # type: bpy.types.MeshObject
+        mesh = context.edit_object  # type: bpy.types.MeshObject
         armature = mesh.parent
         if armature is not None and armature.type != "ARMATURE":
             return self.error("Parent of edited mesh is not an Armature.")
-        active_collection = context.collection
         new_name = tool_settings.new_flver_model_name
         if not new_name:
             new_name = f"{mesh.name} (Copy)"
 
-        # Copy mesh data into new object.
+        # Copy mesh data into new object. Note that the `separate` operator will add the new mesh to the same
+        # collection(s) automatically.
         bpy.ops.mesh.duplicate()
         bpy.ops.mesh.separate(type="SELECTED")  # copies custom properties, materials, data layers, etc.
         # Separated object added to selected. We confirm, though.
@@ -101,26 +117,27 @@ class CopyToNewFLVER(LoggingOperator):
         new_mesh_obj.data.name = f"{new_name} Mesh"
 
         # NOTE: All materials are copied automatically. It's too annoying to remove unused ones and update all the face
-        #  indices. However, we do duplicate any materials whose names start with the old mesh name.
+        #  indices. However, we do duplicate any materials whose names contain the old mesh name.
         old_mesh_name = mesh.name.split(".")[0].removesuffix(" Mesh")
         for i, mat in enumerate(new_mesh_obj.data.materials):
-            if mat.name.startswith(old_mesh_name):
+            if old_mesh_name in mat.name:
                 new_mat = mat.copy()  # copies custom properties
                 # Update material name.
-                new_mat.name = f"{new_name} {mat.name.removeprefix(old_mesh_name)}"
+                new_mat.name = mat.name.replace(old_mesh_name, new_name)
                 new_mesh_obj.data.materials[i] = new_mat
 
-        active_collection.objects.link(new_mesh_obj)
-
         if armature:
-            new_armature_obj = new_armature_object(f"{new_name} Armature", armature.data.copy())
+            # We need to copy custom properties manually here. TODO: Why not just `armature.copy()`?
+            new_armature_obj = new_armature_object(new_name, armature.data.copy(), props=armature)
             new_armature_obj.data.name = f"{new_name} Armature"
+            # Add Armature object to same collection(s) as `new_mesh_obj`.
+            for collection in new_mesh_obj.users_collection:
+                collection.objects.link(new_armature_obj)
             # Update bone names.
             bone_indices = {}
             for i, bone in enumerate(new_armature_obj.data.bones):
                 bone.name = bone.name.replace(armature.name, new_name)
                 bone_indices[bone.name] = i  # for updating dummy bones
-            active_collection.objects.link(new_armature_obj)
             new_mesh_obj.parent = new_armature_obj
 
             # Create Armature modifier on Mesh.
@@ -134,8 +151,10 @@ class CopyToNewFLVER(LoggingOperator):
                 if dummy.type == "EMPTY":
                     new_dummy = dummy.copy()  # copies custom properties
                     new_dummy.name = f"{new_name} {dummy.name.removeprefix(armature.name)}"
-                    active_collection.objects.link(new_dummy)
                     new_dummy.parent = new_armature_obj
+                    # Add Dummy object to same collection(s) as `new_mesh_obj`.
+                    for collection in new_mesh_obj.users_collection:
+                        collection.objects.link(new_dummy)
                     bone_index = bone_indices[dummy.parent_bone.name]
                     new_dummy.parent_bone = new_armature_obj.data.bones[bone_index]
                     new_dummy.parent_type = "BONE"
@@ -273,6 +292,8 @@ class RenameFLVER(LoggingOperator):
                     child.name = rename(child.name)
                     child["Parent Bone Name"] = rename(child["Parent Bone Name"])
 
+        return {"FINISHED"}
+
 
 class CreateEmptyMapPieceFLVER(LoggingOperator):
 
@@ -296,7 +317,7 @@ class CreateEmptyMapPieceFLVER(LoggingOperator):
         new_armature_obj = new_armature_object(
             f"{new_name} Armature",
             data=bpy.data.armatures.new(f"{new_name} Armature"),
-            **{
+            props={
                 "Is Big Endian": False,
                 "Version": "DarkSouls_A",
                 "Unicode": True,
@@ -450,6 +471,186 @@ class InvertVertexAlpha(LoggingOperator):
         return {"FINISHED"}
 
 
+class BakeBonePoseToVertices(LoggingOperator):
+
+    bl_idname = "mesh.bake_bone_pose_to_vertices"
+    bl_label = "Bake Bone Pose to Vertices"
+    bl_description = (
+        "Bake the pose of each selected bone into all vertices weighted ONLY to that bone into the mesh and set bone "
+        "pose to origin. Valid only for Map Piece FLVERs; for safety, no Mesh material can have 'Is Bind Pose' custom "
+        "property set to True"
+    )
+
+    @classmethod
+    def poll(cls, context):
+        """Must select at least one bone in Armature of active object."""
+        if context.mode == "OBJECT" and context.active_object:
+            arma = context.active_object.find_armature()
+            if arma and any(bone.select for bone in arma.data.bones):
+                return True
+        return False
+
+    def execute(self, context):
+        if context.mode != "OBJECT":
+            return self.error("Please enter Object Mode to use this operator.")
+
+        # noinspection PyTypeChecker
+        mesh = context.active_object  # type: bpy.types.MeshObject
+        if mesh is None or mesh.type != "MESH":
+            return self.error("Please select a Mesh object.")
+
+        # TODO: Should check that Mesh has an Armature modifier attached to parent?
+        # noinspection PyTypeChecker
+        armature = mesh.parent  # type: bpy.types.ArmatureObject
+        if not armature or armature.type != "ARMATURE":
+            return self.error("Mesh is not parented to an Armature.")
+
+        if any(mat.get("Is Bind Pose") for mat in mesh.data.materials):
+            return self.error(
+                "One or more materials have 'Is Bind Pose' custom property set to True. This operator is only usable "
+                "for Map Piece FLVERs, where 'Is Bind Pose' is False and vertices are 'auto-posed' by exactly one "
+                "FLVER bone."
+            )
+
+        # Get a dictionary mapping bone names to their (location, rotation, scale) tuples for baking into vertices.
+        # Ignores bones that are not selected.
+        bone_pose_transforms = {}  # type: dict[str, Matrix]
+        selected_pose_bones = []
+        for pose_bone in armature.pose.bones:
+            if not pose_bone.bone.select:
+                continue  # bone not selected; do not bake
+            bone_pose_transforms[pose_bone.bone.name] = pose_bone.matrix  # no need to copy (not modified)
+            selected_pose_bones.append(pose_bone)
+
+        # First, a validation pass.
+        affected_vertices = []  # type: list[tuple[bpy.types.MeshVertex, Matrix]]
+        for vertex in mesh.data.vertices:
+            if len(vertex.groups) != 1:
+                return self.error(
+                    f"Vertex {vertex.index} is weighted to more than one bone: "
+                    f"{[group.name for group in vertex.groups]}. No vertices were baked."
+                )
+            group_index = vertex.groups[0].group
+            bone_name = mesh.vertex_groups[group_index].name
+            if bone_name not in bone_pose_transforms:
+                continue  # not selected for baking
+            affected_vertices.append((vertex, bone_pose_transforms[bone_name]))
+
+        # Bake bone pose into vertices.
+        for vertex, transform in affected_vertices:
+            vertex.co = transform @ vertex.co
+
+        # Reset bone pose transform to origin.
+        for pose_bone in selected_pose_bones:
+            pose_bone.location = Vector((0.0, 0.0, 0.0))
+            pose_bone.rotation_quaternion = Quaternion((1.0, 0.0, 0.0, 0.0))
+            pose_bone.scale = Vector((1.0, 1.0, 1.0))
+
+        self.info(f"Baked pose of {len(affected_vertices)} vertices into mesh and reset bone pose(s) to origin.")
+
+        return {"FINISHED"}
+
+
+class ReboneVertices(LoggingOperator):
+
+    bl_idname = "mesh.rebone_vertices"
+    bl_label = "Rebone Vertices"
+    bl_description = (
+        "Change selected vertices' single weighted bone (vertex group) while preserving their posed position through "
+        "a vertex data transformation. Useful for 'deboning' Map Pieces by changing to the default origin bone "
+        "(usually named after the model)"
+    )
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == "EDIT_MESH"
+
+    def execute(self, context):
+        if context.mode != "EDIT_MESH":
+            return self.error("Please enter Edit Mode to use this operator.")
+
+        tool_settings = context.scene.flver_tool_settings  # type: FLVERToolSettings
+        if not tool_settings.rebone_target_bone:
+            return self.error("No target bone selected for reboning.")
+
+        bpy.ops.object.mode_set(mode="OBJECT")
+
+        # noinspection PyTypeChecker
+        mesh = context.active_object  # type: bpy.types.MeshObject
+        if mesh is None or mesh.type != "MESH":
+            return self.error("Please select a Mesh object.")
+
+        # TODO: Should check that Mesh has an Armature modifier attached to parent?
+        # noinspection PyTypeChecker
+        armature = mesh.parent  # type: bpy.types.ArmatureObject
+        if not armature or armature.type != "ARMATURE":
+            return self.error("Mesh is not parented to an Armature.")
+
+        # Get a dictionary mapping bone names to their (location, rotation, scale) tuples for baking into vertices.
+        bone_pose_transforms = {}  # type: dict[str, Matrix]
+        for pose_bone in armature.pose.bones:
+            bone_pose_transforms[pose_bone.bone.name] = pose_bone.matrix  # no need to copy (not modified)
+
+        try:
+            target_bone_pose = armature.pose.bones[tool_settings.rebone_target_bone]
+        except KeyError:
+            return self.error(f"Target bone '{tool_settings.rebone_target_bone}' not found in Armature.")
+        target_matrix_inv = target_bone_pose.matrix.inverted()
+
+        try:
+            target_group = mesh.vertex_groups[tool_settings.rebone_target_bone]
+        except KeyError:
+            return self.error(
+                f"Target bone '{tool_settings.rebone_target_bone}' not found (by name) in Mesh vertex groups."
+            )
+
+        # Iterate over selected mesh vertices. Check that each vertex is weighted to only one bone that is not the
+        # target bone. Clear all weights for that vertex and collect it. Finally, make a single `add()` call to add
+        # all vertices to the target bone with weight 1.0.
+        vertices_to_rebone = []
+        for vertex in mesh.data.vertices:
+            if not vertex.select:
+                continue
+            if len(vertex.groups) != 1:
+                return self.error(
+                    f"Vertex {vertex.index} is weighted to more than one bone: "
+                    f"{[group.name for group in vertex.groups]}. No vertices were deboned."
+                )
+            group_index = vertex.groups[0].group
+            if group_index == target_group.index:
+                continue  # already weighted to target bone
+
+            old_bone_name = mesh.vertex_groups[group_index].name
+
+            try:
+                old_bone_transform = bone_pose_transforms[old_bone_name]
+            except KeyError:
+                return self.error(f"No bone matches name of vertex group '{old_bone_name}' for vertex {vertex.index}.")
+            vertices_to_rebone.append((vertex, (group_index, old_bone_transform)))
+
+        if not vertices_to_rebone:
+            return self.error("No vertices (not already weighted to target bone) were selected for reboning.")
+
+        old_vertex_group_indices = {}  # type: dict[int, list[int]]
+        vertex_indices = []
+        for vertex, (group_index, old_bone_transform) in vertices_to_rebone:
+            # Transform vertex data so that new pose will preserve the same posed vertex position.
+            # We do this by applying the old bone's transform (to get desired object-space transform), then
+            # un-applying the target bone's transform.
+            vertex.co = target_matrix_inv @ old_bone_transform @ vertex.co
+            # Queue vertex index for old group removal and new group addition below.
+            old_vertex_group_indices.setdefault(group_index, []).append(vertex.index)
+            vertex_indices.append(vertex.index)
+
+        for group_index, old_group_vertex_indices in old_vertex_group_indices.items():
+            mesh.vertex_groups[group_index].remove(old_group_vertex_indices)
+        target_group.add(vertex_indices, 1.0, "REPLACE")
+
+        bpy.ops.object.mode_set(mode="EDIT")
+
+        return {"FINISHED"}
+
+
 class ActivateUVMap(LoggingOperator):
 
     UV_LAYER_NAME: tp.ClassVar[str]
@@ -528,6 +729,41 @@ class ActiveUVLightmap(ActivateUVMap):
     bl_description = "Set the UV Editor texture to 'UVLightmap'"
 
     UV_LAYER_NAME = "UVLightmap"
+
+
+class FastUVUnwrap(LoggingOperator):
+    bl_idname = "mesh.fast_uv_unwrap"
+    bl_label = "Fast UV Unwrap"
+    bl_description = "Unwrap selected faces using the 'UV Unwrap' operator, then scale their UVs using given value"
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == "EDIT_MESH"
+
+    def execute(self, context):
+        if context.mode != "EDIT_MESH":
+            return self.error("Please enter Edit Mode to use this operator.")
+
+        # Get all selected face loops (of edit object).
+        # noinspection PyTypeChecker
+        edit_mesh = context.edit_object.data  # type: bpy.types.Mesh
+        bm = bmesh.from_edit_mesh(edit_mesh)
+        uv_layer = bm.loops.layers.uv.active
+        if not uv_layer:
+            return self.error("No active UV layer to scale.")
+
+        tool_settings = context.scene.flver_tool_settings
+        bpy.ops.uv.unwrap()  # default arguments
+
+        # TODO: Could probably be more efficient outside `bmesh`.
+        for face in [face for face in bm.faces if face.select]:
+            for loop in face.loops:
+                loop[uv_layer].uv *= tool_settings.uv_scale
+
+        bmesh.update_edit_mesh(edit_mesh)
+        del bm
+
+        return {"FINISHED"}
 
 
 class FindMissingTexturesInPNGCache(LoggingOperator):

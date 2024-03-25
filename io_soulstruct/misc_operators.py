@@ -79,8 +79,9 @@ class CopyMeshSelectionOperator(LoggingOperator):
     def poll(cls, context):
         return (
             context.mode == "EDIT_MESH"
-            and len(context.selected_objects) == 2
-            and all(obj.type == "MESH" for obj in context.selected_objects)
+            and len(context.selected_objects) == 1
+            and context.selected_objects[0].type == "MESH"
+            and context.selected_objects[0] is not context.edit_object
         )
 
     def execute(self, context):
@@ -99,8 +100,9 @@ class CutMeshSelectionOperator(LoggingOperator):
     def poll(cls, context):
         return (
             context.mode == "EDIT_MESH"
-            and len(context.selected_objects) == 2
-            and all(obj.type == "MESH" for obj in context.selected_objects)
+            and len(context.selected_objects) == 1
+            and context.selected_objects[0].type == "MESH"
+            and context.selected_objects[0] is not context.edit_object
         )
 
     def execute(self, context):
