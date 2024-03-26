@@ -155,13 +155,8 @@ CLASSES = (
     FLVERUVMapsPanel,
     # endregion
 
-    # region Havok
-    GlobalSettingsPanel_HavokView,
-
-    ImportHKXMapCollision,
-    ImportHKXMapCollisionWithBinderChoice,
-    ImportHKXMapCollisionFromHKXBHD,
-    HKXMapCollisionImportSettings,
+    # region Havok Animation
+    GlobalSettingsPanel_AnimationView,
 
     ImportHKXAnimation,
     ImportHKXAnimationWithBinderChoice,
@@ -175,6 +170,15 @@ CLASSES = (
     ArmatureActionChoiceOperator,
     SelectArmatureActionOperator,
     HKX_ANIMATION_PT_hkx_animations,
+    # endregion
+
+    # region Havok Collision
+    GlobalSettingsPanel_CollisionView,
+
+    ImportHKXMapCollision,
+    ImportHKXMapCollisionWithBinderChoice,
+    ImportHKXMapCollisionFromHKXBHD,
+    HKXMapCollisionImportSettings,
 
     ExportLooseHKXMapCollision,
     ExportHKXMapCollisionIntoBinder,
@@ -183,6 +187,7 @@ CLASSES = (
 
     SelectHiResFaces,
     SelectLoResFaces,
+    # endregion
 
     # TODO: Cutscene operators need a bit more work.
     # ImportHKXCutscene,
@@ -192,6 +197,7 @@ CLASSES = (
 
     # region Navmesh
     GlobalSettingsPanel_NavmeshView,
+
     ImportNVM,
     ImportNVMWithBinderChoice,
     ImportNVMFromNVMBND,

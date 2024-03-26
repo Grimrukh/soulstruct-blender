@@ -37,7 +37,7 @@ class HKX_ANIMATION_PT_hkx_animations(bpy.types.Panel):
     bl_idname = "HKX_ANIMATION_PT_hkx_animations"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "Soulstruct Havok"
+    bl_category = "Animation"
     bl_options = {'DEFAULT_CLOSED'}
 
     # noinspection PyUnusedLocal

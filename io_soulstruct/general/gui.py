@@ -5,7 +5,8 @@ __all__ = [
     "GlobalSettingsPanel_FLVERView",
     "GlobalSettingsPanel_MSBView",
     "GlobalSettingsPanel_NavmeshView",
-    "GlobalSettingsPanel_HavokView",
+    "GlobalSettingsPanel_AnimationView",
+    "GlobalSettingsPanel_CollisionView",
 ]
 
 import bpy
@@ -78,7 +79,7 @@ class GlobalSettingsPanel_FLVERView(bpy.types.Panel, _GlobalSettingsPanel_ViewMi
     bl_idname = "VIEW_PT_soulstruct_settings_flver"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "Soulstruct FLVER"
+    bl_category = "FLVER"
 
 
 class GlobalSettingsPanel_MSBView(bpy.types.Panel, _GlobalSettingsPanel_ViewMixin):
@@ -87,7 +88,7 @@ class GlobalSettingsPanel_MSBView(bpy.types.Panel, _GlobalSettingsPanel_ViewMixi
     bl_idname = "VIEW_PT_soulstruct_settings_msb"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "Soulstruct MSB"
+    bl_category = "MSB"
 
 
 class GlobalSettingsPanel_NavmeshView(bpy.types.Panel, _GlobalSettingsPanel_ViewMixin):
@@ -96,13 +97,22 @@ class GlobalSettingsPanel_NavmeshView(bpy.types.Panel, _GlobalSettingsPanel_View
     bl_idname = "VIEW_PT_soulstruct_settings_navmesh"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "Soulstruct Navmesh"
+    bl_category = "Navmesh"
 
 
-class GlobalSettingsPanel_HavokView(bpy.types.Panel, _GlobalSettingsPanel_ViewMixin):
-    """VIEW properties panel for Soulstruct Havok global settings."""
+class GlobalSettingsPanel_AnimationView(bpy.types.Panel, _GlobalSettingsPanel_ViewMixin):
+    """VIEW properties panel for Soulstruct Animation global settings."""
     bl_label = "General Settings"
-    bl_idname = "VIEW_PT_soulstruct_settings_havok"
+    bl_idname = "VIEW_PT_soulstruct_settings_animation"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "Soulstruct Havok"
+    bl_category = "Animation"
+
+
+class GlobalSettingsPanel_CollisionView(bpy.types.Panel, _GlobalSettingsPanel_ViewMixin):
+    """VIEW properties panel for Soulstruct Collision global settings."""
+    bl_label = "General Settings"
+    bl_idname = "VIEW_PT_soulstruct_settings_collision"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "Collision"

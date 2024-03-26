@@ -64,7 +64,7 @@ class NVM_PT_ds1_navmesh_import(bpy.types.Panel):
     bl_idname = "NVM_PT_ds1_navmesh_import"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "Soulstruct Navmesh"
+    bl_category = "Navmesh"
     bl_options = {'DEFAULT_CLOSED'}
 
     # noinspection PyUnusedLocal
@@ -93,7 +93,7 @@ class NVM_PT_ds1_navmesh_export(bpy.types.Panel):
     bl_idname = "NVM_PT_ds1_navmesh_export"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "Soulstruct Navmesh"
+    bl_category = "Navmesh"
     bl_options = {'DEFAULT_CLOSED'}
 
     # noinspection PyUnusedLocal
@@ -123,7 +123,7 @@ class NVM_PT_ds1_navmesh_tools(bpy.types.Panel):
     bl_idname = "NVM_PT_ds1_navmesh_tools"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "Soulstruct Navmesh"
+    bl_category = "Navmesh"
     bl_options = {'DEFAULT_CLOSED'}
 
     # noinspection PyUnusedLocal

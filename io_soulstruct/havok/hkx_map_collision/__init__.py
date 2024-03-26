@@ -49,7 +49,7 @@ class HKX_COLLISION_PT_hkx_map_collisions(bpy.types.Panel):
     bl_idname = "HKX_PT_hkx_map_collisions"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "Soulstruct Havok"
+    bl_category = "Collision"
     bl_options = {'DEFAULT_CLOSED'}
 
     # noinspection PyUnusedLocal

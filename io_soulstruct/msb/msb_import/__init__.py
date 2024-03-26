@@ -37,7 +37,7 @@ class MSBImportPanel(bpy.types.Panel):
     bl_idname = "SCENE_PT_msb_import"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "Soulstruct MSB"
+    bl_category = "MSB"
     bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):

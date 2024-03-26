@@ -25,7 +25,7 @@ class HKX_CUTSCENE_PT_hkx_cutscene_tools(bpy.types.Panel):
     bl_idname = "HKX_CUTSCENE_PT_hkx_tools"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "Soulstruct Havok"
+    bl_category = "Cutscene"
     bl_options = {'DEFAULT_CLOSED'}
 
     # noinspection PyUnusedLocal

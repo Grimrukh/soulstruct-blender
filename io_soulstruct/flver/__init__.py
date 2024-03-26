@@ -79,7 +79,7 @@ class FLVERImportPanel(bpy.types.Panel):
     bl_idname = "SCENE_PT_flver_import"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "Soulstruct FLVER"
+    bl_category = "FLVER"
     bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
@@ -100,7 +100,7 @@ class FLVERExportPanel(bpy.types.Panel):
     bl_idname = "SCENE_PT_flver_export"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "Soulstruct FLVER"
+    bl_category = "FLVER"
     bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
@@ -129,7 +129,7 @@ class TextureExportSettingsPanel(bpy.types.Panel):
     bl_idname = "SCENE_PT_texture_export_settings"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "Soulstruct FLVER"
+    bl_category = "FLVER"
     bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
@@ -167,7 +167,7 @@ class FLVERLightmapsPanel(bpy.types.Panel):
     bl_idname = "SCENE_PT_flver_lightmaps"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "Soulstruct FLVER"
+    bl_category = "FLVER"
     bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
@@ -191,7 +191,7 @@ class FLVERMeshToolsPanel(bpy.types.Panel):
     bl_idname = "SCENE_PT_flver_mesh_tools"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "Soulstruct FLVER"
+    bl_category = "FLVER"
     bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
@@ -243,7 +243,7 @@ class FLVERMaterialToolsPanel(bpy.types.Panel):
     bl_idname = "SCENE_PT_flver_material_tools"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "Soulstruct FLVER"
+    bl_category = "FLVER"
     bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
@@ -270,7 +270,7 @@ class FLVERDummyToolsPanel(bpy.types.Panel):
     bl_idname = "SCENE_PT_flver_dummy_tools"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "Soulstruct FLVER"
+    bl_category = "FLVER"
     bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
@@ -286,7 +286,7 @@ class FLVEROtherToolsPanel(bpy.types.Panel):
     bl_idname = "SCENE_PT_flver_other_tools"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "Soulstruct FLVER"
+    bl_category = "FLVER"
     bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
@@ -306,7 +306,7 @@ class FLVERUVMapsPanel(bpy.types.Panel):
     bl_idname = "SCENE_PT_uv_maps"
     bl_space_type = "IMAGE_EDITOR"
     bl_region_type = "UI"
-    bl_category = "Soulstruct FLVER"
+    bl_category = "FLVER"
     bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
