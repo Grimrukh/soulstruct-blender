@@ -29,8 +29,9 @@ GAME_FILE_ENUM_ITEMS = {
     # "partsbnd": CachedEnumItems(),
 
     # Loose Binder entries
-    "nvm": CachedEnumItems(),
+    "nvm": CachedEnumItems(),  # Dark Souls 1
     "hkx_map_collision": CachedEnumItems(),
+    "nvmhkt": CachedEnumItems(),  # Elden Ring
 
     # MSB entries
     "map_piece_part": CachedEnumItems(),
@@ -68,6 +69,9 @@ def get_map_piece_items(self, context):
     key = "map_piece"
 
     settings = SoulstructSettings.from_context(context)
+    if settings.is_game(ELDEN_RING):
+        return _clear_items(key).items
+
     game_map_directory = settings.get_import_map_path()
     project_map_directory = settings.get_project_map_path()
     if not is_path_and_dir(game_map_directory) and not is_path_and_dir(project_map_directory):
@@ -100,6 +104,9 @@ def get_msb_map_piece_items(self, context):
     key = "map_piece_part"
 
     settings = SoulstructSettings.from_context(context)
+    if settings.is_game(ELDEN_RING):
+        return _clear_items(key).items
+
     # We only check the preferred import location. Will automatically use latest version of MSB if option enabled.
     msb_path = settings.get_import_msb_path()
     if not is_path_and_file(msb_path):
@@ -139,6 +146,9 @@ def get_nvm_items(self, context):
     key = "nvm"
 
     settings = SoulstructSettings.from_context(context)
+    if not settings.is_game(DARK_SOULS_PTDE, DARK_SOULS_DSR):
+        return _clear_items(key).items
+
     # We use the latest map version for NVM files.
     map_stem = settings.get_latest_map_stem_version()
 
@@ -171,6 +181,9 @@ def get_navmesh_part_items(self, context):
     key = "navmesh_part"
 
     settings = SoulstructSettings.from_context(context)
+    if not settings.is_game(DARK_SOULS_PTDE, DARK_SOULS_DSR):
+        return _clear_items(key).items
+
     msb_path = settings.get_import_msb_path()  # we use preferred import location only (and latest version)
     if not is_path_and_file(msb_path):
         return _clear_items(key).items
@@ -204,6 +217,41 @@ def get_navmesh_part_items(self, context):
 
 
 # noinspection PyUnusedLocal
+def get_nvmhkt_items(self, context):
+    """Collect navmesh NVMHKT (HKX) entries in selected game map's 'mAA_BB_CC_DD.nvmhktbnd' binder.
+
+    Collects all resolution prefixes (n, o, q) for user choice.
+    """
+
+    key = "nvmhkt"
+
+    settings = SoulstructSettings.from_context(context)
+    if not settings.is_game(ELDEN_RING):
+        return _clear_items(key).items
+
+    # We use the latest map version for NVM files.
+    map_stem = settings.get_latest_map_stem_version()
+
+    game_nvmbnd_path = settings.get_game_map_path(f"{map_stem}.nvmhktbnd")
+    project_nvmbnd_path = settings.get_project_map_path(f"{map_stem}.nvmhktbnd")
+    if not is_path_and_file(game_nvmbnd_path) and not is_path_and_file(project_nvmbnd_path):
+        return _clear_items(key).items
+
+    cached = GAME_FILE_ENUM_ITEMS[key]
+    if not cached.is_valid(game_nvmbnd_path, project_nvmbnd_path):
+        # Find all HKX entries in map NVMBND. (Never compressed.)
+        pattern = re.compile(rf"[noq].*\.hkx$")
+        cached = GAME_FILE_ENUM_ITEMS[key] = CachedEnumItems.from_binder_entries(
+            game_nvmbnd_path,
+            project_nvmbnd_path,
+            pattern,
+            use_value_source_suffix=True,
+            is_split_binder=False,
+        )
+    return cached.items
+
+
+# noinspection PyUnusedLocal
 def get_hkx_map_collision_items(self, context):
     """Collect (hi-res) map collision HKX entries in selected game map's 'hAA_BB_CC_DD.hkxbhd' binder.
 
@@ -214,6 +262,9 @@ def get_hkx_map_collision_items(self, context):
     key = "hkx_map_collision"
 
     settings = SoulstructSettings.from_context(context)
+    if not settings.is_game(DARK_SOULS_PTDE, DARK_SOULS_DSR):
+        return _clear_items(key).items
+
     map_stem = settings.get_oldest_map_stem_version()
 
     game_map_path = settings.get_game_map_path(map_stem=map_stem)
@@ -258,6 +309,9 @@ def get_msb_hkx_map_collision_items(self, context):
     key = "hkx_map_collision_part"
 
     settings = SoulstructSettings.from_context(context)
+    if not settings.is_game(DARK_SOULS_PTDE, DARK_SOULS_DSR):
+        return _clear_items(key).items
+
     msb_path = settings.get_import_msb_path()  # we use preferred import location only (and latest version)
     if not is_path_and_file(msb_path):
         return _clear_items(key).items
@@ -298,6 +352,9 @@ def get_msb_character_items(self, context):
     key = "character_part"
 
     settings = SoulstructSettings.from_context(context)
+    if settings.is_game(ELDEN_RING):
+        return _clear_items(key).items
+
     msb_path = settings.get_import_msb_path()  # we use preferred import location only (and latest version)
     if not is_path_and_file(msb_path):
         return _clear_items(key).items
@@ -337,6 +394,9 @@ def get_point_region_items(self, context):
     key = "point_region"
 
     settings = SoulstructSettings.from_context(context)
+    if settings.is_game(ELDEN_RING):
+        return _clear_items(key).items
+
     msb_path = settings.get_import_msb_path()  # we use preferred import location only (and latest version)
     if not is_path_and_file(msb_path):
         return _clear_items(key).items
@@ -372,6 +432,9 @@ def get_volume_region_items(self, context):
     key = "volume_region"
 
     settings = SoulstructSettings.from_context(context)
+    if settings.is_game(ELDEN_RING):
+        return _clear_items(key).items
+
     msb_path = settings.get_import_msb_path()  # we use preferred import location only (and latest version)
     if not is_path_and_file(msb_path):
         return _clear_items(key).items
@@ -410,8 +473,13 @@ class SoulstructGameEnums(bpy.types.PropertyGroup):
     # region Binder Entries
 
     nvm: bpy.props.EnumProperty(
-        name="DS1 Navmesh",
+        name="Navmesh",  # DS1
         items=get_nvm_items,
+    )
+
+    nvmhkt: bpy.props.EnumProperty(
+        name="Navmesh (n)",
+        items=get_nvmhkt_items,
     )
 
     hkx_map_collision: bpy.props.EnumProperty(

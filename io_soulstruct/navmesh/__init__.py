@@ -16,9 +16,17 @@ __all__ = [
     "ExportMCG",
     "ExportMCGMCPToMap",
 
+    "ImportNVMHKT",
+    "ImportNVMHKTWithBinderChoice",
+    "ImportNVMHKTFromNVMHKTBND",
+    "ImportAllNVMHKTsFromNVMHKTBND",
+    "ImportAllOverworldNVMHKTs",
+    "NVMHKTImportSettings",
+
     "NVM_PT_ds1_navmesh_import",
     "NVM_PT_ds1_navmesh_export",
     "NVM_PT_ds1_navmesh_tools",
+    "NVM_PT_er_navmesh_import",
 
     "NavmeshFaceSettings",
     "AddNVMFaceFlags",
@@ -51,6 +59,7 @@ if "NVM_PT_nvm_tools" in locals():
 from .nvm import *
 from .nvm.utilities import set_face_material
 from .nav_graph import *
+from .nvmhkt import *
 
 
 _navmesh_type_items = [
@@ -60,7 +69,7 @@ _navmesh_type_items = [
 
 
 class NVM_PT_ds1_navmesh_import(bpy.types.Panel):
-    bl_label = "Navmesh Import"
+    bl_label = "DS1 Navmesh Import"
     bl_idname = "NVM_PT_ds1_navmesh_import"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
@@ -89,7 +98,7 @@ class NVM_PT_ds1_navmesh_import(bpy.types.Panel):
 
 
 class NVM_PT_ds1_navmesh_export(bpy.types.Panel):
-    bl_label = "Navmesh Export"
+    bl_label = "DS1 Navmesh Export"
     bl_idname = "NVM_PT_ds1_navmesh_export"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
@@ -119,7 +128,7 @@ class NVM_PT_ds1_navmesh_export(bpy.types.Panel):
 
 
 class NVM_PT_ds1_navmesh_tools(bpy.types.Panel):
-    bl_label = "Navmesh Tools"
+    bl_label = "DS1 Navmesh Tools"
     bl_idname = "NVM_PT_ds1_navmesh_tools"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
@@ -214,3 +223,39 @@ def layout_selected_faces(bm: bmesh.types.BMesh, layout, context, selected_faces
         selected_faces_box.label(text="Select navmesh faces in Edit Mode")
 
     del bm
+
+
+class NVM_PT_er_navmesh_import(bpy.types.Panel):
+    bl_label = "ER Navmesh Import"
+    bl_idname = "NVM_PT_er_navmesh_import"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "Navmesh"
+    bl_options = {'DEFAULT_CLOSED'}
+
+    # noinspection PyUnusedLocal
+    def draw(self, context):
+        settings = context.scene.soulstruct_settings
+        if settings.game_variable_name != "ELDEN_RING":
+            self.layout.label(text="Elden Ring only.")
+            return
+
+        import_loose_box = self.layout.box()
+        import_loose_box.operator(ImportNVMHKT.bl_idname)
+
+        settings_box = self.layout.box()
+        settings_box.label(text="Import Settings")
+        settings_box.prop(context.scene.nvmhkt_import_settings, "import_hires_navmeshes")
+        settings_box.prop(context.scene.nvmhkt_import_settings, "import_lores_navmeshes")
+        settings_box.prop(context.scene.nvmhkt_import_settings, "correct_model_versions")
+        settings_box.prop(context.scene.nvmhkt_import_settings, "create_dungeon_connection_points")
+        settings_box.prop(context.scene.nvmhkt_import_settings, "overworld_transform_mode")
+        settings_box.prop(context.scene.nvmhkt_import_settings, "dungeon_transform_mode")
+
+        quick_box = self.layout.box()
+        quick_box.label(text="From Game/Project")
+        quick_box.prop(context.scene.soulstruct_settings, "import_bak_file", text="From .BAK File")
+        quick_box.prop(context.scene.soulstruct_game_enums, "nvmhkt")
+        quick_box.operator(ImportNVMHKTFromNVMHKTBND.bl_idname)
+        quick_box.operator(ImportAllNVMHKTsFromNVMHKTBND.bl_idname)
+        quick_box.operator(ImportAllOverworldNVMHKTs.bl_idname)

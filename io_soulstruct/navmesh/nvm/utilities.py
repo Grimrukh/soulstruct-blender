@@ -4,7 +4,6 @@ __all__ = [
     "ANY_NVM_NAME_RE",
     "STANDARD_NVM_STEM_RE",
     "NVMBND_NAME_RE",
-    "NVM_MESH_TYPING",
     "NAVMESH_FLAG_COLORS",
     "NAVMESH_MULTIPLE_FLAG_COLOR",
     "get_navmesh_msb_transforms",
@@ -24,9 +23,7 @@ from io_soulstruct.utilities import Transform
 from io_soulstruct.utilities.materials import hsv_color, create_basic_material
 
 
-NVM_MESH_TYPING = tuple[list[tp.Sequence[float]], list[tp.Sequence[int]]]
-
-ANY_NVM_NAME_RE = re.compile(r"^(?P<stem>.*)\.nvm(?P<dvx>\.dcx)?$")
+ANY_NVM_NAME_RE = re.compile(r"^(?P<stem>.*)\.nvm(?P<dcx>\.dcx)?$")
 STANDARD_NVM_STEM_RE = re.compile(r"^n(\d{4})B(?P<B>\d)A(?P<A>\d{2})$")  # no extensions
 NVMBND_NAME_RE = re.compile(r"^.*?\.nvmbnd(\.dcx)?$")
 

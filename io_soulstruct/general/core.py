@@ -30,6 +30,8 @@ if tp.TYPE_CHECKING:
 _SETTINGS_PATH = Path(__file__).parent.parent / "SoulstructSettings.json"
 
 # Associates a game 'map' path and/or project 'map' path with a list of map choice enums.
+# Also records filter mode used to generate that list.
+_MAP_STEM_FILTER_MODE = ""
 _MAP_STEM_ENUM = CachedEnumItems()
 
 # Redirect files that do and do not use the latest version of map files (e.g. to handle Darkroot Garden in DS1).
@@ -39,7 +41,8 @@ _OLD_TO_NEW_MAP = {}  # e.g. {"m12_00_00_00": "m12_00_00_01"}
 
 
 def CLEAR_MAP_STEM_ENUM():
-    global _MAP_STEM_ENUM, _NEW_TO_OLD_MAP, _OLD_TO_NEW_MAP
+    global _MAP_STEM_FILTER_MODE, _MAP_STEM_ENUM, _NEW_TO_OLD_MAP, _OLD_TO_NEW_MAP
+    _MAP_STEM_FILTER_MODE = ""
     _MAP_STEM_ENUM = CachedEnumItems()
     _NEW_TO_OLD_MAP = {}
     _OLD_TO_NEW_MAP = {}
@@ -67,6 +70,20 @@ _USE_OLD_MAP_VERSION = (".flver", ".hkxbhd", ".hkxbdt")
 _USE_NEW_MAP_VERSION = (".msb", ".nvmbnd", ".mcg", ".mcp")
 
 
+MAP_DIR_FILTERS_RE = {
+    "ALL": lambda map_dir: True,
+    "LEGACY_DUNGEONS": lambda map_dir: int(map_dir.name[1:3]) < 60 and not 30 <= int(map_dir.name[1:3]) <= 34,
+    "GENERIC_DUNGEONS": lambda map_dir: 30 <= int(map_dir.name[1:3]) <= 34,
+    "ALL_DUNGEONS": lambda map_dir: int(map_dir.name[1:3]) < 60,
+    "OVERWORLD_SMALL": lambda map_dir: map_dir.name[1:3] == "60" and map_dir.name[11] == "0",
+    "OVERWORLD_MEDIUM": lambda map_dir: map_dir.name[1:3] == "60" and map_dir.name[11] == "1",
+    "OVERWORLD_LARGE": lambda map_dir: map_dir.name[1:3] == "60" and map_dir.name[11] == "2",
+    "OVERWORLD_SMALL_V1": lambda map_dir: map_dir.name[1:3] == "60" and map_dir.name[11] == "0" and map_dir.name[10] != "0",
+    "OVERWORLD_MEDIUM_V1": lambda map_dir: map_dir.name[1:3] == "60" and map_dir.name[11] == "1" and map_dir.name[10] != "0",
+    "OVERWORLD_LARGE_V1": lambda map_dir: map_dir.name[1:3] == "60" and map_dir.name[11] == "2" and map_dir.name[10] != "0",
+}
+
+
 # noinspection PyUnusedLocal
 def _get_map_stem_items(self, context: bpy.types.Context) -> list[tuple[str, str, str]]:
     """Get list of map stems in game and/or project directory.
@@ -76,24 +93,38 @@ def _get_map_stem_items(self, context: bpy.types.Context) -> list[tuple[str, str
     destination file itself, these suffixes are not used in any way internally.
 
     TODO: If this proves too problematic, I can always hard-code the list of available maps for each game, of course.
+
+    TODO: Definitely need a separate system/enum to manage Elden Ring overworld tiles! Tile X/Y dropdowns...?
     """
 
-    global _MAP_STEM_ENUM, _NEW_TO_OLD_MAP, _OLD_TO_NEW_MAP
+    global _MAP_STEM_FILTER_MODE, _MAP_STEM_ENUM, _NEW_TO_OLD_MAP, _OLD_TO_NEW_MAP
 
     settings = SoulstructSettings.from_context(context)
+    if settings.is_game("ELDEN_RING"):
+        filter_mode = settings.map_stem_filter_mode
+        include_empty_map_tiles = settings.include_empty_map_tiles
+    else:
+        filter_mode = "ALL"
+        include_empty_map_tiles = True
+    filter_func = MAP_DIR_FILTERS_RE[filter_mode]
+
     game_directory = settings.game_directory
     game_map_dir_path = Path(game_directory, "map") if game_directory else None
     project_directory = settings.project_directory
     project_map_dir_path = Path(project_directory, "map") if project_directory else None
 
     if not is_path_and_dir(game_map_dir_path) and not is_path_and_dir(project_map_dir_path):
+        _MAP_STEM_FILTER_MODE = ""
         _MAP_STEM_ENUM = CachedEnumItems()  # reset
         _NEW_TO_OLD_MAP = {}
         _OLD_TO_NEW_MAP = {}
         return _MAP_STEM_ENUM.items
 
-    if _MAP_STEM_ENUM.is_valid(game_map_dir_path, project_map_dir_path):
-        return _MAP_STEM_ENUM.items  # cached
+    if (
+        _MAP_STEM_FILTER_MODE == f"{filter_mode} {include_empty_map_tiles}"
+        and _MAP_STEM_ENUM.is_valid(game_map_dir_path, project_map_dir_path)
+    ):
+        return _MAP_STEM_ENUM.items  # cached still valid
 
     game_map_stem_names = []
     project_map_stem_names = []
@@ -101,32 +132,55 @@ def _get_map_stem_items(self, context: bpy.types.Context) -> list[tuple[str, str
         case None:
             pass  # no choices
         case ELDEN_RING.variable_name:
+            # Maps are inside area subfolders like 'm10' or 'm60'.
+
+            if not include_empty_map_tiles:
+                # Extend filter function to check MSB size.
+                def er_filter_func(map_dir_: Path):
+                    if not filter_func(map_dir_):
+                        return False
+                    if not map_dir_.name.startswith("m60") or not map_dir_.name.endswith("00"):
+                        return True  # not small overworld
+                    msb_path = map_dir_ / f"../../mapstudio/{map_dir_.name}.msb.dcx"
+                    if not msb_path.is_file():
+                        return True  # to be safe
+                    byte_count = msb_path.stat().st_size
+                    if byte_count <= 700:  # rough threshold
+                        return False  # no navmesh data
+                    return True
+            else:
+                er_filter_func = filter_func
+
             if is_path_and_dir(game_map_dir_path):
                 for area in sorted(game_map_dir_path.glob("m??")):
                     game_map_stem_names.extend(
                         [
-                            f"{area.name}/{map_stem.name}"
-                            for map_stem in sorted(area.glob("m??_??_??_??"))
-                            if map_stem.is_dir()
+                            f"{map_dir.name}"
+                            for map_dir in sorted(area.glob("m??_??_??_??"))
+                            if map_dir.is_dir() and er_filter_func(map_dir)
                         ]
                     )
             if is_path_and_dir(project_map_dir_path):
                 for area in sorted(project_map_dir_path.glob("m??")):
                     project_map_stem_names.extend(
                         [
-                            f"{area.name}/{map_stem.name}"
-                            for map_stem in sorted(area.glob("m??_??_??_??"))
-                            if map_stem.is_dir()
+                            f"{map_dir.name}"
+                            for map_dir in sorted(area.glob("m??_??_??_??"))
+                            if map_dir.is_dir() and er_filter_func(map_dir)
                         ]
                     )
         case _:  # standard map stem names
             if is_path_and_dir(game_map_dir_path):
                 game_map_stem_names = [
-                    map_stem.name for map_stem in sorted(game_map_dir_path.glob("m??_??_??_??")) if map_stem.is_dir()
+                    map_dir.name
+                    for map_dir in sorted(game_map_dir_path.glob("m??_??_??_??"))
+                    if map_dir.is_dir() and filter_func(map_dir)
                 ]
             if is_path_and_dir(project_map_dir_path):
                 project_map_stem_names = [
-                    map_stem.name for map_stem in sorted(project_map_dir_path.glob("m??_??_??_??")) if map_stem.is_dir()
+                    map_dir.name
+                    for map_dir in sorted(project_map_dir_path.glob("m??_??_??_??"))
+                    if map_dir.is_dir() and filter_func(map_dir)
                 ]
 
     if not is_path_and_dir(game_map_dir_path):
@@ -136,14 +190,28 @@ def _get_map_stem_items(self, context: bpy.types.Context) -> list[tuple[str, str
     else:
         shared_map_stem_names = sorted(set(game_map_stem_names) & set(project_map_stem_names))
 
+    if settings.is_game("ELDEN_RING"):
+        from soulstruct.eldenring.maps.constants import get_map
+
+        def get_map_desc(map_stem: str) -> str:
+            try:
+                game_map = get_map(map_stem)
+                return game_map.verbose_name
+            except ValueError:
+                return f"Map {map_stem}"
+
+    else:
+        def get_map_desc(map_stem: str) -> str:
+            return f"Map {map_stem}"
+
     map_stems = [
-        (name, name, f"Map {name}")
+        (name, name, get_map_desc(name))
         for name in shared_map_stem_names
     ] + [
-        (name, f"{name} (G)", f"Map {name} (in game only)")
+        (name, f"{name} (G)", get_map_desc(name) + " (in game only)")
         for name in sorted(set(game_map_stem_names) - set(shared_map_stem_names))
     ] + [
-        (name, f"{name} (P)", f"Map {name} (in project only)")
+        (name, f"{name} (P)", get_map_desc(name) + " (in project only)")
         for name in sorted(set(project_map_stem_names) - set(shared_map_stem_names))
     ]
 
@@ -164,6 +232,7 @@ def _get_map_stem_items(self, context: bpy.types.Context) -> list[tuple[str, str
                     if old_map_stem in found_map_stems:
                         _NEW_TO_OLD_MAP[map_stem] = old_map_stem
 
+    _MAP_STEM_FILTER_MODE = f"{filter_mode} {include_empty_map_tiles}"
     _MAP_STEM_ENUM = CachedEnumItems(game_map_dir_path, project_map_dir_path, map_stems)
     return _MAP_STEM_ENUM.items
 
@@ -172,7 +241,10 @@ def _get_map_stem_items(self, context: bpy.types.Context) -> list[tuple[str, str
 def _update_map_stem(self, context):
     """Reset all selected game enums to "None" ("0"), as they will all change for a new map."""
     for key in bpy.context.scene.soulstruct_game_enums.__annotations__:
-        setattr(bpy.context.scene.soulstruct_game_enums, key, "0")
+        try:
+            setattr(bpy.context.scene.soulstruct_game_enums, key, "0")
+        except TypeError:
+            pass  # enum has no values
 
 
 class SoulstructSettings(bpy.types.PropertyGroup):
@@ -227,6 +299,29 @@ class SoulstructSettings(bpy.types.PropertyGroup):
     also_export_to_game: bpy.props.BoolProperty(
         name="Also Export to Game",
         description="Export files to the game directory in addition to the project directory (if given)",
+        default=False,
+    )
+
+    map_stem_filter_mode: bpy.props.EnumProperty(
+        name="Map Stem Filter Mode",
+        description="Filter mode for Map Stem dropdown. Only used by Elden Ring",
+        items=[
+            ("ALL", "All", "Show all map stems. Dropdown may grow too large in Elden Ring"),
+            ("LEGACY_DUNGEONS", "Legacy Dungeons Only", "Show only map stems for legacy dungeons and special maps"),
+            ("GENERIC_DUNGEONS", "Generic Dungeons Only", "Show only map stems for generic (non-legacy) dungeons"),
+            ("ALL_DUNGEONS", "All Dungeons Only", "Show only map stems for legacy/generic dungeons (not m60)"),
+            ("OVERWORLD_SMALL", "Overworld (Small) Only", "Show only map stems for overworld small tiles"),
+            ("OVERWORLD_MEDIUM", "Overworld (Medium) Only", "Show only map stems for overworld medium tiles"),
+            ("OVERWORLD_LARGE", "Overworld (Large) Only", "Show only map stems for overworld large tiles"),
+            ("OVERWORLD_SMALL_V1", "Overworld (Small V1+) Only", "Show only map stems for overworld small tiles (version 1+)"),
+            ("OVERWORLD_MEDIUM_V1", "Overworld (Medium V1+) Only", "Show only map stems for overworld medium tiles (version 1+"),
+            ("OVERWORLD_LARGE_V1", "Overworld (Large V1+) Only", "Show only map stems for overworld large tiles (version 1+)"),
+        ],
+    )
+
+    include_empty_map_tiles: bpy.props.BoolProperty(
+        name="Include Empty Map Tiles",
+        description="Include Elden Ring overworld small map tiles with compressed MSB size < 700 bytes",
         default=False,
     )
 
@@ -378,7 +473,11 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         map_stem = self._process_map_stem_version(map_stem or self.map_stem, *parts)
         if not self.str_game_directory or map_stem in {"", "0"}:
             return None
-        map_path = Path(self.str_game_directory, f"map/{map_stem}", *parts)
+        if self.is_game("ELDEN_RING"):
+            # Area subfolders in 'map'.
+            map_path = Path(self.str_game_directory, f"map/{map_stem[:3]}/{map_stem}", *parts)
+        else:
+            map_path = Path(self.str_game_directory, f"map/{map_stem}", *parts)
         return self._process_path(map_path, dcx_type)
 
     def get_game_msb_path(self, map_stem="") -> Path | None:
@@ -408,7 +507,11 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         map_stem = self._process_map_stem_version(map_stem or self.map_stem, *parts)
         if not self.str_project_directory or map_stem in {"", "0"}:
             return None
-        map_path = Path(self.str_project_directory, f"map/{map_stem}", *parts)
+        if self.is_game("ELDEN_RING"):
+            # Area subfolders in 'map'.
+            map_path = Path(self.str_game_directory, f"map/{map_stem[:3]}/{map_stem}", *parts)
+        else:
+            map_path = Path(self.str_project_directory, f"map/{map_stem}", *parts)
         return self._process_path(map_path, dcx_type)
 
     def get_project_msb_path(self, map_stem="") -> Path | None:
@@ -450,7 +553,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):
             path = func(*parts, dcx_type=dcx_type)
             if is_path_and_file(path):
                 return path
-        raise FileNotFoundError(f"File not found in project or game directory: {parts}")
+        raise FileNotFoundError(f"File not found in project or game directory with parts: {parts}")
 
     def get_import_dir_path(self, *parts: str | Path) -> Path | None:
         """Try to get directory path relative to project or game directory first, depending on
@@ -487,7 +590,11 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         if map_stem in {"", "0"}:
             return None
 
-        map_path = Path(f"map/{map_stem}", *parts)
+        if self.is_game("ELDEN_RING"):
+            # Area subfolders in 'map'.
+            map_path = Path(self.str_game_directory, f"map/{map_stem[:3]}/{map_stem}", *parts)
+        else:
+            map_path = Path(f"map/{map_stem}", *parts)
         if "." in map_path.name:
             return self.get_import_file_path(map_path)
         return self.get_import_dir_path(map_path)
@@ -886,9 +993,12 @@ class SoulstructSettings(bpy.types.PropertyGroup):
             return from_bundled()
         return None
 
-    def _process_map_stem_version(self, map_stem: str, *parts: str | Path):
+    def _process_map_stem_version(self, map_stem: str, *parts: str | Path) -> str:
         if not self.smart_map_version_handling or not parts:
             return map_stem
+
+        if not self.is_game("DARK_SOULS_PTDE", "DARK_SOULS_DSR"):
+            return map_stem  # only for DS1 at the moment (untested for other games)
 
         # Check if an older or newer version of the map exists to redirect to, depending on file type.
         last_part = str(parts[-1]).lower().removesuffix(".dcx")

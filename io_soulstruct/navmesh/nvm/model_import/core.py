@@ -51,7 +51,7 @@ class NVMImporter:
     def import_nvm(
         self, import_info: NVMImportInfo, use_material=True, create_quadtree_boxes=False
     ) -> bpy.types.MeshObject:
-        """Read a NVM into a collection of Blender mesh objects."""
+        """Read a NVM into a Blender mesh object."""
 
         # Set mode to OBJECT and deselect all objects.
         if bpy.ops.object.mode_set.poll():
@@ -64,7 +64,7 @@ class NVMImporter:
         # Create mesh.
         nvm = import_info.nvm
         bl_mesh = bpy.data.meshes.new(name=import_info.bl_name)
-        vertices = [GAME_TO_BL_VECTOR(v) for v in nvm.vertices]
+        vertices = GAME_TO_BL_ARRAY(nvm.vertices)
         edges = []  # no edges in NVM
         faces = [triangle.vertex_indices for triangle in nvm.triangles]
         bl_mesh.from_pydata(vertices, edges, faces)

@@ -4,15 +4,18 @@ __all__ = [
     "GAME_TO_BL_VECTOR",
     "GAME_TO_BL_EULER",
     "GAME_TO_BL_MAT3",
+    "GAME_TO_BL_ARRAY",
     "BL_TO_GAME_VECTOR3",
     "BL_TO_GAME_VECTOR4",
     "BL_TO_GAME_EULER",
     "BL_TO_GAME_MAT3",
+    "BL_TO_GAME_ARRAY",
     "Transform",
     "BlenderTransform",
 ]
 
 import math
+import numpy as np
 import typing as tp
 from dataclasses import dataclass
 
@@ -33,6 +36,20 @@ def GAME_TO_BL_VECTOR(game_vector: Vector3 | Vector4 | tp.Sequence[float, float,
 def BL_TO_GAME_VECTOR3(bl_vector: Vector):
     """See above."""
     return Vector3((bl_vector.x, bl_vector.z, bl_vector.y))
+
+
+def GAME_TO_BL_ARRAY(game_array: np.ndarray) -> np.ndarray:
+    """Just swaps Y and Z axes. X increases to the right in both systems; the game is left-handed and Blender is
+    right-handed.
+
+    This function is its own inverse, but an explicit converter that produces a Soulstruct class is given below.
+    """
+    return np.array((game_array[:, 0], game_array[:, 2], game_array[:, 1])).T
+
+
+def BL_TO_GAME_ARRAY(bl_array: np.ndarray) -> np.ndarray:
+    """See above."""
+    return np.array((bl_array[:, 0], bl_array[:, 2], bl_array[:, 1])).T
 
 
 def BL_TO_GAME_VECTOR4(bl_vector: Vector, w=0.0):

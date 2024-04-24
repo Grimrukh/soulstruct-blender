@@ -8,6 +8,7 @@ __all__ = [
     "CreateFLVERInstance",
     "RenameFLVER",
     "CreateEmptyMapPieceFLVER",
+    "SelectModelMaskID",
     "SetSmoothCustomNormals",
     "SetVertexAlpha",
     "InvertVertexAlpha",
@@ -76,6 +77,8 @@ class FLVERToolSettings(bpy.types.PropertyGroup):
         name="Rebone Target Bone",
         description="New bone (vertex group) to assign to vertices with 'Rebone Vertices' operator",
     )
+
+    mask_id: bpy.props.IntProperty(name="Model Mask ID", default=0)
 
 
 class CopyToNewFLVER(LoggingOperator):
@@ -351,6 +354,42 @@ class CreateEmptyMapPieceFLVER(LoggingOperator):
         armature_mod.object = new_armature_obj
         armature_mod.show_in_editmode = True
         armature_mod.show_on_cage = True
+
+        return {"FINISHED"}
+
+
+class SelectModelMaskID(LoggingOperator):
+
+    bl_idname = "mesh.select_model_mask_id"
+    bl_label = "Select Model Mask ID"
+    bl_description = "Select all faces with materials labelled with the given Model Mask ID ('#XX#')"
+
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == "EDIT_MESH"
+
+    def execute(self, context):
+        if not self.poll(context):
+            return self.error("Must be in Edit Mode.")
+
+        # Get edit mesh.
+        # noinspection PyTypeChecker
+        mesh = context.edit_object.data  # type: bpy.types.Mesh
+
+        bm = bmesh.from_edit_mesh(mesh)
+
+        # Select faces with material mask ID.
+        mask_id = context.scene.flver_tool_settings.mask_id
+        mask_str = f"#{mask_id:02}#"
+        count = 0
+        for face in bm.faces:
+            material = mesh.materials[face.material_index]
+            face.select = material.name.startswith(mask_str)
+            count += face.select
+        self.info(f"Selected {count} faces with Model Mask ID {mask_id}.")
+
+        bmesh.update_edit_mesh(mesh)
 
         return {"FINISHED"}
 

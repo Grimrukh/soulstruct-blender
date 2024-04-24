@@ -359,12 +359,13 @@ class ImportNVMFromNVMBND(LoggingOperator):
             nvmbnd_path, nvm_entry.minimal_stem, bl_name, nvm_entry.to_binary_file(NVM)
         )
 
-        importer = NVMImporter(self, context)
+        collection = get_collection(f"{map_stem} Navmesh Models", context.scene.collection, hide_viewport=False)
+        importer = NVMImporter(self, context, collection=collection)
 
         self.info(f"Importing NVM model {import_info.model_file_stem} as '{import_info.bl_name}'.")
 
         try:
-            bl_nvm = importer.import_nvm(
+            importer.import_nvm(
                 import_info,
                 use_material=self.use_material,
                 create_quadtree_boxes=self.create_quadtree_boxes,
@@ -375,9 +376,6 @@ class ImportNVMFromNVMBND(LoggingOperator):
                 bpy.data.objects.remove(obj)
             traceback.print_exc()  # for inspection in Blender console
             return self.error(f"Cannot import NVM: {import_info.path}. Error: {ex}")
-
-        collection = get_collection(f"{map_stem} Navmesh Models", context.scene.collection, hide_viewport=False)
-        collection.objects.link(bl_nvm)
 
         p = time.perf_counter() - start_time
         self.info(f"Imported NVM {nvm_entry_name} from {nvmbnd_path.name} in {p} s.")

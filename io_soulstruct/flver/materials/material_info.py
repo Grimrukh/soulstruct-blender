@@ -916,6 +916,11 @@ class ERMaterialShaderInfo(BaseMaterialShaderInfo):
         if not matbinbnd:
             raise NotImplementedError("Cannot yet guess MATBIN info from name. MATBINBND must be given.")
 
+        # TODO: Some FLVER materials still point to an MTD. These MTDs exist, but so do the MATBINs, so currently just
+        #  redirecting to those... I assume the MTD does this anyway.
+        if matbin_name.endswith("mtd"):
+            matbin_name = matbin_name[:-3] + "matbin"
+
         # Use real MATBIN file (much less guesswork -- currently required).
         try:
             matbin = matbinbnd.get_matbin(matbin_name)

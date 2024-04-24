@@ -28,6 +28,7 @@ __all__ = [
     "CreateFLVERInstance",
     "RenameFLVER",
     "CreateEmptyMapPieceFLVER",
+    "SelectModelMaskID",
     "SetSmoothCustomNormals",
     "SetVertexAlpha",
     "InvertVertexAlpha",
@@ -196,7 +197,12 @@ class FLVERMeshToolsPanel(bpy.types.Panel):
 
     def draw(self, context):
 
-        flver_tool_settings = context.scene.flver_tool_settings
+        flver_tool_settings = context.scene.flver_tool_settings  # type: FLVERToolSettings
+
+        mask_box = self.layout.box()
+        mask_box.label(text="Mask:")
+        mask_box.prop(flver_tool_settings, "mask_id")
+        mask_box.operator(SelectModelMaskID.bl_idname)
 
         polish_box = self.layout.box()
         polish_box.label(text="Select/Polish Mesh:")

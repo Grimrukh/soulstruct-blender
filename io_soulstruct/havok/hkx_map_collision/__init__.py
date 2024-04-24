@@ -31,11 +31,11 @@ else:
 import soulstruct
 importlib.reload(soulstruct)
 
+# TODO: Outdated name check, will never be True. Doesn't seem necessary though?
 if "HKX_PT_hkx_tools" in locals():
-    importlib.reload(sys.modules["io_soulstruct.hkx_map_collision.utilities"])
-    importlib.reload(sys.modules["io_soulstruct.hkx_map_collision.import_hkx"])
-    importlib.reload(sys.modules["io_soulstruct.hkx_map_collision.export_hkx"])
-    importlib.reload(sys.modules["io_soulstruct.misc_operators"])
+    importlib.reload(sys.modules["io_soulstruct.havok.hkx_map_collision.model_export"])
+    importlib.reload(sys.modules["io_soulstruct.havok.hkx_map_collision.model_import"])
+    importlib.reload(sys.modules["io_soulstruct.havok.hkx_map_collision.misc_operators"])
 
 from .model_import import *
 from .model_export import *

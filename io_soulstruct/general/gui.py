@@ -41,6 +41,9 @@ class _GlobalSettingsPanel_ViewMixin:
         layout.row().prop(settings, "smart_map_version_handling")
         layout.row().operator(ClearCachedLists.bl_idname, text="Refresh File/Folder Dropdowns")
 
+        if settings.is_game("ELDEN_RING"):
+            layout.row().prop(settings, "map_stem_filter_mode")
+            layout.row().prop(settings, "include_empty_map_tiles")
         layout.row().prop(settings, "map_stem")
 
         if settings.game_variable_name == "ELDEN_RING":
