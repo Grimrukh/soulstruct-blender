@@ -566,7 +566,9 @@ class FLVERExporter:
         bm.from_mesh(bl_mesh.data)
         bmesh.ops.triangulate(bm, faces=bm.faces[:], quad_method="BEAUTY", ngon_method="BEAUTY")
         tri_mesh_data = bpy.data.meshes.new("__TEMP_FLVER__")  # will be deleted during `finally` block of caller
-        tri_mesh_data.use_auto_smooth = True
+        if bpy.app.version < (4, 1):
+            # Removed in Blender 4.1. (Now implicit from the presence of custom normals.)
+            tri_mesh_data.use_auto_smooth = True
         # Probably not necessary, but we copy material slots over, just case it causes `face.material_index` problems.
         for bl_mat in bl_mesh.data.materials:
             tri_mesh_data.materials.append(bl_mat)
