@@ -16,26 +16,7 @@ __all__ = [
     "HKX_COLLISION_PT_hkx_map_collisions",
 ]
 
-import importlib
-import sys
-
 import bpy
-
-# Force reload of Soulstruct module (for easier updating).
-try:
-    import soulstruct_havok
-except ImportError:
-    soulstruct_havok = None
-else:
-    importlib.reload(soulstruct_havok)
-import soulstruct
-importlib.reload(soulstruct)
-
-# TODO: Outdated name check, will never be True. Doesn't seem necessary though?
-if "HKX_PT_hkx_tools" in locals():
-    importlib.reload(sys.modules["io_soulstruct.havok.hkx_map_collision.model_export"])
-    importlib.reload(sys.modules["io_soulstruct.havok.hkx_map_collision.model_import"])
-    importlib.reload(sys.modules["io_soulstruct.havok.hkx_map_collision.misc_operators"])
 
 from .model_import import *
 from .model_export import *

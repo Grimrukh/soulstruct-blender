@@ -4,6 +4,7 @@ __all__ = [
     "ImportHKXAnimationWithBinderChoice",
     "ImportCharacterHKXAnimation",
     "ImportObjectHKXAnimation",
+    "ImportAssetHKXAnimation",
 ]
 
 from .core import HKXAnimationImporter

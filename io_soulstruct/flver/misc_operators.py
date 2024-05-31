@@ -8,7 +8,7 @@ __all__ = [
     "CreateFLVERInstance",
     "RenameFLVER",
     "CreateEmptyMapPieceFLVER",
-    "SelectModelMaskID",
+    "SelectDisplayMaskID",
     "SetSmoothCustomNormals",
     "SetVertexAlpha",
     "InvertVertexAlpha",
@@ -31,10 +31,40 @@ import blf
 from bpy_extras.view3d_utils import location_3d_to_region_2d
 from mathutils import Matrix, Vector, Quaternion
 
+from soulstruct.base.models.flver import Material
+
 from io_soulstruct.utilities.operators import LoggingOperator
 from io_soulstruct.utilities.bpy_data import *
 from io_soulstruct.msb.msb_import.core import create_flver_model_instance
 from .utilities import FLVERError, parse_flver_obj, parse_dummy_name, get_selected_flvers
+
+
+_MASK_ID_STRINGS = []
+
+
+# noinspection PyUnusedLocal
+def _get_display_mask_id_items(self, context) -> list[tuple[str, str, str]]:
+    """Dynamic `EnumProperty` that iterates over all materials of selected meshes to find all unique Model Mask IDs."""
+    _MASK_ID_STRINGS.clear()
+    _MASK_ID_STRINGS.append("No Mask")
+    items = [
+        ("-1", "No Mask", "Select all materials that do not have a display mask"),
+    ]  # type: list[tuple[str, str, str]]
+
+    mask_id_set = set()  # type: set[str]
+    for obj in context.selected_objects:
+        if obj.type != "MESH":
+            continue
+        for mat in obj.data.materials:
+            if match := Material.DISPLAY_MASK_RE.match(mat.name):
+                mask_id = match.group(1)
+                mask_id_set.add(mask_id)
+    for mask_id in sorted(mask_id_set):
+        _MASK_ID_STRINGS.append(mask_id)
+        items.append(
+            (mask_id, f"Mask {mask_id}", f"Select all materials with display mask {mask_id}")
+        )
+    return items
 
 
 class FLVERToolSettings(bpy.types.PropertyGroup):
@@ -78,7 +108,10 @@ class FLVERToolSettings(bpy.types.PropertyGroup):
         description="New bone (vertex group) to assign to vertices with 'Rebone Vertices' operator",
     )
 
-    mask_id: bpy.props.IntProperty(name="Model Mask ID", default=0)
+    display_mask_id: bpy.props.EnumProperty(
+        name="Display Mask",
+        items=_get_display_mask_id_items,
+    )
 
 
 class CopyToNewFLVER(LoggingOperator):
@@ -358,12 +391,11 @@ class CreateEmptyMapPieceFLVER(LoggingOperator):
         return {"FINISHED"}
 
 
-class SelectModelMaskID(LoggingOperator):
+class SelectDisplayMaskID(LoggingOperator):
 
-    bl_idname = "mesh.select_model_mask_id"
-    bl_label = "Select Model Mask ID"
-    bl_description = "Select all faces with materials labelled with the given Model Mask ID ('#XX#')"
-
+    bl_idname = "mesh.select_display_mask_id"
+    bl_label = "Select Display Mask ID"
+    bl_description = "Select all faces with materials labelled with the given display mask ('#XX#')"
 
     @classmethod
     def poll(cls, context):
@@ -380,14 +412,29 @@ class SelectModelMaskID(LoggingOperator):
         bm = bmesh.from_edit_mesh(mesh)
 
         # Select faces with material mask ID.
-        mask_id = context.scene.flver_tool_settings.mask_id
-        mask_str = f"#{mask_id:02}#"
+        display_mask_id = context.scene.flver_tool_settings.display_mask_id
+
         count = 0
-        for face in bm.faces:
-            material = mesh.materials[face.material_index]
-            face.select = material.name.startswith(mask_str)
-            count += face.select
-        self.info(f"Selected {count} faces with Model Mask ID {mask_id}.")
+        if display_mask_id == "-1":
+            # Select all faces with a material that has NO mask.
+            for face in bm.faces:
+                material = mesh.materials[face.material_index]
+                face.select = Material.DISPLAY_MASK_RE.match(material.name) is None
+                count += face.select
+            self.info(f"Selected {count} faces with no material display mask.")
+        else:
+            # Select all faces with a material that has the given mask.
+            for face in bm.faces:
+                material = mesh.materials[face.material_index]
+                if match := Material.DISPLAY_MASK_RE.match(material.name):
+                    if match.group(1) == display_mask_id:
+                        face.select = True
+                        count += 1
+                    else:
+                        face.select = False
+                else:
+                    face.select = False
+            self.info(f"Selected {count} faces with material display mask {display_mask_id}.")
 
         bmesh.update_edit_mesh(mesh)
 

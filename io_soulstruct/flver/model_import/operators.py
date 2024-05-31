@@ -22,6 +22,7 @@ __all__ = [
     "ImportMapPieceFLVER",
     "ImportCharacterFLVER",
     "ImportObjectFLVER",
+    "ImportAssetFLVER",
     "ImportEquipmentFLVER",
 ]
 
@@ -290,6 +291,44 @@ class ImportObjectFLVER(BaseFLVERImportOperator):
 
     def get_collection(self, context: bpy.types.Context, file_directory_name: str):
         return get_collection("Object Models", context.scene.collection, hide_viewport=False)
+
+
+class ImportAssetFLVER(BaseFLVERImportOperator):
+    """Shortcut for browsing for GEOMBND Binders in game 'asset' directory."""
+    bl_idname = "import_scene.asset_flver"
+    bl_label = "Import Asset"
+    bl_description = "Import asset FLVER from a GEOMBND in selected game 'asset' directory"
+
+    filename_ext = ".geombnd"
+
+    filter_glob: bpy.props.StringProperty(
+        default="*.geombnd;*.geombnd.dcx;",
+        options={'HIDDEN'},
+        maxlen=255,
+    )
+
+    files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'})
+    directory: bpy.props.StringProperty(options={'HIDDEN'})
+
+    @classmethod
+    def poll(cls, context):
+        settings = cls.settings(context)
+        if settings.game_variable_name != "ELDEN_RING":
+            return False  # only Elden Ring has 'assets'
+        return settings.has_import_dir_path("asset/aeg")
+
+    def invoke(self, context, _event):
+        asset_dir = self.settings(context).get_import_dir_path("asset/aeg")
+        if asset_dir and asset_dir.is_dir():
+            self.directory = str(asset_dir)
+            context.window_manager.fileselect_add(self)
+            return {'RUNNING_MODAL'}
+        return super().invoke(context, _event)
+
+    # Base `execute` method is fine.
+
+    def get_collection(self, context: bpy.types.Context, file_directory_name: str):
+        return get_collection("Asset Models", context.scene.collection, hide_viewport=False)
 
 
 class ImportEquipmentFLVER(BaseFLVERImportOperator):

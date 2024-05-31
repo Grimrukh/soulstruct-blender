@@ -5,6 +5,7 @@ __all__ = [
     "ImportHKXAnimationWithBinderChoice",
     "ImportCharacterHKXAnimation",
     "ImportObjectHKXAnimation",
+    "ImportAssetHKXAnimation",
 
     "ExportLooseHKXAnimation",
     "ExportHKXAnimationIntoBinder",
@@ -16,16 +17,7 @@ __all__ = [
     "HKX_ANIMATION_PT_hkx_animations",
 ]
 
-import importlib
-import sys
-
 import bpy
-
-if "HKX_ANIMATION_PT_hkx_tools" in locals():
-    importlib.reload(sys.modules["io_soulstruct.hkx_animation.utilities"])
-    importlib.reload(sys.modules["io_soulstruct.hkx_animation.anim_import"])
-    importlib.reload(sys.modules["io_soulstruct.hkx_animation.anim_export"])
-    importlib.reload(sys.modules["io_soulstruct.hkx_animation.misc_operators"])
 
 from .anim_import import *
 from .anim_export import *
@@ -54,7 +46,10 @@ class HKX_ANIMATION_PT_hkx_animations(bpy.types.Panel):
         quick_import_box.label(text="Import from Game/Project")
         quick_import_box.prop(context.scene.soulstruct_settings, "import_bak_file", text="From .BAK File")
         quick_import_box.operator(ImportCharacterHKXAnimation.bl_idname)
-        quick_import_box.operator(ImportObjectHKXAnimation.bl_idname)
+        if settings.game_variable_name == "ELDEN_RING":
+            quick_import_box.operator(ImportAssetHKXAnimation.bl_idname)
+        else:
+            quick_import_box.operator(ImportObjectHKXAnimation.bl_idname)
 
         if settings.game_variable_name not in {"DARK_SOULS_DSR"}:
             self.layout.label(text="Export for DSR only.")

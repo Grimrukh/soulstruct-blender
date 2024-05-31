@@ -582,10 +582,15 @@ class FLVERImporter:
 
         # Enable custom split normals and assign them.
         loop_normal_data = merged_mesh.loop_normals[valid_loop_indices]  # NOT raveled
-        bl_mesh.create_normals_split()
+        # Check Blender version:
+        if bpy.app.version < (4, 1):
+            # Not need from Blender 4.1, which creates the relevant `mesh.corner_normals` collection automatically.
+            bl_mesh.create_normals_split()
         bl_mesh.normals_split_custom_set(loop_normal_data)  # one normal per loop
-        bl_mesh.use_auto_smooth = True  # required for custom split normals to actually be used (rather than just face)
-        bl_mesh.calc_normals_split()  # copy custom split normal data into API mesh loops
+        if bpy.app.version < (4, 1):
+            # Removed in Blender 4.1. Custom normals are used when present.
+            bl_mesh.use_auto_smooth = True
+            bl_mesh.calc_normals_split()  # copy custom split normal data into API mesh loops
 
         bl_mesh.update()
 

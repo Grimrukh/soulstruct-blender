@@ -12,10 +12,11 @@ __all__ = [
 import bmesh
 import bpy
 
-from soulstruct.darksouls1r.events.emevd.enums import NavmeshType
+from soulstruct.darksouls1r.events.enums import NavmeshType
 
 from .utilities import set_face_material
 
+# Get all non-default Navmesh Types for Blender `EnumProperty`.
 _navmesh_type_items = [
     (str(nvmt.value), nvmt.name, "") for nvmt in NavmeshType
     if nvmt.value > 0

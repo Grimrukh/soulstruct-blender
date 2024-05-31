@@ -6,6 +6,7 @@ __all__ = [
     "ImportMapPieceFLVER",
     "ImportCharacterFLVER",
     "ImportObjectFLVER",
+    "ImportAssetFLVER",
     "ImportEquipmentFLVER",
     "FLVERImportSettings",
 ]

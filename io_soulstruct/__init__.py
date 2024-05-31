@@ -18,8 +18,6 @@ addon_modules_path = str((Path(__file__).parent / "../io_soulstruct_lib").resolv
 if addon_modules_path not in sys.path:
     sys.path.append(addon_modules_path)
 
-# TODO: I suspect that 'Reload Scripts' in Blender eventually breaks the `colorama` module, causing a recursion limit.
-
 # Reload all Soulstruct modules, then all modules in this add-on (except this script).
 # NOTE: This is IMPORTANT when using 'Reload Scripts' in Blender, as it is otherwise prone to partial re-imports of
 # Soulstruct that duplicate classes and cause wild bugs with `isinstance`, etc.
@@ -36,7 +34,6 @@ from io_soulstruct.navmesh import *
 from io_soulstruct.misc_operators import *
 from io_soulstruct.general import *
 
-# TODO: Currently asserting that `soulstruct_havok` is installed, but this is not necessary for all add-ons.
 from io_soulstruct.havok.hkx_map_collision import *
 from io_soulstruct.havok.hkx_animation import *
 from io_soulstruct.havok.hkx_cutscene import *
@@ -44,8 +41,8 @@ from io_soulstruct.havok.hkx_cutscene import *
 bl_info = {
     "name": "Soulstruct",
     "author": "Scott Mooney (Grimrukh)",
-    "version": (1, 5, 0),
-    "blender": (3, 5, 0),
+    "version": (1, 9, 0),
+    "blender": (4, 1, 0),
     "location": "File > Import-Export",
     "description": "Import, manipulate, and export FromSoftware/Havok assets",
     "warning": "",
@@ -102,6 +99,7 @@ CLASSES = (
     ImportMapPieceFLVER,
     ImportCharacterFLVER,
     ImportObjectFLVER,
+    ImportAssetFLVER,
     ImportEquipmentFLVER,
     FLVERImportSettings,
 
@@ -124,7 +122,7 @@ CLASSES = (
     CreateFLVERInstance,
     RenameFLVER,
     CreateEmptyMapPieceFLVER,
-    SelectModelMaskID,
+    SelectDisplayMaskID,
     SetSmoothCustomNormals,
     SetVertexAlpha,
     InvertVertexAlpha,
@@ -163,6 +161,7 @@ CLASSES = (
     ImportHKXAnimationWithBinderChoice,
     ImportCharacterHKXAnimation,
     ImportObjectHKXAnimation,
+    ImportAssetHKXAnimation,
     ExportLooseHKXAnimation,
     ExportHKXAnimationIntoBinder,
     QuickExportCharacterHKXAnimation,

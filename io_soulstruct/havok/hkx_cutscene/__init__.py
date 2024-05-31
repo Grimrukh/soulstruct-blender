@@ -6,15 +6,7 @@ __all__ = [
     "HKX_CUTSCENE_PT_hkx_cutscene_tools",
 ]
 
-import importlib
-import sys
-
 import bpy
-
-if "HKX_CUTSCENE_PT_hkx_tools" in locals():
-    importlib.reload(sys.modules["io_soulstruct.hkx_cutscene.utilities"])
-    importlib.reload(sys.modules["io_soulstruct.hkx_cutscene.import_hkx_cutscene"])
-    importlib.reload(sys.modules["io_soulstruct.hkx_cutscene.export_hkx_cutscene"])
 
 from .import_hkx_cutscene import ImportHKXCutscene
 from .export_hkx_cutscene import ExportHKXCutscene

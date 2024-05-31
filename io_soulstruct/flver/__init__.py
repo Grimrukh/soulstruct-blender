@@ -6,6 +6,7 @@ __all__ = [
     "ImportMapPieceFLVER",
     "ImportCharacterFLVER",
     "ImportObjectFLVER",
+    "ImportAssetFLVER",
     "ImportEquipmentFLVER",
 
     "HideAllDummiesOperator",
@@ -28,7 +29,7 @@ __all__ = [
     "CreateFLVERInstance",
     "RenameFLVER",
     "CreateEmptyMapPieceFLVER",
-    "SelectModelMaskID",
+    "SelectDisplayMaskID",
     "SetSmoothCustomNormals",
     "SetVertexAlpha",
     "InvertVertexAlpha",
@@ -87,11 +88,16 @@ class FLVERImportPanel(bpy.types.Panel):
         layout = self.layout
         layout.operator(ImportFLVER.bl_idname, text="Import Any FLVER")
 
+        settings = context.scene.soulstruct_settings
+
         game_import_box = layout.box()
         game_import_box.label(text="Import from Game/Project")
         game_import_box.operator(ImportMapPieceFLVER.bl_idname)
         game_import_box.operator(ImportCharacterFLVER.bl_idname)
-        game_import_box.operator(ImportObjectFLVER.bl_idname)
+        if settings.game_variable_name == "ELDEN_RING":
+            game_import_box.operator(ImportAssetFLVER.bl_idname)
+        else:
+            game_import_box.operator(ImportObjectFLVER.bl_idname)
         game_import_box.operator(ImportEquipmentFLVER.bl_idname)
 
 
@@ -201,8 +207,8 @@ class FLVERMeshToolsPanel(bpy.types.Panel):
 
         mask_box = self.layout.box()
         mask_box.label(text="Mask:")
-        mask_box.prop(flver_tool_settings, "mask_id")
-        mask_box.operator(SelectModelMaskID.bl_idname)
+        mask_box.prop(flver_tool_settings, "display_mask_id")
+        mask_box.operator(SelectDisplayMaskID.bl_idname)
 
         polish_box = self.layout.box()
         polish_box.label(text="Select/Polish Mesh:")

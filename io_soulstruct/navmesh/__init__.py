@@ -43,18 +43,10 @@ __all__ = [
     "SetNodeNavmeshBTriangles",
 ]
 
-import importlib
-import sys
-
 import bmesh
 import bpy
 
-from soulstruct.darksouls1r.events.emevd.enums import NavmeshType
-
-if "NVM_PT_nvm_tools" in locals():
-    importlib.reload(sys.modules["io_soulstruct.navmesh.utilities"])
-    importlib.reload(sys.modules["io_soulstruct.navmesh.export_nvm"])
-    importlib.reload(sys.modules["io_soulstruct.navmesh.import_nvm"])
+from soulstruct.darksouls1r.events.enums import NavmeshType
 
 from .nvm import *
 from .nvm.utilities import set_face_material

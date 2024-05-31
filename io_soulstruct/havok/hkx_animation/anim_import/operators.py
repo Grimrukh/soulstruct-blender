@@ -6,6 +6,7 @@ __all__ = [
     "ImportHKXAnimationWithBinderChoice",
     "ImportCharacterHKXAnimation",
     "ImportObjectHKXAnimation",
+    "ImportAssetHKXAnimation",
 ]
 
 import re
@@ -41,24 +42,30 @@ def read_animation_hkx_entry(hkx_entry: BinderEntry, compendium: HKX = None) -> 
     data = hkx_entry.get_uncompressed_data()
     version = data[0x10:0x18]
     if version == b"20180100":  # ER
-        return hkx2018.AnimationHKX.from_bytes(data, compendium=compendium)
+        hkx = hkx2018.AnimationHKX.from_bytes(data, compendium=compendium)
     elif version == b"20150100":  # DSR
-        return hkx2015.AnimationHKX.from_bytes(data, compendium=compendium)
-    elif version == b"20160100":
-        return hkx2016.AnimationHKX.from_bytes(data, compendium=compendium)
-    raise ValueError(f"Cannot support this HKX animation file version in Soulstruct and/or Blender: {version}")
+        hkx = hkx2015.AnimationHKX.from_bytes(data, compendium=compendium)
+    elif version == b"20160100":  # non-From
+        hkx = hkx2016.AnimationHKX.from_bytes(data, compendium=compendium)
+    else:
+        raise ValueError(f"Cannot support this HKX animation file version in Soulstruct and/or Blender: {version}")
+    hkx.path = Path(hkx_entry.name)
+    return hkx
 
 
 def read_skeleton_hkx_entry(hkx_entry: BinderEntry, compendium: HKX = None) -> SKELETON_TYPING:
     data = hkx_entry.get_uncompressed_data()
     version = data[0x10:0x18]
     if version == b"20180100":  # ER
-        return hkx2018.SkeletonHKX.from_bytes(data, compendium=compendium)
+        hkx = hkx2018.SkeletonHKX.from_bytes(data, compendium=compendium)
     elif version == b"20150100":  # DSR
-        return hkx2015.SkeletonHKX.from_bytes(data, compendium=compendium)
-    elif version == b"20160100":
-        return hkx2016.SkeletonHKX.from_bytes(data, compendium=compendium)
-    raise ValueError(f"Cannot support this HKX skeleton file version in Soulstruct and/or Blender: {version}")
+        hkx = hkx2015.SkeletonHKX.from_bytes(data, compendium=compendium)
+    elif version == b"20160100":  # non-From
+        hkx = hkx2016.SkeletonHKX.from_bytes(data, compendium=compendium)
+    else:
+        raise ValueError(f"Cannot support this HKX skeleton file version in Soulstruct and/or Blender: {version}")
+    hkx.path = Path(hkx_entry.name)
+    return hkx
 
 
 class ImportHKXAnimationMixin:
@@ -67,7 +74,6 @@ class ImportHKXAnimationMixin:
     warning: tp.Callable[[str], None]
     error: tp.Callable[[str], set[str]]
 
-    # TODO: Support import all?
     import_all_animations: bpy.props.BoolProperty(
         name="Import All Animations",
         description="Import all HKX anim files rather than being prompted to select one (slow!)",
@@ -90,6 +96,7 @@ class ImportHKXAnimationMixin:
     ) -> list[tuple[Path, SKELETON_TYPING, ANIMATION_TYPING | list[BinderEntry]]]:
         if len(anim_hkx_entries) > 1:
             if self.import_all_animations:
+                # Read and queue up HKX animations for separate import.
                 hkxs_with_paths = []
                 for entry in anim_hkx_entries:
                     try:
@@ -98,9 +105,10 @@ class ImportHKXAnimationMixin:
                         self.warning(f"Error occurred while reading HKX Binder entry '{entry.name}': {ex}")
                     else:
                         hkxs_with_paths.append((file_path, skeleton_hkx, animation_hkx))
+                        print(animation_hkx, animation_hkx.path)
                 return hkxs_with_paths
 
-            # Queue up all Binder entries; user will be prompted to choose entry below.
+            # Queue up all Binder entries; user will be prompted to choose entry later.
             return [(file_path, skeleton_hkx, anim_hkx_entries)]
 
         try:
@@ -164,6 +172,14 @@ class ImportHKXAnimationMixin:
         self.info(f"Created animation action in {time.perf_counter() - p:.4f} seconds.")
 
         return {"FINISHED"}
+
+    @staticmethod
+    def read_skeleton(skeleton_anibnd: Binder, compendium: HKX = None) -> SKELETON_TYPING:
+        try:
+            skeleton_entry = skeleton_anibnd[SKELETON_ENTRY_RE]
+        except EntryNotFoundError:
+            raise HKXAnimationImportError(f"ANIBND with path '{skeleton_anibnd.path}' has no skeleton HKX file.")
+        return read_skeleton_hkx_entry(skeleton_entry, compendium)
 
 
 class ImportHKXAnimation(LoggingOperator, ImportHelper, ImportHKXAnimationMixin):
@@ -234,18 +250,12 @@ class ImportHKXAnimation(LoggingOperator, ImportHelper, ImportHKXAnimationMixin)
                 )
 
             compendium = self.load_binder_compendium(anibnd)
-
-            # Find skeleton entry.
-            skeleton_entry = skeleton_anibnd[SKELETON_ENTRY_RE]
-            if not skeleton_entry:
-                return self.error("Must import animation from an ANIBND containing a skeleton HKX file.")
-            skeleton_hkx = read_skeleton_hkx_entry(skeleton_entry, compendium)
+            skeleton_hkx = self.read_skeleton(skeleton_anibnd, compendium)
 
             # Find animation HKX entry/entries.
             anim_hkx_entries = anibnd.find_entries_matching_name(r"a.*\.hkx(\.dcx)?")
             if not anim_hkx_entries:
                 return self.error(f"Cannot find any HKX animation files in binder {file_path}.")
-
             hkxs_with_paths += self.scan_entries(anim_hkx_entries, file_path, skeleton_hkx, compendium)
 
         importer = HKXAnimationImporter(self, context, bl_armature, bl_armature.name, self.to_60_fps)
@@ -408,13 +418,7 @@ class ImportCharacterHKXAnimation(LoggingOperator, ImportHKXAnimationMixin):
         self.info(f"Importing animation(s) from ANIBND: {anibnd_path}")
 
         compendium = self.load_binder_compendium(anibnd)
-
-        # Find skeleton entry.
-        try:
-            skeleton_entry = skeleton_anibnd[SKELETON_ENTRY_RE]
-        except EntryNotFoundError:
-            raise HKXAnimationImportError(f"ANIBND of character '{character_name}' has no skeleton HKX file.")
-        skeleton_hkx = read_skeleton_hkx_entry(skeleton_entry, compendium)
+        skeleton_hkx = self.read_skeleton(skeleton_anibnd, compendium)
 
         # Find animation HKX entry/entries.
         anim_hkx_entries = anibnd.find_entries_matching_name(r"a.*\.hkx(\.dcx)?")
@@ -442,7 +446,7 @@ class ImportCharacterHKXAnimation(LoggingOperator, ImportHKXAnimationMixin):
                 return_strings |= self.import_hkx(bl_armature, importer, file_path, skeleton_hkx, hkx_or_entries)
             except Exception as ex:
                 # We don't error out here, because we want to continue importing other files.
-                self.error(f"Error occurred while importing HKX animation: {ex}")
+                self.error(f"Error occurred while importing character HKX animation: {ex}")
 
         return {"FINISHED"} if "FINISHED" in return_strings else {"CANCELLED"}  # at least one finished
 
@@ -486,13 +490,7 @@ class ImportObjectHKXAnimation(LoggingOperator, ImportHKXAnimationMixin):
         skeleton_anibnd = anibnd = DivBinder.from_binder_entry(anibnd_entry)
 
         compendium = self.load_binder_compendium(anibnd)
-
-        # Find skeleton entry.
-        try:
-            skeleton_entry = skeleton_anibnd[SKELETON_ENTRY_RE]
-        except EntryNotFoundError:
-            return self.error(f"ANIBND of object '{object_name}' has no skeleton HKX file.")
-        skeleton_hkx = read_skeleton_hkx_entry(skeleton_entry, compendium)
+        skeleton_hkx = self.read_skeleton(skeleton_anibnd, compendium)
 
         self.info(f"Importing animation(s) from ANIBND inside OBJBND: {objbnd}")
 
@@ -522,6 +520,85 @@ class ImportObjectHKXAnimation(LoggingOperator, ImportHKXAnimationMixin):
                 return_strings |= self.import_hkx(bl_armature, importer, file_path, skeleton_hkx, hkx_or_entries)
             except Exception as ex:
                 # We don't error out here, because we want to continue importing other files.
-                self.error(f"Error occurred while importing HKX animation: {ex}")
+                self.error(f"Error occurred while importing object HKX animation: {ex}")
+
+        return {"FINISHED"} if "FINISHED" in return_strings else {"CANCELLED"}  # at least one finished
+
+
+class ImportAssetHKXAnimation(LoggingOperator, ImportHKXAnimationMixin):
+    """Detects name of selected asset FLVER Armature and finds their OBJBND in the game directory.
+
+    Elden Ring and onwards only.
+    """
+    bl_idname = "import_scene.asset_hkx_animation"
+    bl_label = "Import Asset Anim"
+    bl_description = "Import a HKX animation file from the selected asset's pre-loaded GEOMBND"
+
+    @classmethod
+    def poll(cls, context):
+        """Armature of an object (o) must be selected."""
+        return (
+            len(context.selected_objects) == 1
+            and context.selected_objects[0].type == "ARMATURE"
+            and context.selected_objects[0].name.lower().startswith("aeg")  # TODO: could require 'AEG###_###' template
+        )
+
+    def execute(self, context):
+        if not self.poll(context):
+            return self.error("Must select a single Armature of an asset (name starting with 'AEG' or 'aeg').")
+
+        settings = self.settings(context)
+        # noinspection PyTypeChecker
+        bl_armature = context.selected_objects[0]  # type: bpy.types.ArmatureObject
+
+        asset_name = get_bl_obj_stem(bl_armature).lower()
+        asset_category = asset_name[:6]  # e.g. "aeg099"
+
+        geombnd_path = settings.get_import_file_path(f"asset/aeg/{asset_category}/{asset_name}.geombnd")  # always DCX
+        if not geombnd_path or not geombnd_path.is_file():
+            return self.error(f"Cannot find OBJBND for '{asset_name}' in game directory.")
+
+        geombnd = Binder.from_path(geombnd_path)
+
+        # Find ANIBND entry inside GEOMBND. Always uppercase.
+        anibnd_name = f"{asset_name.upper()}.anibnd"
+        try:
+            anibnd_entry = geombnd[anibnd_name]
+        except EntryNotFoundError:
+            return self.error(f"GEOMBND of object '{asset_name}' has no ANIBND '{anibnd_name}'.")
+        skeleton_anibnd = anibnd = Binder.from_binder_entry(anibnd_entry)
+
+        compendium = self.load_binder_compendium(anibnd)
+        skeleton_hkx = self.read_skeleton(skeleton_anibnd, compendium)
+
+        self.info(f"Importing animation(s) from ANIBND inside GEOMBND: {geombnd}")
+
+        # Find animation HKX entry/entries.
+        anim_hkx_entries = anibnd.find_entries_matching_name(r"a.*\.hkx(\.dcx)?")
+        if not anim_hkx_entries:
+            return self.error(f"Cannot find any HKX animation files in binder {geombnd_path}.")
+
+        hkxs_with_paths = self.scan_entries(anim_hkx_entries, geombnd_path, skeleton_hkx)
+
+        importer = HKXAnimationImporter(self, context, bl_armature, bl_armature.name, self.to_60_fps)
+
+        return_strings = set()
+        for file_path, skeleton_hkx, hkx_or_entries in hkxs_with_paths:
+            if isinstance(hkx_or_entries, list):
+                # Defer through entry selection operator.
+                ImportHKXAnimationWithBinderChoice.run(
+                    importer=importer,
+                    binder_file_path=Path(file_path),
+                    hkx_entries=hkx_or_entries,
+                    bl_armature=bl_armature,
+                    skeleton_hkx=skeleton_hkx,
+                    compendium=compendium,
+                )
+                continue
+            try:
+                return_strings |= self.import_hkx(bl_armature, importer, file_path, skeleton_hkx, hkx_or_entries)
+            except Exception as ex:
+                # We don't error out here, because we want to continue importing other files.
+                self.error(f"Error occurred while importing asset HKX animation: {ex}")
 
         return {"FINISHED"} if "FINISHED" in return_strings else {"CANCELLED"}  # at least one finished
