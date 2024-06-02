@@ -14,19 +14,35 @@ from pathlib import Path
 import bpy
 
 # Add 'modules' subdirectory to Python path. We simply bundle them with the addon.
+# Note that Blender 4.1+ finally upgraded to Python 3.11, so we deploy two versions here.
 addon_modules_path = str((Path(__file__).parent / "../io_soulstruct_lib").resolve())
 if addon_modules_path not in sys.path:
     sys.path.append(addon_modules_path)
 
+if bpy.app.version >= (4, 1):
+    addon_modules_path_scipy = str((Path(__file__).parent / "../io_soulstruct_lib_311").resolve())
+else:  # Python 3.10 (Blender 4.0 or earlier)
+    addon_modules_path_scipy = str((Path(__file__).parent / "../io_soulstruct_lib_310").resolve())
+if addon_modules_path_scipy not in sys.path:
+    sys.path.append(addon_modules_path_scipy)
+
+
+def try_reload(_module_name: str):
+    try:
+        importlib.reload(sys.modules[_module_name])
+    except (KeyError, ImportError):
+        pass
+
+
 # Reload all Soulstruct modules, then all modules in this add-on (except this script).
 # NOTE: This is IMPORTANT when using 'Reload Scripts' in Blender, as it is otherwise prone to partial re-imports of
-# Soulstruct that duplicate classes and cause wild bugs with `isinstance`, etc.
+# Soulstruct that duplicate classes and cause wild bugs with `isinstance`, object ID equality, etc.
 for module_name in list(sys.modules.keys()):
     if "io_soulstruct" not in module_name and "soulstruct" in module_name.split(".")[0]:
-        importlib.reload(sys.modules[module_name])
+        try_reload(module_name)
 for module_name in list(sys.modules.keys()):
     if module_name != "io_soulstruct" and "io_soulstruct" in module_name.split(".")[0]:  # don't reload THIS module
-        importlib.reload(sys.modules[module_name])
+        try_reload(module_name)
 
 from io_soulstruct.flver import *
 from io_soulstruct.msb import *
