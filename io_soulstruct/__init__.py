@@ -57,7 +57,7 @@ from io_soulstruct.havok.hkx_cutscene import *
 bl_info = {
     "name": "Soulstruct",
     "author": "Scott Mooney (Grimrukh)",
-    "version": (1, 9, 0),
+    "version": (1, 9, 3),
     "blender": (4, 1, 0),
     "location": "File > Import-Export",
     "description": "Import, manipulate, and export FromSoftware/Havok assets",
