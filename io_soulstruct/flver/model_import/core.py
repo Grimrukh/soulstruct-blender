@@ -392,7 +392,7 @@ class FLVERImporter:
 
             if texture_manager:
                 try:
-                    texture = texture_manager.get_flver_texture(texture_stem)
+                    texture = texture_manager.get_flver_texture(texture_stem, self.name)
                 except KeyError as ex:
                     self.warning(str(ex))
                 else:

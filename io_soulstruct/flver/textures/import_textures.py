@@ -423,8 +423,11 @@ class TextureImportManager:
             if tpf_entry_stem not in self._scanned_tpf_sources:
                 self._pending_tpf_sources.setdefault(tpf_entry_stem, tpf_entry)
 
-    def get_flver_texture(self, texture_stem: str) -> TPFTexture:
-        """Find texture from its stem across all registered/loaded texture file sources."""
+    def get_flver_texture(self, texture_stem: str, model_name: str = "") -> TPFTexture:
+        """Find texture from its stem across all registered/loaded texture file sources.
+
+        If `model_name` is given, multi-DDS TPFs with that name will also be opened and checked.
+        """
         # TODO: Add a 'hint' argument that helps efficiently find map piece textures in arbitrary maps, based on the
         #  map prefix of `texture_stem`, so that
 
@@ -445,7 +448,7 @@ class TextureImportManager:
 
         # Search for a multi-DDS TPF whose stem is a prefix of the requested texture.
         for tpf_stem in tuple(self._pending_tpf_sources):  # tpf keys may be popped when textures are loaded
-            if texture_stem.startswith(tpf_stem):
+            if texture_stem.startswith(tpf_stem) or (model_name and model_name.startswith(tpf_stem)):
                 # TODO: Could also enforce that the texture stem only has two extra characters (e.g. '_n' or '_s').
                 self._load_tpf(tpf_stem)
                 try:

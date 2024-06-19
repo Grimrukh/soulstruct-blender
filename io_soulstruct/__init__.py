@@ -102,6 +102,7 @@ CLASSES = (
     SelectCustomMTDBNDFile,
     SelectCustomMATBINBNDFile,
     ClearCachedLists,
+    LoadCollectionsFromBlend,
     # endregion
 
     # region Misc. Operators
@@ -237,6 +238,7 @@ CLASSES = (
     CreateMCGEdgeOperator,
     SetNodeNavmeshATriangles,
     SetNodeNavmeshBTriangles,
+    RefreshMCGNames,
     NVM_PT_ds1_navmesh_import,
     NVM_PT_ds1_navmesh_export,
     NVM_PT_ds1_navmesh_tools,

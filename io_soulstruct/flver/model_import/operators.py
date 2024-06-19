@@ -105,7 +105,7 @@ class BaseFLVERImportOperator(LoggingImportOperator):
             texture_import_manager=texture_manager,
             mtdbnd=settings.get_mtdbnd(self) if not use_matbinbnd else None,
             matbinbnd=settings.get_matbinbnd(self) if use_matbinbnd else None,
-            collection=self.get_collection(context, Path(self.directory).name)
+            collection=self.get_collection(context, Path(self.directory).name),
         )
 
         bl_mesh = None

@@ -322,11 +322,12 @@ class MCGExporter:
 
         # Iterate over all nodes to build a dictionary of Nodes that ignores 'dead end' navmesh suffixes.
         node_dict = {}
-        node_prefix = f"m{map_id[0]:02d}_{map_id[1]:02d}_{map_id[2]:02d}_{map_id[3]:02d} Node "
+        map_stem = f"m{map_id[0]:02d}_{map_id[1]:02d}_{map_id[2]:02d}_{map_id[3]:02d}"
+        node_prefix = f"{map_stem} Node "
         for i, bl_node in enumerate(bl_nodes):
             if bl_node.name.startswith(node_prefix):
-                node_name = bl_node.name.removeprefix(node_prefix).split("<")[0].strip()  # ignore dead end suffix
-                node_dict[f"Node {node_name}"] = i
+                node_name = bl_node.name.split("<")[0].strip()  # ignore dead end suffix
+                node_dict[node_name] = i
             else:
                 raise MCGExportError(f"Node '{bl_node.name}' does not start with '{node_prefix}'.")
 
@@ -390,15 +391,19 @@ class MCGExporter:
             edge.navmesh_index = navmesh_index
 
             node_a_name = get_bl_prop(bl_edge, "Node A", str)
+            if node_a_name.startswith("Node"):
+                node_a_name = f"{map_stem} {node_a_name}"
             node_b_name = get_bl_prop(bl_edge, "Node B", str)
+            if node_b_name.startswith("Node"):
+                node_b_name = f"{map_stem} {node_b_name}"
             try:
                 node_a_index = node_dict[node_a_name]
             except KeyError:
-                raise MCGExportError(f"Cannot find '{bl_edge.name}' start node: {node_a_name}")
+                raise MCGExportError(f"Cannot find '{bl_edge.name}' start node: '{node_a_name}'")
             try:
                 node_b_index = node_dict[node_b_name]
             except KeyError:
-                raise MCGExportError(f"Cannot find '{bl_edge.name}' end node: {node_b_name}")
+                raise MCGExportError(f"Cannot find '{bl_edge.name}' end node: '{node_b_name}'")
 
             node_a = nodes[node_a_index]
             node_b = nodes[node_b_index]

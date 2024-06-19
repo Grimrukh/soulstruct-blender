@@ -12,6 +12,7 @@ __all__ = [
     "CreateMCGEdgeOperator",
     "SetNodeNavmeshATriangles",
     "SetNodeNavmeshBTriangles",
+    "RefreshMCGNames",
 ]
 
 from .draw_mcg import MCGDrawSettings, draw_mcg_nodes, draw_mcg_node_labels, draw_mcg_edges

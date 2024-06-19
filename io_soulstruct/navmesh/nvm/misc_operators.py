@@ -47,7 +47,7 @@ class RefreshFaceIndices(bpy.types.Operator):
     # noinspection PyMethodMayBeStatic,PyUnusedLocal
     def execute(self, context):
         bpy.context.area.tag_redraw()
-        return {'FINISHED'}
+        return {"FINISHED"}
 
 
 class AddNVMFaceFlags(bpy.types.Operator):

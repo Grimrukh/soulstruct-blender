@@ -40,6 +40,7 @@ class _GlobalSettingsPanel_ViewMixin:
         layout.row().prop(settings, "also_export_to_game")
         layout.row().prop(settings, "smart_map_version_handling")
         layout.row().operator(ClearCachedLists.bl_idname, text="Refresh File/Folder Dropdowns")
+        layout.row().operator(LoadCollectionsFromBlend.bl_idname, text="Load BLEND Collections")
 
         if settings.is_game("ELDEN_RING"):
             layout.row().prop(settings, "map_stem_filter_mode")

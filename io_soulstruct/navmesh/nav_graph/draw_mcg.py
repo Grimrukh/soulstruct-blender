@@ -152,14 +152,14 @@ def draw_mcg_node_labels():
     node_prefix = f"{map_stem} Node "
     for node in nodes_to_label:
         try:
-            node_index = node.name.removeprefix(node_prefix).split(" ")[0]
+            node_indices = node.name.removeprefix(node_prefix).split("<")[0].strip()
         except IndexError:
             continue  # invalid node name
         label_position = location_3d_to_region_2d(bpy.context.region, bpy.context.region_data, node.location)
         if not label_position:
             continue  # node is not in view
         blf.position(font_id, label_position.x + 10, label_position.y + 10, 0.0)
-        blf.draw(font_id, node_index)
+        blf.draw(font_id, node_indices)
 
 
 def draw_mcg_edges():
@@ -202,7 +202,7 @@ def draw_mcg_edges():
     node_prefix = f"{map_stem} Node "
     for node in node_parent.children:
         if node.name.startswith(node_prefix):
-            node_name = node.name.removeprefix(map_stem).split("<")[0].strip()
+            node_name = node.name.split("<")[0].strip()
             node_objects[node_name] = node
 
     node_a_triangles_coords = []
@@ -211,7 +211,11 @@ def draw_mcg_edges():
     for edge in edge_parent.children:
         try:
             node_a_name = edge["Node A"]
+            if node_a_name.startswith("Node"):
+                node_a_name = f"{map_stem} {node_a_name}"
             node_b_name = edge["Node B"]
+            if node_b_name.startswith("Node"):
+                node_b_name = f"{map_stem} {node_b_name}"
         except KeyError:
             continue  # Edge is not properly configured (can't find node names)
 

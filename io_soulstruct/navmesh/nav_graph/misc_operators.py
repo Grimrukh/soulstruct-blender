@@ -6,6 +6,7 @@ __all__ = [
     "set_node_navmesh_name_triangles",
     "SetNodeNavmeshATriangles",
     "SetNodeNavmeshBTriangles",
+    "RefreshMCGNames",
 ]
 
 import bmesh
@@ -13,6 +14,7 @@ import bpy
 
 from io_soulstruct.navmesh.nav_graph.utilities import MCGExportError
 from io_soulstruct.utilities.operators import LoggingOperator
+from io_soulstruct.utilities.misc import natural_keys
 
 
 class MCGEdgeCreationError(Exception):
@@ -196,5 +198,104 @@ class SetNodeNavmeshBTriangles(LoggingOperator):
             set_node_navmesh_name_triangles(context, "B")
         except Exception as ex:
             return self.error(str(ex))
+
+        return {"FINISHED"}
+
+
+class RefreshMCGNames(LoggingOperator):
+    bl_idname = "io_soulstruct_scene.refresh_mcg_names"
+    bl_label = "Refresh MCG Names"
+    bl_description = "Refresh all MCG node and edge names in the selected MCG parent and update name references"
+
+    @classmethod
+    def poll(cls, context):
+        return (
+            context.mode == "OBJECT"
+            and len(context.selected_objects) == 1
+            and context.selected_objects[0].type == "EMPTY"
+            and context.selected_objects[0].name.endswith(" MCG")
+        )
+
+    def execute(self, context):
+
+        parent = context.selected_objects[0]
+        map_stem = parent.name.split(" ")[0]
+        node_parent = edge_parent = None
+        for child in parent.children:
+            if child.name.endswith(" Nodes"):
+                node_parent = child
+                if edge_parent:
+                    break
+            elif child.name.endswith(" Edges"):
+                edge_parent = child
+                if node_parent:
+                    break
+        if not node_parent or not edge_parent:
+            return self.error("MCG parent object does not have 'Nodes' and 'Edges' children.")
+
+        # We do multiple passes over nodes and edges to validate current references before changing ANYTHING.
+
+        # Map old node names to their new navmesh A/B model IDs (which fully determine new names):
+        new_node_indices = {}
+        indices_counts = {}  # counts number of nodes connecting the same two navmesh parts
+        for node in sorted(node_parent.children, key=lambda o: natural_keys(o.name)):
+            node_name = node.name.split("<")[0].strip()
+
+            navmesh_a_name = node["Navmesh A Name"]
+            try:
+                a_id = int(navmesh_a_name[1:5])
+            except ValueError:
+                return self.error(
+                    f"Node '{node.name}' has invalid Navmesh A name '{navmesh_a_name}'. Must start with 'n####'."
+                )
+
+            try:
+                navmesh_b_name = node["Navmesh B Name"]
+            except KeyError:
+                # Use dead end navmesh name instead of B.
+                try:
+                    navmesh_b_name = node["Dead End Navmesh Name"]
+                except KeyError:
+                    return self.error(f"Node '{node.name}' has no Navmesh B Name or Dead End Navmesh Name.")
+            try:
+                b_id = int(navmesh_b_name[1:5])
+            except ValueError:
+                return self.error(
+                    f"Node '{node.name}' has invalid Navmesh B name '{navmesh_b_name}'. Must start with 'n####'."
+                )
+            check_indices = (b_id, a_id) if a_id > b_id else (a_id, b_id)
+            if check_indices not in indices_counts:
+                indices_counts[check_indices] = 1
+                new_node_indices[node_name] = f"[{a_id} | {b_id}]"  # first instance
+            else:
+                new_node_indices[node_name] = f"[{a_id} | {b_id}] ({indices_counts[check_indices]})"
+                indices_counts[check_indices] += 1
+
+        # Check all edge references to ensure they are valid.
+        for edge in edge_parent.children:
+            if edge["Node A"] not in new_node_indices:
+                return self.error(f"Edge '{edge.name}' references non-existent start node '{edge['Node A']}'.")
+            if edge["Node B"] not in new_node_indices:
+                return self.error(f"Edge '{edge.name}' references non-existent end node '{edge['Node B']}'.")
+
+        # Now update node names with new indices.
+        node_prefix = f"{map_stem} Node "
+        for node, new_indices in zip(
+            sorted(node_parent.children, key=lambda o: natural_keys(o.name)), new_node_indices.values()
+        ):
+            node.name = f"{node_prefix}{new_indices}"
+            if node["Dead End Navmesh Name"] != "":
+                # Suffix for node object name only, not assigned to node name in edge.
+                node.name += " <DEAD END>"
+
+        # Finally, update edge references and names.
+        edge_prefix = f"{map_stem} Edge "
+        for edge in edge_parent.children:
+            new_node_a_indices = new_node_indices[edge["Node A"]]  # already validated
+            new_node_b_indices = new_node_indices[edge["Node B"]]  # already validated
+            navmesh_name = edge["Navmesh Name"]
+            edge.name = f"{edge_prefix}({new_node_a_indices} -> {new_node_b_indices}) <{navmesh_name}>"
+            edge["Node A"] = f"{node_prefix}{new_node_a_indices}"
+            edge["Node B"] = f"{node_prefix}{new_node_b_indices}"
 
         return {"FINISHED"}

@@ -8,11 +8,13 @@ __all__ = [
     "SelectCustomMTDBNDFile",
     "SelectCustomMATBINBNDFile",
     "ClearCachedLists",
+    "LoadCollectionsFromBlend",
 ]
 
 import re
 from pathlib import Path
 
+import bpy
 from bpy.props import StringProperty
 from bpy_extras.io_utils import ImportHelper
 
@@ -61,7 +63,7 @@ class SelectGameDirectory(LoggingOperator, ImportHelper):
             CLEAR_GAME_FILE_ENUMS()
             CLEAR_MAP_STEM_ENUM()
 
-        return {'FINISHED'}
+        return {"FINISHED"}
 
 
 class SelectProjectDirectory(LoggingOperator, ImportHelper):
@@ -98,7 +100,7 @@ class SelectProjectDirectory(LoggingOperator, ImportHelper):
             CLEAR_GAME_FILE_ENUMS()
             CLEAR_MAP_STEM_ENUM()
 
-        return {'FINISHED'}
+        return {"FINISHED"}
 
 
 class SelectMapDirectory(LoggingOperator, ImportHelper):
@@ -140,7 +142,7 @@ class SelectMapDirectory(LoggingOperator, ImportHelper):
             CLEAR_GAME_FILE_ENUMS()
             CLEAR_MAP_STEM_ENUM()
 
-        return {'FINISHED'}
+        return {"FINISHED"}
 
 
 class SelectPNGCacheDirectory(LoggingOperator, ImportHelper):
@@ -162,7 +164,7 @@ class SelectPNGCacheDirectory(LoggingOperator, ImportHelper):
             png_cache_directory = Path(self.directory).resolve()
             settings = self.settings(context)
             settings.str_png_cache_directory = str(png_cache_directory)
-        return {'FINISHED'}
+        return {"FINISHED"}
 
 
 class SelectCustomMTDBNDFile(LoggingOperator, ImportHelper):
@@ -179,7 +181,7 @@ class SelectCustomMTDBNDFile(LoggingOperator, ImportHelper):
             mtdbnd_path = Path(self.filepath).resolve()
             settings = self.settings(context)
             settings.str_mtdbnd_path = str(mtdbnd_path)
-        return {'FINISHED'}
+        return {"FINISHED"}
 
 
 class SelectCustomMATBINBNDFile(LoggingOperator, ImportHelper):
@@ -196,7 +198,7 @@ class SelectCustomMATBINBNDFile(LoggingOperator, ImportHelper):
             matbinbnd_path = Path(self.filepath).resolve()
             settings = self.settings(context)
             settings.str_matbinbnd_path = str(matbinbnd_path)
-        return {'FINISHED'}
+        return {"FINISHED"}
 
 
 class ClearCachedLists(LoggingOperator):
@@ -208,4 +210,54 @@ class ClearCachedLists(LoggingOperator):
     def execute(self, context):
         CLEAR_GAME_FILE_ENUMS()
         CLEAR_MAP_STEM_ENUM()
-        return {'FINISHED'}
+        return {"FINISHED"}
+
+
+class LoadCollectionsFromBlend(LoggingOperator, ImportHelper):
+    """Load collections and objects from a '.blend' file by linking its root-level collections to this scene.
+
+    Works best with Blend files created using `io_export_blend`, and also works best when all objects in the Blend are
+    at least two collections deep.
+    """
+    bl_idname = "soulstruct.load_collections_from_blend"
+    bl_label = "Load Collections from Blend"
+    bl_description = "Load collections from a .blend file"
+
+    filename_ext = ".blend"
+
+    filter_glob: StringProperty(
+        default="*.blend",
+        options={'HIDDEN'},
+        maxlen=255,  # Max internal buffer length, longer would be clamped.
+    )
+
+    def execute(self, context):
+        if not self.filepath:
+            return self.error("No file selected.")
+
+        # Get the objects and collections from the file.
+        with bpy.data.libraries.load(self.filepath, link=False) as (data_from, data_to):
+            data_to.collections = data_from.collections
+            data_to.objects = data_from.objects
+
+        imported_collections = [col for col in data_to.collections if col is not None]
+
+        def is_top_level_collection(collection):
+            for col in imported_collections:
+                if collection.name in col.children:
+                    return False
+            return True
+
+        top_level_collections = [col for col in imported_collections if is_top_level_collection(col)]
+
+        for top_level_collection in top_level_collections:
+            bpy.context.scene.collection.children.link(top_level_collection)
+
+        self.info(f"{len(top_level_collections)} top-level collections loaded from '{self.filepath}'.")
+
+        for lib in bpy.data.libraries:
+            if lib.name == Path(self.filepath).name:
+                # Remove this library. We're not referencing it.
+                bpy.data.libraries.remove(lib)
+
+        return {"FINISHED"}

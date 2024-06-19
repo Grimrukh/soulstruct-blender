@@ -57,7 +57,7 @@ class ImportMCP(LoggingOperator, ImportHelper):
             # TODO: load navmesh part names from MSB (and check same count)
             importer.import_mcp(mcp, f"{file_paths[i].stem} MCP")
 
-        return {'FINISHED'}
+        return {"FINISHED"}
 
 
 class QuickImportMCP(LoggingOperator):
@@ -82,7 +82,7 @@ class QuickImportMCP(LoggingOperator):
         # TODO: load navmesh part names from MSB (and check same count)
         importer.import_mcp(mcp, f"{mcp_path.stem} MCP")
 
-        return {'FINISHED'}
+        return {"FINISHED"}
 
 
 class MCPImporter:

@@ -788,7 +788,7 @@ class ActivateUVMap(LoggingOperator):
                             if uv_layer_name in obj.data.uv_layers:
                                 obj.data.uv_layers.active = obj.data.uv_layers[uv_layer_name]
 
-                            return {'FINISHED'}
+                            return {"FINISHED"}
 
         return self.error(f"No textures found that were linked to by the '{uv_layer_name}' attribute node.")
 

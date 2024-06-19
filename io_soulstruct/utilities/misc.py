@@ -178,7 +178,7 @@ def get_bl_obj_stem(bl_obj: bpy.types.Object) -> str:
     return bl_obj.name.split(".")[0].split(" ")[0]
 
 
-def get_bl_prop(bl_obj, name: str, prop_type: tp.Type, default=None, callback: tp.Callable = None):
+def get_bl_prop(bl_obj, name: str, prop_type: tp.Type, default=None, callback: tp.Callable = None) -> tp.Any:
     """Try to get custom property `name` from Blender object `bl_obj`, with type `prop_type`.
 
     Optional `default` value will be returned if the property is not found (`None` is not a valid default value).

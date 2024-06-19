@@ -48,7 +48,7 @@ class ImportMCG(LoggingOperator, ImportHelper):
     directory: bpy.props.StringProperty(options={'HIDDEN'})
 
     def execute(self, context):
-        print("Executing MCG import...")
+        self.info("Executing MCG import...")
 
         file_paths = [Path(self.directory, file.name) for file in self.files]
 
@@ -81,7 +81,7 @@ class ImportMCG(LoggingOperator, ImportHelper):
             map_stem = file_paths[i].name.split(".")[0]
             importer.import_mcg(mcg, map_stem=map_stem, navmesh_part_names=navmesh_part_names)
 
-        return {'FINISHED'}
+        return {"FINISHED"}
 
 
 class QuickImportMCG(LoggingOperator):
@@ -127,7 +127,7 @@ class QuickImportMCG(LoggingOperator):
         importer = MCGImporter(self, context)
         importer.import_mcg(mcg, map_stem=map_stem, navmesh_part_names=navmesh_part_names)
 
-        return {'FINISHED'}
+        return {"FINISHED"}
 
 
 class MCGImporter:
@@ -186,6 +186,8 @@ class MCGImporter:
         # MCG file is not valid (for DS1 at least).
         node_triangle_indices = mcg.get_navmesh_triangles_by_node(allow_clashes=True)
 
+        node_objs = []
+
         for i, (node, triangle_indices) in enumerate(zip(mcg.nodes, node_triangle_indices)):
             node: MCGNode
             name = f"{map_stem} Node {i}"
@@ -200,28 +202,34 @@ class MCGImporter:
                     dead_end_navmesh_name = navmesh_part_names[node.dead_end_navmesh_index]
                 except IndexError:
                     raise ValueError(f"Node {i} has invalid dead-end navmesh index: {node.dead_end_navmesh_index}")
+
                 bl_node["Dead End Navmesh Name"] = dead_end_navmesh_name
+
                 # NOTE: For inspection convenience only. The true navmesh part name/index is stored in properties.
                 bl_node.name += f" <Dead End: {dead_end_navmesh_name}>"
             else:
                 bl_node["Dead End Navmesh Name"] = ""
+
             bl_node["Unk Offset"] = node.unknown_offset
+
             # Triangle indices are stored on the node, not the edge, for convenience, as they should be the same.
             for navmesh_key in ("a", "b"):
                 key_caps = navmesh_key.capitalize()
                 if triangle_indices[navmesh_key]:
-                    navmesh_a_index, navmesh_a_triangles = triangle_indices[navmesh_key]
+                    navmesh_index, navmesh_triangles = triangle_indices[navmesh_key]
                     try:
-                        bl_node[f"Navmesh {key_caps} Name"] = navmesh_part_names[navmesh_a_index]
+                        navmesh_name = navmesh_part_names[navmesh_index]
                     except IndexError:
-                        raise ValueError(f"Node {i} has invalid navmesh {key_caps} index: {navmesh_a_index}")
-                    bl_node[f"Navmesh {key_caps} Triangles"] = navmesh_a_triangles
+                        raise ValueError(f"Node {i} has invalid navmesh {key_caps} index: {navmesh_index}")
+
+                    bl_node[f"Navmesh {key_caps} Name"] = navmesh_name
+                    bl_node[f"Navmesh {key_caps} Triangles"] = navmesh_triangles
 
             # Connected node/edge indices not kept; inferred from edges.
             self.all_bl_objs.append(bl_node)
+            node_objs.append(bl_node)
 
         for i, edge in enumerate(mcg.edges):
-            edge: MCGEdge  # TODO: remove when PyCharm fixed
             node_a_index = mcg.nodes.index(edge.node_a)
             node_b_index = mcg.nodes.index(edge.node_b)
             if node_a_index >= len(mcg.nodes):
@@ -242,9 +250,10 @@ class MCGImporter:
             bl_edge.parent = edge_parent
 
             bl_edge["Cost"] = edge.cost
+            # Blender object references:
             bl_edge["Navmesh Name"] = navmesh_name
-            bl_edge["Node A"] = f"Node {node_a_index}"
-            bl_edge["Node B"] = f"Node {node_b_index}"
+            bl_edge["Node A"] = f"{map_stem} Node {node_a_index}"
+            bl_edge["Node B"] = f"{map_stem} Node {node_b_index}"
             # Triangles are stored on the nodes (above) as they should be identical for all edges on the same navmesh.
 
             self.all_bl_objs.append(bl_edge)

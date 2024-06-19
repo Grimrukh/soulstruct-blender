@@ -41,6 +41,7 @@ __all__ = [
     "CreateMCGEdgeOperator",
     "SetNodeNavmeshATriangles",
     "SetNodeNavmeshBTriangles",
+    "RefreshMCGNames",
 ]
 
 import bmesh
@@ -145,6 +146,7 @@ class NVM_PT_ds1_navmesh_tools(bpy.types.Panel):
 
         mcg_edit_box = self.layout.box()
         mcg_edit_box.operator(CreateMCGEdgeOperator.bl_idname, text="Create MCG Edge")
+        mcg_edit_box.operator(RefreshMCGNames.bl_idname)
 
         self.layout.label(text="Selected Face Indices:")
         selected_faces_box = self.layout.box()

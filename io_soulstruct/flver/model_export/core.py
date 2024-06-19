@@ -518,6 +518,10 @@ class FLVERExporter:
                 raise FLVERExportError(f"UV layer {uv_layer.name} contains no data.")
             uv_layer.data.foreach_get("uv", loop_uvs[uv_layer_name].ravel())
 
+        # Rotate tangents and bitangents to what FromSoft expects using cross product with normals.
+        loop_tangents = np.cross(loop_tangents, loop_normals)
+        loop_bitangents = np.cross(loop_bitangents, loop_normals)
+
         # Add default `w` components to tangents and bitangents (-1).
         minus_one = np.full((loop_count, 1), -1, dtype=np.float32)
         loop_tangents = np.concatenate((loop_tangents, minus_one), axis=1)
