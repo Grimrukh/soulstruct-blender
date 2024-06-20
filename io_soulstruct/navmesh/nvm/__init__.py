@@ -13,6 +13,10 @@ __all__ = [
     "RemoveNVMFaceFlags",
     "SetNVMFaceObstacleCount",
     "ResetNVMFaceInfo",
+    "NavmeshComputeSettings",
+    "FindCheapestPath",
+    "RecomputeEdgeCost",
+    "AutoCreateMCG",
 ]
 
 from .model_import import *

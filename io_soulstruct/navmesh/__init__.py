@@ -33,12 +33,17 @@ __all__ = [
     "RemoveNVMFaceFlags",
     "SetNVMFaceObstacleCount",
     "ResetNVMFaceInfo",
+    "NavmeshComputeSettings",
+    "FindCheapestPath",
+    "RecomputeEdgeCost",
+    "AutoCreateMCG",
 
     "MCGDrawSettings",
     "draw_mcg_nodes",
     "draw_mcg_node_labels",
     "draw_mcg_edges",
-    "CreateMCGEdgeOperator",
+    "draw_mcg_edge_cost_labels",
+    "CreateMCGEdge",
     "SetNodeNavmeshATriangles",
     "SetNodeNavmeshBTriangles",
     "RefreshMCGNames",
@@ -47,7 +52,7 @@ __all__ = [
 import bmesh
 import bpy
 
-from soulstruct.darksouls1r.events.enums import NavmeshType
+from soulstruct.darksouls1r.events.enums import NavmeshFlag
 
 from .nvm import *
 from .nvm.utilities import set_face_material
@@ -56,7 +61,7 @@ from .nvmhkt import *
 
 
 _navmesh_type_items = [
-    (str(nvmt.value), nvmt.name, "") for nvmt in NavmeshType
+    (str(nvmt.value), nvmt.name, "") for nvmt in NavmeshFlag
     if nvmt.value > 0
 ]
 
@@ -142,11 +147,25 @@ class NVM_PT_ds1_navmesh_tools(bpy.types.Panel):
         mcg_draw_settings_box.prop(mcg_draw_settings, "mcg_node_label_draw_enabled")
         mcg_draw_settings_box.prop(mcg_draw_settings, "mcg_node_label_font_size")
         mcg_draw_settings_box.prop(mcg_draw_settings, "mcg_node_label_font_color")
+        mcg_draw_settings_box.prop(mcg_draw_settings, "mcg_edge_label_font_size")
+        # Color options in one row with no labels.
+        mcg_draw_settings_box.label(text="Edge Label Colors (Match, Close, Bad):")
+        row = mcg_draw_settings_box.row()
+        row.prop(mcg_draw_settings, "mcg_edge_label_font_color", text="")
+        row.prop(mcg_draw_settings, "mcg_almost_same_cost_edge_label_font_color", text="")
+        row.prop(mcg_draw_settings, "mcg_bad_cost_edge_label_font_color", text="")
         mcg_draw_settings_box.prop(mcg_draw_settings, "mcg_edge_triangles_highlight_enabled")
 
         mcg_edit_box = self.layout.box()
-        mcg_edit_box.operator(CreateMCGEdgeOperator.bl_idname, text="Create MCG Edge")
+        mcg_edit_box.operator(CreateMCGEdge.bl_idname)
         mcg_edit_box.operator(RefreshMCGNames.bl_idname)
+        compute_box = mcg_edit_box.box()
+        compute_box.prop(context.scene.navmesh_compute_settings, "select_path")
+        compute_box.prop(context.scene.navmesh_compute_settings, "wall_multiplier")
+        compute_box.prop(context.scene.navmesh_compute_settings, "obstacle_multiplier")
+        compute_box.operator(RecomputeEdgeCost.bl_idname)
+        compute_box.operator(FindCheapestPath.bl_idname)
+        compute_box.operator(AutoCreateMCG.bl_idname)
 
         self.layout.label(text="Selected Face Indices:")
         selected_faces_box = self.layout.box()
@@ -178,7 +197,7 @@ def layout_selected_faces(bm: bmesh.types.BMesh, layout, context, selected_faces
         face_row = selected_faces_box.row()
         face_flags = face[flags_layer]
         face_obstacle_count = face[obstacle_count_layer]
-        suffix = " | ".join([n.name for n in NavmeshType if n.value & face_flags])
+        suffix = " | ".join([n.name for n in NavmeshFlag if n.value & face_flags])
         if suffix:
             suffix = f" ({suffix})"
         if face_obstacle_count > 0:

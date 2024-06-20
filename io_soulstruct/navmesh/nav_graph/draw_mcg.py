@@ -5,6 +5,7 @@ __all__ = [
     "draw_mcg_nodes",
     "draw_mcg_node_labels",
     "draw_mcg_edges",
+    "draw_mcg_edge_cost_labels",
 ]
 
 import bpy
@@ -27,10 +28,21 @@ class MCGDrawSettings(bpy.types.PropertyGroup):
     mcg_graph_color: bpy.props.FloatVectorProperty(
         name="Graph Color", subtype="COLOR", default=(0.5, 1.0, 0.5)
     )
-    mcg_node_label_draw_enabled: bpy.props.BoolProperty(name="Draw Labels", default=True)
-    mcg_node_label_font_size: bpy.props.IntProperty(name="Label Size", default=24)
+    mcg_node_label_draw_enabled: bpy.props.BoolProperty(name="Draw Node Names", default=True)
+    mcg_edge_cost_draw_enabled: bpy.props.BoolProperty(name="Draw Edge Costs", default=True)
+    mcg_node_label_font_size: bpy.props.IntProperty(name="Node Label Size", default=24)
     mcg_node_label_font_color: bpy.props.FloatVectorProperty(
-        name="Label Color", subtype="COLOR", default=(1.0, 1.0, 1.0)
+        name="Node Label Color", subtype="COLOR", default=(1.0, 1.0, 1.0)
+    )
+    mcg_edge_label_font_size: bpy.props.IntProperty(name="Edge Label Size", default=18)
+    mcg_edge_label_font_color: bpy.props.FloatVectorProperty(
+        name="Edge Label Color", subtype="COLOR", default=(0.8, 1.0, 0.8)
+    )
+    mcg_almost_same_cost_edge_label_font_color: bpy.props.FloatVectorProperty(
+        name="Edge Label Color (Almost Match)", subtype="COLOR", default=(1.0, 1.0, 0.7)
+    )
+    mcg_bad_cost_edge_label_font_color: bpy.props.FloatVectorProperty(
+        name="Edge Label Color (Bad Match)", subtype="COLOR", default=(1.0, 0.8, 0.8)
     )
     mcg_edge_triangles_highlight_enabled: bpy.props.BoolProperty(name="Highlight Edge Triangles", default=True)
 
@@ -314,3 +326,91 @@ def draw_mcg_edges():
         batch_sphere.draw(shader)
 
     # gpu.state.blend_set("NONE")
+
+
+def draw_mcg_edge_cost_labels():
+    """Draw MCG edge cost labels."""
+    settings = bpy.context.scene.mcg_draw_settings  # type: MCGDrawSettings
+    if not settings.mcg_edge_cost_draw_enabled:
+        return
+
+    mcg_parent_name = settings.mcg_parent_name
+    if not mcg_parent_name:
+        return
+
+    try:
+        mcg_parent = bpy.data.objects[mcg_parent_name]
+    except KeyError:
+        return  # invalid MCG parent name
+
+    node_parent = edge_parent = None
+    for child in mcg_parent.children:
+        if child.name.endswith(" Nodes"):
+            node_parent = child
+            if edge_parent:
+                break
+        if child.name.endswith(" Edges"):  # needed to get nodes connected to selected
+            edge_parent = child
+            if node_parent:
+                break
+    else:
+        return  # No node parent found.
+
+    font_id = 0
+    try:
+        blf.size(font_id, bpy.context.scene.mcg_draw_settings.mcg_edge_label_font_size)
+    except AttributeError:
+        blf.size(font_id, 18)  # default
+    try:
+        blf.color(font_id, *bpy.context.scene.mcg_draw_settings.mcg_edge_label_font_color, 1.0)
+    except AttributeError:
+        blf.color(font_id, 0.8, 1.0, 0.8, 1)  # default (green)
+
+    almost_match_font_id = 1
+    try:
+        blf.size(almost_match_font_id, bpy.context.scene.mcg_draw_settings.mcg_edge_label_font_size)
+    except AttributeError:
+        blf.size(almost_match_font_id, 18)  # default
+    try:
+        blf.color(almost_match_font_id, *bpy.context.scene.mcg_draw_settings.mcg_almost_cost_edge_label_font_color, 1.0)
+    except AttributeError:
+        blf.color(almost_match_font_id, 1.0, 1.0, 0.7, 1)  # default (yellow)
+
+    bad_match_font_id = 2
+    try:
+        blf.size(bad_match_font_id, bpy.context.scene.mcg_draw_settings.mcg_edge_label_font_size)
+    except AttributeError:
+        blf.size(bad_match_font_id, 18)  # default
+    try:
+        blf.color(bad_match_font_id, *bpy.context.scene.mcg_draw_settings.mcg_bad_cost_edge_label_font_color, 1.0)
+    except AttributeError:
+        blf.color(bad_match_font_id, 1.0, 0.8, 0.8, 1)  # default (red)
+
+    for edge in edge_parent.children:
+        try:
+            cost = edge["Cost"]
+        except KeyError:
+            continue  # edge has no Cost custom property
+
+        label_position = location_3d_to_region_2d(bpy.context.region, bpy.context.region_data, edge.location)
+        if not label_position:
+            continue  # edge is not in view
+
+        try:
+            blender_cost = edge["Blender Cost"]
+        except KeyError:
+            blf.position(font_id, label_position.x + 10, label_position.y + 10, 0.0)
+            blf.draw(font_id, f"{cost:.3f}")
+        else:
+            if abs(cost - blender_cost) > 1:
+                font = bad_match_font_id
+                label = f"{cost:.3f} ({blender_cost:.3f})"
+            elif abs(cost - blender_cost) > 0.0001:
+                font = almost_match_font_id
+                label = f"{cost:.3f} ({blender_cost:.3f})"
+            else:
+                # Good match.
+                font = font_id
+                label = f"{cost:.3f} (✓)"
+            blf.position(font, label_position.x + 10, label_position.y + 10, 0.0)
+            blf.draw(font, label)

@@ -235,7 +235,7 @@ CLASSES = (
     QuickImportMCG,
     ExportMCG,
     ExportMCGMCPToMap,
-    CreateMCGEdgeOperator,
+    CreateMCGEdge,
     SetNodeNavmeshATriangles,
     SetNodeNavmeshBTriangles,
     RefreshMCGNames,
@@ -248,6 +248,10 @@ CLASSES = (
     RemoveNVMFaceFlags,
     SetNVMFaceObstacleCount,
     ResetNVMFaceInfo,
+    NavmeshComputeSettings,
+    FindCheapestPath,
+    RecomputeEdgeCost,
+    AutoCreateMCG,
     MCGDrawSettings,
     # endregion
 
@@ -310,6 +314,7 @@ SCENE_POINTERS = dict(
     mesh_move_settings=MeshMoveSettings,
     hkx_map_collision_import_settings=HKXMapCollisionImportSettings,
     navmesh_face_settings=NavmeshFaceSettings,
+    navmesh_compute_settings=NavmeshComputeSettings,
     nvmhkt_import_settings=NVMHKTImportSettings,
     mcg_draw_settings=MCGDrawSettings,
     msb_import_settings=MSBImportSettings,
@@ -374,6 +379,9 @@ def register():
     )
     SPACE_VIEW_3D_HANDLERS.append(
         bpy.types.SpaceView3D.draw_handler_add(draw_mcg_edges, (), "WINDOW", "POST_VIEW")
+    )
+    SPACE_VIEW_3D_HANDLERS.append(
+        bpy.types.SpaceView3D.draw_handler_add(draw_mcg_edge_cost_labels, (), "WINDOW", "POST_PIXEL")
     )
 
     SPACE_VIEW_3D_HANDLERS.append(

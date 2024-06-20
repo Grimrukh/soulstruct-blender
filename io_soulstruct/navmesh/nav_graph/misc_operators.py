@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 __all__ = [
-    "CreateMCGEdgeOperator",
+    "CreateMCGEdge",
     "create_mcg_edge",
     "set_node_navmesh_name_triangles",
     "SetNodeNavmeshATriangles",
@@ -22,7 +22,7 @@ class MCGEdgeCreationError(Exception):
     pass
 
 
-class CreateMCGEdgeOperator(LoggingOperator):
+class CreateMCGEdge(LoggingOperator):
     """Create an MCG edge between two nodes on a navmesh."""
     bl_idname = "io_soulstruct_scene.create_mcg_edge"
     bl_label = "Create MCG Edge"

@@ -280,12 +280,21 @@ def get_hkx_map_collision_items(self, context):
         return _clear_items(key).items
     elif settings.is_game(DARK_SOULS_DSR):
         # Compressed HKX files inside HKXBHD binder. We use the OLDEST map version.
-        game_hkxbhd_path = game_map_path / f"h{map_stem[1:]}.hkxbhd"  # no DCX
-        if not game_hkxbhd_path.is_file():
+
+        if is_path_and_dir(game_map_path):
+            game_hkxbhd_path = game_map_path / f"h{map_stem[1:]}.hkxbhd"  # no DCX
+            if not game_hkxbhd_path.is_file():
+                game_hkxbhd_path = None
+        else:
             game_hkxbhd_path = None
-        project_hkxbhd_path = project_map_path / f"h{map_stem[1:]}.hkxbhd"  # no DCX
-        if not project_hkxbhd_path.is_file():
+
+        if is_path_and_dir(project_map_path):
+            project_hkxbhd_path = project_map_path / f"h{map_stem[1:]}.hkxbhd"  # no DCX
+            if not project_hkxbhd_path.is_file():
+                project_hkxbhd_path = None
+        else:
             project_hkxbhd_path = None
+
         cached = GAME_FILE_ENUM_ITEMS[key]
         if cached.is_valid(game_hkxbhd_path, project_hkxbhd_path):
             return cached.items  # use cached items
