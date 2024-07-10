@@ -334,6 +334,9 @@ class MCGExporter:
         # List of all created nodes in the order they will be written in the file.
         nodes = []  # type: list[MCGNode]
 
+        # Maps navmesh names to their nodes, so we can detect dead ends.
+        navmesh_nodes = {navmesh_name: [] for navmesh_name in navmesh_part_indices.keys()}
+
         # List of dicts that map EXACTLY two navmesh names to triangles for edges to write (as Soulstruct stores the
         # triangle indices on the nodes rather than the edges).
         node_navmesh_triangles = []  # type: list[dict[str, list[int]]]
@@ -361,19 +364,31 @@ class MCGExporter:
             navmesh_a_name = get_bl_prop(bl_node, f"Navmesh A Name", str)
             navmesh_a_triangles = get_bl_prop(bl_node, f"Navmesh A Triangles", tuple, callback=list)
             node_navmesh_info[navmesh_a_name] = navmesh_a_triangles
+            navmesh_nodes[navmesh_a_name].append(node)
 
-            # Get navmesh B (if node doesn't have a dead end navmesh).
-            if not dead_end_navmesh_name:
+            # LEGACY: Get dead end navmesh name.
+            navmesh_b_name = get_bl_prop(bl_node, "Dead End Navmesh Name", str, default="")
+            if navmesh_b_name:
+                navmesh_b_triangles = []  # dead end
+            else:
                 navmesh_b_name = get_bl_prop(bl_node, f"Navmesh B Name", str)
                 navmesh_b_triangles = get_bl_prop(bl_node, f"Navmesh B Triangles", tuple, callback=list)
-                node_navmesh_info[navmesh_b_name] = navmesh_b_triangles
-            elif get_bl_prop(bl_node, f"Navmesh B Name", str, default=""):
-                raise MCGExportError(
-                    f"Node '{bl_node.name}' has a Dead End Navmesh but also specifies a Navmesh B name."
-                )
+            node_navmesh_info[navmesh_b_name] = navmesh_b_triangles
+            navmesh_nodes[navmesh_b_name].append(node)
 
             nodes.append(node)
             node_navmesh_triangles.append(node_navmesh_info)
+
+        # Check for dead ends.
+        for navmesh_name, nodes_with_navmesh in navmesh_nodes.items():
+            if len(nodes_with_navmesh) == 1:
+                node = nodes_with_navmesh[0]
+                if node.dead_end_navmesh_index != -1:
+                    raise MCGExportError(
+                        f"Node '{node.name}' is apparently connected to multiple dead-end navmeshes, which is not "
+                        f"allowed. You must fix your navmesh graph in Blender first."
+                    )
+                node.dead_end_navmesh_index = navmesh_part_indices[navmesh_name]
 
         self.operator.info(f"Exporting {len(nodes)} MCG nodes...")
 
@@ -392,10 +407,10 @@ class MCGExporter:
 
             node_a_name = get_bl_prop(bl_edge, "Node A", str)
             if node_a_name.startswith("Node"):
-                node_a_name = f"{map_stem} {node_a_name}"
+                node_a_name = f"{map_stem} {node_a_name}"  # legacy
             node_b_name = get_bl_prop(bl_edge, "Node B", str)
             if node_b_name.startswith("Node"):
-                node_b_name = f"{map_stem} {node_b_name}"
+                node_b_name = f"{map_stem} {node_b_name}"  # legacy
             try:
                 node_a_index = node_dict[node_a_name]
             except KeyError:

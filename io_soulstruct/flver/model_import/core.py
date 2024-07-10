@@ -16,9 +16,14 @@ from mathutils import Vector, Matrix
 
 from soulstruct.base.models.flver import FLVER, FLVERBone, FLVERBoneUsageFlags, Dummy, Material
 from soulstruct.base.models.flver.mesh_tools import MergedMesh
+from soulstruct.base.models.flver.shaders import MatDef, MatDefError
 from soulstruct.containers.tpf import TPFTexture, batch_get_tpf_texture_png_data
 from soulstruct.games import *
 from soulstruct.utilities.maths import Vector3
+from soulstruct.darksouls1ptde.models.shaders import MatDef as PTDE_MatDef
+from soulstruct.darksouls1r.models.shaders import MatDef as DS1R_MatDef
+from soulstruct.bloodborne.models.shaders import MatDef as BB_MatDef
+from soulstruct.eldenring.models.shaders import MatDef as ER_MatDef
 
 from io_soulstruct.utilities import *
 from io_soulstruct.flver.materials import *
@@ -26,8 +31,8 @@ from io_soulstruct.flver.textures.import_textures import TextureImportManager, i
 from io_soulstruct.flver.utilities import *
 
 if tp.TYPE_CHECKING:
+    from soulstruct.base.models.matbin import MATBINBND
     from soulstruct.base.models.mtd import MTDBND as BaseMTDBND
-    from soulstruct.eldenring.models.matbin import MATBINBND
     from io_soulstruct.general import SoulstructSettings
     from .settings import FLVERImportSettings
 
@@ -58,10 +63,12 @@ class FLVERImporter:
     new_materials: list[bpy.types.Material] = field(default_factory=list)  # all new materials created during import
 
     def __post_init__(self):
-        if self.mtdbnd is None:
+        if self.mtdbnd is None and not self.settings.is_game(ELDEN_RING):
             self.mtdbnd = self.settings.get_mtdbnd(self.operator)
-        if self.matbinbnd is None:
+
+        if self.matbinbnd is None and self.settings.is_game(ELDEN_RING):
             self.matbinbnd = self.settings.get_matbinbnd(self.operator)
+
         if self.collection is None:
             self.collection = self.context.scene.collection
 
@@ -113,9 +120,14 @@ class FLVERImporter:
         bl_armature_obj = self.create_armature(import_settings.base_edit_bone_length)
         self.new_objs.append(bl_armature_obj)
 
-        submesh_bl_material_indices, bl_material_uv_layer_names = self.create_materials(
-            flver, import_settings.material_blend_mode
-        )
+        try:
+            submesh_bl_material_indices, bl_material_uv_layer_names = self.create_materials(
+                flver, import_settings.material_blend_mode
+            )
+        except MatDefError:
+            # No materials will be created!
+            submesh_bl_material_indices = []
+            bl_material_uv_layer_names = []
 
         bl_flver_mesh = self.create_flver_mesh(
             flver, self.name, submesh_bl_material_indices, bl_material_uv_layer_names
@@ -164,7 +176,12 @@ class FLVERImporter:
 
         if self.texture_import_manager or self.settings.png_cache_directory:
             p = time.perf_counter()
-            all_texture_stems = {v for submesh_textures in all_submesh_texture_stems for v in submesh_textures.values()}
+            all_texture_stems = {
+                v
+                for submesh_textures in all_submesh_texture_stems
+                for v in submesh_textures.values()
+                if v  # obviously ignore empty texture paths
+            }
             self.new_images = self.load_texture_images(all_texture_stems, self.texture_import_manager)
             if self.new_images:
                 self.operator.info(f"Loaded {len(self.new_images)} textures in {time.perf_counter() - p:.3f} seconds.")
@@ -184,30 +201,39 @@ class FLVERImporter:
         # Submesh/FaceSet properties.
         flver_material_hash_variants = {}
 
-        # Map FLVER material hashes to their material info.
-        flver_material_infos = {}  # type: dict[int, BaseMaterialShaderInfo]
+        # Map FLVER material hashes to their generated `MatDef` instances.
+        flver_matdefs = {}  # type: dict[int, MatDef | None]
         for submesh in flver.submeshes:
             material_hash = hash(submesh.material)  # TODO: should hash ignore material name?
-            if material_hash in flver_material_infos:
+            if material_hash in flver_matdefs:
                 continue  # material already created (used by a previous submesh)
 
-            if self.settings.is_game(DARK_SOULS_PTDE, DARK_SOULS_DSR):
-                material_info = DS1MaterialShaderInfo.from_mtdbnd_or_name(
-                    self.operator, submesh.material.mat_def_name, self.mtdbnd
+            # Try to look up material info from MTD or MATBIN (Elden Ring).
+            try:
+                if self.settings.is_game(DARK_SOULS_PTDE):
+                    matdef = PTDE_MatDef.from_mtdbnd_or_name(submesh.material.mat_def_name, self.mtdbnd)
+                elif self.settings.is_game(DARK_SOULS_DSR):
+                    matdef = DS1R_MatDef.from_mtdbnd_or_name(submesh.material.mat_def_name, self.mtdbnd)
+                elif self.settings.is_game(BLOODBORNE):
+                    matdef = BB_MatDef.from_mtdbnd_or_name(submesh.material.mat_def_name, self.mtdbnd)
+                elif self.settings.is_game(ELDEN_RING):
+                    matdef = ER_MatDef.from_matbinbnd_or_name(submesh.material.mat_def_name, self.matbinbnd)
+                else:
+                    self.warning(f"FLVER material shader creation not implemented for game {self.settings.game.name}.")
+                    matdef = None
+            except MatDefError as ex:
+                self.warning(
+                    f"Could not create `MatDef` for game material '{submesh.material.mat_def_name}'. Error:\n"
+                    f"    {ex}"
                 )
-            elif self.settings.is_game(BLOODBORNE):
-                material_info = BBMaterialShaderInfo.from_mtdbnd_or_name(
-                    self.operator, submesh.material.mat_def_name, self.mtdbnd
-                )
-            elif self.settings.is_game(ELDEN_RING):
-                material_info = ERMaterialShaderInfo.from_matbin_name_or_matbinbnd(
-                    self.operator, submesh.material.mat_def_name, self.matbinbnd
-                )
-            else:
-                raise FLVERImportError(f"FLVER material creation not implemented for game {self.settings.game.name}.")
-            flver_material_infos[material_hash] = material_info
+                import traceback
+                traceback.print_exc()
+                matdef = None
+
+            flver_matdefs[material_hash] = matdef
 
         self.new_materials = []
+
         for submesh, submesh_textures in zip(flver.submeshes, all_submesh_texture_stems, strict=True):
             material = submesh.material  # type: Material
             material_hash = hash(material)  # NOTE: if there are duplicate FLVER materials, this will combine them
@@ -221,7 +247,7 @@ class FLVERImporter:
                 #  export/import and because it is so useless anyway.
                 flver_material_index = len(flver_material_hash_variants)
                 bl_material_index = len(self.new_materials)
-                material_info = flver_material_infos[material_hash]
+                matdef = flver_matdefs[material_hash]
 
                 # Create a relatively informative material name. We use material index, mat def, and model name as a
                 # suffix to maximize the chances of a unique Blender name.
@@ -234,7 +260,7 @@ class FLVERImporter:
                     material,
                     submesh_textures,
                     material_name=bl_material_name,
-                    material_info=material_info,
+                    matdef=matdef,
                     submesh=submesh,
                     vertex_color_count=vertex_color_count,
                     blend_mode=material_blend_mode,
@@ -245,9 +271,13 @@ class FLVERImporter:
                 flver_material_hash_variants[material_hash] = [bl_material_index]
 
                 self.new_materials.append(bl_material)
-                bl_material_uv_layer_names.append(
-                    [layer.name for layer in flver_material_infos[material_hash].used_uv_layers]
-                )
+                if matdef:
+                    used_uv_layers = flver_matdefs[material_hash].get_used_uv_layers()
+                    bl_material_uv_layer_names.append([layer.name for layer in used_uv_layers])
+                else:
+                    # UV layer names not known for this material. `MergedMesh` will just use index, which may cause
+                    # conflicting types of UV data to occupy the same Blender UV slot.
+                    bl_material_uv_layer_names.append([])
                 continue
 
             existing_variant_bl_indices = flver_material_hash_variants[material_hash]
@@ -297,7 +327,7 @@ class FLVERImporter:
                 material,
                 submesh_textures,
                 material_name=variant_name,
-                material_info=flver_material_infos[material_hash],
+                matdef=flver_matdefs[material_hash],
                 submesh=submesh,
                 vertex_color_count=vertex_color_count,
                 blend_mode=material_blend_mode,
@@ -307,9 +337,12 @@ class FLVERImporter:
             submesh_bl_material_indices.append(new_bl_material_index)
             flver_material_hash_variants[material_hash].append(new_bl_material_index)
             self.new_materials.append(bl_material)
-            bl_material_uv_layer_names.append(
-                [layer.name for layer in flver_material_infos[material_hash].used_uv_layers]
-            )
+            if flver_matdefs[material_hash] is not None:
+                bl_material_uv_layer_names.append(
+                    [layer.name for layer in flver_matdefs[material_hash].get_used_uv_layers()]
+                )
+            else:
+                bl_material_uv_layer_names.append([])
 
         return submesh_bl_material_indices, bl_material_uv_layer_names
 

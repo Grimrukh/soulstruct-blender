@@ -92,9 +92,9 @@ class BaseFLVERImportOperator(LoggingImportOperator):
                 flvers.append((source_path.name.split(".")[0], flver))
 
         if use_matbinbnd:
-            self.info("Using MATBINBND for Sekiro/Elden Ring FLVERs.")
+            self.info("Using MATBINBND for Elden Ring FLVERs.")
         else:
-            self.info("Using MTDBND for pre-Sekiro FLVERs.")
+            self.info("Using MTDBND for pre-Elden Ring FLVERs.")
 
         settings = self.settings(context)
         settings.save_settings()

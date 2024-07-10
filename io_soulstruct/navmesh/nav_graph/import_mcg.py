@@ -197,19 +197,15 @@ class MCGImporter:
             self.all_bl_objs.append(bl_node)
             bl_node.parent = node_parent
             
-            if node.dead_end_navmesh_index >= 0:
-                try:
-                    dead_end_navmesh_name = navmesh_part_names[node.dead_end_navmesh_index]
-                except IndexError:
-                    raise ValueError(f"Node {i} has invalid dead-end navmesh index: {node.dead_end_navmesh_index}")
+            # Since MCG nodes in Blender reference the two navmeshes they connect, dead-end navmeshes can be
+            # auto-detected from single-node navmeshes and don't need to be stored in Blender. However, we do check the
+            # dead-end index here.
+            if node.dead_end_navmesh_index >= len(navmesh_part_names):
+                self.operator.warning(
+                    f"Node {i} has invalid dead-end navmesh index: {node.dead_end_navmesh_index}. Ignoring."
+                )
 
-                bl_node["Dead End Navmesh Name"] = dead_end_navmesh_name
-
-                # NOTE: For inspection convenience only. The true navmesh part name/index is stored in properties.
-                bl_node.name += f" <Dead End: {dead_end_navmesh_name}>"
-            else:
-                bl_node["Dead End Navmesh Name"] = ""
-
+            # Stored here, but unlikely to ever matter, and cannot be reconstructed. Still exported if available.
             bl_node["Unk Offset"] = node.unknown_offset
 
             # Triangle indices are stored on the node, not the edge, for convenience, as they should be the same.
@@ -223,7 +219,7 @@ class MCGImporter:
                         raise ValueError(f"Node {i} has invalid navmesh {key_caps} index: {navmesh_index}")
 
                     bl_node[f"Navmesh {key_caps} Name"] = navmesh_name
-                    bl_node[f"Navmesh {key_caps} Triangles"] = navmesh_triangles
+                    bl_node[f"Navmesh {key_caps} Triangles"] = navmesh_triangles  # empty if navmesh B is a dead end
 
             # Connected node/edge indices not kept; inferred from edges.
             self.all_bl_objs.append(bl_node)
@@ -250,16 +246,17 @@ class MCGImporter:
             bl_edge.parent = edge_parent
 
             bl_edge["Cost"] = edge.cost
-            # Blender object references:
+            # Blender object name references:
             bl_edge["Navmesh Name"] = navmesh_name
-            bl_edge["Node A"] = f"{map_stem} Node {node_a_index}"
-            bl_edge["Node B"] = f"{map_stem} Node {node_b_index}"
+            print(f"Edge {i}, navmesh {navmesh_name}, node A index {node_a_index}, node B index {node_b_index}")
+            bl_edge["Node A"] = node_objs[node_a_index].name
+            bl_edge["Node B"] = node_objs[node_b_index].name
             # Triangles are stored on the nodes (above) as they should be identical for all edges on the same navmesh.
 
             self.all_bl_objs.append(bl_edge)
 
         # Automatically set node and edge parents for drawing.
-        self.context.scene.mcg_draw_settings.mcg_parent_name = mcg_parent.name
+        self.context.scene.mcg_draw_settings.mcg_parent = mcg_parent
 
         return mcg_parent
 

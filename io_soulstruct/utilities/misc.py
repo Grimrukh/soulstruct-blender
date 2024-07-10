@@ -6,7 +6,6 @@ __all__ = [
     "get_bl_obj_stem",
     "get_bl_prop",
     "is_uniform",
-    "natural_keys",
     "get_collection",
     "is_path_and_file",
     "is_path_and_dir",
@@ -211,18 +210,6 @@ def is_uniform(vector: Vector | Vector3, rel_tol: float):
     return xy_close and xz_close and yz_close
 
 
-def atoi(text: str):
-    return int(text) if text.isdigit() else text
-
-
-def natural_keys(text: str):
-    """Key for `sorted` or `list.sort()` to sort in human/natural order (preserve numeric chunks).
-
-    See: http://nedbatchelder.com/blog/200712/human_sorting.html
-    """
-    return [atoi(c) for c in re.split(r"(\d+)", text)]
-
-
 def get_collection(
     name: str,
     parent_collection: bpy.types.Collection = None,
@@ -235,7 +222,7 @@ def get_collection(
         collection = bpy.data.collections.new(name)
         if parent_collection:
             parent_collection.children.link(collection)
-        # TODO: `hide_viewport` objbreaks import, as we can't enter Edit Mode.
+        # TODO: `hide_viewport` breaks import, as we can't enter Edit Mode.
         return collection
 
 

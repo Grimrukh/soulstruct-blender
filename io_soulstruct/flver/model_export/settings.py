@@ -33,13 +33,14 @@ class FLVERExportSettings(bpy.types.PropertyGroup):
 
     allow_missing_textures: bpy.props.BoolProperty(
         name="Allow Missing Textures",
-        description="Allow MTD-defined textures to have no node image data in Blender",
+        description="Allow ANY sampler nodes to have no Image assigned in Blender shader, not just those with no "
+                    "default path specified in their MATBIN (for later games)",
         default=False,
     )
 
     allow_unknown_texture_types: bpy.props.BoolProperty(
         name="Allow Unknown Texture Types",
-        description="Allow and export Blender texture nodes that have non-MTD-defined texture types",
+        description="Allow and export Blender texture nodes that have unrecognized sampler names",
         default=False,
     )
 

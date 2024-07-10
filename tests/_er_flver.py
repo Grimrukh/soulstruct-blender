@@ -2,7 +2,7 @@ import struct
 from pathlib import Path
 
 from soulstruct import FLVER, ELDEN_RING_PATH
-from soulstruct.eldenring.models.matbin import MATBINBND
+from soulstruct.base.models.matbin import MATBINBND
 
 # TODO: Findings so far:
 #  - Haven't seen a material that uses more than two GX Items, EXCLUDING the dummy item.
@@ -49,7 +49,7 @@ def see_textures():
     for mapbnd_path in stormveil.glob("*.mapbnd.dcx"):
         flver = FLVER.from_binder_path(mapbnd_path)
         for submesh in flver.submeshes:
-            print(submesh.material.mtd_name, submesh.material.textures)
+            print(submesh.material.mat_def_path, submesh.material.textures)
         return
 
 

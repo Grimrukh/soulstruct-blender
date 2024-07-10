@@ -671,5 +671,5 @@ class AutoCreateMCG(LoggingOperator):
                     created.add((i, j))
 
         # Since we succeeded, set MCG parent draw name.
-        context.scene.mcg_draw_settings.mcg_parent_name = mcg_parent.name
+        context.scene.mcg_draw_settings.mcg_parent = mcg_parent
         return {"FINISHED"}

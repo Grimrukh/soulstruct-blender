@@ -2,9 +2,9 @@ from __future__ import annotations
 
 __all__ = ["FLVERExporter"]
 
-import time
-
+import ast
 import re
+import time
 import typing as tp
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -14,19 +14,23 @@ import numpy as np
 import bmesh
 import bpy
 
-from soulstruct.base.models.flver import FLVER, Version, FLVERBone, FLVERBoneUsageFlags, Material, Texture, Dummy
+from soulstruct.base.models.flver import FLVER, Version, FLVERBone, FLVERBoneUsageFlags, Dummy
+from soulstruct.base.models.flver.material import Material, Texture, GXItem
 from soulstruct.base.models.flver.mesh_tools import MergedMesh, SplitSubmeshDef
+from soulstruct.base.models.flver.shaders import MatDef
+from soulstruct.darksouls1ptde.models.shaders import MatDef as PTDE_MatDef
+from soulstruct.darksouls1r.models.shaders import MatDef as DSR_MatDef
 from soulstruct.games import *
 from soulstruct.utilities.maths import Vector3, Matrix3
+from soulstruct.utilities.text import natural_keys
 
 from io_soulstruct.general import *
 from io_soulstruct.utilities import *
-from io_soulstruct.flver.materials import BaseMaterialShaderInfo, DS1MaterialShaderInfo
 from io_soulstruct.flver.utilities import *
 
 if tp.TYPE_CHECKING:
+    from soulstruct.base.models.matbin import MATBINBND
     from soulstruct.base.models.mtd import MTDBND as BaseMTDBND
-    from soulstruct.eldenring.models.matbin import MATBINBND
     from .settings import FLVERExportSettings
 
 
@@ -149,22 +153,26 @@ class FLVERExporter:
                 flver.bones[flver_dummy.parent_bone_index].usage_flags &= ~1
             flver.dummies.append(flver_dummy)
 
-        # Material info for each Blender material is needed to determine which Blender UV layers to use for which loops.
-        if self.settings.is_game(DARK_SOULS_PTDE, DARK_SOULS_DSR):
-            material_infos = []
-            for bl_material in mesh.data.materials:
-                try:
-                    mtd_name = Path(bl_material["Mat Def Path"]).name
-                except KeyError:
-                    raise FLVERExportError(
-                        f"Material '{bl_material.name}' has no 'Mat Def Path' custom property. "
-                        f"Cannot export FLVER."
-                    )
-                material_infos.append(
-                    DS1MaterialShaderInfo.from_mtdbnd_or_name(self.operator, mtd_name, self.mtdbnd)
-                )
+        # `MatDef` for each Blender material is needed to determine which Blender UV layers to use for which loops.
+        if self.settings.is_game(DARK_SOULS_PTDE):
+            matdef_class = PTDE_MatDef
+        elif self.settings.is_game(DARK_SOULS_DSR):
+            matdef_class = DSR_MatDef
         else:
             raise NotImplementedError(f"Cannot yet export FLVERs for game {self.settings.game}.")
+
+        matdefs = []
+        for bl_material in mesh.data.materials:
+            try:
+                mtd_name = Path(bl_material["Mat Def Path"]).name
+            except KeyError:
+                raise FLVERExportError(
+                    f"Material '{bl_material.name}' has no 'Mat Def Path' custom property. "
+                    f"Cannot export FLVER."
+                )
+            matdefs.append(
+                matdef_class.from_mtdbnd_or_name(mtd_name, self.mtdbnd)
+            )
 
         if not mesh.data.vertices:
             # No submeshes in FLVER (e.g. c0000). We also leave all bounding boxes as their default max/min values.
@@ -182,7 +190,7 @@ class FLVERExporter:
             use_chr_layout=read_bone_type == "EDIT",
             normal_tangent_dot_max=export_settings.normal_tangent_dot_max,
             create_lod_face_sets=export_settings.create_lod_face_sets,
-            material_infos=material_infos,
+            matdefs=matdefs,
         )
 
         # TODO: Bone bounding box space seems to be always local to the bone for characters and always in armature space
@@ -267,7 +275,7 @@ class FLVERExporter:
         use_chr_layout: bool,
         normal_tangent_dot_max: float,
         create_lod_face_sets: bool,
-        material_infos: list[BaseMaterialShaderInfo],
+        matdefs: list[MatDef],
     ):
         """
         Construct a `MergedMesh` from Blender data, in a straightforward way (unfortunately using `for` loops over
@@ -280,14 +288,14 @@ class FLVERExporter:
         #    split `Submesh` in the exported FLVER (more if submesh bone maximum is exceeded). This allows the user to
         #    also split their submeshes manually in Blender, if they wish.
         submesh_info = []  # type: list[SplitSubmeshDef]
-        for material_info, bl_material in zip(material_infos, bl_mesh.data.materials):
+        for matdef, bl_material in zip(matdefs, bl_mesh.data.materials):
             # Some Blender materials may be variants representing distinct Submesh/FaceSet properties; these will be
             # mapped to the same FLVER `Material`/`VertexArrayLayout` combo (created here).
-            flver_material = self.export_material(bl_material, material_info)
+            flver_material = self.export_material(bl_material, matdef)
             if use_chr_layout:
-                array_layout = material_info.get_character_layout()
+                array_layout = matdef.get_character_layout()
             else:
-                array_layout = material_info.get_map_piece_layout()
+                array_layout = matdef.get_map_piece_layout()
             # We only respect 'Face Set Count' if requested in export options. (Duplicating the main face set is only
             # viable in older games with low-res meshes, but those same games don't even really need LODs anyway.)
             face_set_count = get_bl_prop(bl_material, "Face Set Count", int, default=1) if create_lod_face_sets else 1
@@ -299,7 +307,7 @@ class FLVERExporter:
                 "face_set_count": face_set_count,
             }
             submesh_info.append(SplitSubmeshDef(
-                flver_material, array_layout, submesh_kwargs, [layer.name for layer in material_info.used_uv_layers]
+                flver_material, array_layout, submesh_kwargs, [layer.name for layer in matdef.used_uv_layers]
             ))
             self.operator.info(f"Created FLVER material: {flver_material.name}")
 
@@ -308,11 +316,11 @@ class FLVERExporter:
         bl_uv_layer_names = bl_mesh.data.uv_layers.keys()
         bl_uv_layer_names_set = set(bl_uv_layer_names)
         used_uv_layer_names = set()
-        for material_info, bl_material in zip(material_infos, bl_mesh.data.materials):
-            for used_layer in material_info.used_uv_layers:
+        for matdef, bl_material in zip(matdefs, bl_mesh.data.materials):
+            for used_layer in matdef.used_uv_layers:
                 if used_layer.name not in bl_uv_layer_names:
                     raise FLVERExportError(
-                        f"Material '{bl_material.name}' with shader {material_info.shader_stem} requires UV layer "
+                        f"Material '{bl_material.name}' with shader {matdef.shader_stem} requires UV layer "
                         f"'{used_layer.name}', which is missing in Blender."
                     )
                 if used_layer.name in bl_uv_layer_names_set:
@@ -470,7 +478,7 @@ class FLVERExporter:
             for uv_layer_name in used_uv_layer_names
         }
 
-        # Vertex color layer count is harder to auto-detect. TODO: `material_info` should figure it out.
+        # Vertex color layer count is harder to auto-detect. TODO: `matdef` should figure it out.
         # TODO: Currently asserting 'VertexColors1' and exporting 'VertexColors2' IFF it exists.
         loop_colors = []
         try:
@@ -519,8 +527,8 @@ class FLVERExporter:
             uv_layer.data.foreach_get("uv", loop_uvs[uv_layer_name].ravel())
 
         # Rotate tangents and bitangents to what FromSoft expects using cross product with normals.
-        loop_tangents = np.cross(loop_tangents, loop_normals)
-        loop_bitangents = np.cross(loop_bitangents, loop_normals)
+        loop_tangents = self.np_cross(loop_tangents, loop_normals)  # type: np.ndarray
+        loop_bitangents = self.np_cross(loop_bitangents, loop_normals)  # type: np.ndarray
 
         # Add default `w` components to tangents and bitangents (-1).
         minus_one = np.full((loop_count, 1), -1, dtype=np.float32)
@@ -799,17 +807,43 @@ class FLVERExporter:
     def export_material(
         self,
         bl_material: bpy.types.Material,
-        material_info: BaseMaterialShaderInfo,
+        matdef: MatDef,
         split_square_brackets=True,
     ) -> Material:
         """Create a FLVER material from Blender material custom properties and texture nodes.
 
-        Texture nodes are validated against the provided MTD shader (by name or, preferably, direct MTD inspection). By
-        default, the exporter will not permit any missing MTD textures (except 'g_DetailBumpmap') or any unknown texture
-        nodes in the Blender shader. No other Blender shader information is used.
+        Texture paths are collected using the provided `MatDef` samplers. For each sampler, if 'Path[sampler.name]' is
+        given (even if empty), that is used as the texture path. Otherwise, the texture node named after the alias
+        (preferred) or game-specific name for that sampler is searched for, and the name of the Blender Image assigned
+        to that node is used as the texture path, even if the Blender Image is a placeholder pixel.
 
-        Texture paths are taken from the 'Path[]' custom property on the Blender material, if it exists. Otherwise, the
-        texture name is used as the path, with '.tga' appended.
+        If a 'Sampler Prefix' custom property is given on the Blender material, it is used to prefix all sampler names.
+        This allows node names to be shorted on import, especially for newer games with the full shader name baked into
+        every sampler name. (Note that this only matters if the texture node is NOT already an alias, which is mapped
+        to the game-specific sampler name using the `MatDef`.)
+
+        If a sampler defines a non-empty `matbin_texture_path`, and that texture's STEM matches the stem of a found
+        Blender texture, the FLVER texture is left EMPTY. In this case, the MATBIN already uses that texture; it was
+        imported for FLVER viewing convenience, but does not need to be written to the FLVER as a texture path override.
+        If the FLVER texture is different, it is written to the FLVER as an override. (Note that older games' MTD-based
+        `MatDef`s never have this issue, as they do not provide a `matbin_texture_path`.)
+
+        If an unrecognized sampler name/alias is found on an Image Texture node or as a 'Path[sampler.name]' property,
+        the user is warned and that sampler/texture will be ignored, UNLESS `allow_unknown_texture_types` is enabled in
+        FLVER export settings. In that case, the texture will be exported to the FLVER material as that texture type
+        directly -- but unless you are a wizard who has modified shaders and MTDs/MATBINs, I cannot imagine a use case
+        for this.
+
+        If an expected `MatDef` sampler name/alias is MISSING from both 'Path[sampler.name]' properties and texture
+        node names, a `FLVERExportError` will be raised, except in the following cases:
+            - If `allow_missing_textures` is enabled, ANY sampler name can be missing.
+            - If `MatDef.matbin` is given (newer games) and that MATBIN also does not specify a texture path for that
+            sampler, we assume that this material/shader does not require that texture.
+            - If `MatDef.matbin` is NOT given and the sampler name is 'Detail 0 Normal', it is allowed to be missing,
+            because this is clearly an optional and frequently omitted sampler in many shaders in older games.
+        In all of these cases, an empty texture path will be written for that texture in the FLVER material. Empty
+        texture paths are always permitted if the sampler name is found. Note that the FLVER material importer will
+        always create empty Image Texture nodes or empty string properties for samplers with no texture path.
         """
         name = bl_material.name
         if split_square_brackets:
@@ -823,120 +857,121 @@ class FLVERExporter:
             mat_def_path=get_bl_prop(bl_material, "Mat Def Path", str),
             unk_x18=get_bl_prop(bl_material, "Unk x18", int, default=0),
         )
-        # TODO: Read `GXItem` custom properties.
 
-        # We read texture names for sampler types from the material node tree. The `material_info` lets us map common
-        # sampler names (e.g. 'ALBEDO_0') to their game-specific sampler names (e.g. 'g_Diffuse').
-        common_names = material_info.SAMPLER_NAMES._asdict()
-
-        # Build a dictionary mapping game-specific sampler names to their corresponding texture nodes.
-        texture_nodes = {}
-        for node in bl_material.node_tree.nodes:
-            if node.type != "TEX_IMAGE":
-                continue
-            if node.name in common_names:
-                # Redirect common name to game-specific name (if defined).
-                if not common_names[node.name]:
-                    self.warning(
-                        f"This game does not have a sampler name for common texture type '{node.name}'. Ignoring this "
-                        f"texture."
-                    )
-                texture_nodes[common_names[node.name]] = node
-            elif node.name in material_info.sampler_names:
-                # Node has a game-specific sampler name like 'g_Diffuse' (e.g. legacy). Use directly.
-                texture_nodes[node.name] = node
-            else:
-                # Unknown texture type (node name).
-                if not export_settings.allow_unknown_texture_types:
-                    self.warning(
-                        f"Unknown texture type (node name) in material '{bl_material.name}': {node.name}. You can "
-                        f"enable 'Allow Unknown Texture Types' to forcibly export it to the FLVER material as this "
-                        f"texture type."
-                    )
+        # Read any `GXItem` custom properties.
+        gx_item_re = re.compile(r"GXItem\[(\d+)\] (Category|Index|Data)")
+        gx_items_info = {}
+        for prop_name, prop_value in bl_material.items():
+            if match := gx_item_re.match(prop_name):
+                i = int(match.group(1))
+                gx_item_info = gx_items_info.setdefault(i, {})
+                prop_type = match.group(2)
+                if prop_type == "Data":
+                    gx_item_info[prop_type] = ast.literal_eval(prop_value)  # `str` bytes repr -> `bytes`
                 else:
-                    self.warning(
-                        f"Unknown texture type (node name) in material '{bl_material.name}': {node.name}. Exporting "
-                        f"to the FLVER material as this texture type."
-                    )
-                    texture_nodes[node.name] = node
-
-        flver_textures = []
-
-        # TODO: Expand for later games.
-        allowed_missing_sampler_names = {material_info.SAMPLER_NAMES.get("DETAIL_NORMAL")}
-
-        # We search for each texture this `material_info` expects.
-        for sampler_name in material_info.sampler_names:
-            if sampler_name not in texture_nodes:
-                if sampler_name not in allowed_missing_sampler_names:
+                    gx_item_info[prop_type] = prop_value  # str Category or int Index
+        for i, gx_item_info in gx_items_info.items():  # don't need array index
+            for key in ("Category", "Index", "Data"):
+                if key not in gx_item_info:
                     raise FLVERExportError(
-                        f"Could not find a shader node for required texture type '{sampler_name}' in material "
-                        f"'{bl_material.name}'. You must create an Image Texture node and give it this name, "
-                        f"then assign a Blender image to it (or leave the Image empty and enable 'Allow Missing "
-                        f"Textures'). You do not have to connect the node to any others."
+                        f"GXItem missing '{key}' property. You must define custom property 'GXItem[{i}] {key}' on "
+                        f"Blender FLVER material '{bl_material.name}'."
                     )
-                else:
-                    texture_path = ""  # always allowed to be missing
-            else:
-                tex_node = texture_nodes.pop(sampler_name)
-                if tex_node.image is None:
-                    if sampler_name not in allowed_missing_sampler_names and not export_settings.allow_missing_textures:
-                        raise FLVERExportError(
-                            f"Texture node '{tex_node.name}' in material '{bl_material.name}' has no Image assigned. "
-                            f"You must assign a Blender texture to this node, or enable 'Allow Missing Textures' in "
-                            f"the FLVER export options."
-                        )
-                    texture_path = ""  # missing
-                else:
-                    texture_stem = Path(tex_node.image.name).stem
-                    # Look for a custom 'Path[]' property on material for this texture stem, or default to lone texture
-                    # name. Note that DS1, at least, works fine when full texture paths are omitted.
-                    # TODO: Later games do not use TGA (e.g. Elden Ring uses TIF, although texture names generally
-                    #  aren't written to FLVER at all, as they appear in MATBIN).
-                    # TODO: For Elden Ring FLVER export, we could check if the texture name does NOT match the MATBIN,
-                    #  and write it to the FLVER as an override if so?
-                    texture_path = bl_material.get(f"Path[{texture_stem}]", f"{texture_stem}.tga")
-
-                    self.collected_texture_images[texture_stem] = tex_node.image
-
-            flver_texture = Texture(
-                path=texture_path,
-                texture_type=sampler_name,
+            gx_item = GXItem(
+                category=gx_item_info["Category"],
+                index=gx_item_info["Index"],
+                size=len(gx_item_info["Data"]) + 12,
             )
-            flver_textures.append(flver_texture)
+            gx_item.data = gx_item_info["Data"]  # not an `__init__` argument
+            flver_material.gx_items.append(gx_item)
 
-        # TODO: Some DS1 FLVERs have an (empty) 'g_DetailBumpmap' texture even when their MTD shader does not use it.
-        #  I'm sure this is totally harmless behavior, but I don't bother exporting it if the MTD doesn't list it.
+        sampler_prefix = get_bl_prop(bl_material, "Sampler Prefix", str, default="")
+        # FLVER material texture path extension doesn't actually matter, but we try to be faithful.
+        path_ext = ".tif" if self.settings.is_game(ELDEN_RING) else ".tga"  # TODO: also TIF in Sekiro?
 
-        # Remove allowed missing names, so we never complain about them being 'unknown' below.
-        for sampler_name in allowed_missing_sampler_names:
-            texture_nodes.pop(sampler_name, None)
+        if matdef.matbin:
+            # Any sampler that does NOT have a path given in MATBIN is allowed to be missing (lack of MATBIN path
+            # implies to us that this MATBIN does not use this sampler in the shader).
+            allowed_missing_sampler_names = {
+                sampler.name for sampler in matdef.samplers if not sampler.matbin_texture_path
+            }
+        else:
+            # Manual specification: 'Detail 0 Normal' is allowed to be missing.
+            # TODO: Only for certain older games like DS1R?
+            allowed_missing_sampler_names = {"Detail 0 Normal"}
 
-        if texture_nodes:
-            # Unknown node textures remain. We already warned about them when collecting nodes, so we just export now.
-            # TODO: Currently assuming that FLVER material texture order doesn't matter (due to texture type).
-            #  If it does, we'll need to sort them here, probably based on node location Y.
-            for unk_sampler_name, tex_node in texture_nodes.items():
-                if not tex_node.image:
-                    if not export_settings.allow_missing_textures:
-                        raise FLVERExportError(
-                            f"Unknown texture node '{unk_sampler_name}' in material '{bl_material.name}' has no image "
-                            f"assigned. You must assign a Blender texture to this node, or enable 'Allow Missing "
-                            f"Textures' in the FLVER export options."
-                        )
-                    texture_path = ""  # missing
+        texture_nodes = {
+            node.name: node
+            for node in bl_material.node_tree.nodes
+            if node.type == "TEX_IMAGE"
+        }
+
+        for sampler in matdef.samplers:
+
+            texture_stem = ""
+            sampler_name = sampler.name.removeprefix(sampler_prefix)
+            sampler_found = False
+
+            # Check custom property.
+            path_prop = f"Path[{sampler_name}]"
+            if path_prop in bl_material:
+                prop_texture_path = get_bl_prop(bl_material, path_prop, str)  # to assert `str` type
+                texture_stem = Path(prop_texture_path).stem
+                sampler_found = True
+            else:
+                # Check node named with sampler alias or game-specific name (sans any 'Sampler Prefix').
+                for key in (sampler.alias, sampler_name):
+                    if key in texture_nodes:
+                        node_image = texture_nodes.pop(key).image  # consumes node
+                        if node_image:
+                            texture_stem = Path(node_image.name).stem
+                        sampler_found = True
+
+            if texture_stem and texture_stem == sampler.matbin_texture_stem:
+                # Texture path in shader is the same as the MATBIN texture path -- that is, it was imported for
+                # FLVER visualization using the MATBIN but does NOT need to be written to the FLVER as an override.
+                texture_stem = ""
+            elif not sampler_found:
+                # Could not find a property or node for sampler.
+                if export_settings.allow_missing_textures:
+                    pass  # always ignored
+                elif sampler.name in allowed_missing_sampler_names:  # full sampler name!
+                    pass  # permitted case
                 else:
-                    texture_stem = Path(tex_node.image.name).stem
-                    texture_path = bl_material.get(f"Path[{texture_stem}]", f"{texture_stem}.tga")
-                    # TODO: Not collecting images of unknown texture types for export, currently.
+                    raise FLVERExportError(
+                        f"Could not find a texture path for sampler '{sampler.name}' in material '{bl_material.name}'. "
+                        f"You must create a 'Path[{sampler_name}]' for it (even if empty), or create an Image Texture "
+                        f"node for it with a , or "
+                        f"enable 'Allow Missing Textures' in FLVER export options."
+                    )
 
-                flver_texture = Texture(
-                    path=texture_path,
-                    texture_type=unk_sampler_name,
+            flver_material.textures.append(
+                Texture(
+                    path=(texture_stem + path_ext) if texture_stem else "",
+                    texture_type=sampler_name,
                 )
-                flver_textures.append(flver_texture)
+            )
 
-        flver_material.textures = flver_textures
+        for node_name, node in texture_nodes.items():
+            # Some texture nodes were not used, as they do not match sampler names/aliases.
+            if not export_settings.allow_unknown_texture_types:
+                self.warning(
+                    f"Unknown sampler type (node name) in material '{bl_material.name}': {node_name}. You can enable "
+                    f"'Allow Unknown Texture Types' in FLVER export settings to forcibly export it to the FLVER "
+                    f"material as this texture type. This would be unusual, though!"
+                )
+            else:
+                self.warning(
+                    f"Unknown texture type (node name) in material '{bl_material.name}': {node_name}. Exporting "
+                    f"to the FLVER material as this texture type."
+                )
+                texture_stem = Path(node.image.name).stem
+                flver_material.textures.append(
+                    Texture(
+                        path=(texture_stem + path_ext) if node.image else "",
+                        texture_type=node_name,
+                    )
+                )
 
         return flver_material
 
@@ -1031,6 +1066,16 @@ class FLVERExporter:
                 "Soulstruct will read all bone data from EditBones for export."
             )
         return read_bone_type
+
+    @staticmethod
+    def np_cross(array_a: np.ndarray, array_b: np.ndarray) -> np.ndarray:
+        """Hack for PyCharm/Numpy conflict where `np.cross` is typed as `NoReturn` for boolean arrays. Both sides seem
+        to be pointing fingers at the other for this. Personally, I think it's stupid for Numpy to force type checkers
+        to handle function overloads so precisely. The `np.cross` docs don't even say anything about the bool case!
+
+        See line 506 in `numpy/core/numeric.pyi`.
+        """
+        return np.cross(array_a, array_b)
 
     @staticmethod
     def clear_temp_flver():

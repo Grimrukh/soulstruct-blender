@@ -21,10 +21,12 @@ __all__ = [
     "ImportNVMHKTFromNVMHKTBND",
     "ImportAllNVMHKTsFromNVMHKTBND",
     "ImportAllOverworldNVMHKTs",
+    "ImportAllDLCOverworldNVMHKTs",
     "NVMHKTImportSettings",
 
     "NVM_PT_ds1_navmesh_import",
     "NVM_PT_ds1_navmesh_export",
+    "NVM_PT_ds1_mcg_draw",
     "NVM_PT_ds1_navmesh_tools",
     "NVM_PT_er_navmesh_import",
 
@@ -125,6 +127,35 @@ class NVM_PT_ds1_navmesh_export(bpy.types.Panel):
         map_export_box.operator(ExportMCGMCPToMap.bl_idname)
 
 
+class NVM_PT_ds1_mcg_draw(bpy.types.Panel):
+    bl_label = "DS1 Navmesh Drawing"
+    bl_idname = "NVM_PT_ds1_mcg_draw"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "Navmesh"
+    bl_options = {'DEFAULT_CLOSED'}
+
+    # noinspection PyUnusedLocal
+    def draw(self, context):
+        """Still shown if game is not DSR."""
+        mcg_draw_settings = context.scene.mcg_draw_settings  # type: MCGDrawSettings
+        self.layout.prop(mcg_draw_settings, "mcg_parent")
+        self.layout.prop(mcg_draw_settings, "mcg_graph_draw_enabled")
+        self.layout.prop(mcg_draw_settings, "mcg_graph_draw_selected_nodes_only")
+        self.layout.prop(mcg_draw_settings, "mcg_graph_color")
+        self.layout.prop(mcg_draw_settings, "mcg_node_label_draw_enabled")
+        self.layout.prop(mcg_draw_settings, "mcg_node_label_font_size")
+        self.layout.prop(mcg_draw_settings, "mcg_node_label_font_color")
+        self.layout.prop(mcg_draw_settings, "mcg_edge_label_font_size")
+        # Color options in one row with no labels.
+        self.layout.label(text="Edge Label Colors (Match, Close, Bad):")
+        row = self.layout.row()
+        row.prop(mcg_draw_settings, "mcg_edge_label_font_color", text="")
+        row.prop(mcg_draw_settings, "mcg_almost_same_cost_edge_label_font_color", text="")
+        row.prop(mcg_draw_settings, "mcg_bad_cost_edge_label_font_color", text="")
+        self.layout.prop(mcg_draw_settings, "mcg_edge_triangles_highlight_enabled")
+
+
 class NVM_PT_ds1_navmesh_tools(bpy.types.Panel):
     bl_label = "DS1 Navmesh Tools"
     bl_idname = "NVM_PT_ds1_navmesh_tools"
@@ -136,30 +167,9 @@ class NVM_PT_ds1_navmesh_tools(bpy.types.Panel):
     # noinspection PyUnusedLocal
     def draw(self, context):
         """Still shown if game is not DSR."""
-
-        self.layout.label(text="MCG Draw Settings:")
-        mcg_draw_settings_box = self.layout.box()
-        mcg_draw_settings = context.scene.mcg_draw_settings
-        mcg_draw_settings_box.prop(mcg_draw_settings, "mcg_parent_name")
-        mcg_draw_settings_box.prop(mcg_draw_settings, "mcg_graph_draw_enabled")
-        mcg_draw_settings_box.prop(mcg_draw_settings, "mcg_graph_draw_selected_nodes_only")
-        mcg_draw_settings_box.prop(mcg_draw_settings, "mcg_graph_color")
-        mcg_draw_settings_box.prop(mcg_draw_settings, "mcg_node_label_draw_enabled")
-        mcg_draw_settings_box.prop(mcg_draw_settings, "mcg_node_label_font_size")
-        mcg_draw_settings_box.prop(mcg_draw_settings, "mcg_node_label_font_color")
-        mcg_draw_settings_box.prop(mcg_draw_settings, "mcg_edge_label_font_size")
-        # Color options in one row with no labels.
-        mcg_draw_settings_box.label(text="Edge Label Colors (Match, Close, Bad):")
-        row = mcg_draw_settings_box.row()
-        row.prop(mcg_draw_settings, "mcg_edge_label_font_color", text="")
-        row.prop(mcg_draw_settings, "mcg_almost_same_cost_edge_label_font_color", text="")
-        row.prop(mcg_draw_settings, "mcg_bad_cost_edge_label_font_color", text="")
-        mcg_draw_settings_box.prop(mcg_draw_settings, "mcg_edge_triangles_highlight_enabled")
-
-        mcg_edit_box = self.layout.box()
-        mcg_edit_box.operator(CreateMCGEdge.bl_idname)
-        mcg_edit_box.operator(RefreshMCGNames.bl_idname)
-        compute_box = mcg_edit_box.box()
+        self.layout.operator(CreateMCGEdge.bl_idname)
+        self.layout.operator(RefreshMCGNames.bl_idname)
+        compute_box = self.layout.box()
         compute_box.prop(context.scene.navmesh_compute_settings, "select_path")
         compute_box.prop(context.scene.navmesh_compute_settings, "wall_multiplier")
         compute_box.prop(context.scene.navmesh_compute_settings, "obstacle_multiplier")
@@ -272,3 +282,4 @@ class NVM_PT_er_navmesh_import(bpy.types.Panel):
         quick_box.operator(ImportNVMHKTFromNVMHKTBND.bl_idname)
         quick_box.operator(ImportAllNVMHKTsFromNVMHKTBND.bl_idname)
         quick_box.operator(ImportAllOverworldNVMHKTs.bl_idname)
+        quick_box.operator(ImportAllDLCOverworldNVMHKTs.bl_idname)

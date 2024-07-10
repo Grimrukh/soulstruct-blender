@@ -36,7 +36,7 @@ class NVMHKTImportSettings(bpy.types.PropertyGroup):
 
     overworld_transform_mode: bpy.props.EnumProperty(
         name="Overworld Transform Mode",
-        description="How to transform overworld navmeshes (m60) on import",
+        description="How to transform overworld navmeshes (m60/m61) on import",
         items=[
             ("NONE", "None", "Do not move overworld navmeshes"),
             ("WORLD", "World", "Transform overworld navmeshes to world coordinates by adding tile translations"),
@@ -46,7 +46,7 @@ class NVMHKTImportSettings(bpy.types.PropertyGroup):
 
     dungeon_transform_mode: bpy.props.EnumProperty(
         name="Dungeon Transform Mode",
-        description="How to transform dungeon navmeshes (non-m60) to their tile or world coordinates",
+        description="How to transform dungeon navmeshes (non-m60/m61) to their tile or world coordinates",
         items=[
             ("NONE", "None", "Do not move dungeon navmeshes"),
             ("TILE", "Overworld Tile", "Transform dungeon navmeshes to their connected overworld tile's local space"),

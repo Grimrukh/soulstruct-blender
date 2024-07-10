@@ -11,9 +11,9 @@ from pathlib import Path
 import bpy
 
 from soulstruct.base.models.mtd import MTDBND as BaseMTDBND
+from soulstruct.darksouls1r.models.shaders import MatDef as DS1R_MatDef
 
 from io_soulstruct.utilities.operators import LoggingOperator
-from io_soulstruct.flver.materials import DS1MaterialShaderInfo
 
 
 class BakeLightmapSettings(bpy.types.PropertyGroup):
@@ -196,7 +196,7 @@ class BakeLightmapTextures(LoggingOperator):
             mtd_name = Path(bl_material["Mat Def Path"]).name
         except KeyError:
             raise ValueError(f"Material '{bl_material.name}' of mesh {mesh.name} has no 'Mat Def Path' property.")
-        material_info = DS1MaterialShaderInfo.from_mtdbnd_or_name(self, mtd_name, mtdbnd)
+        material_info = DS1R_MatDef.from_mtdbnd_or_name(mtd_name, mtdbnd)
 
         texture_node_name = bake_settings.texture_node_name
 

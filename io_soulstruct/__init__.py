@@ -227,6 +227,7 @@ CLASSES = (
     ImportNVMHKTFromNVMHKTBND,
     ImportAllNVMHKTsFromNVMHKTBND,
     ImportAllOverworldNVMHKTs,
+    ImportAllDLCOverworldNVMHKTs,
     NVMHKTImportSettings,
 
     ImportMCP,
@@ -241,6 +242,7 @@ CLASSES = (
     RefreshMCGNames,
     NVM_PT_ds1_navmesh_import,
     NVM_PT_ds1_navmesh_export,
+    NVM_PT_ds1_mcg_draw,
     NVM_PT_ds1_navmesh_tools,
     NVM_PT_er_navmesh_import,
     NavmeshFaceSettings,

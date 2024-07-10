@@ -12,9 +12,10 @@ __all__ = [
 import bmesh
 import bpy
 
+from soulstruct.utilities.text import natural_keys
+
 from io_soulstruct.navmesh.nav_graph.utilities import MCGExportError
 from io_soulstruct.utilities.operators import LoggingOperator
-from io_soulstruct.utilities.misc import natural_keys
 
 
 class MCGEdgeCreationError(Exception):
@@ -33,28 +34,25 @@ class CreateMCGEdge(LoggingOperator):
         return (
             context.mode == "OBJECT"
             and len(context.selected_objects) == 3
-            and bpy.context.scene.mcg_draw_settings.mcg_parent_name != ""
+            and bpy.context.scene.mcg_draw_settings.mcg_parent is not None
         )
 
     def execute(self, context):
 
         try:
-            create_mcg_edge(context, bpy.data)
+            create_mcg_edge(context)
         except Exception as ex:
             return self.error(str(ex))
 
         return {"FINISHED"}
 
 
-def create_mcg_edge(context, data):
-    if not context.scene.mcg_draw_settings.mcg_parent_name:
+def create_mcg_edge(context):
+    if context.scene.mcg_draw_settings.mcg_parent is None:
         raise MCGEdgeCreationError("No MCG parent object specified.")
-    try:
-        mcg_parent = data.objects[bpy.context.scene.mcg_draw_settings.mcg_parent_name]
-    except KeyError:
-        raise MCGEdgeCreationError(
-            f"MCG parent object '{bpy.context.scene.mcg_draw_settings.mcg_parent_name}' not found."
-        )
+    mcg_parent = bpy.context.scene.mcg_draw_settings.mcg_parent
+    if mcg_parent is None:
+        raise MCGEdgeCreationError("No MCG parent object set.")
 
     node_parent = edge_parent = None
     for child in mcg_parent.children:

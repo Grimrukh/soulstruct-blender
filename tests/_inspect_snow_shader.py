@@ -1,6 +1,6 @@
 from pathlib import Path
 from soulstruct import FLVER, DSR_PATH, PTDE_PATH
-from soulstruct.darksouls1r.models.mtd import MTD
+from soulstruct.base.models.mtd import MTD
 
 
 NF_PATH = Path("C:/Steam/steamapps/common/DARK SOULS REMASTERED (Nightfall)")
@@ -20,7 +20,7 @@ def main():
     print(flver.submeshes[0].vertices.dtype)
     print(flver.submeshes[0].material)
     print(flver.submeshes[0].vertices[:5])
-    mtd = MTD.from_binder_path(WB_PATH / "mtd/mtd.mtdbnd.dcx", flver.submeshes[0].material.mtd_name)
+    mtd = MTD.from_binder_path(WB_PATH / "mtd/mtd.mtdbnd.dcx", flver.submeshes[0].material.mat_def_path)
     print(mtd)
 
 
@@ -36,7 +36,7 @@ def snow():
         # print(submesh.vertices.dtype)
         print(submesh.material)
         # print(submesh.vertices[:5])
-        mtd = MTD.from_binder_path(WB_PATH / "mtd/mtd.mtdbnd.dcx", submesh.material.mtd_name)
+        mtd = MTD.from_binder_path(WB_PATH / "mtd/mtd.mtdbnd.dcx", submesh.material.mat_def_path)
         print(mtd)
 
 

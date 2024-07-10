@@ -14,10 +14,3 @@ if tp.TYPE_CHECKING:
     CHRBND_TYPING = tp.Union[PTDE_CHRBND, DS1R_CHRBND, BB_CHRBND]
     OBJBND_TYPING = tp.Union[PTDE_OBJBND, DS1R_OBJBND, BB_OBJBND]
     PARTSBND_TYPING = tp.Union[PTDE_PARTSBND, DS1R_PARTSBND, BB_PARTSBND]
-
-    from soulstruct.darksouls1ptde.models.mtd import MTDBND as PTDE_MTDBND
-    from soulstruct.darksouls1r.models.mtd import MTDBND as DS1R_MTDBND
-    MTDBND_TYPING = tp.Union[PTDE_MTDBND, DS1R_MTDBND]
-
-    from soulstruct.eldenring.models.matbin import MATBINBND as ER_MATBINBND
-    MATBINBND_TYPING = tp.Union[ER_MATBINBND]

@@ -22,7 +22,11 @@ else:
 
 
 class MCGDrawSettings(bpy.types.PropertyGroup):
-    mcg_parent_name: bpy.props.StringProperty(name="MCG Parent", default="")
+    mcg_parent: bpy.props.PointerProperty(
+        type=bpy.types.Object,
+        name="MCG Parent",
+        description="Parent object of MCG nodes and edges.",
+    )
     mcg_graph_draw_enabled: bpy.props.BoolProperty(name="Draw Graph", default=True)
     mcg_graph_draw_selected_nodes_only: bpy.props.BoolProperty(name="Selected Only", default=False)
     mcg_graph_color: bpy.props.FloatVectorProperty(
@@ -53,14 +57,9 @@ def draw_mcg_nodes():
     if not settings.mcg_graph_draw_enabled:
         return
 
-    mcg_parent_name = settings.mcg_parent_name
-    if not mcg_parent_name:
+    mcg_parent = settings.mcg_parent
+    if not mcg_parent:
         return
-
-    try:
-        mcg_parent = bpy.data.objects[mcg_parent_name]
-    except KeyError:
-        return  # invalid MCG parent name
 
     for child in mcg_parent.children:
         if child.name.endswith(" Nodes"):
@@ -102,17 +101,11 @@ def draw_mcg_node_labels():
     if not settings.mcg_node_label_draw_enabled:
         return
 
-    mcg_parent_name = settings.mcg_parent_name
-    if not mcg_parent_name:
+    if not settings.mcg_parent:
         return
 
-    try:
-        mcg_parent = bpy.data.objects[mcg_parent_name]
-    except KeyError:
-        return  # invalid MCG parent name
-
     node_parent = edge_parent = None
-    for child in mcg_parent.children:
+    for child in settings.mcg_parent.children:
         if child.name.endswith(" Nodes"):
             node_parent = child
             if edge_parent:
@@ -160,7 +153,7 @@ def draw_mcg_node_labels():
     except AttributeError:
         blf.color(font_id, 1, 1, 1, 1)  # default (white)
 
-    map_stem = mcg_parent_name.split(" ")[0]
+    map_stem = settings.mcg_parent.name.split(" ")[0]
     node_prefix = f"{map_stem} Node "
     for node in nodes_to_label:
         try:
@@ -179,17 +172,11 @@ def draw_mcg_edges():
     if not settings.mcg_graph_draw_enabled and not settings.mcg_edge_triangles_highlight_enabled:
         return
 
-    mcg_parent_name = settings.mcg_parent_name
-    if not mcg_parent_name:
+    if not settings.mcg_parent:
         return
 
-    try:
-        mcg_parent = bpy.data.objects[mcg_parent_name]
-    except KeyError:
-        return  # invalid MCG parent name
-
     node_parent = edge_parent = None
-    for child in mcg_parent.children:
+    for child in settings.mcg_parent.children:
         if not node_parent and child.name.endswith(" Nodes"):
             node_parent = child
         elif not edge_parent and child.name.endswith(" Edges"):
@@ -207,7 +194,7 @@ def draw_mcg_edges():
     # gpu.state.blend_set("ALPHA")
 
     all_edge_vertex_pairs = []
-    map_stem = mcg_parent_name.split(" ")[0]
+    map_stem = settings.mcg_parent.name.split(" ")[0]
 
     # Iterate over all Blender objects ONCE to build a dictionary of Nodes that ignores 'dead end' navmesh suffixes.
     node_objects = {}
@@ -334,17 +321,11 @@ def draw_mcg_edge_cost_labels():
     if not settings.mcg_edge_cost_draw_enabled:
         return
 
-    mcg_parent_name = settings.mcg_parent_name
-    if not mcg_parent_name:
+    if not settings.mcg_parent:
         return
 
-    try:
-        mcg_parent = bpy.data.objects[mcg_parent_name]
-    except KeyError:
-        return  # invalid MCG parent name
-
     node_parent = edge_parent = None
-    for child in mcg_parent.children:
+    for child in settings.mcg_parent.children:
         if child.name.endswith(" Nodes"):
             node_parent = child
             if edge_parent:

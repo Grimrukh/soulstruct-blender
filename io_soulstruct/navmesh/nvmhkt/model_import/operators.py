@@ -11,6 +11,7 @@ __all__ = [
     "ImportNVMHKTFromNVMHKTBND",
     "ImportAllNVMHKTsFromNVMHKTBND",
     "ImportAllOverworldNVMHKTs",
+    "ImportAllDLCOverworldNVMHKTs",
 ]
 
 import re
@@ -444,7 +445,7 @@ class ImportAllNVMHKTsFromNVMHKTBND(ImportAllNVMHKTBase):
         nvmhktbnd_path = settings.get_import_map_path(f"{map_stem}.nvmhktbnd.dcx")
         if not nvmhktbnd_path:
             return self.error(f"Could not find NVMHKTBND file for map '{map_stem}'.")
-        small_tile_match = re.match(r"m60_(\d\d)_(\d\d)_(\d)0", map_stem)
+        small_tile_match = re.match(r"(m60|m61)_(\d\d)_(\d\d)_(\d)0", map_stem)
 
         collection = get_collection(f"{map_stem} Navmesh Models", context.scene.collection, hide_viewport=False)
 
@@ -542,7 +543,7 @@ class ImportAllNVMHKTsFromNVMHKTBND(ImportAllNVMHKTBase):
                     (grid_y - origin_y) * self.small_tile_width,
                     0,  # correct world height is baked into overworld navmeshes
                 ))
-        elif map_stem.startswith("m60"):
+        elif map_stem.startswith(("m60", "m61")):
             self.warning("Found a non-small tile navmesh, which is unexpected. No transform applied.")
         elif import_settings.dungeon_transform_mode == "NONE":
             pass  # no transform
@@ -558,6 +559,8 @@ class ImportAllNVMHKTsFromNVMHKTBND(ImportAllNVMHKTBase):
 
                 if import_settings.create_dungeon_connection_points:
                     for dungeon_to_overworld in overworld_connections:
+                        if dungeon_to_overworld[1] is None:
+                            continue  # source point not known for this connection
                         source_connection_point = bpy.data.objects.new(f"{map_stem} -- {dungeon_to_overworld[0]}", None)
                         source_connection_point.location = GAME_TO_BL_VECTOR(dungeon_to_overworld[1])
                         connection_points.append(source_connection_point)
@@ -606,28 +609,18 @@ class ImportAllNVMHKTsFromNVMHKTBND(ImportAllNVMHKTBase):
         return {"FINISHED"}
 
 
-class ImportAllOverworldNVMHKTs(ImportAllNVMHKTBase):
-    """Import all NVMHKTs from ALL overworld small tile maps (m60_XX_ZZ_00).
+class ImportAllOverworldNVMHKTsBase(ImportAllNVMHKTBase):
+    """Import all NVMHKTs from ALL base game overworld small tile maps (m60_XX_ZZ_00).
 
     Note that large/medium overworld tiles do not have navmeshes in Elden Ring.
     """
-    bl_idname = "import_scene.all_nvmhkt_overworld"
-    bl_label = "Import All Overworld NVMHKTs"
-    bl_description = "Import all NVMHKTs of chosen resolution(s) from all overworld small tile maps (m60_XX_ZZ_00)"
+    AREA: str
 
     # TODO: Currently no way to change these property defaults in GUI.
 
     use_material: bpy.props.BoolProperty(
         name="Use Material",
         description="If enabled, 'NVMHKT' material will be assigned or created for all imported navmeshes",
-        default=True,
-    )
-
-    set_world_transforms: bpy.props.BoolProperty(
-        name="Set World Transforms",
-        description="If enabled, overworld small tiles (m60_XX_ZZ_00) will have their transform set to place them in "
-                    "worldspace (X/Y in Blender), with the world origin at the center of m60_46_40_00 (Erdtree on "
-                    "world map)",
         default=True,
     )
 
@@ -652,14 +645,14 @@ class ImportAllOverworldNVMHKTs(ImportAllNVMHKTBase):
         if settings.game_variable_name != "ELDEN_RING":
             return self.error("NVMHKT import from game NVMHKTBND is only available for Elden Ring.")
 
-        overworld_map_dir = settings.get_import_dir_path("map/m60")
+        overworld_map_dir = settings.get_import_dir_path(f"map/{self.AREA}")
 
         map_count = 0
         model_count = 0
 
-        collection = get_collection("m60 Navmesh Models", context.scene.collection, hide_viewport=False)
+        collection = get_collection(f"{self.AREA} Navmesh Models", context.scene.collection, hide_viewport=False)
 
-        for nvmhktbnd_path in overworld_map_dir.rglob("m60_??_??_00.nvmhktbnd.dcx"):
+        for nvmhktbnd_path in overworld_map_dir.rglob(f"{self.AREA}_??_??_00.nvmhktbnd.dcx"):
 
             map_stem = nvmhktbnd_path.stem.split(".")[0]
 
@@ -720,7 +713,7 @@ class ImportAllOverworldNVMHKTs(ImportAllNVMHKTBase):
 
                 models.append(bl_nvmhkt_o)
 
-            if self.set_world_transforms:
+            if import_settings.overworld_transform_mode == "WORLD":
                 origin_x, origin_y = self.grid_world_origin
                 for bl_nvmhkt in models:
                     bl_nvmhkt.location = (
@@ -736,3 +729,27 @@ class ImportAllOverworldNVMHKTs(ImportAllNVMHKTBase):
         self.info(f"Imported {model_count} NVMHKT files from {map_count} overworld small tile maps in {p} s.")
 
         return {"FINISHED"}
+
+
+class ImportAllOverworldNVMHKTs(ImportAllOverworldNVMHKTsBase):
+    """Import all NVMHKTs from ALL base game overworld small tile maps (m60_XX_ZZ_00).
+
+    Note that large/medium overworld tiles do not have navmeshes in Elden Ring.
+    """
+    bl_idname = "import_scene.all_nvmhkt_overworld"
+    bl_label = "Import All Overworld NVMHKTs"
+    bl_description = "Import all NVMHKTs of chosen resolution(s) from all base overworld small tile maps (m60_XX_ZZ_00)"
+
+    AREA = "m60"
+
+
+class ImportAllDLCOverworldNVMHKTs(ImportAllOverworldNVMHKTsBase):
+    """Import all NVMHKTs from ALL DLC overworld small tile maps (m61_XX_ZZ_00).
+
+    Note that large/medium overworld tiles do not have navmeshes in Elden Ring.
+    """
+    bl_idname = "import_scene.all_nvmhkt_dlc_overworld"
+    bl_label = "Import All DLC Overworld NVMHKTs"
+    bl_description = "Import all NVMHKTs of chosen resolution(s) from all DLC overworld small tile maps (m61_XX_ZZ_00)"
+
+    AREA = "m61"

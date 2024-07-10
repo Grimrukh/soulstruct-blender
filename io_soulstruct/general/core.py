@@ -16,6 +16,7 @@ from pathlib import Path
 import bpy
 
 from soulstruct.base.base_binary_file import BaseBinaryFile
+from soulstruct.base.models.matbin import MATBINBND
 from soulstruct.base.models.mtd import MTDBND
 from soulstruct.dcx import DCXType
 from soulstruct.games import *
@@ -24,7 +25,7 @@ from soulstruct.utilities.files import read_json, write_json, create_bak
 from io_soulstruct.utilities.misc import CachedEnumItems, is_path_and_file, is_path_and_dir, get_collection_map_stem
 
 if tp.TYPE_CHECKING:
-    from io_soulstruct.type_checking import MSB_TYPING, MATBINBND_TYPING
+    from io_soulstruct.type_checking import MSB_TYPING
     from io_soulstruct.utilities import LoggingOperator
 
 _SETTINGS_PATH = Path(__file__).parent.parent / "SoulstructSettings.json"
@@ -346,7 +347,8 @@ class SoulstructSettings(bpy.types.PropertyGroup):
     str_matbinbnd_path: bpy.props.StringProperty(
         name="MATBINBND Path",
         description="Path of custom MATBINBND file for detecting material setups in Elden Ring only. "
-                    "Defaults to an automatic known location in selected project (preferred) or game directory",
+                    "Defaults to an automatic known location in selected project (preferred) or game directory. "
+                    "If '_dlc01' and '_dlc02' variants of path name are found, they will also be loaded",
         default="",
     )
 
@@ -419,9 +421,8 @@ class SoulstructSettings(bpy.types.PropertyGroup):
     def is_game(self, *name_or_game: str | Game) -> bool:
         """Check if any `name_or_game` is the selected `Game`."""
         for game in name_or_game:
-            if isinstance(game, Game) and game is self.game:
-                return True
-            elif get_game(game) is self.game:
+            game = get_game(game)
+            if game is self.game:
                 return True
         return False
 
@@ -931,67 +932,77 @@ class SoulstructSettings(bpy.types.PropertyGroup):
 
     def get_mtdbnd(self, operator: LoggingOperator) -> MTDBND | None:
         """Load `MTDBND` from custom path, standard location in game directory, or bundled Soulstruct file."""
+        if is_path_and_file(self.mtdbnd_path):
+            return MTDBND.from_path(self.mtdbnd_path)
 
-        try:
-            mtdbnd_class = self.game.from_game_submodule_import("models.mtd", "MTDBND")  # type: tp.Type[MTDBND]
-        except ImportError:
-            mtdbnd_class = MTDBND
+        # Try to find MTDBND in project or game directory.
+        mtdbnd_names = [
+            resource_path.name
+            for resource_key, resource_path in self.game.bundled_resource_paths.items()
+            if resource_key.endswith("MTDBND")
+        ]
 
-        mtdbnd_path = self.mtdbnd_path
+        if self.prefer_import_from_project:
+            dirs = (("project", self.project_directory), ("game", self.game_directory))
+        else:
+            dirs = (("game", self.game_directory), ("project", self.project_directory))
 
-        if not mtdbnd_path:
-            # Try to find MTDBND in project or game directory.
-            for label, directory in (("project", self.project_directory), ("game", self.game_directory)):
-                if not directory:
-                    continue
-                for mtdbnd_name in ("mtd.mtdbnd", "allmaterialbnd.mtdbnd"):
-                    try_mtdbnd_path = self.game.process_dcx_path(directory / f"mtd/{mtdbnd_name}")
-                    if try_mtdbnd_path.is_file():
-                        mtdbnd_path = try_mtdbnd_path
-                        operator.info(f"Found MTDBND in {label} directory: {mtdbnd_path}")
-                        break
-                if mtdbnd_path:  # found
-                    break
+        mtdbnd = None  # type: MTDBND | None
+        for label, directory in dirs:
+            if not directory:
+                continue
+            for mtdbnd_name in mtdbnd_names:
+                dir_mtdbnd_path = directory / f"mtd/{mtdbnd_name}"
+                if dir_mtdbnd_path.is_file():
+                    operator.info(
+                        f"Found MTDBND '{dir_mtdbnd_path.name}' in {label} directory: {dir_mtdbnd_path}"
+                    )
+                    if mtdbnd is None:
+                        mtdbnd = MTDBND.from_path(dir_mtdbnd_path)
+                    else:
+                        mtdbnd |= MTDBND.from_path(dir_mtdbnd_path)
+        if mtdbnd is not None:  # found
+            return mtdbnd
 
-        if is_path_and_file(mtdbnd_path):
-            return mtdbnd_class.from_path(mtdbnd_path)
+        operator.info(f"Loading bundled MTDBND for game {self.game.name}...")
+        return MTDBND.from_bundled(self.game)
 
-        from_bundled = getattr(mtdbnd_class, "from_bundled", None)
-        if from_bundled:
-            operator.info(f"Loading bundled MTDBND for game {self.game.name}...")
-            return from_bundled()
-        return None
-
-    def get_matbinbnd(self, operator: LoggingOperator) -> MATBINBND_TYPING | None:
+    def get_matbinbnd(self, operator: LoggingOperator) -> MATBINBND | None:
         """Load `MATBINBND` from custom path, standard location in game directory, or bundled Soulstruct file."""
+        if is_path_and_file(self.matbinbnd_path):
+            return MATBINBND.from_path(self.matbinbnd_path)
 
-        try:
-            matbinbnd_class = self.game.from_game_submodule_import("models.matbin", "MATBINBND")
-        except ImportError:
-            # No generic support.
-            return None
+        # Try to find MATBINBND in project or game directory.
+        matbinbnd_names = [
+            resource_path.name
+            for resource_key, resource_path in self.game.bundled_resource_paths.items()
+            if resource_key.endswith("MATBINBND")
+        ]
 
-        matbinbnd_path = self.matbinbnd_path
+        if self.prefer_import_from_project:
+            dirs = (("project", self.project_directory), ("game", self.game_directory))
+        else:
+            dirs = (("game", self.game_directory), ("project", self.project_directory))
 
-        if not matbinbnd_path:
-            # Try to find MATABINBND in project or game directory.
-            for label, directory in (("project", self.project_directory), ("game", self.game_directory)):
-                if not directory:
-                    continue
-                try_matbinbnd_path = self.game.process_dcx_path(directory / f"material/allmaterial.matbinbnd")
-                if try_matbinbnd_path.is_file():
-                    matbinbnd_path = try_matbinbnd_path
-                    operator.info(f"Found MATBINBND in {label} directory: {matbinbnd_path}")
-                    break
+        matbinbnd = None  # type: MATBINBND | None
+        for label, directory in dirs:
+            if not directory:
+                continue
+            for matbinbnd_name in matbinbnd_names:
+                dir_matbinbnd_path = directory / f"matbin/{matbinbnd_name}"
+                if dir_matbinbnd_path.is_file():
+                    operator.info(
+                        f"Found MATBINBND '{dir_matbinbnd_path.name}' in {label} directory: {dir_matbinbnd_path}"
+                    )
+                    if matbinbnd is None:
+                        matbinbnd = MATBINBND.from_path(dir_matbinbnd_path)
+                    else:
+                        matbinbnd |= MATBINBND.from_path(dir_matbinbnd_path)
+        if matbinbnd is not None:  # found
+            return matbinbnd
 
-        if is_path_and_file(matbinbnd_path):
-            return matbinbnd_class.from_path(matbinbnd_path)
-
-        from_bundled = getattr(matbinbnd_class, "from_bundled", None)
-        if from_bundled:
-            operator.info(f"Loading bundled MATBINBND for game {self.game.name}...")
-            return from_bundled()
-        return None
+        operator.info(f"Loading bundled MATBINBND for game {self.game.name}...")
+        return MATBINBND.from_bundled(self.game)
 
     def _process_map_stem_version(self, map_stem: str, *parts: str | Path) -> str:
         if not self.smart_map_version_handling or not parts:

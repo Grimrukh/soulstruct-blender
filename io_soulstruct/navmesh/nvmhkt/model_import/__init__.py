@@ -8,6 +8,7 @@ __all__ = [
     "ImportNVMHKTFromNVMHKTBND",
     "ImportAllNVMHKTsFromNVMHKTBND",
     "ImportAllOverworldNVMHKTs",
+    "ImportAllDLCOverworldNVMHKTs",
 
     "NVMHKTImportSettings",
 ]

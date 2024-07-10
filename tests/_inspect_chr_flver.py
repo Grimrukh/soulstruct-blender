@@ -2,7 +2,7 @@ from soulstruct import FLVER, Path, Binder
 
 
 WB_PATH = Path("C:/Steam/steamapps/common/DARK SOULS REMASTERED (Workbench)")
-ER_PATH = Path("C:/Steam/steamapps/common/ELDEN RING/Game")
+ER_PATH = Path("C:/Steam/steamapps/common/ELDEN RING (Modding 1.12)/Game")
 
 
 def test_artorias():
@@ -33,27 +33,45 @@ def test_artorias():
 
 
 def test_blaidd():
-    from soulstruct.eldenring.models.matbin import MATBINBND
-    matbinbnd = MATBINBND.from_bundled()
+    from soulstruct.base.models.matbin import MATBINBND
+    from soulstruct.eldenring.models.shaders import MatDef
+    from soulstruct.eldenring.constants import CHARACTER_MODELS
 
-    model = "c2140"
+    def model_lookup(name):
+        for model_id, model_name in CHARACTER_MODELS.items():
+            if name in model_name:
+                return f"c{model_id}"
+        raise ValueError(f"No model found starting with '{name}'.")
+
+    matbinbnd = MATBINBND.from_bundled("ELDEN RING")
+
+    model = model_lookup("Blaidd")
+
     chrbnd_path = ER_PATH / f"chr/{model}.chrbnd.dcx"
     flver = FLVER.from_binder_path(chrbnd_path, f"{model}.flver")
 
-    submesh = flver.submeshes[0]
+    for submesh in flver.submeshes:
+        print(f"Submesh mat def name: {submesh.material.mat_def_name}")
+        matbin = matbinbnd.get_matbin(submesh.material.mat_def_name)
+        matdef = MatDef.from_matbin(matbin)
+        print(f"{submesh.material.name} ({matdef.shader_stem})")
 
-    print(submesh.material)
-    print(submesh.vertices[:10])
-    print(submesh.vertices.dtype.names)
-    uv_layer_count = len([f for f in submesh.vertices.dtype.names if "uv" in f])
+        for key, value in matdef.matbin_params.items():
+            print(f"        {key} = {value}")
 
-    # TODO: Trying to figure out how to tell which MATBIN samplers go in which "UV group", so I know which FLVER UV
-    #  layer to plug in to that sampler node in Blender shader.
-    matbin = matbinbnd.get_matbin(submesh.material.mat_def_name)
-    print(matbin)
-    for sampler in matbin.samplers:
-        print(sampler)
-    print(f"FLVER submesh UV layer count = {uv_layer_count}")
+        all_samplers = {sampler.name: sampler for sampler in matdef.samplers}
+        layer_sampler_paths = matdef.get_uv_group_sampler_paths()
+        for group, sampler_paths in sorted(layer_sampler_paths.items()):
+            print(f"    Sampler Group: {group}")
+            for sampler_name, (sampler_path, uv_layer) in sampler_paths.items():
+                print(f"        {sampler_name} = \"{Path(sampler_path).stem}\"")
+                print(f"            alias = {all_samplers[sampler_name].alias}")
+                print(f"            uv_layer = {all_samplers[sampler_name].uv_layer.name}")
+                all_samplers.pop(sampler_name)
+        if all_samplers:
+            print("    UNUSED SAMPLERS:")
+            for sampler in all_samplers.values():
+                print(f"        ({sampler.sampler_group}) {sampler.name}")
 
 
 if __name__ == '__main__':
