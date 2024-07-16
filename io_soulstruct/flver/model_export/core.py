@@ -17,20 +17,19 @@ import bpy
 from soulstruct.base.models.flver import FLVER, Version, FLVERBone, FLVERBoneUsageFlags, Dummy
 from soulstruct.base.models.flver.material import Material, Texture, GXItem
 from soulstruct.base.models.flver.mesh_tools import MergedMesh, SplitSubmeshDef
-from soulstruct.base.models.flver.shaders import MatDef
-from soulstruct.darksouls1ptde.models.shaders import MatDef as PTDE_MatDef
-from soulstruct.darksouls1r.models.shaders import MatDef as DSR_MatDef
+from soulstruct.base.models.shaders import MatDef
 from soulstruct.games import *
 from soulstruct.utilities.maths import Vector3, Matrix3
 from soulstruct.utilities.text import natural_keys
 
+from io_soulstruct.exceptions import *
 from io_soulstruct.general import *
 from io_soulstruct.utilities import *
 from io_soulstruct.flver.utilities import *
 
 if tp.TYPE_CHECKING:
     from soulstruct.base.models.matbin import MATBINBND
-    from soulstruct.base.models.mtd import MTDBND as BaseMTDBND
+    from soulstruct.base.models.mtd import MTDBND
     from .settings import FLVERExportSettings
 
 
@@ -41,21 +40,17 @@ class FLVERExporter:
     Call `export_flver()` to import a single FLVER file.
     """
 
-    DEFAULT_VERSION: tp.ClassVar[str, Version] = {
-        DARK_SOULS_PTDE.variable_name: Version.DarkSouls_A,
-        DARK_SOULS_DSR.variable_name: Version.DarkSouls_A,
-        BLOODBORNE.variable_name: Version.Bloodborne_DS3_A,
-        DARK_SOULS_3.variable_name: Version.Bloodborne_DS3_A,
-        SEKIRO.variable_name: Version.Sekiro_EldenRing,
-        ELDEN_RING.variable_name: Version.Sekiro_EldenRing,
-    }
+    # These are cached per-game on first load, which also preserves lazily loaded MATBINs. They can be cleared with
+    # `FLVERExporter.clear_matdef_caches()`.
+    _CACHED_MTDBNDS: tp.ClassVar[dict[Game, MTDBND]] = {}
+    _CACHED_MATBINBNDS: tp.ClassVar[dict[Game, MATBINBND]] = {}
 
     operator: LoggingOperator
     context: bpy.types.Context
     settings: SoulstructSettings
 
-    # Loaded from `settings` if not given.
-    mtdbnd: BaseMTDBND | None = None
+    # Loaded from `settings` if not given, unless already cached.
+    mtdbnd: MTDBND | None = None
     matbinbnd: MATBINBND | None = None
 
     # Collects Blender images corresponding to exported FLVER material textures. Should be used and cleared by the
@@ -64,9 +59,13 @@ class FLVERExporter:
 
     def __post_init__(self):
         if self.mtdbnd is None and not self.settings.is_game(ELDEN_RING):
-            self.mtdbnd = self.settings.get_mtdbnd(self.operator)
+            if self.settings.game not in self._CACHED_MTDBNDS:
+                self._CACHED_MTDBNDS[self.settings.game] = self.settings.get_mtdbnd(self.operator)
+            self.mtdbnd = self._CACHED_MTDBNDS[self.settings.game]
         if self.matbinbnd is None and self.settings.is_game(ELDEN_RING):
-            self.matbinbnd = self.settings.get_matbinbnd(self.operator)
+            if self.settings.game not in self._CACHED_MATBINBNDS:
+                self._CACHED_MATBINBNDS[self.settings.game] = self.settings.get_matbinbnd(self.operator)
+            self.matbinbnd = self._CACHED_MATBINBNDS[self.settings.game]
 
     def export_flver(
         self,
@@ -97,8 +96,6 @@ class FLVERExporter:
 
         If the Armature (or unrigged Mesh) object is missing certain 'FLVER' custom properties (see `get_flver_props`),
         they will be exported with default values based on the current selected game, if able.
-
-        TODO: Currently only really tested for DS1 FLVERs.
         """
         self.clear_temp_flver()
 
@@ -109,7 +106,8 @@ class FLVERExporter:
         if armature is not None and armature.type != "ARMATURE":
             raise FLVERExportError("`armature` object passed to FLVER exporter must be an Armature or `None`.")
 
-        flver = FLVER(**self.get_flver_props(armature or mesh, self.settings.game))
+        # We use Armature for properties if it's present, or Mesh otherwise.
+        flver = FLVER(**self.get_flver_props(armature or mesh))
 
         bl_dummies = self.collect_dummies(
             mesh, armature, prefix=dummy_material_prefix, prefix_must_match=dummy_prefix_must_match
@@ -154,25 +152,25 @@ class FLVERExporter:
             flver.dummies.append(flver_dummy)
 
         # `MatDef` for each Blender material is needed to determine which Blender UV layers to use for which loops.
-        if self.settings.is_game(DARK_SOULS_PTDE):
-            matdef_class = PTDE_MatDef
-        elif self.settings.is_game(DARK_SOULS_DSR):
-            matdef_class = DSR_MatDef
-        else:
-            raise NotImplementedError(f"Cannot yet export FLVERs for game {self.settings.game}.")
+        try:
+            matdef_class = self.settings.get_game_matdef_class()
+        except UnsupportedGameError:
+            raise UnsupportedGameError(f"Cannot yet export FLVERs for game {self.settings.game}. (No `MatDef` class.)")
 
         matdefs = []
         for bl_material in mesh.data.materials:
             try:
-                mtd_name = Path(bl_material["Mat Def Path"]).name
+                mat_def_name = Path(bl_material["Mat Def Path"]).name
             except KeyError:
                 raise FLVERExportError(
                     f"Material '{bl_material.name}' has no 'Mat Def Path' custom property. "
                     f"Cannot export FLVER."
                 )
-            matdefs.append(
-                matdef_class.from_mtdbnd_or_name(mtd_name, self.mtdbnd)
-            )
+            if GAME_CONFIG[self.settings.game].uses_matbin:
+                matdef = matdef_class.from_matbinbnd_or_name(mat_def_name, self.matbinbnd)
+            else:
+                matdef = matdef_class.from_mtdbnd_or_name(mat_def_name, self.mtdbnd)
+            matdefs.append(matdef)
 
         if not mesh.data.vertices:
             # No submeshes in FLVER (e.g. c0000). We also leave all bounding boxes as their default max/min values.
@@ -287,57 +285,40 @@ class FLVERExporter:
         # 1. Create per-submesh info. Note that every Blender material index is guaranteed to be mapped to AT LEAST ONE
         #    split `Submesh` in the exported FLVER (more if submesh bone maximum is exceeded). This allows the user to
         #    also split their submeshes manually in Blender, if they wish.
-        submesh_info = []  # type: list[SplitSubmeshDef]
+        split_submesh_defs = []  # type: list[SplitSubmeshDef]
         for matdef, bl_material in zip(matdefs, bl_mesh.data.materials):
-            # Some Blender materials may be variants representing distinct Submesh/FaceSet properties; these will be
-            # mapped to the same FLVER `Material`/`VertexArrayLayout` combo (created here).
-            flver_material = self.export_material(bl_material, matdef)
-            if use_chr_layout:
-                array_layout = matdef.get_character_layout()
-            else:
-                array_layout = matdef.get_map_piece_layout()
-            # We only respect 'Face Set Count' if requested in export options. (Duplicating the main face set is only
-            # viable in older games with low-res meshes, but those same games don't even really need LODs anyway.)
-            face_set_count = get_bl_prop(bl_material, "Face Set Count", int, default=1) if create_lod_face_sets else 1
-            submesh_kwargs = {
-                "is_bind_pose": get_bl_prop(bl_material, "Is Bind Pose", int, default=use_chr_layout, callback=bool),
-                "default_bone_index": get_bl_prop(bl_material, "Default Bone Index", int, default=0),
-                "use_backface_culling": bl_material.use_backface_culling,
-                "uses_bounding_box": True,  # TODO: assumption (DS1 and likely all later games)
-                "face_set_count": face_set_count,
-            }
-            submesh_info.append(SplitSubmeshDef(
-                flver_material, array_layout, submesh_kwargs, [layer.name for layer in matdef.used_uv_layers]
-            ))
-            self.operator.info(f"Created FLVER material: {flver_material.name}")
+            split_submesh_def = self.get_split_submesh_def(
+                bl_material, create_lod_face_sets, matdef, use_chr_layout
+            )
+            split_submesh_defs.append(split_submesh_def)
 
         # 2. Validate UV layers: ensure all required material UV layer names are present, and warn if any unexpected
         #    Blender UV layers are present.
         bl_uv_layer_names = bl_mesh.data.uv_layers.keys()
-        bl_uv_layer_names_set = set(bl_uv_layer_names)
+        remaining_bl_uv_layer_names = set(bl_uv_layer_names)
         used_uv_layer_names = set()
         for matdef, bl_material in zip(matdefs, bl_mesh.data.materials):
-            for used_layer in matdef.used_uv_layers:
+            for used_layer in matdef.get_used_uv_layers():
                 if used_layer.name not in bl_uv_layer_names:
                     raise FLVERExportError(
-                        f"Material '{bl_material.name}' with shader {matdef.shader_stem} requires UV layer "
-                        f"'{used_layer.name}', which is missing in Blender."
+                        f"Material '{bl_material.name}' with def '{matdef.name}' (shader '{matdef.shader_stem}') "
+                        f"requires UV layer '{used_layer.name}', which is missing in Blender."
                     )
-                if used_layer.name in bl_uv_layer_names_set:
-                    bl_uv_layer_names_set.remove(used_layer.name)
+                if used_layer.name in remaining_bl_uv_layer_names:
+                    remaining_bl_uv_layer_names.remove(used_layer.name)
                 used_uv_layer_names.add(used_layer.name)
-        for remaining_bl_uv_layer_name in bl_uv_layer_names_set:
+        for remaining_bl_uv_layer_name in remaining_bl_uv_layer_names:
             self.warning(
                 f"UV layer '{remaining_bl_uv_layer_name}' is present in Blender mesh '{bl_mesh.name}' but is not "
-                f"used by any material shader."
+                f"used by any FLVER material shader. Ignoring it."
             )
 
         # 3. Create a triangulated copy of the mesh, so the user doesn't have to triangulate it themselves (though they
         #  may want to do this anyway for absolute approval of the final asset). Custom split normals are copied to the
         #  triangulated mesh using an applied Data Transfer modifier (UPDATE: disabled for now as it ruins sharp edges
         #  even for existing triangles). Materials are copied over. Nothing else needs to be copied, as it is either
-        #  done automatically by triangulation (e.g. UVs) or is part of the unchanged vertex data (e.g. bone weights) in
-        #  the original mesh.
+        #  done automatically by triangulation (e.g. UVs, vertex colors) or is part of the unchanged vertex data (e.g.
+        #  bone weights) in the original mesh.
         tri_mesh_data = self.create_triangulated_mesh(bl_mesh, do_data_transfer=False)
 
         # TODO: The tangent and bitangent of each vertex should be calculated from the UV map that is effectively
@@ -349,22 +330,26 @@ class FLVERExporter:
         try:
             # TODO: This function calls the required `calc_normals_split()` automatically, but if it was replaced,
             #  a separate call of that would be needed to write the (rather inaccessible) custom split per-loop normal
-            #  data (pink lines in 3D View overlay) to each `loop.normal`.
+            #  data (pink lines in 3D View overlay) to each `loop.normal`. (Pre-4.1 only.)
             tri_mesh_data.calc_tangents(uvmap="UVTexture0")
             # bl_mesh_data.calc_normals_split()
         except RuntimeError as ex:
+            # TODO: Some FLVER materials actually have no UVs, like 'C[Fur]_cloth' shader in Elden Ring. A FLVER made
+            #  entirely of these materials would genuinely have no UVs in the merged Blender mesh -- but of course,
+            #  that doesn't exist in vanilla files. (Also, it DOES have tangent data, which we'd need to calcualte
+            #  somehow).
             raise RuntimeError(
-                f"Could not calculate vertex tangents from 'UVTexture0', which every FLVER mesh should have. Make sure "
-                f"the mesh is triangulated and not empty (delete any empty mesh). Error: {ex}"
+                f"Could not calculate vertex tangents from UV layer 'UVTexture0', which every FLVER mesh should have. "
+                f"Make sure the mesh is triangulated and not empty (delete any empty mesh). Error: {ex}"
             )
 
-        # 4. Construct arrays from Blender data and pass into a new `MergedMesh`.
+        # 4. Construct arrays from Blender data and pass into a new `MergedMesh` for splitting.
 
         # Slow part number 1: iterating over every Blender vertex to retrieve its position and bone weights/indices.
         # We at least know the size of the array in advance.
         vertex_count = len(tri_mesh_data.vertices)
         vertex_data_dtype = [
-            ("position", "f", 3),  # TODO: support 4D position
+            ("position", "f", 3),  # TODO: support 4D position (see, e.g., Rykard slime in ER: c4711)
             ("bone_weights", "f", 4),
             ("bone_indices", "i", 4),
         ]
@@ -457,13 +442,9 @@ class FLVERExporter:
         p = time.perf_counter()
         faces = np.empty((len(tri_mesh_data.polygons), 4), dtype=np.int32)
         for i, face in enumerate(tri_mesh_data.polygons):
-            try:
-                faces[i] = [*face.loop_indices, face.material_index]
-            except ValueError:
-                raise FLVERExportError(
-                    f"Cannot export FLVER mesh '{bl_mesh.name}' with any non-triangle faces. "
-                    f"Face index {i} has {len(face.loop_indices)} sides)."
-                )
+            # Since we've triangulated the mesh, no need to check face loop count here.
+            faces[i] = [*face.loop_indices, face.material_index]
+
         self.info(f"Constructed combined face array with {len(faces)} rows in {time.perf_counter() - p} s.")
 
         # Finally, we iterate over (triangulated) loops and construct their arrays. Note that loop UV and vertex color
@@ -478,11 +459,12 @@ class FLVERExporter:
             for uv_layer_name in used_uv_layer_names
         }
 
-        # Vertex color layer count is harder to auto-detect. TODO: `matdef` should figure it out.
-        # TODO: Currently asserting 'VertexColors1' and exporting 'VertexColors2' IFF it exists.
+        # Retrieve vertex colors.
+        # TODO: Like UVs, it's extremely unlikely -- and probably untrue in any vanilla FLVER -- that NO FLVER material
+        #  uses even one vertex color. In this case, though, the default black color generated here will simply never
+        #  make it to any of the `MatDef`-based submesh array layouts after this.
         loop_colors = []
         try:
-            # Vertex colors have been triangulated.
             colors_layer_0 = tri_mesh_data.vertex_colors["VertexColors0"]
         except KeyError:
             self.warning(f"FLVER mesh '{bl_mesh.name}' has no 'VertexColors0' data layer. Using black.")
@@ -497,7 +479,12 @@ class FLVERExporter:
         try:
             colors_layer_1 = tri_mesh_data.vertex_colors["VertexColors1"]
         except KeyError:
+            # Fine. This submesh only uses one colors layer.
             colors_layer_1 = None
+        else:
+            # Prepare for loop filling.
+            loop_colors.append(np.empty((loop_count, 4), dtype=np.float32))
+        # TODO: Check for arbitrary additional vertex colors? Or first, scan all layouts to check what's expected.
 
         loop_vertex_indices = np.empty(loop_count, dtype=np.int32)
         loop_normals = np.empty((loop_count, 3), dtype=np.float32)
@@ -513,8 +500,8 @@ class FLVERExporter:
         tri_mesh_data.loops.foreach_get("vertex_index", loop_vertex_indices)
         tri_mesh_data.loops.foreach_get("normal", loop_normals.ravel())
         tri_mesh_data.loops.foreach_get("tangent", loop_tangents.ravel())
-        # TODO: 99% sure that `bitangent` data in DS1 is used to store tangent data for the second texture group, which
-        #  later games do simply by using a second tangent buffer.
+        # TODO: 99% sure that `bitangent` data in DS1 is used to store tangent data for the second normal map, which
+        #  later games do by actually using a second tangent buffer.
         tri_mesh_data.loops.foreach_get("bitangent", loop_bitangents.ravel())
         if colors_layer_0:
             colors_layer_0.data.foreach_get("color", loop_colors[0].ravel())
@@ -527,8 +514,8 @@ class FLVERExporter:
             uv_layer.data.foreach_get("uv", loop_uvs[uv_layer_name].ravel())
 
         # Rotate tangents and bitangents to what FromSoft expects using cross product with normals.
-        loop_tangents = self.np_cross(loop_tangents, loop_normals)  # type: np.ndarray
-        loop_bitangents = self.np_cross(loop_bitangents, loop_normals)  # type: np.ndarray
+        loop_tangents = np_cross(loop_tangents, loop_normals)
+        loop_bitangents = np_cross(loop_bitangents, loop_normals)
 
         # Add default `w` components to tangents and bitangents (-1).
         minus_one = np.full((loop_count, 1), -1, dtype=np.float32)
@@ -555,15 +542,52 @@ class FLVERExporter:
 
         p = time.perf_counter()
         flver.submeshes = merged_mesh.split_mesh(
-            submesh_info,
-            use_submesh_bone_indices=True,  # TODO: for DS1
-            max_bones_per_submesh=38,  # TODO: for DS1
-            unused_bone_indices_are_minus_one=True,
+            split_submesh_defs,
+            use_submesh_bone_indices=True,  # TODO: for DS1... when did this stop?
+            max_bones_per_submesh=38,  # TODO: for DS1... what about other games?
+            unused_bone_indices_are_minus_one=True,  # saves some time within the splitter (no ambiguous zeroes)
             normal_tangent_dot_threshold=normal_tangent_dot_max,
             # NOTE: DS1 has a maximum submesh vertex count of 65535, as face vertex indices must be 16-bit globally.
-            max_submesh_vertex_count=65535 if self.settings.is_game(DARK_SOULS_PTDE, DARK_SOULS_DSR) else 0,
+            # Later games use 32-bit face vertex indices (max 4294967295).
+            max_submesh_vertex_count=65535 if self.settings.is_game(DARK_SOULS_PTDE, DARK_SOULS_DSR) else 4294967295,
         )
         self.info(f"Split mesh into {len(flver.submeshes)} submeshes in {time.perf_counter() - p} s.")
+
+    def get_split_submesh_def(
+        self,
+        bl_material: bpy.types.Material,
+        create_lod_face_sets: bool,
+        matdef: MatDef,
+        use_chr_layout: bool,
+    ) -> SplitSubmeshDef:
+        """Use given `matdef` to create a `SplitSubmeshDef` for the given Blender material with either a character
+        layout or a map piece layout, depending on `use_chr_layout`."""
+
+        # Some Blender materials may be variants representing distinct Submesh/FaceSet properties; these will be
+        # mapped to the same FLVER `Material`/`VertexArrayLayout` combo (created here).
+        flver_material = self.export_material(bl_material, matdef)
+        if use_chr_layout:
+            array_layout = matdef.get_character_layout()
+        else:
+            array_layout = matdef.get_map_piece_layout()
+        # We only respect 'Face Set Count' if requested in export options. (Duplicating the main face set is only
+        # viable in older games with low-res meshes, but those same games don't even really need LODs anyway.)
+        face_set_count = get_bl_prop(bl_material, "Face Set Count", int, default=1) if create_lod_face_sets else 1
+        submesh_kwargs = {
+            "is_bind_pose": get_bl_prop(bl_material, "Is Bind Pose", int, default=use_chr_layout, callback=bool),
+            "default_bone_index": get_bl_prop(bl_material, "Default Bone Index", int, default=0),
+            "use_backface_culling": bl_material.use_backface_culling,
+            "uses_bounding_box": True,  # TODO: assumption (DS1 and likely all later games)
+            "face_set_count": face_set_count,
+        }
+        used_uv_layer_names = [layer.name for layer in matdef.get_used_uv_layers()]
+        self.operator.info(f"Created FLVER material: {flver_material.name} with UV layers: {used_uv_layer_names}")
+        return SplitSubmeshDef(
+            flver_material,
+            array_layout,
+            submesh_kwargs,
+            used_uv_layer_names,
+        )
 
     def create_triangulated_mesh(
         self,
@@ -975,11 +999,7 @@ class FLVERExporter:
 
         return flver_material
 
-    def get_flver_props(
-        self,
-        bl_obj: bpy.types.Object,
-        game: Game,
-    ) -> dict[str, tp.Any]:
+    def get_flver_props(self, bl_obj: bpy.types.Object) -> dict[str, tp.Any]:
         """Retrieve FLVER properties from custom properties on given object, which will be the Armature if present and
         Mesh otherwise (permitted for basic Map Pieces).
 
@@ -1000,8 +1020,9 @@ class FLVERExporter:
             version_str = bl_obj["Version"]
         except KeyError:
             # Default is game-dependent.
+            game = self.settings.game
             try:
-                version = self.DEFAULT_VERSION[game.variable_name]
+                version = GAME_CONFIG[game].flver_default_version
             except KeyError:
                 raise ValueError(
                     f"Do not know default FLVER Version for game {game}. You must set 'Version' yourself on FLVER "
@@ -1067,15 +1088,10 @@ class FLVERExporter:
             )
         return read_bone_type
 
-    @staticmethod
-    def np_cross(array_a: np.ndarray, array_b: np.ndarray) -> np.ndarray:
-        """Hack for PyCharm/Numpy conflict where `np.cross` is typed as `NoReturn` for boolean arrays. Both sides seem
-        to be pointing fingers at the other for this. Personally, I think it's stupid for Numpy to force type checkers
-        to handle function overloads so precisely. The `np.cross` docs don't even say anything about the bool case!
-
-        See line 506 in `numpy/core/numeric.pyi`.
-        """
-        return np.cross(array_a, array_b)
+    @classmethod
+    def clear_matdef_caches(cls):
+        cls._CACHED_MTDBNDS.clear()
+        cls._CACHED_MATBINBNDS.clear()
 
     @staticmethod
     def clear_temp_flver():

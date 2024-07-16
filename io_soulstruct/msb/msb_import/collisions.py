@@ -19,9 +19,8 @@ from io_soulstruct.havok.hkx_map_collision.model_import import *
 from .core import *
 
 if tp.TYPE_CHECKING:
-    from soulstruct.darksouls1r.maps.parts import MSBCollision  # TODO: use multi-game typing
-    from soulstruct.base.models.mtd import MTDBND
     from io_soulstruct.general import SoulstructSettings
+    from io_soulstruct.type_checking import MSB_COLLISION_TYPING
 
 
 def find_map_collision_model(map_stem: str, model_name: str) -> bpy.types.MeshObject:
@@ -120,9 +119,8 @@ class BaseImportMSBCollision(BaseImportMSBPart):
         context,
         settings: SoulstructSettings,
         map_stem: str,
-        part: MSBCollision,
+        part: MSB_COLLISION_TYPING,
         collection: bpy.types.Collection,
-        mtdbnd: MTDBND | None = None,
     ) -> bpy.types.Object:
         model_name = part.model.get_model_file_stem(map_stem)
         hkx_model = get_collision_model(self, context, settings, map_stem, model_name)

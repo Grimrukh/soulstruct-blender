@@ -27,6 +27,7 @@ __all__ = [
     "DeleteFLVER",
     "DeleteFLVERAndData",
     "CreateFLVERInstance",
+    "DuplicateFLVERModel",
     "RenameFLVER",
     "CreateEmptyMapPieceFLVER",
     "SelectDisplayMaskID",
@@ -306,8 +307,12 @@ class FLVEROtherToolsPanel(bpy.types.Panel):
         layout.operator(DeleteFLVER.bl_idname)
         layout.operator(DeleteFLVERAndData.bl_idname)
         layout.operator(CreateFLVERInstance.bl_idname)
-        layout.prop(context.scene.flver_tool_settings, "new_flver_model_name")
-        layout.operator(RenameFLVER.bl_idname)
+
+        name_box = layout.box()
+        name_box.prop(context.scene.flver_tool_settings, "new_flver_model_name")
+        name_box.operator(RenameFLVER.bl_idname)
+        name_box.operator(DuplicateFLVERModel.bl_idname)
+
         layout.operator(CreateEmptyMapPieceFLVER.bl_idname)
         layout.operator(PrintGameTransform.bl_idname)
 

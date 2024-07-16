@@ -24,7 +24,6 @@ from .settings import MSBImportSettings
 if tp.TYPE_CHECKING:
     from soulstruct.base.maps.msb.parts import BaseMSBPart
     from soulstruct.base.maps.msb.regions import BaseMSBRegion
-    from soulstruct.base.models.mtd import MTDBND
     from io_soulstruct.type_checking import MSB_TYPING
 
 
@@ -67,11 +66,11 @@ def create_flver_model_instance(
     If `copy_pose = True`, all bone pose data will be manually copied (typically only for Map Pieces).
     """
 
-    instance_mesh_obj = bpy.data.objects.new(f"{instance_name} Mesh" if armature else instance_name, mesh.data)
+    instance_mesh_obj = new_mesh_object(f"{instance_name} Mesh" if armature else instance_name, mesh.data)
     collection.objects.link(instance_mesh_obj)
 
     if armature:
-        instance_armature_obj = bpy.data.objects.new(instance_name, armature.data)
+        instance_armature_obj = new_armature_object(instance_name, armature.data)
         collection.objects.link(instance_armature_obj)
 
         if copy_pose:
@@ -120,7 +119,6 @@ class BaseImportMSBPart(LoggingOperator):
     MSB_LIST_NAME: str  # e.g. 'characters'
     GAME_ENUM_NAME: str | None  # e.g. 'character_part' or `None` for all-part importers
     USE_LATEST_MAP_FOLDER: bool = False  # only true for NVM assets in DS1
-    USE_MTDBND: bool = False  # only true for DS3
 
     @classmethod
     def poll(cls, context):
@@ -196,11 +194,10 @@ class BaseImportMSBPart(LoggingOperator):
 
         part_list = getattr(msb, self.MSB_LIST_NAME)
         part_count = 0
-        mtdbnd = settings.get_mtdbnd(self) if self.USE_MTDBND else None
 
         for part in [part for part in part_list if is_name_match(part.name)]:
             try:
-                self._create_part_instance(context, settings, map_stem, part, part_collection, mtdbnd=mtdbnd)
+                self._create_part_instance(context, settings, map_stem, part, part_collection)
             except Exception as ex:
                 traceback.print_exc()
                 self.error(f"Failed to import MSB {self.PART_TYPE_NAME} part '{part.name}': {ex}")
@@ -231,7 +228,6 @@ class BaseImportMSBPart(LoggingOperator):
         map_stem: str,
         part: BaseMSBPart,
         collection: bpy.types.Collection,
-        mtdbnd: MTDBND | None = None,
     ) -> bpy.types.Object:
         """Get or create model and create a linked instance with relevant MSB part data (transform, etc.)."""
         raise NotImplementedError

@@ -14,16 +14,16 @@ import bpy
 
 from soulstruct.containers import Binder
 
+from io_soulstruct.exceptions import *
 from io_soulstruct.utilities import *
 from io_soulstruct.flver.textures.import_textures import TextureImportManager
 from io_soulstruct.flver.model_import import FLVERImporter, FLVERImportSettings
-from io_soulstruct.flver.utilities import FLVERImportError, get_flvers_from_binder
+from io_soulstruct.flver.utilities import get_flvers_from_binder
 from .core import *
 
 if tp.TYPE_CHECKING:
-    from soulstruct.darksouls1r.maps.parts import MSBCharacter  # TODO: use multi-game typing
-    from soulstruct.base.models.mtd import MTDBND
     from io_soulstruct.general import SoulstructSettings
+    from io_soulstruct.type_checking import MSB_CHARACTER_TYPING
 
 
 def import_character_model(
@@ -50,7 +50,6 @@ def import_character_model(
         settings,
         texture_import_manager=texture_manager,
         collection=get_collection("Character Models", context.scene.collection, hide_viewport=True),
-        mtdbnd=settings.get_mtdbnd(operator),
     )
 
     try:
@@ -80,16 +79,14 @@ class BaseImportMSBCharacter(BaseImportMSBPart):
     PART_TYPE_NAME = "Character"
     PART_TYPE_NAME_PLURAL = "Characters"
     MSB_LIST_NAME = "characters"
-    USE_MTDBND = True
 
     def _create_part_instance(
         self,
         context,
         settings: SoulstructSettings,
         map_stem: str,
-        part: MSBCharacter,
+        part: MSB_CHARACTER_TYPING,
         collection: bpy.types.Collection,
-        mtdbnd: MTDBND | None = None,
     ) -> bpy.types.Object:
         armature, mesh = get_character_model(self, context, settings, part.model.name)  # NOT map-specific
         part_armature, part_mesh = create_flver_model_instance(context, armature, mesh, part.name, collection)

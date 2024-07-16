@@ -10,7 +10,7 @@ from pathlib import Path
 
 import bpy
 
-from soulstruct.base.models.mtd import MTDBND as BaseMTDBND
+from soulstruct.base.models.mtd import MTDBND
 from soulstruct.darksouls1r.models.shaders import MatDef as DS1R_MatDef
 
 from io_soulstruct.utilities.operators import LoggingOperator
@@ -172,7 +172,7 @@ class BakeLightmapTextures(LoggingOperator):
         self,
         mesh: bpy.types.MeshObject,
         material_slot: bpy.types.MaterialSlot,
-        mtdbnd: BaseMTDBND,
+        mtdbnd: MTDBND,
         bake_settings: BakeLightmapSettings,
         original_lightmap_strengths: list[tuple[bpy.types.Node, float]],
         assert_lightmap_image: bpy.types.Image = None,

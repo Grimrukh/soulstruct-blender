@@ -1,9 +1,6 @@
 from __future__ import annotations
 
 __all__ = [
-    "FLVERError",
-    "FLVERImportError",
-    "FLVERExportError",
     "PrintGameTransform",
     "DummyInfo",
     "parse_dummy_name",
@@ -11,6 +8,8 @@ __all__ = [
     "get_default_flver_stem",
     "get_selected_flver",
     "get_selected_flvers",
+    "replace_name_model",
+    "rename_flver",
     "HideAllDummiesOperator",
     "ShowAllDummiesOperator",
     "get_flvers_from_binder",
@@ -31,24 +30,14 @@ from soulstruct import Binder, FLVER
 from soulstruct.utilities.maths import Vector3, Matrix3
 from soulstruct.darksouls1r.maps import MSB, get_map
 
+from io_soulstruct.exceptions import *
 from io_soulstruct.utilities import (
     Transform, BlenderTransform, GAME_TO_BL_EULER, BL_TO_GAME_EULER, BL_TO_GAME_MAT3, LoggingOperator
 )
 from io_soulstruct.general.cached import get_cached_file
 
 
-class FLVERError(Exception):
-    """Exception raised by a FLVER-based operator error."""
-
-
-class FLVERImportError(FLVERError):
-    """Exception raised during FLVER import."""
-    pass
-
-
-class FLVERExportError(FLVERError):
-    """Exception raised during FLVER export."""
-    pass
+_BLENDER_DUPE_RE = re.compile(r"^(.*)\.(\d+)$")
 
 
 class HideAllDummiesOperator(LoggingOperator):
@@ -209,6 +198,62 @@ def get_flvers_from_binder(binder: Binder, file_path: Path, allow_multiple=False
     elif not allow_multiple and len(flver_entries) > 1:
         raise FLVERImportError(f"Found multiple FLVER files in binder {file_path}.")
     return [entry.to_binary_file(FLVER) for entry in flver_entries]
+
+
+def replace_name_model(
+    name: str,
+    old_model_name: str,
+    new_model_name: str,
+    strip_dupe_suffix=True,
+) -> str:
+    if strip_dupe_suffix and (match := _BLENDER_DUPE_RE.match(name)):
+        name = match.group(1)
+    if name.startswith(old_model_name):
+        return f"{new_model_name}{name.removeprefix(old_model_name)}"
+    if name.endswith(f"| {old_model_name}]"):
+        # Standard material endings.
+        return name.replace(f"| {old_model_name}]", f"| {new_model_name}]")
+    return name
+
+def rename_flver(
+    armature: bpy.types.ArmatureObject,
+    mesh: bpy.types.MeshObject,
+    old_name: str,
+    new_name: str,
+    strip_dupe_suffix=True,
+    rename_func: tp.Callable[[str, str], str] = None,
+):
+    """Rename all components of given FLVER object (Armature, Mesh, materials, bones, dummies) using `rename` function
+    or a standard default. Can also strip Blender's duplicate suffix, e.g. '.001', which it does by default."""
+
+    if rename_func is None:
+        def rename(name: str):
+            return replace_name_model(name, old_name, new_name, strip_dupe_suffix=strip_dupe_suffix)
+    else:
+        # Partial of given `rename_func`.
+        def rename(name: str):
+            return rename_func(name, new_name)
+
+    mesh.name = rename(mesh.name)
+    mesh.data.name = rename(mesh.data.name)
+    for mat in mesh.data.materials:
+        mat.name = rename(mat.name)
+
+    if armature:
+        armature.name = rename(armature.name)
+        armature.data.name = rename(armature.data.name)
+        bone_renaming = {}
+        for bone in armature.data.bones:
+            old_bone_name = bone.name
+            bone.name = bone_renaming[old_bone_name] = rename(bone.name)
+        for vertex_group in mesh.vertex_groups:
+            if vertex_group.name in bone_renaming:
+                vertex_group.name = bone_renaming[vertex_group.name]
+        dummy_prefix = f"{old_name} Dummy"
+        for child in armature.children:
+            if child.type == "EMPTY" and child.name.startswith(dummy_prefix):
+                child.name = rename(child.name)
+                child["Parent Bone Name"] = rename(child["Parent Bone Name"])
 
 
 def get_map_piece_msb_transforms(flver_path: Path, msb_path: Path = None) -> list[tuple[str, Transform]]:

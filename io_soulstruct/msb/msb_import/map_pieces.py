@@ -28,9 +28,8 @@ from io_soulstruct.flver.utilities import FLVERImportError
 from .core import *
 
 if tp.TYPE_CHECKING:
-    from soulstruct.darksouls1r.maps.parts import MSBMapPiece  # TODO: use multi-game typing
-    from soulstruct.base.models.mtd import MTDBND
     from io_soulstruct.general import SoulstructSettings
+    from io_soulstruct.type_checking import MSB_MAPPIECE_TYPING
 
 
 def import_map_piece_model(
@@ -39,7 +38,6 @@ def import_map_piece_model(
     settings: SoulstructSettings,
     map_stem: str,
     model_name: str,
-    mtdbnd: MTDBND | None = None,
 ) -> tuple[bpy.types.ArmatureObject | None, bpy.types.MeshObject]:
     """Import the model of the given name into a collection in the current scene."""
     flver_import_settings = context.scene.flver_import_settings  # type: FLVERImportSettings
@@ -70,7 +68,6 @@ def import_map_piece_model(
         settings,
         texture_import_manager=texture_manager,
         collection=get_collection(f"{map_stem} Map Piece Models", context.scene.collection, hide_viewport=True),
-        mtdbnd=mtdbnd,
     )
 
     try:
@@ -88,14 +85,13 @@ def get_map_piece_model(
     settings: SoulstructSettings,
     map_stem: str,
     model_name: str,
-    mtdbnd: MTDBND | None = None,
 ) -> tuple[bpy.types.ArmatureObject | None, bpy.types.MeshObject]:
     """Find or create actual Blender model armature/mesh data."""
     try:
         return find_flver_model(f"{map_stem} Map Piece", model_name)
     except MissingModelError:
         t = time.perf_counter()
-        armature, mesh = import_map_piece_model(operator, context, settings, map_stem, model_name, mtdbnd)
+        armature, mesh = import_map_piece_model(operator, context, settings, map_stem, model_name)
         operator.info(f"Imported {map_stem} Map Piece model '{model_name}' in {time.perf_counter() - t:.3f} seconds.")
         return armature, mesh
 
@@ -105,19 +101,17 @@ class BaseImportMSBMapPiece(BaseImportMSBPart):
     PART_TYPE_NAME = "Map Piece"
     PART_TYPE_NAME_PLURAL = "Map Pieces"
     MSB_LIST_NAME = "map_pieces"
-    USE_MTDBND = True
 
     def _create_part_instance(
         self,
         context,
         settings: SoulstructSettings,
         map_stem: str,
-        part: MSBMapPiece,
+        part: MSB_MAPPIECE_TYPING,
         collection: bpy.types.Collection,
-        mtdbnd: MTDBND | None = None,
     ) -> bpy.types.Object:
         model_name = part.model.get_model_file_stem(map_stem)
-        armature, mesh = get_map_piece_model(self, context, settings, map_stem, model_name, mtdbnd)
+        armature, mesh = get_map_piece_model(self, context, settings, map_stem, model_name)
         part_armature, part_mesh = create_flver_model_instance(
             context, armature, mesh, part.name, collection, copy_pose=True
         )

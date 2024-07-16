@@ -17,6 +17,7 @@ from soulstruct.darksouls1r.maps.parts import MSBNavmesh
 from soulstruct.darksouls1r.maps.navmesh import NVMBND
 from soulstruct.dcx import DCXType
 from soulstruct.games import DARK_SOULS_DSR
+from soulstruct.utilities.text import natural_keys
 
 from io_soulstruct.general.cached import get_cached_file
 from io_soulstruct.utilities import *
@@ -54,7 +55,7 @@ class ExportMSBNavmeshes(LoggingOperator):
     def poll(cls, context):
         """One or more 'n*' Meshes selected."""
         return (
-            cls.settings(context).game_variable_name == "DARK_SOULS_DSR"
+            cls.settings(context).is_game(DARK_SOULS_DSR)
             and len(context.selected_objects) > 0
             and all(obj.type == "MESH" and obj.name[0] == "n" for obj in context.selected_objects)
         )

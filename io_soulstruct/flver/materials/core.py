@@ -8,12 +8,11 @@ __all__ = [
 import re
 import typing as tp
 from dataclasses import dataclass, field
-from enum import IntEnum
 
 import bpy
 
 from soulstruct.base.models.flver.material import Material
-from soulstruct.base.models.flver.shaders import MatDef, MatDefSampler
+from soulstruct.base.models.shaders import MatDef, MatDefSampler
 from soulstruct.base.models.flver.submesh import Submesh
 from soulstruct.utilities.maths import Vector2
 
@@ -255,7 +254,7 @@ class NodeTreeBuilder:
         current_sampler_group = self.matdef.samplers[0].sampler_group
         for sampler in self.matdef.samplers:
 
-            uv_layer_name = sampler.uv_layer.name if isinstance(sampler.uv_layer, IntEnum) else None
+            uv_layer_name = sampler.uv_layer_name
             # We assign the sampler alias to the node label, but preserve the game-specific sampler name in the node
             # name for inspection. The alias label is useful for porting this FLVER with its material to other games.
             node_name = sampler.name
@@ -277,7 +276,7 @@ class NodeTreeBuilder:
             if bl_image and "Albedo" not in node_label:
                 bl_image.colorspace_settings.name = "Non-Color"
 
-            if uv_layer_name is not None:
+            if uv_layer_name:
                 # Connect to appropriate UV node, creating it if necessary.
                 if uv_layer_name in self.uv_nodes:
                     uv_node = self.uv_nodes[uv_layer_name]
@@ -439,14 +438,14 @@ class NodeTreeBuilder:
                 except KeyError:
                     bsdf_node = bsdf_nodes[bsdf_key] = self.add_principled_bsdf_node(f"{bsdf_key} BSDF")
 
-                if fur_albedo_alpha is None and sampler.uv_layer.name == "UVFur":
+                if fur_albedo_alpha is None and sampler.uv_layer_name == "UVFur":
                     # This alpha will be used for all BSDFs.
                     fur_albedo_alpha = tex_node.outputs["Alpha"]
 
                 if map_type == "Normal":
                     # Intervening Normal Map node required with appropriate UV layer.
                     # TODO: Some groups only have normal maps. How do I mix this? White albedo? Or `color` MATBIN param?
-                    self.normal_to_bsdf_node(tex_node, sampler.uv_layer.name, bsdf_node)
+                    self.normal_to_bsdf_node(tex_node, sampler.uv_layer_name, bsdf_node)
                 else:
                     # Color multiple with lightmap, if present, and channels are split/flipped as appropriate.
                     # TODO: Main texture ALPHA should override any detail BSDF, rather than mixing with it (ER).

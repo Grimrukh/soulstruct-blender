@@ -1,9 +1,9 @@
-"""Import MSB Object entries."""
+"""Import MSB Asset entries."""
 from __future__ import annotations
 
 __all__ = [
-    "ImportMSBObject",
-    "ImportAllMSBObjects",
+    "ImportMSBAsset",
+    "ImportAllMSBAssets",
 ]
 
 import time
@@ -23,10 +23,10 @@ from .core import *
 
 if tp.TYPE_CHECKING:
     from io_soulstruct.general import SoulstructSettings
-    from io_soulstruct.type_checking import MSB_OBJECT_TYPING
+    from io_soulstruct.type_checking import MSB_ASSET_TYPING
 
 
-def import_object_model(
+def import_asset_model(
     operator: LoggingOperator, context, settings: SoulstructSettings, model_name: str
 ) -> tuple[bpy.types.ArmatureObject | None, bpy.types.MeshObject]:
     """Import the model of the given name into a collection in the current scene."""
@@ -34,7 +34,7 @@ def import_object_model(
     flver_import_settings = context.scene.flver_import_settings  # type: FLVERImportSettings
     chrbnd_path = settings.get_import_file_path(f"obj/{model_name}.objbnd")
 
-    operator.info(f"Importing object FLVER from: {chrbnd_path.name}")
+    operator.info(f"Importing asset FLVER from: {chrbnd_path.name}")
 
     texture_manager = TextureImportManager(settings) if flver_import_settings.import_textures else None
 
@@ -49,68 +49,68 @@ def import_object_model(
         context,
         settings,
         texture_import_manager=texture_manager,
-        collection=get_collection("Object Models", context.scene.collection, hide_viewport=True),
+        collection=get_collection("Asset Models", context.scene.collection, hide_viewport=True),
     )
 
     try:
         return importer.import_flver(flver, name=model_name)
     except Exception as ex:
-        # Delete any objects created prior to exception.
+        # Delete any assets created prior to exception.
         importer.abort_import()
         traceback.print_exc()  # for inspection in Blender console
         raise FLVERImportError(f"Cannot import FLVER from OBJBND: {chrbnd_path.name}. Error: {ex}")
 
 
-def get_object_model(
+def get_asset_model(
     operator: LoggingOperator, context, settings: SoulstructSettings, model_name: str
 ) -> tuple[bpy.types.ArmatureObject, bpy.types.MeshObject]:
     """Find or create actual Blender model armature/mesh data."""
     try:
-        return find_flver_model("Object", model_name)
+        return find_flver_model("Asset", model_name)
     except MissingModelError:
         t = time.perf_counter()
-        armature, mesh = import_object_model(operator, context, settings, model_name)
-        operator.info(f"Imported Object FLVER Model '{model_name}' in {time.perf_counter() - t:.3f} seconds.")
+        armature, mesh = import_asset_model(operator, context, settings, model_name)
+        operator.info(f"Imported Asset FLVER Model '{model_name}' in {time.perf_counter() - t:.3f} seconds.")
         return armature, mesh
 
 
-class BaseImportMSBObject(BaseImportMSBPart):
+class BaseImportMSBAsset(BaseImportMSBPart):
 
-    PART_TYPE_NAME = "Object"
-    PART_TYPE_NAME_PLURAL = "Objects"
-    MSB_LIST_NAME = "objects"
+    PART_TYPE_NAME = "Asset"
+    PART_TYPE_NAME_PLURAL = "Assets"
+    MSB_LIST_NAME = "assets"
 
     def _create_part_instance(
         self,
         context,
         settings: SoulstructSettings,
         map_stem: str,
-        part: MSB_OBJECT_TYPING,
+        part: MSB_ASSET_TYPING,
         collection: bpy.types.Collection,
     ) -> bpy.types.Object:
-        armature, mesh = get_object_model(self, context, settings, part.model.name)  # NOT map-specific
+        armature, mesh = get_asset_model(self, context, settings, part.model.name)  # NOT map-specific
         part_armature, part_mesh = create_flver_model_instance(context, armature, mesh, part.name, collection)
         msb_entry_to_obj_transform(part, part_armature)
-        part_armature["Draw Parent Name"] = part.draw_parent.name if part.draw_parent else ""
+        # Currently no custom properties managed.
         return part_armature  # return armature to center view on
 
-class ImportMSBObject(BaseImportMSBObject):
-    """Import ALL MSB Object parts and their transforms. Will probably take a long time!"""
-    bl_idname = "import_scene.msb_object_part"
-    bl_label = "Import Object Part"
-    bl_description = "Import FLVER model and MSB transform of selected MSB Object part"
+class ImportMSBAsset(BaseImportMSBAsset):
+    """Import ALL MSB Asset parts and their transforms. Will probably take a long time!"""
+    bl_idname = "import_scene.msb_asset_part"
+    bl_label = "Import Asset Part"
+    bl_description = "Import FLVER model and MSB transform of selected MSB Asset part"
 
-    GAME_ENUM_NAME = "object_part"
+    GAME_ENUM_NAME = "asset_part"
 
     def execute(self, context):
         return self.import_enum_part(context)
 
 
-class ImportAllMSBObjects(BaseImportMSBObject):
-    """Import ALL MSB Object parts and their transforms. Will probably take a long time!"""
-    bl_idname = "import_scene.all_msb_object_parts"
-    bl_label = "Import All Object Parts"
-    bl_description = ("Import FLVER model and MSB transform of every MSB Object part. Very slow, especially when "
+class ImportAllMSBAssets(BaseImportMSBAsset):
+    """Import ALL MSB Asset parts and their transforms. Will probably take a long time!"""
+    bl_idname = "import_scene.all_msb_asset_parts"
+    bl_label = "Import All Asset Parts"
+    bl_description = ("Import FLVER model and MSB transform of every MSB Asset part. Very slow, especially when "
                       "textures are imported (see console output for progress)")
 
     GAME_ENUM_NAME = None

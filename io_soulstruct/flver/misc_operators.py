@@ -6,6 +6,7 @@ __all__ = [
     "DeleteFLVER",
     "DeleteFLVERAndData",
     "CreateFLVERInstance",
+    "DuplicateFLVERModel",
     "RenameFLVER",
     "CreateEmptyMapPieceFLVER",
     "SelectDisplayMaskID",
@@ -33,10 +34,11 @@ from mathutils import Matrix, Vector, Quaternion
 
 from soulstruct.base.models.flver import Material
 
+from io_soulstruct.exceptions import FLVERError
 from io_soulstruct.utilities.operators import LoggingOperator
 from io_soulstruct.utilities.bpy_data import *
 from io_soulstruct.msb.msb_import.core import create_flver_model_instance
-from .utilities import FLVERError, parse_flver_obj, parse_dummy_name, get_selected_flvers
+from .utilities import *
 
 
 _MASK_ID_STRINGS = []
@@ -286,11 +288,182 @@ class CreateFLVERInstance(LoggingOperator):
         return {"FINISHED"}
 
 
+class DuplicateFLVERModel(LoggingOperator):
+
+    bl_idname = "object.duplicate_flver_model"
+    bl_label = "Duplicate to New FLVER Model"
+    bl_description = (
+        "Duplicate model of selected FLVER to a new model with given name (or text before first underscore in FLVER "
+        "instance name). Selected FLVER must be an 'instance' FLVER with a custom 'Model Name' property pointing to "
+        "its source model object. Bone poses will also be copied if new model name starts with 'm' (Map Piece). Must "
+        "be in Object Mode"
+    )
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == "OBJECT" and context.active_object and context.active_object.type in {"ARMATURE", "MESH"}
+
+    def execute(self, context):
+        if not self.poll(context):
+            return self.error("Must select a Mesh in Object Mode.")
+
+        instance_mesh, instance_armature = parse_flver_obj(context.active_object)
+        instance_name = instance_armature.name if instance_armature else instance_mesh.name
+
+        tool_settings = context.scene.flver_tool_settings  # type: FLVERToolSettings
+        if not tool_settings.new_flver_model_name:
+            new_model_name = instance_name.split("_")[0]
+            self.info(f"No name for new model specified. Using prefix of FLVER instance name: '{new_model_name}'")
+        else:
+            new_model_name = tool_settings.new_flver_model_name
+
+        # Check that name is available.
+        if new_model_name in bpy.data.objects:
+            if instance_armature is None:
+                return self.error(
+                    f"Object with name '{new_model_name}' already exists. Please choose a unique name for new FLVER "
+                    f"model's Mesh."
+                )
+            else:
+                return self.error(
+                    f"Object with name '{new_model_name}' already exists. Please choose a unique name for new FLVER "
+                    f"model's Armature."
+                )
+        if instance_armature is not None and f"{new_model_name} Mesh" in bpy.data.objects:
+            return self.error(
+                f"Object with name '{new_model_name} Mesh' already exists. Please choose a unique name for new FLVER "
+                f"model's Mesh."
+            )
+
+        try:
+            source_model_name = (instance_armature or instance_mesh)["Model Name"]
+        except KeyError:
+            return self.error(
+                f"Selected FLVER '{instance_name}' does not have a 'Model Name' custom property, suggesting it is "
+                f"not a model instance. Please select a FLVER instance with this property rather than the base model."
+            )
+
+        # Find model.
+        try:
+            source_flver_model = bpy.data.objects[source_model_name]
+        except KeyError:
+            return self.error(
+                f"FLVER mesh '{instance_name}' has 'Model Name' property set to non-existent object "
+                f"{source_model_name}'. Cannot find FLVER model to duplicate."
+            )
+        # Find all collections containing source model.
+        source_collections = source_flver_model.users_collection
+
+        model_mesh, model_armature = parse_flver_obj(source_flver_model)
+
+        self.info(f"Creating new FLVER model '{new_model_name}' from '{source_model_name}'.")
+
+        new_mesh_obj = new_mesh_object(
+            f"{new_model_name} Mesh" if model_armature else new_model_name,
+            model_mesh.data.copy(),
+            props=model_mesh,
+        )
+        new_mesh_obj.data.name = f"{new_model_name} Mesh"  # suffix handled automatically by Blender
+        for collection in source_collections:
+            collection.objects.link(new_mesh_obj)
+
+        # Duplicate and rename mesh materials.
+        for i, mat in enumerate(tuple(new_mesh_obj.data.materials)):
+            new_mat = mat.copy()
+            new_mat.name = replace_name_model(mat.name, source_model_name, new_model_name)
+            new_mesh_obj.data.materials[i] = new_mat
+
+        new_armature_obj = None
+        if model_armature:
+            new_armature_obj = new_armature_object(
+                new_model_name,
+                data=model_armature.data.copy(),
+                props=model_armature,
+            )
+            for collection in source_collections:
+                collection.objects.link(new_armature_obj)
+            new_armature_obj.data.name = f"{new_model_name} Armature"  # suffix handled automatically by Blender
+            # Other properties already copied over above.
+            context.view_layer.objects.active = new_armature_obj
+
+            if new_model_name.startswith("m"):
+                # Copy pose bone transforms for auto-detected Map Piece.
+                context.view_layer.update()  # need Blender to create `linked_armature_obj.pose` now
+                for pose_bone in model_armature.pose.bones:
+                    source_bone = model_armature.pose.bones[pose_bone.name]
+                    pose_bone.rotation_mode = "QUATERNION"  # should be default but being explicit
+                    pose_bone.location = source_bone.location
+                    pose_bone.rotation_quaternion = source_bone.rotation_quaternion
+                    pose_bone.scale = source_bone.scale
+
+            # Now rename bones and vertex groups.
+            bone_renaming = {}
+            for bone in new_armature_obj.data.bones:
+                old_bone_name = bone.name
+                # If there is only one bone, we set its name to the model name manually, as they can be outdated.
+                if len(new_armature_obj.pose.bones) == 1:
+                    new_bone_name = new_model_name
+                else:
+                    new_bone_name = replace_name_model(bone.name, source_model_name, new_model_name)
+                bone_renaming[old_bone_name] = bone.name = new_bone_name
+            for vertex_group in new_mesh_obj.vertex_groups:
+                if vertex_group.name in bone_renaming:
+                    vertex_group.name = bone_renaming[vertex_group.name]
+
+            new_mesh_obj.parent = new_armature_obj
+            if bpy.ops.object.select_all.poll():
+                bpy.ops.object.select_all(action="DESELECT")
+            new_mesh_obj.select_set(True)
+            context.view_layer.objects.active = new_mesh_obj
+            bpy.ops.object.modifier_add(type="ARMATURE")
+            armature_mod = new_mesh_obj.modifiers["Armature"]
+            armature_mod.object = new_armature_obj
+            armature_mod.show_in_editmode = True
+            armature_mod.show_on_cage = True
+
+        # New model created successfully. Now we update the instance to refer to it, and use its name.
+        # The instance name may just be part of the full model name, so we find the overlap and update from that.
+        # Get prefix that overlaps with old model name (e.g. 'm2000B0_0000_SUFFIX' * 'm2000B0A10' = 'm2000B0').
+        old_instance_prefix = new_instance_prefix = ""
+        for i, (a, b) in enumerate(zip(instance_name, source_model_name)):
+            if a != b:
+                old_instance_prefix = instance_name[:i]
+                new_instance_prefix = new_model_name[:i]  # take same length prefix from new model name
+                break
+
+        instance_mesh.data = new_mesh_obj.data
+        if old_instance_prefix:
+            instance_mesh.name = replace_name_model(instance_mesh.name, old_instance_prefix, new_instance_prefix)
+        if instance_armature:
+            # Model reference stored on instance Armature.
+            if new_armature_obj:
+                instance_armature.data = new_armature_obj.data
+                instance_armature["Model Name"] = new_model_name  # name of model Armature or Mesh
+                if old_instance_prefix:
+                    instance_armature.name = replace_name_model(
+                        instance_armature.name, old_instance_prefix, new_instance_prefix
+                    )
+            else:
+                self.warning(
+                    f"FLVER instance '{instance_armature.name}' has an Armature, but model does not. Keeping Model "
+                    f"Name reference on instance Mesh."
+                )
+                instance_mesh["Model Name"] = new_model_name  # name of model Armature or Mesh
+        else:
+            # Model reference stored on instance Mesh (no Armature).
+            instance_mesh["Model Name"] = new_model_name  # name of model Armature or Mesh
+
+        return {"FINISHED"}
+
+
 class RenameFLVER(LoggingOperator):
 
     bl_idname = "object.rename_flver"
     bl_label = "Rename FLVER"
-    bl_description = "Rename all occurrences of model name in the selected FLVER model. Must be in Object Mode"
+    bl_description = (
+        "Rename all occurrences of model name in the selected FLVER model. Automatically removes Blender duplicate "
+        "name suffixes like '.001'. Must be in Object Mode"
+    )
 
     @classmethod
     def poll(cls, context):
@@ -308,25 +481,7 @@ class RenameFLVER(LoggingOperator):
         old_name = armature.name if armature else mesh.name
         new_name = tool_settings.new_flver_model_name
 
-        def rename(name: str):
-            if name.startswith(old_name):
-                return f"{new_name}{name.removeprefix(old_name)}"
-            return name
-
-        mesh.name = rename(mesh.name)
-        mesh.data.name = rename(mesh.data.name)
-        for mat in mesh.data.materials:
-            mat.name = rename(mat.name)
-        if armature:
-            armature.name = rename(armature.name)
-            armature.data.name = rename(armature.data.name)
-            for bone in armature.data.bones:
-                bone.name = rename(bone.name)
-            dummy_prefix = f"{old_name} Dummy"
-            for child in armature.children:
-                if child.type == "EMPTY" and child.name.startswith(dummy_prefix):
-                    child.name = rename(child.name)
-                    child["Parent Bone Name"] = rename(child["Parent Bone Name"])
+        rename_flver(armature, mesh, old_name, new_name, strip_dupe_suffix=True)
 
         return {"FINISHED"}
 

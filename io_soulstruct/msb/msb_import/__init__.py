@@ -13,6 +13,12 @@ __all__ = [
     "ImportMSBCharacter",
     "ImportAllMSBCharacters",
 
+    "ImportMSBObject",
+    "ImportAllMSBObjects",
+
+    "ImportMSBAsset",
+    "ImportAllMSBAssets",
+
     "ImportMSBPoint",
     "ImportMSBVolume",
     "ImportAllMSBPoints",
@@ -21,10 +27,13 @@ __all__ = [
     "MSBImportPanel",
 ]
 
+from io_soulstruct.general.core import SoulstructSettings
 from .map_pieces import *
 from .collisions import *
 from .navmeshes import *
 from .characters import *
+from .objects import *
+from .assets import *
 from .regions import *
 from .settings import *
 
@@ -41,6 +50,9 @@ class MSBImportPanel(bpy.types.Panel):
     bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
+
+        ss_settings = context.scene.soulstruct_settings  # type: SoulstructSettings
+
         msb_settings_box = self.layout.box()
         msb_settings_box.label(text="MSB Import Settings")
         msb_settings_box.prop(context.scene.msb_import_settings, "entry_name_match")
@@ -79,6 +91,17 @@ class MSBImportPanel(bpy.types.Panel):
         character_box.prop(context.scene.soulstruct_game_enums, "character_part", text="Character")
         character_box.operator(ImportMSBCharacter.bl_idname)
         character_box.operator(ImportAllMSBCharacters.bl_idname)  # uses confirmation dialog
+
+        if ss_settings.is_game("ELDEN_RING"):
+            asset_box = self.layout.box()
+            asset_box.prop(context.scene.soulstruct_game_enums, "asset_part", text="Asset")
+            asset_box.operator(ImportMSBAsset.bl_idname)
+            asset_box.operator(ImportAllMSBAssets.bl_idname)  # uses confirmation dialog
+        else:
+            object_box = self.layout.box()
+            object_box.prop(context.scene.soulstruct_game_enums, "object_part", text="Object")
+            object_box.operator(ImportMSBObject.bl_idname)
+            object_box.operator(ImportAllMSBObjects.bl_idname)  # uses confirmation dialog
 
         region_box = self.layout.box()
         region_box.prop(context.scene.soulstruct_game_enums, "point_region", text="Point")

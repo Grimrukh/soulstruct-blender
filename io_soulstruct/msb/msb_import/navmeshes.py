@@ -125,7 +125,6 @@ class BaseImportMSBNavmesh(BaseImportMSBPart):
         map_stem: str,
         part: MSBNavmesh,
         collection: bpy.types.Collection,
-        mtdbnd: MTDBND | None = None,
     ) -> bpy.types.Object:
         model_name = part.model.get_model_file_stem(map_stem)
         nvm_model = get_navmesh_model(self, context, settings, map_stem, model_name)

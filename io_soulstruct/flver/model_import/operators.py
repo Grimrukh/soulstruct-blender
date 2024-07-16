@@ -81,6 +81,7 @@ class BaseFLVERImportOperator(LoggingImportOperator):
                     for flver in binder_flvers:
                         self.find_extra_textures(source_path, flver, texture_manager)
                 for flver in binder_flvers:
+                    # TODO: Sekiro does NOT use MATBIN, so this test needs to change.
                     if flver.version == Version.Sekiro_EldenRing:
                         use_matbinbnd = True
                     flvers.append((flver.path.name.split(".")[0], flver))

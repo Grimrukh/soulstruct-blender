@@ -8,6 +8,7 @@ import traceback
 import typing as tp
 from pathlib import Path
 
+from io_soulstruct.exceptions import *
 from io_soulstruct.general.cached import get_cached_file
 from io_soulstruct.utilities import *
 from io_soulstruct.flver.model_export import FLVERExporter, FLVERExportSettings
@@ -62,7 +63,7 @@ class ExportMSBMapPieces(LoggingOperator):
 
         self.to_object_mode()
         if msb_export_settings.export_model_files:
-            exporter = FLVERExporter(self, context, settings, settings.get_mtdbnd(self))
+            exporter = FLVERExporter(self, context, settings)
         else:
             exporter = None
 

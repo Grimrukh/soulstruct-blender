@@ -16,23 +16,21 @@ from mathutils import Vector, Matrix
 
 from soulstruct.base.models.flver import FLVER, FLVERBone, FLVERBoneUsageFlags, Dummy, Material
 from soulstruct.base.models.flver.mesh_tools import MergedMesh
-from soulstruct.base.models.flver.shaders import MatDef, MatDefError
+from soulstruct.base.models.shaders import MatDef, MatDefError
 from soulstruct.containers.tpf import TPFTexture, batch_get_tpf_texture_png_data
 from soulstruct.games import *
 from soulstruct.utilities.maths import Vector3
-from soulstruct.darksouls1ptde.models.shaders import MatDef as PTDE_MatDef
-from soulstruct.darksouls1r.models.shaders import MatDef as DS1R_MatDef
-from soulstruct.bloodborne.models.shaders import MatDef as BB_MatDef
-from soulstruct.eldenring.models.shaders import MatDef as ER_MatDef
 
-from io_soulstruct.utilities import *
+from io_soulstruct.exceptions import *
 from io_soulstruct.flver.materials import *
 from io_soulstruct.flver.textures.import_textures import TextureImportManager, import_png_as_image
 from io_soulstruct.flver.utilities import *
+from io_soulstruct.general.game_config import GAME_CONFIG
+from io_soulstruct.utilities import *
 
 if tp.TYPE_CHECKING:
     from soulstruct.base.models.matbin import MATBINBND
-    from soulstruct.base.models.mtd import MTDBND as BaseMTDBND
+    from soulstruct.base.models.mtd import MTDBND
     from io_soulstruct.general import SoulstructSettings
     from .settings import FLVERImportSettings
 
@@ -44,14 +42,19 @@ class FLVERImporter:
     Call `import_flver()` to import a single FLVER file.
     """
 
+    # These are cached per-game on first load, which also preserves lazily loaded MATBINs. They can be cleared with
+    # `FLVERExporter.clear_matdef_caches()`.
+    _CACHED_MTDBNDS: tp.ClassVar[dict[Game, MTDBND]] = {}
+    _CACHED_MATBINBNDS: tp.ClassVar[dict[Game, MATBINBND]] = {}
+
     operator: LoggingOperator
     context: bpy.types.Context
     settings: SoulstructSettings
     texture_import_manager: TextureImportManager | None = None
     collection: bpy.types.Collection | None = None
 
-    # Loaded from `settings` if not given.
-    mtdbnd: BaseMTDBND | None = None
+    # Loaded from `settings` if not given, unless already cached.
+    mtdbnd: MTDBND | None = None
     matbinbnd: MATBINBND | None = None
 
     # Per-FLVER settings.
@@ -64,10 +67,13 @@ class FLVERImporter:
 
     def __post_init__(self):
         if self.mtdbnd is None and not self.settings.is_game(ELDEN_RING):
-            self.mtdbnd = self.settings.get_mtdbnd(self.operator)
-
+            if self.settings.game not in self._CACHED_MTDBNDS:
+                self._CACHED_MTDBNDS[self.settings.game] = self.settings.get_mtdbnd(self.operator)
+            self.mtdbnd = self._CACHED_MTDBNDS[self.settings.game]
         if self.matbinbnd is None and self.settings.is_game(ELDEN_RING):
-            self.matbinbnd = self.settings.get_matbinbnd(self.operator)
+            if self.settings.game not in self._CACHED_MATBINBNDS:
+                self._CACHED_MATBINBNDS[self.settings.game] = self.settings.get_matbinbnd(self.operator)
+            self.matbinbnd = self._CACHED_MATBINBNDS[self.settings.game]
 
         if self.collection is None:
             self.collection = self.context.scene.collection
@@ -210,25 +216,21 @@ class FLVERImporter:
 
             # Try to look up material info from MTD or MATBIN (Elden Ring).
             try:
-                if self.settings.is_game(DARK_SOULS_PTDE):
-                    matdef = PTDE_MatDef.from_mtdbnd_or_name(submesh.material.mat_def_name, self.mtdbnd)
-                elif self.settings.is_game(DARK_SOULS_DSR):
-                    matdef = DS1R_MatDef.from_mtdbnd_or_name(submesh.material.mat_def_name, self.mtdbnd)
-                elif self.settings.is_game(BLOODBORNE):
-                    matdef = BB_MatDef.from_mtdbnd_or_name(submesh.material.mat_def_name, self.mtdbnd)
-                elif self.settings.is_game(ELDEN_RING):
-                    matdef = ER_MatDef.from_matbinbnd_or_name(submesh.material.mat_def_name, self.matbinbnd)
-                else:
-                    self.warning(f"FLVER material shader creation not implemented for game {self.settings.game.name}.")
-                    matdef = None
+                matdef_class = self.settings.get_game_matdef_class()
+            except UnsupportedGameError:
+                self.warning(f"FLVER material shader creation not implemented for game {self.settings.game.name}.")
+                matdef = None
             except MatDefError as ex:
                 self.warning(
                     f"Could not create `MatDef` for game material '{submesh.material.mat_def_name}'. Error:\n"
                     f"    {ex}"
                 )
-                import traceback
-                traceback.print_exc()
                 matdef = None
+            else:
+                if GAME_CONFIG[self.settings.game].uses_matbin:
+                    matdef = matdef_class.from_matbinbnd_or_name(submesh.material.mat_def_name, self.matbinbnd)
+                else:
+                    matdef = matdef_class.from_mtdbnd_or_name(submesh.material.mat_def_name, self.mtdbnd)
 
             flver_matdefs[material_hash] = matdef
 
@@ -913,3 +915,8 @@ class FLVERImporter:
 
     def warning(self, msg: str):
         self.operator.warning(msg)
+
+    @classmethod
+    def clear_matdef_caches(cls):
+        cls._CACHED_MTDBNDS.clear()
+        cls._CACHED_MATBINBNDS.clear()

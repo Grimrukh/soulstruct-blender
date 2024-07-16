@@ -22,9 +22,11 @@ from soulstruct.dcx import DCXType
 from soulstruct.games import *
 from soulstruct.utilities.files import read_json, write_json, create_bak
 
+from io_soulstruct.exceptions import *
 from io_soulstruct.utilities.misc import CachedEnumItems, is_path_and_file, is_path_and_dir, get_collection_map_stem
 
 if tp.TYPE_CHECKING:
+    from soulstruct.base.models.shaders import MatDef
     from io_soulstruct.type_checking import MSB_TYPING
     from io_soulstruct.utilities import LoggingOperator
 
@@ -897,7 +899,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):
     def get_map_stem_for_export(self, obj: bpy.types.Object = None, oldest=False, latest=False) -> str:
         """Get map stem for export based on `obj` name, or fall back to settings map stem."""
         if oldest and latest:
-            raise ValueError("Cannot specify both `oldest` and `latest` as True.")
+            raise ValueError("Cannot specify both `oldest` and `latest` as True when getting map stem for export.")
         if obj and self.detect_map_from_collection:
             map_stem = get_collection_map_stem(obj)
         else:
@@ -914,7 +916,15 @@ class SoulstructSettings(bpy.types.PropertyGroup):
             return self.game.from_game_submodule_import("maps.msb", "MSB")
         except ImportError:
             # TODO: Specific exception type?
-            raise ValueError(f"Game {self.game} does not have an MSB class in Soulstruct.")
+            raise UnsupportedGameError(f"Game {self.game} does not have an MSB class in Soulstruct.")
+
+    def get_game_matdef_class(self) -> type[MatDef]:
+        """Get the `MatDef` class associated with the selected game."""
+        try:
+            return self.game.from_game_submodule_import("models.shaders", "MatDef")
+        except ImportError:
+            # TODO: Specific exception type?
+            raise UnsupportedGameError(f"Game {self.game} does not have a MatDef class in Soulstruct.")
 
     def resolve_dcx_type(self, dcx_type_name: str, class_name: str) -> DCXType:
         """Get DCX type associated with `class_name` for selected game.

@@ -22,6 +22,7 @@ from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
 from soulstruct.dcx import DCXType
 from soulstruct.games import *
 
+from io_soulstruct.exceptions import *
 from io_soulstruct.general import *
 from io_soulstruct.utilities import *
 from io_soulstruct.flver.textures.export_textures import *
@@ -84,7 +85,7 @@ class ExportStandaloneFLVER(LoggingOperator, ExportHelper):
 
         flver_file_path = Path(self.filepath)  # set by user
         self.to_object_mode()
-        exporter = FLVERExporter(self, context, settings, settings.get_mtdbnd(self))
+        exporter = FLVERExporter(self, context, settings)
 
         # NOTE: As the exported FLVER model stem may differ from the Blender object, we need to pass both to the
         # exporter. The exported name is used to create a default bone (the only place in the FLVER file where the model
@@ -224,7 +225,7 @@ class ExportFLVERIntoBinder(LoggingOperator, ExportHelper):
             else:
                 flver_entry = flver_entries[0]
 
-        exporter = FLVERExporter(self, context, settings, settings.get_mtdbnd(self))
+        exporter = FLVERExporter(self, context, settings)
 
         try:
             flver = exporter.export_flver(
@@ -378,7 +379,7 @@ class BaseGameFLVERBinderExportOperator(LoggingOperator):
         binder = binder_class.from_path(binder_path)
 
         self.to_object_mode()
-        exporter = FLVERExporter(self, context, settings, settings.get_mtdbnd(self))
+        exporter = FLVERExporter(self, context, settings)
         try:
             flver = exporter.export_flver(
                 mesh, armature, model_stem, dummy_prefix_must_match=True, default_bone_name=""
@@ -612,7 +613,7 @@ class ExportObjectFLVER(BaseGameFLVERBinderExportOperator):
     def poll(cls, context):
         """Must select an Armature parent for an object FLVER. No chance of a default skeleton!
 
-        Name of character must also start with 'o'.
+        Name of model must also start with 'o'.
         """
         return (
             cls.settings(context).can_auto_export
@@ -630,6 +631,48 @@ class ExportObjectFLVER(BaseGameFLVERBinderExportOperator):
                 settings,
                 "obj/{model_stem}.objbnd",
                 settings.game.from_game_submodule_import("models.objbnd", "OBJBND"),
+            )
+        except FLVERExportError as ex:
+            return self.error(str(ex))
+
+        objbnd.flvers[model_stem] = flver
+
+        flver_export_settings = context.scene.flver_export_settings  # type: FLVERExportSettings
+        if flver_export_settings.export_textures:
+            # TPF always added to OBJBND.
+            self.export_textures_to_binder_tpf(context, objbnd, exporter.collected_texture_images)
+
+        return settings.export_file(self, objbnd, Path(f"obj/{model_stem}.objbnd"))
+
+
+class ExportAssetFLVER(BaseGameFLVERBinderExportOperator):
+    """Export a single FLVER model from a Blender mesh into same-named GEOMBND in the game directory."""
+    bl_idname = "export_scene.asset_flver"
+    bl_label = "Export Asset"
+    bl_description = "Export a FLVER model file into same-named game GEOMBND (which must exist)"
+
+    @classmethod
+    def poll(cls, context):
+        """Must select an Armature parent for an asset FLVER. No chance of a default skeleton!
+
+        Name of model must also start with 'aeg'.
+        """
+        return (
+            cls.settings(context).can_auto_export
+            and len(context.selected_objects) == 1
+            and cls.is_armature_or_mesh_with_arma_parent(context.selected_objects[0])
+            and context.selected_objects[0].name.lower().startswith("aeg")
+        )
+
+    def execute(self, context):
+        settings = self.settings(context)
+
+        try:
+            model_stem, objbnd, flver, exporter = self.get_binder_and_flver(
+                context,
+                settings,
+                "asset/{model_stem}.objbnd",
+                settings.game.from_game_submodule_import("models.geombnd", "GEOMBND"),
             )
         except FLVERExportError as ex:
             return self.error(str(ex))
