@@ -6,7 +6,6 @@ import traceback
 from pathlib import Path
 
 import bpy
-from bpy.props import StringProperty, BoolProperty
 from bpy_extras.io_utils import ExportHelper
 
 from soulstruct.dcx import DCXType
@@ -14,9 +13,10 @@ from soulstruct.darksouls1r.maps import MSB
 from soulstruct.darksouls1r.maps.navmesh.mcg import MCG, MCGNode, MCGEdge
 from soulstruct.darksouls1r.maps.navmesh.mcp import MCP
 from soulstruct.games import DARK_SOULS_DSR
+from soulstruct.utilities.text import natural_keys
 
+from io_soulstruct.exceptions import NavGraphExportError
 from io_soulstruct.utilities import *
-from .utilities import MCGExportError
 
 
 class ExportMCG(LoggingOperator, ExportHelper):
@@ -30,7 +30,7 @@ class ExportMCG(LoggingOperator, ExportHelper):
 
     filename_ext = ".mcg"
 
-    filter_glob: StringProperty(
+    filter_glob: bpy.props.StringProperty(
         default="*.mcg;*.mcg.dcx",
         options={'HIDDEN'},
         maxlen=255,  # Max internal buffer length, longer would be clamped.
@@ -38,19 +38,19 @@ class ExportMCG(LoggingOperator, ExportHelper):
 
     dcx_type: get_dcx_enum_property(DCXType.Null)  # no compression in DS1
 
-    auto_generate_mcp: BoolProperty(
+    auto_generate_mcp: bpy.props.BoolProperty(
         name="Auto-generate MCP",
         description="Auto-generate MCP file from new MCG and existing MSB and NVMBND",
         default=True,
     )
 
-    custom_msb_path: StringProperty(
+    custom_msb_path: bpy.props.StringProperty(
         name="Custom MSB Path",
         description="Custom MSB path to use for MCG export and auto-generated MCP. Leave blank to auto-find",
         default="",
     )
 
-    custom_nvmbnd_path: StringProperty(
+    custom_nvmbnd_path: bpy.props.StringProperty(
         name="Custom NVMBND Path",
         description="Custom NVMBND path to use for auto-generated MCP. Leave blank to auto-find",
         default="",
@@ -329,7 +329,7 @@ class MCGExporter:
                 node_name = bl_node.name.split("<")[0].strip()  # ignore dead end suffix
                 node_dict[node_name] = i
             else:
-                raise MCGExportError(f"Node '{bl_node.name}' does not start with '{node_prefix}'.")
+                raise NavGraphExportError(f"Node '{bl_node.name}' does not start with '{node_prefix}'.")
 
         # List of all created nodes in the order they will be written in the file.
         nodes = []  # type: list[MCGNode]
@@ -343,38 +343,32 @@ class MCGExporter:
         for bl_node in bl_nodes:
             node = MCGNode(
                 translate=BL_TO_GAME_VECTOR3(bl_node.location),
-                unknown_offset=get_bl_prop(bl_node, "Unk Offset", int, default=0),
+                unknown_offset=bl_node.mcg_node_props.unknown_offset,
+                dead_end_navmesh_index=-1,  # may be set below
             )
-
-            # Check dead end navmesh. Property is optional; absent implies no dead end, so both Navmesh A and Navmesh B
-            # must be defined below. Otherwise, if a dead end navmesh is given, only Navmesh A must be defined.
-            if dead_end_navmesh_name := get_bl_prop(bl_node, "Dead End Navmesh Name", str, default=""):
-                try:
-                    node.dead_end_navmesh_index = navmesh_part_indices[dead_end_navmesh_name]
-                except KeyError:
-                    raise MCGExportError(
-                        f"Cannot find '{bl_node.name}' dead end navmesh: {dead_end_navmesh_name}"
-                    )
-            else:
-                node.dead_end_navmesh_index = -1
 
             node_navmesh_info = {}
 
             # Get navmesh A (must ALWAYS be present).
-            navmesh_a_name = get_bl_prop(bl_node, f"Navmesh A Name", str)
-            navmesh_a_triangles = get_bl_prop(bl_node, f"Navmesh A Triangles", tuple, callback=list)
+            if bl_node.mcg_node_props.navmesh_a is None:
+                raise NavGraphExportError(f"Node '{bl_node.name}' does not have Navmesh A set.")
+            navmesh_a_name = bl_node.mcg_node_props.navmesh_a.name  # type: str
+            navmesh_a_triangles = [triangle.index for triangle in bl_node.mcg_node_props.navmesh_a_triangles]
             node_navmesh_info[navmesh_a_name] = navmesh_a_triangles
             navmesh_nodes[navmesh_a_name].append(node)
 
-            # LEGACY: Get dead end navmesh name.
-            navmesh_b_name = get_bl_prop(bl_node, "Dead End Navmesh Name", str, default="")
-            if navmesh_b_name:
-                navmesh_b_triangles = []  # dead end
-            else:
-                navmesh_b_name = get_bl_prop(bl_node, f"Navmesh B Name", str)
-                navmesh_b_triangles = get_bl_prop(bl_node, f"Navmesh B Triangles", tuple, callback=list)
+            if bl_node.mcg_node_props.navmesh_b is None:
+                raise NavGraphExportError(f"Node '{bl_node.name}' does not have Navmesh B set.")
+            navmesh_b_name = bl_node.mcg_node_props.navmesh_b.name  # type: str
+            navmesh_b_triangles = [triangle.index for triangle in bl_node.mcg_node_props.navmesh_b_triangles]
             node_navmesh_info[navmesh_b_name] = navmesh_b_triangles
             navmesh_nodes[navmesh_b_name].append(node)
+
+            if not navmesh_a_triangles and not navmesh_b_triangles:
+                raise NavGraphExportError(
+                    f"Node '{bl_node.name}' does not have any triangles set for Navmesh A or B. One of them is "
+                    f"permitted to be missing, if that navmesh is a dead end, but not both."
+                )
 
             nodes.append(node)
             node_navmesh_triangles.append(node_navmesh_info)
@@ -382,9 +376,12 @@ class MCGExporter:
         # Check for dead ends.
         for navmesh_name, nodes_with_navmesh in navmesh_nodes.items():
             if len(nodes_with_navmesh) == 1:
+                # NOTE: We don't check if/what triangles were set here, as the user may want to shuffle around navmeshes
+                # and change which ones are dead ends without removing the indices.
                 node = nodes_with_navmesh[0]
                 if node.dead_end_navmesh_index != -1:
-                    raise MCGExportError(
+                    # Already set from another navmesh!
+                    raise NavGraphExportError(
                         f"Node '{node.name}' is apparently connected to multiple dead-end navmeshes, which is not "
                         f"allowed. You must fix your navmesh graph in Blender first."
                     )
@@ -396,29 +393,33 @@ class MCGExporter:
         for i, bl_edge in enumerate(bl_edges):
             edge = MCGEdge(
                 map_id=map_id,
-                cost=get_bl_prop(bl_edge, "Cost", float),
+                cost=bl_edge.mcg_edge_props.cost,
             )
-            navmesh_name = get_bl_prop(bl_edge, "Navmesh Name", str)
+            edge_navmesh = bl_edge.mcg_edge_props.navmesh_part
+            if not edge_navmesh:
+                raise NavGraphExportError(f"Edge '{bl_edge.name}' does not have a Navmesh Part set.")
             try:
-                navmesh_index = navmesh_part_indices[navmesh_name]
+                navmesh_index = navmesh_part_indices[edge_navmesh.name]
             except KeyError:
-                raise MCGExportError(f"Cannot find '{bl_edge.name}' navmesh: {navmesh_name}")
+                raise NavGraphExportError(
+                    f"Cannot get MSB index of MCG edge's referenced Navmesh Part: {edge_navmesh.name}"
+                )
             edge.navmesh_index = navmesh_index
 
-            node_a_name = get_bl_prop(bl_edge, "Node A", str)
-            if node_a_name.startswith("Node"):
-                node_a_name = f"{map_stem} {node_a_name}"  # legacy
-            node_b_name = get_bl_prop(bl_edge, "Node B", str)
-            if node_b_name.startswith("Node"):
-                node_b_name = f"{map_stem} {node_b_name}"  # legacy
+            bl_node_a = bl_edge.mcg_edge_props.node_a
+            if not bl_node_a:
+                raise NavGraphExportError(f"Edge '{bl_edge.name}' does not have a Node A set.")
+            bl_node_b = bl_edge.mcg_edge_props.node_b
+            if not bl_node_b:
+                raise NavGraphExportError(f"Edge '{bl_edge.name}' does not have a Node B set.")
             try:
-                node_a_index = node_dict[node_a_name]
+                node_a_index = node_dict[bl_node_a.name]
             except KeyError:
-                raise MCGExportError(f"Cannot find '{bl_edge.name}' start node: '{node_a_name}'")
+                raise NavGraphExportError(f"Cannot get node index of '{bl_edge.name}' start node: '{bl_node_a.name}'")
             try:
-                node_b_index = node_dict[node_b_name]
+                node_b_index = node_dict[bl_node_b.name]
             except KeyError:
-                raise MCGExportError(f"Cannot find '{bl_edge.name}' end node: '{node_b_name}'")
+                raise NavGraphExportError(f"Cannot get node index of '{bl_edge.name}' end node: '{bl_node_b.name}'")
 
             node_a = nodes[node_a_index]
             node_b = nodes[node_b_index]
@@ -430,18 +431,18 @@ class MCGExporter:
             node_b.connected_edges.append(edge)
 
             try:
-                edge.node_a_triangles = node_navmesh_triangles[node_a_index][navmesh_name]
+                edge.node_a_triangles = node_navmesh_triangles[node_a_index][edge_navmesh.name]
             except KeyError:
-                raise MCGExportError(
-                    f"Node {node_a_name} does not specify triangles for navmesh {navmesh_name} (edge {bl_edge.name}). "
-                    "You must fix your navmeshes and navmesh graph in Blender first."
+                raise NavGraphExportError(
+                    f"Node {bl_node_a.name} does not specify triangles for navmesh {edge_navmesh.name} "
+                    f"(edge {bl_edge.name}). You must fix your navmeshes and navmesh graph in Blender first."
                 )
             try:
-                edge.node_b_triangles = node_navmesh_triangles[node_b_index][navmesh_name]
+                edge.node_b_triangles = node_navmesh_triangles[node_b_index][edge_navmesh.name]
             except KeyError:
-                raise MCGExportError(
-                    f"Node {node_b_name} does not specify triangles for navmesh {navmesh_name} (edge {bl_edge.name}). "
-                    "You must fix your navmeshes and navmesh graph in Blender first."
+                raise NavGraphExportError(
+                    f"Node {bl_node_b.name} does not specify triangles for navmesh {edge_navmesh.name} "
+                    f"(edge {bl_edge.name}). You must fix your navmeshes and navmesh graph in Blender first."
                 )
 
             edges.append(edge)

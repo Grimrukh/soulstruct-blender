@@ -16,6 +16,13 @@ class FLVERImportSettings(bpy.types.PropertyGroup):
         default=True,
     )
 
+    omit_default_bone: bpy.props.BoolProperty(
+        name="Omit Default Bone",
+        description="If imported FLVER has a single default bone (e.g. standard Map Pieces), do not create an "
+                    "Armature object for it, and instead make the Mesh the root FLVER object",
+        default=True,
+    )
+
     material_blend_mode: bpy.props.EnumProperty(
         name="Alpha Blend Mode",
         description="Alpha mode to use for new single-texture FLVER materials",

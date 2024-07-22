@@ -208,20 +208,12 @@ def draw_mcg_edges():
     node_b_triangles_coords = []
     selected_node_a = selected_node_b = None
     for edge in edge_parent.children:
-        try:
-            node_a_name = edge["Node A"]
-            if node_a_name.startswith("Node"):
-                node_a_name = f"{map_stem} {node_a_name}"
-            node_b_name = edge["Node B"]
-            if node_b_name.startswith("Node"):
-                node_b_name = f"{map_stem} {node_b_name}"
-        except KeyError:
-            continue  # Edge is not properly configured (can't find node names)
-
-        node_a = node_objects.get(node_a_name)
-        node_b = node_objects.get(node_b_name)
+        edge: bpy.types.Object
+        node_a = edge.mcg_edge_props.node_a  # type: bpy.types.Object
+        node_b = edge.mcg_edge_props.node_b  # type: bpy.types.Object
         if node_a is None or node_b is None:
-            continue  # edge is not properly configured (can't find nodes)
+            # Cannot draw edge.
+            continue
 
         if (
             settings.mcg_graph_draw_selected_nodes_only
@@ -242,34 +234,34 @@ def draw_mcg_edges():
 
         if settings.mcg_edge_triangles_highlight_enabled and bpy.context.active_object == edge:
             # Draw triangles over faces linked to start and end nodes.
-            try:
-                navmesh = bpy.data.objects[edge["Navmesh Name"]]
-            except KeyError:
+            navmesh = edge.mcg_edge_props.navmesh_part
+            if navmesh is None:
                 pass  # can't draw
             else:
-                if node_a["Navmesh A Name"] == navmesh.name:
-                    node_a_triangles = node_a["Navmesh A Triangles"]
-                elif node_a["Navmesh B Name"] == navmesh.name:
-                    node_a_triangles = node_a["Navmesh B Triangles"]
+                if node_a.mcg_node_props.navmesh_a == navmesh:
+                    node_a_triangles = [tri.index for tri in node_a.mcg_node_props.navmesh_a_triangles]
+                elif node_a.mcg_node_props.navmesh_b == navmesh:
+                    node_a_triangles = [tri.index for tri in node_a.mcg_node_props.navmesh_b_triangles]
                 else:
                     node_a_triangles = []  # can't find
                 for i in node_a_triangles:
                     if i >= len(navmesh.data.polygons):
-                        continue  # invalid
+                        continue  # invalid face index
                     face = navmesh.data.polygons[i]
                     for vert_index in face.vertices:
                         vert = navmesh.data.vertices[vert_index]
                         world_coord = navmesh.matrix_world @ vert.co
                         node_a_triangles_coords.append(world_coord)
-                if node_b["Navmesh A Name"] == navmesh.name:
-                    node_b_triangles = node_b["Navmesh A Triangles"]
-                elif node_b["Navmesh B Name"] == navmesh.name:
-                    node_b_triangles = node_b["Navmesh B Triangles"]
+
+                if node_b.mcg_node_props.navmesh_a == navmesh:
+                    node_b_triangles = [tri.index for tri in node_b.mcg_node_props.navmesh_a_triangles]
+                elif node_b.mcg_node_props.navmesh_b == navmesh:
+                    node_b_triangles = [tri.index for tri in node_b.mcg_node_props.navmesh_b_triangles]
                 else:
                     node_b_triangles = []  # can't find
                 for i in node_b_triangles:
                     if i >= len(navmesh.data.polygons):
-                        continue  # invalid
+                        continue  # invalid face index
                     face = navmesh.data.polygons[i]
                     for vert_index in face.vertices:
                         vert = navmesh.data.vertices[vert_index]
@@ -353,7 +345,7 @@ def draw_mcg_edge_cost_labels():
     except AttributeError:
         blf.size(almost_match_font_id, 18)  # default
     try:
-        blf.color(almost_match_font_id, *bpy.context.scene.mcg_draw_settings.mcg_almost_cost_edge_label_font_color, 1.0)
+        blf.color(almost_match_font_id, *bpy.context.scene.mcg_draw_settings.mcg_almost_same_cost_edge_label_font_color, 1.0)
     except AttributeError:
         blf.color(almost_match_font_id, 1.0, 1.0, 0.7, 1)  # default (yellow)
 
@@ -368,8 +360,9 @@ def draw_mcg_edge_cost_labels():
         blf.color(bad_match_font_id, 1.0, 0.8, 0.8, 1)  # default (red)
 
     for edge in edge_parent.children:
+        edge: bpy.types.Object
         try:
-            cost = edge["Cost"]
+            cost = edge.mcg_edge_props.cost
         except KeyError:
             continue  # edge has no Cost custom property
 

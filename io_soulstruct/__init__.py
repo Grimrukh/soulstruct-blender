@@ -132,12 +132,16 @@ CLASSES = (
     ExportObjectFLVER,
     ExportEquipmentFLVER,
 
+    FLVERObjectProps,
+    FLVERDummyProps,
+    FLVERMaterialProps,
+    FLVERGXItemProps,
+    FLVERBoneProps,
+
     FLVERToolSettings,
     CopyToNewFLVER,
     DeleteFLVER,
     DeleteFLVERAndData,
-    CreateFLVERInstance,
-    DuplicateFLVERModel,
     RenameFLVER,
     CreateEmptyMapPieceFLVER,
     SelectDisplayMaskID,
@@ -256,6 +260,9 @@ CLASSES = (
     RecomputeEdgeCost,
     AutoCreateMCG,
     MCGDrawSettings,
+    NVMFaceIndex,
+    MCGNodeProps,
+    MCGEdgeProps,
     # endregion
 
     # region MSB
@@ -285,9 +292,26 @@ CLASSES = (
     ExportMSBNavmeshes,
     ExportCompleteMapNavigation,
 
+    CreateMSBPart,
+    DuplicateMSBPartModel,
+
+    MSBPartProps,
+    MSBObjectProps,
+    MSBAssetProps,
+    MSBCharacterProps,
+    MSBCollisionProps,
+    MSBNavmeshProps,
+    MSBConnectCollisionProps,
+    MSBRegionProps,
+
     MSBImportPanel,
     MSBExportPanel,
     MSBToolsPanel,
+    MSBPartPanel,
+    MSBObjectPartPanel,
+    MSBCharacterPartPanel,
+    MSBCollisionPartPanel,
+    MSBNavmeshPartPanel,
     MSBRegionPanel,
     # endregion
 )
@@ -330,7 +354,39 @@ SCENE_POINTERS = dict(
 )
 
 
+OBJECT_POINTERS = dict(
+    flver=FLVERObjectProps,
+    flver_dummy=FLVERDummyProps,
+
+    mcg_node_props=MCGNodeProps,
+    mcg_edge_props=MCGEdgeProps,
+
+    msb_part_props=MSBPartProps,
+    msb_object_props=MSBObjectProps,
+    msb_asset_props=MSBAssetProps,
+    msb_character_props=MSBCharacterProps,
+    msb_collision_props=MSBCollisionProps,
+    msb_navmesh_props=MSBNavmeshProps,
+    msb_connect_collision_props=MSBConnectCollisionProps,
+    msb_region_props=MSBRegionProps,
+)
+
+
+MATERIAL_POINTERS = dict(
+    flver_material=FLVERMaterialProps,
+)
+
+
+BONE_POINTERS = dict(
+    flver_bone=FLVERBoneProps,
+)
+
+
 SCENE_ATTRIBUTES = []
+OBJECT_ATTRIBUTES = []
+MATERIAL_ATTRIBUTES = []
+BONE_ATTRIBUTES = []
+
 LOAD_POST_HANDLERS = []
 SPACE_VIEW_3D_HANDLERS = []
 
@@ -356,20 +412,28 @@ def register():
         setattr(bpy.types.Scene, prop_name, bpy.props.PointerProperty(type=prop_type))
         SCENE_ATTRIBUTES.append(prop_name)
 
-    # region Other Type Extensions
-    bpy.types.Object.region_shape = bpy.props.EnumProperty(
+    # region Soulstruct Type Extension
+
+    bpy.types.Object.soulstruct_type = bpy.props.EnumProperty(
+        name="Soulstruct Type",
+        description="Type of Soulstruct object that this Blender Object represents (INTERNAL)",
         items=[
-            ("None", "None", "Not a region object"),
-            ("Point", "Point", "Point with location and rotation only"),
-            # NOTE: 2D region shapes not supported (never used in game AFAIK).
-            ("Sphere", "Sphere", "Volume region defined by radius (max of X/Y/Z scale)"),
-            ("Cylinder", "Cylinder", "Volume region defined by radius (max of X/Y scale) and height (Z scale)"),
-            ("Box", "Box", "Volume region defined by X/Y/Z scale"),
-        ],
-        name="Region Shape",
-        default="None",
+            ("NONE", "None", "Not a Soulstruct typed object"),
+
+            ("FLVER", "FLVER", "FLVER source model (Mesh)"),  # data-block 'owner'; NOT an MSB Part instance object
+            ("DUMMY", "FLVER Dummy", "FLVER dummy object"),
+            # All Materials and Bones have FLVER properties exposed.
+
+            ("MSB_PART", "MSB Part", "MSB part object"),  # NOT a FLVER data-block owner
+            ("MSB_REGION", "MSB Region", "MSB region object"),
+            ("MSB_EVENT", "MSB Event", "MSB event object"),
+        ]
     )
-    # endregion
+    OBJECT_ATTRIBUTES.append("soulstruct_type")
+
+    for prop_name, prop_type in OBJECT_POINTERS.items():
+        setattr(bpy.types.Object, prop_name, bpy.props.PointerProperty(type=prop_type))
+        OBJECT_ATTRIBUTES.append(prop_name)
 
     bpy.app.handlers.load_post.append(load_handler)
     LOAD_POST_HANDLERS.append(load_handler)
@@ -412,8 +476,9 @@ def unregister():
         delattr(bpy.types.Scene, prop_name)
     SCENE_ATTRIBUTES.clear()
 
-    # noinspection PyUnresolvedReferences
-    del bpy.types.Object.region_shape
+    for prop_name in OBJECT_ATTRIBUTES:
+        delattr(bpy.types.Object, prop_name)
+    OBJECT_ATTRIBUTES.clear()
 
     for handler in LOAD_POST_HANDLERS:
         bpy.app.handlers.load_post.remove(handler)

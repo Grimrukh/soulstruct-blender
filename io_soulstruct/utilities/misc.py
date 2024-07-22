@@ -2,16 +2,15 @@ from __future__ import annotations
 
 __all__ = [
     "MAP_STEM_RE",
+    "BLENDER_DUPE_RE",
     "CachedEnumItems",
-    "get_bl_obj_stem",
-    "get_bl_prop",
+    "get_bl_custom_prop",
     "is_uniform",
     "get_collection",
     "is_path_and_file",
     "is_path_and_dir",
     "get_collection_map_stem",
-    "find_model_name",
-    "process_model_name_map_area",
+    "remove_dupe_suffix",
 ]
 
 import math
@@ -26,11 +25,8 @@ from mathutils import Vector
 from soulstruct.containers import Binder
 from soulstruct.utilities.maths import Vector3
 
-if tp.TYPE_CHECKING:
-    from .operators import LoggingOperator
-
-
 MAP_STEM_RE = re.compile(r"^m(?P<area>\d\d)_(?P<block>\d\d)_(?P<cc>\d\d)_(?P<dd>\d\d)$")
+BLENDER_DUPE_RE = re.compile(r"^(.*)\.(\d+)$")
 
 
 @dataclass(slots=True, frozen=True)
@@ -172,12 +168,7 @@ class CachedEnumItems:
         return CachedEnumItems(binder_path_1, binder_path_2, items)
 
 
-def get_bl_obj_stem(bl_obj: bpy.types.Object) -> str:
-    """Get part of name before first period and space."""
-    return bl_obj.name.split(".")[0].split(" ")[0]
-
-
-def get_bl_prop(bl_obj, name: str, prop_type: tp.Type, default=None, callback: tp.Callable = None) -> tp.Any:
+def get_bl_custom_prop(bl_obj, name: str, prop_type: tp.Type, default=None, callback: tp.Callable = None) -> tp.Any:
     """Try to get custom property `name` from Blender object `bl_obj`, with type `prop_type`.
 
     Optional `default` value will be returned if the property is not found (`None` is not a valid default value).
@@ -213,16 +204,14 @@ def is_uniform(vector: Vector | Vector3, rel_tol: float):
 def get_collection(
     name: str,
     parent_collection: bpy.types.Collection = None,
-    hide_viewport: bool = False,
 ) -> bpy.types.Collection:
-    """Find or create collection `name`. If created, optionally hides collection in viewport (globally) as well."""
+    """Find or create collection `name`."""
     try:
         return bpy.data.collections[name]
     except KeyError:
         collection = bpy.data.collections.new(name)
         if parent_collection:
             parent_collection.children.link(collection)
-        # TODO: `hide_viewport` breaks import, as we can't enter Edit Mode.
         return collection
 
 
@@ -255,47 +244,6 @@ def get_collection_map_stem(obj: bpy.types.Object) -> str:
     return map_stem
 
 
-def find_model_name(
-    operator: LoggingOperator,
-    obj: bpy.types.Object,
-    process_default_model_name: tp.Callable[[str], str] = None,
-    warn_property_mismatch=True,
-) -> str:
-    """Try to retrieve the model name from the object's custom properties, falling back to the object's name with
-    optional processing. This works the same way for all types of model assets (FLVER, HKK, NVM).
-
-    If the 'Model Name' custom property exists and does NOT match the default model name from the processed object name,
-    a warning may be issued with the given `operator`.
-    """
-    default_model_name = get_bl_obj_stem(obj)
-    if process_default_model_name:
-        default_model_name = process_default_model_name(default_model_name)
-
-    prop_model_name = obj.get("Model Name", None)
-    if warn_property_mismatch and prop_model_name is not None and prop_model_name != default_model_name:
-        operator.warning(
-            f"Object '{obj.name}' has custom property 'Model Name' set to '{prop_model_name}', but the default "
-            f"model name extracted from its Blender name is '{default_model_name}'."
-        )
-
-    # NOTE: Will return default model name if property model name is `None` or empty string.
-    return prop_model_name or default_model_name
-
-
-def process_model_name_map_area(map_stem: str, split_underscore=True) -> tp.Callable[[str], str]:
-    """Construct a process callback for `find_model_name` that adds the area suffix to the model name if missing.
-
-    If `split_underscore = True` (default), everything at and after the first underscore will also be discarded.
-
-    TODO: Currently assumes DS1 format, i.e. seven characters without area and ten characters with.
-    """
-
-    def process_default_model_name(model_name: str) -> str:
-        if split_underscore:
-            model_name = model_name.split("_")[0]
-        if len(model_name) == 7:
-            return f"{model_name}A{map_stem[1:3]}"
-        print(model_name)
-        return model_name
-
-    return process_default_model_name
+def remove_dupe_suffix(name):
+    match = BLENDER_DUPE_RE.match(name)
+    return match.group(1) if match else name

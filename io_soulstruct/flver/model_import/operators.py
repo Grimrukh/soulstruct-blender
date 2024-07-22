@@ -37,10 +37,13 @@ import bpy.ops
 
 from soulstruct.base.models.flver import FLVER, Version
 from soulstruct.containers import Binder
+from soulstruct.darksouls1ptde.constants import CHARACTER_MODELS as DS1_CHARACTER_MODELS
 
-from io_soulstruct.utilities import *
 from io_soulstruct.flver.textures.import_textures import TextureImportManager
 from io_soulstruct.flver.utilities import *
+from io_soulstruct.flver.types import BlenderFLVER
+from io_soulstruct.general import SoulstructSettings
+from io_soulstruct.utilities import *
 from .core import FLVERImporter
 
 if tp.TYPE_CHECKING:
@@ -56,6 +59,7 @@ class BaseFLVERImportOperator(LoggingImportOperator):
         import_settings = context.scene.flver_import_settings  # type: FLVERImportSettings
 
         self.layout.prop(import_settings, "import_textures")
+        self.layout.prop(import_settings, "omit_default_bone")
         self.layout.prop(import_settings, "material_blend_mode")
         self.layout.prop(import_settings, "base_edit_bone_length")
 
@@ -98,7 +102,6 @@ class BaseFLVERImportOperator(LoggingImportOperator):
             self.info("Using MTDBND for pre-Elden Ring FLVERs.")
 
         settings = self.settings(context)
-        settings.save_settings()
         importer = FLVERImporter(
             self,
             context,
@@ -109,25 +112,31 @@ class BaseFLVERImportOperator(LoggingImportOperator):
             collection=self.get_collection(context, Path(self.directory).name),
         )
 
-        bl_mesh = None
+        bl_flver = None
         for bl_name, flver in flvers:
 
             try:
-                bl_armature, bl_mesh = importer.import_flver(flver, name=bl_name)
+                bl_flver = importer.import_flver(flver, name=bl_name)
             except Exception as ex:
                 # Delete any objects created prior to exception.
                 importer.abort_import()
                 traceback.print_exc()  # for inspection in Blender console
                 return self.error(f"Cannot import FLVER: {bl_name}. Error: {ex}")
 
+            self.post_process_flver(context, settings, bl_flver)
+
         self.info(f"Imported {len(flvers)} FLVER(s) in {time.perf_counter() - start_time:.3f} seconds.")
 
         # Select and frame view on (final) newly imported Mesh.
-        if bl_mesh:
-            self.set_active_obj(bl_mesh)
+        if bl_flver:
+            self.set_active_obj(bl_flver.mesh)
             bpy.ops.view3d.view_selected(use_all_regions=False)
 
         return {"FINISHED"}
+
+    def post_process_flver(self, context: bpy.types.Context, settings: SoulstructSettings, bl_flver: BlenderFLVER):
+        """Can be overridden to modify new FLVER model."""
+        pass
 
     def get_collection(self, context: bpy.types.Context, file_directory_name: str):
         """Get collection to add imported FLVER to. Defaults to scene view layer collection."""
@@ -206,7 +215,7 @@ class ImportMapPieceFLVER(BaseFLVERImportOperator):
 
     def get_collection(self, context: bpy.types.Context, file_directory_name: str):
         """Assumes file directory name is a map stem."""
-        return get_collection(f"{file_directory_name} Map Piece Models", context.scene.collection, hide_viewport=False)
+        return get_collection(f"{file_directory_name} Map Piece Models", context.scene.collection)
 
     def find_extra_textures(self, flver_source_path: Path, flver: FLVER, texture_manager: TextureImportManager):
         """Check all textures in FLVER for specific map 'mAA_' prefix textures and register TPFBHDs in those maps."""
@@ -252,8 +261,18 @@ class ImportCharacterFLVER(BaseFLVERImportOperator):
 
     # Base `execute` method is fine.
 
+    def post_process_flver(self, context: bpy.types.Context, settings: SoulstructSettings, bl_flver: BlenderFLVER):
+        if settings.is_game("DARK_SOULS_PTDE", "DARK_SOULS_DSR"):
+            # Add character description to model name.
+            try:
+                model_id = int(bl_flver.name[1:5])
+                model_desc = DS1_CHARACTER_MODELS[model_id]
+                bl_flver.name += f" <{model_desc}>"
+            except (ValueError, KeyError):
+                pass
+
     def get_collection(self, context: bpy.types.Context, file_directory_name: str):
-        return get_collection("Character Models", context.scene.collection, hide_viewport=False)
+        return get_collection("Character Models", context.scene.collection)
 
 
 class ImportObjectFLVER(BaseFLVERImportOperator):
@@ -291,7 +310,7 @@ class ImportObjectFLVER(BaseFLVERImportOperator):
     # Base `execute` method is fine.
 
     def get_collection(self, context: bpy.types.Context, file_directory_name: str):
-        return get_collection("Object Models", context.scene.collection, hide_viewport=False)
+        return get_collection("Object Models", context.scene.collection)
 
 
 class ImportAssetFLVER(BaseFLVERImportOperator):
@@ -329,7 +348,7 @@ class ImportAssetFLVER(BaseFLVERImportOperator):
     # Base `execute` method is fine.
 
     def get_collection(self, context: bpy.types.Context, file_directory_name: str):
-        return get_collection("Asset Models", context.scene.collection, hide_viewport=False)
+        return get_collection("Asset Models", context.scene.collection)
 
 
 class ImportEquipmentFLVER(BaseFLVERImportOperator):
@@ -372,6 +391,6 @@ class ImportEquipmentFLVER(BaseFLVERImportOperator):
     # Base `execute` method is fine.
 
     def get_collection(self, context: bpy.types.Context, file_directory_name: str):
-        return get_collection("Equipment Models", context.scene.collection, hide_viewport=False)
+        return get_collection("Equipment Models", context.scene.collection)
 
 # endregion

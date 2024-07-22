@@ -18,6 +18,9 @@ from soulstruct.utilities.maths import Vector2
 
 from io_soulstruct.utilities.operators import LoggingOperator
 
+if tp.TYPE_CHECKING:
+    from io_soulstruct.flver.properties import FLVERMaterialProps, FLVERGXItemProps
+
 # Main node input for specular strength is called "Specular IOR Level" in Blender 4.X, but "Specular" prior to that.
 if bpy.app.version[0] == 4:
     PRINCIPLED_SPECULAR_INPUT = "Specular IOR Level"
@@ -67,36 +70,41 @@ def create_submesh_blender_material(
         else:
             bl_material.blend_method = blend_mode
 
-    # Critical `Material` information stored in custom properties.
-    bl_material["Flags"] = material.flags  # int
-    bl_material["Mat Def Path"] = material.mat_def_path  # str
-    bl_material["Unk x18"] = material.unk_x18  # int
+    # Critical `Material` information stored in extension properties.
+    # noinspection PyUnresolvedReferences
+    props = bl_material.flver_material  # type: FLVERMaterialProps
+    props.flags = material.flags  # int
+    props.mat_def_path = material.mat_def_path  # str
+    props.unk_x18 = material.unk_x18  # int
     # NOTE: Texture path prefixes not stored, as they aren't actually needed in the TPFBHDs.
 
     # Set additional real and custom properties from FLVER submesh.
-    bl_material["Is Bind Pose"] = submesh.is_bind_pose
+    props.is_bind_pose = submesh.is_bind_pose
     # NOTE: This index is sometimes invalid for vanilla map FLVERs (e.g., 1 when there is only one bone).
-    bl_material["Default Bone Index"] = submesh.default_bone_index
+    props.default_bone_index = submesh.default_bone_index
     # TODO: Currently, main face set is simply copied to all additional face sets on export. This is fine for early
     #  games, but probably not for, say, Elden Ring map pieces. Some kind of auto-decimator may be in order.
-    bl_material["Face Set Count"] = len(submesh.face_sets)
+    props.face_set_count = len(submesh.face_sets)
     bl_material.use_backface_culling = submesh.use_backface_culling
 
     # Store GX items as custom properties 'array', except the final dummy item.
     for i, gx_item in enumerate(material.gx_items):
+        gx_item_props = props.gx_items.add()  # type: FLVERGXItemProps
         if gx_item.is_dummy:
             continue  # ignore dummy items
         try:
-            bl_material[f"GXItem[{i}] Category"] = gx_item.category.decode()
+            category = gx_item.category.decode()
         except UnicodeDecodeError:
             operator.warning(f"Could not decode GXItem {i} category: {gx_item.category}. Storing empty string.")
-            bl_material[f"GXItem[{i}] Category"] = ""
-        bl_material[f"GXItem[{i}] Index"] = gx_item.index
-        bl_material[f"GXItem[{i}] Data"] = repr(gx_item.data)
+            category = ""
+        gx_item_props.index = gx_item.index
+        gx_item_props.category = category
+        gx_item_props.data = repr(gx_item.data)  # bytes -> str
 
     if not matdef:
         # Store FLVER sampler texture paths directly in custom properties. No shader tree will be built, but at least
         # we can faithfully write FLVER texture paths back to files on export.
+        # TODO: Show in FLVER Material panel.
         for sampler_name, texture_stem in flver_sampler_texture_stems.items():
             bl_material[f"Path[{sampler_name}]"] = texture_stem
         return bl_material

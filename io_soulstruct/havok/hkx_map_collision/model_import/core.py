@@ -15,6 +15,7 @@ import bpy
 
 from soulstruct_havok.wrappers.hkx2015 import MapCollisionHKX
 
+from io_soulstruct.types import SoulstructType
 from io_soulstruct.utilities.materials import *
 
 
@@ -164,7 +165,9 @@ def import_hkx_model_merged(
     for material in bl_materials:
         bl_mesh.materials.append(material)
     bl_mesh.polygons.foreach_set("material_index", face_materials)
+
     hkx_model = bpy.data.objects.new(model_name, bl_mesh)
+    hkx_model.soulstruct_type = SoulstructType.COLLISION
 
     # noinspection PyTypeChecker
     return hkx_model

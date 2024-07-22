@@ -49,6 +49,10 @@ __all__ = [
     "SetNodeNavmeshATriangles",
     "SetNodeNavmeshBTriangles",
     "RefreshMCGNames",
+
+    "NVMFaceIndex",
+    "MCGNodeProps",
+    "MCGEdgeProps",
 ]
 
 import bmesh

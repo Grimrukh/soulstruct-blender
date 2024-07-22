@@ -56,7 +56,6 @@ class ExportMSBCollisions(LoggingOperator):
             return self.error("Must select a parent of one or more collision submeshes.")
 
         settings = self.settings(context)  # type: SoulstructSettings
-        settings.save_settings()
         msb_export_settings = context.scene.msb_export_settings  # type: MSBExportSettings
         dcx_type = DCXType.DS1_DS2  # DS1R (inside HKXBHD)
 

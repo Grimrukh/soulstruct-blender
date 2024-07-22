@@ -12,20 +12,20 @@ from pathlib import Path
 import bmesh
 import bpy
 import bpy.ops
-from mathutils import Vector, Matrix
+from mathutils import Vector
 
-from soulstruct.base.models.flver import FLVER, FLVERBone, FLVERBoneUsageFlags, Dummy, Material
+from soulstruct.base.models.flver import FLVER, FLVERBone, FLVERBoneUsageFlags, Material
 from soulstruct.base.models.flver.mesh_tools import MergedMesh
 from soulstruct.base.models.shaders import MatDef, MatDefError
 from soulstruct.containers.tpf import TPFTexture, batch_get_tpf_texture_png_data
 from soulstruct.games import *
-from soulstruct.utilities.maths import Vector3
 
 from io_soulstruct.exceptions import *
 from io_soulstruct.flver.materials import *
 from io_soulstruct.flver.textures.import_textures import TextureImportManager, import_png_as_image
-from io_soulstruct.flver.utilities import *
+from io_soulstruct.flver.types import BlenderFLVER, BlenderFLVERDummy
 from io_soulstruct.general.game_config import GAME_CONFIG
+from io_soulstruct.types import SoulstructType
 from io_soulstruct.utilities import *
 
 if tp.TYPE_CHECKING:
@@ -60,6 +60,7 @@ class FLVERImporter:
     # Per-FLVER settings.
     flver: FLVER | None = None  # current FLVER being imported
     name: str = ""  # name of root Blender mesh object that will be created
+    has_armature: bool = True
     bl_bone_names: list[str] = field(default_factory=list)  # list of Blender bone names in order of FLVER bones
     new_objs: list[bpy.types.Object] = field(default_factory=list)  # all new objects created during import
     new_images: list[bpy.types.Image] = field(default_factory=list)  # all new images created during import
@@ -102,8 +103,12 @@ class FLVERImporter:
         self.new_images.clear()
         self.new_materials.clear()
 
-    def import_flver(self, flver: FLVER, name: str) -> tuple[bpy.types.ArmatureObject, bpy.types.MeshObject]:
-        """Read a FLVER into a Blender Armature and child Mesh."""
+    def import_flver(self, flver: FLVER, name: str) -> BlenderFLVER:
+        """Read a FLVER into a managed Blender Armature/Mesh.
+        
+        If the FLVER has only a single bone with all-default properties for this game, and no Dummies, no Armature will
+        be created and the Mesh will be the root object. This is useful for simple static models like map pieces.
+        """
 
         self.flver = flver
         self.name = name
@@ -111,20 +116,31 @@ class FLVERImporter:
         self.new_objs.clear()
         self.new_images.clear()
         self.new_materials.clear()
-
-        # Create FLVER bone index -> Blender bone name dictionary. (Blender names are UTF-8.)
-        # This is done even when `existing_armature` is given, as the order of bones in this new FLVER may be different
-        # and the vertex weight indices need to be directed to the names of bones in `existing_armature` correctly.
-        for bone in flver.bones:
-            # Just using actual bone names to avoid the need for parsing rules on export. However, duplicate names
-            # need to be handled with suffixes.
-            bl_bone_name = f"{bone.name} <DUPE>" if bone.name in self.bl_bone_names else bone.name
-            self.bl_bone_names.append(bl_bone_name)
-
+        
         import_settings = self.context.scene.flver_import_settings  # type: FLVERImportSettings
 
-        bl_armature_obj = self.create_armature(import_settings.base_edit_bone_length)
-        self.new_objs.append(bl_armature_obj)
+        if (
+            import_settings.omit_default_bone
+            and not flver.dummies
+            and len(flver.bones) == 1
+            and flver.bones[0].is_default_origin
+        ):
+            # Single default bone can be auto-created on export. No Armature parent needed/created.
+            bl_armature_obj = None
+            self.has_armature = False
+        else:
+            # Create FLVER bone index -> Blender bone name dictionary. (Blender names are UTF-8.)
+            # This is done even when `existing_armature` is given, as the order of bones in this new FLVER may be different
+            # and the vertex weight indices need to be directed to the names of bones in `existing_armature` correctly.
+            for bone in flver.bones:
+                # Just using actual bone names to avoid the need for parsing rules on export. However, duplicate names
+                # need to be handled with suffixes.
+                bl_bone_name = f"{bone.name} <DUPE>" if bone.name in self.bl_bone_names else bone.name
+                self.bl_bone_names.append(bl_bone_name)
+            
+            bl_armature_obj = self.create_armature(import_settings.base_edit_bone_length)
+            self.new_objs.append(bl_armature_obj)
+            self.has_armature = True
 
         try:
             submesh_bl_material_indices, bl_material_uv_layer_names = self.create_materials(
@@ -135,30 +151,36 @@ class FLVERImporter:
             submesh_bl_material_indices = []
             bl_material_uv_layer_names = []
 
-        bl_flver_mesh = self.create_flver_mesh(
+        bl_mesh_obj = self.create_flver_mesh(
             flver, self.name, submesh_bl_material_indices, bl_material_uv_layer_names
         )
 
-        # Assign basic FLVER header information as custom props on the Armature.
-        bl_armature_obj["Is Big Endian"] = flver.big_endian  # bool
-        bl_armature_obj["Version"] = flver.version.name  # str
-        bl_armature_obj["Unicode"] = flver.unicode  # bool
-        bl_armature_obj["Unk x4a"] = flver.unk_x4a  # bool
-        bl_armature_obj["Unk x4c"] = flver.unk_x4c  # int
-        bl_armature_obj["Unk x5c"] = flver.unk_x5c  # int
-        bl_armature_obj["Unk x5d"] = flver.unk_x5d  # int
-        bl_armature_obj["Unk x68"] = flver.unk_x68  # int
+        if bl_armature_obj:
+            # Parent mesh to armature. This is critical for proper animation behavior (especially with root motion).
+            bl_mesh_obj.parent = bl_armature_obj
+            self.create_mesh_armature_modifier(bl_mesh_obj, bl_armature_obj)
 
-        # Parent mesh to armature. This is critical for proper animation behavior (especially with root motion).
-        bl_flver_mesh.parent = bl_armature_obj
-        self.create_mesh_armature_modifier(bl_flver_mesh, bl_armature_obj)
-
-        for i, dummy in enumerate(flver.dummies):
-            self.create_dummy(dummy, index=i, bl_armature=bl_armature_obj)
+            # Armature is always created if there are Dummies, so we can safely create them here.
+            for i, dummy in enumerate(flver.dummies):
+                bl_dummy = BlenderFLVERDummy.new_from_dummy(self.name, i, dummy, bl_armature_obj)
+                self.collection.objects.link(bl_dummy.obj)
+                self.new_objs.append(bl_dummy.obj)
 
         # self.operator.info(f"Created FLVER Blender mesh '{name}' in {time.perf_counter() - start_time:.3f} seconds.")
 
-        return bl_armature_obj, bl_flver_mesh  # might be used by other importers
+        bl_flver = BlenderFLVER(bl_armature_obj, bl_mesh_obj)
+
+        # Assign FLVER header properties.
+        bl_flver.mesh.flver.big_endian = flver.big_endian
+        bl_flver.mesh.flver.version = flver.version.name
+        bl_flver.mesh.flver.unicode = flver.unicode
+        bl_flver.mesh.flver.unk_x4a = flver.unk_x4a
+        bl_flver.mesh.flver.unk_x4c = flver.unk_x4c
+        bl_flver.mesh.flver.unk_x5c = flver.unk_x5c
+        bl_flver.mesh.flver.unk_x5d = flver.unk_x5d
+        bl_flver.mesh.flver.unk_x68 = flver.unk_x68
+
+        return bl_flver  # might be used by other importers
 
     @staticmethod
     def create_mesh_armature_modifier(bl_mesh: bpy.types.MeshObject, bl_armature: bpy.types.ArmatureObject):
@@ -463,6 +485,7 @@ class FLVERImporter:
 
         return new_loaded_images
 
+    # noinspection PyTypeChecker
     def create_flver_mesh(
         self,
         flver: FLVER,
@@ -495,7 +518,7 @@ class FLVERImporter:
             bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
 
         # Armature parent object uses simply `name`. Mesh data/object has 'Mesh' suffix.
-        bl_mesh = bpy.data.meshes.new(name=f"{name} Mesh")
+        bl_mesh = bpy.data.meshes.new(name=f"{name} Mesh" if self.has_armature else name)
 
         for material in self.new_materials:
             bl_mesh.materials.append(material)
@@ -528,11 +551,13 @@ class FLVERImporter:
         bl_vert_bone_weights, bl_vert_bone_indices = self.create_bm_mesh(bl_mesh, merged_mesh)
 
         bl_mesh_obj = new_mesh_object(f"{name} Mesh", bl_mesh)
+        bl_mesh_obj.soulstruct_type = SoulstructType.FLVER
         if self.collection:
             self.collection.objects.link(bl_mesh_obj)
         self.new_objs.append(bl_mesh_obj)
 
-        self.create_bone_vertex_groups(bl_mesh_obj, bl_vert_bone_weights, bl_vert_bone_indices)
+        if self.has_armature:
+            self.create_bone_vertex_groups(bl_mesh_obj, bl_vert_bone_weights, bl_vert_bone_indices)
 
         return bl_mesh_obj
 
@@ -850,68 +875,6 @@ class FLVERImporter:
             pose_bone.location = GAME_TO_BL_VECTOR(game_translate)
             pose_bone.rotation_quaternion = GAME_TO_BL_EULER(game_bone_rotate).to_quaternion()
             pose_bone.scale = GAME_TO_BL_VECTOR(game_bone.scale)
-
-    def create_dummy(
-        self, game_dummy: Dummy, index: int, bl_armature: bpy.types.ArmatureObject
-    ) -> bpy.types.Object:
-        """Create an empty object that represents a FLVER 'dummy' (a generic 3D point).
-
-        The reference ID of the dummy (the value used to refer to it in other game files/code) is included in the name,
-        so that it can be easily modified. The format of the dummy name should therefore not be changed. (Note that the
-        order of dummies does not matter, and multiple dummies can have the same reference ID.)
-
-        All dummies are children of the armature, and most are children of a specific bone given in 'attach_bone_name'.
-        As much as I'd like to nest them under another empty object, to properly attach them to the armature, they have
-        to be direct children.
-        """
-        name = f"{self.name} Dummy<{index}> [{game_dummy.reference_id}]"
-        bl_dummy = new_empty_object(
-            name,
-            props={
-                "Color RGBA": game_dummy.color_rgba,  # RGBA  # TODO: Use in actual display somehow?
-                "Flag 1": game_dummy.flag_1,  # bool
-                "Use Upward Vector": game_dummy.use_upward_vector,  # bool
-                # NOTE: These two properties are only ever non-zero in Sekiro (and probably Elden Ring).
-                "Unk x30": game_dummy.unk_x30,  # int
-                "Unk x34": game_dummy.unk_x34,  # int
-            }
-        )
-
-        bl_dummy.parent = bl_armature
-        bl_dummy.empty_display_type = "ARROWS"  # best display type/size I've found (single arrow not sufficient)
-        bl_dummy.empty_display_size = 0.05
-
-        if game_dummy.use_upward_vector:
-            bl_rotation_euler = game_forward_up_vectors_to_bl_euler(game_dummy.forward, game_dummy.upward)
-        else:  # TODO: I assume this is right (up-ignoring dummies only rotate around vertical axis)
-            bl_rotation_euler = game_forward_up_vectors_to_bl_euler(game_dummy.forward, Vector3((0, 1, 0)))
-
-        if game_dummy.parent_bone_index != -1:
-            # Bone's FLVER translate is in the space of (i.e. relative to) this parent bone.
-            # NOTE: This is NOT the same as the 'attach' bone, which is used as the actual Blender parent and
-            # controls how the dummy moves during armature animations.
-            bl_bone_name = self.bl_bone_names[game_dummy.parent_bone_index]
-            bl_dummy["Parent Bone Name"] = bl_bone_name
-            bl_parent_bone_matrix = bl_armature.data.bones[bl_bone_name].matrix_local
-            bl_location = bl_parent_bone_matrix @ GAME_TO_BL_VECTOR(game_dummy.translate)
-        else:
-            # Bone's location is in armature space.
-            bl_dummy["Parent Bone Name"] = ""
-            bl_location = GAME_TO_BL_VECTOR(game_dummy.translate)
-
-        # Dummy moves with this bone during animations.
-        if game_dummy.attach_bone_index != -1:
-            bl_dummy.parent_bone = self.bl_bone_names[game_dummy.attach_bone_index]
-            bl_dummy.parent_type = "BONE"
-
-        # We need to set the dummy's world matrix, rather than its local matrix, to bypass its possible bone
-        # attachment above.
-        bl_dummy.matrix_world = Matrix.LocRotScale(bl_location, bl_rotation_euler, Vector((1.0, 1.0, 1.0)))
-
-        self.collection.objects.link(bl_dummy)
-        self.new_objs.append(bl_dummy)
-
-        return bl_dummy
 
     def warning(self, msg: str):
         self.operator.warning(msg)

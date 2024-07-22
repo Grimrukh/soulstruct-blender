@@ -42,10 +42,9 @@ class ExportMSBMapPieces(LoggingOperator):
 
     def execute(self, context):
         settings = self.settings(context)
-        settings.save_settings()
 
         try:
-            meshes_armatures = get_selected_flvers(context)
+            armatures_meshes = get_selected_flvers(context)
         except FLVERError as ex:
             return self.error(str(ex))
 
@@ -74,7 +73,7 @@ class ExportMSBMapPieces(LoggingOperator):
         opened_msbs = {}  # type: dict[Path, MSB_TYPING]
         edited_part_names = {}  # type: dict[str, set[str]]  # keys are MSB stems (which may differ from 'map' stems)
 
-        for mesh, armature in meshes_armatures:
+        for armature, mesh in armatures_meshes:
 
             map_stem = settings.get_map_stem_for_export(armature or mesh, oldest=True)
             relative_map_path = Path(f"map/{map_stem}")

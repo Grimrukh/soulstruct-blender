@@ -26,7 +26,7 @@ from io_soulstruct.exceptions import *
 from io_soulstruct.general import *
 from io_soulstruct.utilities import *
 from io_soulstruct.flver.textures.export_textures import *
-from io_soulstruct.flver.utilities import *
+from io_soulstruct.flver.types import BlenderFLVER
 from .core import FLVERExporter
 
 if tp.TYPE_CHECKING:
@@ -59,23 +59,24 @@ class ExportStandaloneFLVER(LoggingOperator, ExportHelper):
         If a Mesh is selected and it does not have an Armature parent object, a default FLVER skeleton with a single
         eponymous bone at the origin will be exported (which is fine for, e.g., most map pieces).
         """
-        return len(context.selected_objects) == 1 and context.selected_objects[0].type in {"MESH", "ARMATURE"}
+        if not context.active_object:
+            return False
+        return BlenderFLVER.test_obj(context.active_object)
 
     def invoke(self, context, _event):
         """Set default export name to name of object (before first space and without Blender dupe suffix)."""
-        if not context.selected_objects:
+        if not context.active_object:
             return super().invoke(context, _event)
 
-        obj = context.selected_objects[0]
-        model_name = find_model_name(self, obj, warn_property_mismatch=False)
+        bl_flver = BlenderFLVER.from_bl_obj(context.active_object)
         settings = self.settings(context)
-        self.filepath = settings.game.process_dcx_path(f"{model_name}.flver")
+        self.filepath = settings.game.process_dcx_path(f"{bl_flver.flver_stem}.flver")
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
 
     def execute(self, context):
         try:
-            mesh, armature = get_selected_flver(context)
+            bl_flver = BlenderFLVER.from_bl_obj(context.active_object)
         except FLVERError as ex:
             return self.error(str(ex))
         settings = self.settings(context)
@@ -87,21 +88,8 @@ class ExportStandaloneFLVER(LoggingOperator, ExportHelper):
         self.to_object_mode()
         exporter = FLVERExporter(self, context, settings)
 
-        # NOTE: As the exported FLVER model stem may differ from the Blender object, we need to pass both to the
-        # exporter. The exported name is used to create a default bone (the only place in the FLVER file where the model
-        # stem appears internally) and the current Blender model stem is used to strip prefixes from dummies and
-        # materials.
-        flver_file_stem = flver_file_path.name.split(".")[0]
-        blender_stem = get_default_flver_stem(mesh, armature, self)
-
         try:
-            flver = exporter.export_flver(
-                mesh,
-                armature,
-                dummy_material_prefix=blender_stem,
-                dummy_prefix_must_match=True,  # for safety, as this may be equipment/c0000
-                default_bone_name=flver_file_stem,
-            )
+            flver = exporter.export_flver(bl_flver)
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Cannot get exported FLVER. Error: {ex}")
@@ -169,15 +157,15 @@ class ExportFLVERIntoBinder(LoggingOperator, ExportHelper):
     @classmethod
     def poll(cls, context):
         """At least one Blender mesh selected."""
-        return len(context.selected_objects) == 1 and context.selected_objects[0].type in {"MESH", "ARMATURE"}
+        if not context.active_object:
+            return False
+        return BlenderFLVER.test_obj(context.active_object)
 
     def execute(self, context):
         try:
-            mesh, armature = get_selected_flver(context)
+            bl_flver = BlenderFLVER.from_bl_obj(context.active_object)
         except FLVERError as ex:
             return self.error(str(ex))
-
-        blender_stem = get_default_flver_stem(mesh, armature, self)
 
         settings = self.settings(context)
         # Automatic DCX for FLVERs in Binders is Null.
@@ -197,7 +185,7 @@ class ExportFLVERIntoBinder(LoggingOperator, ExportHelper):
                 return self.error("No FLVER files found in Binder and default entry ID was left as -1.")
             flver_entry = binder.set_default_entry(
                 entry_spec=self.default_entry_id,
-                new_path=self.default_entry_path.format(name=blender_stem),
+                new_path=self.default_entry_path.format(name=bl_flver.flver_stem),
                 new_flags=self.default_entry_flags,
             )  # no data yet
             if flver_entry.data and not self.overwrite_existing:
@@ -211,16 +199,17 @@ class ExportFLVERIntoBinder(LoggingOperator, ExportHelper):
             if len(flver_entries) > 1:
                 # Look for FLVER with matching name.
                 for entry in flver_entries:
-                    if entry.minimal_stem == blender_stem:
+                    if entry.minimal_stem == bl_flver.flver_stem:
                         self.info(
-                            f"Multiple FLVER files found in Binder. Replacing entry with matching stem: {blender_stem}"
+                            f"Multiple FLVER files found in Binder. Replacing entry with matching stem: "
+                            f"{bl_flver.flver_stem}"
                         )
                         flver_entry = entry
                         break
                 else:
                     return self.error(
-                        f"Multiple FLVER files found in Binder, none of which have stem '{blender_stem}'. Change the "
-                        f"name of your exported object or erase one or more existing FLVERs first."
+                        f"Multiple FLVER files found in Binder, none of which have stem '{bl_flver.flver_stem}'. "
+                        f"Change the start of your exported object's name or erase one or more existing FLVERs first."
                     )
             else:
                 flver_entry = flver_entries[0]
@@ -228,16 +217,10 @@ class ExportFLVERIntoBinder(LoggingOperator, ExportHelper):
         exporter = FLVERExporter(self, context, settings)
 
         try:
-            flver = exporter.export_flver(
-                mesh,
-                armature,
-                dummy_material_prefix=blender_stem,
-                dummy_prefix_must_match=True,  # for safety, as this may be equipment/c0000
-                default_bone_name="",  # not permitted here (TODO: what about ER MAPBND?)
-            )
+            flver = exporter.export_flver(bl_flver)
         except Exception as ex:
             traceback.print_exc()
-            return self.error(f"Cannot create exported FLVER from Blender Mesh '{blender_stem}'. Error: {ex}")
+            return self.error(f"Cannot create exported FLVER from Blender Mesh '{bl_flver.name}'. Error: {ex}")
         finally:
             exporter.clear_temp_flver()
 
@@ -275,23 +258,20 @@ class ExportMapPieceFLVERs(LoggingOperator):
     @classmethod
     def poll(cls, context):
         """One or more 'm*' Armatures or Meshes selected."""
-        return (
-            cls.settings(context).can_auto_export
-            and len(context.selected_objects) > 0
-            and all(
-                obj.type in {"MESH", "ARMATURE"} and obj.name.startswith("m")
-                for obj in context.selected_objects
-            )
-        )
+        if not cls.settings(context).can_auto_export or not context.selected_objects:
+            return False
+        for obj in context.selected_objects:
+            if not BlenderFLVER.test_obj(obj):
+                return False
+        return True
 
     def execute(self, context):
         try:
-            meshes_armatures = get_selected_flvers(context)
+            bl_flvers = BlenderFLVER.get_selected_flvers(context)
         except FLVERError as ex:
             return self.error(str(ex))
 
         settings = self.settings(context)
-        settings.save_settings()
 
         # TODO: Later games (e.g. Elden Ring) use Binders like 'mapbnd' for map pieces, but this is not yet supported.
         #  This assumes loose FLVERs in the map folder. MAPBND support will require existing MAPBNDs, as the `.grass`
@@ -310,24 +290,24 @@ class ExportMapPieceFLVERs(LoggingOperator):
 
         map_area_textures = {}  # maps area stems 'mAA' to dictionaries of Blender images to export
 
-        for mesh, armature in meshes_armatures:
+        for bl_flver in bl_flvers:
 
-            map_stem = settings.get_map_stem_for_export(armature or mesh, oldest=True)
+            map_stem = settings.get_map_stem_for_export(bl_flver.root_obj, oldest=True)
             relative_map_path = Path(f"map/{map_stem}")
-
-            model_name = find_model_name(self, armature or mesh, process_model_name_map_area(relative_map_path.name))
 
             try:
                 # We also pass the model name as the default bone name.
-                flver = exporter.export_flver(mesh, armature, model_name, False, model_name)
+                flver = exporter.export_flver(bl_flver)
             except Exception as ex:
                 traceback.print_exc()
-                return self.error(f"Cannot export Map Piece FLVER '{model_name}' from {mesh.name}. Error: {ex}")
+                return self.error(
+                    f"Cannot export Map Piece FLVER '{bl_flver.flver_stem}' from '{bl_flver.name}. Error: {ex}"
+                )
             finally:
                 exporter.clear_temp_flver()
 
             flver.dcx_type = flver_dcx_type
-            settings.export_file(self, flver, relative_map_path / f"{model_name}.flver")
+            settings.export_file(self, flver, relative_map_path / f"{bl_flver.flver_stem}.flver")
 
             if flver_export_settings.export_textures:
                 # Collect all Blender images for batched map area export.
@@ -357,23 +337,20 @@ class BaseGameFLVERBinderExportOperator(LoggingOperator):
         self,
         context: bpy.types.Context,
         settings: SoulstructSettings,
-        binder_path_template: str,
+        binder_path_callback: tp.Callable[[BlenderFLVER], Path],
         binder_class: type[CHRBND_TYPING | OBJBND_TYPING | PARTSBND_TYPING],
     ) -> tuple[str, CHRBND_TYPING | OBJBND_TYPING | PARTSBND_TYPING, FLVER, FLVERExporter]:
-        mesh, armature = get_selected_flver(context)
-        if armature is None:
-            raise FLVERExportError("Must select an Armature parent to quick-export a FLVER.")
+        bl_flver = BlenderFLVER.from_bl_obj(context.active_object)
 
-        model_stem = get_default_flver_stem(mesh, armature, self)
         cls_name = binder_class.__name__
 
         # We prepare and retrieve the binder to be exported into.
-        relative_binder_path = Path(binder_path_template.format(model_stem=model_stem))
+        relative_binder_path = binder_path_callback(bl_flver)
         try:
             binder_path = settings.prepare_project_file(relative_binder_path, must_exist=True)
         except FileNotFoundError as ex:
             raise FLVERExportError(
-                f"Cannot find {cls_name} binder for {model_stem}: {relative_binder_path}. Error: {ex}"
+                f"Cannot find {cls_name} binder for {bl_flver.name}: {relative_binder_path}. Error: {ex}"
             )
 
         binder = binder_class.from_path(binder_path)
@@ -381,18 +358,18 @@ class BaseGameFLVERBinderExportOperator(LoggingOperator):
         self.to_object_mode()
         exporter = FLVERExporter(self, context, settings)
         try:
-            flver = exporter.export_flver(
-                mesh, armature, model_stem, dummy_prefix_must_match=True, default_bone_name=""
-            )
+            flver = exporter.export_flver(bl_flver)
         except Exception as ex:
             traceback.print_exc()
-            raise FLVERExportError(f"Cannot create exported FLVER from Blender Mesh '{model_stem}'. Error: {ex}")
+            raise FLVERExportError(
+                f"Cannot create exported FLVER '{bl_flver.flver_stem}' from Blender Mesh '{bl_flver.name}'. Error: {ex}"
+            )
         finally:
             exporter.clear_temp_flver()
 
         flver.dcx_type = DCXType.Null  # no DCX inside any Binder here
         # noinspection PyTypeChecker
-        return model_stem, binder, flver, exporter
+        return bl_flver.flver_stem, binder, flver, exporter
 
     def export_textures_to_binder_tpf(
         self,
@@ -410,13 +387,6 @@ class BaseGameFLVERBinderExportOperator(LoggingOperator):
         self.info(f"Exported {len(multi_tpf.textures)} textures into multi-texture TPF in {binder.cls_name}.")
         return True
 
-    @staticmethod
-    def is_armature_or_mesh_with_arma_parent(obj: bpy.types.Object):
-        """Tests for permitted `obj` typing for export as a FLVER requiring an Armature."""
-        if obj.type == "ARMATURE":
-            return True
-        return obj.type == "MESH" and obj.parent and obj.parent.type == "ARMATURE"
-
 
 class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
     """Export a single FLVER model from a Blender mesh into same-named CHRBND in the game directory."""
@@ -426,16 +396,20 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
 
     @classmethod
     def poll(cls, context):
-        """Must select an Armature parent for a character FLVER. No chance of a default skeleton!
+        """Must have an Armature parent for a character FLVER. No chance of a default skeleton!
 
         Name of character must also start with 'c'.
         """
-        return (
-            cls.settings(context).can_auto_export
-            and len(context.selected_objects) == 1
-            and cls.is_armature_or_mesh_with_arma_parent(context.selected_objects[0])
-            and context.selected_objects[0].name.startswith("c")  # TODO: could require 'c####' template also
-        )
+        if not cls.settings(context).can_auto_export or not context.active_object:
+            return False
+        try:
+            bl_flver = BlenderFLVER.from_bl_obj(context.active_object)
+        except FLVERError:
+            return False
+        if not bl_flver.armature:
+            # Character MUST have an Armature.
+            return False
+        return bl_flver.name.startswith("c")
 
     def execute(self, context):
         settings = self.settings(context)
@@ -444,7 +418,7 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
             model_stem, chrbnd, flver, exporter = self.get_binder_and_flver(
                 context,
                 settings,
-                "chr/{model_stem}.chrbnd",
+                lambda bl_flver: Path(f"chr/{bl_flver.flver_stem}.chrbnd"),
                 settings.game.from_game_submodule_import("models.chrbnd", "CHRBND"),
             )
         except FLVERExportError as ex:
@@ -611,16 +585,17 @@ class ExportObjectFLVER(BaseGameFLVERBinderExportOperator):
 
     @classmethod
     def poll(cls, context):
-        """Must select an Armature parent for an object FLVER. No chance of a default skeleton!
+        """Name of model must also start with 'o'.
 
-        Name of model must also start with 'o'.
+        NOTE: Armature is NOT required. Could easily have Map Piece-like, non-animated Objects.
         """
-        return (
-            cls.settings(context).can_auto_export
-            and len(context.selected_objects) == 1
-            and cls.is_armature_or_mesh_with_arma_parent(context.selected_objects[0])
-            and context.selected_objects[0].name.startswith("o")  # TODO: could require 'o####{_#}' template also
-        )
+        if not cls.settings(context).can_auto_export or not context.active_object:
+            return False
+        try:
+            bl_flver = BlenderFLVER.from_bl_obj(context.active_object)
+        except FLVERError:
+            return False
+        return bl_flver.name.startswith("o")
 
     def execute(self, context):
         settings = self.settings(context)
@@ -629,7 +604,7 @@ class ExportObjectFLVER(BaseGameFLVERBinderExportOperator):
             model_stem, objbnd, flver, exporter = self.get_binder_and_flver(
                 context,
                 settings,
-                "obj/{model_stem}.objbnd",
+                lambda bl_flver: Path(f"obj/{bl_flver.flver_stem}.objbnd"),
                 settings.game.from_game_submodule_import("models.objbnd", "OBJBND"),
             )
         except FLVERExportError as ex:
@@ -653,38 +628,37 @@ class ExportAssetFLVER(BaseGameFLVERBinderExportOperator):
 
     @classmethod
     def poll(cls, context):
-        """Must select an Armature parent for an asset FLVER. No chance of a default skeleton!
+        """Name of model must also start with 'aeg.
 
-        Name of model must also start with 'aeg'.
+        NOTE: Armature is NOT required. Could easily have Map Piece-like, non-animated Assets.
         """
-        return (
-            cls.settings(context).can_auto_export
-            and len(context.selected_objects) == 1
-            and cls.is_armature_or_mesh_with_arma_parent(context.selected_objects[0])
-            and context.selected_objects[0].name.lower().startswith("aeg")
-        )
+        if not cls.settings(context).can_auto_export or not context.active_object:
+            return False
+        try:
+            bl_flver = BlenderFLVER.from_bl_obj(context.active_object)
+        except FLVERError:
+            return False
+        return bl_flver.name.lower().startswith("aeg")
 
     def execute(self, context):
         settings = self.settings(context)
 
         try:
-            model_stem, objbnd, flver, exporter = self.get_binder_and_flver(
+            model_stem, geombnd, flver, exporter = self.get_binder_and_flver(
                 context,
                 settings,
-                "asset/{model_stem}.objbnd",
+                lambda bl_flver: Path(f"asset/{bl_flver.flver_stem[:6]}/{bl_flver.flver_stem}.geombnd"),
                 settings.game.from_game_submodule_import("models.geombnd", "GEOMBND"),
             )
         except FLVERExportError as ex:
             return self.error(str(ex))
 
-        objbnd.flvers[model_stem] = flver
+        geombnd.flvers[model_stem] = flver
 
-        flver_export_settings = context.scene.flver_export_settings  # type: FLVERExportSettings
-        if flver_export_settings.export_textures:
-            # TPF always added to OBJBND.
-            self.export_textures_to_binder_tpf(context, objbnd, exporter.collected_texture_images)
+        # GEOMBND does not contain textures.
+        # TODO: Could try to export textures to AET.
 
-        return settings.export_file(self, objbnd, Path(f"obj/{model_stem}.objbnd"))
+        return settings.export_file(self, geombnd, Path(f"asset/{model_stem[:6]}/{model_stem}.geombnd"))
 
 
 class ExportEquipmentFLVER(BaseGameFLVERBinderExportOperator):
@@ -695,13 +669,17 @@ class ExportEquipmentFLVER(BaseGameFLVERBinderExportOperator):
 
     @classmethod
     def poll(cls, context):
-        """Must select an Armature parent for an equipment FLVER. No chance of a default skeleton!"""
-        return (
-            cls.settings(context).can_auto_export
-            and len(context.selected_objects) == 1
-            and cls.is_armature_or_mesh_with_arma_parent(context.selected_objects[0])
-            # No restriction on name.
-        )
+        """Must have an Armature parent for a parts FLVER. No chance of a default skeleton!"""
+        if not cls.settings(context).can_auto_export or not context.active_object:
+            return False
+        try:
+            bl_flver = BlenderFLVER.from_bl_obj(context.active_object)
+        except FLVERError:
+            return False
+        if not bl_flver.armature:
+            # Equipment MUST have an Armature.
+            return False
+        return True
 
     def execute(self, context):
         settings = self.settings(context)
@@ -710,7 +688,7 @@ class ExportEquipmentFLVER(BaseGameFLVERBinderExportOperator):
             model_stem, partsbnd, flver, exporter = self.get_binder_and_flver(
                 context,
                 settings,
-                "parts/{model_stem}.partsbnd",
+                lambda bl_flver: Path(f"parts/{model_stem}.partsbnd"),
                 settings.game.from_game_submodule_import("models.partsbnd", "PARTSBND"),
             )
         except FLVERExportError as ex:

@@ -14,23 +14,23 @@ import numpy as np
 import bmesh
 import bpy
 
-from soulstruct.base.models.flver import FLVER, Version, FLVERBone, FLVERBoneUsageFlags, Dummy
+from soulstruct.base.models.flver import FLVER, FLVERBone, FLVERBoneUsageFlags, Dummy
 from soulstruct.base.models.flver.material import Material, Texture, GXItem
 from soulstruct.base.models.flver.mesh_tools import MergedMesh, SplitSubmeshDef
 from soulstruct.base.models.shaders import MatDef
 from soulstruct.games import *
 from soulstruct.utilities.maths import Vector3, Matrix3
-from soulstruct.utilities.text import natural_keys
 
 from io_soulstruct.exceptions import *
 from io_soulstruct.general import *
 from io_soulstruct.utilities import *
-from io_soulstruct.flver.utilities import *
+from io_soulstruct.flver.types import BlenderFLVER, BlenderFLVERDummy
 
 if tp.TYPE_CHECKING:
     from soulstruct.base.models.matbin import MATBINBND
     from soulstruct.base.models.mtd import MTDBND
     from .settings import FLVERExportSettings
+    from ..properties import FLVERMaterialProps, FLVERBoneProps, FLVERGXItemProps
 
 
 @dataclass(slots=True)
@@ -67,83 +67,40 @@ class FLVERExporter:
                 self._CACHED_MATBINBNDS[self.settings.game] = self.settings.get_matbinbnd(self.operator)
             self.matbinbnd = self._CACHED_MATBINBNDS[self.settings.game]
 
-    def export_flver(
-        self,
-        mesh: bpy.types.MeshObject,
-        armature: bpy.types.ArmatureObject | None,
-        dummy_material_prefix: str,
-        dummy_prefix_must_match: bool,
-        default_bone_name="",
-    ) -> FLVER:
-        """Create an entire FLVER from a Blender Mesh and (optional) parent Armature.
-
-        The Mesh and/or Armature can have any number of Empty children, which are exported as dummies provided they have
-        the appropriate custom data (created upon Soulstruct import). Note that only dummies parented to the Armature
-        can be attached to Armature bones (which most will, realistically).
-
-        If `armature` is None, a default skeleton with a single bone at the model's origin will be created (which is why
-        `default_bone_name` must be passed in). This is fine for 99% of map pieces, for example. In this case, any
-        non-default FLVER header properties such as 'Version' should be present on the Mesh instead of the Armature.
-
-        `dummy_material_prefix` is used to strip disambiguating prefixes from the Blender dummy children and materials
-        used by this mesh. If `dummy_prefix_must_match = True`, then only dummy children that start with this prefix
-        will be exported (e.g., for exporting equipment meshes parented to `c0000` FLVER).
-
-        If `default_bone_name` is given, and the FLVER has no Armature or no bones (e.g. a simple Map Piece the user has
-        created from scratch), a bone of this name (typically matching the model name with/without area) will be created
-        at the origin and used for all vertices. Otherwise, an Armature must be present and all vertices must be
-        weighted to one or more bones in it.
-
-        If the Armature (or unrigged Mesh) object is missing certain 'FLVER' custom properties (see `get_flver_props`),
-        they will be exported with default values based on the current selected game, if able.
-        """
+    def export_flver(self, bl_flver: BlenderFLVER) -> FLVER:
+        """Create an entire FLVER from a Blender FLVER model."""
         self.clear_temp_flver()
 
         export_settings = self.context.scene.flver_export_settings  # type: FLVERExportSettings
 
-        if mesh.type != "MESH":
-            raise FLVERExportError("`mesh` object passed to FLVER exporter must be a Mesh.")
-        if armature is not None and armature.type != "ARMATURE":
-            raise FLVERExportError("`armature` object passed to FLVER exporter must be an Armature or `None`.")
+        flver = bl_flver.to_empty_flver(self.settings)
+        bl_dummies = bl_flver.get_dummies(self.operator)
+        read_bone_type = bl_flver.guess_bone_read_type(self.operator)
+        self.info(f"Exporting FLVER '{bl_flver.name}' with bone data from {read_bone_type.capitalize()}Bones.")
 
-        # We use Armature for properties if it's present, or Mesh otherwise.
-        flver = FLVER(**self.get_flver_props(armature or mesh))
-
-        bl_dummies = self.collect_dummies(
-            mesh, armature, prefix=dummy_material_prefix, prefix_must_match=dummy_prefix_must_match
-        )
-
-        read_bone_type = self.detect_is_bind_pose(mesh)
-        self.info(f"Exporting FLVER '{mesh.name}' with bone data from {read_bone_type.capitalize()}Bones.")
-        if armature is None or not armature.pose.bones:
-            if default_bone_name:
-                self.info(  # not a warning
-                    f"No Armature/bones to export. Creating FLVER skeleton with a single origin bone named "
-                    f"'{default_bone_name}'."
-                 )
-                default_bone = FLVERBone(name=default_bone_name)  # default transform and other fields
-                flver.bones = [default_bone]
-                bl_bone_names = [default_bone.name]
-                bl_bone_data = None
-            else:
-                raise FLVERExportError(
-                    f"No Armature or bones to export and cannot use default bone name. "
-                    f"Cannot export FLVER '{mesh.name}'."
-                )
+        if bl_flver.armature is None or not bl_flver.armature.pose.bones:
+            self.info(  # not a warning
+                f"No Armature/bones to export. Creating FLVER skeleton with a single origin bone named "
+                f"'{bl_flver.flver_stem}'."
+             )
+            default_bone = FLVERBone(name=bl_flver.flver_stem)  # default transform and other fields
+            flver.bones = [default_bone]
+            bl_bone_names = [default_bone.name]
+            bl_bone_data = None
         else:
             flver.bones, bl_bone_names, bone_arma_transforms = self.create_bones(
-                armature,
+                bl_flver.armature,
                 read_bone_type,
             )
             flver.set_bone_children_siblings()  # only parents set in `create_bones`
             flver.set_bone_armature_space_transforms(bone_arma_transforms)
-            bl_bone_data = armature.data.bones
+            bl_bone_data = bl_flver.armature.data.bones
 
-        # Make `mesh` the active object again.
-        self.context.view_layer.objects.active = mesh
+        # Make Mesh the active object again.
+        self.context.view_layer.objects.active = bl_flver.mesh
 
-        for bl_dummy, dummy_info in bl_dummies:
-            flver_dummy = self.export_dummy(bl_dummy, dummy_info.reference_id, bl_bone_names, bl_bone_data)
+        for bl_dummy in bl_dummies:
+            flver_dummy = self.export_dummy(bl_dummy, bl_bone_names, bl_bone_data)
             # Mark attach/parent bones as used. TODO: Set more specific flags in later games (2 here).
             if flver_dummy.attach_bone_index >= 0:
                 flver.bones[flver_dummy.attach_bone_index].usage_flags &= ~1
@@ -158,32 +115,26 @@ class FLVERExporter:
             raise UnsupportedGameError(f"Cannot yet export FLVERs for game {self.settings.game}. (No `MatDef` class.)")
 
         matdefs = []
-        for bl_material in mesh.data.materials:
-            try:
-                mat_def_name = Path(bl_material["Mat Def Path"]).name
-            except KeyError:
-                raise FLVERExportError(
-                    f"Material '{bl_material.name}' has no 'Mat Def Path' custom property. "
-                    f"Cannot export FLVER."
-                )
+        for bl_material in bl_flver.mesh.data.materials:
+            mat_def_name = Path(bl_material.flver_material.mat_def_path).name
             if GAME_CONFIG[self.settings.game].uses_matbin:
                 matdef = matdef_class.from_matbinbnd_or_name(mat_def_name, self.matbinbnd)
             else:
                 matdef = matdef_class.from_mtdbnd_or_name(mat_def_name, self.mtdbnd)
             matdefs.append(matdef)
 
-        if not mesh.data.vertices:
+        if not bl_flver.mesh.data.vertices:
             # No submeshes in FLVER (e.g. c0000). We also leave all bounding boxes as their default max/min values.
             # We don't warn for expected empty FLVERs c0000 and c1000.
-            if dummy_material_prefix not in {"c0000", "c1000"}:
-                self.warning(f"Exporting non-c0000/c1000 FLVER '{mesh.name}' with no mesh data.")
+            if bl_flver.name[:5] not in {"c0000", "c1000"}:
+                self.warning(f"Exporting non-c0000/c1000 FLVER '{bl_flver.name}' with no mesh data.")
             return flver
 
         # TODO: Current choosing default vertex buffer layout (CHR vs. MAP PIECE) based on read bone type, which in
         #  turn depends on `mesh.is_bind_pose` at FLVER import. All a bit messily wired together...
         self.export_submeshes(
             flver,
-            mesh,
+            bl_flver.mesh,
             bl_bone_names,
             use_chr_layout=read_bone_type == "EDIT",
             normal_tangent_dot_max=export_settings.normal_tangent_dot_max,
@@ -206,64 +157,6 @@ class FLVERExporter:
         self.clear_temp_flver()
 
         return flver
-
-    def collect_dummies(
-        self,
-        mesh: bpy.types.MeshObject,
-        armature: bpy.types.ArmatureObject | None,
-        prefix: str,
-        prefix_must_match: bool,
-    ) -> list[tuple[bpy.types.Object, DummyInfo]]:
-        """Collect all Empty children of the Mesh and Armature objects with valid Dummy names that start with prefix
-        `prefix` if `prefix_must_match` = True.
-
-        Returns collected dummies them as a list of tuples of the form `(bl_empty, dummy_info)`.
-
-        Dummies parented to the Mesh, rather than the Armature, will NOT be attached to any bones (though may still have
-        custom `Parent Bone Name` data).
-
-        Note that no dummies need to exist in a FLVER (e.g. map pieces).
-        """
-        bl_dummies = []  # type: list[tuple[bpy.types.Object, DummyInfo]]
-        empty_children = [child for child in mesh.children if child.type == "EMPTY"]
-        if armature is not None:
-            empty_children.extend([child for child in armature.children if child.type == "EMPTY"])
-        for child in empty_children:
-            if dummy_info := self.parse_dummy_empty(child):
-                if prefix_must_match and dummy_info.model_name != prefix:
-                    # Don't bother warning for standard c0000 case (exporting attached equipment FLVER).
-                    if dummy_info.model_name != "c0000":
-                        self.warning(
-                            f"Ignoring Dummy '{child.name}' with non-matching model name prefix: "
-                            f"{dummy_info.model_name}"
-                        )
-                else:
-                    bl_dummies.append((child, dummy_info))
-            else:
-                self.warning(f"Ignoring Empty child '{child.name}' with invalid Dummy name.")
-
-        # Sort dummies and meshes by 'human sorting' on Blender name (should match order in Blender hierarchy view).
-        bl_dummies.sort(key=lambda o: natural_keys(o[0].name))
-        return bl_dummies
-
-    def parse_dummy_empty(self, bl_empty: bpy.types.Object) -> DummyInfo | None:
-        """Check for required 'Unk x30' custom property to detect dummies."""
-        if bl_empty.get("Unk x30") is None:
-            self.warning(
-                f"Empty child of FLVER '{bl_empty.name}' ignored. (Missing 'unk_x30' Dummy property and possibly "
-                f"other required properties and proper Dummy name; see docs.)"
-            )
-            return None
-
-        dummy_info = parse_dummy_name(bl_empty.name)
-        if not dummy_info:
-            self.warning(
-                f"Could not interpret Dummy name: '{bl_empty.name}'. Ignoring it. Format should be: \n"
-                f"    `{{MODEL_NAME}} Dummy<{{INDEX}}> [{{REFERENCE_ID}}]`\n"
-                f"where 'MODEL_NAME' is optional but must match the name of the exported FLVER for non-Map Pieces."
-            )
-
-        return dummy_info
 
     def export_submeshes(
         self,
@@ -570,13 +463,21 @@ class FLVERExporter:
             array_layout = matdef.get_character_layout()
         else:
             array_layout = matdef.get_map_piece_layout()
+
+        # noinspection PyUnresolvedReferences
+        props = bl_material.flver_material  # type: FLVERMaterialProps
         # We only respect 'Face Set Count' if requested in export options. (Duplicating the main face set is only
         # viable in older games with low-res meshes, but those same games don't even really need LODs anyway.)
-        face_set_count = get_bl_prop(bl_material, "Face Set Count", int, default=1) if create_lod_face_sets else 1
+        face_set_count = props.face_set_count if create_lod_face_sets else 1
+        use_backface_culling = (
+            bl_material.use_backface_culling
+            if props.use_backface_culling == "DEFAULT"
+            else props.use_backface_culling == "ENABLED"
+        )
         submesh_kwargs = {
-            "is_bind_pose": get_bl_prop(bl_material, "Is Bind Pose", int, default=use_chr_layout, callback=bool),
-            "default_bone_index": get_bl_prop(bl_material, "Default Bone Index", int, default=0),
-            "use_backface_culling": bl_material.use_backface_culling,
+            "is_bind_pose": props.is_bind_pose,
+            "default_bone_index": props.default_bone_index,
+            "use_backface_culling": use_backface_culling,
             "uses_bounding_box": True,  # TODO: assumption (DS1 and likely all later games)
             "face_set_count": face_set_count,
         }
@@ -752,13 +653,15 @@ class FLVERExporter:
         NOTE: The `FLVER` write method will automatically redirect non-1 values to 0 for early FLVER versions.
         """
         flags = 0
-        if get_bl_prop(edit_bone, "Is Unused", bool, default=False):
+        # noinspection PyUnresolvedReferences
+        props = edit_bone.flver_bone  # type: FLVERBoneProps
+        if props.is_unused:
             flags |= FLVERBoneUsageFlags.UNUSED
-        if get_bl_prop(edit_bone, "Is Used by Local Dummy", bool, default=False):
+        if props.is_used_by_local_dummy:
             flags |= FLVERBoneUsageFlags.DUMMY
-        if get_bl_prop(edit_bone, "Is Used by Equipment", bool, default=False):
+        if props.is_used_by_equipment:
             flags |= FLVERBoneUsageFlags.cXXXX
-        if get_bl_prop(edit_bone, "Is Used by Local Mesh", bool, default=False):
+        if props.is_used_by_local_mesh:
             flags |= FLVERBoneUsageFlags.MESH
 
         if bool(flags & FLVERBoneUsageFlags.UNUSED) and flags != 1:
@@ -770,41 +673,40 @@ class FLVERExporter:
 
     def export_dummy(
         self,
-        bl_dummy: bpy.types.Object,
-        reference_id: int,
+        bl_dummy: BlenderFLVERDummy,
         bl_bone_names: list[str],
-        bl_bone_data: bpy.types.ArmatureBones,
+        bl_bone_data: bpy.types.ArmatureBones | None,
     ) -> Dummy:
         """Create a single `FLVER.Dummy` from a Blender Dummy empty."""
         game_dummy = Dummy(
-            reference_id=reference_id,  # stored in dummy name for editing convenience
-            color_rgba=get_bl_prop(bl_dummy, "Color RGBA", tuple, default=(255, 255, 255, 255), callback=list),
-            flag_1=get_bl_prop(bl_dummy, "Flag 1", int, default=True, callback=bool),
-            use_upward_vector=get_bl_prop(bl_dummy, "Use Upward Vector", int, default=True, callback=bool),
-            unk_x30=get_bl_prop(bl_dummy, "Unk x30", int, default=0),
-            unk_x34=get_bl_prop(bl_dummy, "Unk x34", int, default=0),
-
+            reference_id=bl_dummy.reference_id,  # stored in dummy name for editing convenience
+            color_rgba=list(bl_dummy.color_rgba),
+            flag_1=bl_dummy.flag_1,
+            use_upward_vector=bl_dummy.use_upward_vector,
+            unk_x30=bl_dummy.unk_x30,
+            unk_x34=bl_dummy.unk_x34,
         )
-        parent_bone_name = get_bl_prop(bl_dummy, "Parent Bone Name", str, default="")
-        if parent_bone_name and not bl_bone_data:
-            self.warning(
-                f"Tried to export dummy {bl_dummy.name} with parent bone '{parent_bone_name}', but this FLVER has "
-                f"no armature. Dummy will be exported with parent bone index -1."
-            )
-            parent_bone_name = ""
 
         # We decompose the world matrix of the dummy to 'bypass' any attach bone to get its translate and rotate.
         # However, the translate may still be relative to a DIFFERENT parent bone, so we need to account for that below.
-        bl_dummy_translate = bl_dummy.matrix_world.translation
-        bl_dummy_rotmat = bl_dummy.matrix_world.to_3x3()
+        bl_dummy_translate = bl_dummy.obj.matrix_world.translation
+        bl_dummy_rotmat = bl_dummy.obj.matrix_world.to_3x3()
 
-        if parent_bone_name:
+        parent_bone = bl_dummy.parent_bone
+        if parent_bone is not None and not bl_bone_data:
+            self.warning(
+                f"Tried to export dummy {bl_dummy.name} with parent bone '{parent_bone.name}', but this FLVER has "
+                f"no armature. Dummy will be exported with parent bone index -1."
+            )
+            parent_bone = None
+
+        if parent_bone:
             # Dummy's Blender 'world' translate is actually given in the space of this bone in the FLVER file.
             try:
-                game_dummy.parent_bone_index = bl_bone_names.index(parent_bone_name)
+                game_dummy.parent_bone_index = bl_bone_names.index(parent_bone.name)
             except ValueError:
-                raise FLVERExportError(f"Dummy '{bl_dummy.name}' parent bone '{parent_bone_name}' not in Armature.")
-            bl_parent_bone_matrix_inv = bl_bone_data[parent_bone_name].matrix_local.inverted()
+                raise FLVERExportError(f"Dummy '{bl_dummy.name}' parent bone '{parent_bone.name}' not in Armature.")
+            bl_parent_bone_matrix_inv = bl_bone_data[parent_bone.name].matrix_local.inverted()
             game_dummy.translate = BL_TO_GAME_VECTOR3(bl_parent_bone_matrix_inv @ bl_dummy_translate)
         else:
             game_dummy.parent_bone_index = -1
@@ -814,13 +716,14 @@ class FLVERExporter:
         game_dummy.forward = forward
         game_dummy.upward = up if game_dummy.use_upward_vector else Vector3.zero()
 
-        if bl_dummy.parent_type == "BONE":  # NOTE: only possible for dummies parented to the Armature
+        if bl_dummy.obj.parent_type == "BONE":  # NOTE: only possible for dummies parented to the Armature
             # Dummy has an 'attach bone' that is its Blender parent.
             try:
-                game_dummy.attach_bone_index = bl_bone_names.index(bl_dummy.parent_bone)
+                game_dummy.attach_bone_index = bl_bone_names.index(bl_dummy.obj.parent_bone.name)
             except ValueError:
                 raise FLVERExportError(
-                    f"Dummy '{bl_dummy.name}' attach bone (Blender parent) '{bl_dummy.parent_bone}' not in Armature."
+                    f"Dummy '{bl_dummy.name}' attach bone (Blender parent) '{bl_dummy.obj.parent_bone.name}' "
+                    f"not in Armature."
                 )
         else:
             # Dummy has no attach bone.
@@ -875,41 +778,28 @@ class FLVERExporter:
 
         export_settings = self.context.scene.flver_export_settings  # type: FLVERExportSettings
 
+        # noinspection PyUnresolvedReferences
+        props = bl_material.flver_material  # type: FLVERMaterialProps
+
         flver_material = Material(
             name=name,
-            flags=get_bl_prop(bl_material, "Flags", int),
-            mat_def_path=get_bl_prop(bl_material, "Mat Def Path", str),
-            unk_x18=get_bl_prop(bl_material, "Unk x18", int, default=0),
+            flags=props.flags,
+            mat_def_path=props.mat_def_path,
+            unk_x18=props.unk_x18,
         )
 
-        # Read any `GXItem` custom properties.
-        gx_item_re = re.compile(r"GXItem\[(\d+)\] (Category|Index|Data)")
-        gx_items_info = {}
-        for prop_name, prop_value in bl_material.items():
-            if match := gx_item_re.match(prop_name):
-                i = int(match.group(1))
-                gx_item_info = gx_items_info.setdefault(i, {})
-                prop_type = match.group(2)
-                if prop_type == "Data":
-                    gx_item_info[prop_type] = ast.literal_eval(prop_value)  # `str` bytes repr -> `bytes`
-                else:
-                    gx_item_info[prop_type] = prop_value  # str Category or int Index
-        for i, gx_item_info in gx_items_info.items():  # don't need array index
-            for key in ("Category", "Index", "Data"):
-                if key not in gx_item_info:
-                    raise FLVERExportError(
-                        f"GXItem missing '{key}' property. You must define custom property 'GXItem[{i}] {key}' on "
-                        f"Blender FLVER material '{bl_material.name}'."
-                    )
+        for gx_item_prop in props.gx_items:
+            gx_item_prop: FLVERGXItemProps
+            gx_item_data = ast.literal_eval(gx_item_prop.data)  # str -> bytes
             gx_item = GXItem(
-                category=gx_item_info["Category"],
-                index=gx_item_info["Index"],
-                size=len(gx_item_info["Data"]) + 12,
+                category=gx_item_prop.category,
+                index=gx_item_prop.index,
+                size=len(gx_item_data) + 12,  # extra 12 bytes for dummy item at end of list
             )
-            gx_item.data = gx_item_info["Data"]  # not an `__init__` argument
+            gx_item.data = gx_item_data  # not an init field
             flver_material.gx_items.append(gx_item)
 
-        sampler_prefix = get_bl_prop(bl_material, "Sampler Prefix", str, default="")
+        sampler_prefix = props.sampler_prefix
         # FLVER material texture path extension doesn't actually matter, but we try to be faithful.
         path_ext = ".tif" if self.settings.is_game(ELDEN_RING) else ".tga"  # TODO: also TIF in Sekiro?
 
@@ -939,7 +829,7 @@ class FLVERExporter:
             # Check custom property.
             path_prop = f"Path[{sampler_name}]"
             if path_prop in bl_material:
-                prop_texture_path = get_bl_prop(bl_material, path_prop, str)  # to assert `str` type
+                prop_texture_path = get_bl_custom_prop(bl_material, path_prop, str)  # to assert `str` type
                 texture_stem = Path(prop_texture_path).stem
                 sampler_found = True
             else:
@@ -999,55 +889,6 @@ class FLVERExporter:
 
         return flver_material
 
-    def get_flver_props(self, bl_obj: bpy.types.Object) -> dict[str, tp.Any]:
-        """Retrieve FLVER properties from custom properties on given object, which will be the Armature if present and
-        Mesh otherwise (permitted for basic Map Pieces).
-
-        If 'Model Name' property is present, that Blender model object will be found and used instead. That object must
-        exist if its name is specified.
-        """
-
-        if source_model_name := bl_obj.get("Model Name", None):
-            try:
-                bl_obj = bpy.data.objects[source_model_name]
-            except KeyError:
-                raise FLVERExportError(
-                    f"FLVER mesh '{bl_obj.name}' has 'Model Name' property set to non-existent object "
-                    f"{source_model_name}'. Cannot find FLVER properties or dummies for export."
-                )
-
-        try:
-            version_str = bl_obj["Version"]
-        except KeyError:
-            # Default is game-dependent.
-            game = self.settings.game
-            try:
-                version = GAME_CONFIG[game].flver_default_version
-            except KeyError:
-                raise ValueError(
-                    f"Do not know default FLVER Version for game {game}. You must set 'Version' yourself on FLVER "
-                    f"object '{bl_obj.name}' before exporting. It must be one of: {', '.join(v.name for v in Version)}"
-                )
-        else:
-            try:
-                version = Version[version_str]
-            except KeyError:
-                raise ValueError(
-                    f"Invalid FLVER Version: '{version_str}'. It must be one of: {', '.join(v.name for v in Version)}"
-                )
-
-        # TODO: Any other game-specific fields?
-        return dict(
-            big_endian=get_bl_prop(bl_obj, "Is Big Endian", bool, default=False),
-            version=version,
-            unicode=get_bl_prop(bl_obj, "Unicode", bool, default=True),
-            unk_x4a=get_bl_prop(bl_obj, "Unk x4a", bool, default=False),
-            unk_x4c=get_bl_prop(bl_obj, "Unk x4c", int, default=0),
-            unk_x5c=get_bl_prop(bl_obj, "Unk x5c", int, default=0),
-            unk_x5d=get_bl_prop(bl_obj, "Unk x5d", int, default=0),
-            unk_x68=get_bl_prop(bl_obj, "Unk x68", int, default=0),
-        )
-
     def warning(self, msg: str):
         self.operator.report({"WARNING"}, msg)
         print(f"# WARNING: {msg}")
@@ -1055,38 +896,6 @@ class FLVERExporter:
     def info(self, msg: str):
         self.operator.report({"INFO"}, msg)
         print(f"# INFO: {msg}")
-
-    def detect_is_bind_pose(self, bl_flver_mesh: bpy.types.MeshObject) -> str:
-        """Detect whether bone data should be read from EditBones or PoseBones.
-
-        TODO: Best hack I can come up with, currently. I'm still not 100% sure if it's safe to assume that Submesh
-         `is_bind_pose` is consistent (or SHOULD be consistent) across all submeshes in a single FLVER. Objects in
-         particular could possibly lie somewhere between map pieces (False) and characters (True).
-        """
-        read_bone_type = ""
-        warn_partial_bind_pose = False
-        for bl_material in bl_flver_mesh.data.materials:
-            is_bind_pose = get_bl_prop(bl_material, "Is Bind Pose", int, callback=bool)
-            if is_bind_pose:  # typically: characters, objects, parts
-                if not read_bone_type:
-                    read_bone_type = "EDIT"  # write bone transforms from EditBones
-                elif read_bone_type == "POSE":
-                    warn_partial_bind_pose = True
-                    read_bone_type = "EDIT"
-                    break
-            else:  # typically: map pieces
-                if not read_bone_type:
-                    read_bone_type = "POSE"  # write bone transforms from PoseBones
-                elif read_bone_type == "EDIT":
-                    warn_partial_bind_pose = True
-                    break  # keep EDIT default
-        if warn_partial_bind_pose:
-            self.warning(
-                "Some materials in FLVER use `Is Bind Pose = True` (bone data written to EditBones in Blender; typical "
-                "for characters) and some do not (bone data written to PoseBones in Blender; typical for map pieces ). "
-                "Soulstruct will read all bone data from EditBones for export."
-            )
-        return read_bone_type
 
     @classmethod
     def clear_matdef_caches(cls):

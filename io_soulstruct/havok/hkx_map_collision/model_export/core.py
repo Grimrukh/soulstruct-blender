@@ -2,8 +2,8 @@ from __future__ import annotations
 
 __all__ = [
     "HKXMapCollisionExportError",
-    "LOOSE_HKX_COLLISION_NAME_RE",
-    "NUMERIC_HKX_COLLISION_NAME_RE",
+    "LOOSE_HKX_COLLISION_STEM_RE",
+    "NUMERIC_HKX_COLLISION_STEM_RE",
     "export_hkx_map_collision",
 ]
 
@@ -23,8 +23,8 @@ class HKXMapCollisionExportError(Exception):
     pass
 
 
-LOOSE_HKX_COLLISION_NAME_RE = re.compile(r"^([hl])(\w{6})A(\d\d)$")  # game-readable model name; no extensions
-NUMERIC_HKX_COLLISION_NAME_RE = re.compile(r"^([hl])(\d{4})B(\d)A(\d\d)$")  # standard map model name; no extensions
+LOOSE_HKX_COLLISION_STEM_RE = re.compile(r"^([hl])(\w{6})A(\d\d)$")  # game-readable model name; no extensions
+NUMERIC_HKX_COLLISION_STEM_RE = re.compile(r"^([hl])(\d{4})B(\d)A(\d\d)$")  # standard map model name; no extensions
 
 HKX_MATERIAL_NAME_RE = re.compile(r"HKX (?P<index>\d+) \((?P<res>Hi|Lo)\).*")  # Blender HKX material name
 

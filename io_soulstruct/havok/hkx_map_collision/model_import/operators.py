@@ -290,7 +290,6 @@ class ImportHKXMapCollisionFromHKXBHD(LoggingOperator):
         start_time = time.perf_counter()
 
         settings = self.settings(context)
-        settings.save_settings()
         game_lists = context.scene.soulstruct_game_enums  # type: SoulstructGameEnums
 
         hkx_entry_name = game_lists.hkx_map_collision
@@ -326,7 +325,7 @@ class ImportHKXMapCollisionFromHKXBHD(LoggingOperator):
         except Exception as ex:
             traceback.print_exc()  # for inspection in Blender console
             return self.error(f"Cannot import HKX '{model_name}' from HKXBHDs in {map_stem}. Error: {ex}")
-        collection = get_collection(f"{map_stem} Collision Models", context.scene.collection, hide_viewport=False)
+        collection = get_collection(f"{map_stem} Collision Models", context.scene.collection)
         collection.objects.link(hkx_model)
         for child in hkx_model.children:
             collection.objects.link(child)

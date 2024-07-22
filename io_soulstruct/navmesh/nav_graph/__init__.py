@@ -14,6 +14,10 @@ __all__ = [
     "SetNodeNavmeshATriangles",
     "SetNodeNavmeshBTriangles",
     "RefreshMCGNames",
+
+    "NVMFaceIndex",
+    "MCGNodeProps",
+    "MCGEdgeProps",
 ]
 
 from .draw_mcg import *
@@ -21,3 +25,4 @@ from .export_mcg import *
 from .import_mcp import *
 from .import_mcg import *
 from .misc_operators import *
+from .properties import *

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 __all__ = [
-    "NVMImportError",
     "NVMImportInfo",
     "NVMImporter",
 ]
@@ -16,13 +15,9 @@ from mathutils import Vector
 
 from soulstruct.darksouls1r.maps.navmesh.nvm import NVM, NVMBox, NVMEventEntity
 
-from io_soulstruct.utilities import *
 from io_soulstruct.navmesh.nvm.utilities import *
-
-
-class NVMImportError(Exception):
-    """Exception raised during NVM import."""
-    pass
+from io_soulstruct.types import SoulstructType
+from io_soulstruct.utilities import *
 
 
 class NVMImportInfo(tp.NamedTuple):
@@ -70,6 +65,7 @@ class NVMImporter:
         bl_mesh.from_pydata(vertices, edges, faces)
         # noinspection PyTypeChecker
         mesh_obj = bpy.data.objects.new(import_info.bl_name, bl_mesh)  # type: bpy.types.MeshObject
+        mesh_obj.soulstruct_type = SoulstructType.NAVMESH
         self.collection.objects.link(mesh_obj)
         self.all_bl_objs = [mesh_obj]
 

@@ -36,7 +36,8 @@ GAME_FILE_ENUM_ITEMS = {
     # MSB entries
     "map_piece_part": CachedEnumItems(),
     "navmesh_part": CachedEnumItems(),
-    "hkx_map_collision_part": CachedEnumItems(),
+    "collision_part": CachedEnumItems(),
+    "connect_collision_part": CachedEnumItems(),
     "asset_part": CachedEnumItems(),
     "object_part": CachedEnumItems(),
     "character_part": CachedEnumItems(),
@@ -317,7 +318,7 @@ def get_hkx_map_collision_items(self, context):
 # noinspection PyUnusedLocal
 def get_msb_hkx_map_collision_items(self, context):
     """Collect `MSBCollision` parts from selected game map's MSB."""
-    key = "hkx_map_collision_part"
+    key = "collision_part"
 
     settings = SoulstructSettings.from_context(context)
     if not settings.is_game(DARK_SOULS_PTDE, DARK_SOULS_DSR):
@@ -357,6 +358,48 @@ def get_msb_hkx_map_collision_items(self, context):
 
 
 # noinspection PyUnusedLocal
+def get_msb_hkx_map_connect_collision_items(self, context):
+    """Collect `MSBConnectCollision` parts from selected game map's MSB."""
+    key = "connect_collision_part"
+
+    settings = SoulstructSettings.from_context(context)
+    if not settings.is_game(DARK_SOULS_PTDE, DARK_SOULS_DSR):
+        return _clear_items(key).items
+
+    msb_path = settings.get_import_msb_path()  # we use preferred import location only (and latest version)
+    if not is_path_and_file(msb_path):
+        return _clear_items(key).items
+
+    cached = GAME_FILE_ENUM_ITEMS[key]
+    if cached.is_valid(msb_path, None):
+        # Use cached enum items.
+        # NOTE: Even if the MSB is written from Blender, Soulstruct cannot add or remove parts (yet).
+        return cached.items
+
+    # Open MSB and find all Map Piece parts. NOTE: We don't check here if the part's model is a valid file.
+    # It's up to the importer to handle and report that error case.
+
+    try:
+        msb_class = settings.get_game_msb_class()
+        msb = get_cached_file(msb_path, msb_class)  # type: MSB_TYPING
+    except (FileNotFoundError, ValueError) as ex:
+        return _clear_items(key).items
+
+    items = []
+    for connect_col_part in msb.connect_collisions:
+        if not connect_col_part.model:
+            continue  # part is missing MSB model
+        full_model_name = connect_col_part.model.get_model_file_stem(settings.map_stem)
+        items.append(
+            (connect_col_part.name, connect_col_part.name, f"{connect_col_part.name} (Model {full_model_name})")
+        )
+
+    # NOTE: The cache key is the MSB path.
+    cached = GAME_FILE_ENUM_ITEMS[key] = CachedEnumItems(msb_path, None, items)
+    return cached.items
+
+
+# noinspection PyUnusedLocal
 def get_msb_asset_items(self, context):
     """Collect `MSBAsset` parts from selected game map's MSB."""
     key = "asset_part"
@@ -366,6 +409,7 @@ def get_msb_asset_items(self, context):
         return _clear_items(key).items
 
     # TODO: Also disabled for Elden Ring, currently, due to overwhelming supply.
+    #  Need a better way of choosing, like a temp folder unpack of MSB entry names.
     return _clear_items(key).items
 
     msb_path = settings.get_import_msb_path()  # we use preferred import location only (and latest version)
@@ -598,7 +642,7 @@ class SoulstructGameEnums(bpy.types.PropertyGroup):
         items=get_navmesh_part_items,
     )
 
-    hkx_map_collision_part: bpy.props.EnumProperty(
+    collision_part: bpy.props.EnumProperty(
         name="MSB Map Collision Part",
         items=get_msb_hkx_map_collision_items,
     )

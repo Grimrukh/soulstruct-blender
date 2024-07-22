@@ -5,11 +5,14 @@ __all__ = [
     "GAME_TO_BL_EULER",
     "GAME_TO_BL_MAT3",
     "GAME_TO_BL_ARRAY",
+    "game_forward_up_vectors_to_bl_euler",
     "BL_TO_GAME_VECTOR3",
     "BL_TO_GAME_VECTOR4",
     "BL_TO_GAME_EULER",
     "BL_TO_GAME_MAT3",
     "BL_TO_GAME_ARRAY",
+    "bl_euler_to_game_forward_up_vectors",
+    "bl_rotmat_to_game_forward_up_vectors",
     "Transform",
     "BlenderTransform",
 ]
@@ -80,6 +83,21 @@ def GAME_TO_BL_MAT3(game_mat3: Matrix3) -> Matrix:
     ))
 
 
+def game_forward_up_vectors_to_bl_euler(forward: Vector3, up: Vector3) -> Euler:
+    """Convert `forward` and `up` vectors to Euler angles `(x, y, z)` (in Blender coordinates).
+
+    Mainly used for representing FLVER dummies in Blender.
+    """
+    right = up.cross(forward)
+    rotation_matrix = Matrix3([
+        [right.x, up.x, forward.x],
+        [right.y, up.y, forward.y],
+        [right.z, up.z, forward.z],
+    ])
+    game_euler = rotation_matrix.to_euler_angles(radians=True)
+    return GAME_TO_BL_EULER(game_euler)
+
+
 def BL_TO_GAME_MAT3(bl_mat3: Matrix) -> Matrix3:
     """Converts a 3x3 rotation matrix from Blender to the game.
 
@@ -96,6 +114,23 @@ def BL_TO_GAME_MAT3(bl_mat3: Matrix) -> Matrix3:
 def BL_TO_GAME_EULER(bl_euler: Euler) -> Vector3:
     """Convert a Blender XYZ `Euler` in Blender space to game XZY Euler angles as a `Vector3`."""
     return Vector3((-bl_euler.x, -bl_euler.z, -bl_euler.y))
+
+
+def bl_euler_to_game_forward_up_vectors(bl_euler: Euler) -> tuple[Vector3, Vector3]:
+    """Convert a Blender `Euler` to its forward-axis and up-axis vectors in game space (for `FLVER.Dummy`)."""
+    game_euler = BL_TO_GAME_EULER(bl_euler)
+    game_mat = Matrix3.from_euler_angles(game_euler)
+    forward = Vector3((game_mat[0][2], game_mat[1][2], game_mat[2][2]))  # third column (Z)
+    up = Vector3((game_mat[0][1], game_mat[1][1], game_mat[2][1]))  # second column (Y)
+    return forward, up
+
+
+def bl_rotmat_to_game_forward_up_vectors(bl_rotmat: Matrix) -> tuple[Vector3, Vector3]:
+    """Convert a Blender `Matrix` to its game equivalent's forward-axis and up-axis vectors (for `FLVER.Dummy`)."""
+    game_mat = BL_TO_GAME_MAT3(bl_rotmat)
+    forward = Vector3((game_mat[0][2], game_mat[1][2], game_mat[2][2]))  # third column (Z)
+    up = Vector3((game_mat[0][1], game_mat[1][1], game_mat[2][1]))  # second column (Y)
+    return forward, up
 
 
 @dataclass(slots=True)

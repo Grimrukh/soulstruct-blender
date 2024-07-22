@@ -5,8 +5,6 @@ __all__ = [
     "CopyToNewFLVER",
     "DeleteFLVER",
     "DeleteFLVERAndData",
-    "CreateFLVERInstance",
-    "DuplicateFLVERModel",
     "RenameFLVER",
     "CreateEmptyMapPieceFLVER",
     "SelectDisplayMaskID",
@@ -22,6 +20,9 @@ __all__ = [
     "FindMissingTexturesInPNGCache",
     "SelectMeshChildren",
     "draw_dummy_ids",
+    "HideAllDummiesOperator",
+    "ShowAllDummiesOperator",
+    "PrintGameTransform",
 ]
 
 import typing as tp
@@ -35,11 +36,10 @@ from mathutils import Matrix, Vector, Quaternion
 from soulstruct.base.models.flver import Material
 
 from io_soulstruct.exceptions import FLVERError
+from io_soulstruct.utilities.conversion import BlenderTransform
 from io_soulstruct.utilities.operators import LoggingOperator
 from io_soulstruct.utilities.bpy_data import *
-from io_soulstruct.msb.msb_import.core import create_flver_model_instance
-from .utilities import *
-
+from .types import *
 
 _MASK_ID_STRINGS = []
 
@@ -234,224 +234,30 @@ class DeleteFLVERAndData(LoggingOperator):
 
     bl_idname = "object.delete_flver_and_data"
     bl_label = "Delete FLVER (Objects + Data)"
-    bl_description = "Delete Armature of selected FLVER and all its children, as well as their data blocks"
+    bl_description = ("Delete Armature/Mesh of selected FLVER and all its children, as well as any Mesh data blocks "
+                      "(but not materials or textures)")
 
     @classmethod
     def poll(cls, context):
-        return context.mode == "OBJECT" and context.active_object and context.active_object.type in {"ARMATURE", "MESH"}
+        if context.mode != "OBJECT" or not context.active_object:
+            return False
+        try:
+            BlenderFLVER.from_bl_obj(context.active_object)
+        except FLVERError:
+            return False
+        return True
 
     def execute(self, context):
-        if not self.poll(context):
-            return self.error("Must select a Mesh or Armature in Object Mode.")
-
-        # noinspection PyTypeChecker
-        armature = context.active_object
-        if armature.type in {"EMPTY", "MESH"}:
-            # noinspection PyTypeChecker
-            armature = armature.parent
-        if armature.type != "ARMATURE":
-            return self.error("Selected object is not an Armature or a child Mesh/Empty of an Armature.")
-        armature: bpy.types.ArmatureObject
-
-        for child in armature.children:
+        bl_flver = BlenderFLVER.from_bl_obj(context.active_object)
+        for child in bl_flver.root_obj.children_recursive:
             if child.type == "MESH":
                 bpy.data.meshes.remove(child.data)
             bpy.data.objects.remove(child)
-        bpy.data.armatures.remove(armature.data)
-        bpy.data.objects.remove(armature)
-
-        return {"FINISHED"}
-
-
-class CreateFLVERInstance(LoggingOperator):
-
-    bl_idname = "object.create_flver_instance"
-    bl_label = "Create FLVER Instance"
-    bl_description = "Create an instance of the selected FLVER model. Must be in Object Mode"
-
-    @classmethod
-    def poll(cls, context):
-        return context.mode == "OBJECT" and context.active_object and context.active_object.type in {"ARMATURE", "MESH"}
-
-    def execute(self, context):
-        if not self.poll(context):
-            return self.error("Must select a Mesh in Object Mode.")
-
-        mesh, armature = parse_flver_obj(context.active_object)
-        name = armature.name if armature else mesh.name
-
-        try:
-            create_flver_model_instance(context, armature, mesh, f"{name} Instance", context.collection, copy_pose=True)
-        except Exception as ex:
-            return self.error(f"Could not create FLVER instance: {ex}")
-
-        return {"FINISHED"}
-
-
-class DuplicateFLVERModel(LoggingOperator):
-
-    bl_idname = "object.duplicate_flver_model"
-    bl_label = "Duplicate to New FLVER Model"
-    bl_description = (
-        "Duplicate model of selected FLVER to a new model with given name (or text before first underscore in FLVER "
-        "instance name). Selected FLVER must be an 'instance' FLVER with a custom 'Model Name' property pointing to "
-        "its source model object. Bone poses will also be copied if new model name starts with 'm' (Map Piece). Must "
-        "be in Object Mode"
-    )
-
-    @classmethod
-    def poll(cls, context):
-        return context.mode == "OBJECT" and context.active_object and context.active_object.type in {"ARMATURE", "MESH"}
-
-    def execute(self, context):
-        if not self.poll(context):
-            return self.error("Must select a Mesh in Object Mode.")
-
-        instance_mesh, instance_armature = parse_flver_obj(context.active_object)
-        instance_name = instance_armature.name if instance_armature else instance_mesh.name
-
-        tool_settings = context.scene.flver_tool_settings  # type: FLVERToolSettings
-        if not tool_settings.new_flver_model_name:
-            new_model_name = instance_name.split("_")[0]
-            self.info(f"No name for new model specified. Using prefix of FLVER instance name: '{new_model_name}'")
-        else:
-            new_model_name = tool_settings.new_flver_model_name
-
-        # Check that name is available.
-        if new_model_name in bpy.data.objects:
-            if instance_armature is None:
-                return self.error(
-                    f"Object with name '{new_model_name}' already exists. Please choose a unique name for new FLVER "
-                    f"model's Mesh."
-                )
-            else:
-                return self.error(
-                    f"Object with name '{new_model_name}' already exists. Please choose a unique name for new FLVER "
-                    f"model's Armature."
-                )
-        if instance_armature is not None and f"{new_model_name} Mesh" in bpy.data.objects:
-            return self.error(
-                f"Object with name '{new_model_name} Mesh' already exists. Please choose a unique name for new FLVER "
-                f"model's Mesh."
-            )
-
-        try:
-            source_model_name = (instance_armature or instance_mesh)["Model Name"]
-        except KeyError:
-            return self.error(
-                f"Selected FLVER '{instance_name}' does not have a 'Model Name' custom property, suggesting it is "
-                f"not a model instance. Please select a FLVER instance with this property rather than the base model."
-            )
-
-        # Find model.
-        try:
-            source_flver_model = bpy.data.objects[source_model_name]
-        except KeyError:
-            return self.error(
-                f"FLVER mesh '{instance_name}' has 'Model Name' property set to non-existent object "
-                f"{source_model_name}'. Cannot find FLVER model to duplicate."
-            )
-        # Find all collections containing source model.
-        source_collections = source_flver_model.users_collection
-
-        model_mesh, model_armature = parse_flver_obj(source_flver_model)
-
-        self.info(f"Creating new FLVER model '{new_model_name}' from '{source_model_name}'.")
-
-        new_mesh_obj = new_mesh_object(
-            f"{new_model_name} Mesh" if model_armature else new_model_name,
-            model_mesh.data.copy(),
-            props=model_mesh,
-        )
-        new_mesh_obj.data.name = f"{new_model_name} Mesh"  # suffix handled automatically by Blender
-        for collection in source_collections:
-            collection.objects.link(new_mesh_obj)
-
-        # Duplicate and rename mesh materials.
-        for i, mat in enumerate(tuple(new_mesh_obj.data.materials)):
-            new_mat = mat.copy()
-            new_mat.name = replace_name_model(mat.name, source_model_name, new_model_name)
-            new_mesh_obj.data.materials[i] = new_mat
-
-        new_armature_obj = None
-        if model_armature:
-            new_armature_obj = new_armature_object(
-                new_model_name,
-                data=model_armature.data.copy(),
-                props=model_armature,
-            )
-            for collection in source_collections:
-                collection.objects.link(new_armature_obj)
-            new_armature_obj.data.name = f"{new_model_name} Armature"  # suffix handled automatically by Blender
-            # Other properties already copied over above.
-            context.view_layer.objects.active = new_armature_obj
-
-            if new_model_name.startswith("m"):
-                # Copy pose bone transforms for auto-detected Map Piece.
-                context.view_layer.update()  # need Blender to create `linked_armature_obj.pose` now
-                for pose_bone in model_armature.pose.bones:
-                    source_bone = model_armature.pose.bones[pose_bone.name]
-                    pose_bone.rotation_mode = "QUATERNION"  # should be default but being explicit
-                    pose_bone.location = source_bone.location
-                    pose_bone.rotation_quaternion = source_bone.rotation_quaternion
-                    pose_bone.scale = source_bone.scale
-
-            # Now rename bones and vertex groups.
-            bone_renaming = {}
-            for bone in new_armature_obj.data.bones:
-                old_bone_name = bone.name
-                # If there is only one bone, we set its name to the model name manually, as they can be outdated.
-                if len(new_armature_obj.pose.bones) == 1:
-                    new_bone_name = new_model_name
-                else:
-                    new_bone_name = replace_name_model(bone.name, source_model_name, new_model_name)
-                bone_renaming[old_bone_name] = bone.name = new_bone_name
-            for vertex_group in new_mesh_obj.vertex_groups:
-                if vertex_group.name in bone_renaming:
-                    vertex_group.name = bone_renaming[vertex_group.name]
-
-            new_mesh_obj.parent = new_armature_obj
-            if bpy.ops.object.select_all.poll():
-                bpy.ops.object.select_all(action="DESELECT")
-            new_mesh_obj.select_set(True)
-            context.view_layer.objects.active = new_mesh_obj
-            bpy.ops.object.modifier_add(type="ARMATURE")
-            armature_mod = new_mesh_obj.modifiers["Armature"]
-            armature_mod.object = new_armature_obj
-            armature_mod.show_in_editmode = True
-            armature_mod.show_on_cage = True
-
-        # New model created successfully. Now we update the instance to refer to it, and use its name.
-        # The instance name may just be part of the full model name, so we find the overlap and update from that.
-        # Get prefix that overlaps with old model name (e.g. 'm2000B0_0000_SUFFIX' * 'm2000B0A10' = 'm2000B0').
-        old_instance_prefix = new_instance_prefix = ""
-        for i, (a, b) in enumerate(zip(instance_name, source_model_name)):
-            if a != b:
-                old_instance_prefix = instance_name[:i]
-                new_instance_prefix = new_model_name[:i]  # take same length prefix from new model name
-                break
-
-        instance_mesh.data = new_mesh_obj.data
-        if old_instance_prefix:
-            instance_mesh.name = replace_name_model(instance_mesh.name, old_instance_prefix, new_instance_prefix)
-        if instance_armature:
-            # Model reference stored on instance Armature.
-            if new_armature_obj:
-                instance_armature.data = new_armature_obj.data
-                instance_armature["Model Name"] = new_model_name  # name of model Armature or Mesh
-                if old_instance_prefix:
-                    instance_armature.name = replace_name_model(
-                        instance_armature.name, old_instance_prefix, new_instance_prefix
-                    )
-            else:
-                self.warning(
-                    f"FLVER instance '{instance_armature.name}' has an Armature, but model does not. Keeping Model "
-                    f"Name reference on instance Mesh."
-                )
-                instance_mesh["Model Name"] = new_model_name  # name of model Armature or Mesh
-        else:
-            # Model reference stored on instance Mesh (no Armature).
-            instance_mesh["Model Name"] = new_model_name  # name of model Armature or Mesh
+        if bl_flver.armature:
+            bpy.data.armatures.remove(bl_flver.armature.data)
+            bpy.data.objects.remove(bl_flver.armature)
+        bpy.data.meshes.remove(bl_flver.mesh.data)
+        bpy.data.objects.remove(bl_flver.mesh)
 
         return {"FINISHED"}
 
@@ -461,8 +267,8 @@ class RenameFLVER(LoggingOperator):
     bl_idname = "object.rename_flver"
     bl_label = "Rename FLVER"
     bl_description = (
-        "Rename all occurrences of model name in the selected FLVER model. Automatically removes Blender duplicate "
-        "name suffixes like '.001'. Must be in Object Mode"
+        "Rename all occurrences of model name in the selected FLVER model (text before first space and/or dot). "
+        "Automatically removes Blender duplicate name suffixes like '.001'. Must be in Object Mode"
     )
 
     @classmethod
@@ -477,11 +283,8 @@ class RenameFLVER(LoggingOperator):
         if not tool_settings.new_flver_model_name:
             return self.error("No new name specified.")
 
-        mesh, armature = parse_flver_obj(context.active_object)
-        old_name = armature.name if armature else mesh.name
-        new_name = tool_settings.new_flver_model_name
-
-        rename_flver(armature, mesh, old_name, new_name, strip_dupe_suffix=True)
+        bl_flver = BlenderFLVER.from_bl_obj(context.active_object, operator=self)
+        bl_flver.rename(tool_settings.new_flver_model_name)
 
         return {"FINISHED"}
 
@@ -1028,11 +831,11 @@ class FindMissingTexturesInPNGCache(LoggingOperator):
         settings = self.settings(context)
 
         try:
-            meshes_armatures = get_selected_flvers(context)
+            bl_flvers = BlenderFLVER.get_selected_flvers(context)
         except FLVERError as ex:
             return self.error(str(ex))
 
-        meshes_data = [mesh.data for mesh, _ in meshes_armatures]
+        meshes_data = [bl_flver.mesh.data for bl_flver in bl_flvers]
         checked_image_names = set()  # to avoid looking for the same PNG twice
 
         for mesh_data in meshes_data:
@@ -1102,15 +905,12 @@ def draw_dummy_ids():
         return
 
     obj = bpy.context.selected_objects[0]
+    try:
+        bl_flver = BlenderFLVER.from_bl_obj(obj)
+    except FLVERError:
+        return
 
-    empties = [child for child in obj.children if child.type == "EMPTY"]
-    if obj.type == "MESH" and obj.parent and obj.parent.type == "ARMATURE":
-        empties.extend([child for child in obj.parent.children if child.type == "EMPTY"])  # siblings
-
-    dummy_children = []
-    for child in empties:
-        if dummy_info := parse_dummy_name(child.name):
-            dummy_children.append((child, dummy_info))
+    bl_dummies = bl_flver.get_dummies()
 
     font_id = 0
     try:
@@ -1119,11 +919,82 @@ def draw_dummy_ids():
         blf.size(font_id, 16)  # default
     blf.color(font_id, 1, 1, 1, 1)  # white
 
-    for dummy, dummy_info in dummy_children:
+    for bl_dummy in bl_dummies:
         # Get world location of `dummy` object.
-        world_location = dummy.matrix_world.to_translation()
+        world_location = bl_dummy.obj.matrix_world.to_translation()
         label_position = location_3d_to_region_2d(bpy.context.region, bpy.context.region_data, world_location)
         if not label_position:
             continue  # dummy is not in view
         blf.position(font_id, label_position.x + 10, label_position.y + 10, 0.0)
-        blf.draw(font_id, str(dummy_info.reference_id))
+        blf.draw(font_id, str(bl_dummy.reference_id))
+
+
+class HideAllDummiesOperator(LoggingOperator):
+    """Simple operator to hide all dummy children of a selected FLVER armature."""
+    bl_idname = "io_scene_soulstruct.hide_all_dummies"
+    bl_label = "Hide All Dummies"
+    bl_description = "Hide all dummy point children in the selected armature (Empties with 'Dummy' in name)"
+
+    @classmethod
+    def poll(cls, context):
+        if not context.active_object:
+            return False
+        try:
+            BlenderFLVER.from_bl_obj(context.active_object)
+        except IndexError:
+            return False
+        return True
+
+    def execute(self, context):
+        bl_dummies = BlenderFLVER.from_bl_obj(context.active_object).get_dummies(self)
+        for bl_dummy in bl_dummies:
+            bl_dummy.obj.hide_viewport = True
+
+        return {"FINISHED"}
+
+
+class ShowAllDummiesOperator(LoggingOperator):
+    """Simple operator to show all dummy children of a selected FLVER armature."""
+    bl_idname = "io_scene_soulstruct.show_all_dummies"
+    bl_label = "Show All Dummies"
+    bl_description = "Show all dummy point children in the selected armature (Empties with 'Dummy' in name)"
+
+    @classmethod
+    def poll(cls, context):
+        if not context.active_object:
+            return False
+        try:
+            BlenderFLVER.from_bl_obj(context.active_object)
+        except IndexError:
+            return False
+        return True
+
+    def execute(self, context):
+        bl_dummies = BlenderFLVER.from_bl_obj(context.active_object).get_dummies(self)
+        for bl_dummy in bl_dummies:
+            bl_dummy.obj.hide_viewport = False
+
+        return {"FINISHED"}
+
+
+class PrintGameTransform(LoggingOperator):
+    bl_idname = "io_scene_soulstruct.print_game_transform"
+    bl_label = "Print Game Transform"
+    bl_description = "Print the selected object's transform in game coordinates to Blender console"
+
+    @classmethod
+    def poll(cls, context):
+        return context.object is not None
+
+    # noinspection PyMethodMayBeStatic
+    def execute(self, context):
+        obj = context.object
+        if obj:
+            bl_transform = BlenderTransform(obj.location, obj.rotation_euler, obj.scale)
+            print(
+                f"FromSoftware game transform of object '{obj.name}':\n"
+                f"    translate = {repr(bl_transform.game_translate)}\n"
+                f"    rotate = {repr(bl_transform.game_rotate_deg)}  # degrees\n"
+                f"    scale = {repr(bl_transform.game_scale)}"
+            )
+        return {"FINISHED"}

@@ -323,7 +323,6 @@ class ImportNVMFromNVMBND(LoggingOperator):
         start_time = time.perf_counter()
 
         settings = self.settings(context)
-        settings.save_settings()
         if settings.game_variable_name != "DARK_SOULS_DSR":
             return self.error("NVM import from game NVMBND is only available for Dark Souls Remastered.")
 
@@ -359,7 +358,7 @@ class ImportNVMFromNVMBND(LoggingOperator):
             nvmbnd_path, nvm_entry.minimal_stem, bl_name, nvm_entry.to_binary_file(NVM)
         )
 
-        collection = get_collection(f"{map_stem} Navmesh Models", context.scene.collection, hide_viewport=False)
+        collection = get_collection(f"{map_stem} Navmesh Models", context.scene.collection)
         importer = NVMImporter(self, context, collection=collection)
 
         self.info(f"Importing NVM model {import_info.model_file_stem} as '{import_info.bl_name}'.")

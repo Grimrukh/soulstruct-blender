@@ -9,11 +9,6 @@ __all__ = [
     "ImportAssetFLVER",
     "ImportEquipmentFLVER",
 
-    "HideAllDummiesOperator",
-    "ShowAllDummiesOperator",
-    "PrintGameTransform",
-    "draw_dummy_ids",
-
     "FLVERExportSettings",
     "ExportStandaloneFLVER",
     "ExportFLVERIntoBinder",
@@ -22,12 +17,16 @@ __all__ = [
     "ExportObjectFLVER",
     "ExportEquipmentFLVER",
 
+    "FLVERObjectProps",
+    "FLVERDummyProps",
+    "FLVERGXItemProps",
+    "FLVERMaterialProps",
+    "FLVERBoneProps",
+
     "FLVERToolSettings",
     "CopyToNewFLVER",
     "DeleteFLVER",
     "DeleteFLVERAndData",
-    "CreateFLVERInstance",
-    "DuplicateFLVERModel",
     "RenameFLVER",
     "CreateEmptyMapPieceFLVER",
     "SelectDisplayMaskID",
@@ -36,6 +35,10 @@ __all__ = [
     "InvertVertexAlpha",
     "ReboneVertices",
     "BakeBonePoseToVertices",
+    "HideAllDummiesOperator",
+    "ShowAllDummiesOperator",
+    "PrintGameTransform",
+    "draw_dummy_ids",
 
     "MaterialToolSettings",
     "SetMaterialTexture0",
@@ -70,6 +73,7 @@ from .materials.misc_operators import *
 from .model_import import *
 from .model_export import *
 from .misc_operators import *
+from .properties import *
 from .textures.import_textures import *
 from .textures.export_textures import *
 from .textures.lightmaps import *
@@ -306,12 +310,10 @@ class FLVEROtherToolsPanel(bpy.types.Panel):
         layout = self.layout
         layout.operator(DeleteFLVER.bl_idname)
         layout.operator(DeleteFLVERAndData.bl_idname)
-        layout.operator(CreateFLVERInstance.bl_idname)
 
         name_box = layout.box()
         name_box.prop(context.scene.flver_tool_settings, "new_flver_model_name")
         name_box.operator(RenameFLVER.bl_idname)
-        name_box.operator(DuplicateFLVERModel.bl_idname)
 
         layout.operator(CreateEmptyMapPieceFLVER.bl_idname)
         layout.operator(PrintGameTransform.bl_idname)

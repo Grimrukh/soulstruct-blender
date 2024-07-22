@@ -318,16 +318,6 @@ class RecomputeEdgeCost(LoggingOperator):
             edges = context.selected_objects
             map_stem = context.selected_objects[0].name.split(" ")[0]
 
-        try:
-            node_parent = bpy.data.objects[f"{map_stem} Nodes"]
-        except KeyError:
-            return self.error(f"No node parent found for map stem '{map_stem}'.")
-
-        nodes = {
-            obj.name.split("<")[0].strip(): obj
-            for obj in node_parent.children
-        }
-
         for edge in edges:
 
             edge_stem = edge.name.split(" ")[0]
@@ -337,46 +327,48 @@ class RecomputeEdgeCost(LoggingOperator):
                     f"Ignoring '{edge.name}'.")
                 continue
 
-            try:
-                navmesh = bpy.data.objects[edge["Navmesh Name"]]
-            except KeyError:
-                continue  # can't draw
+            edge_navmesh = edge.mcg_edge_props.navmesh_part
+            if edge_navmesh is None:
+                self.warning(f"Navmesh part not set for edge '{edge.name}'. Ignoring.")
+                continue  # can't update
 
-            try:
-                node_a = nodes[edge["Node A"]]
-                node_b = nodes[edge["Node B"]]
-            except KeyError:
+            node_a = edge.mcg_edge_props.node_a  # type: bpy.types.Object
+            node_b = edge.mcg_edge_props.node_b  # type: bpy.types.Object
+            if node_a is None or node_b is None:
                 self.warning(f"Node(s) not found for edge '{edge.name}'. Ignoring.")
                 continue
 
-            if node_a["Navmesh A Name"] == navmesh.name:
-                node_a_triangles = node_a["Navmesh A Triangles"]
-            elif node_a["Navmesh B Name"] == navmesh.name:
-                node_a_triangles = node_a["Navmesh B Triangles"]
+            if node_a.mcg_node_props.navmesh_a == edge_navmesh:
+                node_a_triangles = node_a.mcg_node_props.navmesh_a_triangles
+            elif node_a.mcg_node_props.navmesh_b == edge_navmesh:
+                node_a_triangles = node_a.mcg_node_props.navmesh_b_triangles
             else:
                 self.warning(
-                    f"Node A '{node_a.name}' does not reference navmesh '{navmesh.name}'. Ignoring edge '{edge.name}'."
+                    f"Node A '{node_a.name}' does not reference navmesh '{edge_navmesh.name}'. "
+                    f"Ignoring edge '{edge.name}'."
                 )
                 continue
 
-            if node_b["Navmesh A Name"] == navmesh.name:
-                node_b_triangles = node_b["Navmesh A Triangles"]
-            elif node_b["Navmesh B Name"] == navmesh.name:
-                node_b_triangles = node_b["Navmesh B Triangles"]
+            if node_b.mcg_node_props.navmesh_a == edge_navmesh:
+                node_b_triangles = node_b.mcg_node_props.navmesh_a_triangles
+            elif node_b.mcg_node_props.navmesh_b == edge_navmesh:
+                node_b_triangles = node_b.mcg_node_props.navmesh_b_triangles
             else:
                 self.warning(
-                    f"Node B '{node_b.name}' does not reference navmesh '{navmesh.name}'. Ignoring edge '{edge.name}'."
+                    f"Node B '{node_b.name}' does not reference navmesh '{edge_navmesh.name}'. "
+                    f"Ignoring edge '{edge.name}'."
                 )
                 continue
 
             start_face_i = min(node_a_triangles)
             end_face_i = min(node_b_triangles)
 
-            total_cost = self.get_best_cost(navmesh, start_face_i, end_face_i)
+            total_cost = self.get_best_cost(edge_navmesh, start_face_i, end_face_i)
             if total_cost == 0.0:
                 self.warning(f"No path found in either direction between nodes for edge '{edge.name}'.")
                 continue
 
+            # We use a custom property for this, not a real MCG Node prop.
             edge["Blender Cost"] = total_cost
 
         return {"FINISHED"}
@@ -598,17 +590,19 @@ class AutoCreateMCG(LoggingOperator):
                                 node.empty_display_type = "SPHERE"
                                 node.parent = node_parent
                                 context.scene.collection.objects.link(node)
+                                props = node.mcg_node_props
 
-                                if navmesh_model_id < other_navmesh_id:
-                                    node["Navmesh A Name"] = navmesh.name
-                                    node["Navmesh A Triangles"] = [f.index for f, _ in cluster]
-                                    node["Navmesh B Name"] = other_navmesh.name
-                                    node["Navmesh B Triangles"] = [f.index for f, _ in other_cluster]
-                                else:
-                                    node["Navmesh A Name"] = other_navmesh.name
-                                    node["Navmesh A Triangles"] = [f.index for f, _ in other_cluster]
-                                    node["Navmesh B Name"] = navmesh.name
-                                    node["Navmesh B Triangles"] = [f.index for f, _ in cluster]
+                                if navmesh_model_id > other_navmesh_id:
+                                    # Swap order of node's navmeshes, so node navmesh A is the earlier one.
+                                    navmesh, other_navmesh = other_navmesh, navmesh
+                                    cluster, other_cluster = other_cluster, cluster
+
+                                props.navmesh_a = navmesh
+                                for f, _ in cluster:
+                                    props.navmesh_a_triangles.add().index = f.index
+                                props.navmesh_b = other_navmesh
+                                for f, _ in other_cluster:
+                                    props.navmesh_b_triangles.add().index = f.index
 
                                 all_nodes[node_key] = node
                                 navmesh_nodes[i].append((node, model_pair_key))
@@ -633,14 +627,14 @@ class AutoCreateMCG(LoggingOperator):
                     if i == j or (i, j) in created or (j, i) in created:
                         continue
 
-                    if node_a["Navmesh A Name"] == navmesh.name:
-                        start_face_i = min(node_a["Navmesh A Triangles"])
+                    if node_a.mcg_node_props.navmesh_a == navmesh:
+                        start_face_i = min(t.index for t in node_a.mcg_node_props.navmesh_a_triangles)
                     else:
-                        start_face_i = min(node_a["Navmesh B Triangles"])
-                    if node_b["Navmesh A Name"] == navmesh.name:
-                        end_face_i = min(node_b["Navmesh A Triangles"])
+                        start_face_i = min(t.index for t in node_a.mcg_node_props.navmesh_b_triangles)
+                    if node_b.mcg_node_props.navmesh_a == navmesh:
+                        end_face_i = min(t.index for t in node_b.mcg_node_props.navmesh_a_triangles)
                     else:
-                        end_face_i = min(node_b["Navmesh B Triangles"])
+                        end_face_i = min(t.index for t in node_b.mcg_node_props.navmesh_b_triangles)
 
                     # Note that this creates its own `BMesh` that removes vertex doubles.
                     total_cost = RecomputeEdgeCost.get_best_cost(navmesh, start_face_i, end_face_i)
@@ -663,10 +657,12 @@ class AutoCreateMCG(LoggingOperator):
                     # Point empty arrow in direction of edge.
                     edge.rotation_euler = direction.to_track_quat('Z', 'Y').to_euler()
 
-                    edge["Cost"] = total_cost
-                    edge["Navmesh Name"] = navmesh.name
-                    edge["Node A"] = node_a.name
-                    edge["Node B"] = node_b.name
+                    props = edge.mcg_edge_props
+                    props.cost = total_cost
+                    props.node_a = node_a
+                    props.node_b = node_b
+                    props.navmesh_part = navmesh
+
                     all_edges.append(edge)
                     created.add((i, j))
 

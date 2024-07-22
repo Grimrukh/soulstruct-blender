@@ -14,11 +14,11 @@ import bpy
 
 from soulstruct.utilities.text import natural_keys
 
-from io_soulstruct.navmesh.nav_graph.utilities import MCGExportError
+from io_soulstruct.exceptions import SoulstructBlenderError
 from io_soulstruct.utilities.operators import LoggingOperator
 
 
-class MCGEdgeCreationError(Exception):
+class MCGEdgeCreationError(SoulstructBlenderError):
     """Exception raised during MCG edge creation."""
     pass
 
@@ -88,11 +88,11 @@ def create_mcg_edge(context):
     if node_a.name.startswith(node_prefix):
         node_a_index = node_a.name.removeprefix(node_prefix).split("<")[0].strip()  # ignore dead end suffix
     else:
-        raise MCGExportError(f"Node '{node_a.name}' does not start with '{map_stem} Node '.")
+        raise MCGEdgeCreationError(f"Node '{node_a.name}' does not start with '{map_stem} Node '.")
     if node_b.name.startswith(node_prefix):
         node_b_index = node_b.name.removeprefix(node_prefix).split("<")[0].strip()  # ignore dead end suffix
     else:
-        raise MCGExportError(f"Node '{node_b.name}' does not start with '{map_stem} Node '.")
+        raise MCGEdgeCreationError(f"Node '{node_b.name}' does not start with '{map_stem} Node '.")
 
     if int(node_b_index) < int(node_a_index):
         # Swap nodes.
@@ -133,10 +133,11 @@ def create_mcg_edge(context):
         context.scene.collection.objects.link(bl_edge)
 
     # Initial cost is twice the distance between the nodes.
-    bl_edge["Cost"] = 2 * length
-    bl_edge["Navmesh Name"] = navmesh.name
-    bl_edge["Node A"] = f"Node {node_a_index}"
-    bl_edge["Node B"] = f"Node {node_b_index}"
+    props = bl_edge.mcg_edge_props
+    props.cost = 2 * length
+    props.navmesh_part = navmesh
+    props.node_a = node_a
+    props.node_b = node_b
 
 
 def set_node_navmesh_name_triangles(context, a_or_b: str):

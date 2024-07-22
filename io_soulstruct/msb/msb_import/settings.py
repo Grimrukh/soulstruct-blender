@@ -53,6 +53,6 @@ class MSBImportSettings(bpy.types.PropertyGroup):
 
     def get_collection_name(self, map_stem: str, model_type: str):
         if self.include_pattern_in_parent_name:
-            return f"{map_stem} MSB {model_type} ({self.entry_name_match})"
+            return f"{map_stem} {model_type} Parts ({self.entry_name_match})"
         else:
-            return f"{map_stem} MSB {model_type}"
+            return f"{map_stem} {model_type} Parts"

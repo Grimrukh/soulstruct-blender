@@ -10,13 +10,13 @@ import traceback
 from pathlib import Path
 
 import bpy
-from bpy.props import StringProperty, BoolProperty, IntProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 
 from soulstruct.containers import Binder, BinderEntry
 from soulstruct.dcx import DCXType
 from soulstruct.darksouls1r.maps.navmesh import NVMBND
 
+from io_soulstruct.types import SoulstructType
 from io_soulstruct.utilities.operators import LoggingOperator, get_dcx_enum_property
 from io_soulstruct.utilities.misc import *
 from .core import *
@@ -33,7 +33,7 @@ class ExportLooseNVM(LoggingOperator, ExportHelper):
 
     filename_ext = ".nvm"
 
-    filter_glob: StringProperty(
+    filter_glob: bpy.props.StringProperty(
         default="*.nvm;*.nvm.dcx",
         options={'HIDDEN'},
         maxlen=255,  # Max internal buffer length, longer would be clamped.
@@ -43,18 +43,17 @@ class ExportLooseNVM(LoggingOperator, ExportHelper):
 
     @classmethod
     def poll(cls, context):
-        """Requires a single selected Mesh object."""
-        return len(context.selected_objects) == 1 and context.selected_objects[0].type == "MESH"
+        return context.active_object and context.active_object.soulstruct_type == SoulstructType.NAVMESH
 
     def invoke(self, context, _event):
         """Set default export name to name of object (before first space and without Blender dupe suffix)."""
-        if not context.selected_objects:
+        if not context.active_object:
             return super().invoke(context, _event)
 
-        obj = context.selected_objects[0]
-        model_name = find_model_name(self, obj, warn_property_mismatch=False)
+        obj = context.active_object
+        model_stem = obj.name.split(".")[0].split(" ")[0]
         settings = self.settings(context)
-        self.filepath = settings.game.process_dcx_path(f"{model_name}.nvm")
+        self.filepath = settings.game.process_dcx_path(f"{model_stem}.nvm")
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
 
@@ -90,7 +89,7 @@ class ExportNVMIntoBinder(LoggingOperator, ImportHelper):
 
     filename_ext = ".nvmbnd"
 
-    filter_glob: StringProperty(
+    filter_glob: bpy.props.StringProperty(
         default="*.nvmbnd;*.nvmbnd.dcx",
         options={'HIDDEN'},
         maxlen=255,
@@ -98,19 +97,19 @@ class ExportNVMIntoBinder(LoggingOperator, ImportHelper):
 
     dcx_type: get_dcx_enum_property(DCXType.Null)  # no compression in DS1 binders
 
-    overwrite_existing: BoolProperty(
+    overwrite_existing: bpy.props.BoolProperty(
         name="Overwrite Existing",
         description="Overwrite first existing '{name}.nvm{.dcx}' matching entry in Binder",
         default=True,
     )
 
-    default_entry_flags: IntProperty(
+    default_entry_flags: bpy.props.IntProperty(
         name="Default Flags",
         description="Flags to set to Binder entry if it needs to be created",
         default=0x2,
     )
 
-    default_entry_path: StringProperty(
+    default_entry_path: bpy.props.StringProperty(
         name="Default Path",
         description="Path prefix to use for Binder entry if it needs to be created. Use {name} as a format "
                     "placeholder for the name of this NVM object and {map} as a format placeholder for map string "
@@ -121,7 +120,10 @@ class ExportNVMIntoBinder(LoggingOperator, ImportHelper):
     @classmethod
     def poll(cls, context):
         """Requires one or more selected Mesh objects."""
-        return len(context.selected_objects) >= 1 and all(obj.type == "MESH" for obj in context.selected_objects)
+        return (
+            len(context.selected_objects) >= 1
+            and all(obj.soulstruct_type == SoulstructType.NAVMESH for obj in context.selected_objects)
+        )
 
     def execute(self, context):
         if not self.poll(context):
@@ -141,7 +143,7 @@ class ExportNVMIntoBinder(LoggingOperator, ImportHelper):
             bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
 
         for nvm_model in selected_objs:
-            model_name = find_model_name(self, nvm_model, warn_property_mismatch=False)  # can't auto-detect map
+            model_stem = nvm_model.name.split(".")[0].split(" ")[0]
 
             try:
                 nvm = export_nvm_model(self, nvm_model)
@@ -151,7 +153,7 @@ class ExportNVMIntoBinder(LoggingOperator, ImportHelper):
             else:
                 nvm.dcx_type = DCXType[self.dcx_type]  # most likely `Null` for file in `nvmbnd` Binder
 
-            matching_entries = binder.find_entries_matching_name(rf"{model_name}\.nvm(\.dcx)?")
+            matching_entries = binder.find_entries_matching_name(rf"{model_stem}\.nvm(\.dcx)?")
             if not matching_entries:
                 # Create new entry.
                 if "{map}" in self.default_entry_path:
@@ -162,9 +164,9 @@ class ExportNVMIntoBinder(LoggingOperator, ImportHelper):
                             f"Could not determine '{{map}}' for new Binder entry from Binder stem: {binder_stem}. "
                             f"You must replace the '{{map}}' template in the Default Entry Path with a known map stem."
                         )
-                    entry_path = self.default_entry_path.format(map=map_str, name=model_name)
+                    entry_path = self.default_entry_path.format(map=map_str, name=model_stem)
                 else:
-                    entry_path = self.default_entry_path.format(name=model_name)
+                    entry_path = self.default_entry_path.format(name=model_stem)
                 new_entry_id = binder.highest_entry_id + 1
                 nvm_entry = BinderEntry(
                     b"", entry_id=new_entry_id, path=entry_path, flags=self.default_entry_flags
@@ -173,13 +175,13 @@ class ExportNVMIntoBinder(LoggingOperator, ImportHelper):
                 self.info(f"Creating new Binder entry: ID {new_entry_id}, path '{entry_path}'")
             else:
                 if not self.overwrite_existing:
-                    return self.error(f"NVM named '{model_name}' already exists in Binder and overwrite = False.")
+                    return self.error(f"NVM named '{model_stem}' already exists in Binder and overwrite = False.")
 
                 nvm_entry = matching_entries[0]
 
                 if len(matching_entries) > 1:
                     self.warning(
-                        f"Multiple NVMs with stem '{model_name}' found in Binder. "
+                        f"Multiple NVMs with stem '{model_stem}' found in Binder. "
                         f"Replacing first: {nvm_entry.name}"
                     )
                 else:
@@ -225,7 +227,6 @@ class ExportNVMIntoNVMBND(LoggingOperator):
             return self.error("No valid 'n' meshes selected for quick NVM export.")
 
         settings = self.settings(context)
-        settings.save_settings()
         if settings.game_variable_name != "DARK_SOULS_DSR":
             return self.error("Quick NVM export is only supported for Dark Souls: Remastered.")
 
@@ -261,7 +262,7 @@ class ExportNVMIntoNVMBND(LoggingOperator):
             else:
                 nvmbnd = opened_nvmbnds[relative_nvmbnd_path]
 
-            model_name = find_model_name(self, nvm_model, process_model_name_map_area(map_stem))
+            model_stem = nvm_model.name.split(".")[0].split(" ")[0]
 
             try:
                 nvm = export_nvm_model(self, nvm_model)
@@ -272,7 +273,7 @@ class ExportNVMIntoNVMBND(LoggingOperator):
             else:
                 nvm.dcx_type = DCXType.Null  # no DCX compression inside NVMBND
 
-            nvmbnd.nvms[model_name] = nvm  # no extension needed
+            nvmbnd.nvms[model_stem] = nvm  # no extension needed
 
         for relative_nvmbnd_path, nvmbnd in opened_nvmbnds.items():
             nvmbnd.entries = list(sorted(nvmbnd.entries, key=lambda e: e.name))

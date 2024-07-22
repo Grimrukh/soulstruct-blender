@@ -19,8 +19,9 @@ from bpy_extras.io_utils import ImportHelper
 from soulstruct.darksouls1r.maps import MSB
 from soulstruct.darksouls1r.maps.navmesh import MCG, MCGNode, MCGEdge
 
+from io_soulstruct.exceptions import NavGraphImportError
+from io_soulstruct.types import SoulstructType
 from io_soulstruct.utilities import *
-from .utilities import MCGImportError
 
 MCG_NAME_RE = re.compile(r"(?P<stem>.*)\.mcg(?P<dcx>\.dcx)?")
 
@@ -147,7 +148,7 @@ class MCGImporter:
 
         highest_navmesh_index = max(edge.navmesh_index for edge in mcg.edges)
         if highest_navmesh_index >= len(navmesh_part_names):
-            raise MCGImportError(
+            raise NavGraphImportError(
                 f"Highest MCG edge navmesh part index ({highest_navmesh_index}) exceeds number of navmesh part "
                 f"names provided ({len(navmesh_part_names)}."
             )
@@ -196,6 +197,7 @@ class MCGImporter:
             self.context.scene.collection.objects.link(bl_node)
             self.all_bl_objs.append(bl_node)
             bl_node.parent = node_parent
+            bl_node.soulstruct_type = SoulstructType.MCG_NODE
             
             # Since MCG nodes in Blender reference the two navmeshes they connect, dead-end navmeshes can be
             # auto-detected from single-node navmeshes and don't need to be stored in Blender. However, we do check the
@@ -206,20 +208,38 @@ class MCGImporter:
                 )
 
             # Stored here, but unlikely to ever matter, and cannot be reconstructed. Still exported if available.
-            bl_node["Unk Offset"] = node.unknown_offset
+            bl_node.mcg_node_props.unknown_offset = node.unknown_offset
 
             # Triangle indices are stored on the node, not the edge, for convenience, as they should be the same.
-            for navmesh_key in ("a", "b"):
-                key_caps = navmesh_key.capitalize()
-                if triangle_indices[navmesh_key]:
-                    navmesh_index, navmesh_triangles = triangle_indices[navmesh_key]
-                    try:
-                        navmesh_name = navmesh_part_names[navmesh_index]
-                    except IndexError:
-                        raise ValueError(f"Node {i} has invalid navmesh {key_caps} index: {navmesh_index}")
+            if triangle_indices["a"]:
+                navmesh_index, navmesh_triangles = triangle_indices["a"]
+                try:
+                    navmesh_name = navmesh_part_names[navmesh_index]
+                except IndexError:
+                    raise NavGraphImportError(f"Node {i} has invalid navmesh A index: {navmesh_index}")
+                try:
+                    navmesh_part = bpy.data.objects[navmesh_name]
+                except KeyError:
+                    raise NavGraphImportError(f"Node {i} references missing MSB Navmesh object: {navmesh_name}")
 
-                    bl_node[f"Navmesh {key_caps} Name"] = navmesh_name
-                    bl_node[f"Navmesh {key_caps} Triangles"] = navmesh_triangles  # empty if navmesh B is a dead end
+                bl_node.mcg_node_props.navmesh_a = navmesh_part
+                for triangle in navmesh_triangles:
+                    bl_node.mcg_node_props.navmesh_a_triangles.add().index = triangle
+
+            if triangle_indices["b"]:
+                navmesh_index, navmesh_triangles = triangle_indices["b"]
+                try:
+                    navmesh_name = navmesh_part_names[navmesh_index]
+                except IndexError:
+                    raise NavGraphImportError(f"Node {i} has invalid navmesh B index: {navmesh_index}")
+                try:
+                    navmesh_part = bpy.data.objects[navmesh_name]
+                except KeyError:
+                    raise NavGraphImportError(f"Node {i} references missing MSB Navmesh object: {navmesh_name}")
+
+                bl_node.mcg_node_props.navmesh_b = navmesh_part
+                for triangle in navmesh_triangles:  # will be empty if this is a dead end navmesh
+                    bl_node.mcg_node_props.navmesh_b_triangles.add().index = triangle
 
             # Connected node/edge indices not kept; inferred from edges.
             self.all_bl_objs.append(bl_node)
@@ -244,13 +264,17 @@ class MCGImporter:
             self.context.scene.collection.objects.link(bl_edge)
             self.all_bl_objs.append(bl_edge)
             bl_edge.parent = edge_parent
+            bl_edge.soulstruct_type = SoulstructType.MCG_EDGE
 
-            bl_edge["Cost"] = edge.cost
-            # Blender object name references:
-            bl_edge["Navmesh Name"] = navmesh_name
-            print(f"Edge {i}, navmesh {navmesh_name}, node A index {node_a_index}, node B index {node_b_index}")
-            bl_edge["Node A"] = node_objs[node_a_index].name
-            bl_edge["Node B"] = node_objs[node_b_index].name
+            bl_edge.mcg_edge_props.cost = edge.cost
+            # Blender object references:
+            try:
+                navmesh = bpy.data.objects[navmesh_name]
+            except KeyError:
+                raise NavGraphImportError(f"Edge {i} references missing MSB Navmesh object: {navmesh_name}")
+            bl_edge.mcg_edge_props.navmesh_part = navmesh
+            bl_edge.mcg_edge_props.node_a = node_objs[node_a_index]
+            bl_edge.mcg_edge_props.node_b = node_objs[node_b_index]
             # Triangles are stored on the nodes (above) as they should be identical for all edges on the same navmesh.
 
             self.all_bl_objs.append(bl_edge)
@@ -261,7 +285,7 @@ class MCGImporter:
         return mcg_parent
 
     @staticmethod
-    def create_node(node: MCGNode, name: str):
+    def create_node(node: MCGNode, name: str) -> bpy.types.Object:
         """Create an Empty representing `node`."""
         position = GAME_TO_BL_VECTOR(node.translate)
         bl_node = bpy.data.objects.new(name, None)

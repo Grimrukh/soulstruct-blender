@@ -306,7 +306,6 @@ class ImportNVMHKTFromNVMHKTBND(LoggingOperator):
         start_time = time.perf_counter()
 
         settings = self.settings(context)
-        settings.save_settings()
         if settings.game_variable_name != "ELDEN_RING":
             return self.error("NVMHKT import from game NVMHKTBND is only available for Elden Ring.")
 
@@ -342,7 +341,7 @@ class ImportNVMHKTFromNVMHKTBND(LoggingOperator):
             nvmbnd_path, nvm_entry.minimal_stem, bl_name, nvm_entry.to_binary_file(NavmeshHKX)
         )
 
-        collection = get_collection(f"{map_stem} Navmesh Models", context.scene.collection, hide_viewport=False)
+        collection = get_collection(f"{map_stem} Navmesh Models", context.scene.collection)
         importer = NVMHKTImporter(self, context, collection=collection)
 
         self.info(f"Importing NVMHKT model {import_info.model_file_stem} as '{import_info.bl_name}'.")
@@ -437,7 +436,6 @@ class ImportAllNVMHKTsFromNVMHKTBND(ImportAllNVMHKTBase):
         import_settings = bpy.context.scene.nvmhkt_import_settings  # type: NVMHKTImportSettings
 
         settings = self.settings(context)
-        settings.save_settings()
         if settings.game_variable_name != "ELDEN_RING":
             return self.error("NVMHKT import from game NVMHKTBND is only available for Elden Ring.")
 
@@ -447,7 +445,7 @@ class ImportAllNVMHKTsFromNVMHKTBND(ImportAllNVMHKTBase):
             return self.error(f"Could not find NVMHKTBND file for map '{map_stem}'.")
         small_tile_match = re.match(r"(m60|m61)_(\d\d)_(\d\d)_(\d)0", map_stem)
 
-        collection = get_collection(f"{map_stem} Navmesh Models", context.scene.collection, hide_viewport=False)
+        collection = get_collection(f"{map_stem} Navmesh Models", context.scene.collection)
 
         if small_tile_match:
             grid_x = int(small_tile_match.group(1))
@@ -641,7 +639,6 @@ class ImportAllOverworldNVMHKTsBase(ImportAllNVMHKTBase):
         import_settings = bpy.context.scene.nvmhkt_import_settings  # type: NVMHKTImportSettings
 
         settings = self.settings(context)
-        settings.save_settings()
         if settings.game_variable_name != "ELDEN_RING":
             return self.error("NVMHKT import from game NVMHKTBND is only available for Elden Ring.")
 
@@ -650,7 +647,7 @@ class ImportAllOverworldNVMHKTsBase(ImportAllNVMHKTBase):
         map_count = 0
         model_count = 0
 
-        collection = get_collection(f"{self.AREA} Navmesh Models", context.scene.collection, hide_viewport=False)
+        collection = get_collection(f"{self.AREA} Navmesh Models", context.scene.collection)
 
         for nvmhktbnd_path in overworld_map_dir.rglob(f"{self.AREA}_??_??_00.nvmhktbnd.dcx"):
 
