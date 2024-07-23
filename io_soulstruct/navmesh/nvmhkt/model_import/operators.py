@@ -30,7 +30,6 @@ from soulstruct_havok.wrappers.hkx2018.file_types import NavmeshHKX
 from io_soulstruct.utilities import *
 from io_soulstruct.general import *
 from .core import *
-from .settings import NVMHKTImportSettings
 from ..utilities import get_dungeons_to_overworld_dict
 
 
@@ -433,7 +432,7 @@ class ImportAllNVMHKTsFromNVMHKTBND(ImportAllNVMHKTBase):
 
         start_time = time.perf_counter()
 
-        import_settings = bpy.context.scene.nvmhkt_import_settings  # type: NVMHKTImportSettings
+        import_settings = bpy.context.scene.nvmhkt_import_settings
 
         settings = self.settings(context)
         if settings.game_variable_name != "ELDEN_RING":
@@ -636,7 +635,7 @@ class ImportAllOverworldNVMHKTsBase(ImportAllNVMHKTBase):
 
         start_time = time.perf_counter()
 
-        import_settings = bpy.context.scene.nvmhkt_import_settings  # type: NVMHKTImportSettings
+        import_settings = bpy.context.scene.nvmhkt_import_settings
 
         settings = self.settings(context)
         if settings.game_variable_name != "ELDEN_RING":

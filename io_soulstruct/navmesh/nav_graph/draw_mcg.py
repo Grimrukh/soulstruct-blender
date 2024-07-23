@@ -53,7 +53,7 @@ class MCGDrawSettings(bpy.types.PropertyGroup):
 
 def draw_mcg_nodes():
     """Draw MCG nodes points."""
-    settings = bpy.context.scene.mcg_draw_settings  # type: MCGDrawSettings
+    settings = bpy.context.scene.mcg_draw_settings
     if not settings.mcg_graph_draw_enabled:
         return
 
@@ -97,7 +97,7 @@ def draw_mcg_nodes():
 
 def draw_mcg_node_labels():
     """Draw MCG node labels."""
-    settings = bpy.context.scene.mcg_draw_settings  # type: MCGDrawSettings
+    settings = bpy.context.scene.mcg_draw_settings
     if not settings.mcg_node_label_draw_enabled:
         return
 
@@ -168,7 +168,7 @@ def draw_mcg_node_labels():
 
 
 def draw_mcg_edges():
-    settings = bpy.context.scene.mcg_draw_settings  # type: MCGDrawSettings
+    settings = bpy.context.scene.mcg_draw_settings
     if not settings.mcg_graph_draw_enabled and not settings.mcg_edge_triangles_highlight_enabled:
         return
 
@@ -309,7 +309,7 @@ def draw_mcg_edges():
 
 def draw_mcg_edge_cost_labels():
     """Draw MCG edge cost labels."""
-    settings = bpy.context.scene.mcg_draw_settings  # type: MCGDrawSettings
+    settings = bpy.context.scene.mcg_draw_settings
     if not settings.mcg_edge_cost_draw_enabled:
         return
 

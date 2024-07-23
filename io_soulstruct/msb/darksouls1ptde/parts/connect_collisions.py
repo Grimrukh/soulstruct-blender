@@ -7,11 +7,12 @@ __all__ = [
 import traceback
 
 import bpy
-from io_soulstruct.exceptions import MissingPartModelError
+from io_soulstruct.exceptions import MissingPartModelError, MSBPartExportError
 from io_soulstruct.general.core import SoulstructSettings
 from io_soulstruct.havok.hkx_map_collision.model_import import *
 from io_soulstruct.types import SoulstructType
-from io_soulstruct.utilities import LoggingOperator, get_collection, find_obj_or_create_empty
+from io_soulstruct.utilities import *
+from soulstruct.darksouls1ptde.maps import MSB
 from soulstruct.darksouls1ptde.maps.parts import MSBConnectCollision
 from soulstruct_havok.wrappers.hkx2015.hkx_binder import BothResHKXBHD
 from .base import BlenderMSBPart
@@ -21,11 +22,47 @@ from io_soulstruct.msb.properties import MSBPartSubtype, MSBConnectCollisionProp
 class BlenderMSBConnectCollision(BlenderMSBPart):
     """Not FLVER-based."""
 
+    SOULSTRUCT_CLASS = MSBConnectCollision
     PART_SUBTYPE = MSBPartSubtype.CONNECT_COLLISION
+    MODEL_SUBTYPES = ["collision_models"]
 
     @property
     def connect_collision_props(self) -> MSBConnectCollisionProps:
         return self.obj.msb_connect_collision_props
+
+    def set_obj_properties(self, operator: LoggingOperator, entry: MSBConnectCollision):
+        super().set_obj_properties(operator, entry)
+        props = self.obj.msb_connect_collision_props
+
+        if entry.collision:
+            was_missing, collision_obj = find_obj_or_create_empty(entry.collision.name, SoulstructType.MSB_PART)
+            # noinspection PyUnresolvedReferences
+            collision_obj.msb_part_props.msb_part_subtype = MSBPartSubtype.COLLISION
+            props.collision = collision_obj
+            if was_missing:
+                # TODO: In almost all cases, the referenced Collision will share this model. Could do better than Empty.
+                operator.warning(
+                    f"Collision '{entry.collision.name}' not found in scene. Creating empty object with that name "
+                    f"in Scene Collection to use as collision for Connect Collision '{entry.name}'."
+                )
+
+        # Only other properties are connected map ID components.
+        props.map_area = entry.connected_map_id[0]
+        props.map_block = entry.connected_map_id[1]
+        props.map_cc = entry.connected_map_id[2]
+        props.map_dd = entry.connected_map_id[3]
+
+    def set_entry_properties(self, operator: LoggingOperator, entry: MSBConnectCollision, msb: MSB):
+        super().set_entry_properties(operator, entry, msb)
+        props = self.connect_collision_props
+
+        if not props.collision:
+            # Required.
+            raise MSBPartExportError(f"MSB Connect Collision '{entry.name}' does not reference an MSB Collision.")
+        self.set_part_entry_reference(props.collision, entry, "collision", msb)
+
+        # Blender component props are already restricted to [-1, 99] or [0, 99] for area.
+        entry.connected_map_id = [props.map_area, props.map_block, props.map_cc, props.map_dd]
 
     @classmethod
     def find_model(cls, model_name: str, map_stem: str) -> bpy.types.MeshObject:
@@ -80,26 +117,3 @@ class BlenderMSBConnectCollision(BlenderMSBPart):
         # operator.info(f"Imported HKX '{hkx_model.name}' from model '{model_name}' in map {map_stem}.")
 
         return hkx_model
-
-    def set_properties(self, operator: LoggingOperator, part: MSBConnectCollision):
-        super().set_properties(operator, part)
-        props = self.obj.msb_connect_collision_props
-
-        if part.collision:
-            was_missing, collision_obj = find_obj_or_create_empty(part.collision.name)
-            collision_obj.soulstruct_type = SoulstructType.MSB_PART
-            # noinspection PyUnresolvedReferences
-            collision_obj.msb_part_props.msb_part_subtype = MSBPartSubtype.COLLISION
-            props.collision = collision_obj
-            if was_missing:
-                # TODO: In almost all cases, the referenced Collision will share this model. Could do better than Empty.
-                operator.warning(
-                    f"Collision '{part.collision.name}' not found in scene. Creating empty object with that name "
-                    f"in Scene Collection to use as collision for Connect Collision '{part.name}'."
-                )
-
-        # Only other properties are connected map ID components.
-        props.map_area = part.connected_map_id[0]
-        props.map_block = part.connected_map_id[1]
-        props.map_cc = part.connected_map_id[2]
-        props.map_dd = part.connected_map_id[3]

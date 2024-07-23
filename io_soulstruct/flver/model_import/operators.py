@@ -56,7 +56,7 @@ FLVER_BINDER_RE = re.compile(r"^.*?\.(.*bnd)(\.dcx)?$")
 class BaseFLVERImportOperator(LoggingImportOperator):
 
     def draw(self, context):
-        import_settings = context.scene.flver_import_settings  # type: FLVERImportSettings
+        import_settings = context.scene.flver_import_settings
 
         self.layout.prop(import_settings, "import_textures")
         self.layout.prop(import_settings, "omit_default_bone")
@@ -71,7 +71,7 @@ class BaseFLVERImportOperator(LoggingImportOperator):
         flvers = []  # holds `(bl_name, FLVER)` pairs
         texture_manager = TextureImportManager(self.settings(context))
 
-        import_settings = context.scene.flver_import_settings  # type: FLVERImportSettings
+        import_settings = context.scene.flver_import_settings
         use_matbinbnd = False  # auto-set if first FLVER is from Sekiro/Elden Ring
 
         for source_path in self.file_paths:

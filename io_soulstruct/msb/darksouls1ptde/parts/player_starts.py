@@ -9,7 +9,6 @@ import traceback
 import bpy
 from io_soulstruct.exceptions import FLVERImportError
 from io_soulstruct.flver.model_import.core import FLVERImporter
-from io_soulstruct.flver.model_import.settings import FLVERImportSettings
 from io_soulstruct.flver.textures.import_textures import TextureImportManager
 from io_soulstruct.flver.utilities import get_flvers_from_binder
 from io_soulstruct.general.core import SoulstructSettings
@@ -22,10 +21,14 @@ from soulstruct.darksouls1ptde.maps.parts import MSBPlayerStart
 from .base import BlenderMSBPart
 
 
-class BlenderMSBPlayerStart(BlenderMSBPart):
+class BlenderMSBPlayerStart(BlenderMSBPart[MSBPlayerStart]):
     """Should always use model `c0000`, but we remain agnostic and still reference it as normal."""
 
+    SOULSTRUCT_CLASS = MSBPlayerStart
     PART_SUBTYPE = MSBPartSubtype.PLAYER_START
+    MODEL_SUBTYPES = ["player_models", "character_models"]
+
+    # No additional Player Start properties.
 
     @classmethod
     def find_model(cls, model_name: str, map_stem: str):
@@ -40,7 +43,7 @@ class BlenderMSBPlayerStart(BlenderMSBPart):
         model_name: str,
         map_stem: str,
     ):
-        flver_import_settings = context.scene.flver_import_settings  # type: FLVERImportSettings
+        flver_import_settings = context.scene.flver_import_settings
         chrbnd_path = settings.get_import_file_path(f"chr/{model_name}.chrbnd")
 
         operator.info(f"Importing Player Start (character) FLVER from: {chrbnd_path.name}")
@@ -70,25 +73,25 @@ class BlenderMSBPlayerStart(BlenderMSBPart):
             raise FLVERImportError(f"Cannot import FLVER from CHRBND: {chrbnd_path.name}. Error: {ex}")
 
     @classmethod
-    def new_from_part(
+    def new_from_entry(
         cls,
         operator: LoggingOperator,
         context: bpy.types.Context,
         settings: SoulstructSettings,
         map_stem: str,
-        part: MSBPlayerStart,
+        entry: MSBPlayerStart,
         collection: bpy.types.Collection = None,
     ) -> BlenderMSBPlayerStart:
         """Create a new Blender object for the given MSB part."""
 
         # Always references c0000, so no need to force a FLVER import of it. We just use an Empty.
-        part_empty = new_empty_object(part.name)
+        part_empty = new_empty_object(entry.name)
         part_empty.empty_display_type = "PLAIN_AXES"
         part_empty.empty_display_size = 2.0
         part_empty.soulstruct_type = SoulstructType.MSB_PART
         (collection or bpy.context.scene.collection).objects.link(part_empty)
 
         bl_part = cls(part_empty)
-        bl_part.set_transform(part)
-        bl_part.set_properties(operator, part)  # no subtype properties
+        bl_part.set_obj_transform(entry)
+        bl_part.set_obj_properties(operator, entry)  # no subtype properties
         return bl_part

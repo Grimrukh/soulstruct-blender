@@ -5,27 +5,91 @@ __all__ = [
 ]
 
 import traceback
+import typing as tp
 
 import bpy
-from io_soulstruct.exceptions import MissingPartModelError
+from io_soulstruct.exceptions import MissingPartModelError, MSBPartExportError
 from io_soulstruct.general.core import SoulstructSettings
 from io_soulstruct.havok.hkx_map_collision.model_import import *
-from io_soulstruct.utilities import LoggingOperator, get_collection
+from io_soulstruct.msb.properties import MSBPartSubtype, MSBCollisionProps
+from io_soulstruct.types import SoulstructType
+from io_soulstruct.utilities import *
 from soulstruct.darksouls1ptde.maps.enums import CollisionHitFilter
 from soulstruct.darksouls1ptde.maps.parts import MSBCollision
 from soulstruct_havok.wrappers.hkx2015.hkx_binder import BothResHKXBHD
 from .base import BlenderMSBPart
-from io_soulstruct.msb.properties import MSBPartSubtype, MSBCollisionProps
 
+if tp.TYPE_CHECKING:
+    from soulstruct.darksouls1ptde.maps.msb import MSB
 
 class BlenderMSBCollision(BlenderMSBPart):
     """Not FLVER-based."""
 
+    SOULSTRUCT_CLASS = MSBCollision
     PART_SUBTYPE = MSBPartSubtype.COLLISION
+    MODEL_SUBTYPES = ["collision_models"]
 
     @property
     def collision_props(self) -> MSBCollisionProps:
         return self.obj.msb_collision_props
+
+    def set_obj_properties(self, operator: LoggingOperator, entry: MSBCollision):
+        super().set_obj_properties(operator, entry)
+        props = self.obj.msb_collision_props
+
+        self.set_obj_groups(entry, "navmesh_groups", group_count=4, group_size=32)
+
+        for i in range(3):
+            setattr(props, f"vagrant_entity_ids_{i}", entry.vagrant_entity_ids[i])
+
+        try:
+            props.hit_filter = CollisionHitFilter(entry.hit_filter_id).name
+        except ValueError:
+            operator.warning(
+                f"Unknown MSB Collision hit filter ID: {entry.hit_filter_id}. Setting to `Normal`. You can "
+                f"extend the enum for this property yourself by editing `MSBCollisionProps.hit_filter.items` "
+                f"in add-on module `io_soulstruct/msb/properties.py`, or ask Grimrukh to add it later."
+            )
+            props.hit_filter = "Normal"
+
+        # TODO: Could potentially automate, or store event position + unknown data on Collision object itself.
+        self.set_obj_entry_reference(operator, props, "environment_event", entry, SoulstructType.MSB_EVENT)
+
+        self.set_obj_generic_props(
+            entry,
+            props,
+            skip_prefixes=("navmesh_groups_", "vagrant_entity_ids_"),
+            skip_names={"hit_filter", "environment_event"},
+        )
+
+    def set_entry_properties(self, operator: LoggingOperator, entry: MSBCollision, msb: MSB):
+        super().set_entry_properties(operator, entry, msb)
+        props = self.collision_props
+
+        self.set_part_groups(entry, "navmesh_groups", group_count=4, group_size=32)
+
+        for i in range(3):
+            entry.vagrant_entity_ids[i] = getattr(props, f"vagrant_entity_ids_{i}")
+
+        self.set_part_entry_reference(props.environment_event, entry, "environment_event", msb)
+
+        try:
+            entry.hit_filter_id = CollisionHitFilter[props.hit_filter].value
+        except KeyError:
+            # Not a case that can be handled, unlike import (but much rarer).
+            raise MSBPartExportError(
+                f"MSB Collision hit filter name '{props.hit_filter}' is not recognized as a value enum name in "
+                f"Soulstruct. This is strange and suggests the Blender add-on is out of sync with the `soulstruct` "
+                f"package. You can modify the enum for this property yourself by editing `CollisionHitFilter` in "
+                f"add-on module `io_soulstruct/darksouls1ptde/maps/enums.py`."
+            )
+
+        self.set_entry_generic_props(
+            props,
+            entry,
+            skip_prefixes=("navmesh_groups_", "vagrant_entity_ids_"),
+            skip_names={"hit_filter", "environment_event"},
+        )
 
     @classmethod
     def find_model(cls, model_name: str, map_stem: str) -> bpy.types.MeshObject:
@@ -80,35 +144,3 @@ class BlenderMSBCollision(BlenderMSBPart):
         # operator.info(f"Imported HKX '{hkx_model.name}' from model '{model_name}' in map {map_stem}.")
 
         return hkx_model
-
-    def set_properties(self, operator: LoggingOperator, part: MSBCollision):
-        super().set_properties(operator, part)
-        props = self.obj.msb_collision_props
-
-        for i in part.navmesh_groups:
-            if 0 <= i < 32:
-                props.navmesh_groups_0[i] = True
-            elif 32 <= i < 64:
-                props.navmesh_groups_1[i - 32] = True
-            elif 64 <= i < 96:
-                props.navmesh_groups_2[i - 64] = True
-            elif 96 <= i < 128:
-                props.navmesh_groups_3[i - 96] = True
-
-        props.vagrant_entity_id_0 = part.vagrant_entity_ids[0]
-        props.vagrant_entity_id_1 = part.vagrant_entity_ids[1]
-        props.vagrant_entity_id_2 = part.vagrant_entity_ids[2]
-
-        for prop_name in props.__annotations__:
-            if prop_name.startswith("navmesh_groups_") or prop_name.startswith("vagrant_entity_id_"):
-                continue  # handled above
-
-            if prop_name == "hit_filter":
-                # Redirect int value to enum name.
-                props.hit_filter = CollisionHitFilter(part.hit_filter_id).name
-            elif prop_name == "environment_event_name":
-                # Redirect environment event to name.
-                # TODO: Could potentially automate, or store event position + unknown data on Collision object itself.
-                props.environment_event_name = part.environment_event.name if part.environment_event else ""
-            else:
-                setattr(props, prop_name, getattr(part, prop_name))

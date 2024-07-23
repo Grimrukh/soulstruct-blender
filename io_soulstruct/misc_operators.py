@@ -34,7 +34,7 @@ def move_mesh_selection(
         obj for obj in context.selected_objects if obj != source_mesh
     ][0]  # type: bpy.types.MeshObject
 
-    mesh_move_settings = bpy.context.scene.mesh_move_settings  # type: MeshMoveSettings
+    mesh_move_settings = bpy.context.scene.mesh_move_settings
 
     # Duplicate selected vertices, edges, and faces in the edited mesh
     bpy.ops.object.mode_set(mode="EDIT")

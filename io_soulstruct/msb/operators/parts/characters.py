@@ -4,15 +4,26 @@ from __future__ import annotations
 __all__ = [
     "ImportMSBCharacter",
     "ImportAllMSBCharacters",
+    "ExportMSBCharacters",
 ]
 
+import typing as tp
+
+import bpy
+from io_soulstruct.flver.model_export import FLVERExporter
+from io_soulstruct.general import SoulstructSettings
+from io_soulstruct.msb.core import MSBPartOperatorConfig
 from io_soulstruct.msb.properties import MSBPartSubtype
-from .core import *
+from .base import *
+
+if tp.TYPE_CHECKING:
+    from soulstruct.containers import Binder
 
 
 msb_character_operator_config = MSBPartOperatorConfig(
     PART_SUBTYPE=MSBPartSubtype.CHARACTER,
     MSB_LIST_NAME="characters",
+    MSB_MODEL_LIST_NAME="character_models",
     GAME_ENUM_NAME="character_part",
 )
 
@@ -34,3 +45,30 @@ class ImportAllMSBCharacters(BaseImportAllMSBParts):
                       "textures are imported (see console output for progress)")
 
     config = msb_character_operator_config
+
+
+class ExportMSBCharacters(BaseExportMSBParts):
+
+    bl_idname = "export_scene.msb_character_part"
+    bl_label = "Export Character Parts"
+    bl_description = "Export selected MSB Character parts to selected map MSB"
+
+    config = msb_character_operator_config
+
+    chrbnds: dict[str, Binder]  # keys are stems
+
+    def init(self, context: bpy.types.Context, settings: SoulstructSettings):
+        self.chrbnds = {}
+
+    def export_model(
+        self,
+        bl_model_obj: bpy.types.MeshObject,
+        settings: SoulstructSettings,
+        map_stem: str,
+        flver_exporter: FLVERExporter | None,
+        export_textures=False,
+    ):
+        pass
+
+    def finish_model_export(self, context: bpy.types.Context, settings: SoulstructSettings):
+        pass

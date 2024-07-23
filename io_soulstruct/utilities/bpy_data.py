@@ -13,6 +13,9 @@ import typing as tp
 
 import bpy
 
+from io_soulstruct.types import SoulstructType
+from .misc import get_bl_obj_tight_name
+
 if tp.TYPE_CHECKING:
     PROPS_TYPE = tp.Union[tp.Dict[str, tp.Any], bpy.types.Object, None]
 
@@ -48,11 +51,25 @@ def new_empty_object(name: str, props: PROPS_TYPE = None) -> bpy.types.Object:
     return empty_obj
 
 
-def find_obj_or_create_empty(name: str) -> tuple[bool, bpy.types.Object]:
+def find_obj_or_create_empty(
+    name: str,
+    find_stem=False,
+    soulstruct_type: SoulstructType | None = None,
+) -> tuple[bool, bpy.types.Object]:
     try:
+        obj = bpy.data.objects[name]
+        if soulstruct_type and obj.soulstruct_type != soulstruct_type:
+            raise KeyError
         return False, bpy.data.objects[name]
     except KeyError:
+        if find_stem:
+            # Try to find an object with the same stem (e.g. "h1234" for "h1234 (Floor).003").
+            for obj in bpy.data.objects:
+                if get_bl_obj_tight_name(obj) == name and (soulstruct_type and obj.soulstruct_type == soulstruct_type):
+                    return False, obj
         obj = bpy.data.objects.new(name, None)
+        if soulstruct_type:
+            obj.soulstruct_type = soulstruct_type
         bpy.context.scene.collection.objects.link(obj)
         return True, obj
 

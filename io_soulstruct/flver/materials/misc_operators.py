@@ -39,7 +39,7 @@ class _SetMaterialTexture(LoggingOperator):
         if not selected_material:
             return self.error("No material selected.")
 
-        tool_settings = context.scene.material_tool_settings  # type: MaterialToolSettings
+        tool_settings = context.scene.material_tool_settings
         albedo_image = tool_settings.albedo_image
         if not albedo_image:
             return self.error("No albedo image selected.")

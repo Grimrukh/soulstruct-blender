@@ -232,7 +232,7 @@ def export_images_to_tpf(
     if not images:
         raise ValueError("No images given to combine into TPF.")
 
-    settings = context.scene.texture_export_settings  # type: TextureExportSettings
+    settings = context.scene.texture_export_settings
 
     tpf_textures = []
     total_dds_size = 0
@@ -314,7 +314,7 @@ def export_images_to_multiple_tpfs(
     if not images:
         raise ValueError("No images given to export to TPFs.")
 
-    settings = context.scene.texture_export_settings  # type: TextureExportSettings
+    settings = context.scene.texture_export_settings
 
     tpfs = {}
     for texture_stem in sorted(images):
@@ -344,7 +344,7 @@ def export_images_to_tpfbhd(
     if not images:
         raise ValueError("No images given to combine into TPFBHD.")
 
-    settings = context.scene.texture_export_settings  # type: TextureExportSettings
+    settings = context.scene.texture_export_settings
 
     tpfbxf = Binder.empty_bxf3()  # TODO: DS1 type
     for i, texture_stem in enumerate(sorted(images)):
@@ -380,7 +380,7 @@ def export_images_to_map_area_tpfbhds(
     """
 
     map_area = map_area_dir.name
-    tex_export_settings = context.scene.texture_export_settings  # type: TextureExportSettings
+    tex_export_settings = context.scene.texture_export_settings
 
     # Scan for all TPFs. We don't unpack the entries.
     tpf_entries = {}

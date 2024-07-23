@@ -76,7 +76,7 @@ class AddNVMFaceFlags(LoggingOperator):
         obj: bpy.types.MeshObject
         bm = bmesh.from_edit_mesh(obj.data)
 
-        props = context.scene.navmesh_face_settings  # type: NavmeshFaceSettings
+        props = context.scene.navmesh_face_settings
 
         flags_layer = bm.faces.layers.int.get("nvm_face_flags")
         if flags_layer:
@@ -111,7 +111,7 @@ class RemoveNVMFaceFlags(LoggingOperator):
         obj: bpy.types.MeshObject
         bm = bmesh.from_edit_mesh(obj.data)
 
-        props = context.scene.navmesh_face_settings  # type: NavmeshFaceSettings
+        props = context.scene.navmesh_face_settings
 
         flags_layer = bm.faces.layers.int.get("nvm_face_flags")
         if flags_layer:
@@ -146,7 +146,7 @@ class SetNVMFaceObstacleCount(LoggingOperator):
         obj: bpy.types.MeshObject
         bm = bmesh.from_edit_mesh(obj.data)
 
-        props = context.scene.navmesh_face_settings  # type: NavmeshFaceSettings
+        props = context.scene.navmesh_face_settings
 
         obstacle_count_layer = bm.faces.layers.int.get("nvm_face_obstacle_count")
         if obstacle_count_layer:

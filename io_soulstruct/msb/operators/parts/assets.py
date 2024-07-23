@@ -6,13 +6,15 @@ __all__ = [
     "ImportAllMSBAssets",
 ]
 
+from io_soulstruct.msb.core import MSBPartOperatorConfig
 from io_soulstruct.msb.properties import MSBPartSubtype
-from .core import *
+from .base import *
 
 
 msb_asset_operator_config = MSBPartOperatorConfig(
     PART_SUBTYPE=MSBPartSubtype.ASSET,
     MSB_LIST_NAME="assets",
+    MSB_MODEL_LIST_NAME="asset_models",
     GAME_ENUM_NAME="asset_part",
 )
 
@@ -34,3 +36,6 @@ class ImportAllMSBAssets(BaseImportAllMSBParts):
                       "textures are imported (see console output for progress)")
 
     config = msb_asset_operator_config
+
+
+# TODO: Export.

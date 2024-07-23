@@ -405,7 +405,7 @@ class ImportCharacterHKXAnimation(LoggingOperator, ImportHKXAnimationMixin):
         # noinspection PyTypeChecker
         bl_armature = context.selected_objects[0]  # type: bpy.types.ArmatureObject
 
-        character_name = get_bl_obj_stem(bl_armature)
+        character_name = get_bl_obj_tight_name(bl_armature)
         if character_name == "c0000":
             return self.error("Automatic ANIBND import is not yet supported for c0000 (player model).")
 
@@ -474,7 +474,7 @@ class ImportObjectHKXAnimation(LoggingOperator, ImportHKXAnimationMixin):
         # noinspection PyTypeChecker
         bl_armature = context.selected_objects[0]  # type: bpy.types.ArmatureObject
 
-        object_name = get_bl_obj_stem(bl_armature)
+        object_name = get_bl_obj_tight_name(bl_armature)
 
         objbnd_path = settings.get_import_file_path(f"obj/{object_name}.anibnd")
         if not objbnd_path or not objbnd_path.is_file():
@@ -551,7 +551,7 @@ class ImportAssetHKXAnimation(LoggingOperator, ImportHKXAnimationMixin):
         # noinspection PyTypeChecker
         bl_armature = context.selected_objects[0]  # type: bpy.types.ArmatureObject
 
-        asset_name = get_bl_obj_stem(bl_armature).lower()
+        asset_name = get_bl_obj_tight_name(bl_armature).lower()
         asset_category = asset_name[:6]  # e.g. "aeg099"
 
         geombnd_path = settings.get_import_file_path(f"asset/aeg/{asset_category}/{asset_name}.geombnd")  # always DCX

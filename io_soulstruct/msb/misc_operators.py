@@ -8,12 +8,11 @@ __all__ = [
 import bpy
 
 from io_soulstruct.exceptions import FLVERError
-from io_soulstruct.flver.misc_operators import FLVERToolSettings
 from io_soulstruct.flver.types import BlenderFLVER
+from io_soulstruct.msb.core import BLENDER_MSB_PART_TYPES
 from io_soulstruct.types import SoulstructType
-from io_soulstruct.utilities import LoggingOperator, get_collection, new_mesh_object, copy_obj_property_group
+from io_soulstruct.utilities import *
 from .properties import MSBPartSubtype, MSBPartProps
-from .msb_import.parts.core import BLENDER_MSB_PART_TYPES
 
 
 class CreateMSBPart(LoggingOperator):
@@ -68,13 +67,12 @@ class CreateMSBPart(LoggingOperator):
                 f"Cannot import MSB Part subtype `{part_subtype.value}` for game {settings.game.name}."
             )
 
-        model_name = obj.name.split(".")[0].split(" ")
-
+        model_stem = get_bl_obj_tight_name(obj)
         collection_name = f"{settings.map_stem} {part_subtype} Parts"
         part_collection = get_collection(collection_name, context.scene.collection)
 
         try:
-            bl_part = bl_part_type.new_from_model_mesh(obj, f"{model_name} Part", part_collection)
+            bl_part = bl_part_type.new_from_model_mesh(obj, f"{model_stem} Part", part_collection)
             # No properties (other than `model`) are changed from defaults.
         except FLVERError as ex:
             return self.error(f"Could not create `{part_subtype}` MSB Part from model object '{obj.name}': {ex}")
@@ -104,6 +102,7 @@ class DuplicateMSBPartModel(LoggingOperator):
         if not self.poll(context):
             return self.error("Must select an MSB Part in Object Mode.")
 
+        settings = self.settings(context)
         part = context.active_object
         # noinspection PyUnresolvedReferences
         part_props = context.active_object.msb_part_props  # type: MSBPartProps
@@ -112,13 +111,12 @@ class DuplicateMSBPartModel(LoggingOperator):
             return self.error("Active MSB Part does not have a model object reference.")
         old_part_name = context.active_object.name
 
-        tool_settings = context.scene.flver_tool_settings  # type: FLVERToolSettings
-        if not tool_settings.new_flver_model_name:
+        if not settings.new_model_name:
             new_model_name = old_part_name.split("_")[0]
             rename_part = False
             self.info(f"No name for new model specified. Using current prefix of Part name: '{new_model_name}'")
         else:
-            new_model_name = tool_settings.new_flver_model_name
+            new_model_name = settings.new_model_name
             rename_part = True
 
         # Check that name is available.

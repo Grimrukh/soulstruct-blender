@@ -5,7 +5,6 @@ Much simpler than MSB Part import, obviously, aside from the custom draw logic.
 from __future__ import annotations
 
 __all__ = [
-    "MSBRegionOperatorConfig",
     "BaseImportSingleMSBRegion",
     "BaseImportAllMSBRegions",
 ]
@@ -13,43 +12,15 @@ __all__ = [
 import time
 import traceback
 import typing as tp
-from dataclasses import dataclass
 
 import bpy
 from io_soulstruct.general.cached import get_cached_file
-from io_soulstruct.msb import darksouls1ptde
-from io_soulstruct.msb.properties import MSBRegionSubtype
+from io_soulstruct.msb.core import MSBRegionOperatorConfig
 from io_soulstruct.utilities import *
 from io_soulstruct.utilities.operators import LoggingOperator
-from soulstruct.games import *
 
 if tp.TYPE_CHECKING:
     from io_soulstruct.type_checking import MSB_TYPING
-    from ..settings import *
-
-
-BLENDER_MSB_REGION_TYPES = {
-    DARK_SOULS_PTDE: {
-        # No subtypes, only shapes.
-        MSBRegionSubtype.NA: darksouls1ptde.BlenderMSBRegion,
-    },
-    DARK_SOULS_DSR: {
-        # No subtypes, only shapes.
-        MSBRegionSubtype.NA: darksouls1ptde.BlenderMSBRegion,
-    },
-}
-
-
-@dataclass(slots=True)
-class MSBRegionOperatorConfig:
-    """Configuration for MSB Region import operators."""
-
-    REGION_SUBTYPE: MSBRegionSubtype
-    MSB_LIST_NAMES: list[str]  # e.g. ['spheres', 'cylinders', 'boxes']
-    GAME_ENUM_NAME: str | None  # e.g. 'point_region' or 'volume_region'
-
-    def get_bl_region_type(self, game: Game) -> tp.Type[darksouls1ptde.BlenderMSBRegion]:
-        return BLENDER_MSB_REGION_TYPES[game][self.REGION_SUBTYPE]
 
 
 class BaseImportSingleMSBRegion(LoggingOperator):
@@ -84,7 +55,7 @@ class BaseImportSingleMSBRegion(LoggingOperator):
                 f"Cannot import MSB Region subtype `{self.config.REGION_SUBTYPE}` for game {settings.game.name}."
             )
 
-        msb_import_settings = context.scene.msb_import_settings  # type: MSBImportSettings
+        msb_import_settings = context.scene.msb_import_settings
 
         if not settings.get_import_map_path():  # validation
             return self.error("Game directory and map stem must be set in Blender's Soulstruct global settings.")
@@ -112,7 +83,9 @@ class BaseImportSingleMSBRegion(LoggingOperator):
             return self.error(f"MSB {self.config.REGION_SUBTYPE} '{region_name}' not found in MSB.")
 
         try:
-            bl_region = bl_region_type.new_from_region(self, region, region_collection)
+            bl_region = bl_region_type.new_from_entry(
+                self, context, settings, msb_stem, region, region_collection
+            )
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Failed to import MSB {self.config.REGION_SUBTYPE} region '{region.name}': {ex}")
@@ -152,7 +125,7 @@ class BaseImportAllMSBRegions(LoggingOperator):
         if not settings.get_import_map_path():  # validation
             return self.error("Game directory and map stem must be set in Blender's Soulstruct global settings.")
 
-        msb_import_settings = context.scene.msb_import_settings  # type: MSBImportSettings
+        msb_import_settings = context.scene.msb_import_settings
         is_name_match = msb_import_settings.get_name_match_filter()
         msb_stem = settings.get_latest_map_stem_version()
         msb_path = settings.get_import_msb_path()  # will automatically use latest MSB version if known and enabled
@@ -168,7 +141,7 @@ class BaseImportAllMSBRegions(LoggingOperator):
         for region in [region for region in combined_region_list if is_name_match(region.name)]:
             try:
                 # Don't need to get created object.
-                bl_region_type.new_from_region(self, region, region_collection)
+                bl_region_type.new_from_entry(self, context, settings, msb_stem, region, region_collection)
             except Exception as ex:
                 traceback.print_exc()
                 self.error(f"Failed to import MSB {self.config.REGION_SUBTYPE} region '{region.name}': {ex}")

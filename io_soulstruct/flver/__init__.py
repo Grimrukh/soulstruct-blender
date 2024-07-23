@@ -28,7 +28,6 @@ __all__ = [
     "DeleteFLVER",
     "DeleteFLVERAndData",
     "RenameFLVER",
-    "CreateEmptyMapPieceFLVER",
     "SelectDisplayMaskID",
     "SetSmoothCustomNormals",
     "SetVertexAlpha",
@@ -146,7 +145,7 @@ class TextureExportSettingsPanel(bpy.types.Panel):
 
     def draw(self, context):
         # TODO: These are DS1 fields. Need other games. (Use their own settings classes.)
-        settings = bpy.context.scene.texture_export_settings  # type: TextureExportSettings
+        settings = bpy.context.scene.texture_export_settings
         for prop, split in (
             ("overwrite_existing_map_textures", 0),
             ("require_power_of_two", 0),
@@ -208,7 +207,8 @@ class FLVERMeshToolsPanel(bpy.types.Panel):
 
     def draw(self, context):
 
-        flver_tool_settings = context.scene.flver_tool_settings  # type: FLVERToolSettings
+        settings = context.scene.soulstruct_settings
+        flver_tool_settings = context.scene.flver_tool_settings
 
         mask_box = self.layout.box()
         mask_box.label(text="Mask:")
@@ -225,7 +225,7 @@ class FLVERMeshToolsPanel(bpy.types.Panel):
         move_box.prop(context.scene.mesh_move_settings, "new_material_index")
         move_box.operator(CopyMeshSelectionOperator.bl_idname)
         move_box.operator(CutMeshSelectionOperator.bl_idname)
-        move_box.prop(flver_tool_settings, "new_flver_model_name")
+        move_box.prop(settings, "new_model_name")
         move_box.operator(CopyToNewFLVER.bl_idname)
 
         bone_box = self.layout.box()
@@ -236,6 +236,7 @@ class FLVERMeshToolsPanel(bpy.types.Panel):
             or (context.object.type == "MESH" and (arma := context.object.find_armature()))
         ):
             bone_box.operator(BakeBonePoseToVertices.bl_idname)
+            # noinspection PyTypeChecker
             bone_box.prop_search(flver_tool_settings, "rebone_target_bone", arma.data, "bones")
             bone_box.operator(ReboneVertices.bl_idname)
         else:
@@ -312,10 +313,9 @@ class FLVEROtherToolsPanel(bpy.types.Panel):
         layout.operator(DeleteFLVERAndData.bl_idname)
 
         name_box = layout.box()
-        name_box.prop(context.scene.flver_tool_settings, "new_flver_model_name")
+        name_box.prop(context.scene.soulstruct_settings, "new_model_name")
         name_box.operator(RenameFLVER.bl_idname)
 
-        layout.operator(CreateEmptyMapPieceFLVER.bl_idname)
         layout.operator(PrintGameTransform.bl_idname)
 
 

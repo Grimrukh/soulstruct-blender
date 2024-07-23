@@ -2,6 +2,7 @@ from __future__ import annotations
 
 __all__ = [
     "MSBImportSettings",
+    "MSBExportSettings",
 ]
 
 import fnmatch
@@ -56,3 +57,17 @@ class MSBImportSettings(bpy.types.PropertyGroup):
             return f"{map_stem} {model_type} Parts ({self.entry_name_match})"
         else:
             return f"{map_stem} {model_type} Parts"
+
+
+class MSBExportSettings(bpy.types.PropertyGroup):
+
+    model_export_mode: bpy.props.EnumProperty(
+        name="Model Export Mode",
+        description="Determines when to also export model of MSB Parts, if at all",
+        items=[
+            ("NEVER", "Never", "Never export model of MSB Parts"),
+            ("ALWAYS", "Always", "Always export model of MSB Parts"),
+            ("IF_NEW", "If New", "Only export model if its name is absent from the MSB"),
+        ],
+        default="NEVER",
+    )

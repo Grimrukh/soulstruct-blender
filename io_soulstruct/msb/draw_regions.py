@@ -123,7 +123,7 @@ CUBE_BATCH = batch_for_shader(SHADER, "LINES", {'pos': [CUBE_VERTICES[i] for edg
 
 # noinspection PyUnresolvedReferences
 def draw_region_volumes():
-    settings = bpy.context.scene.region_draw_settings  # type: RegionDrawSettings
+    settings = bpy.context.scene.region_draw_settings
     if settings.draw_mode == "NONE":
         return  # don't draw any regions
 

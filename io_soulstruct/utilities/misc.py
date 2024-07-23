@@ -9,6 +9,7 @@ __all__ = [
     "get_collection",
     "is_path_and_file",
     "is_path_and_dir",
+    "get_bl_obj_tight_name",
     "get_collection_map_stem",
     "remove_dupe_suffix",
 ]
@@ -227,6 +228,14 @@ def is_path_and_dir(path: str | Path | None) -> bool:
     if path is None:
         return False
     return Path(path).is_dir()
+
+
+def get_bl_obj_tight_name(obj: bpy.types.Object, new_ext="") -> str:
+    """Simply gets part of string before first space AND first dot, whichever comes first.
+
+    Can optionally add a new extension to the end of the stem.
+    """
+    return obj.name.split(" ")[0].split(".")[0] + new_ext
 
 
 def get_collection_map_stem(obj: bpy.types.Object) -> str:

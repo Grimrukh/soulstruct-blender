@@ -143,7 +143,6 @@ CLASSES = (
     DeleteFLVER,
     DeleteFLVERAndData,
     RenameFLVER,
-    CreateEmptyMapPieceFLVER,
     SelectDisplayMaskID,
     SetSmoothCustomNormals,
     SetVertexAlpha,
@@ -288,9 +287,11 @@ CLASSES = (
 
     MSBExportSettings,
     ExportMSBMapPieces,
+    ExportMSBObjects,
+    ExportMSBCharacters,
     ExportMSBCollisions,
     ExportMSBNavmeshes,
-    ExportCompleteMapNavigation,
+    ExportMSBNavmeshCollection,
 
     CreateMSBPart,
     DuplicateMSBPartModel,

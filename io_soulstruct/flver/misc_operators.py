@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 __all__ = [
-    "FLVERToolSettings",
     "CopyToNewFLVER",
     "DeleteFLVER",
     "DeleteFLVERAndData",
     "RenameFLVER",
-    "CreateEmptyMapPieceFLVER",
     "SelectDisplayMaskID",
     "SetSmoothCustomNormals",
     "SetVertexAlpha",
@@ -36,84 +34,11 @@ from mathutils import Matrix, Vector, Quaternion
 from soulstruct.base.models.flver import Material
 
 from io_soulstruct.exceptions import FLVERError
-from io_soulstruct.utilities.conversion import BlenderTransform
-from io_soulstruct.utilities.operators import LoggingOperator
-from io_soulstruct.utilities.bpy_data import *
+from io_soulstruct.utilities import *
 from .types import *
 
-_MASK_ID_STRINGS = []
-
-
-# noinspection PyUnusedLocal
-def _get_display_mask_id_items(self, context) -> list[tuple[str, str, str]]:
-    """Dynamic `EnumProperty` that iterates over all materials of selected meshes to find all unique Model Mask IDs."""
-    _MASK_ID_STRINGS.clear()
-    _MASK_ID_STRINGS.append("No Mask")
-    items = [
-        ("-1", "No Mask", "Select all materials that do not have a display mask"),
-    ]  # type: list[tuple[str, str, str]]
-
-    mask_id_set = set()  # type: set[str]
-    for obj in context.selected_objects:
-        if obj.type != "MESH":
-            continue
-        for mat in obj.data.materials:
-            if match := Material.DISPLAY_MASK_RE.match(mat.name):
-                mask_id = match.group(1)
-                mask_id_set.add(mask_id)
-    for mask_id in sorted(mask_id_set):
-        _MASK_ID_STRINGS.append(mask_id)
-        items.append(
-            (mask_id, f"Mask {mask_id}", f"Select all materials with display mask {mask_id}")
-        )
-    return items
-
-
-class FLVERToolSettings(bpy.types.PropertyGroup):
-    """Holds settings for the various operators below. Drawn manually in operator browser windows."""
-
-    vertex_color_layer_name: bpy.props.StringProperty(
-        name="Vertex Color Layer",
-        description="Name of the vertex color layer to use for setting vertex alpha",
-        default="VertexColors0",
-    )
-    vertex_alpha: bpy.props.FloatProperty(
-        name="Alpha",
-        description="Alpha value to set for selected vertices",
-        default=1.0,
-        min=0.0,
-        max=1.0,
-    )
-    set_selected_face_vertex_alpha_only: bpy.props.BoolProperty(
-        name="Set Selected Face Vertex Alpha Only",
-        description="Only set alpha values for loops (face corners) that are part of selected faces",
-        default=False,
-    )
-    dummy_id_draw_enabled: bpy.props.BoolProperty(name="Draw Dummy IDs", default=False)
-    dummy_id_font_size: bpy.props.IntProperty(name="Dummy ID Font Size", default=16, min=1, max=100)
-
-    new_flver_model_name: bpy.props.StringProperty(
-        name="New FLVER Model Name",
-        description="Name of the new FLVER model to create",
-        default="",  # default is operator-dependent
-    )
-
-    uv_scale: bpy.props.FloatProperty(
-        name="UV Scale",
-        description="Scale to apply to UVs after unwrapping",
-        default=1.0,
-        min=0.0,
-    )
-
-    rebone_target_bone: bpy.props.StringProperty(
-        name="Rebone Target Bone",
-        description="New bone (vertex group) to assign to vertices with 'Rebone Vertices' operator",
-    )
-
-    display_mask_id: bpy.props.EnumProperty(
-        name="Display Mask",
-        items=_get_display_mask_id_items,
-    )
+if tp.TYPE_CHECKING:
+    from .properties import FLVERToolSettings
 
 
 class CopyToNewFLVER(LoggingOperator):
@@ -121,84 +46,26 @@ class CopyToNewFLVER(LoggingOperator):
     bl_idname = "object.copy_to_new_flver"
     bl_label = "Copy to New FLVER"
     bl_description = ("Copy selected vertices, edges, and/or faces, their materials, and all FLVER bones and custom "
-                      "properties to a new FLVER model in the active collection. Must be in Edit Mode. Will always "
-                      "duplicate data, NOT just create new instances")
+                      "properties to a new FLVER model in the active collection. Must be in Edit Mode")
 
     @classmethod
     def poll(cls, context):
-        return context.mode == "EDIT_MESH" and context.active_object and context.active_object.type == "MESH"
+        if context.mode != "EDIT_MESH" or not context.active_object or context.active_object.type != "MESH":
+            return False
+        return BlenderFLVER.test_obj(context.active_object)
 
     def execute(self, context):
         if not self.poll(context):
             return self.error("Must select a Mesh in Edit Mode.")
 
-        tool_settings = context.scene.flver_tool_settings  # type: FLVERToolSettings
-        # noinspection PyTypeChecker
-        mesh = context.edit_object  # type: bpy.types.MeshObject
-        armature = mesh.parent
-        if armature is not None and armature.type != "ARMATURE":
-            return self.error("Parent of edited mesh is not an Armature.")
-        new_name = tool_settings.new_flver_model_name
-        if not new_name:
-            new_name = f"{mesh.name} (Copy)"
-
-        # Copy mesh data into new object. Note that the `separate` operator will add the new mesh to the same
-        # collection(s) automatically.
-        bpy.ops.mesh.duplicate()
-        bpy.ops.mesh.separate(type="SELECTED")  # copies custom properties, materials, data layers, etc.
-        # Separated object added to selected. We confirm, though.
-        # noinspection PyTypeChecker
-        new_mesh_obj = context.selected_objects[-1]  # type: bpy.types.MeshObject
-        if not new_mesh_obj.name.startswith(mesh.name):
-            return self.error(f"Could not duplicate and separate selected part of mesh into new object.")
-        new_mesh_obj.name = f"{new_name} Mesh"
-        new_mesh_obj.data.name = f"{new_name} Mesh"
-
-        # NOTE: All materials are copied automatically. It's too annoying to remove unused ones and update all the face
-        #  indices. However, we do duplicate any materials whose names contain the old mesh name.
-        old_mesh_name = mesh.name.split(".")[0].removesuffix(" Mesh")
-        for i, mat in enumerate(new_mesh_obj.data.materials):
-            if old_mesh_name in mat.name:
-                new_mat = mat.copy()  # copies custom properties
-                # Update material name.
-                new_mat.name = mat.name.replace(old_mesh_name, new_name)
-                new_mesh_obj.data.materials[i] = new_mat
-
-        if armature:
-            # We need to copy custom properties manually here. TODO: Why not just `armature.copy()`?
-            new_armature_obj = new_armature_object(new_name, armature.data.copy(), props=armature)
-            new_armature_obj.data.name = f"{new_name} Armature"
-            # Add Armature object to same collection(s) as `new_mesh_obj`.
-            for collection in new_mesh_obj.users_collection:
-                collection.objects.link(new_armature_obj)
-            # Update bone names.
-            bone_indices = {}
-            for i, bone in enumerate(new_armature_obj.data.bones):
-                bone.name = bone.name.replace(armature.name, new_name)
-                bone_indices[bone.name] = i  # for updating dummy bones
-            new_mesh_obj.parent = new_armature_obj
-
-            # Create Armature modifier on Mesh.
-            armature_mod = new_mesh_obj.modifiers.new("Armature", "ARMATURE")
-            armature_mod.object = new_armature_obj
-            armature_mod.show_in_editmode = True
-            armature_mod.show_on_cage = True
-
-            # Copy dummies and rename them and their attach/parent bones.
-            for dummy in armature.children:
-                if dummy.type == "EMPTY":
-                    new_dummy = dummy.copy()  # copies custom properties
-                    new_dummy.name = f"{new_name} {dummy.name.removeprefix(armature.name)}"
-                    new_dummy.parent = new_armature_obj
-                    # Add Dummy object to same collection(s) as `new_mesh_obj`.
-                    for collection in new_mesh_obj.users_collection:
-                        collection.objects.link(new_dummy)
-                    bone_index = bone_indices[dummy.parent_bone.name]
-                    new_dummy.parent_bone = new_armature_obj.data.bones[bone_index]
-                    new_dummy.parent_type = "BONE"
-                    if new_dummy["Parent Bone Name"]:
-                        parent_bone_index = bone_indices[new_dummy["Parent Bone Name"]]
-                        new_dummy["Parent Bone Name"] = new_armature_obj.data.bones[parent_bone_index].name
+        settings = self.settings(context)
+        bl_flver = BlenderFLVER.from_bl_obj(context.active_object, operator=self)
+        new_bl_flver = bl_flver.duplicate_edit_mode(
+            context=context,
+            make_materials_single_user=True,
+            copy_pose=True,
+        )
+        new_bl_flver.rename(settings.new_model_name or f"{bl_flver.name}_Copy")
 
         return {"FINISHED"}
 
@@ -279,72 +146,12 @@ class RenameFLVER(LoggingOperator):
         if not self.poll(context):
             return self.error("Must select a Mesh in Object Mode.")
 
-        tool_settings = context.scene.flver_tool_settings  # type: FLVERToolSettings
-        if not tool_settings.new_flver_model_name:
-            return self.error("No new name specified.")
+        settings = self.settings(context)
+        if not settings.new_model_name:
+            return self.error("No new model name specified.")
 
         bl_flver = BlenderFLVER.from_bl_obj(context.active_object, operator=self)
-        bl_flver.rename(tool_settings.new_flver_model_name)
-
-        return {"FINISHED"}
-
-
-class CreateEmptyMapPieceFLVER(LoggingOperator):
-
-    # TODO: Need to add loop data layers like vertex colors, UVs, etc.
-
-    bl_idname = "object.create_empty_map_piece_flver"
-    bl_label = "Create Empty Map Piece FLVER"
-    bl_description = "Create a new empty FLVER model. Must be in Object Mode"
-
-    @classmethod
-    def poll(cls, context):
-        return context.mode == "OBJECT"
-
-    def execute(self, context):
-
-        tool_settings = context.scene.flver_tool_settings  # type: FLVERToolSettings
-        new_name = tool_settings.new_flver_model_name
-        if not new_name:
-            new_name = "New Map Piece"
-
-        new_armature_obj = new_armature_object(
-            f"{new_name} Armature",
-            data=bpy.data.armatures.new(f"{new_name} Armature"),
-            props={
-                "Is Big Endian": False,
-                "Version": "DarkSouls_A",
-                "Unicode": True,
-                "Unk x4a": False,
-                "Unk x4c": 0,
-                "Unk x5c": 0,
-                "Unk x5d": 0,
-                "Unk x68": 0,
-            }
-        )
-        context.collection.objects.link(new_armature_obj)
-
-        context.view_layer.objects.active = new_armature_obj
-        if bpy.ops.object.mode_set.poll():
-            bpy.ops.object.mode_set(mode="EDIT", toggle=False)
-        edit_bone = new_armature_obj.data.edit_bones.new(new_name)
-        edit_bone["Is Unused"] = False
-        edit_bone.use_local_location = True
-        edit_bone.inherit_scale = "NONE"
-        # Leave Head as zero.
-        bone_length = context.scene.flver_import_settings.base_edit_bone_length
-        edit_bone.tail = Vector((0.0, bone_length, 0.0))  # default tail position
-        del edit_bone
-        if bpy.ops.object.mode_set.poll():
-            bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
-
-        new_mesh_obj = new_mesh_object(f"{new_name} Mesh", bpy.data.meshes.new(f"{new_name} Mesh"))
-        context.collection.objects.link(new_mesh_obj)
-        new_mesh_obj.parent = new_armature_obj
-        armature_mod = new_mesh_obj.modifiers.new("Armature", "ARMATURE")
-        armature_mod.object = new_armature_obj
-        armature_mod.show_in_editmode = True
-        armature_mod.show_on_cage = True
+        bl_flver.rename(settings.new_model_name)
 
         return {"FINISHED"}
 
@@ -440,7 +247,7 @@ class SetVertexAlpha(LoggingOperator):
         if context.mode != "EDIT_MESH":
             return self.error("Please enter Edit Mode to use this operator.")
 
-        tool_settings = context.scene.flver_tool_settings  # type: FLVERToolSettings
+        tool_settings = context.scene.flver_tool_settings
 
         bpy.ops.object.mode_set(mode="OBJECT")
         try:
@@ -485,7 +292,7 @@ class InvertVertexAlpha(LoggingOperator):
         if context.mode != "EDIT_MESH":
             return self.error("Please enter Edit Mode to use this operator.")
 
-        tool_settings = context.scene.flver_tool_settings  # type: FLVERToolSettings
+        tool_settings = context.scene.flver_tool_settings
 
         bpy.ops.object.mode_set(mode="OBJECT")
         try:
@@ -613,7 +420,7 @@ class ReboneVertices(LoggingOperator):
         if context.mode != "EDIT_MESH":
             return self.error("Please enter Edit Mode to use this operator.")
 
-        tool_settings = context.scene.flver_tool_settings  # type: FLVERToolSettings
+        tool_settings = context.scene.flver_tool_settings
         if not tool_settings.rebone_target_bone:
             return self.error("No target bone selected for reboning.")
 
@@ -897,7 +704,7 @@ class SelectMeshChildren(LoggingOperator):
 
 def draw_dummy_ids():
     """Draw the numeric reference IDs of all Dummy children of selected FLVER."""
-    settings = bpy.context.scene.flver_tool_settings  # type: FLVERToolSettings
+    settings = bpy.context.scene.flver_tool_settings
     if not settings.dummy_id_draw_enabled:
         return
 

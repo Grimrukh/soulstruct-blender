@@ -6,13 +6,15 @@ __all__ = [
     "ImportAllMSBConnectCollisions",
 ]
 
+from io_soulstruct.msb.core import MSBPartOperatorConfig
 from io_soulstruct.msb.properties import MSBPartSubtype
-from .core import *
+from .base import *
 
 
 msb_connect_collision_operator_config = MSBPartOperatorConfig(
     PART_SUBTYPE=MSBPartSubtype.CONNECT_COLLISION,
     MSB_LIST_NAME="collisions",
+    MSB_MODEL_LIST_NAME="collision_models",
     GAME_ENUM_NAME="collision_part",
 )
 

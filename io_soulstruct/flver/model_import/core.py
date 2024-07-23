@@ -117,7 +117,7 @@ class FLVERImporter:
         self.new_images.clear()
         self.new_materials.clear()
         
-        import_settings = self.context.scene.flver_import_settings  # type: FLVERImportSettings
+        import_settings = self.context.scene.flver_import_settings
 
         if (
             import_settings.omit_default_bone
@@ -184,7 +184,7 @@ class FLVERImporter:
 
     @staticmethod
     def create_mesh_armature_modifier(bl_mesh: bpy.types.MeshObject, bl_armature: bpy.types.ArmatureObject):
-        armature_mod = bl_mesh.modifiers.new("Armature", "ARMATURE")
+        armature_mod = bl_mesh.modifiers.new(name="FLVER Armature", type="ARMATURE")
         armature_mod.object = bl_armature
         armature_mod.show_in_editmode = True
         armature_mod.show_on_cage = True

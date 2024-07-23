@@ -5,30 +5,63 @@ __all__ = [
 ]
 
 import traceback
+import typing as tp
 
 import bpy
-from io_soulstruct.exceptions import FLVERImportError
+from io_soulstruct.exceptions import MSBPartExportError, FLVERImportError
 from io_soulstruct.flver.model_import.core import FLVERImporter
-from io_soulstruct.flver.model_import.settings import FLVERImportSettings
 from io_soulstruct.flver.textures.import_textures import TextureImportManager
 from io_soulstruct.flver.utilities import get_flvers_from_binder
 from io_soulstruct.general.core import SoulstructSettings
-from io_soulstruct.utilities import LoggingOperator, get_collection, find_obj_or_create_empty
+from io_soulstruct.msb.properties import MSBPartSubtype, MSBObjectProps
+from io_soulstruct.msb.utilities import find_flver_model
+from io_soulstruct.types import SoulstructType
+from io_soulstruct.utilities import *
 from soulstruct.containers import Binder
 from soulstruct.darksouls1ptde.maps.parts import MSBObject, MSBDummyObject
 from .base import BlenderMSBPart
-from io_soulstruct.msb.properties import MSBPartSubtype, MSBObjectProps
-from ..utilities import find_flver_model
+
+if tp.TYPE_CHECKING:
+    from soulstruct.darksouls1ptde.maps.msb import MSB
 
 
 class BlenderMSBObject(BlenderMSBPart):
     """Also used for 'Dummy' (Unused) MSB Objects."""
 
     PART_SUBTYPE = MSBPartSubtype.OBJECT
+    MODEL_SUBTYPES = ["object_models"]
 
     @property
     def object_props(self) -> MSBObjectProps:
         return self.obj.msb_object_props
+
+    def set_obj_properties(self, operator: LoggingOperator, entry: MSBObject | MSBDummyObject):
+        super().set_obj_properties(operator, entry)
+        props = self.object_props
+
+        self.set_obj_entry_reference(operator, props, "draw_parent", entry, SoulstructType.MSB_PART)
+
+        if isinstance(entry, MSBDummyObject):
+            props.is_dummy = True
+
+        self.set_obj_generic_props(entry, props, skip_names={"draw_parent", "is_dummy"})
+
+    def set_entry_properties(self, operator: LoggingOperator, entry: MSBObject | MSBDummyObject, msb: MSB):
+        super().set_entry_properties(operator, entry, msb)
+        props = self.object_props
+
+        if props.is_dummy and not isinstance(entry, MSBDummyObject):
+            raise MSBPartExportError(
+                f"Object '{entry.name}' is marked as a dummy object, but is being exported as a non-dummy MSB Object."
+            )
+        elif not props.is_dummy and isinstance(entry, MSBDummyObject):
+            raise MSBPartExportError(
+                f"Object '{entry.name}' is not marked as a dummy object, but is being exported as an MSB Dummy Object."
+            )
+
+        self.set_part_entry_reference(props.draw_parent, entry, "draw_parent", msb)
+
+        self.set_entry_generic_props(props, entry, skip_names={"draw_parent", "is_dummy"})
 
     @classmethod
     def find_model(
@@ -49,7 +82,7 @@ class BlenderMSBObject(BlenderMSBPart):
     ) -> bpy.types.MeshObject:
         """Import the model of the given name into a collection in the current scene."""
 
-        flver_import_settings = context.scene.flver_import_settings  # type: FLVERImportSettings
+        flver_import_settings = context.scene.flver_import_settings
         chrbnd_path = settings.get_import_file_path(f"obj/{model_name}.objbnd")
 
         operator.info(f"Importing object FLVER from: {chrbnd_path.name}")
@@ -80,28 +113,3 @@ class BlenderMSBObject(BlenderMSBPart):
 
         # Only need to return the Mesh.
         return bl_flver.mesh
-
-    def set_properties(self, operator: LoggingOperator, part: MSBObject):
-        super().set_properties(operator, part)
-        if not isinstance(part, MSBObject):  # `MSBDummyObject` is a subclass of `MSBObject` in DS1
-            return
-
-        props = self.object_props
-
-        if part.draw_parent:
-            was_missing, props.draw_parent = find_obj_or_create_empty(part.draw_parent.name)
-            if was_missing:
-                operator.warning(
-                    f"Draw parent '{part.draw_parent.name}' not found in scene. Creating empty object with that name "
-                    f"in Scene Collection to use as draw parent for '{part.name}'."
-                )
-
-        for prop_name in props.__annotations__:
-            if prop_name == "is_dummy":
-                # Class-dependent.
-                setattr(props, prop_name, isinstance(part, MSBDummyObject))
-                continue
-            if prop_name == "draw_parent":
-                continue  # handled above
-            # Primitive property.
-            setattr(props, prop_name, getattr(part, prop_name))

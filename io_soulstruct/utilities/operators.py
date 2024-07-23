@@ -25,7 +25,7 @@ class LoggingOperator(bpy.types.Operator):
     @staticmethod
     def settings(context) -> SoulstructSettings:
         """Retrieve and save current Soulstruct plugin general settings."""
-        _settings = context.scene.soulstruct_settings  # type: SoulstructSettings
+        _settings = context.scene.soulstruct_settings
         _settings.save_settings()
         return _settings
 

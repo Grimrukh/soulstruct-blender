@@ -64,7 +64,7 @@ class ExportLooseHKXMapCollision(LoggingOperator, ExportHelper):
             return super().invoke(context, _event)
 
         hkx_model = context.active_object
-        model_stem = hkx_model.name.split(" ")[0].split(".")[0]
+        model_stem = get_bl_obj_tight_name(hkx_model)
         settings = self.settings(context)
         self.filepath = settings.game.process_dcx_path(f"{model_stem}.hkx")
         context.window_manager.fileselect_add(self)

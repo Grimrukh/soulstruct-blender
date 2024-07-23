@@ -5,8 +5,9 @@ __all__ = [
     "ImportAllMSBPoints",
 ]
 
+from io_soulstruct.msb.core import MSBRegionOperatorConfig
 from io_soulstruct.msb.properties import MSBRegionSubtype
-from .core import *
+from .base import *
 
 
 msb_point_operator_config = MSBRegionOperatorConfig(

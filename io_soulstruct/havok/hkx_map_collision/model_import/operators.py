@@ -33,7 +33,6 @@ from soulstruct_havok.wrappers.hkx2015.hkx_binder import BothResHKXBHD
 from io_soulstruct.general import SoulstructGameEnums
 from io_soulstruct.utilities import *
 from .core import *
-from .settings import *
 
 
 HKX_NAME_RE = re.compile(r".*\.hkx(\.dcx)?")
@@ -299,7 +298,7 @@ class ImportHKXMapCollisionFromHKXBHD(LoggingOperator):
         # Get oldest version of map folder, if option enabled.
         map_stem = settings.get_oldest_map_stem_version()
 
-        collision_import_settings = context.scene.hkx_map_collision_import_settings  # type: HKXMapCollisionImportSettings
+        collision_import_settings = context.scene.hkx_map_collision_import_settings
 
         try:
             # Import source may depend on suffix of entry enum.

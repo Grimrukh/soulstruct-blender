@@ -78,7 +78,7 @@ class ExportMCG(LoggingOperator, ExportHelper):
             return super().invoke(context, _event)
 
         obj = context.selected_objects[0]
-        self.filepath = obj.name.split(" ")[0].split(".")[0] + ".mcg"
+        self.filepath = get_bl_obj_tight_name(obj, new_ext=".mcg")
         context.window_manager.fileselect_add(self)
         return {'RUNNING_MODAL'}
 

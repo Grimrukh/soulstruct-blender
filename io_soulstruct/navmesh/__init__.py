@@ -142,7 +142,7 @@ class NVM_PT_ds1_mcg_draw(bpy.types.Panel):
     # noinspection PyUnusedLocal
     def draw(self, context):
         """Still shown if game is not DSR."""
-        mcg_draw_settings = context.scene.mcg_draw_settings  # type: MCGDrawSettings
+        mcg_draw_settings = context.scene.mcg_draw_settings
         self.layout.prop(mcg_draw_settings, "mcg_parent")
         self.layout.prop(mcg_draw_settings, "mcg_graph_draw_enabled")
         self.layout.prop(mcg_draw_settings, "mcg_graph_draw_selected_nodes_only")

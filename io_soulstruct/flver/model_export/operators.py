@@ -246,7 +246,7 @@ class ExportFLVERIntoBinder(LoggingOperator, ExportHelper):
 # endregion
 
 
-# region Type-Specific Game Exporters
+# region Type-Specific Game Exporters and Operators
 
 class ExportMapPieceFLVERs(LoggingOperator):
     bl_idname = "export_scene.map_piece_flver"
@@ -281,7 +281,7 @@ class ExportMapPieceFLVERs(LoggingOperator):
                 "No game map directory specified in Soulstruct settings and `Detect Map from Collection` is disabled."
             )
 
-        flver_export_settings = context.scene.flver_export_settings  # type: FLVERExportSettings
+        flver_export_settings = context.scene.flver_export_settings
         flver_dcx_type = settings.game.get_dcx_type("flver")
 
         self.to_object_mode()
@@ -425,7 +425,7 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
             return self.error(str(ex))
         chrbnd.flvers[model_stem] = flver
 
-        flver_export_settings = context.scene.flver_export_settings  # type: FLVERExportSettings
+        flver_export_settings = context.scene.flver_export_settings
         if not flver_export_settings.export_textures:
             # Export CHRBND now with FLVER.
             return settings.export_file(self, chrbnd, Path(f"chr/{model_stem}.chrbnd"))
@@ -612,7 +612,7 @@ class ExportObjectFLVER(BaseGameFLVERBinderExportOperator):
 
         objbnd.flvers[model_stem] = flver
 
-        flver_export_settings = context.scene.flver_export_settings  # type: FLVERExportSettings
+        flver_export_settings = context.scene.flver_export_settings
         if flver_export_settings.export_textures:
             # TPF always added to OBJBND.
             self.export_textures_to_binder_tpf(context, objbnd, exporter.collected_texture_images)
@@ -696,7 +696,7 @@ class ExportEquipmentFLVER(BaseGameFLVERBinderExportOperator):
 
         partsbnd.flvers[model_stem] = flver
 
-        flver_export_settings = context.scene.flver_export_settings  # type: FLVERExportSettings
+        flver_export_settings = context.scene.flver_export_settings
         if flver_export_settings.export_textures:
             # TPF always added to OBJBND.
             self.export_textures_to_binder_tpf(context, partsbnd, exporter.collected_texture_images)

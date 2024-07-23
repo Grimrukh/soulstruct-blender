@@ -257,7 +257,7 @@ class QuickExportCharacterHKXAnimation(LoggingOperator):
 
         bl_armature = context.selected_objects[0]
 
-        character_name = get_bl_obj_stem(bl_armature)
+        character_name = get_bl_obj_tight_name(bl_armature)
         if character_name == "c0000":
             return self.error("Automatic ANIBND import is not yet supported for c0000 (player model).")
 
@@ -362,7 +362,7 @@ class QuickExportObjectHKXAnimation(LoggingOperator):
             return self.error("Must select a single Armature of a object (name starting with 'o') with an Action.")
 
         bl_armature = context.selected_objects[0]
-        object_name = get_bl_obj_stem(bl_armature)
+        object_name = get_bl_obj_tight_name(bl_armature)
 
         # Get OBJBND to modify from project (preferred) or game directory.
         relative_objbnd_path = Path(f"obj/{object_name}.objbnd")

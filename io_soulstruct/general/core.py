@@ -412,6 +412,13 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         default=True,
     )
 
+    # Generic enough to place here. Only used by certain operators.
+    new_model_name: bpy.props.StringProperty(
+        name="New Model Name",
+        description="Name of the new model to create/rename",
+        default="",  # default is operator-dependent
+    )
+
     # endregion
 
     @staticmethod

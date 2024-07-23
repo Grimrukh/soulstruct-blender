@@ -1,6 +1,7 @@
 __all__ = [
     "SoulstructBlenderError",
     "UnsupportedGameError",
+    "SoulstructTypeError",
     "FLVERError",
     "FLVERImportError",
     "FLVERExportError",
@@ -8,6 +9,9 @@ __all__ = [
     "NavGraphImportError",
     "NavGraphExportError",
     "MissingPartModelError",
+    "MissingMSBEntryError",
+    "MSBPartImportError",
+    "MSBPartExportError",
     "MSBRegionImportError",
 ]
 
@@ -21,6 +25,11 @@ class SoulstructBlenderError(SoulstructError):
 
 class UnsupportedGameError(SoulstructBlenderError):
     """Raised when trying to do something not supported for the selected game."""
+    pass
+
+
+class SoulstructTypeError(SoulstructBlenderError):
+    """Raised when the `soulstruct_type` of a Blender object is not as expected."""
     pass
 
 
@@ -54,7 +63,20 @@ class NavGraphExportError(SoulstructBlenderError):
 
 
 class MissingPartModelError(SoulstructBlenderError):
-    """Raised when the model for an MSB Part cannot be found in a Blender collection."""
+    """Raised when the model for an MSB Part is not set (on export) or cannot be found in Blender."""
+
+
+class MissingMSBEntryError(SoulstructBlenderError):
+    """Raised when a reference MSB entry (by name) is missing from the MSB file on entry export."""
+    pass
+
+
+class MSBPartImportError(SoulstructBlenderError):
+    """Raised by any problem with importing an MSB Region instance."""
+
+
+class MSBPartExportError(SoulstructBlenderError):
+    """Raised by any problem with importing an MSB Region instance."""
 
 
 class MSBRegionImportError(SoulstructBlenderError):

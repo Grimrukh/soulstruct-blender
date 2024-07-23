@@ -71,7 +71,7 @@ class FLVERExporter:
         """Create an entire FLVER from a Blender FLVER model."""
         self.clear_temp_flver()
 
-        export_settings = self.context.scene.flver_export_settings  # type: FLVERExportSettings
+        export_settings = self.context.scene.flver_export_settings
 
         flver = bl_flver.to_empty_flver(self.settings)
         bl_dummies = bl_flver.get_dummies(self.operator)
@@ -568,7 +568,7 @@ class FLVERExporter:
         if len(set(edit_bone_names)) != len(edit_bone_names):
             raise FLVERExportError("Bone names in Blender Armature are not all unique.")
 
-        export_settings = self.context.scene.flver_export_settings  # type: FLVERExportSettings
+        export_settings = self.context.scene.flver_export_settings
 
         for edit_bone in armature.data.edit_bones:
 
@@ -776,7 +776,7 @@ class FLVERExporter:
         if split_square_brackets:
             name = name.split("[")[0].rstrip()  # remove all the suffixes we added (plus any Blender duplicate suffix)
 
-        export_settings = self.context.scene.flver_export_settings  # type: FLVERExportSettings
+        export_settings = self.context.scene.flver_export_settings
 
         # noinspection PyUnresolvedReferences
         props = bl_material.flver_material  # type: FLVERMaterialProps

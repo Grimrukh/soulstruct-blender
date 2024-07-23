@@ -41,6 +41,9 @@ class MSBPartSubtype(StrEnum):
     CONNECT_COLLISION = "Connect Collision"
     OTHER = "Other"
 
+    def is_flver(self) -> bool:
+        return self in {MSBPartSubtype.MAP_PIECE, MSBPartSubtype.OBJECT, MSBPartSubtype.ASSET, MSBPartSubtype.CHARACTER}
+
 
 # noinspection PyUnusedLocal
 def _update_part_model(self, context):
@@ -298,42 +301,42 @@ class MSBCharacterProps(bpy.types.PropertyGroup):
         name="Player ID",
         default=0,
     )
-    patrol_region_0: bpy.props.PointerProperty(
+    patrol_regions_0: bpy.props.PointerProperty(
         type=bpy.types.Object,
         name="Patrol Region 0",
         description="Patrol region 0 for character",
     )
-    patrol_region_1: bpy.props.PointerProperty(
+    patrol_regions_1: bpy.props.PointerProperty(
         type=bpy.types.Object,
         name="Patrol Region 1",
         description="Patrol region 1 for character",
     )
-    patrol_region_2: bpy.props.PointerProperty(
+    patrol_regions_2: bpy.props.PointerProperty(
         type=bpy.types.Object,
         name="Patrol Region 2",
         description="Patrol region 2 for character",
     )
-    patrol_region_3: bpy.props.PointerProperty(
+    patrol_regions_3: bpy.props.PointerProperty(
         type=bpy.types.Object,
         name="Patrol Region 3",
         description="Patrol region 3 for character",
     )
-    patrol_region_4: bpy.props.PointerProperty(
+    patrol_regions_4: bpy.props.PointerProperty(
         type=bpy.types.Object,
         name="Patrol Region 4",
         description="Patrol region 4 for character",
     )
-    patrol_region_5: bpy.props.PointerProperty(
+    patrol_regions_5: bpy.props.PointerProperty(
         type=bpy.types.Object,
         name="Patrol Region 5",
         description="Patrol region 5 for character",
     )
-    patrol_region_6: bpy.props.PointerProperty(
+    patrol_regions_6: bpy.props.PointerProperty(
         type=bpy.types.Object,
         name="Patrol Region 6",
         description="Patrol region 6 for character",
     )
-    patrol_region_7: bpy.props.PointerProperty(
+    patrol_regions_7: bpy.props.PointerProperty(
         type=bpy.types.Object,
         name="Patrol Region 7",
         description="Patrol region 7 for character",
@@ -454,26 +457,27 @@ class MSBCollisionProps(bpy.types.PropertyGroup):
         description="Entity ID of optional attached bonfire, which will be unusable if enemies are on this collision",
         default=0,
     )
-    environment_event_name: bpy.props.StringProperty(
-        name="Name of MSB Environment Event (cubemap) to use for specular reflection on this collision",
-        default="",
+    environment_event: bpy.props.PointerProperty(
+        name="Environment Event (Cubemap)",
+        description="MSB Environment Event (cubemap) to use for specular reflection on this collision",
+        type=bpy.types.Object,
     )
     reflect_plane_height: bpy.props.FloatProperty(
         name="Reflect Plane Height",
         description="Height of the reflection plane for this collision, used for water reflections",
         default=0.0,
     )
-    vagrant_entity_id_0: bpy.props.IntProperty(
+    vagrant_entity_ids_0: bpy.props.IntProperty(
         name="Vagrant Entity ID [0]",
         description="Entity ID of Vagrant that can appear on this collision",
         default=-1,
     )
-    vagrant_entity_id_1: bpy.props.IntProperty(
+    vagrant_entity_ids_1: bpy.props.IntProperty(
         name="Vagrant Entity ID [1]",
         description="Entity ID of Vagrant that can appear on this collision",
         default=-1,
     )
-    vagrant_entity_id_2: bpy.props.IntProperty(
+    vagrant_entity_ids_2: bpy.props.IntProperty(
         name="Vagrant Entity ID [2]",
         description="Entity ID of Vagrant that can appear on this collision",
         default=-1,

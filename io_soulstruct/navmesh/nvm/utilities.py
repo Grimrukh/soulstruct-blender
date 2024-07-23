@@ -83,7 +83,7 @@ def a_star(
     `(None, float("inf"), True/False)`.
     """
 
-    settings = bpy.context.scene.navmesh_compute_settings  # type: NavmeshComputeSettings
+    settings = bpy.context.scene.navmesh_compute_settings
     flags_layer = bm.faces.layers.int.get("nvm_face_flags")  # could be `None` for non-NVM meshes
 
     # Cached centroids.

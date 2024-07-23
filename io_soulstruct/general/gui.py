@@ -11,7 +11,6 @@ __all__ = [
 
 import bpy
 
-from .core import SoulstructSettings
 from .operators import *
 
 
@@ -21,7 +20,7 @@ class _GlobalSettingsPanel_ViewMixin:
     layout: bpy.types.UILayout
 
     def draw(self, context):
-        settings = context.scene.soulstruct_settings  # type: SoulstructSettings
+        settings = context.scene.soulstruct_settings
         layout = self.layout
         layout.prop(settings, "game_enum")
 
@@ -53,7 +52,6 @@ class _GlobalSettingsPanel_ViewMixin:
             split.column().prop(settings, "str_matbinbnd_path")
             split.column().operator(SelectCustomMATBINBNDFile.bl_idname, text="Browse")
         else:
-            # TODO: Elden Ring still has an MTDBND that FLVERs may occasionally use?
             row = layout.row()
             split = row.split(factor=0.75)
             split.column().prop(settings, "str_mtdbnd_path")
@@ -66,6 +64,10 @@ class _GlobalSettingsPanel_ViewMixin:
         layout.row().prop(settings, "read_cached_pngs")
         layout.row().prop(settings, "write_cached_pngs")
         layout.row().prop(settings, "pack_image_data")
+
+        # Convenience: expose Soulstruct Type of active object, for manual editing.
+        if context.active_object:
+            layout.prop(context.active_object, "soulstruct_type", text="Active Object Type")
 
 
 class GlobalSettingsPanel(bpy.types.Panel, _GlobalSettingsPanel_ViewMixin):

@@ -6,26 +6,25 @@ __all__ = [
 
 import re
 import traceback
-import typing as tp
 
 import bpy
 from io_soulstruct.exceptions import FLVERImportError
-from io_soulstruct.flver.model_import import FLVERImporter, FLVERImportSettings
+from io_soulstruct.flver.model_import import FLVERImporter
 from io_soulstruct.flver.textures.import_textures import TextureImportManager
 from io_soulstruct.general.core import SoulstructSettings
+from io_soulstruct.msb.properties import MSBPartSubtype
+from io_soulstruct.msb.utilities import find_flver_model
 from io_soulstruct.utilities import LoggingOperator, get_collection
 from soulstruct.base.models.flver import FLVER
-from io_soulstruct.msb.properties import MSBPartSubtype
-from ..utilities import find_flver_model
-
-if tp.TYPE_CHECKING:
-    from io_soulstruct.type_checking import *
-
+from soulstruct.darksouls1ptde.maps.msb import MSBMapPiece
 from .base import BlenderMSBPart
+
 
 class BlenderMSBMapPiece(BlenderMSBPart):
 
+    SOULSTRUCT_CLASS = MSBMapPiece
     PART_SUBTYPE = MSBPartSubtype.MAP_PIECE
+    MODEL_SUBTYPES = ["map_piece_models"]
 
     # No additional Map Piece properties.
 
@@ -43,7 +42,7 @@ class BlenderMSBMapPiece(BlenderMSBPart):
         model_name: str,
     ) -> bpy.types.MeshObject:
         """Import the model of the given name into a collection in the current scene."""
-        flver_import_settings = context.scene.flver_import_settings  # type: FLVERImportSettings
+        flver_import_settings = context.scene.flver_import_settings
         flver_path = settings.get_import_map_path(f"{model_name}.flver")
 
         operator.info(f"Importing map piece FLVER: {flver_path}")

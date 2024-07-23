@@ -5,6 +5,7 @@ __all__ = [
 ]
 
 import traceback
+import typing as tp
 
 import bpy
 from io_soulstruct.exceptions import NVMImportError, MissingPartModelError
@@ -17,15 +18,30 @@ from soulstruct.darksouls1r.maps.parts import MSBNavmesh
 from .base import BlenderMSBPart
 from io_soulstruct.msb.properties import MSBPartSubtype, MSBNavmeshProps
 
+if tp.TYPE_CHECKING:
+    from soulstruct.darksouls1r.maps.msb import MSB
+
 
 class BlenderMSBNavmesh(BlenderMSBPart):
     """Not FLVER-based."""
 
+    SOULSTRUCT_CLASS = MSBNavmesh
     PART_SUBTYPE = MSBPartSubtype.NAVMESH
+    MODEL_SUBTYPES = ["navmesh_models"]
 
     @property
     def navmesh_props(self) -> MSBNavmeshProps:
         return self.obj.msb_navmesh_props
+
+    def set_obj_properties(self, operator: LoggingOperator, part: MSBNavmesh):
+        super().set_obj_properties(operator, part)
+
+        self.set_obj_groups(part, "navmesh_groups", group_count=4, group_size=32)
+
+    def set_entry_properties(self, operator: LoggingOperator, entry: MSBNavmesh, msb: MSB):
+        super().set_entry_properties(operator, entry, msb)
+
+        self.set_part_groups(entry, "navmesh_groups", group_count=4, group_size=32)
 
     @classmethod
     def find_model(cls, model_name: str, map_stem: str) -> bpy.types.MeshObject:
@@ -93,17 +109,3 @@ class BlenderMSBNavmesh(BlenderMSBPart):
         # operator.info(f"Imported NVM model {import_info.model_file_stem} as '{import_info.bl_name}'.")
 
         return nvm_model
-
-    def set_properties(self, operator: LoggingOperator, part: MSBNavmesh):
-        super().set_properties(operator, part)
-        props = self.obj.msb_navmesh_props
-
-        for i in part.navmesh_groups:
-            if 0 <= i < 32:
-                props.navmesh_groups_0[i] = True
-            elif 32 <= i < 64:
-                props.navmesh_groups_1[i - 32] = True
-            elif 64 <= i < 96:
-                props.navmesh_groups_2[i - 64] = True
-            elif 96 <= i < 128:
-                props.navmesh_groups_3[i - 96] = True

@@ -27,6 +27,7 @@ from bpy_extras.io_utils import ImportHelper
 from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
 from soulstruct.darksouls1r.maps.navmesh.nvm import NVM
 
+from io_soulstruct.exceptions import NVMImportError
 from io_soulstruct.utilities import *
 from io_soulstruct.general import *
 from io_soulstruct.navmesh.nvm.utilities import *
