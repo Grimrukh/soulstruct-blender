@@ -7,7 +7,7 @@ __all__ = [
 import bpy
 
 from io_soulstruct.exceptions import FLVERError, MissingPartModelError
-from io_soulstruct.flver.types import BlenderFLVER
+from io_soulstruct.flver.models import BlenderFLVER
 from .properties import MSBPartSubtype
 
 

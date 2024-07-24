@@ -5,7 +5,7 @@ __all__ = [
     "ImportAllMSBVolumes",
 ]
 
-from io_soulstruct.msb.core import MSBRegionOperatorConfig
+from io_soulstruct.msb.operator_config import MSBRegionOperatorConfig
 from io_soulstruct.msb.properties import MSBRegionSubtype
 from .base import *
 

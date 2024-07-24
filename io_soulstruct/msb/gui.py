@@ -64,7 +64,7 @@ class MSBPartPanel(bpy.types.Panel):
             layout.label(text="No active MSB Part.")
             return
 
-        props = obj.msb_part_props
+        props = obj.MSB_PART
         for prop in MSBPartProps.__annotations__:
             if prop.startswith("draw_groups_"):
                 if prop.endswith("_0"):
@@ -90,13 +90,13 @@ class _MSBPartSubtypePanelMixin:
     @classmethod
     def poll(cls, context):
         obj = get_active_part_obj(context)
-        return obj is not None and obj.msb_part_props.part_subtype == cls.part_subtype
+        return obj is not None and obj.MSB_PART.part_subtype == cls.part_subtype
 
     def draw(self, context):
         layout = self.layout
 
         obj = get_active_part_obj(context)
-        if obj is None or obj.msb_part_props.part_subtype != self.part_subtype:
+        if obj is None or obj.MSB_PART.part_subtype != self.part_subtype:
             # Should already fail Panel poll.
             layout.label(text=f"No active MSB {self.part_subtype}.")
             return
@@ -217,7 +217,6 @@ class MSBRegionPanel(bpy.types.Panel):
             layout.label(text="No active MSB Region.")
             return
 
-        props = obj.msb_region_props
+        props = obj.MSB_REGION
         for prop in MSBRegionProps.__annotations__:
             layout.prop(props, prop)
-

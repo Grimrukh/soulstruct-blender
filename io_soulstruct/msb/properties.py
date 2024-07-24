@@ -15,9 +15,11 @@ from __future__ import annotations
 __all__ = [
     "MSBPartSubtype",
     "MSBPartProps",
+    "MSBMapPieceProps",
     "MSBObjectProps",
     "MSBAssetProps",
     "MSBCharacterProps",
+    "MSBPlayerStartProps",
     "MSBCollisionProps",
     "MSBNavmeshProps",
     "MSBConnectCollisionProps",
@@ -43,6 +45,10 @@ class MSBPartSubtype(StrEnum):
 
     def is_flver(self) -> bool:
         return self in {MSBPartSubtype.MAP_PIECE, MSBPartSubtype.OBJECT, MSBPartSubtype.ASSET, MSBPartSubtype.CHARACTER}
+
+    def is_map_geometry(self) -> bool:
+        """TODO: Asset is ambiguous here."""
+        return self in {MSBPartSubtype.MAP_PIECE, MSBPartSubtype.COLLISION, MSBPartSubtype.NAVMESH}
 
 
 # noinspection PyUnusedLocal
@@ -115,6 +121,15 @@ class MSBPartProps(bpy.types.PropertyGroup):
         size=32,
         default=[False] * 32,
     )
+
+    def get_draw_groups_props_128(self) -> list[bpy.props.BoolVectorProperty]:
+        return [
+            self.draw_groups_0,
+            self.draw_groups_1,
+            self.draw_groups_2,
+            self.draw_groups_3,
+        ]
+
     display_groups_0: bpy.props.BoolVectorProperty(
         name="Display Groups [0, 31]",
         description="Display groups 0 to 31 for this MSB Part object",
@@ -139,6 +154,15 @@ class MSBPartProps(bpy.types.PropertyGroup):
         size=32,
         default=[False] * 32,
     )
+
+    def get_display_groups_props_128(self) -> list[bpy.props.BoolVectorProperty]:
+        return [
+            self.display_groups_0,
+            self.display_groups_1,
+            self.display_groups_2,
+            self.display_groups_3,
+        ]
+
     ambient_light_id: bpy.props.IntProperty(
         name="Ambient Light DrawParam ID",
         description="Draw parameter ID for this MSB Part object",
@@ -217,6 +241,11 @@ class MSBPartProps(bpy.types.PropertyGroup):
         name="Disable Point Light Effect",
         default=False,
     )
+
+
+class MSBMapPieceProps(bpy.types.PropertyGroup):
+    """No additional properties."""
+    pass
 
 
 class MSBObjectProps(bpy.types.PropertyGroup):
@@ -341,6 +370,13 @@ class MSBCharacterProps(bpy.types.PropertyGroup):
         name="Patrol Region 7",
         description="Patrol region 7 for character",
     )
+
+    def get_patrol_regions(self) -> list[bpy.types.Object | None]:
+        return [
+            self.patrol_regions_0, self.patrol_regions_1, self.patrol_regions_2, self.patrol_regions_3,
+            self.patrol_regions_4, self.patrol_regions_5, self.patrol_regions_6, self.patrol_regions_7,
+        ]
+
     default_animation: bpy.props.IntProperty(
         name="Default Animation",
         default=0,
@@ -349,6 +385,11 @@ class MSBCharacterProps(bpy.types.PropertyGroup):
         name="Damage Animation",
         default=0,
     )
+
+
+class MSBPlayerStartProps(bpy.types.PropertyGroup):
+    """No additional properties."""
+    pass
 
 
 class MSBCollisionProps(bpy.types.PropertyGroup):
@@ -376,6 +417,15 @@ class MSBCollisionProps(bpy.types.PropertyGroup):
         size=32,
         default=[False] * 32,
     )
+
+    def get_navmesh_groups_props_128(self) -> list[bpy.props.BoolVectorProperty]:
+        return [
+            self.navmesh_groups_0,
+            self.navmesh_groups_1,
+            self.navmesh_groups_2,
+            self.navmesh_groups_3,
+        ]
+
     hit_filter: bpy.props.EnumProperty(
         name="Hit Filter Name",
         description="Determines effect of collision on characters",
@@ -482,6 +532,12 @@ class MSBCollisionProps(bpy.types.PropertyGroup):
         description="Entity ID of Vagrant that can appear on this collision",
         default=-1,
     )
+
+    def get_vagrant_entity_ids(self) -> list[int]:
+        return [
+            self.vagrant_entity_ids_0, self.vagrant_entity_ids_1, self.vagrant_entity_ids_2
+        ]
+
     starts_disabled: bpy.props.BoolProperty(
         name="Starts Disabled",
         description="If enabled, this collision will be disabled on game load and must be enabled with EMEVD",
@@ -514,6 +570,14 @@ class MSBNavmeshProps(bpy.types.PropertyGroup):
         size=32,
         default=[False] * 32,
     )
+
+    def get_navmesh_groups_props_128(self) -> list[bpy.props.BoolVectorProperty]:
+        return [
+            self.navmesh_groups_0,
+            self.navmesh_groups_1,
+            self.navmesh_groups_2,
+            self.navmesh_groups_3,
+        ]
 
 
 class MSBConnectCollisionProps(bpy.types.PropertyGroup):
@@ -572,7 +636,19 @@ class MSBRegionProps(bpy.types.PropertyGroup):
         default=-1
     )
 
-    region_shape: bpy.props.EnumProperty(
+    region_subtype: bpy.props.EnumProperty(
+        name="MSB Region Subtype",
+        description="MSB subtype (shape) of this Region object",
+        items=[
+            (MSBRegionSubtype.NONE, "None", "Not an MSB Region"),
+            (MSBRegionSubtype.NA, "N/A", "Older game with no region subtypes (only shapes)"),
+            # TODO: ER subtypes...
+        ],
+        default=MSBRegionSubtype.NONE,
+    )
+
+    # TODO: Not a real `MSBRegion` field (sub-struct) yet, but WILL BE.
+    shape: bpy.props.EnumProperty(
         name="MSB Region Subtype",
         description="MSB subtype (shape) of this Region object",
         items=[
@@ -586,16 +662,6 @@ class MSBRegionProps(bpy.types.PropertyGroup):
         default=MSBRegionShape.NONE,
     )
 
-    region_subtype: bpy.props.EnumProperty(
-        name="MSB Region Subtype",
-        description="MSB subtype (shape) of this Region object",
-        items=[
-            (MSBRegionSubtype.NONE, "None", "Not an MSB Region"),
-            (MSBRegionSubtype.NA, "N/A", "Older game with no region subtypes (only shapes)"),
-            # TODO: ER subtypes...
-        ],
-        default=MSBRegionSubtype.NONE,
-    )
 
 
 # TODO: MSB Event subtype/property support.

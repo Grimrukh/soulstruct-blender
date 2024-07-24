@@ -9,19 +9,20 @@ import traceback
 
 import bpy
 from io_soulstruct.exceptions import FLVERImportError
-from io_soulstruct.flver.model_import import FLVERImporter
+from io_soulstruct.flver.models import BlenderFLVER
 from io_soulstruct.flver.textures.import_textures import TextureImportManager
-from io_soulstruct.general.core import SoulstructSettings
-from io_soulstruct.msb.properties import MSBPartSubtype
+from io_soulstruct.msb.properties import MSBPartSubtype, MSBMapPieceProps
 from io_soulstruct.msb.utilities import find_flver_model
+from io_soulstruct.types import *
 from io_soulstruct.utilities import LoggingOperator, get_collection
 from soulstruct.base.models.flver import FLVER
 from soulstruct.darksouls1ptde.maps.msb import MSBMapPiece
-from .base import BlenderMSBPart
+from .msb_part import BlenderMSBPart
 
 
-class BlenderMSBMapPiece(BlenderMSBPart):
+class BlenderMSBMapPiece(BlenderMSBPart[MSBMapPiece, MSBMapPieceProps]):
 
+    OBJ_DATA_TYPE = SoulstructDataType.MESH
     SOULSTRUCT_CLASS = MSBMapPiece
     PART_SUBTYPE = MSBPartSubtype.MAP_PIECE
     MODEL_SUBTYPES = ["map_piece_models"]
@@ -37,11 +38,11 @@ class BlenderMSBMapPiece(BlenderMSBPart):
         cls,
         operator: LoggingOperator,
         context: bpy.types.Context,
-        settings: SoulstructSettings,
         map_stem: str,
         model_name: str,
     ) -> bpy.types.MeshObject:
         """Import the model of the given name into a collection in the current scene."""
+        settings = operator.settings(context)
         flver_import_settings = context.scene.flver_import_settings
         flver_path = settings.get_import_map_path(f"{model_name}.flver")
 
@@ -50,8 +51,8 @@ class BlenderMSBMapPiece(BlenderMSBPart):
         flver = FLVER.from_path(flver_path)
 
         if flver_import_settings.import_textures:
-            texture_manager = TextureImportManager(settings)
-            texture_manager.find_flver_textures(flver_path)
+            texture_import_manager = TextureImportManager(settings)
+            texture_import_manager.find_flver_textures(flver_path)
             area_re = re.compile(r"^m\d\d_")
             texture_map_areas = {
                 texture_path.stem[:3]
@@ -60,24 +61,21 @@ class BlenderMSBMapPiece(BlenderMSBPart):
             }
             for map_area in texture_map_areas:
                 map_area_dir = (flver_path.parent / f"../{map_area}").resolve()
-                texture_manager.find_specific_map_textures(map_area_dir)
+                texture_import_manager.find_specific_map_textures(map_area_dir)
         else:
-            texture_manager = None
+            texture_import_manager = None
 
         map_piece_model_collection = get_collection(f"{map_stem} Map Piece Models", context.scene.collection)
-        importer = FLVERImporter(
-            operator,
-            context,
-            settings,
-            texture_import_manager=texture_manager,
-            collection=map_piece_model_collection,
-        )
-
         try:
-            bl_flver = importer.import_flver(flver, name=model_name)
+            bl_flver = BlenderFLVER.new_from_soulstruct_obj(
+                operator,
+                context,
+                flver,
+                model_name,
+                texture_import_manager=texture_import_manager,
+                collection=map_piece_model_collection,
+            )
         except Exception as ex:
-            # Delete any objects created prior to exception.
-            importer.abort_import()
             traceback.print_exc()  # for inspection in Blender console
             raise FLVERImportError(f"Cannot import FLVER: {flver_path.name}. Error: {ex}")
 

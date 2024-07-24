@@ -8,15 +8,7 @@ __all__ = [
 
 import bpy
 
-
-class NVMFaceIndex(bpy.types.PropertyGroup):
-    """No other way to handle this, unfortunately, since we need to store an arbitrary number of faces."""
-
-    index: bpy.props.IntProperty(
-        name="Index",
-        default=-1,
-        description="Index of the face in the navmesh",
-    )
+from io_soulstruct.navmesh.nvm.properties import NVMFaceIndex
 
 
 class MCGNodeProps(bpy.types.PropertyGroup):

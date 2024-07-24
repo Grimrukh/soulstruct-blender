@@ -6,7 +6,7 @@ __all__ = [
     "ImportAllMSBAssets",
 ]
 
-from io_soulstruct.msb.core import MSBPartOperatorConfig
+from io_soulstruct.msb.operator_config import MSBPartOperatorConfig
 from io_soulstruct.msb.properties import MSBPartSubtype
 from .base import *
 
@@ -14,7 +14,7 @@ from .base import *
 msb_asset_operator_config = MSBPartOperatorConfig(
     PART_SUBTYPE=MSBPartSubtype.ASSET,
     MSB_LIST_NAME="assets",
-    MSB_MODEL_LIST_NAME="asset_models",
+    MSB_MODEL_LIST_NAMES=["asset_models"],
     GAME_ENUM_NAME="asset_part",
 )
 

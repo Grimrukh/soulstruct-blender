@@ -3,15 +3,14 @@ from __future__ import annotations
 __all__ = [
     "FLVERToolSettings",
 
-    "FLVERObjectProps",
+    "FLVERProps",
     "FLVERDummyProps",
-    "FLVERGXItemProps",
-    "FLVERMaterialProps",
     "FLVERBoneProps",
 ]
 
 import bpy
 
+from soulstruct.base.models.flver.bone import FLVERBoneUsageFlags
 from soulstruct.base.models.flver.material import Material
 
 _MASK_ID_STRINGS = []
@@ -83,7 +82,7 @@ class FLVERToolSettings(bpy.types.PropertyGroup):
     )
 
 
-class FLVERObjectProps(bpy.types.PropertyGroup):
+class FLVERProps(bpy.types.PropertyGroup):
     """Extension properties for all Blender objects that represent FLVER models.
 
     These properties exist simply as `bpy.types.Object.flver` and are expected to be set on the FLVER Mesh objects, not
@@ -185,91 +184,6 @@ class FLVERDummyProps(bpy.types.PropertyGroup):
     )
 
 
-class FLVERGXItemProps(bpy.types.PropertyGroup):
-    """Extension properties for FLVER `GXItem` collection on `FLVERMaterialProps`."""
-    category: bpy.props.StringProperty(
-        name="Category",
-        description="Category of this GX item",
-        default="",
-    )
-    index: bpy.props.IntProperty(
-        name="Index",
-        description="Index of this GX item",
-        default=0,
-    )
-    data: bpy.props.StringProperty(
-        name="Data",
-        description="Raw data of this GX item (Python bytes literal)",
-        default="b\"\"",
-    )
-
-
-class FLVERMaterialProps(bpy.types.PropertyGroup):
-    """Extension properties for Blender materials that represent FLVER materials.
-
-    In Blender, materials also store desired FLVER submesh settings -- that is, there may be multiple materials that are
-    identical except for FLVER submesh/face set settings like backface culling. These settings are stored here.
-    """
-
-    flags: bpy.props.IntProperty(
-        name="Flags",
-        description="Material flags",
-        default=0,
-    )
-    mat_def_path: bpy.props.StringProperty(
-        name="Mat Def Path",
-        description="Material definition path (MATBIN name in Elden Ring, MTD name before that). Extension is ignored "
-                    "by the game and always replaced with '.matbin' (Elden Ring) or '.mtd' (before Elden Ring)",
-        default="",
-    )
-    unk_x18: bpy.props.IntProperty(
-        name="Unk x18",
-        description="Unknown integer at material offset 0x18",
-        default=0,
-    )
-    is_bind_pose: bpy.props.BoolProperty(
-        name="Is Bind Pose [Submesh]",
-        description="If enabled, submesh using this material is a rigged submesh. Typically disabled for Map Piece "
-                    "FLVERs and enabled for everything else",
-        default=False,
-    )
-    default_bone_index: bpy.props.IntProperty(
-        name="Default Bone Index [Submesh]",
-        description="Index of default bone for this submesh (if applicable). Sometimes junk in vanilla FLVERs",
-        default=-1,
-    )
-    face_set_count: bpy.props.IntProperty(
-        name="Face Set Count [Submesh]",
-        description="Number of face sets in submesh using this material. This is NOT a real FLVER property, but tells "
-                    "Blender how many duplicate FLVER face sets to make for this submesh. Typically used only for Map "
-                    "Piece level of detail. Soulstruct cannot yet auto-generate simplified/decimated LoD face sets",
-        default=0,
-    )
-    use_backface_culling: bpy.props.EnumProperty(
-        name="Use Backface Culling [Submesh Override]",
-        description="By default, Blender material's real `Backface Culling` bool is used for this (`Camera` sub-bool "
-                    "specifically, as of Blender 4.2). This field can be used to override that setting",
-        items=[
-            ("DEFAULT", "Use Material Setting", "Use the material's real `Backface Culling` (Camera) setting"),
-            ("ENABLED", "Enabled", "Enable backface culling for this submesh"),
-            ("DISABLED", "Disabled", "Disable backface culling for this submesh"),
-        ],
-        default="DEFAULT",
-    )
-
-    gx_items: bpy.props.CollectionProperty(
-        name="GX Items",
-        description="Collection of GX items for this material (DS2 and later only)",
-        type=FLVERGXItemProps,
-    )
-
-    sampler_prefix: bpy.props.StringProperty(
-        name="Sampler Prefix",
-        description="Optional prefix for sampler names in this material to make shader nodes nicer",
-        default="",
-    )
-
-
 class FLVERBoneProps(bpy.types.PropertyGroup):
     """Extension properties for Blender Bones that represent FLVER bones."""
 
@@ -295,3 +209,15 @@ class FLVERBoneProps(bpy.types.PropertyGroup):
         description="Enabled if this bone is used by the mesh of this very FLVER (bit flag 0b1000)",
         default=False,
     )
+
+    def get_flags(self) -> int:
+        flags = 0
+        if self.is_unused:
+            flags |= FLVERBoneUsageFlags.UNUSED
+        if self.is_used_by_local_dummy:
+            flags |= FLVERBoneUsageFlags.DUMMY
+        if self.is_used_by_equipment:
+            flags |= FLVERBoneUsageFlags.cXXXX
+        if self.is_used_by_local_mesh:
+            flags |= FLVERBoneUsageFlags.MESH
+        return flags

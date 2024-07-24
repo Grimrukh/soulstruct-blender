@@ -9,11 +9,11 @@ __all__ = [
     "BlenderMSBConnectCollision",
 ]
 
-from .base import *
-from .map_pieces import *
-from .objects import *
-from .characters import *
-from .player_starts import *
-from .collisions import *
-from .navmeshes import *
-from .connect_collisions import *
+from .msb_part import *
+from .msb_map_piece import *
+from .msb_object import *
+from .msb_character import *
+from .msb_player_starts import *
+from .msb_collision import *
+from .msb_navmesh import *
+from .msb_connect_collision import *

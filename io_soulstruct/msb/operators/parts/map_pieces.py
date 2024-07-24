@@ -12,10 +12,9 @@ from pathlib import Path
 
 import bpy
 from io_soulstruct import SoulstructSettings
-from io_soulstruct.flver.model_export import FLVERExporter
 from io_soulstruct.flver.textures.export_textures import export_map_area_textures
-from io_soulstruct.flver.types import BlenderFLVER
-from io_soulstruct.msb.core import MSBPartOperatorConfig
+from io_soulstruct.flver.models import BlenderFLVER
+from io_soulstruct.msb.operator_config import MSBPartOperatorConfig
 from io_soulstruct.msb.properties import MSBPartSubtype
 from io_soulstruct.utilities import *
 from .base import *
@@ -27,7 +26,7 @@ if tp.TYPE_CHECKING:
 msb_map_piece_operator_config = MSBPartOperatorConfig(
     PART_SUBTYPE=MSBPartSubtype.MAP_PIECE,
     MSB_LIST_NAME="map_pieces",
-    MSB_MODEL_LIST_NAME="map_piece_models",
+    MSB_MODEL_LIST_NAMES=["map_piece_models"],
     GAME_ENUM_NAME="map_piece_part",
 )
 
@@ -68,26 +67,27 @@ class ExportMSBMapPieces(BaseExportMSBParts):
 
     def export_model(
         self,
-        bl_model_obj: bpy.types.MeshObject,
-        settings: SoulstructSettings,
+        operator: LoggingOperator,
+        context: bpy.types.Context,
+        model_mesh: bpy.types.MeshObject,
         map_stem: str,
-        flver_exporter: FLVERExporter | None,
-        export_textures=False,
     ):
-        # Export FLVER model.
-        bl_flver = BlenderFLVER.from_bl_obj(bl_model_obj, self)
-        flver = flver_exporter.export_flver(bl_flver)
+        """Export FLVER model."""
+        settings = operator.settings(context)
+        bl_flver = BlenderFLVER.from_armature_or_mesh(model_mesh)
+        collected_texture_images = {}
+        flver = bl_flver.to_soulstruct_obj(operator, context, collected_texture_images)
         flver.dcx_type = settings.game.get_dcx_type("flver")
+
         # TODO: Elden Ring will need to export into MAPBNDs (alongside existing grass files).
-        model_stem = get_bl_obj_tight_name(bl_model_obj)
+        model_stem = bl_flver.tight_name
         flver_path = Path(f"map/{map_stem}/{model_stem}.flver")
 
-        if export_textures:
+        if context.scene.flver_export_settings.export_textures:
             # Collect all Blender images for batched map area export.
             area = settings.map_stem[:3]
             area_textures = self.map_area_textures.setdefault(area, {})
-            area_textures |= flver_exporter.collected_texture_images
-            flver_exporter.collected_texture_images.clear()
+            area_textures |= collected_texture_images
 
         self.map_piece_flvers[flver_path] = flver
 

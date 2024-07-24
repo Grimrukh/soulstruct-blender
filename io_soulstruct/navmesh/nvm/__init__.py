@@ -7,6 +7,8 @@ __all__ = [
     "ExportNVMIntoBinder",
     "ExportNVMIntoNVMBND",
 
+    "NavmeshEventProps",
+
     "NavmeshFaceSettings",
     "RefreshFaceIndices",
     "AddNVMFaceFlags",
@@ -22,3 +24,4 @@ __all__ = [
 from .model_import import *
 from .model_export import *
 from .misc_operators import *
+from .properties import *

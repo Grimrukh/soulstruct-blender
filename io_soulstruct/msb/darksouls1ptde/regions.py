@@ -4,111 +4,126 @@ __all__ = [
     "BlenderMSBRegion",
 ]
 
-import typing as tp
-
 import bpy
-from io_soulstruct import SoulstructSettings
 from io_soulstruct.exceptions import MSBRegionImportError, SoulstructTypeError
+from io_soulstruct.msb.properties import MSBRegionProps, MSBRegionSubtype, MSBRegionShape
+from io_soulstruct.types import *
 from io_soulstruct.utilities import Transform, BlenderTransform, LoggingOperator
-from io_soulstruct.msb.base import BlenderMSBEntry, ENTRY_TYPE
-from io_soulstruct.msb.properties import MSBRegionSubtype, MSBRegionShape
-from io_soulstruct.types import SoulstructType
-
-if tp.TYPE_CHECKING:
-    from soulstruct.darksouls1ptde.maps.msb import MSB
-    from soulstruct.darksouls1ptde.maps.regions import *
+from soulstruct.darksouls1ptde.maps.regions import *
 
 
-class BlenderMSBRegion(BlenderMSBEntry[MSBRegion]):
+class BlenderMSBRegion(SoulstructObject[MSBRegion, MSBRegionProps]):
     """Not abstract in DS1."""
 
+    TYPE = SoulstructType.MSB_REGION
+    OBJ_DATA_TYPE = SoulstructDataType.EMPTY
+    SOULSTRUCT_CLASS = MSBRegion
+
     @property
-    def region_props(self):
-        return self.obj.msb_region_props
+    def entity_id(self) -> int:
+        return self.type_properties.entity_id
+
+    @entity_id.setter
+    def entity_id(self, value: int):
+        self.type_properties.entity_id = value
+
+    @property
+    def shape(self) -> MSBRegionShape:
+        return self.type_properties.shape
+
+    @shape.setter
+    def shape(self, value: MSBRegionShape):
+        self.type_properties.shape = value
 
     def set_obj_transform(self, region: MSBRegion):
         game_transform = Transform.from_msb_entry(region)
         self.obj.location = game_transform.bl_translate
         self.obj.rotation_euler = game_transform.bl_rotate
-        # No scale for regions.
+        # We use scale to represent shape dimensions.
 
     def set_region_transform(self, region: MSBRegion):
         bl_transform = BlenderTransform.from_bl_obj(self.obj)
         region.translate = bl_transform.game_translate
         region.rotate = bl_transform.game_rotate_deg
-        # No scale for regions.
-
-    def assert_obj_region_subtype(self, subtype: MSBRegionSubtype):
-        if self.region_props.region_subtype != subtype:
-            raise SoulstructTypeError(
-                f"Blender object '{self.name}' has MSB Region subtype '{self.region_props.region_subtype}', not "
-                f"'{subtype}'."
-            )
-
-    def set_obj_properties(self, operator: LoggingOperator, entry: MSBRegion):
-        props = self.obj.msb_region_props
-
-        props.entity_id = entry.entity_id
-
-        # Set custom properties. This will depend on the shape type.
-        # TODO: I want to overhaul all game `MSBRegion` classes to use `RegionShape` components, which will make this a bit
-        #  easier (rather than relying on subclass name).
-        # TODO: Obviously, it would be nice/smart to use Blender scale for the radius/size of the region. This is only
-        #  complicated for Cylinders, really, which need to enforce equal X and Y (radius) but allow different Z (height).
-        #  The draw tool can make it clear that only X *or* Y is used for Cylinders though (e.g. whichever is larger).
-
-        region_type_name = entry.__class__.__name__
-        if "Point" in region_type_name:
-            entry: MSBRegionPoint
-            props.region_shape = MSBRegionShape.POINT
-            self.obj.empty_display_type = "SPHERE"  # best for points
-            # No scale needed.
-        elif "Sphere" in region_type_name:
-            entry: MSBRegionSphere
-            props.region_shape = MSBRegionShape.SPHERE
-            self.obj.scale = (entry.radius, entry.radius, entry.radius)
-            self.obj.empty_display_type = "SPHERE"  # makes these regions much easier to click
-        elif "Cylinder" in region_type_name:
-            entry: MSBRegionCylinder
-            props.region_shape = MSBRegionShape.CYLINDER
-            self.obj.scale = (entry.radius, entry.radius, entry.height)
-            self.obj.empty_display_type = "PLAIN_AXES"  # no great choice for cylinders but this is probably best
-        elif "Box" in region_type_name:
-            entry: MSBRegionBox
-            props.region_shape = MSBRegionShape.BOX
-            self.obj.scale = (entry.width, entry.depth, entry.height)
-            self.obj.empty_display_type = "CUBE"  # makes these regions much easier to click
-        else:
-            raise MSBRegionImportError(f"Cannot import MSB region type/shape: {region_type_name}")
+        # We use scale to represent shape dimensions.
 
     @classmethod
-    def new_from_entry(
+    def new_from_soulstruct_obj(
         cls,
         operator: LoggingOperator,
         context: bpy.types.Context,
-        settings: SoulstructSettings,
-        map_stem: str,
-        entry: MSBRegion,
+        soulstruct_obj: MSBRegion,
+        name: str,
         collection: bpy.types.Collection = None,
     ) -> BlenderMSBRegion:
-        # Create an Empty representing the region.
-        obj = bpy.data.objects.new(entry.name, None)
-        obj.soulstruct_type = SoulstructType.MSB_REGION
-        (collection or bpy.context.scene.collection).objects.link(obj)
+        bl_region = cls.new(name, None, collection)  # type: BlenderMSBRegion
 
-        bl_region = cls(obj)
-        bl_region.set_obj_transform(entry)
-        bl_region.set_obj_properties(operator, entry)
+        bl_region.set_obj_transform(soulstruct_obj)
+        bl_region.type_properties.region_subtype = MSBRegionSubtype.NA  # no subtypes for DS1
+        bl_region.entity_id = soulstruct_obj.entity_id
+
+        # TODO: I want to overhaul all game `MSBRegion` classes to use `RegionShape` components, which will make this a
+        #  bit cleaner (rather than relying on subclass name).
+
+        region_type_name = soulstruct_obj.__class__.__name__
+        if "Point" in region_type_name:
+            soulstruct_obj: MSBRegionPoint
+            bl_region.shape = MSBRegionShape.POINT
+            bl_region.obj.empty_display_type = "SPHERE"  # best for points
+            # No scale needed.
+        elif "Sphere" in region_type_name:
+            soulstruct_obj: MSBRegionSphere
+            bl_region.region_shape = MSBRegionShape.SPHERE
+            bl_region.obj.scale = (soulstruct_obj.radius, soulstruct_obj.radius, soulstruct_obj.radius)
+            bl_region.obj.empty_display_type = "SPHERE"  # makes these regions much easier to click
+        elif "Cylinder" in region_type_name:
+            soulstruct_obj: MSBRegionCylinder
+            bl_region.shape = MSBRegionShape.CYLINDER
+            bl_region.obj.scale = (soulstruct_obj.radius, soulstruct_obj.radius, soulstruct_obj.height)
+            bl_region.obj.empty_display_type = "PLAIN_AXES"  # no great choice for cylinders but this is probably best
+        elif "Box" in region_type_name:
+            soulstruct_obj: MSBRegionBox
+            bl_region.region_shape = MSBRegionShape.BOX
+            bl_region.obj.scale = (soulstruct_obj.width, soulstruct_obj.depth, soulstruct_obj.height)
+            bl_region.obj.empty_display_type = "CUBE"  # makes these regions much easier to click
+        else:
+            raise MSBRegionImportError(f"Cannot import MSB region type/shape: {region_type_name}")
+
         return bl_region
 
-    def to_entry(
-        self,
-        operator: LoggingOperator,
-        context: bpy.types.Context,
-        settings: SoulstructSettings,
-        map_stem: str,
-        msb: MSB,
-    ) -> ENTRY_TYPE:
-        entry = super().to_entry(operator, context, settings, map_stem, msb)
-        self.set_region_transform(entry)
-        return entry
+    def create_soulstruct_obj(self) -> MSBRegion:
+        if self.shape == MSBRegionShape.POINT:
+            return MSBRegionPoint(name=self.name)
+        elif self.shape == MSBRegionShape.SPHERE:
+            return MSBRegionSphere(name=self.name)
+        elif self.shape == MSBRegionShape.CYLINDER:
+            return MSBRegionCylinder(name=self.name)
+        elif self.shape == MSBRegionShape.BOX:
+            return MSBRegionBox(name=self.name)
+        raise SoulstructTypeError(f"Unsupported MSB region shape for export: {self.shape}")
+
+    def to_soulstruct_obj(self, operator: LoggingOperator, context: bpy.types.Context) -> MSBRegion:
+        region = self.create_soulstruct_obj()
+        self.set_region_transform(region)
+        region.entity_id = self.entity_id
+
+        # Use shape and scale to set dimensions.
+        if isinstance(region, MSBRegionPoint):
+            pass  # no dimensions
+        elif isinstance(region, MSBRegionSphere):
+            if self.obj.scale[0] != self.obj.scale[1] or self.obj.scale[0] != self.obj.scale[2]:
+                operator.warning(f"MSB Region Sphere scale is not uniform. Using X: {self.obj.scale[0]}")
+            region.radius = self.obj.scale[0]
+        elif isinstance(region, MSBRegionCylinder):
+            if self.obj.scale[0] != self.obj.scale[1]:
+                operator.warning(f"MSB Region Cylinder XY scale is not uniform. Using X: {self.obj.scale[0]}")
+            region.radius = self.obj.scale[0]
+            region.height = self.obj.scale[2]
+        elif isinstance(region, MSBRegionBox):
+            region.width = self.obj.scale[0]
+            region.depth = self.obj.scale[1]
+            region.height = self.obj.scale[2]
+        else:
+            pass  # won't pass object creation
+
+        return region

@@ -8,8 +8,8 @@ __all__ = [
 import bpy
 
 from io_soulstruct.exceptions import FLVERError
-from io_soulstruct.flver.types import BlenderFLVER
-from io_soulstruct.msb.core import BLENDER_MSB_PART_TYPES
+from io_soulstruct.flver.models import BlenderFLVER
+from io_soulstruct.msb.operator_config import BLENDER_MSB_PART_TYPES
 from io_soulstruct.types import SoulstructType
 from io_soulstruct.utilities import *
 from .properties import MSBPartSubtype, MSBPartProps

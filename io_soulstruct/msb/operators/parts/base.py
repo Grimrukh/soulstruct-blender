@@ -15,13 +15,13 @@ from pathlib import Path
 import bpy
 from io_soulstruct.general.cached import get_cached_file
 from io_soulstruct.general import SoulstructSettings
-from io_soulstruct.msb.core import MSBPartOperatorConfig
+from io_soulstruct.msb.operator_config import MSBPartOperatorConfig
+from io_soulstruct.msb.properties import MSBPartSubtype
 from io_soulstruct.types import SoulstructType
 from io_soulstruct.utilities.misc import *
 from io_soulstruct.utilities.operators import LoggingOperator
 
 if tp.TYPE_CHECKING:
-    from io_soulstruct.flver.model_export import FLVERExporter
     from io_soulstruct.type_checking import MSB_TYPING
     from soulstruct.base.maps.msb import MSBEntryList
 
@@ -184,7 +184,7 @@ class BaseExportMSBParts(LoggingOperator):
         for obj in context.selected_objects:
             if (
                 obj.soulstruct_type != SoulstructType.MSB_PART
-                or obj.msb_part_props.part_subtype != cls.config.PART_SUBTYPE
+                or obj.MSB_PART.part_subtype != cls.config.PART_SUBTYPE
             ):
                 return False
         return True
@@ -196,17 +196,18 @@ class BaseExportMSBParts(LoggingOperator):
     @abc.abstractmethod
     def export_model(
         self,
-        bl_model_obj: bpy.types.MeshObject,
-        settings: SoulstructSettings,
+        operator: LoggingOperator,
+        context: bpy.types.Context,
+        model_mesh: bpy.types.MeshObject,
         map_stem: str,  # not needed for all types
-        flver_exporter: FLVERExporter | None,
-        export_textures=False,
     ):
         """Export the model associated with the given MSB Part.
 
         It's up to the subclass to store this on some operator instance dictionary.
+
+        Only available for geometry. Too annoying to replicate/duplicate all the other Parts, and you'd generally never
+        want to casually modify Character/Object models while exporting an MSB Part.
         """
-        # TODO: Make sure PlayerStart export just ignores this.
 
     @abc.abstractmethod
     def finish_model_export(self, context: bpy.types.Context, settings: SoulstructSettings):
@@ -231,13 +232,6 @@ class BaseExportMSBParts(LoggingOperator):
 
         model_export_mode = context.scene.msb_export_settings.model_export_mode
         bl_part_type = self.config.get_bl_part_type(settings.game)
-
-        if model_export_mode != "NEVER" and self.config.PART_SUBTYPE.is_flver():
-            # FLVER exporter is ready to go, though may never be used.
-            flver_exporter = FLVERExporter(self, context, settings)
-        else:
-            # Not a FLVER model.
-            flver_exporter = None
 
         self.to_object_mode()
 
@@ -295,11 +289,17 @@ class BaseExportMSBParts(LoggingOperator):
                 # Add new model to MSB. Otherwise, existing one is fine.
                 msb_model_list.append(msb_model)
 
-            if model_export_mode == "ALWAYS" or (
-                model_export_mode == "IF_NEW" and msb_model.name not in msb.map_piece_models.get_entry_names()
+            if (
+                self.config.PART_SUBTYPE.is_map_geometry()
+                and (
+                    model_export_mode == "ALWAYS_GEOMETRY"
+                    or (
+                        model_export_mode == "IF_NEW"
+                        and msb_model.name not in msb.map_piece_models.get_entry_names()
+                    ))
             ):
                 try:
-                    self.export_model(bl_model, settings, map_stem, flver_exporter)
+                    self.export_model(self, context, bl_model, map_stem)
                 except Exception as ex:
                     traceback.print_exc()
                     return self.error(

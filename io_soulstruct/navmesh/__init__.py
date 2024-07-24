@@ -51,6 +51,7 @@ __all__ = [
     "RefreshMCGNames",
 
     "NVMFaceIndex",
+    "NavmeshEventProps",
     "MCGNodeProps",
     "MCGEdgeProps",
 ]

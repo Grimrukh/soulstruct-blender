@@ -5,6 +5,7 @@ __all__ = [
     "FLVERError",
     "FLVERImportError",
     "FLVERExportError",
+    "MaterialImportError",
     "NVMImportError",
     "NavGraphImportError",
     "NavGraphExportError",
@@ -44,6 +45,12 @@ class FLVERImportError(FLVERError):
 
 class FLVERExportError(FLVERError):
     """Exception raised during FLVER export."""
+    pass
+
+
+class MaterialImportError(SoulstructBlenderError):
+    """Error raised during material shader creation. Generally non-fatal, as the critical texture nodes required for
+    export are typically easy to create. This just means a more faithful shader couldn't be built."""
     pass
 
 

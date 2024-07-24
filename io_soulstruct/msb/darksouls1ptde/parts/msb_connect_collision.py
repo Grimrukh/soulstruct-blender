@@ -5,64 +5,81 @@ __all__ = [
 ]
 
 import traceback
+import typing as tp
 
 import bpy
-from io_soulstruct.exceptions import MissingPartModelError, MSBPartExportError
-from io_soulstruct.general.core import SoulstructSettings
+from io_soulstruct.exceptions import MissingPartModelError
 from io_soulstruct.havok.hkx_map_collision.model_import import *
-from io_soulstruct.types import SoulstructType
+from io_soulstruct.msb.properties import MSBPartSubtype, MSBConnectCollisionProps
+from io_soulstruct.types import *
 from io_soulstruct.utilities import *
 from soulstruct.darksouls1ptde.maps import MSB
 from soulstruct.darksouls1ptde.maps.parts import MSBConnectCollision
 from soulstruct_havok.wrappers.hkx2015.hkx_binder import BothResHKXBHD
-from .base import BlenderMSBPart
-from io_soulstruct.msb.properties import MSBPartSubtype, MSBConnectCollisionProps
+from .msb_part import BlenderMSBPart
 
 
-class BlenderMSBConnectCollision(BlenderMSBPart):
+class BlenderMSBConnectCollision(BlenderMSBPart[MSBConnectCollision, MSBConnectCollisionProps]):
     """Not FLVER-based."""
 
+    OBJ_DATA_TYPE = SoulstructDataType.MESH
     SOULSTRUCT_CLASS = MSBConnectCollision
     PART_SUBTYPE = MSBPartSubtype.CONNECT_COLLISION
     MODEL_SUBTYPES = ["collision_models"]
 
+    collision: bpy.types.Object | None
+
     @property
-    def connect_collision_props(self) -> MSBConnectCollisionProps:
-        return self.obj.msb_connect_collision_props
+    def connected_map_id(self) -> tuple[int, int, int, int]:
+        return (
+            self.subtype_properties.map_area,
+            self.subtype_properties.map_block,
+            self.subtype_properties.map_cc,
+            self.subtype_properties.map_dd,
+        )
 
-    def set_obj_properties(self, operator: LoggingOperator, entry: MSBConnectCollision):
-        super().set_obj_properties(operator, entry)
-        props = self.obj.msb_connect_collision_props
+    @connected_map_id.setter
+    def connected_map_id(self, value: tuple[int, int, int, int]):
+        self.subtype_properties.map_area = value[0]
+        self.subtype_properties.map_block = value[1]
+        self.subtype_properties.map_cc = value[2]
+        self.subtype_properties.map_dd = value[3]
 
-        if entry.collision:
-            was_missing, collision_obj = find_obj_or_create_empty(entry.collision.name, SoulstructType.MSB_PART)
-            # noinspection PyUnresolvedReferences
-            collision_obj.msb_part_props.msb_part_subtype = MSBPartSubtype.COLLISION
-            props.collision = collision_obj
-            if was_missing:
-                # TODO: In almost all cases, the referenced Collision will share this model. Could do better than Empty.
-                operator.warning(
-                    f"Collision '{entry.collision.name}' not found in scene. Creating empty object with that name "
-                    f"in Scene Collection to use as collision for Connect Collision '{entry.name}'."
-                )
+    @classmethod
+    def new_from_soulstruct_obj(
+        cls,
+        operator: LoggingOperator,
+        context: bpy.types.Context,
+        soulstruct_obj: MSBConnectCollision,
+        name: str,
+        collection: bpy.types.Collection = None,
+        map_stem="",
+    ) -> tp.Self:
 
-        # Only other properties are connected map ID components.
-        props.map_area = entry.connected_map_id[0]
-        props.map_block = entry.connected_map_id[1]
-        props.map_cc = entry.connected_map_id[2]
-        props.map_dd = entry.connected_map_id[3]
+        bl_connect_collision = super().new_from_soulstruct_obj(
+            operator, context, soulstruct_obj, name, collection
+        )  # type: BlenderMSBConnectCollision
 
-    def set_entry_properties(self, operator: LoggingOperator, entry: MSBConnectCollision, msb: MSB):
-        super().set_entry_properties(operator, entry, msb)
-        props = self.connect_collision_props
+        bl_connect_collision.collision = cls.entry_ref_to_bl_obj(
+            operator, soulstruct_obj, "collision", soulstruct_obj.collision, SoulstructType.MSB_PART
+        )
+        bl_connect_collision.connected_map_id = soulstruct_obj.connected_map_id
 
-        if not props.collision:
-            # Required.
-            raise MSBPartExportError(f"MSB Connect Collision '{entry.name}' does not reference an MSB Collision.")
-        self.set_part_entry_reference(props.collision, entry, "collision", msb)
+        return bl_connect_collision
 
-        # Blender component props are already restricted to [-1, 99] or [0, 99] for area.
-        entry.connected_map_id = [props.map_area, props.map_block, props.map_cc, props.map_dd]
+    def to_soulstruct_obj(
+        self,
+        operator: LoggingOperator,
+        context: bpy.types.Context,
+        map_stem="",
+        msb: MSB = None,
+    ) -> MSBConnectCollision:
+        connect_collision = super().to_soulstruct_obj(operator, context, map_stem, msb)  # type: MSBConnectCollision
+
+        connect_collision.collision = self.bl_obj_to_entry_ref(msb, "collision", self.collision, connect_collision)
+        connect_collision.connected_map_id = self.connected_map_id
+
+        return connect_collision
 
     @classmethod
     def find_model(cls, model_name: str, map_stem: str) -> bpy.types.MeshObject:
@@ -85,7 +102,6 @@ class BlenderMSBConnectCollision(BlenderMSBPart):
         cls,
         operator: LoggingOperator,
         context: bpy.types.Context,
-        settings: SoulstructSettings,
         model_name: str,
         map_stem: str,
     ) -> bpy.types.MeshObject:
@@ -93,6 +109,7 @@ class BlenderMSBConnectCollision(BlenderMSBPart):
 
         NOTE: `map_stem` should already be set to oldest version if option is enabled. This function is agnostic.
         """
+        settings = operator.settings(context)
 
         # NOTE: Hi and lo-res binders could come from different import folders (project vs. game).
         hi_res_hkxbhd_path = settings.get_import_map_path(f"h{map_stem[1:]}.hkxbhd")

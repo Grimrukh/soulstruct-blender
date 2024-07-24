@@ -13,8 +13,9 @@ import bpy
 import bmesh
 from mathutils import Vector
 
-from soulstruct.darksouls1r.maps.navmesh.nvm import NVM, NVMBox, NVMEventEntity
+from soulstruct.darksouls1r.maps.navmesh.nvm import NVM, NVMBox
 
+from io_soulstruct.navmesh.nvm.types import BlenderNavmeshEvent
 from io_soulstruct.navmesh.nvm.utilities import *
 from io_soulstruct.types import SoulstructType
 from io_soulstruct.utilities import *
@@ -66,6 +67,8 @@ class NVMImporter:
         # noinspection PyTypeChecker
         mesh_obj = bpy.data.objects.new(import_info.bl_name, bl_mesh)  # type: bpy.types.MeshObject
         mesh_obj.soulstruct_type = SoulstructType.NAVMESH
+        # NOTE: There is no `SoulstructObject` subclass for Navmeshes, as they have no properties at all.
+
         self.collection.objects.link(mesh_obj)
         self.all_bl_objs = [mesh_obj]
 
@@ -88,10 +91,16 @@ class NVMImporter:
             face[obstacle_count_layer] = nvm_triangle.obstacle_count
 
         for event in nvm.event_entities:
-            bl_event = self.create_event_entity(event, bm.faces, import_info.bl_name)
-            self.collection.objects.link(bl_event)
-            self.all_bl_objs.append(bl_event)
-            bl_event.parent = mesh_obj
+            # Get the average position of the faces. This is purely for show and is not exported.
+            avg_pos = Vector((0, 0, 0))
+            for i in event.triangle_indices:
+                avg_pos += bm.faces[i].calc_center_median()
+            avg_pos /= len(event.triangle_indices)
+            bl_event = BlenderNavmeshEvent.new_from_nvm_event_entity(
+                self.context, event, import_info.bl_name, avg_pos, self.collection
+            )
+            bl_event.obj.parent = mesh_obj
+            self.all_bl_objs.append(bl_event.obj)
 
         bm.to_mesh(bl_mesh)
         del bm
@@ -107,7 +116,7 @@ class NVMImporter:
         """Create box tree (depth first creation order).
 
         NOTE: These boxes should be imported for inspection only. They are automatically generated from the mesh
-        min/max vertex coordinates on NVM export.
+        min/max vertex coordinates on NVM export and have no properties.
         """
         boxes = []
         for box, indices in nvm.get_all_boxes(nvm.root_box):
@@ -140,26 +149,3 @@ class NVMImporter:
         bpy.ops.object.modifier_add(type="WIREFRAME")
         bl_box.modifiers[0].thickness = 0.02
         return bl_box
-
-    @staticmethod
-    def create_event_entity(
-        nvm_event_entity: NVMEventEntity, bm_faces: bmesh.types.BMFaceSeq | list[bmesh.types.BMFace], bl_nvm_name: str
-    ):
-        """Create an Empty child that just holds the ID and triangle indices of a NVM event entity.
-
-        Object is placed at the centroid of the faces it references, but this is just for convenience, and does not
-        affect export. The user should move the event around if they change the attached faces.
-        """
-        bl_event = bpy.data.objects.new(f"{bl_nvm_name} Event {nvm_event_entity.entity_id}", None)
-        bl_event.empty_display_type = "CUBE"  # to distinguish it from node spheres
-
-        # Get the average position of the faces.
-        avg_pos = Vector((0, 0, 0))
-        for i in nvm_event_entity.triangle_indices:
-            avg_pos += bm_faces[i].calc_center_median()
-        avg_pos /= len(nvm_event_entity.triangle_indices)
-        bl_event.location = avg_pos
-
-        bl_event["entity_id"] = nvm_event_entity.entity_id
-        bl_event["triangle_indices"] = nvm_event_entity.triangle_indices
-        return bl_event

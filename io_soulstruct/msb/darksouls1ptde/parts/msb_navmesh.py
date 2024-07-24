@@ -9,39 +9,62 @@ import typing as tp
 
 import bpy
 from io_soulstruct.exceptions import NVMImportError, MissingPartModelError
-from io_soulstruct.general.core import SoulstructSettings
+from io_soulstruct.msb.properties import MSBPartSubtype, MSBNavmeshProps
 from io_soulstruct.navmesh.nvm.model_import import NVMImportInfo, NVMImporter
+from io_soulstruct.types import *
 from io_soulstruct.utilities import LoggingOperator, get_collection
+from soulstruct.base.maps.msb.utils import GroupBitSet128
 from soulstruct.containers import Binder, EntryNotFoundError
 from soulstruct.darksouls1r.maps.navmesh.nvm import NVM
 from soulstruct.darksouls1r.maps.parts import MSBNavmesh
-from .base import BlenderMSBPart
-from io_soulstruct.msb.properties import MSBPartSubtype, MSBNavmeshProps
+from .msb_part import BlenderMSBPart, PART_T
 
 if tp.TYPE_CHECKING:
     from soulstruct.darksouls1r.maps.msb import MSB
 
 
-class BlenderMSBNavmesh(BlenderMSBPart):
+class BlenderMSBNavmesh(BlenderMSBPart[MSBNavmesh, MSBNavmeshProps]):
     """Not FLVER-based."""
 
+    OBJ_DATA_TYPE = SoulstructDataType.MESH
     SOULSTRUCT_CLASS = MSBNavmesh
     PART_SUBTYPE = MSBPartSubtype.NAVMESH
     MODEL_SUBTYPES = ["navmesh_models"]
 
     @property
-    def navmesh_props(self) -> MSBNavmeshProps:
-        return self.obj.msb_navmesh_props
+    def navmesh_groups(self):
+        return self._get_groups_bit_set(self.subtype_properties.get_navmesh_groups_props_128())
 
-    def set_obj_properties(self, operator: LoggingOperator, part: MSBNavmesh):
-        super().set_obj_properties(operator, part)
+    @navmesh_groups.setter
+    def navmesh_groups(self, value: set[int] | GroupBitSet128):
+        if isinstance(value, GroupBitSet128):
+            value = value.enabled_bits
+        self._set_groups_bit_set(self.type_properties.get_draw_groups_props_128(), value)
 
-        self.set_obj_groups(part, "navmesh_groups", group_count=4, group_size=32)
+    @classmethod
+    def new_from_soulstruct_obj(
+        cls,
+        operator: LoggingOperator,
+        context: bpy.types.Context,
+        soulstruct_obj: MSBNavmesh,
+        name: str,
+        collection: bpy.types.Collection = None,
+        map_stem="",
+    ) -> tp.Self:
+        bl_navmesh = cls.new(name, data=None, collection=collection)  # type: BlenderMSBNavmesh
+        bl_navmesh.navmesh_groups = soulstruct_obj.navmesh_groups
+        return bl_navmesh
 
-    def set_entry_properties(self, operator: LoggingOperator, entry: MSBNavmesh, msb: MSB):
-        super().set_entry_properties(operator, entry, msb)
-
-        self.set_part_groups(entry, "navmesh_groups", group_count=4, group_size=32)
+    def to_soulstruct_obj(
+        self,
+        operator: LoggingOperator,
+        context: bpy.types.Context,
+        map_stem="",
+        msb: MSB = None,
+    ) -> PART_T:
+        navmesh = super().to_soulstruct_obj(operator, context, map_stem=map_stem, msb=msb)
+        navmesh.navmesh_groups = self.navmesh_groups
+        return navmesh
 
     @classmethod
     def find_model(cls, model_name: str, map_stem: str) -> bpy.types.MeshObject:
@@ -61,7 +84,6 @@ class BlenderMSBNavmesh(BlenderMSBPart):
         cls,
         operator: LoggingOperator,
         context: bpy.types.Context,
-        settings: SoulstructSettings,
         model_name: str,
         map_stem: str,
     ) -> bpy.types.MeshObject:
@@ -69,6 +91,7 @@ class BlenderMSBNavmesh(BlenderMSBPart):
 
         NOTE: `map_stem` should already be set to latest version if option is enabled. This function is agnostic.
         """
+        settings = operator.settings(context)
         if not settings.get_import_map_path():  # validation
             raise NVMImportError(
                 "Game directory and map stem must be set in Blender's Soulstruct global settings."

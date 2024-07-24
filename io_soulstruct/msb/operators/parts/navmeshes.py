@@ -14,14 +14,12 @@ from pathlib import Path
 
 import bpy
 from io_soulstruct import SoulstructSettings
-from io_soulstruct.flver import FLVERExporter
 from io_soulstruct.general.cached import get_cached_file
-from io_soulstruct.msb.core import MSBPartOperatorConfig
+from io_soulstruct.msb.operator_config import MSBPartOperatorConfig
 from io_soulstruct.msb.properties import MSBPartSubtype
 from io_soulstruct.navmesh.nvm import export_nvm_model
 from io_soulstruct.types import SoulstructType
 from io_soulstruct.utilities import LoggingOperator, get_bl_obj_tight_name, MAP_STEM_RE
-from soulstruct.base.base_binary_file import BaseBinaryFile
 from soulstruct.dcx import DCXType
 from soulstruct.darksouls1r.maps.navmesh import NVMBND
 from soulstruct.utilities.text import natural_keys
@@ -34,7 +32,7 @@ if tp.TYPE_CHECKING:
 msb_navmesh_operator_config = MSBPartOperatorConfig(
     PART_SUBTYPE=MSBPartSubtype.NAVMESH,
     MSB_LIST_NAME="navmeshes",
-    MSB_MODEL_LIST_NAME="navmesh_models",
+    MSB_MODEL_LIST_NAMES=["navmesh_models"],
     GAME_ENUM_NAME="navmesh_part",
     USE_LATEST_MAP_FOLDER=True,
 )
@@ -88,13 +86,13 @@ class ExportMSBNavmeshes(BaseExportMSBParts):
 
     def export_model(
         self,
-        bl_model_obj: bpy.types.MeshObject,
-        settings: SoulstructSettings,
-        map_stem: str,  # not needed for all types
-        flver_exporter: FLVERExporter | None,
-        export_textures=False,
-    ) -> tuple[Path, BaseBinaryFile]:
+        operator: LoggingOperator,
+        context: bpy.types.Context,
+        model_mesh: bpy.types.MeshObject,
+        map_stem: str,
+    ):
         """Finds NVMBND Binders and exports NVM files into them."""
+        settings = operator.settings(context)
         relative_nvmbnd_path = Path(f"map/{map_stem}/{map_stem}.nvmbnd")
         if map_stem not in self.opened_nvmbnds:
             try:
@@ -111,7 +109,7 @@ class ExportMSBNavmeshes(BaseExportMSBParts):
             nvmbnd = self.opened_nvmbnds[map_stem]
 
         try:
-            nvm = export_nvm_model(self, bl_model_obj)
+            nvm = export_nvm_model(self, model_mesh)
         except Exception as ex:
             traceback.print_exc()
             self.error(f"Cannot get exported NVM. Error: {ex}")
@@ -119,11 +117,9 @@ class ExportMSBNavmeshes(BaseExportMSBParts):
         else:
             nvm.dcx_type = DCXType.Null  # no DCX compression inside DS1 NVMBND
 
-        model_stem = get_bl_obj_tight_name(bl_model_obj)
+        model_stem = get_bl_obj_tight_name(model_mesh)
         nvmbnd.nvms[model_stem] = nvm  # no file suffix needed in `NVMBND` keys
 
-        # Same NVMBND path and NVMBND may be returned, but they will be identical anyway.
-        return relative_nvmbnd_path, nvmbnd
 
 
 class ExportMSBNavmeshCollection(LoggingOperator):

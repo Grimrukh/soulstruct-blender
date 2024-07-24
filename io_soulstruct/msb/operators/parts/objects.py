@@ -7,23 +7,18 @@ __all__ = [
     "ExportMSBObjects",
 ]
 
-import typing as tp
-
 import bpy
-from io_soulstruct.flver import FLVERExporter
 from io_soulstruct.general import SoulstructSettings
-from io_soulstruct.msb.core import MSBPartOperatorConfig
+from io_soulstruct.msb.operator_config import MSBPartOperatorConfig
 from io_soulstruct.msb.properties import MSBPartSubtype
+from io_soulstruct.utilities import LoggingOperator
 from .base import *
-
-if tp.TYPE_CHECKING:
-    from soulstruct.containers import Binder
 
 
 msb_object_operator_config = MSBPartOperatorConfig(
     PART_SUBTYPE=MSBPartSubtype.OBJECT,
     MSB_LIST_NAME="objects",
-    MSB_MODEL_LIST_NAME="object_models",
+    MSB_MODEL_LIST_NAMES=["object_models"],
     GAME_ENUM_NAME="object_part",
 )
 
@@ -51,22 +46,19 @@ class ExportMSBObjects(BaseExportMSBParts):
 
     bl_idname = "export_scene.msb_object_part"
     bl_label = "Export Object Parts"
-    bl_description = "Export selected MSB Object parts to FLVER models"
+    bl_description = "Export selected MSB Object parts to MSB"
 
     config = msb_object_operator_config
 
-    objbnds: dict[str, Binder]  # keys are stems
-
     def init(self, context: bpy.types.Context, settings: SoulstructSettings):
-        self.objbnds = {}
+        pass
 
     def export_model(
         self,
-        bl_model_obj: bpy.types.MeshObject,
-        settings: SoulstructSettings,
-        map_stem: str,
-        flver_exporter: FLVERExporter | None,
-        export_textures=False,
+        operator: LoggingOperator,
+        context: bpy.types.Context,
+        model_mesh: bpy.types.MeshObject,
+        map_stem="",
     ):
         pass
 

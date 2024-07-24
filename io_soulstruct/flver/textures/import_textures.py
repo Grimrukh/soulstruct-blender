@@ -4,6 +4,7 @@ __all__ = [
     "ImportTextures",
     "TextureImportManager",
     "import_png_as_image",
+    "batch_get_tpf_texture_png_data",
 ]
 
 import logging

@@ -63,11 +63,20 @@ class MSBExportSettings(bpy.types.PropertyGroup):
 
     model_export_mode: bpy.props.EnumProperty(
         name="Model Export Mode",
-        description="Determines when to also export model of MSB Parts, if at all",
+        description="Determines when to also export model of MSB Parts, if at all. Note that Characters and Objects "
+                    "are never exported here; you must select their models and export them",
         items=[
             ("NEVER", "Never", "Never export model of MSB Parts"),
-            ("ALWAYS", "Always", "Always export model of MSB Parts"),
-            ("IF_NEW", "If New", "Only export model if its name is absent from the MSB"),
+            (
+                "ALWAYS_GEOMETRY",
+                "Always (Geometry)",
+                "Always export geometry MSB Parts (Map Pieces, Collisions, Navmeshes",
+            ),
+            (
+                "IF_NEW_GEOMETRY",
+                "If New (Geometry)",
+                "Only export model if its name is absent from the MSB",
+            ),
         ],
-        default="NEVER",
+        default="ALWAYS_GEOMETRY",
     )

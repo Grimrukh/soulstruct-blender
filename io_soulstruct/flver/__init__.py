@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 __all__ = [
-    "FLVERImportSettings",
     "ImportFLVER",
     "ImportMapPieceFLVER",
     "ImportCharacterFLVER",
@@ -9,7 +8,6 @@ __all__ = [
     "ImportAssetFLVER",
     "ImportEquipmentFLVER",
 
-    "FLVERExportSettings",
     "ExportStandaloneFLVER",
     "ExportFLVERIntoBinder",
     "ExportMapPieceFLVERs",
@@ -17,7 +15,10 @@ __all__ = [
     "ExportObjectFLVER",
     "ExportEquipmentFLVER",
 
-    "FLVERObjectProps",
+    "FLVERImportSettings",
+    "FLVERExportSettings",
+
+    "FLVERProps",
     "FLVERDummyProps",
     "FLVERGXItemProps",
     "FLVERMaterialProps",
@@ -62,20 +63,21 @@ __all__ = [
     "FLVERDummyToolsPanel",
     "FLVEROtherToolsPanel",
     "FLVERUVMapsPanel",
+
+    "BlenderFLVER",
+    "BlenderFLVERDummy",
+    "BlenderFLVERMaterial",
 ]
 
 import bpy
 
 from io_soulstruct.misc_operators import CopyMeshSelectionOperator, CutMeshSelectionOperator
 
-from .materials.misc_operators import *
-from .model_import import *
-from .model_export import *
+from .materials import *
+from .models import *
 from .misc_operators import *
 from .properties import *
-from .textures.import_textures import *
-from .textures.export_textures import *
-from .textures.lightmaps import *
+from .textures import *
 from .utilities import *
 
 
@@ -98,7 +100,7 @@ class FLVERImportPanel(bpy.types.Panel):
         game_import_box.label(text="Import from Game/Project")
         game_import_box.operator(ImportMapPieceFLVER.bl_idname)
         game_import_box.operator(ImportCharacterFLVER.bl_idname)
-        if settings.game_variable_name == "ELDEN_RING":
+        if settings.is_game("ELDEN_RING"):
             game_import_box.operator(ImportAssetFLVER.bl_idname)
         else:
             game_import_box.operator(ImportObjectFLVER.bl_idname)

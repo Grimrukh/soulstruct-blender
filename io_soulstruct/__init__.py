@@ -132,7 +132,7 @@ CLASSES = (
     ExportObjectFLVER,
     ExportEquipmentFLVER,
 
-    FLVERObjectProps,
+    FLVERProps,
     FLVERDummyProps,
     FLVERMaterialProps,
     FLVERGXItemProps,
@@ -260,6 +260,7 @@ CLASSES = (
     AutoCreateMCG,
     MCGDrawSettings,
     NVMFaceIndex,
+    NavmeshEventProps,
     MCGNodeProps,
     MCGEdgeProps,
     # endregion
@@ -297,9 +298,11 @@ CLASSES = (
     DuplicateMSBPartModel,
 
     MSBPartProps,
+    MSBMapPieceProps,
     MSBObjectProps,
     MSBAssetProps,
     MSBCharacterProps,
+    MSBPlayerStartProps,
     MSBCollisionProps,
     MSBNavmeshProps,
     MSBConnectCollisionProps,
@@ -356,37 +359,39 @@ SCENE_POINTERS = dict(
 
 
 OBJECT_POINTERS = dict(
-    flver=FLVERObjectProps,
-    flver_dummy=FLVERDummyProps,
+    FLVER=FLVERProps,
+    FLVER_DUMMY=FLVERDummyProps,
 
-    mcg_node_props=MCGNodeProps,
-    mcg_edge_props=MCGEdgeProps,
+    NAVMESH_EVENT=NavmeshEventProps,
+    MCG_NODE=MCGNodeProps,
+    MCG_EDGE=MCGEdgeProps,
 
-    msb_part_props=MSBPartProps,
-    msb_object_props=MSBObjectProps,
-    msb_asset_props=MSBAssetProps,
-    msb_character_props=MSBCharacterProps,
-    msb_collision_props=MSBCollisionProps,
-    msb_navmesh_props=MSBNavmeshProps,
-    msb_connect_collision_props=MSBConnectCollisionProps,
-    msb_region_props=MSBRegionProps,
+    MSB_PART=MSBPartProps,
+    MSB_OBJECT=MSBObjectProps,
+    MSB_ASSET=MSBAssetProps,
+    MSB_CHARACTER=MSBCharacterProps,
+    MSB_COLLISION=MSBCollisionProps,
+    MSB_NAVMESH=MSBNavmeshProps,
+    MSB_CONNECT_COLLISION=MSBConnectCollisionProps,
+
+    MSB_REGION=MSBRegionProps,
 )
 
 
 MATERIAL_POINTERS = dict(
-    flver_material=FLVERMaterialProps,
+    FLVER_MATERIAL=FLVERMaterialProps,
 )
 
 
-BONE_POINTERS = dict(
-    flver_bone=FLVERBoneProps,
+EDIT_BONE_POINTERS = dict(
+    FLVER_BONE=FLVERBoneProps,
 )
 
 
 SCENE_ATTRIBUTES = []
 OBJECT_ATTRIBUTES = []
 MATERIAL_ATTRIBUTES = []
-BONE_ATTRIBUTES = []
+EDIT_BONE_ATTRIBUTES = []
 
 LOAD_POST_HANDLERS = []
 SPACE_VIEW_3D_HANDLERS = []
@@ -436,6 +441,14 @@ def register():
         setattr(bpy.types.Object, prop_name, bpy.props.PointerProperty(type=prop_type))
         OBJECT_ATTRIBUTES.append(prop_name)
 
+    for prop_name, prop_type in MATERIAL_POINTERS.items():
+        setattr(bpy.types.Material, prop_name, bpy.props.PointerProperty(type=prop_type))
+        MATERIAL_ATTRIBUTES.append(prop_name)
+
+    for prop_name, prop_type in EDIT_BONE_POINTERS.items():
+        setattr(bpy.types.EditBone, prop_name, bpy.props.PointerProperty(type=prop_type))
+        EDIT_BONE_ATTRIBUTES.append(prop_name)
+
     bpy.app.handlers.load_post.append(load_handler)
     LOAD_POST_HANDLERS.append(load_handler)
 
@@ -480,6 +493,14 @@ def unregister():
     for prop_name in OBJECT_ATTRIBUTES:
         delattr(bpy.types.Object, prop_name)
     OBJECT_ATTRIBUTES.clear()
+
+    for prop_name in MATERIAL_ATTRIBUTES:
+        delattr(bpy.types.Material, prop_name)
+    MATERIAL_ATTRIBUTES.clear()
+
+    for prop_name in EDIT_BONE_ATTRIBUTES:
+        delattr(bpy.types.EditBone, prop_name)
+    EDIT_BONE_ATTRIBUTES.clear()
 
     for handler in LOAD_POST_HANDLERS:
         bpy.app.handlers.load_post.remove(handler)

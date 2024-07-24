@@ -41,13 +41,12 @@ from soulstruct.darksouls1ptde.constants import CHARACTER_MODELS as DS1_CHARACTE
 
 from io_soulstruct.flver.textures.import_textures import TextureImportManager
 from io_soulstruct.flver.utilities import *
-from io_soulstruct.flver.types import BlenderFLVER
+from io_soulstruct.flver.models import BlenderFLVER
 from io_soulstruct.general import SoulstructSettings
 from io_soulstruct.utilities import *
-from .core import FLVERImporter
 
 if tp.TYPE_CHECKING:
-    from .settings import FLVERImportSettings
+    from .properties import FLVERImportSettings
 
 
 FLVER_BINDER_RE = re.compile(r"^.*?\.(.*bnd)(\.dcx)?$")
@@ -69,7 +68,7 @@ class BaseFLVERImportOperator(LoggingImportOperator):
         start_time = time.perf_counter()
 
         flvers = []  # holds `(bl_name, FLVER)` pairs
-        texture_manager = TextureImportManager(self.settings(context))
+        texture_import_manager = TextureImportManager(self.settings(context))
 
         import_settings = context.scene.flver_import_settings
         use_matbinbnd = False  # auto-set if first FLVER is from Sekiro/Elden Ring
@@ -81,9 +80,9 @@ class BaseFLVERImportOperator(LoggingImportOperator):
                 binder = Binder.from_path(source_path)
                 binder_flvers = get_flvers_from_binder(binder, source_path, allow_multiple=True)
                 if import_settings.import_textures:
-                    texture_manager.find_flver_textures(source_path, binder)
+                    texture_import_manager.find_flver_textures(source_path, binder)
                     for flver in binder_flvers:
-                        self.find_extra_textures(source_path, flver, texture_manager)
+                        self.find_extra_textures(source_path, flver, texture_import_manager)
                 for flver in binder_flvers:
                     # TODO: Sekiro does NOT use MATBIN, so this test needs to change.
                     if flver.version == Version.Sekiro_EldenRing:
@@ -92,8 +91,8 @@ class BaseFLVERImportOperator(LoggingImportOperator):
             else:  # e.g. loose Map Piece FLVER
                 flver = FLVER.from_path(source_path)
                 if import_settings.import_textures:
-                    texture_manager.find_flver_textures(source_path)
-                    self.find_extra_textures(source_path, flver, texture_manager)
+                    texture_import_manager.find_flver_textures(source_path)
+                    self.find_extra_textures(source_path, flver, texture_import_manager)
                 flvers.append((source_path.name.split(".")[0], flver))
 
         if use_matbinbnd:
@@ -102,24 +101,22 @@ class BaseFLVERImportOperator(LoggingImportOperator):
             self.info("Using MTDBND for pre-Elden Ring FLVERs.")
 
         settings = self.settings(context)
-        importer = FLVERImporter(
-            self,
-            context,
-            settings,
-            texture_import_manager=texture_manager,
-            mtdbnd=settings.get_mtdbnd(self) if not use_matbinbnd else None,
-            matbinbnd=settings.get_matbinbnd(self) if use_matbinbnd else None,
-            collection=self.get_collection(context, Path(self.directory).name),
-        )
+        collection = self.get_collection(context, Path(self.directory).name)
 
         bl_flver = None
         for bl_name, flver in flvers:
 
             try:
-                bl_flver = importer.import_flver(flver, name=bl_name)
+                bl_flver = BlenderFLVER.new_from_soulstruct_obj(
+                    self,
+                    context,
+                    flver,
+                    name=bl_name,
+                    texture_import_manager=texture_import_manager,
+                    collection=collection,
+                )
             except Exception as ex:
                 # Delete any objects created prior to exception.
-                importer.abort_import()
                 traceback.print_exc()  # for inspection in Blender console
                 return self.error(f"Cannot import FLVER: {bl_name}. Error: {ex}")
 

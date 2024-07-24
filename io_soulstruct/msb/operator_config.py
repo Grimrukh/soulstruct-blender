@@ -41,7 +41,7 @@ class MSBPartOperatorConfig:
 
     PART_SUBTYPE: MSBPartSubtype
     MSB_LIST_NAME: str
-    MSB_MODEL_LIST_NAME: str
+    MSB_MODEL_LIST_NAMES: list[str]
     GAME_ENUM_NAME: str | None
     USE_LATEST_MAP_FOLDER: bool = False
 

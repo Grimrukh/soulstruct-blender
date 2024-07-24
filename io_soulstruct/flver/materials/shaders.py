@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 __all__ = [
-    "MaterialCreationError",
-    "create_submesh_blender_material",
+    "NodeTreeBuilder",
 ]
 
 import re
@@ -11,15 +10,11 @@ from dataclasses import dataclass, field
 
 import bpy
 
-from soulstruct.base.models.flver.material import Material
 from soulstruct.base.models.shaders import MatDef, MatDefSampler
-from soulstruct.base.models.flver.submesh import Submesh
 from soulstruct.utilities.maths import Vector2
 
+from io_soulstruct.exceptions import MaterialImportError
 from io_soulstruct.utilities.operators import LoggingOperator
-
-if tp.TYPE_CHECKING:
-    from io_soulstruct.flver.properties import FLVERMaterialProps, FLVERGXItemProps
 
 # Main node input for specular strength is called "Specular IOR Level" in Blender 4.X, but "Specular" prior to that.
 if bpy.app.version[0] == 4:
@@ -30,138 +25,6 @@ else:
     PRINCIPLED_SPECULAR_INPUT = "Specular"
     PRINCIPLED_SHININESS_INPUT = "Sheen"
     PRINCIPLED_TRANSMISSION_INPUT = "Transmission"
-
-
-class MaterialCreationError(Exception):
-    """Error raised during material shader creation. Generally non-fatal, as the critical texture nodes required for
-    export are typically easy to create. This just means a more faithful shader couldn't be built."""
-
-
-def create_submesh_blender_material(
-    operator: LoggingOperator,
-    material: Material,
-    flver_sampler_texture_stems: dict[str, str],
-    material_name: str,
-    matdef: MatDef | None,
-    submesh: Submesh,
-    vertex_color_count: int,
-    blend_mode="HASHED",
-    warn_missing_textures=True,
-) -> bpy.types.Material:
-    """Create a new Blender material from a FLVER material.
-
-    Will use material texture stems to search for PNG or DDS images in the Blender image data. If no image is found,
-    the texture will be left unassigned in the material.
-
-    Attempts to build a Blender node tree for the material. The only critical information stored in the node tree is the
-    sampler names (node labels) and image names (image node `Image` names) of the `ShaderNodeTexImage` nodes created.
-    We attempt to connect those textures to UV maps and BSDF nodes, but this is just an attempt to replicate the game
-    engine's shaders, and is not needed for FLVER export. (NOTE: Elden Ring tends to store texture paths in MATBIN files
-    rather than in the FLVER materials, so even the texture names may not be used on export.)
-    """
-
-    bl_material = bpy.data.materials.new(name=material_name)
-    bl_material.use_nodes = True
-    if blend_mode:
-        if matdef and matdef.edge:
-            # Always uses "CLIP".
-            bl_material.blend_method = "CLIP"
-            bl_material.alpha_threshold = 0.5
-        else:
-            bl_material.blend_method = blend_mode
-
-    # Critical `Material` information stored in extension properties.
-    # noinspection PyUnresolvedReferences
-    props = bl_material.flver_material  # type: FLVERMaterialProps
-    props.flags = material.flags  # int
-    props.mat_def_path = material.mat_def_path  # str
-    props.unk_x18 = material.unk_x18  # int
-    # NOTE: Texture path prefixes not stored, as they aren't actually needed in the TPFBHDs.
-
-    # Set additional real and custom properties from FLVER submesh.
-    props.is_bind_pose = submesh.is_bind_pose
-    # NOTE: This index is sometimes invalid for vanilla map FLVERs (e.g., 1 when there is only one bone).
-    props.default_bone_index = submesh.default_bone_index
-    # TODO: Currently, main face set is simply copied to all additional face sets on export. This is fine for early
-    #  games, but probably not for, say, Elden Ring map pieces. Some kind of auto-decimator may be in order.
-    props.face_set_count = len(submesh.face_sets)
-    bl_material.use_backface_culling = submesh.use_backface_culling
-
-    # Store GX items as custom properties 'array', except the final dummy item.
-    for i, gx_item in enumerate(material.gx_items):
-        gx_item_props = props.gx_items.add()  # type: FLVERGXItemProps
-        if gx_item.is_dummy:
-            continue  # ignore dummy items
-        try:
-            category = gx_item.category.decode()
-        except UnicodeDecodeError:
-            operator.warning(f"Could not decode GXItem {i} category: {gx_item.category}. Storing empty string.")
-            category = ""
-        gx_item_props.index = gx_item.index
-        gx_item_props.category = category
-        gx_item_props.data = repr(gx_item.data)  # bytes -> str
-
-    if not matdef:
-        # Store FLVER sampler texture paths directly in custom properties. No shader tree will be built, but at least
-        # we can faithfully write FLVER texture paths back to files on export.
-        # TODO: Show in FLVER Material panel.
-        for sampler_name, texture_stem in flver_sampler_texture_stems.items():
-            bl_material[f"Path[{sampler_name}]"] = texture_stem
-        return bl_material
-
-    # Retrieve any texture paths given from the MATBIN.
-    sampler_texture_stems = {sampler.name: sampler.matbin_texture_stem for sampler in matdef.samplers}
-
-    # Apply FLVER overrides to texture paths.
-    found_sampler_names = set()
-    for sampler_name, texture_stem in flver_sampler_texture_stems.items():
-
-        if sampler_name in found_sampler_names:
-            operator.warning(
-                f"Texture for sampler '{sampler_name}' was given multiple times in FLVER material, which is "
-                f"invalid. Please repair this corrupt FLVER file. Ignoring this duplicate texture instance.",
-            )
-            continue
-        found_sampler_names.add(sampler_name)
-
-        if sampler_name not in sampler_texture_stems:
-            # Unexpected sampler name!
-            if warn_missing_textures:
-                operator.warning(
-                    f"Sampler '{sampler_name}' given in FLVER does not seem to be supported by material definition "
-                    f"'{matdef.name}' with shader '{matdef.shader_stem}'. Texture node will be created, but with no UV "
-                    f"layer input.",
-                )
-            sampler_texture_stems[sampler_name] = texture_stem
-            continue
-
-        if not texture_stem:
-            # No override given in FLVER. Rare in games that use MTD, but still happens, and very common in later
-            # MATBIN games with super-flexible billion-sampler shaders.
-            continue
-
-        # Override texture path.
-        sampler_texture_stems[sampler_name] = texture_stem
-
-    # Try to build shader nodetree.
-    try:
-        builder = NodeTreeBuilder(
-            operator=operator,
-            material=bl_material,
-            matdef=matdef,
-            sampler_texture_stems=sampler_texture_stems,
-            vertex_color_count=vertex_color_count,
-        )
-        builder.build()
-    except (MaterialCreationError, KeyError, ValueError, IndexError) as ex:
-        operator.warning(
-            f"Error building shader for material '{material_name}'. Textures written to custom properties. Error:\n"
-            f"    {ex}")
-        for sampler_name, texture_stem in flver_sampler_texture_stems.items():
-            bl_material[f"Path[{sampler_name}]"] = texture_stem
-        return bl_material
-
-    return bl_material
 
 
 @dataclass(slots=True)
@@ -221,7 +84,7 @@ class NodeTreeBuilder:
         try:
             self.build_shader_uv_texture_nodes()
         except KeyError as ex:
-            raise MaterialCreationError(
+            raise MaterialImportError(
                 f"Could not build UV coordinate nodes for material '{self.matdef.name}' with shader "
                 f"'{self.matdef.shader_stem}'. Error:\n    {ex}"
             )
@@ -233,7 +96,7 @@ class NodeTreeBuilder:
             elif self.matdef.is_snow:  # TODO: I used to check texture count was 1 here.
                 self.build_snow_shader()
                 return
-        except MaterialCreationError as ex:
+        except MaterialImportError as ex:
             self.operator.warning(
                 f"Error building special shader for material '{self.matdef.name}' with shader "
                 f"'{self.matdef.shader_stem}'. Error:\n    {ex}"
@@ -243,7 +106,7 @@ class NodeTreeBuilder:
         # Build game-dependent or generic shader.
         try:
             self.build_standard_shader(self.matdef)
-        except MaterialCreationError as ex:
+        except MaterialImportError as ex:
             self.operator.warning(
                 f"Error building shader for material '{self.matdef.name}' with shader '{self.matdef.shader_stem}'. "
                 f"Error:\n    {ex}"
@@ -337,7 +200,7 @@ class NodeTreeBuilder:
         try:
             uv_texture_0 = self.matdef.UVLayer["UVTexture0"].name
         except KeyError:
-            raise MaterialCreationError(
+            raise MaterialImportError(
                 "This `MatDef` game subclass does not define 'UVTexture0' layer, which is required for water shader."
             )
 

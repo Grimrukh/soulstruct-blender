@@ -15,7 +15,7 @@ import typing as tp
 
 import bpy
 from io_soulstruct.general.cached import get_cached_file
-from io_soulstruct.msb.core import MSBRegionOperatorConfig
+from io_soulstruct.msb.operator_config import MSBRegionOperatorConfig
 from io_soulstruct.utilities import *
 from io_soulstruct.utilities.operators import LoggingOperator
 
@@ -163,3 +163,6 @@ class BaseImportAllMSBRegions(LoggingOperator):
         # No change in view after importing all regions.
 
         return {"FINISHED"}
+
+
+# TODO: Exporter. Can be shared by Point/Volume region shapes.

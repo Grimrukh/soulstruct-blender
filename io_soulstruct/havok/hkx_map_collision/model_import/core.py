@@ -168,6 +168,8 @@ def import_hkx_model_merged(
 
     hkx_model = bpy.data.objects.new(model_name, bl_mesh)
     hkx_model.soulstruct_type = SoulstructType.COLLISION
+    # NOTE: There is no `SoulstructObject` wrapper for Collisions because they have no properties to store/access.
+    # Material indices are represented in the material names.
 
     # noinspection PyTypeChecker
     return hkx_model

@@ -10,10 +10,11 @@ __all__ = [
 import typing as tp
 
 import bpy
-from io_soulstruct.flver.model_export import FLVERExporter
+from io_soulstruct.flver.models import BlenderFLVER
 from io_soulstruct.general import SoulstructSettings
-from io_soulstruct.msb.core import MSBPartOperatorConfig
+from io_soulstruct.msb.operator_config import MSBPartOperatorConfig
 from io_soulstruct.msb.properties import MSBPartSubtype
+from io_soulstruct.utilities import LoggingOperator
 from .base import *
 
 if tp.TYPE_CHECKING:
@@ -23,7 +24,7 @@ if tp.TYPE_CHECKING:
 msb_character_operator_config = MSBPartOperatorConfig(
     PART_SUBTYPE=MSBPartSubtype.CHARACTER,
     MSB_LIST_NAME="characters",
-    MSB_MODEL_LIST_NAME="character_models",
+    MSB_MODEL_LIST_NAMES=["character_models"],
     GAME_ENUM_NAME="character_part",
 )
 
@@ -55,18 +56,15 @@ class ExportMSBCharacters(BaseExportMSBParts):
 
     config = msb_character_operator_config
 
-    chrbnds: dict[str, Binder]  # keys are stems
-
     def init(self, context: bpy.types.Context, settings: SoulstructSettings):
-        self.chrbnds = {}
+        pass
 
     def export_model(
         self,
-        bl_model_obj: bpy.types.MeshObject,
-        settings: SoulstructSettings,
-        map_stem: str,
-        flver_exporter: FLVERExporter | None,
-        export_textures=False,
+        operator: LoggingOperator,
+        context: bpy.types.Context,
+        model_mesh: bpy.types.MeshObject,
+        map_stem="",
     ):
         pass
 

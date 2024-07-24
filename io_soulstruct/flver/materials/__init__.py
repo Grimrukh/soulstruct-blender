@@ -1,5 +1,14 @@
 __all__ = [
-    "create_submesh_blender_material",
+    "MaterialToolSettings",
+    "SetMaterialTexture0",
+    "SetMaterialTexture1",
+
+    "FLVERMaterialProps",
+    "FLVERGXItemProps",
+
+    "BlenderFLVERMaterial",
 ]
 
-from .core import create_submesh_blender_material
+from .misc_operators import *
+from .properties import FLVERMaterialProps, FLVERGXItemProps
+from .types import BlenderFLVERMaterial
