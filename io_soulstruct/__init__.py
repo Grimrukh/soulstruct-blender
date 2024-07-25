@@ -44,21 +44,22 @@ for module_name in list(sys.modules.keys()):
     if module_name != "io_soulstruct" and "io_soulstruct" in module_name.split(".")[0]:  # don't reload THIS module
         try_reload(module_name)
 
+from io_soulstruct.general import *
+from io_soulstruct.misc_operators import *
+
+from io_soulstruct.animation import *
+from io_soulstruct.collision import *
+from io_soulstruct.cutscene import *
 from io_soulstruct.flver import *
 from io_soulstruct.msb import *
+from io_soulstruct.nav_graph import *
 from io_soulstruct.navmesh import *
-from io_soulstruct.misc_operators import *
-from io_soulstruct.general import *
-
-from io_soulstruct.havok.hkx_map_collision import *
-from io_soulstruct.havok.hkx_animation import *
-from io_soulstruct.havok.hkx_cutscene import *
 
 bl_info = {
     "name": "Soulstruct",
     "author": "Scott Mooney (Grimrukh)",
-    "version": (1, 9, 3),
-    "blender": (4, 1, 0),
+    "version": (2, 0, 0),
+    "blender": (4, 2, 0),
     "location": "File > Import-Export",
     "description": "Import, manipulate, and export FromSoftware/Havok assets",
     "warning": "",
@@ -234,19 +235,8 @@ CLASSES = (
     ImportAllDLCOverworldNVMHKTs,
     NVMHKTImportSettings,
 
-    ImportMCP,
-    QuickImportMCP,
-    ImportMCG,
-    QuickImportMCG,
-    ExportMCG,
-    ExportMCGMCPToMap,
-    CreateMCGEdge,
-    SetNodeNavmeshATriangles,
-    SetNodeNavmeshBTriangles,
-    RefreshMCGNames,
     NVM_PT_ds1_navmesh_import,
     NVM_PT_ds1_navmesh_export,
-    NVM_PT_ds1_mcg_draw,
     NVM_PT_ds1_navmesh_tools,
     NVM_PT_er_navmesh_import,
     NavmeshFaceSettings,
@@ -254,15 +244,32 @@ CLASSES = (
     RemoveNVMFaceFlags,
     SetNVMFaceObstacleCount,
     ResetNVMFaceInfo,
-    NavmeshComputeSettings,
-    FindCheapestPath,
-    RecomputeEdgeCost,
-    AutoCreateMCG,
+    # endregion
+
+    # region Nav Graph (MCG)
+    ImportMCG,
+    ImportSelectedMapMCG,
+    ImportMCP,
+    ImportSelectedMapMCP,
+    ExportMCG,
+    ExportMCGMCPToMap,
     MCGDrawSettings,
+    draw_mcg_nodes,
+    draw_mcg_node_labels,
+    draw_mcg_edges,
+    draw_mcg_edge_cost_labels,
+    JoinMCGNodesThroughNavmesh,
+    SetNodeNavmeshTriangles,
+    RefreshMCGNames,
+    MCGProps,
     NVMFaceIndex,
-    NavmeshEventProps,
     MCGNodeProps,
     MCGEdgeProps,
+    NavGraphComputeSettings,
+    MCG_PT_ds1_mcg_import,
+    MCG_PT_ds1_mcg_export,
+    MCG_PT_ds1_mcg_draw,
+    MCG_PT_ds1_mcg_tools,
     # endregion
 
     # region MSB
@@ -349,7 +356,7 @@ SCENE_POINTERS = dict(
     mesh_move_settings=MeshMoveSettings,
     hkx_map_collision_import_settings=HKXMapCollisionImportSettings,
     navmesh_face_settings=NavmeshFaceSettings,
-    navmesh_compute_settings=NavmeshComputeSettings,
+    nav_graph_compute_settings=NavGraphComputeSettings,
     nvmhkt_import_settings=NVMHKTImportSettings,
     mcg_draw_settings=MCGDrawSettings,
     msb_import_settings=MSBImportSettings,
@@ -362,7 +369,8 @@ OBJECT_POINTERS = dict(
     FLVER=FLVERProps,
     FLVER_DUMMY=FLVERDummyProps,
 
-    NAVMESH_EVENT=NavmeshEventProps,
+    NVM_EVENT_ENTITY=NVMEventEntityProps,
+    MCG=MCGProps,
     MCG_NODE=MCGNodeProps,
     MCG_EDGE=MCGEdgeProps,
 

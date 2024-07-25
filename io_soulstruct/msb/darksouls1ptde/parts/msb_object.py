@@ -33,6 +33,8 @@ class BlenderMSBObject(BlenderMSBPart[MSBObject, MSBObjectProps]):
     PART_SUBTYPE = MSBPartSubtype.OBJECT
     MODEL_SUBTYPES = ["object_models"]
 
+    data: bpy.types.Mesh  # type override
+
     AUTO_OBJECT_PROPS = [
         "break_term",
         "net_sync_type",

@@ -17,7 +17,7 @@ from io_soulstruct import SoulstructSettings
 from io_soulstruct.general.cached import get_cached_file
 from io_soulstruct.msb.operator_config import MSBPartOperatorConfig
 from io_soulstruct.msb.properties import MSBPartSubtype
-from io_soulstruct.navmesh.nvm import export_nvm_model
+from io_soulstruct.navmesh.nvm import BlenderNVM
 from io_soulstruct.types import SoulstructType
 from io_soulstruct.utilities import LoggingOperator, get_bl_obj_tight_name, MAP_STEM_RE
 from soulstruct.dcx import DCXType
@@ -109,7 +109,7 @@ class ExportMSBNavmeshes(BaseExportMSBParts):
             nvmbnd = self.opened_nvmbnds[map_stem]
 
         try:
-            nvm = export_nvm_model(self, model_mesh)
+            nvm = BlenderNVM(model_mesh).to_soulstruct_obj(self, context)
         except Exception as ex:
             traceback.print_exc()
             self.error(f"Cannot get exported NVM. Error: {ex}")
@@ -230,7 +230,7 @@ class ExportMSBNavmeshCollection(LoggingOperator):
                 msb.navmesh_models.append(navmesh_model)
 
                 try:
-                    nvm = export_nvm_model(self, bl_navmesh.model)
+                    nvm = BlenderNVM(bl_navmesh.model).to_soulstruct_obj(self, context)
                 except Exception as ex:
                     traceback.print_exc()
                     self.error(f"Cannot get exported NVM. Error: {ex}")

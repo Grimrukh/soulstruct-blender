@@ -13,10 +13,9 @@ import typing as tp
 from pathlib import Path
 
 import bpy
-from io_soulstruct.general.cached import get_cached_file
 from io_soulstruct.general import SoulstructSettings
+from io_soulstruct.general.cached import get_cached_file
 from io_soulstruct.msb.operator_config import MSBPartOperatorConfig
-from io_soulstruct.msb.properties import MSBPartSubtype
 from io_soulstruct.types import SoulstructType
 from io_soulstruct.utilities.misc import *
 from io_soulstruct.utilities.operators import LoggingOperator
@@ -284,10 +283,14 @@ class BaseExportMSBParts(LoggingOperator):
             msb_model = msb.map_piece_models.new()
             msb_model.set_name_from_model_file_stem(model_stem)
             msb_model.set_auto_sib_path(map_stem=map_stem)
-            msb_model_list = getattr(msb, self.config.MSB_MODEL_LIST_NAME)  # type: MSBEntryList
-            if msb_model.name not in msb_model_list.get_entry_names():
+
+            msb_model_lists_names = []
+            for msb_model_list_name in self.config.MSB_MODEL_LIST_NAMES:
+                msb_model_list = getattr(msb, msb_model_list_name)
+                msb_model_lists_names += [model.name for model in msb_model_list]
+            if msb_model.name not in msb_model_lists_names:
                 # Add new model to MSB. Otherwise, existing one is fine.
-                msb_model_list.append(msb_model)
+                getattr(msb, self.config.MSB_MODEL_LIST_NAMES[0]).append(msb_model)
 
             if (
                 self.config.PART_SUBTYPE.is_map_geometry()

@@ -16,10 +16,11 @@ from soulstruct.containers import Binder, BinderEntry
 from soulstruct.dcx import DCXType
 from soulstruct.darksouls1r.maps.navmesh import NVMBND
 
+from io_soulstruct.exceptions import SoulstructTypeError
 from io_soulstruct.types import SoulstructType
 from io_soulstruct.utilities.operators import LoggingOperator, get_dcx_enum_property
 from io_soulstruct.utilities.misc import *
-from .core import *
+from .types import *
 
 
 class ExportLooseNVM(LoggingOperator, ExportHelper):
@@ -65,7 +66,7 @@ class ExportLooseNVM(LoggingOperator, ExportHelper):
         nvm_model = context.selected_objects[0]  # type: bpy.types.MeshObject
 
         try:
-            nvm = export_nvm_model(self, nvm_model)
+            nvm = BlenderNVM(nvm_model).to_soulstruct_obj(self, context)
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Cannot get exported NVM. Error: {ex}")
@@ -129,8 +130,7 @@ class ExportNVMIntoBinder(LoggingOperator, ImportHelper):
         if not self.poll(context):
             return self.error("No valid Meshes selected for NVM export.")
 
-        # noinspection PyTypeChecker
-        selected_objs = [obj for obj in context.selected_objects]  # type: list[bpy.types.MeshObject]
+        selected_bl_nvms = BlenderNVM.from_selected_objects(context)  # type: list[BlenderNVM]
 
         try:
             binder = Binder.from_path(self.filepath)
@@ -138,15 +138,11 @@ class ExportNVMIntoBinder(LoggingOperator, ImportHelper):
             return self.error(f"Could not load Binder file. Error: {ex}.")
         binder_stem = binder.path.name.split(".")[0]
 
-        # TODO: Not needed for meshes only?
-        if bpy.ops.object.mode_set.poll():
-            bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
-
-        for nvm_model in selected_objs:
-            model_stem = nvm_model.name.split(".")[0].split(" ")[0]
+        for bl_nvm in selected_bl_nvms:
+            model_stem = bl_nvm.tight_name
 
             try:
-                nvm = export_nvm_model(self, nvm_model)
+                nvm = bl_nvm.to_soulstruct_obj(self, context)
             except Exception as ex:
                 traceback.print_exc()
                 return self.error(f"Cannot get exported NVM. Error: {ex}")
@@ -216,11 +212,13 @@ class ExportNVMIntoNVMBND(LoggingOperator):
     @classmethod
     def poll(cls, context):
         """One or more 'n*' Meshes selected."""
-        return (
-            cls.settings(context).game_variable_name == "DARK_SOULS_DSR"
-            and len(context.selected_objects) > 0
-            and all(obj.type == "MESH" and obj.name[0] == "n" for obj in context.selected_objects)
-        )
+        if not cls.settings(context).is_game("DARK_SOULS_DSR"):
+            return False
+        try:
+            BlenderNVM.from_selected_objects(context)
+        except SoulstructTypeError:
+            return False
+        return True  # at least one valid NVM selected
 
     def execute(self, context):
         if not self.poll(context):
@@ -235,16 +233,12 @@ class ExportNVMIntoNVMBND(LoggingOperator):
                 "No game map directory specified in Soulstruct settings and `Detect Map from Collection` is disabled."
             )
 
-        # TODO: Not needed for meshes only?
-        if bpy.ops.object.mode_set.poll():
-            bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
-
         opened_nvmbnds = {}  # type: dict[Path, NVMBND]
-        for nvm_model in context.selected_objects:
-            nvm_model: bpy.types.MeshObject
+        bl_nvms = BlenderNVM.from_selected_objects(context)  # type: list[BlenderNVM]
 
+        for bl_nvm in bl_nvms:
             # NVMBND files come from latest 'map' folder version.
-            map_stem = settings.get_map_stem_for_export(nvm_model, latest=True)
+            map_stem = settings.get_map_stem_for_export(bl_nvm.obj, latest=True)
             relative_nvmbnd_path = Path(f"map/{map_stem}/{map_stem}.nvmbnd")
 
             if relative_nvmbnd_path not in opened_nvmbnds:
@@ -262,10 +256,10 @@ class ExportNVMIntoNVMBND(LoggingOperator):
             else:
                 nvmbnd = opened_nvmbnds[relative_nvmbnd_path]
 
-            model_stem = nvm_model.name.split(".")[0].split(" ")[0]
+            model_stem = bl_nvm.tight_name
 
             try:
-                nvm = export_nvm_model(self, nvm_model)
+                nvm = bl_nvm.to_soulstruct_obj(self, context)
             except Exception as ex:
                 traceback.print_exc()
                 self.error(f"Cannot get exported NVM. Error: {ex}")

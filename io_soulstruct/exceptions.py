@@ -6,9 +6,12 @@ __all__ = [
     "FLVERImportError",
     "FLVERExportError",
     "MaterialImportError",
+    "HKXCutsceneImportError",
+    "HKXCutsceneExportError",
     "NVMImportError",
     "NavGraphImportError",
     "NavGraphExportError",
+    "MCGEdgeCreationError",
     "MissingPartModelError",
     "MissingMSBEntryError",
     "MSBPartImportError",
@@ -54,8 +57,23 @@ class MaterialImportError(SoulstructBlenderError):
     pass
 
 
+class HKXCutsceneImportError(SoulstructBlenderError):
+    """Exception raised during HKX cutscene import."""
+    pass
+
+
+class HKXCutsceneExportError(SoulstructBlenderError):
+    """Exception raised during HKX cutscene export."""
+    pass
+
+
 class NVMImportError(SoulstructBlenderError):
     """Exception raised during NVM import."""
+    pass
+
+
+class NVMExportError(SoulstructBlenderError):
+    """Exception raised during NVM export."""
     pass
 
 
@@ -66,6 +84,11 @@ class NavGraphImportError(SoulstructBlenderError):
 
 class NavGraphExportError(SoulstructBlenderError):
     """Exception raised during NavGraph export."""
+    pass
+
+
+class MCGEdgeCreationError(SoulstructBlenderError):
+    """Exception raised during MCG edge creation."""
     pass
 
 

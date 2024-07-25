@@ -16,6 +16,7 @@ import bpy
 
 from io_soulstruct.types import SoulstructType
 from .draw_regions import *
+from .misc_operators import *
 from .properties import *
 
 
@@ -29,6 +30,9 @@ class MSBToolsPanel(bpy.types.Panel):
     bl_options = {'DEFAULT_CLOSED'}
 
     def draw(self, context):
+        self.layout.operator(CreateMSBPart.bl_idname, icon='MESH_CUBE')
+        self.layout.operator(DuplicateMSBPartModel.bl_idname, icon='MESH_CUBE')
+
         region_draw_box = self.layout.box()
         region_draw_box.label(text="Region Draw Settings")
         for prop in RegionDrawSettings.__annotations__:
@@ -42,6 +46,8 @@ def get_active_part_obj(context) -> bpy.types.Object | None:
         return obj
     return None
 
+
+# region Property Panels
 
 class MSBPartPanel(bpy.types.Panel):
     """Draw a Panel in the Object properties window exposing the appropriate MSB Part fields for active object."""
@@ -169,19 +175,6 @@ class MSBCollisionPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
     prop_attr_name = "msb_collision_props"
 
 
-class MSBConnectCollisionPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
-    """Draw a Panel in the Object properties window exposing the appropriate MSB Collision fields for active object."""
-    bl_label = "MSB Connect Collision Settings"
-    bl_idname = "OBJECT_PT_msb_connect_collision"
-    bl_space_type = 'PROPERTIES'
-    bl_region_type = 'WINDOW'
-    bl_context = "object"
-
-    part_subtype = MSBPartSubtype.CONNECT_COLLISION
-    prop_group_type = MSBConnectCollisionProps
-    prop_attr_name = "msb_connect_collision_props"
-
-
 class MSBNavmeshPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate MSB Navmesh fields for active object."""
     bl_label = "MSB Navmesh Settings"
@@ -193,6 +186,19 @@ class MSBNavmeshPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
     part_subtype = MSBPartSubtype.NAVMESH
     prop_group_type = MSBNavmeshProps
     prop_attr_name = "msb_navmesh_props"
+
+
+class MSBConnectCollisionPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
+    """Draw a Panel in the Object properties window exposing the appropriate MSB Collision fields for active object."""
+    bl_label = "MSB Connect Collision Settings"
+    bl_idname = "OBJECT_PT_msb_connect_collision"
+    bl_space_type = 'PROPERTIES'
+    bl_region_type = 'WINDOW'
+    bl_context = "object"
+
+    part_subtype = MSBPartSubtype.CONNECT_COLLISION
+    prop_group_type = MSBConnectCollisionProps
+    prop_attr_name = "msb_connect_collision_props"
 
 
 class MSBRegionPanel(bpy.types.Panel):
@@ -220,3 +226,5 @@ class MSBRegionPanel(bpy.types.Panel):
         props = obj.MSB_REGION
         for prop in MSBRegionProps.__annotations__:
             layout.prop(props, prop)
+
+# endregion

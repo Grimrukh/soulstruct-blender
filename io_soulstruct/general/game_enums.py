@@ -41,6 +41,7 @@ GAME_FILE_ENUM_ITEMS = {
     "asset_part": CachedEnumItems(),
     "object_part": CachedEnumItems(),
     "character_part": CachedEnumItems(),
+    "player_start_part": CachedEnumItems(),
     "point_region": CachedEnumItems(),
     "volume_region": CachedEnumItems(),
 
@@ -530,6 +531,48 @@ def get_msb_character_items(self, context):
 
 
 # noinspection PyUnusedLocal
+def get_msb_player_start_items(self, context):
+    """Collect `MSBPlayerStart` parts from selected game map's MSB."""
+    key = "player_start_part"
+
+    settings = SoulstructSettings.from_context(context)
+    if settings.is_game(ELDEN_RING):
+        return _clear_items(key).items
+
+    msb_path = settings.get_import_msb_path()  # we use preferred import location only (and latest version)
+    if not is_path_and_file(msb_path):
+        return _clear_items(key).items
+
+    cached = GAME_FILE_ENUM_ITEMS[key]
+    if cached.is_valid(msb_path, None):
+        # Use cached enum items.
+        # NOTE: Even if the MSB is written from Blender, Soulstruct cannot add or remove parts (yet).
+        return cached.items
+
+    # Open MSB and find all Map Piece parts. NOTE: We don't check here if the part's model is a valid file.
+    # It's up to the importer to handle and report that error case.
+
+    try:
+        msb_class = settings.get_game_msb_class()
+        msb = get_cached_file(msb_path, msb_class)  # type: MSB_TYPING
+    except (FileNotFoundError, ValueError) as ex:
+        return _clear_items(key).items
+
+    items = []
+    for player_start_part in msb.player_starts:
+        if not player_start_part.model:
+            continue  # part is missing MSB model
+        full_model_name = player_start_part.model
+        items.append(
+            (player_start_part.name, player_start_part.name, f"{player_start_part.name} (Model {full_model_name})")
+        )
+
+    # NOTE: The cache key is the MSB path.
+    cached = GAME_FILE_ENUM_ITEMS[key] = CachedEnumItems(msb_path, None, items)
+    return cached.items
+
+
+# noinspection PyUnusedLocal
 def get_point_region_items(self, context):
     """Collect `MSBRegionPoint` parts from selected game map's MSB."""
     key = "point_region"
@@ -660,6 +703,11 @@ class SoulstructGameEnums(bpy.types.PropertyGroup):
     character_part: bpy.props.EnumProperty(
         name="MSB Character Part",
         items=get_msb_character_items,
+    )
+
+    player_start_part: bpy.props.EnumProperty(
+        name="MSB Player Start Part",
+        items=get_msb_player_start_items,
     )
 
     point_region: bpy.props.EnumProperty(

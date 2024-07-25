@@ -25,7 +25,7 @@ from soulstruct_havok.core import HKX
 from soulstruct_havok.wrappers import hkx2015, hkx2016, hkx2018
 
 from io_soulstruct.utilities import *
-from io_soulstruct.havok.hkx_animation.utilities import *
+from io_soulstruct.animation.utilities import *
 from .core import HKXAnimationImporter
 
 ANIBND_RE = re.compile(r"^.*?\.anibnd(\.dcx)?$")

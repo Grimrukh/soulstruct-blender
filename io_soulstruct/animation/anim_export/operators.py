@@ -21,7 +21,7 @@ from soulstruct.games import DARK_SOULS_DSR
 from soulstruct_havok.wrappers.hkx2015 import SkeletonHKX
 
 from io_soulstruct.utilities import *
-from io_soulstruct.havok.hkx_animation.utilities import *
+from io_soulstruct.animation.utilities import *
 from .core import create_animation_hkx
 
 

@@ -10,7 +10,6 @@ __all__ = [
 import typing as tp
 
 import bpy
-from io_soulstruct.flver.models import BlenderFLVER
 from io_soulstruct.general import SoulstructSettings
 from io_soulstruct.msb.operator_config import MSBPartOperatorConfig
 from io_soulstruct.msb.properties import MSBPartSubtype
@@ -18,7 +17,7 @@ from io_soulstruct.utilities import LoggingOperator
 from .base import *
 
 if tp.TYPE_CHECKING:
-    from soulstruct.containers import Binder
+    pass
 
 
 msb_character_operator_config = MSBPartOperatorConfig(

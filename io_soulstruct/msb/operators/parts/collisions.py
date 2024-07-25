@@ -12,7 +12,7 @@ from soulstruct_havok.wrappers.hkx2015.hkx_binder import BothResHKXBHD
 
 import bpy
 from io_soulstruct import SoulstructSettings
-from io_soulstruct.havok.hkx_map_collision.model_export import export_hkx_map_collision, HKXMapCollisionExportError
+from io_soulstruct.collision.model_export import export_hkx_map_collision, HKXMapCollisionExportError
 from io_soulstruct.msb.operator_config import MSBPartOperatorConfig
 from io_soulstruct.msb.properties import MSBPartSubtype
 from io_soulstruct.utilities import get_bl_obj_tight_name, LoggingOperator

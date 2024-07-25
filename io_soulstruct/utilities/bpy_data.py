@@ -4,6 +4,7 @@ __all__ = [
     "new_mesh_object",
     "new_armature_object",
     "new_empty_object",
+    "find_obj",
     "find_obj_or_create_empty",
     "copy_obj_property_group",
     "copy_armature_pose",
@@ -49,6 +50,25 @@ def new_empty_object(name: str, props: PROPS_TYPE = None) -> bpy.types.Object:
         for key, value in props.items():
             empty_obj[key] = value
     return empty_obj
+
+
+def find_obj(
+    name: str,
+    find_stem=False,
+    soulstruct_type: SoulstructType | None = None,
+) -> bpy.types.Object | None:
+    try:
+        obj = bpy.data.objects[name]
+        if soulstruct_type and obj.soulstruct_type != soulstruct_type:
+            raise KeyError
+        return bpy.data.objects[name]
+    except KeyError:
+        if find_stem:
+            # Try to find an object with the same stem (e.g. "h1234" for "h1234 (Floor).003").
+            for obj in bpy.data.objects:
+                if get_bl_obj_tight_name(obj) == name and (soulstruct_type and obj.soulstruct_type == soulstruct_type):
+                    return obj
+    return None
 
 
 def find_obj_or_create_empty(

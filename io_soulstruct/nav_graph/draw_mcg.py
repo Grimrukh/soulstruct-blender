@@ -14,6 +14,8 @@ import gpu
 from bpy_extras.view3d_utils import location_3d_to_region_2d
 from gpu_extras.batch import batch_for_shader
 
+from .types import *
+
 
 if bpy.app.version[0] == 4:
     UNIFORM_COLOR_SHADER = "UNIFORM_COLOR"
@@ -208,9 +210,11 @@ def draw_mcg_edges():
     node_b_triangles_coords = []
     selected_node_a = selected_node_b = None
     for edge in edge_parent.children:
-        edge: bpy.types.Object
-        node_a = edge.mcg_edge_props.node_a  # type: bpy.types.Object
-        node_b = edge.mcg_edge_props.node_b  # type: bpy.types.Object
+        bl_edge = BlenderMCGEdge(edge)
+        node_a = bl_edge.node_a  # type: bpy.types.Object
+        bl_node_a = BlenderMCGNode(node_a)
+        node_b = bl_edge.node_b  # type: bpy.types.Object
+        bl_node_b = BlenderMCGNode(node_b)
         if node_a is None or node_b is None:
             # Cannot draw edge.
             continue
@@ -234,14 +238,14 @@ def draw_mcg_edges():
 
         if settings.mcg_edge_triangles_highlight_enabled and bpy.context.active_object == edge:
             # Draw triangles over faces linked to start and end nodes.
-            navmesh = edge.mcg_edge_props.navmesh_part
+            navmesh = bl_edge.navmesh_part
             if navmesh is None:
                 pass  # can't draw
             else:
-                if node_a.mcg_node_props.navmesh_a == navmesh:
-                    node_a_triangles = [tri.index for tri in node_a.mcg_node_props.navmesh_a_triangles]
-                elif node_a.mcg_node_props.navmesh_b == navmesh:
-                    node_a_triangles = [tri.index for tri in node_a.mcg_node_props.navmesh_b_triangles]
+                if bl_node_a.navmesh_a == navmesh:
+                    node_a_triangles = bl_node_a.navmesh_a_triangles
+                elif bl_node_a.navmesh_b == navmesh:
+                    node_a_triangles = bl_node_a.navmesh_b_triangles
                 else:
                     node_a_triangles = []  # can't find
                 for i in node_a_triangles:
@@ -253,10 +257,10 @@ def draw_mcg_edges():
                         world_coord = navmesh.matrix_world @ vert.co
                         node_a_triangles_coords.append(world_coord)
 
-                if node_b.mcg_node_props.navmesh_a == navmesh:
-                    node_b_triangles = [tri.index for tri in node_b.mcg_node_props.navmesh_a_triangles]
-                elif node_b.mcg_node_props.navmesh_b == navmesh:
-                    node_b_triangles = [tri.index for tri in node_b.mcg_node_props.navmesh_b_triangles]
+                if bl_node_b.navmesh_a == navmesh:
+                    node_b_triangles = bl_node_b.navmesh_a_triangles
+                elif bl_node_b.navmesh_b == navmesh:
+                    node_b_triangles = bl_node_b.navmesh_b_triangles
                 else:
                     node_b_triangles = []  # can't find
                 for i in node_b_triangles:
@@ -360,11 +364,7 @@ def draw_mcg_edge_cost_labels():
         blf.color(bad_match_font_id, 1.0, 0.8, 0.8, 1)  # default (red)
 
     for edge in edge_parent.children:
-        edge: bpy.types.Object
-        try:
-            cost = edge.mcg_edge_props.cost
-        except KeyError:
-            continue  # edge has no Cost custom property
+        cost = BlenderMCGEdge(edge).cost
 
         label_position = location_3d_to_region_2d(bpy.context.region, bpy.context.region_data, edge.location)
         if not label_position:

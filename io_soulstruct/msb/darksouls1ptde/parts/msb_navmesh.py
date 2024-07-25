@@ -10,7 +10,8 @@ import typing as tp
 import bpy
 from io_soulstruct.exceptions import NVMImportError, MissingPartModelError
 from io_soulstruct.msb.properties import MSBPartSubtype, MSBNavmeshProps
-from io_soulstruct.navmesh.nvm.model_import import NVMImportInfo, NVMImporter
+from io_soulstruct.navmesh.nvm.types import *
+from io_soulstruct.navmesh.nvm.utilities import *
 from io_soulstruct.types import *
 from io_soulstruct.utilities import LoggingOperator, get_collection
 from soulstruct.base.maps.msb.utils import GroupBitSet128
@@ -31,6 +32,8 @@ class BlenderMSBNavmesh(BlenderMSBPart[MSBNavmesh, MSBNavmeshProps]):
     PART_SUBTYPE = MSBPartSubtype.NAVMESH
     MODEL_SUBTYPES = ["navmesh_models"]
 
+    data: bpy.types.Mesh  # type override
+
     @property
     def navmesh_groups(self):
         return self._get_groups_bit_set(self.subtype_properties.get_navmesh_groups_props_128())
@@ -40,6 +43,11 @@ class BlenderMSBNavmesh(BlenderMSBPart[MSBNavmesh, MSBNavmeshProps]):
         if isinstance(value, GroupBitSet128):
             value = value.enabled_bits
         self._set_groups_bit_set(self.type_properties.get_draw_groups_props_128(), value)
+
+    def get_nvm_model(self) -> BlenderNVM:
+        if not self.model:
+            raise MissingPartModelError("Navmesh does not have a model.")
+        return BlenderNVM(self.model)
 
     @classmethod
     def new_from_soulstruct_obj(
@@ -113,22 +121,23 @@ class BlenderMSBNavmesh(BlenderMSBPart[MSBNavmesh, MSBNavmeshProps]):
         )
 
         collection = get_collection(f"{map_stem} Navmesh Models", context.scene.collection)
-        importer = NVMImporter(operator, context, collection=collection)
 
         try:
-            nvm_model = importer.import_nvm(
-                import_info,
-                use_material=True,
-                create_quadtree_boxes=False,
+            bl_nvm = BlenderNVM.new_from_soulstruct_obj(
+                operator,
+                context,
+                import_info.nvm,
+                import_info.bl_name,
+                collection=collection,
             )
         except Exception as ex:
-            # Delete any objects created prior to exception.
-            for obj in importer.all_bl_objs:
-                bpy.data.objects.remove(obj)
             traceback.print_exc()  # for inspection in Blender console
             raise NVMImportError(f"Cannot import NVM: {import_info.path}. Error: {ex}")
+
+        bl_nvm.set_face_materials(import_info.nvm)
+        # Don't create quadtree boxes.
 
         # TODO: NVM import is so fast that this just slows the console down when importing all navmeshes.
         # operator.info(f"Imported NVM model {import_info.model_file_stem} as '{import_info.bl_name}'.")
 
-        return nvm_model
+        return bl_nvm.obj

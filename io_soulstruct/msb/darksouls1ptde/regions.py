@@ -19,6 +19,8 @@ class BlenderMSBRegion(SoulstructObject[MSBRegion, MSBRegionProps]):
     OBJ_DATA_TYPE = SoulstructDataType.EMPTY
     SOULSTRUCT_CLASS = MSBRegion
 
+    data: None  # type override
+
     @property
     def entity_id(self) -> int:
         return self.type_properties.entity_id

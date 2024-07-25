@@ -35,7 +35,7 @@ from soulstruct.base.models.flver import Material
 
 from io_soulstruct.exceptions import FLVERError
 from io_soulstruct.utilities import *
-from .types import *
+from .models.types import BlenderFLVER
 
 if tp.TYPE_CHECKING:
     from .properties import FLVERToolSettings

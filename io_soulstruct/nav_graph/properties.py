@@ -1,14 +1,37 @@
 from __future__ import annotations
 
 __all__ = [
+    "MCGProps",
     "NVMFaceIndex",
     "MCGNodeProps",
     "MCGEdgeProps",
+    "NavGraphComputeSettings",
 ]
 
 import bpy
 
 from io_soulstruct.navmesh.nvm.properties import NVMFaceIndex
+
+
+class MCGProps(bpy.types.PropertyGroup):
+
+    unknown_0: bpy.props.IntProperty(
+        name="Unknown 0",
+        default=0,
+        description="Unknown value 0 for this MCG object",
+    )
+
+    unknown_1: bpy.props.IntProperty(
+        name="Unknown 1",
+        default=0,
+        description="Unknown value 1 for this MCG object",
+    )
+
+    unknown_2: bpy.props.IntProperty(
+        name="Unknown 2",
+        default=0,
+        description="Unknown value 2 for this MCG object",
+    )
 
 
 class MCGNodeProps(bpy.types.PropertyGroup):
@@ -68,4 +91,24 @@ class MCGEdgeProps(bpy.types.PropertyGroup):
         default=1.0,
         min=0.0,
         description="Cost of traversing this edge",
+    )
+
+
+class NavGraphComputeSettings(bpy.types.PropertyGroup):
+
+    select_path: bpy.props.BoolProperty(
+        name="Select Path",
+        default=True,
+        description="Select the path of faces found by the pathfinding algorithm"
+    )
+
+    wall_multiplier: bpy.props.FloatProperty(
+        name="Wall Cost Multiplier",
+        default=1.0,
+        description="Cost multiplier (of distance) for Wall faces",
+    )
+    obstacle_multiplier: bpy.props.FloatProperty(
+        name="Obstacle Cost Multiplier",
+        default=1.0,
+        description="Cost multiplier (of distance) for Obstacle faces. Ignores obstacle count",
     )

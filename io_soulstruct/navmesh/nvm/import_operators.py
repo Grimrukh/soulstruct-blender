@@ -30,8 +30,8 @@ from soulstruct.darksouls1r.maps.navmesh.nvm import NVM
 from io_soulstruct.exceptions import NVMImportError
 from io_soulstruct.utilities import *
 from io_soulstruct.general import *
+from io_soulstruct.navmesh.nvm.types import *
 from io_soulstruct.navmesh.nvm.utilities import *
-from .core import *
 
 
 class NVMImportChoiceInfo(tp.NamedTuple):
@@ -179,14 +179,11 @@ class ImportNVM(LoggingOperator, ImportHelper, ImportNVMMixin):
                     new_non_choice_import_infos = [NVMImportInfo(file_path, model_file_stem, model_file_stem, nvm)]
                     import_infos.extend(new_non_choice_import_infos)
 
-        importer = NVMImporter(self, context)
-
         for import_info in import_infos:
 
             if isinstance(import_info, NVMImportChoiceInfo):
                 # Defer through entry selection operator.
                 ImportNVMWithBinderChoice.run(
-                    importer=importer,
                     binder_file_path=import_info.path,
                     use_material=self.use_material,
                     create_quadtree_boxes=self.create_quadtree_boxes,
@@ -198,17 +195,16 @@ class ImportNVM(LoggingOperator, ImportHelper, ImportNVMMixin):
 
             # Import single NVM.
             try:
-                importer.import_nvm(
-                    import_info,
-                    use_material=self.use_material,
-                    create_quadtree_boxes=self.create_quadtree_boxes,
-                )
+                bl_nvm = BlenderNVM.new_from_soulstruct_obj(self, context, import_info.nvm, import_info.bl_name)
             except Exception as ex:
-                # Delete any objects created prior to exception.
-                for obj in importer.all_bl_objs:
-                    bpy.data.objects.remove(obj)
                 traceback.print_exc()  # for inspection in Blender console
                 return self.error(f"Cannot import NVM: {import_info.path}. Error: {ex}")
+
+            if self.use_material:
+                bl_nvm.set_face_materials(import_info.nvm)
+
+            if self.create_quadtree_boxes:
+                bl_nvm.create_nvm_quadtree(context, import_info.nvm, bl_nvm.name)
 
         return {"FINISHED"}
 
@@ -227,7 +223,6 @@ class ImportNVMWithBinderChoice(LoggingOperator):
     bl_label = "Choose NVM Binder Entry"
 
     # For deferred import in `execute()`.
-    importer: tp.Optional[NVMImporter] = None
     binder: tp.Optional[Binder] = None
     binder_file_path: Path = Path()
     nvm_entries: tp.Sequence[BinderEntry] = []
@@ -256,33 +251,34 @@ class ImportNVMWithBinderChoice(LoggingOperator):
         import_info = NVMImportInfo(self.binder_file_path, entry.minimal_stem, entry.minimal_stem, nvm)
         nvm_model_name = entry.name.split(".")[0]
 
-        self.importer.operator = self
-        self.importer.context = context
-
         try:
-            self.importer.import_nvm(
-                import_info,
-                use_material=self.use_material,
-                create_quadtree_boxes=self.create_quadtree_boxes,
+            bl_nvm = BlenderNVM.new_from_soulstruct_obj(
+                self,
+                context,
+                import_info.nvm,
+                import_info.bl_name,
+                collection=None,
             )
         except Exception as ex:
-            for obj in self.importer.all_bl_objs:
-                bpy.data.objects.remove(obj)
             traceback.print_exc()
             return self.error(f"Cannot import NVM {nvm_model_name} from '{self.binder_file_path.name}'. Error: {ex}")
+
+        if self.use_material:
+            bl_nvm.set_face_materials(import_info.nvm)
+
+        if self.create_quadtree_boxes:
+            bl_nvm.create_nvm_quadtree(context, import_info.nvm, bl_nvm.name)
 
         return {"FINISHED"}
 
     @classmethod
     def run(
         cls,
-        importer: NVMImporter,
         binder_file_path: Path,
         use_material: bool,
         create_quadtree_boxes: bool,
         nvm_entries: list[BinderEntry],
     ):
-        cls.importer = importer
         cls.binder_file_path = binder_file_path
         cls.enum_options = [(str(i), entry.name, "") for i, entry in enumerate(nvm_entries)]
         cls.use_material = use_material
@@ -335,6 +331,7 @@ class ImportNVMFromNVMBND(LoggingOperator):
         map_stem = settings.get_latest_map_stem_version()
 
         # Import source may depend on suffix of entry enum.
+        # TODO: I hate this garbage. Just force user to set whether they want to scan/import from Game XOR Project.
         if nvm_entry_name.endswith(" (G)"):
             nvm_entry_name = nvm_entry_name.removesuffix(" (G)")
             nvmbnd_path = settings.get_game_map_path(f"{map_stem}.nvmbnd")
@@ -360,22 +357,26 @@ class ImportNVMFromNVMBND(LoggingOperator):
         )
 
         collection = get_collection(f"{map_stem} Navmesh Models", context.scene.collection)
-        importer = NVMImporter(self, context, collection=collection)
 
         self.info(f"Importing NVM model {import_info.model_file_stem} as '{import_info.bl_name}'.")
 
         try:
-            importer.import_nvm(
-                import_info,
-                use_material=self.use_material,
-                create_quadtree_boxes=self.create_quadtree_boxes,
+            bl_nvm = BlenderNVM.new_from_soulstruct_obj(
+                self,
+                context,
+                import_info.nvm,
+                import_info.bl_name,
+                collection=collection,
             )
         except Exception as ex:
-            # Delete any objects created prior to exception.
-            for obj in importer.all_bl_objs:
-                bpy.data.objects.remove(obj)
             traceback.print_exc()  # for inspection in Blender console
             return self.error(f"Cannot import NVM: {import_info.path}. Error: {ex}")
+
+        if self.use_material:
+            bl_nvm.set_face_materials(import_info.nvm)
+
+        if self.create_quadtree_boxes:
+            bl_nvm.create_nvm_quadtree(context, import_info.nvm, bl_nvm.name)
 
         p = time.perf_counter() - start_time
         self.info(f"Imported NVM {nvm_entry_name} from {nvmbnd_path.name} in {p} s.")

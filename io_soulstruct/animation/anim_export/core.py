@@ -10,9 +10,8 @@ import bpy
 
 from soulstruct_havok.wrappers import hkx2015, hkx2016, hkx2018
 from soulstruct_havok.utilities.maths import TRSTransform
-
-from io_soulstruct.havok.utilities import BL_MATRIX_TO_GAME_TRS
-from io_soulstruct.havok.hkx_animation.utilities import *
+from io_soulstruct.utilities import *
+from io_soulstruct.animation.utilities import *
 
 
 SKELETON_TYPING = tp.Union[hkx2015.SkeletonHKX, hkx2016.SkeletonHKX, hkx2018.SkeletonHKX]

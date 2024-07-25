@@ -16,16 +16,12 @@ from soulstruct.base.animations.sibcam import CameraFrameTransform, FoVKeyframe
 from soulstruct.base.models.flver import FLVER
 from soulstruct.darksouls1r.maps import MapStudioDirectory
 from soulstruct.darksouls1r.maps.parts import *
-
 from soulstruct_havok.utilities.maths import TRSTransform
 from soulstruct_havok.wrappers.hkx2015 import RemoBND
-
-from io_soulstruct.utilities.conversion import Transform, GAME_TO_BL_VECTOR, GAME_TO_BL_EULER
-from io_soulstruct.utilities.operators import LoggingOperator
-from io_soulstruct.flver.model_import import FLVERImporter
+from io_soulstruct.exceptions import HKXCutsceneImportError
+from io_soulstruct.utilities import *
+from io_soulstruct.flver.models import BlenderFLVER
 from io_soulstruct.flver.textures.import_textures import TextureImportManager
-from io_soulstruct.havok.utilities import GAME_TRS_TO_BL_MATRIX, get_basis_matrix
-from .utilities import HKXCutsceneImportError
 
 
 REMOBND_RE = re.compile(r"^.*?\.remobnd(\.dcx)?$")
@@ -148,9 +144,12 @@ class ImportHKXCutscene(LoggingOperator, ImportHelper):
 
         part_armatures = {}  # type: dict[str, tp.Any]
         flvers_to_import = {}  # type: dict[str, FLVER]
-        texture_manager = TextureImportManager(settings)
+        texture_import_manager = TextureImportManager(settings)
 
         for part_name, remo_part in remobnd.remo_parts.items():
+
+            # TODO: Can now import directly as MSB Parts!
+
             if remo_part.part is None:
                 continue  # TODO: handle Player and dummies
             # Find `part_name` Blender armature.
@@ -168,7 +167,7 @@ class ImportHKXCutscene(LoggingOperator, ImportHelper):
                     map_path = game_directory / f"map/m{area:02d}_{block:02d}_00_00"
                     flver_path = map_path / f"{remo_part.part.model.name}A{area:02d}.flver.dcx"
                     flver = FLVER.from_path(flver_path)
-                    texture_manager.find_flver_textures(flver_path)
+                    texture_import_manager.find_flver_textures(flver_path)
                 elif isinstance(remo_part.part, MSBCharacter):
                     chrbnd_path = game_directory / f"chr/{remo_part.part.model.name}.chrbnd.dcx"
                     if not chrbnd_path.is_file():
@@ -176,7 +175,7 @@ class ImportHKXCutscene(LoggingOperator, ImportHelper):
                         continue
                     chrbnd = Binder.from_path(chrbnd_path)
                     flver = chrbnd.find_entry_matching_name(r".*\.flver$").to_binary_file(FLVER)
-                    texture_manager.find_flver_textures(chrbnd_path, chrbnd)
+                    texture_import_manager.find_flver_textures(chrbnd_path, chrbnd)
                 elif isinstance(remo_part.part, MSBObject):
                     objbnd_path = game_directory / f"obj/{remo_part.part.model.name}.objbnd.dcx"
                     if not objbnd_path.is_file():
@@ -184,7 +183,7 @@ class ImportHKXCutscene(LoggingOperator, ImportHelper):
                         continue
                     objbnd = Binder.from_path(objbnd_path)
                     flver = objbnd.find_entry_matching_name(r".*\.flver$").to_binary_file(FLVER)
-                    texture_manager.find_flver_textures(objbnd_path, objbnd)
+                    texture_import_manager.find_flver_textures(objbnd_path, objbnd)
                 else:
                     self.warning(
                         f"Cannot load FLVER model for unknown part type: {type(remo_part.part).__name__}"
@@ -194,14 +193,6 @@ class ImportHKXCutscene(LoggingOperator, ImportHelper):
 
         # Load FLVERs.
         if flvers_to_import:
-
-            flver_importer = FLVERImporter(
-                self,
-                context,
-                settings,
-                texture_import_manager=texture_manager,
-                mtdbnd=settings.get_mtdbnd(self),
-            )
 
             for part_name, flver in flvers_to_import.items():
                 msb_part = remobnd.remo_parts[part_name]

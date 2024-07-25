@@ -10,6 +10,7 @@ import abc
 import typing as tp
 
 import bpy
+from mathutils import Vector, Euler
 from soulstruct.utilities.future import StrEnum
 from io_soulstruct.utilities import LoggingOperator, copy_obj_property_group
 from .exceptions import SoulstructTypeError
@@ -28,7 +29,8 @@ class SoulstructType(StrEnum):
     COLLISION = "COLLISION"
 
     NAVMESH = "NAVMESH"
-    NAVMESH_EVENT = "NAVMESH_EVENT"
+    NVM_EVENT_ENTITY = "NVM_EVENT_ENTITY"
+    MCG = "MCG"
     MCG_NODE = "MCG_NODE"
     MCG_EDGE = "MCG_EDGE"
 
@@ -68,6 +70,10 @@ class SoulstructObject(abc.ABC, tp.Generic[SOULSTRUCT_T, SOULSTRUCT_PROPS_T]):
         if obj.type != self.OBJ_DATA_TYPE:
             raise SoulstructTypeError(f"Object '{obj.name}' is not a {self.OBJ_DATA_TYPE} Blender object.")
         self.obj = obj
+
+    @property
+    def data(self) -> bpy.types.ID:
+        return self.obj.data
 
     @classmethod
     def new(
@@ -173,6 +179,65 @@ class SoulstructObject(abc.ABC, tp.Generic[SOULSTRUCT_T, SOULSTRUCT_PROPS_T]):
     @parent.setter
     def parent(self, value: bpy.types.Object | None):
         self.obj.parent = value
+
+    @property
+    def location(self) -> Vector:
+        return self.obj.location
+
+    @location.setter
+    def location(self, value: Vector):
+        self.obj.location = value
+
+    @property
+    def rotation_euler(self) -> Euler:
+        return self.obj.rotation_euler
+
+    @rotation_euler.setter
+    def rotation_euler(self, value: Euler):
+        self.obj.rotation_euler = value
+
+    @classmethod
+    def from_active_object(cls, context: bpy.types.Context) -> tp.Self:
+        obj = context.active_object
+        if obj is None:
+            raise SoulstructTypeError(f"No active object to become a {cls.TYPE} Soulstruct object.")
+        if obj.soulstruct_type != cls.TYPE:
+            raise SoulstructTypeError(f"Active object '{obj}' is not a {cls.TYPE} Soulstruct object.")
+        return cls(obj)
+
+    @classmethod
+    def from_selected_object(cls, context: bpy.types.Context) -> tp.Self:
+        if not context.selected_objects:
+            raise SoulstructTypeError(f"No selected object to become a {cls.TYPE} Soulstruct object.")
+        if len(context.selected_objects) > 1:
+            raise SoulstructTypeError(f"More than one object selected; expected only one.")
+        obj = context.selected_objects[0]
+        if obj.soulstruct_type != cls.TYPE:
+            raise SoulstructTypeError(f"Selected object '{obj}' is not a {cls.TYPE} Soulstruct object.")
+        return cls(obj)
+
+    @classmethod
+    def from_selected_objects(cls, context: bpy.types.Context) -> list[tp.Self]:
+        if not context.selected_objects:
+            raise SoulstructTypeError(f"No selected objects to become {cls.TYPE} Soulstruct objects.")
+        selfs = []
+        for obj in context.selected_objects:
+            if obj.soulstruct_type != cls.TYPE:
+                raise SoulstructTypeError(f"Selected object '{obj}' is not a {cls.TYPE} Soulstruct object.")
+            selfs.append(cls(obj))
+        return selfs
+
+    @classmethod
+    def from_collection_objects(cls, collection: bpy.types.Collection) -> list[tp.Self]:
+        """NOTE: ALL objects in collection must be of given type. Not recursive."""
+        selfs = []
+        for obj in collection.objects:
+            if obj.soulstruct_type != cls.TYPE:
+                raise SoulstructTypeError(f"Object '{obj}' in collection is not a {cls.TYPE} Soulstruct object.")
+            selfs.append(cls(obj))
+        if not selfs:
+            raise SoulstructTypeError(f"No {cls.TYPE} objects found in collection '{collection.name}'.")
+        return selfs
 
     @classmethod
     def add_auto_type_props(cls, *names):

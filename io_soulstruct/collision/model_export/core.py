@@ -236,6 +236,8 @@ def _export_hkx_map_collision_split(
     for submesh in hkx_model.children:
         if submesh.type != "MESH":
             continue  # ignore
+        submesh: bpy.types.MeshObject
+
         if len(submesh.material_slots) > 1:
             raise HKXMapCollisionExportError(
                 f"Mesh '{submesh.name}' has more than one material slot, which is not supported for HKX map collision "

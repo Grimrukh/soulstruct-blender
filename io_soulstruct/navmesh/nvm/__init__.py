@@ -7,7 +7,8 @@ __all__ = [
     "ExportNVMIntoBinder",
     "ExportNVMIntoNVMBND",
 
-    "NavmeshEventProps",
+    "NVMProps",
+    "NVMEventEntityProps",
 
     "NavmeshFaceSettings",
     "RefreshFaceIndices",
@@ -15,13 +16,13 @@ __all__ = [
     "RemoveNVMFaceFlags",
     "SetNVMFaceObstacleCount",
     "ResetNVMFaceInfo",
-    "NavmeshComputeSettings",
-    "FindCheapestPath",
-    "RecomputeEdgeCost",
-    "AutoCreateMCG",
+
+    "BlenderNVM",
+    "BlenderNVMEventEntity",
 ]
 
-from .model_import import *
-from .model_export import *
+from .import_operators import *
+from .export_operators import *
 from .misc_operators import *
 from .properties import *
+from .types import *

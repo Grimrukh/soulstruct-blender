@@ -9,13 +9,6 @@ __all__ = [
     "ExportNVMIntoBinder",
     "ExportNVMIntoNVMBND",
 
-    "ImportMCP",
-    "QuickImportMCP",
-    "ImportMCG",
-    "QuickImportMCG",
-    "ExportMCG",
-    "ExportMCGMCPToMap",
-
     "ImportNVMHKT",
     "ImportNVMHKTWithBinderChoice",
     "ImportNVMHKTFromNVMHKTBND",
@@ -26,7 +19,6 @@ __all__ = [
 
     "NVM_PT_ds1_navmesh_import",
     "NVM_PT_ds1_navmesh_export",
-    "NVM_PT_ds1_mcg_draw",
     "NVM_PT_ds1_navmesh_tools",
     "NVM_PT_er_navmesh_import",
 
@@ -35,25 +27,9 @@ __all__ = [
     "RemoveNVMFaceFlags",
     "SetNVMFaceObstacleCount",
     "ResetNVMFaceInfo",
-    "NavmeshComputeSettings",
-    "FindCheapestPath",
-    "RecomputeEdgeCost",
-    "AutoCreateMCG",
 
-    "MCGDrawSettings",
-    "draw_mcg_nodes",
-    "draw_mcg_node_labels",
-    "draw_mcg_edges",
-    "draw_mcg_edge_cost_labels",
-    "CreateMCGEdge",
-    "SetNodeNavmeshATriangles",
-    "SetNodeNavmeshBTriangles",
-    "RefreshMCGNames",
-
-    "NVMFaceIndex",
-    "NavmeshEventProps",
-    "MCGNodeProps",
-    "MCGEdgeProps",
+    "NVMProps",
+    "NVMEventEntityProps",
 ]
 
 import bmesh
@@ -61,9 +37,9 @@ import bpy
 
 from soulstruct.darksouls1r.events.enums import NavmeshFlag
 
+from io_soulstruct.types import *
 from .nvm import *
 from .nvm.utilities import set_face_material
-from .nav_graph import *
 from .nvmhkt import *
 
 
@@ -90,16 +66,12 @@ class NVM_PT_ds1_navmesh_import(bpy.types.Panel):
 
         import_loose_box = self.layout.box()
         import_loose_box.operator(ImportNVM.bl_idname)
-        import_loose_box.operator(ImportMCG.bl_idname)
-        import_loose_box.operator(ImportMCP.bl_idname)
 
         quick_box = self.layout.box()
         quick_box.label(text="From Game/Project")
         quick_box.prop(context.scene.soulstruct_settings, "import_bak_file", text="From .BAK File")
         quick_box.prop(context.scene.soulstruct_game_enums, "nvm")
         quick_box.operator(ImportNVMFromNVMBND.bl_idname)
-        quick_box.operator(QuickImportMCG.bl_idname)
-        quick_box.operator(QuickImportMCP.bl_idname)
 
 
 class NVM_PT_ds1_navmesh_export(bpy.types.Panel):
@@ -120,45 +92,11 @@ class NVM_PT_ds1_navmesh_export(bpy.types.Panel):
         export_box = self.layout.box()
         export_box.operator(ExportLooseNVM.bl_idname)
         export_box.operator(ExportNVMIntoBinder.bl_idname)
-        export_box.operator(ExportMCG.bl_idname, text="Export MCG + MCP")
 
         map_export_box = self.layout.box()
         map_export_box.label(text="Export to Map")
         map_export_box.prop(context.scene.soulstruct_settings, "detect_map_from_collection")
         map_export_box.operator(ExportNVMIntoNVMBND.bl_idname)
-        map_export_box.prop(
-            context.window_manager.operator_properties_last(ExportMCGMCPToMap.bl_idname), "detect_map_from_parent"
-        )
-        map_export_box.operator(ExportMCGMCPToMap.bl_idname)
-
-
-class NVM_PT_ds1_mcg_draw(bpy.types.Panel):
-    bl_label = "DS1 Navmesh Drawing"
-    bl_idname = "NVM_PT_ds1_mcg_draw"
-    bl_space_type = "VIEW_3D"
-    bl_region_type = "UI"
-    bl_category = "Navmesh"
-    bl_options = {'DEFAULT_CLOSED'}
-
-    # noinspection PyUnusedLocal
-    def draw(self, context):
-        """Still shown if game is not DSR."""
-        mcg_draw_settings = context.scene.mcg_draw_settings
-        self.layout.prop(mcg_draw_settings, "mcg_parent")
-        self.layout.prop(mcg_draw_settings, "mcg_graph_draw_enabled")
-        self.layout.prop(mcg_draw_settings, "mcg_graph_draw_selected_nodes_only")
-        self.layout.prop(mcg_draw_settings, "mcg_graph_color")
-        self.layout.prop(mcg_draw_settings, "mcg_node_label_draw_enabled")
-        self.layout.prop(mcg_draw_settings, "mcg_node_label_font_size")
-        self.layout.prop(mcg_draw_settings, "mcg_node_label_font_color")
-        self.layout.prop(mcg_draw_settings, "mcg_edge_label_font_size")
-        # Color options in one row with no labels.
-        self.layout.label(text="Edge Label Colors (Match, Close, Bad):")
-        row = self.layout.row()
-        row.prop(mcg_draw_settings, "mcg_edge_label_font_color", text="")
-        row.prop(mcg_draw_settings, "mcg_almost_same_cost_edge_label_font_color", text="")
-        row.prop(mcg_draw_settings, "mcg_bad_cost_edge_label_font_color", text="")
-        self.layout.prop(mcg_draw_settings, "mcg_edge_triangles_highlight_enabled")
 
 
 class NVM_PT_ds1_navmesh_tools(bpy.types.Panel):
@@ -172,27 +110,21 @@ class NVM_PT_ds1_navmesh_tools(bpy.types.Panel):
     # noinspection PyUnusedLocal
     def draw(self, context):
         """Still shown if game is not DSR."""
-        self.layout.operator(CreateMCGEdge.bl_idname)
-        self.layout.operator(RefreshMCGNames.bl_idname)
-        compute_box = self.layout.box()
-        compute_box.prop(context.scene.navmesh_compute_settings, "select_path")
-        compute_box.prop(context.scene.navmesh_compute_settings, "wall_multiplier")
-        compute_box.prop(context.scene.navmesh_compute_settings, "obstacle_multiplier")
-        compute_box.operator(RecomputeEdgeCost.bl_idname)
-        compute_box.operator(FindCheapestPath.bl_idname)
-        compute_box.operator(AutoCreateMCG.bl_idname)
 
         self.layout.label(text="Selected Face Indices:")
         selected_faces_box = self.layout.box()
         # noinspection PyTypeChecker
         obj = context.edit_object
-        if obj and obj.name.startswith("n") and obj.type == 'MESH' and bpy.context.mode == 'EDIT_MESH':
+        if bpy.context.mode == "EDIT_MESH" and obj and (obj.soulstruct_type == SoulstructType.NAVMESH or (
+            obj.soulstruct_type == SoulstructType.MSB_PART and obj.MSB_PART.part_subtype == "Navmesh"
+        )):
             self.layout.operator(ResetNVMFaceInfo.bl_idname)
             obj: bpy.types.MeshObject
             bm = bmesh.from_edit_mesh(obj.data)
             try:
                 layout_selected_faces(bm, self.layout, context, selected_faces_box)
             finally:
+                bm.free()
                 del bm
         else:
             selected_faces_box.label(text="Select navmesh faces in Edit Mode")
@@ -240,11 +172,6 @@ def layout_selected_faces(bm: bmesh.types.BMesh, layout, context, selected_faces
         row.prop(props, "obstacle_count")
         row = obstacle_box.row()
         row.operator(SetNVMFaceObstacleCount.bl_idname, text="Set Obstacle Count")
-
-        # Buttons to set navmesh A and B triangles for selected MCG node.
-        set_node_box = layout.box()
-        set_node_box.operator(SetNodeNavmeshATriangles.bl_idname)
-        set_node_box.operator(SetNodeNavmeshBTriangles.bl_idname)
 
     else:
         # Prompt user to select some faces.

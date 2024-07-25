@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 __all__ = [
+    "NVMProps",
     "NVMFaceIndex",
-    "NavmeshEventProps",
+    "NVMEventEntityProps",
 ]
 
 import bpy
+
+
+class NVMProps(bpy.types.PropertyGroup):
+    """No properties currently."""
+    pass
 
 
 class NVMFaceIndex(bpy.types.PropertyGroup):
@@ -18,7 +24,7 @@ class NVMFaceIndex(bpy.types.PropertyGroup):
     )
 
 
-class NavmeshEventProps(bpy.types.PropertyGroup):
+class NVMEventEntityProps(bpy.types.PropertyGroup):
 
     entity_id: bpy.props.IntProperty(
         name="Entity ID",

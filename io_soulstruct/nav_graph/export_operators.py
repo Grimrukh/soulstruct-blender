@@ -7,16 +7,12 @@ from pathlib import Path
 
 import bpy
 from bpy_extras.io_utils import ExportHelper
-
-from soulstruct.dcx import DCXType
-from soulstruct.darksouls1r.maps import MSB
-from soulstruct.darksouls1r.maps.navmesh.mcg import MCG, MCGNode, MCGEdge
-from soulstruct.darksouls1r.maps.navmesh.mcp import MCP
-from soulstruct.games import DARK_SOULS_DSR
-from soulstruct.utilities.text import natural_keys
-
-from io_soulstruct.exceptions import NavGraphExportError
 from io_soulstruct.utilities import *
+from soulstruct.darksouls1r.maps import MSB
+from soulstruct.darksouls1r.maps.navmesh.mcp import MCP
+from soulstruct.dcx import DCXType
+from soulstruct.games import DARK_SOULS_DSR
+from .types import BlenderMCG
 
 
 class ExportMCG(LoggingOperator, ExportHelper):
@@ -90,20 +86,7 @@ class ExportMCG(LoggingOperator, ExportHelper):
             return self.error("More than one object cannot be selected for MCG export.")
 
         mcg_path = Path(self.filepath)
-        if not (match := MAP_STEM_RE.match(mcg_path.stem)):
-            raise ValueError(f"Could not infer map ID from stem of MCG path: {mcg_path}")
-        map_id = (int(match.group(1)), int(match.group(2)), int(match.group(3)), int(match.group(4)))
-
-        node_parent = edge_parent = None
-        for child in selected_objs[0].children:
-            if "Nodes" in child.name:
-                node_parent = child
-            elif "Edges" in child.name:
-                edge_parent = child
-        if not node_parent or not edge_parent:
-            return self.error("Selected object must have 'Nodes' and 'Edges' child Empties.")
-
-        exporter = MCGExporter(self, context)
+        bl_mcg = BlenderMCG(selected_objs[0])
 
         if not self.custom_msb_path:
             msb_path = mcg_path.parent.parent / "MapStudio" / f"{mcg_path.name.split('.')[0]}.msb"
@@ -118,13 +101,12 @@ class ExportMCG(LoggingOperator, ExportHelper):
 
         navmesh_part_indices = {navmesh.name: i for i, navmesh in enumerate(msb.navmeshes)}
 
-        bl_nodes = [obj for obj in node_parent.children]
-        bl_nodes.sort(key=lambda obj: natural_keys(obj.name))
-        bl_edges = [obj for obj in edge_parent.children]
-        bl_edges.sort(key=lambda obj: natural_keys(obj.name))
-
         try:
-            mcg = exporter.export_mcg(bl_nodes, bl_edges, navmesh_part_indices, map_id)
+            mcg = bl_mcg.to_soulstruct_obj(
+                self,
+                context,
+                navmesh_part_indices,
+            )
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Cannot get exported MCG. Error: {ex}")
@@ -214,9 +196,8 @@ class ExportMCGMCPToMap(LoggingOperator):
             map_stem = settings.map_stem
         else:
             return self.error("No map stem specified in settings.")
-        if not (match := MAP_STEM_RE.match(map_stem)):
+        if not MAP_STEM_RE.match(map_stem):
             raise ValueError(f"Invalid map stem: {map_stem}")
-        map_id = (int(match.group(1)), int(match.group(2)), int(match.group(3)), int(match.group(4)))
 
         relative_mcg_path = Path(f"map/{map_stem}/{map_stem}.mcg")  # no DCX
         # We prefer to read the MSB and NVMBND in the project directory if they exist. We do not prepare/copy them to
@@ -235,18 +216,9 @@ class ExportMCGMCPToMap(LoggingOperator):
             return self.error(
                 f"Could not find NVMBND binder required for MCG export for map {map_stem} in project or game directory."
             )
-        
-        node_parent = edge_parent = None
-        for child in mcg_parent.children:
-            if "Nodes" in child.name:
-                node_parent = child
-            elif "Edges" in child.name:
-                edge_parent = child
-        if not node_parent or not edge_parent:
-            return self.error("Selected object must have 'Nodes' and 'Edges' child Empties.")
 
-        exporter = MCGExporter(self, context)
-        
+        bl_mcg = BlenderMCG(mcg_parent)
+
         try:
             msb = MSB.from_path(msb_path)
         except Exception as ex:
@@ -254,13 +226,12 @@ class ExportMCGMCPToMap(LoggingOperator):
 
         navmesh_part_indices = {navmesh.name: i for i, navmesh in enumerate(msb.navmeshes)}
 
-        bl_nodes = [obj for obj in node_parent.children]
-        bl_nodes.sort(key=lambda obj: natural_keys(obj.name))
-        bl_edges = [obj for obj in edge_parent.children]
-        bl_edges.sort(key=lambda obj: natural_keys(obj.name))
-
         try:
-            mcg = exporter.export_mcg(bl_nodes, bl_edges, navmesh_part_indices, map_id)
+            mcg = bl_mcg.to_soulstruct_obj(
+                self,
+                context,
+                navmesh_part_indices,
+            )
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Cannot get exported MCG. Error: {ex}")
@@ -291,164 +262,3 @@ class ExportMCGMCPToMap(LoggingOperator):
             self.warning(f"Error occurred when attempting to auto-generate MCP, but MCG still written. Error: {ex}")
 
         return {"FINISHED"}
-
-
-class MCGExporter:
-
-    operator: LoggingOperator
-
-    def __init__(self, operator: LoggingOperator, context):
-        self.operator = operator
-        self.context = context
-
-    def warning(self, msg: str):
-        self.operator.report({"WARNING"}, msg)
-        print(f"# WARNING: {msg}")
-
-    def export_mcg(
-        self,
-        bl_nodes: list[bpy.types.Object],
-        bl_edges: list[bpy.types.Object],
-        navmesh_part_indices: dict[str, int],
-        map_id: tuple[int, int, int, int],
-    ) -> MCG:
-        """Create MCG from Blender nodes and edges.
-
-        `bl_nodes` and `bl_edges` are assumed to be correctly ordered for MCG indexing. This should generally match the
-        order they appear in Blender.
-
-        Requires a dictionary mapping navmesh part names to indices (from MSB) for export, and a `map_id` for edges.
-        """
-
-        # Iterate over all nodes to build a dictionary of Nodes that ignores 'dead end' navmesh suffixes.
-        node_dict = {}
-        map_stem = f"m{map_id[0]:02d}_{map_id[1]:02d}_{map_id[2]:02d}_{map_id[3]:02d}"
-        node_prefix = f"{map_stem} Node "
-        for i, bl_node in enumerate(bl_nodes):
-            if bl_node.name.startswith(node_prefix):
-                node_name = bl_node.name.split("<")[0].strip()  # ignore dead end suffix
-                node_dict[node_name] = i
-            else:
-                raise NavGraphExportError(f"Node '{bl_node.name}' does not start with '{node_prefix}'.")
-
-        # List of all created nodes in the order they will be written in the file.
-        nodes = []  # type: list[MCGNode]
-
-        # Maps navmesh names to their nodes, so we can detect dead ends.
-        navmesh_nodes = {navmesh_name: [] for navmesh_name in navmesh_part_indices.keys()}
-
-        # List of dicts that map EXACTLY two navmesh names to triangles for edges to write (as Soulstruct stores the
-        # triangle indices on the nodes rather than the edges).
-        node_navmesh_triangles = []  # type: list[dict[str, list[int]]]
-        for bl_node in bl_nodes:
-            node = MCGNode(
-                translate=BL_TO_GAME_VECTOR3(bl_node.location),
-                unknown_offset=bl_node.mcg_node_props.unknown_offset,
-                dead_end_navmesh_index=-1,  # may be set below
-            )
-
-            node_navmesh_info = {}
-
-            # Get navmesh A (must ALWAYS be present).
-            if bl_node.mcg_node_props.navmesh_a is None:
-                raise NavGraphExportError(f"Node '{bl_node.name}' does not have Navmesh A set.")
-            navmesh_a_name = bl_node.mcg_node_props.navmesh_a.name  # type: str
-            navmesh_a_triangles = [triangle.index for triangle in bl_node.mcg_node_props.navmesh_a_triangles]
-            node_navmesh_info[navmesh_a_name] = navmesh_a_triangles
-            navmesh_nodes[navmesh_a_name].append(node)
-
-            if bl_node.mcg_node_props.navmesh_b is None:
-                raise NavGraphExportError(f"Node '{bl_node.name}' does not have Navmesh B set.")
-            navmesh_b_name = bl_node.mcg_node_props.navmesh_b.name  # type: str
-            navmesh_b_triangles = [triangle.index for triangle in bl_node.mcg_node_props.navmesh_b_triangles]
-            node_navmesh_info[navmesh_b_name] = navmesh_b_triangles
-            navmesh_nodes[navmesh_b_name].append(node)
-
-            if not navmesh_a_triangles and not navmesh_b_triangles:
-                raise NavGraphExportError(
-                    f"Node '{bl_node.name}' does not have any triangles set for Navmesh A or B. One of them is "
-                    f"permitted to be missing, if that navmesh is a dead end, but not both."
-                )
-
-            nodes.append(node)
-            node_navmesh_triangles.append(node_navmesh_info)
-
-        # Check for dead ends.
-        for navmesh_name, nodes_with_navmesh in navmesh_nodes.items():
-            if len(nodes_with_navmesh) == 1:
-                # NOTE: We don't check if/what triangles were set here, as the user may want to shuffle around navmeshes
-                # and change which ones are dead ends without removing the indices.
-                node = nodes_with_navmesh[0]
-                if node.dead_end_navmesh_index != -1:
-                    # Already set from another navmesh!
-                    raise NavGraphExportError(
-                        f"Node '{node.name}' is apparently connected to multiple dead-end navmeshes, which is not "
-                        f"allowed. You must fix your navmesh graph in Blender first."
-                    )
-                node.dead_end_navmesh_index = navmesh_part_indices[navmesh_name]
-
-        self.operator.info(f"Exporting {len(nodes)} MCG nodes...")
-
-        edges = []
-        for i, bl_edge in enumerate(bl_edges):
-            edge = MCGEdge(
-                map_id=map_id,
-                cost=bl_edge.mcg_edge_props.cost,
-            )
-            edge_navmesh = bl_edge.mcg_edge_props.navmesh_part
-            if not edge_navmesh:
-                raise NavGraphExportError(f"Edge '{bl_edge.name}' does not have a Navmesh Part set.")
-            try:
-                navmesh_index = navmesh_part_indices[edge_navmesh.name]
-            except KeyError:
-                raise NavGraphExportError(
-                    f"Cannot get MSB index of MCG edge's referenced Navmesh Part: {edge_navmesh.name}"
-                )
-            edge.navmesh_index = navmesh_index
-
-            bl_node_a = bl_edge.mcg_edge_props.node_a
-            if not bl_node_a:
-                raise NavGraphExportError(f"Edge '{bl_edge.name}' does not have a Node A set.")
-            bl_node_b = bl_edge.mcg_edge_props.node_b
-            if not bl_node_b:
-                raise NavGraphExportError(f"Edge '{bl_edge.name}' does not have a Node B set.")
-            try:
-                node_a_index = node_dict[bl_node_a.name]
-            except KeyError:
-                raise NavGraphExportError(f"Cannot get node index of '{bl_edge.name}' start node: '{bl_node_a.name}'")
-            try:
-                node_b_index = node_dict[bl_node_b.name]
-            except KeyError:
-                raise NavGraphExportError(f"Cannot get node index of '{bl_edge.name}' end node: '{bl_node_b.name}'")
-
-            node_a = nodes[node_a_index]
-            node_b = nodes[node_b_index]
-            edge.node_a = node_a
-            edge.node_b = node_b
-            node_a.connected_nodes.append(node_b)
-            node_a.connected_edges.append(edge)
-            node_b.connected_nodes.append(node_a)
-            node_b.connected_edges.append(edge)
-
-            try:
-                edge.node_a_triangles = node_navmesh_triangles[node_a_index][edge_navmesh.name]
-            except KeyError:
-                raise NavGraphExportError(
-                    f"Node {bl_node_a.name} does not specify triangles for navmesh {edge_navmesh.name} "
-                    f"(edge {bl_edge.name}). You must fix your navmeshes and navmesh graph in Blender first."
-                )
-            try:
-                edge.node_b_triangles = node_navmesh_triangles[node_b_index][edge_navmesh.name]
-            except KeyError:
-                raise NavGraphExportError(
-                    f"Node {bl_node_b.name} does not specify triangles for navmesh {edge_navmesh.name} "
-                    f"(edge {bl_edge.name}). You must fix your navmeshes and navmesh graph in Blender first."
-                )
-
-            edges.append(edge)
-
-        self.operator.info(f"Exporting {len(edges)} MCG edges...")
-
-        mcg = MCG(nodes=nodes, edges=edges, unknowns=(0, 0, 0))
-
-        return mcg

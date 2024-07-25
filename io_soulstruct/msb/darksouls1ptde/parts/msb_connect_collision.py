@@ -9,7 +9,7 @@ import typing as tp
 
 import bpy
 from io_soulstruct.exceptions import MissingPartModelError
-from io_soulstruct.havok.hkx_map_collision.model_import import *
+from io_soulstruct.collision.model_import import *
 from io_soulstruct.msb.properties import MSBPartSubtype, MSBConnectCollisionProps
 from io_soulstruct.types import *
 from io_soulstruct.utilities import *
@@ -26,6 +26,8 @@ class BlenderMSBConnectCollision(BlenderMSBPart[MSBConnectCollision, MSBConnectC
     SOULSTRUCT_CLASS = MSBConnectCollision
     PART_SUBTYPE = MSBPartSubtype.CONNECT_COLLISION
     MODEL_SUBTYPES = ["collision_models"]
+
+    data: bpy.types.Mesh  # type override
 
     collision: bpy.types.Object | None
 

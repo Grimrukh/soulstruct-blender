@@ -30,13 +30,12 @@ from io_soulstruct.flver.textures.import_textures import *
 from io_soulstruct.general.cached import get_cached_mtdbnd, get_cached_matbinbnd
 from io_soulstruct.types import *
 from io_soulstruct.utilities import *
-from io_soulstruct.utilities.conversion import GAME_TO_BL_VECTOR, game_forward_up_vectors_to_bl_euler
-from .properties import *
+from io_soulstruct.utilities.conversion import GAME_TO_BL_VECTOR, GAME_FORWARD_UP_VECTORS_TO_BL_EULER
 
 if tp.TYPE_CHECKING:
     from soulstruct.base.models.matbin import MATBINBND
     from io_soulstruct.general import SoulstructSettings, GAME_CONFIG
-    from io_soulstruct.flver.properties import FLVERBoneProps
+    from io_soulstruct.flver.properties import FLVERBoneProps, FLVERDummyProps, FLVERProps
 
 class BlenderFLVERDummy(SoulstructObject[FLVERDummyProps]):
 
@@ -85,9 +84,9 @@ class BlenderFLVERDummy(SoulstructObject[FLVERDummyProps]):
         bl_dummy.unk_x34 = soulstruct_obj.unk_x34
         
         if soulstruct_obj.use_upward_vector:
-            bl_rotation_euler = game_forward_up_vectors_to_bl_euler(soulstruct_obj.forward, soulstruct_obj.upward)
+            bl_rotation_euler = GAME_FORWARD_UP_VECTORS_TO_BL_EULER(soulstruct_obj.forward, soulstruct_obj.upward)
         else:  # TODO: I assume this is right (up-ignoring dummies only rotate around vertical axis)
-            bl_rotation_euler = game_forward_up_vectors_to_bl_euler(soulstruct_obj.forward, Vector3((0, 1, 0)))
+            bl_rotation_euler = GAME_FORWARD_UP_VECTORS_TO_BL_EULER(soulstruct_obj.forward, Vector3((0, 1, 0)))
 
         if soulstruct_obj.parent_bone_index != -1:
             # Bone's FLVER translate is in the space of (i.e. relative to) this parent bone.
@@ -155,7 +154,7 @@ class BlenderFLVERDummy(SoulstructObject[FLVERDummyProps]):
             dummy.parent_bone_index = -1
             dummy.translate = BL_TO_GAME_VECTOR3(bl_dummy_translate)
 
-        forward, up = bl_rotmat_to_game_forward_up_vectors(bl_dummy_rotmat)
+        forward, up = BL_ROTMAT_TO_GAME_FORWARD_UP_VECTORS(bl_dummy_rotmat)
         dummy.forward = forward
         dummy.upward = up if dummy.use_upward_vector else Vector3.zero()
 
@@ -294,6 +293,7 @@ class BlenderFLVER(SoulstructObject[FLVERProps]):
     OBJ_DATA_TYPE = SoulstructDataType.MESH
 
     obj: bpy.types.MeshObject  # type override
+    data: bpy.types.Mesh  # type override
     # Parent `Armature` of `Mesh`. Optional for models with one entirely default bone (most Map Pieces).
     armature: bpy.types.ArmatureObject | None
 
@@ -1447,8 +1447,10 @@ class BlenderFLVER(SoulstructObject[FLVERProps]):
         collected_texture_images: dict[str, bpy.types.Image] = None,
     ) -> FLVER:
         """`FLVER` exporter. By far the most complicated function in the add-on!"""
+
         # This is passed all the way through to the node inspection in FLVER materials to map texture stems to Images.
-        collected_texture_images = collected_texture_images or {}
+        if collected_texture_images is None:
+            collected_texture_images = {}
 
         settings = operator.settings(context)
         flver = self._get_empty_flver(settings)
@@ -2082,6 +2084,7 @@ class BlenderFLVER(SoulstructObject[FLVERProps]):
         else:
             raise FLVERError(f"Selected object '{obj.name}' is not a Mesh or Armature. Cannot parse as FLVER.")
 
+        # noinspection PyTypeChecker
         return armature, mesh
 
     @staticmethod

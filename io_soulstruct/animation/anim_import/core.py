@@ -10,7 +10,6 @@ from mathutils import Matrix, Quaternion as BlenderQuaternion
 from soulstruct_havok.utilities.maths import TRSTransform
 
 from io_soulstruct.utilities import *
-from io_soulstruct.havok.utilities import GAME_TRS_TO_BL_MATRIX, get_basis_matrix
 
 
 class HKXAnimationImporter:
@@ -133,8 +132,8 @@ class HKXAnimationImporter:
                     self.bl_armature,
                     bone_name,
                     bl_arma_matrix,
-                    cached_local_inv_matrices,
                     cached_arma_inv_matrices,
+                    cached_local_inv_matrices,
                 )
 
                 t, r, s = bl_basis_matrix.decompose()

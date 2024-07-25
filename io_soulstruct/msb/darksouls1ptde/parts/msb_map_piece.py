@@ -28,6 +28,7 @@ class BlenderMSBMapPiece(BlenderMSBPart[MSBMapPiece, MSBMapPieceProps]):
     MODEL_SUBTYPES = ["map_piece_models"]
 
     # No additional Map Piece properties.
+    data: bpy.types.Mesh  # type override
 
     @classmethod
     def find_model(cls, model_name: str, map_stem: str):

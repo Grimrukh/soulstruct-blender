@@ -21,12 +21,14 @@ from .msb_part import BlenderMSBPart
 
 
 class BlenderMSBPlayerStart(BlenderMSBPart[MSBPlayerStart, MSBPlayerStartProps]):
-    """Always references 'c0000', but we don't assume anything here."""
+    """Always references 'c0000', but we don't assume anything here, and import that FLVER as required."""
 
     OBJ_DATA_TYPE = SoulstructDataType.MESH
     SOULSTRUCT_CLASS = MSBPlayerStart
     PART_SUBTYPE = MSBPartSubtype.PLAYER_START
     MODEL_SUBTYPES = ["player_models", "character_models"]
+
+    data: bpy.types.Mesh  # type override (NOTE: c0000 Mesh will be empty)
 
     # No additional Player Start properties.
 

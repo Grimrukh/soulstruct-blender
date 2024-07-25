@@ -17,7 +17,7 @@ from .base import *
 msb_player_start_operator_config = MSBPartOperatorConfig(
     PART_SUBTYPE=MSBPartSubtype.PLAYER_START,
     MSB_LIST_NAME="player_starts",
-    MSB_MODEL_LIST_NAMES=["player_models", "character_models"],
+    MSB_MODEL_LIST_NAMES=["character_models", "player_models"],  # added to first (character) if missing
     GAME_ENUM_NAME="player_start_part",
 )
 

@@ -14,7 +14,7 @@ from io_soulstruct.utilities import LoggingOperator, get_bl_custom_prop
 from soulstruct.base.models.flver.material import Material, Texture, GXItem
 from soulstruct.base.models.flver.submesh import Submesh
 from soulstruct.base.models.flver.mesh_tools import SplitSubmeshDef
-from .core import NodeTreeBuilder
+from .shaders import NodeTreeBuilder
 
 if tp.TYPE_CHECKING:
     from soulstruct.base.models.shaders import MatDef
@@ -253,7 +253,8 @@ class BlenderFLVERMaterial:
         texture paths are always permitted if the sampler name is found. Note that the FLVER material importer will
         always create empty Image Texture nodes or empty string properties for samplers with no texture path.
         """
-        collected_texture_images = collected_texture_images or {}
+        if collected_texture_images is None:
+            collected_texture_images = {}
         name = self.tight_name
 
         export_settings = context.scene.flver_export_settings

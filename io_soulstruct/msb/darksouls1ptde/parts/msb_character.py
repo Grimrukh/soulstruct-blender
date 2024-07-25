@@ -31,6 +31,8 @@ class BlenderMSBCharacter(BlenderMSBPart[MSBCharacter, MSBCharacterProps]):
     PART_SUBTYPE = MSBPartSubtype.CHARACTER
     MODEL_SUBTYPES = ["character_models"]
 
+    data: bpy.types.Mesh  # type override
+
     AUTO_CHARACTER_PROPS = [
         "ai_id",
         "character_id",
