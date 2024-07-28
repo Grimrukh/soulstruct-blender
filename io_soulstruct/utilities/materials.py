@@ -34,6 +34,9 @@ def create_basic_material(
     diffuse.inputs["Color"].default_value = color
     diffuse.location = (0, 0)
 
+    # Also set viewport display diffuse color.
+    bl_material.diffuse_color = color
+
     material_output = nodes.new(type="ShaderNodeOutputMaterial")
     material_output.location = (400, 0)
 

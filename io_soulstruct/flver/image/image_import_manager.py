@@ -1,32 +1,18 @@
 from __future__ import annotations
 
 __all__ = [
-    "ImportTextures",
-    "TextureImportManager",
-    "import_png_as_image",
-    "batch_get_tpf_texture_png_data",
+    "ImageImportManager",
 ]
 
 import logging
 import re
-import tempfile
-import typing as tp
-from dataclasses import dataclass, field
 from pathlib import Path
 
 import bpy
-
-from soulstruct.base.textures.dds import DDS
-from soulstruct.base.textures.texconv import texconv
+from io_soulstruct.utilities import *
 from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
-from soulstruct.containers.tpf import TPF, TPFTexture, batch_get_tpf_texture_png_data
+from soulstruct.containers.tpf import TPF, TPFTexture
 from soulstruct.games import *
-
-from io_soulstruct.utilities import MAP_STEM_RE
-from io_soulstruct.utilities.operators import LoggingImportOperator
-
-if tp.TYPE_CHECKING:
-    from io_soulstruct.general import SoulstructSettings
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -35,290 +21,39 @@ CHRTPFBHD_RE = re.compile(r"(?P<stem>.*)\.chrtpfbhd?$")  # never has DCX
 AEG_STEM_RE = re.compile(r"^aeg(?P<aeg>\d\d\d)$")  # checks stem only
 
 
-# NOTE: We don't need a PropertyGroup for texture import (yet).
-
-
-class ImportTextures(LoggingImportOperator):
-    """Import an image file from disk into Blender, converting DDS images to PNG first, and optionally assigning
-    imported texture to one or more selected `Image` nodes."""
-    bl_idname = "import_image.soulstruct_texture"
-    bl_label = "Import Texture"
-    bl_description = (
-        "Import an image file (converting DDS to PNG) or all image files inside a TPF container into Blender, and "
-        "optionally set it to selected shader Image Texture nodes. Does not save any files to disk"
-    )
-
-    filename_ext = ".dds"
-
-    filter_glob: bpy.props.StringProperty(
-        default="*.png;*.tif;*.tiff;*.bmp;*.jpg;*.jpeg;*.tga;*.dds;*.tpf;*.tpf.dcx",
-        options={'HIDDEN'},
-        maxlen=255,
-    )
-
-    overwrite_existing: bpy.props.BoolProperty(
-        name="Overwrite Existing",
-        description="If a Blender Image with the same name already exists, replace its data with the new texture. "
-                    "Otherwise, new texture will have a unique suffix",
-        default=True,
-    )
-
-    image_node_assignment_mode: bpy.props.EnumProperty(
-        name="Image Node Assignment Mode",
-        description="How to assign the imported texture(s) to selected Image Texture nodes, if at all",
-        items=[
-            (
-                "NONE",
-                "Do Not Assign",
-                "Do not assign imported textures to any Image Texture nodes",
-            ),
-            (
-                "SIMPLE_TEXTURE",
-                "Selected Nodes (All)",
-                "Assign single imported texture to all selected Image Texture nodes. Will fail for multi-texture TPF",
-            ),
-            (
-                "SMART_TEXTURE",
-                "Selected Nodes (Smart)",
-                "Use suffix of imported texture name to detect which of the selected Image Textures nodes to assign it "
-                "to (e.g. '_n' texture assigned only to nodes named 'g_Bumpmap').",
-            ),
-            (
-                "SMART_MATERIAL",
-                "All Nodes (Smart)",
-                "Use suffix of imported texture name to detect which of the selected material's Image Textures nodes "
-                "to assign it to (e.g. '_n' texture assigned only to nodes named 'g_Bumpmap'). Checks ALL texture "
-                "nodes in material, not just selected nodes",
-            ),
-        ],
-        default="NONE",
-    )
-
-    smart_texture_slot: bpy.props.IntProperty(
-        name="Smart Texture Group Slot",
-        description="Slot of texture group to assign new textures to in one of the 'Smart' assignment modes",
-        default=0,
-    )
-
-    files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'})
-    directory: bpy.props.StringProperty(options={'HIDDEN'})
-
-    def execute(self, context):
-
-        # TODO: Respect general PNG cache settings, including optional data pack.
-
-        all_bl_images = {}
-
-        for file_path in self.file_paths:
-
-            if TPF_RE.match(file_path.name):
-                all_bl_images |= self.import_tpf(file_path)  # must be single-texture
-            elif file_path.suffix == ".dds":
-                # Loose DDS file.
-                try:
-                    all_bl_images |= self.import_dds(file_path)
-                except Exception as ex:
-                    self.warning(f"Could not import DDS file into Blender: {ex}")
-            else:
-                try:
-                    all_bl_images |= self.import_native(file_path)
-                except Exception as ex:
-                    self.warning(f"Could not import image file into Blender: {ex}")
-
-        if not all_bl_images:
-            self.warning("No textures could be imported.")
-            return {"CANCELLED"}
-
-        if self.image_node_assignment_mode == "NONE":
-            # Nothing more to do.
-            return {"FINISHED"}
-
-        try:
-            material_nt = context.active_object.active_material.node_tree
-        except AttributeError:
-            self.warning("No active object/material node tree detected for assigning new texture(s).")
-            return {"FINISHED"}
-
-        if self.image_node_assignment_mode == "SIMPLE_TEXTURE":
-            if len(all_bl_images) > 1:
-                self.warning(
-                    "Cannot assign multiple imported textures in 'Selected Nodes (All)' mode. A single texture "
-                    "must be imported and will be assigned to ALL selected Image Texture node."
-                )
-            sel = [node for node in material_nt.nodes if node.select and node.bl_idname == "ShaderNodeTexImage"]
-            if not sel:
-                self.warning("No selected Image Texture nodes for assigning new texture.")
-            else:
-                texture_name, bl_image = next(iter(all_bl_images.items()))
-                for image_node in sel:
-                    image_node.image = bl_image
-                self.info(f"Set imported texture '{texture_name}' to {len(sel)} selected Image Texture node(s).")
-            return {"FINISHED"}
-
-        # Smart assignment mode, either material-wide or among selected nodes only.
-
-        slot_suffix = f"_{self.smart_texture_slot}"
-        if self.image_node_assignment_mode == "SMART_MATERIAL":
-            # Get all nodes in material.
-            sel = [
-                node for node in material_nt.nodes
-                if node.bl_idname == "ShaderNodeTexImage" and node.name.endswith(slot_suffix)
-            ]
-        elif self.image_node_assignment_mode == "SMART_TEXTURE":
-            # Get only selected nodes in material.
-            sel = [
-                node for node in material_nt.nodes
-                if node.select and node.bl_idname == "ShaderNodeTexImage" and node.name.endswith(slot_suffix)
-            ]
-        else:
-            raise ValueError(f"Invalid image node assignment mode: {self.image_node_assignment_mode}")
-
-        if not sel:
-            if self.image_node_assignment_mode == "SMART_TEXTURE":
-                self.warning(
-                    f"No selected Image Texture nodes with name slot {self.smart_texture_slot} (e.g. "
-                    f"'ALBEDO_{self.smart_texture_slot}') for assigning new texture(s)."
-                )
-            else:
-                self.warning(
-                    f"No material Image Texture nodes with name slot {self.smart_texture_slot} (e.g. "
-                    f"'ALBEDO_{self.smart_texture_slot}') for assigning new texture(s)."
-                )
-
-            return {"FINISHED"}
-
-        # Filter sampler names to ensure only one of each sampler is present.
-        sampler_texture_names = {key: "" for key in ("ALBEDO", "SPECULAR", "NORMAL", "HEIGHT", "LIGHTMAP")}
-
-        def register_sampler_name(sampler_name: str, tex_name: str, check: tp.Callable[[str], bool]):
-            if not check(tex_name):
-                return False
-            if sampler_texture_names[sampler_name]:
-                self.warning(
-                    f"Cannot smart-assign multiple '{sampler_name}' textures at once. Ignoring texture: {tex_name}"
-                )
-            else:
-                sampler_texture_names[sampler_name] = tex_name
-            return True
-
-        for texture_name, bl_image in all_bl_images.items():
-            for args in (
-                ("SPECULAR", texture_name, lambda name: name.endswith("_s")),
-                ("NORMAL", texture_name, lambda name: name.endswith("_n")),
-                ("HEIGHT", texture_name, lambda name: name.endswith("_h")),
-                ("LIGHTMAP", texture_name, lambda name: "_lit_" in name),
-                ("ALBEDO", texture_name, lambda name: True),  # catch-all
-            ):
-                if register_sampler_name(*args):
-                    break  # found a match
-
-        # NOTE: It's not possible for NO texture to receive node homes here, because 'ALBEDO' is a catch-all.
-
-        for image_node in sel:
-            for texture_type, bl_image in sampler_texture_names.items():
-                if bl_image is None:
-                    continue
-                if image_node.name.startswith(texture_type):
-                    image_node.image = bl_image
-                    break
-            else:
-                self.warning(
-                    f"Could not assign imported texture to selected Image Texture node with unrecognized name: "
-                    f"{image_node.name}"
-                )
-
-        return {"FINISHED"}
-
-    def import_tpf(self, tpf_path: Path) -> dict[str, bpy.types.Image]:
-        tpf = TPF.from_path(tpf_path)
-        if self.image_node_assignment_mode == "SIMPLE_TEXTURE" and len(tpf.textures) > 1:
-            self.info(
-                f"Cannot import multi-texture TPF in 'Selected Nodes (All)' assignment mode: {tpf_path}"
-            )
-            return {}
-
-        textures_png_data = batch_get_tpf_texture_png_data(tpf.textures)
-        self.info(f"Loaded {len(textures_png_data)} texture(s) from TPF: {tpf_path.name}")
-        texture_images = {}
-        for texture, png_data in zip(tpf.textures, textures_png_data):
-            if png_data is None:
-                continue  # failed to convert this texture
-            try:
-                bl_image = import_png_as_image(texture.name, png_data, replace_existing=self.overwrite_existing)
-            except Exception as ex:
-                self.warning(f"Could not create Blender image from TPF texture '{texture.name}': {ex}")
-                continue
-            texture_images[texture.name] = bl_image
-        return texture_images
-
-    def import_dds(self, dds_path: Path) -> dict[str, bpy.types.Image]:
-        with tempfile.TemporaryDirectory() as png_dir:
-
-            # Check DDS format for logging.
-            dds = DDS.from_path(dds_path)
-            dds_format = dds.texconv_format
-
-            temp_dds_path = Path(png_dir, dds_path.name)
-            temp_dds_path.write_bytes(dds_path.read_bytes())  # write temporary DDS copy
-            texconv_result = texconv("-o", png_dir, "-ft", "png", "-f", "RGBA", "-nologo", temp_dds_path)
-            png_path = Path(png_dir, dds_path.with_suffix(".png"))
-            if png_path.is_file():
-                bl_image = bpy.data.images.load(str(png_path))
-                bl_image.pack()  # embed PNG in `.blend` file
-                self.info(f"Loaded '{dds_format}' DDS file as PNG: {dds_path.name}")
-                return {png_path.stem: bl_image}
-
-            # Conversion failed.
-            stdout = texconv_result.stdout.decode()
-            self.warning(f"Could not convert texture DDS to PNG:\n    {stdout}")
-            return {}
-
-    def import_native(self, image_path: Path) -> dict[str, bpy.types.Image]:
-        """Import a non-DDS image file (assumes general Blender support).
-
-        Does NOT pack image data into '.blend' file, unlike DDS/TPF imports.
-        """
-        try:
-            if not self.overwrite_existing:
-                # Go straight to creation below.
-                raise KeyError
-            bl_image = bpy.data.images[image_path.name]
-        except KeyError:
-            bl_image = bpy.data.images.load(str(image_path))
-            # NOT packed into `.blend` file.
-        else:
-            if bl_image.packed_file:
-                bl_image.unpack(method="USE_ORIGINAL")
-            bl_image.filepath = str(image_path)  # should update format automatically
-            bl_image.reload()
-            # NOT packed into `.blend` file.
-            self.info(f"Loaded image texture file: {image_path.name}")
-        return {image_path.stem: bl_image}
-
-
-@dataclass(slots=True)
-class TextureImportManager:
+class ImageImportManager:
     """Manages various texture sources across some import context, ensuring that Binders and TPFs are only loaded
     when requested for the first time during the operation.
 
-    Uses selected game, FLVER name, and FLVER texture paths to determine where to find TPFs.
+    Different methods are available for different FLVER file types that search different known locations for textures.
     """
-    settings: SoulstructSettings
+    operator: LoggingOperator
+    context: bpy.types.Context
 
     # Maps Binder stems to Binder file paths we are aware of, but have NOT yet opened and scanned for TPF sources.
-    _binder_paths: dict[str, Path] = field(default_factory=dict)
+    _binder_paths: dict[str, Path]
 
     # Maps TPF stems to file paths or Binder entries we are aware of, but have NOT yet loaded into TPF textures (below).
-    _pending_tpf_sources: dict[str, Path | BinderEntry] = field(default_factory=dict)
+    _pending_tpf_sources: dict[str, Path | BinderEntry]
 
     # Maps TPF stems to opened TPF textures.
-    _tpf_textures: dict[str, TPFTexture] = field(default_factory=dict)
+    _tpf_textures: dict[str, TPFTexture]
 
     # Holds Binder file paths that have already been opened and scanned, so they aren't checked again.
-    _scanned_binder_paths: set[Path] = field(default_factory=set)
+    _scanned_binder_paths: set[Path]
 
     # Holds TPF stems that have already been opened and scanned, so they aren't checked again.
-    _scanned_tpf_sources: set[str] = field(default_factory=set)
+    _scanned_tpf_sources: set[str]
+
+    def __init__(self, operator: LoggingOperator, context: bpy.types.Context):
+        self.operator = operator
+        self.context = context
+
+        self._binder_paths = {}
+        self._pending_tpf_sources = {}
+        self._tpf_textures = {}
+        self._scanned_binder_paths = set()
+        self._scanned_tpf_sources = set()
 
     def find_flver_textures(self, flver_source_path: Path, flver_binder: Binder = None, prefer_hi_res=True):
         """Register known game Binders/TPFs to be opened as needed.
@@ -329,6 +64,8 @@ class TextureImportManager:
         source_name = Path(flver_source_path).name.removesuffix(".dcx")  # e.g. 'c1234.chrbnd' or 'm1234B0A10.flver'
         source_dir = flver_source_path.parent
 
+        settings = self.operator.settings(self.context)
+
         # MAP PIECES
         if source_name.endswith(".flver"):
             # Loose FLVER file. Likely a map piece in an older game like DS1. We look in adjacent `mXX` directory.
@@ -338,7 +75,7 @@ class TextureImportManager:
             if flver_binder:
                 self.scan_binder_textures(flver_binder)
             else:
-                _LOGGER.warning(f"Opened PARTSBND '{flver_binder}' was not passed to TextureImportManager!")
+                _LOGGER.warning(f"Opened PARTSBND '{flver_binder}' was not passed to ImageImportManager!")
             self._find_parts_common_tpfs(source_dir)
 
         # CHARACTERS
@@ -347,22 +84,22 @@ class TextureImportManager:
             # header in CHRBND) for DSR, and adjacent loose folders for PTDE.
             if flver_binder:
                 self.scan_binder_textures(flver_binder)
-                if self.settings.is_game(DARK_SOULS_PTDE):
+                if settings.is_game(DARK_SOULS_PTDE):
                     self._find_chr_loose_tpfs(source_dir, model_stem=source_name.split(".")[0])
-                elif self.settings.is_game(DARK_SOULS_DSR):
+                elif settings.is_game(DARK_SOULS_DSR):
                     self._find_chr_tpfbdts(source_dir, flver_binder)  # CHRTPFBHD is in `flver_binder`
-                elif self.settings.is_game(BLOODBORNE):
+                elif settings.is_game(BLOODBORNE):
                     # Bloodborne doesn't have any loose/BXF CHRBND textures.
                     pass
-                elif self.settings.is_game(DARK_SOULS_3, SEKIRO):
+                elif settings.is_game(DARK_SOULS_3, SEKIRO):
                     self._find_texbnd(source_dir, model_stem=source_name.split(".")[0], res="")  # no res
-                elif self.settings.is_game(ELDEN_RING):
+                elif settings.is_game(ELDEN_RING):
                     res = "_h" if prefer_hi_res else "_l"
                     self._find_texbnd(source_dir, model_stem=source_name.split(".")[0], res=res)
                     self._find_common_body(source_dir)
             else:
                 _LOGGER.warning(
-                    f"Opened CHRBND '{flver_source_path}' should have been passed to TextureImportManager! Will not be "
+                    f"Opened CHRBND '{flver_source_path}' should have been passed to ImageImportManager! Will not be "
                     f"able to load attached character textures."
                 )
 
@@ -385,7 +122,7 @@ class TextureImportManager:
             if flver_binder:
                 self.scan_binder_textures(flver_binder)
             else:
-                _LOGGER.warning(f"Opened PARTSBND '{flver_binder}' was not passed to TextureImportManager!")
+                _LOGGER.warning(f"Opened PARTSBND '{flver_binder}' was not passed to ImageImportManager!")
             self._find_parts_common_tpfs(source_dir)
 
         # ASSETS (Elden Ring)
@@ -398,7 +135,7 @@ class TextureImportManager:
             # Scan miscellaneous Binder for TPFs. Warn if it wasn't passed in.
             if not flver_binder:
                 _LOGGER.warning(
-                    f"Opened Binder '{flver_source_path}' should have been passed to TextureImportManager! Will not be "
+                    f"Opened Binder '{flver_source_path}' should have been passed to ImageImportManager! Will not be "
                     f"able to load FLVER textures from the same Binder."
                 )
             else:
@@ -616,50 +353,3 @@ class TextureImportManager:
             if tpf_stem not in self._scanned_tpf_sources:
                 self._pending_tpf_sources.setdefault(tpf_stem, tpf_path)
 
-
-def import_png_as_image(
-    image_name: str, png_data: bytes, write_png_directory: Path = None, replace_existing=False, pack_image_data=False
-) -> bpy.types.Image:
-    """Import PNG data into Blender as an image, optionally replacing an existing image with the same name.
-
-    If `pack_image_data` is True and `write_png_directory` is given, the PNG data will be embedded in the `.blend` file.
-    Otherwise, it will be linked to the original PNG file.
-    """
-    if write_png_directory is None:
-        # Use a temporarily file.
-        write_png_path = Path(f"~/AppData/Local/Temp/{image_name}.png").expanduser()
-        is_temp_png = True
-        if not pack_image_data:
-            _LOGGER.warning(
-                "Must pack PNG image data into Blender file when `write_png_directory` is not given ('Write Cached "
-                "PNGs' disabled)."
-            )
-    else:
-        write_png_path = write_png_directory / f"{image_name}.png"
-        is_temp_png = False
-
-    write_png_path.write_bytes(png_data)
-
-    try:
-        if not replace_existing:
-            # Go straight to creation below.
-            raise KeyError
-        bl_image = bpy.data.images[image_name]
-    except KeyError:
-        bl_image = bpy.data.images.load(str(write_png_path))
-        if is_temp_png or pack_image_data:
-            bl_image.pack()  # embed PNG in Blend file
-    else:
-        if bl_image.packed_file:
-            bl_image.unpack(method="USE_ORIGINAL")
-        bl_image.filepath_raw = str(write_png_path)
-        bl_image.file_format = "PNG"
-        bl_image.source = "FILE"
-        bl_image.reload()
-        if is_temp_png or pack_image_data:
-            bl_image.pack()  # embed new PNG in Blend file
-
-    if is_temp_png:
-        write_png_path.unlink(missing_ok=True)
-
-    return bl_image

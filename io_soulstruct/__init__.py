@@ -54,6 +54,8 @@ from io_soulstruct.flver import *
 from io_soulstruct.msb import *
 from io_soulstruct.nav_graph import *
 from io_soulstruct.navmesh import *
+from io_soulstruct.types import SoulstructType
+
 
 bl_info = {
     "name": "Soulstruct",
@@ -135,8 +137,8 @@ CLASSES = (
 
     FLVERProps,
     FLVERDummyProps,
+    FLVERGXItemProps,  # must be registered before `FLVERMaterialProps`
     FLVERMaterialProps,
-    FLVERGXItemProps,
     FLVERBoneProps,
 
     FLVERToolSettings,
@@ -160,11 +162,13 @@ CLASSES = (
     FindMissingTexturesInPNGCache,
     SelectMeshChildren,
 
+    DDSTextureProps,
     ImportTextures,
     BakeLightmapSettings,
     BakeLightmapTextures,
     TextureExportSettings,
 
+    FLVERPropsPanel,
     FLVERImportPanel,
     FLVERExportPanel,
     TextureExportSettingsPanel,
@@ -186,8 +190,11 @@ CLASSES = (
     ImportAssetHKXAnimation,
     ExportLooseHKXAnimation,
     ExportHKXAnimationIntoBinder,
-    QuickExportCharacterHKXAnimation,
-    QuickExportObjectHKXAnimation,
+    ExportCharacterHKXAnimation,
+    ExportObjectHKXAnimation,
+
+    AnimationImportSettings,
+    AnimationExportSettings,
 
     ArmatureActionChoiceOperator,
     SelectArmatureActionOperator,
@@ -212,13 +219,19 @@ CLASSES = (
     # endregion
 
     # TODO: Cutscene operators need a bit more work.
-    # ImportHKXCutscene,
-    # ExportHKXCutscene,
-    # HKX_CUTSCENE_PT_hkx_cutscene_tools,
+    ImportHKXCutscene,
+    ExportHKXCutscene,
+    HKX_CUTSCENE_PT_hkx_cutscene_tools,
+    CutsceneImportSettings,
+    CutsceneExportSettings,
     # endregion
 
     # region Navmesh
     GlobalSettingsPanel_NavmeshView,
+
+    NVMProps,
+    NVMFaceIndex,  # also used by `MCGNodeProps`
+    NVMEventEntityProps,
 
     ImportNVM,
     ImportNVMWithBinderChoice,
@@ -254,15 +267,10 @@ CLASSES = (
     ExportMCG,
     ExportMCGMCPToMap,
     MCGDrawSettings,
-    draw_mcg_nodes,
-    draw_mcg_node_labels,
-    draw_mcg_edges,
-    draw_mcg_edge_cost_labels,
     JoinMCGNodesThroughNavmesh,
     SetNodeNavmeshTriangles,
     RefreshMCGNames,
     MCGProps,
-    NVMFaceIndex,
     MCGNodeProps,
     MCGEdgeProps,
     NavGraphComputeSettings,
@@ -287,6 +295,11 @@ CLASSES = (
     ImportAllMSBObjects,
     ImportMSBAsset,
     ImportAllMSBAssets,
+    ImportMSBPlayerStart,
+    ImportAllMSBPlayerStarts,
+    ImportMSBConnectCollision,
+    ImportAllMSBConnectCollisions,
+
     ImportMSBPoint,
     ImportMSBVolume,
     ImportAllMSBPoints,
@@ -297,9 +310,11 @@ CLASSES = (
     ExportMSBMapPieces,
     ExportMSBObjects,
     ExportMSBCharacters,
+    ExportMSBPlayerStarts,
     ExportMSBCollisions,
     ExportMSBNavmeshes,
     ExportMSBNavmeshCollection,
+    ExportMSBConnectCollisions,
 
     CreateMSBPart,
     DuplicateMSBPartModel,
@@ -319,10 +334,14 @@ CLASSES = (
     MSBExportPanel,
     MSBToolsPanel,
     MSBPartPanel,
+
+    MSBMapPiecePartPanel,
     MSBObjectPartPanel,
     MSBCharacterPartPanel,
+    MSBPlayerStartPartPanel,
     MSBCollisionPartPanel,
     MSBNavmeshPartPanel,
+    MSBConnectCollisionPartPanel,
     MSBRegionPanel,
     # endregion
 )
@@ -362,6 +381,10 @@ SCENE_POINTERS = dict(
     msb_import_settings=MSBImportSettings,
     msb_export_settings=MSBExportSettings,
     region_draw_settings=RegionDrawSettings,
+    animation_import_settings=AnimationImportSettings,
+    animation_export_settings=AnimationExportSettings,
+    cutscene_import_settings=CutsceneImportSettings,
+    cutscene_export_settings=CutsceneExportSettings,
 )
 
 
@@ -375,9 +398,11 @@ OBJECT_POINTERS = dict(
     MCG_EDGE=MCGEdgeProps,
 
     MSB_PART=MSBPartProps,
+    MSB_MAP_PIECE=MSBMapPieceProps,
     MSB_OBJECT=MSBObjectProps,
     MSB_ASSET=MSBAssetProps,
     MSB_CHARACTER=MSBCharacterProps,
+    MSB_PLAYER_START=MSBPlayerStartProps,
     MSB_COLLISION=MSBCollisionProps,
     MSB_NAVMESH=MSBNavmeshProps,
     MSB_CONNECT_COLLISION=MSBConnectCollisionProps,
@@ -391,6 +416,11 @@ MATERIAL_POINTERS = dict(
 )
 
 
+IMAGE_POINTERS = dict(
+    DDS_TEXTURE=DDSTextureProps,
+)
+
+
 EDIT_BONE_POINTERS = dict(
     FLVER_BONE=FLVERBoneProps,
 )
@@ -399,6 +429,7 @@ EDIT_BONE_POINTERS = dict(
 SCENE_ATTRIBUTES = []
 OBJECT_ATTRIBUTES = []
 MATERIAL_ATTRIBUTES = []
+IMAGE_ATTRIBUTES = []
 EDIT_BONE_ATTRIBUTES = []
 
 LOAD_POST_HANDLERS = []
@@ -429,18 +460,26 @@ def register():
     # region Soulstruct Type Extension
 
     bpy.types.Object.soulstruct_type = bpy.props.EnumProperty(
-        name="Soulstruct Type",
+        name="Soulstruct Object Type",
         description="Type of Soulstruct object that this Blender Object represents (INTERNAL)",
         items=[
-            ("NONE", "None", "Not a Soulstruct typed object"),
+            (SoulstructType.NONE, "None", "Not a Soulstruct typed object"),
 
-            ("FLVER", "FLVER", "FLVER source model (Mesh)"),  # data-block 'owner'; NOT an MSB Part instance object
-            ("DUMMY", "FLVER Dummy", "FLVER dummy object"),
+            (SoulstructType.FLVER, "FLVER", "FLVER mesh model"),  # data-block 'owner'; NOT an MSB Part instance object
+            (SoulstructType.FLVER_DUMMY, "FLVER Dummy", "FLVER dummy object"),
             # All Materials and Bones have FLVER properties exposed.
 
-            ("MSB_PART", "MSB Part", "MSB part object"),  # NOT a FLVER data-block owner
-            ("MSB_REGION", "MSB Region", "MSB region object"),
-            ("MSB_EVENT", "MSB Event", "MSB event object"),
+            (SoulstructType.COLLISION, "Collision", "Map collision mesh model"),
+
+            (SoulstructType.NAVMESH.name, "Navmesh", "Navmesh mesh model"),
+            (SoulstructType.NVM_EVENT_ENTITY.name, "NVM_EVENT_ENTITY", ""),
+            (SoulstructType.MCG.name, "MCG", "MCG navigation graph (DS1)"),
+            (SoulstructType.MCG_NODE.name, "MCG_NODE", "MCG navigation graph node (DS1)"),
+            (SoulstructType.MCG_EDGE.name, "MCG_EDGE", "MCG navigation graph edge (DS1)"),
+
+            (SoulstructType.MSB_PART, "MSB Part", "MSB part object"),  # NOT a FLVER data-block owner
+            (SoulstructType.MSB_REGION, "MSB Region", "MSB region object"),
+            (SoulstructType.MSB_EVENT, "MSB Event", "MSB event object"),
         ]
     )
     OBJECT_ATTRIBUTES.append("soulstruct_type")
@@ -452,6 +491,10 @@ def register():
     for prop_name, prop_type in MATERIAL_POINTERS.items():
         setattr(bpy.types.Material, prop_name, bpy.props.PointerProperty(type=prop_type))
         MATERIAL_ATTRIBUTES.append(prop_name)
+
+    for prop_name, prop_type in IMAGE_POINTERS.items():
+        setattr(bpy.types.Image, prop_name, bpy.props.PointerProperty(type=prop_type))
+        IMAGE_ATTRIBUTES.append(prop_name)
 
     for prop_name, prop_type in EDIT_BONE_POINTERS.items():
         setattr(bpy.types.EditBone, prop_name, bpy.props.PointerProperty(type=prop_type))
@@ -505,6 +548,10 @@ def unregister():
     for prop_name in MATERIAL_ATTRIBUTES:
         delattr(bpy.types.Material, prop_name)
     MATERIAL_ATTRIBUTES.clear()
+
+    for prop_name in IMAGE_ATTRIBUTES:
+        delattr(bpy.types.Image, prop_name)
+    IMAGE_ATTRIBUTES.clear()
 
     for prop_name in EDIT_BONE_ATTRIBUTES:
         delattr(bpy.types.EditBone, prop_name)

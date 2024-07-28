@@ -15,40 +15,36 @@ import typing as tp
 import bpy
 
 from io_soulstruct.types import SoulstructType
-from .misc import get_bl_obj_tight_name
+from .misc import get_bl_obj_tight_name, get_collection
 
 if tp.TYPE_CHECKING:
     PROPS_TYPE = tp.Union[tp.Dict[str, tp.Any], bpy.types.Object, None]
 
 
 def new_mesh_object(
-    name: str, data: bpy.types.Mesh | bpy.types.ID | None = None, props: PROPS_TYPE = None
+    name: str, data: bpy.types.Mesh, soulstruct_type: SoulstructType = SoulstructType.NONE
 ) -> bpy.types.MeshObject:
     mesh_obj = bpy.data.objects.new(name, data)
-    if props:
-        for key, value in props.items():
-            mesh_obj[key] = value
+    mesh_obj.soulstruct_type = soulstruct_type
     # noinspection PyTypeChecker
     return mesh_obj
 
 
 def new_armature_object(
-    name: str, data: bpy.types.Armature | bpy.types.ID | None = None, props: PROPS_TYPE = None
+    name: str,
+    data: bpy.types.Armature,
+    soulstruct_type: SoulstructType = SoulstructType.NONE,
 ) -> bpy.types.ArmatureObject:
     armature_obj = bpy.data.objects.new(name, data)
-    if props:
-        for key, value in props.items():
-            armature_obj[key] = value
+    armature_obj.soulstruct_type = soulstruct_type
     # noinspection PyTypeChecker
     return armature_obj
 
 
-def new_empty_object(name: str, props: PROPS_TYPE = None) -> bpy.types.Object:
+def new_empty_object(name: str, soulstruct_type: SoulstructType = SoulstructType.NONE) -> bpy.types.Object:
     # noinspection PyTypeChecker
     empty_obj = bpy.data.objects.new(name, None)
-    if props:
-        for key, value in props.items():
-            empty_obj[key] = value
+    empty_obj.soulstruct_type = soulstruct_type
     return empty_obj
 
 
@@ -75,6 +71,7 @@ def find_obj_or_create_empty(
     name: str,
     find_stem=False,
     soulstruct_type: SoulstructType | None = None,
+    missing_collection_name="Missing MSB References",
 ) -> tuple[bool, bpy.types.Object]:
     try:
         obj = bpy.data.objects[name]
@@ -87,10 +84,12 @@ def find_obj_or_create_empty(
             for obj in bpy.data.objects:
                 if get_bl_obj_tight_name(obj) == name and (soulstruct_type and obj.soulstruct_type == soulstruct_type):
                     return False, obj
+
+        missing_collection = get_collection(missing_collection_name, bpy.context.scene.collection)
         obj = bpy.data.objects.new(name, None)
         if soulstruct_type:
             obj.soulstruct_type = soulstruct_type
-        bpy.context.scene.collection.objects.link(obj)
+        missing_collection.objects.link(obj)
         return True, obj
 
 

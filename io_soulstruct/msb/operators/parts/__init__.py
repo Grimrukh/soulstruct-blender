@@ -14,6 +14,10 @@ __all__ = [
     "ImportAllMSBCharacters",
     "ExportMSBCharacters",
 
+    "ImportMSBPlayerStart",
+    "ImportAllMSBPlayerStarts",
+    "ExportMSBPlayerStarts",
+
     "ImportMSBMapCollision",
     "ImportAllMSBMapCollisions",
     "ExportMSBCollisions",
@@ -25,6 +29,7 @@ __all__ = [
 
     "ImportMSBConnectCollision",
     "ImportAllMSBConnectCollisions",
+    "ExportMSBConnectCollisions",
 ]
 
 from .map_pieces import *

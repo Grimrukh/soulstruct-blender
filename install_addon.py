@@ -13,8 +13,7 @@ from soulstruct.utilities.files import PACKAGE_PATH
 from soulstruct_havok.utilities.files import HAVOK_PACKAGE_PATH
 
 
-PY_SITE_PACKAGES_310 = Path(__file__).parent / "venv-blender310/Lib/site-packages"
-PY_SITE_PACKAGES_311 = Path(__file__).parent / "venv-blender311/Lib/site-packages"
+PY_SITE_PACKAGES = Path(__file__).parent / "venv-blender311/Lib/site-packages"
 
 
 def copy_addon(addons_dir: str | Path, copy_soulstruct_module=True, copy_third_party_modules=True, clear_settings=True):
@@ -76,20 +75,9 @@ def copy_addon(addons_dir: str | Path, copy_soulstruct_module=True, copy_third_p
 
     if copy_third_party_modules:
         # NOTE: Blender already comes with `numpy`.
-
-        # `colorama` doens't need updating between Python 3.10 and 3.11.
         copy_site_package("colorama", dest_io_soulstruct_lib_dir / "colorama")
-
-        # To support Blender 4.1, we need to support Scipy for both Python 3.10 and Python 3.11, unfortunately.
-        # We have to do this with `scipy.libs` too, which `scipy` looks for locally, even though the BLAS DLL inside it
-        # didn't actually change between Python 3.10 and 3.11.
-        # TODO: How do official Blender add-ons support libraries for multiple Python versions...?
-        lib_310 = dest_io_soulstruct_lib_dir.with_name("io_soulstruct_lib_310")
-        copy_site_package("scipy", lib_310 / "scipy", py_version="310")
-        copy_site_package("scipy.libs", lib_310 / "scipy.libs", py_version="310")
-        lib_311 = dest_io_soulstruct_lib_dir.with_name("io_soulstruct_lib_311")
-        copy_site_package("scipy", lib_311 / "scipy")
-        copy_site_package("scipy.libs", lib_311 / "scipy.libs")
+        copy_site_package("scipy", dest_io_soulstruct_lib_dir / "scipy")
+        copy_site_package("scipy.libs", dest_io_soulstruct_lib_dir / "scipy.libs")
 
 
 def install(blender_addons_dir: str | Path, update_soulstruct_module=False, update_third_party_modules=False):
@@ -98,7 +86,7 @@ def install(blender_addons_dir: str | Path, update_soulstruct_module=False, upda
     `blender_scripts_dir` should be the `scripts` folder in a specific version of Blender inside your AppData.
 
     For example:
-        `install(Path("~/AppData/Roaming/Blender/3.5/scripts").expanduser())`
+        `install(Path("~/AppData/Roaming/Blender/4.2/scripts").expanduser())`
     """
     blender_addons_dir = Path(blender_addons_dir)
     if blender_addons_dir.name != "addons":
@@ -115,19 +103,11 @@ def install(blender_addons_dir: str | Path, update_soulstruct_module=False, upda
     copy_addon(blender_addons_dir, update_soulstruct_module, update_third_party_modules, clear_settings=False)
 
 
-def copy_site_package(dir_name: str, destination_dir: Path, py_version="311"):
+def copy_site_package(dir_name: str, destination_dir: Path):
     """Blender 4.1 onwards requires Python 3.11 versions."""
-    if py_version == "311":
-        site_packages_dir = PY_SITE_PACKAGES_311
-    elif py_version == "310":
-        print(f"# Copying Python 3.10 '{dir_name}' site package for Blender 3.5-4.0...")
-        site_packages_dir = PY_SITE_PACKAGES_310
-    else:
-        raise ValueError(f"Invalid Python version: {py_version}. Must be '310' or '311'.")
-
-    if not site_packages_dir.is_dir():
-        raise FileNotFoundError(f"Could not find site-packages directory: {site_packages_dir}.")
-    package_dir = site_packages_dir / dir_name
+    if not PY_SITE_PACKAGES.is_dir():
+        raise FileNotFoundError(f"Could not find site-packages directory: {PY_SITE_PACKAGES}.")
+    package_dir = PY_SITE_PACKAGES / dir_name
     if not package_dir.is_dir():
         raise FileNotFoundError(f"Could not find site-package directory: {package_dir}.")
     shutil.copytree(

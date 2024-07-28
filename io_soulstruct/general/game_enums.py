@@ -680,16 +680,6 @@ class SoulstructGameEnums(bpy.types.PropertyGroup):
         items=get_msb_map_piece_items,
     )
 
-    navmesh_part: bpy.props.EnumProperty(
-        name="MSB Navmesh Part",
-        items=get_navmesh_part_items,
-    )
-
-    collision_part: bpy.props.EnumProperty(
-        name="MSB Map Collision Part",
-        items=get_msb_hkx_map_collision_items,
-    )
-
     asset_part: bpy.props.EnumProperty(
         name="MSB Asset Part",  # Elden Ring ONLY
         items=get_msb_asset_items,
@@ -708,6 +698,21 @@ class SoulstructGameEnums(bpy.types.PropertyGroup):
     player_start_part: bpy.props.EnumProperty(
         name="MSB Player Start Part",
         items=get_msb_player_start_items,
+    )
+
+    collision_part: bpy.props.EnumProperty(
+        name="MSB Map Collision Part",
+        items=get_msb_hkx_map_collision_items,
+    )
+
+    navmesh_part: bpy.props.EnumProperty(
+        name="MSB Navmesh Part",
+        items=get_navmesh_part_items,
+    )
+
+    connect_collision_part: bpy.props.EnumProperty(
+        name="MSB Connect Collision Part",
+        items=get_msb_hkx_map_connect_collision_items,
     )
 
     point_region: bpy.props.EnumProperty(

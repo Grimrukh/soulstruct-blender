@@ -52,11 +52,12 @@ class MSBImportSettings(bpy.types.PropertyGroup):
 
         return is_name_match
 
-    def get_collection_name(self, map_stem: str, model_type: str):
+    def get_collection_name(self, map_stem: str, name: str):
+        """`name` should be something like 'Map Piece Parts' or 'Point Regions'."""
         if self.include_pattern_in_parent_name:
-            return f"{map_stem} {model_type} Parts ({self.entry_name_match})"
+            return f"{map_stem} {name} ({self.entry_name_match})"
         else:
-            return f"{map_stem} {model_type} Parts"
+            return f"{map_stem} {name}"
 
 
 class MSBExportSettings(bpy.types.PropertyGroup):

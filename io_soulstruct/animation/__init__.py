@@ -9,19 +9,23 @@ __all__ = [
 
     "ExportLooseHKXAnimation",
     "ExportHKXAnimationIntoBinder",
-    "QuickExportCharacterHKXAnimation",
-    "QuickExportObjectHKXAnimation",
+    "ExportCharacterHKXAnimation",
+    "ExportObjectHKXAnimation",
 
     "ArmatureActionChoiceOperator",
     "SelectArmatureActionOperator",
     "HKX_ANIMATION_PT_hkx_animations",
+
+    "AnimationImportSettings",
+    "AnimationExportSettings",
 ]
 
 import bpy
 
-from .anim_import import *
-from .anim_export import *
+from .import_operators import *
+from .export_operators import *
 from .misc_operators import *
+from .properties import *
 
 
 class HKX_ANIMATION_PT_hkx_animations(bpy.types.Panel):
@@ -61,8 +65,8 @@ class HKX_ANIMATION_PT_hkx_animations(bpy.types.Panel):
 
         quick_export_box = export_box.box()
         quick_export_box.label(text="Export to Project/Game")
-        quick_export_box.operator(QuickExportCharacterHKXAnimation.bl_idname)
-        quick_export_box.operator(QuickExportObjectHKXAnimation.bl_idname)
+        quick_export_box.operator(ExportCharacterHKXAnimation.bl_idname)
+        quick_export_box.operator(ExportObjectHKXAnimation.bl_idname)
 
         select_box = self.layout.box()
         select_box.operator(SelectArmatureActionOperator.bl_idname)

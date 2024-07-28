@@ -3,10 +3,13 @@ from __future__ import annotations
 __all__ = [
     "MSBToolsPanel",
     "MSBPartPanel",
+    "MSBMapPiecePartPanel",
     "MSBObjectPartPanel",
     "MSBCharacterPartPanel",
+    "MSBPlayerStartPartPanel",
     "MSBCollisionPartPanel",
     "MSBNavmeshPartPanel",
+    "MSBConnectCollisionPartPanel",
     "MSBRegionPanel",
 ]
 
@@ -89,9 +92,8 @@ class _MSBPartSubtypePanelMixin:
 
     layout: bpy.types.UILayout
 
-    part_subtype: MSBPartSubtype
+    part_subtype: MSBPartSubtype  # also `Object` propery attribute name
     prop_group_type: tp.Type[bpy.types.PropertyGroup]
-    prop_attr_name: str
 
     @classmethod
     def poll(cls, context):
@@ -107,7 +109,8 @@ class _MSBPartSubtypePanelMixin:
             layout.label(text=f"No active MSB {self.part_subtype}.")
             return
 
-        props = getattr(obj, self.prop_attr_name)
+        # noinspection PyTypeChecker
+        props = getattr(obj, self.part_subtype.value)
 
         for prop in self.prop_group_type.__annotations__:
             if prop.startswith("navmesh_groups_"):
@@ -117,6 +120,22 @@ class _MSBPartSubtypePanelMixin:
                 layout.prop(props, prop, text="")
             else:
                 layout.prop(props, prop)
+
+
+class MSBMapPiecePartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
+    """Draw a Panel in the Object properties window exposing the appropriate MSB Character fields for active object."""
+    bl_label = "MSB Map Piece Settings"
+    bl_idname = "OBJECT_PT_msb_map_piece"
+    bl_space_type = 'PROPERTIES'
+    bl_region_type = 'WINDOW'
+    bl_context = "object"
+
+    part_subtype = MSBPartSubtype.MAP_PIECE
+    prop_group_type = None
+
+    def draw(self, context):
+        layout = self.layout
+        layout.label(text="No additional properties.")
 
 
 class MSBObjectPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
@@ -129,7 +148,6 @@ class MSBObjectPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
 
     part_subtype = MSBPartSubtype.OBJECT
     prop_group_type = MSBObjectProps
-    prop_attr_name = "msb_object_props"
 
 
 class MSBCharacterPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
@@ -142,7 +160,6 @@ class MSBCharacterPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
 
     part_subtype = MSBPartSubtype.CHARACTER
     prop_group_type = MSBCharacterProps
-    prop_attr_name = "msb_character_props"
 
 
 class MSBPlayerStartPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
@@ -155,7 +172,6 @@ class MSBPlayerStartPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
 
     part_subtype = MSBPartSubtype.PLAYER_START
     prop_group_type = None
-    prop_attr_name = ""
 
     def draw(self, context):
         layout = self.layout
@@ -172,7 +188,6 @@ class MSBCollisionPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
 
     part_subtype = MSBPartSubtype.COLLISION
     prop_group_type = MSBCollisionProps
-    prop_attr_name = "msb_collision_props"
 
 
 class MSBNavmeshPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
@@ -185,7 +200,6 @@ class MSBNavmeshPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
 
     part_subtype = MSBPartSubtype.NAVMESH
     prop_group_type = MSBNavmeshProps
-    prop_attr_name = "msb_navmesh_props"
 
 
 class MSBConnectCollisionPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
@@ -198,7 +212,6 @@ class MSBConnectCollisionPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
 
     part_subtype = MSBPartSubtype.CONNECT_COLLISION
     prop_group_type = MSBConnectCollisionProps
-    prop_attr_name = "msb_connect_collision_props"
 
 
 class MSBRegionPanel(bpy.types.Panel):
@@ -224,7 +237,7 @@ class MSBRegionPanel(bpy.types.Panel):
             return
 
         props = obj.MSB_REGION
-        for prop in MSBRegionProps.__annotations__:
+        for prop in props.__annotations__:
             layout.prop(props, prop)
 
 # endregion

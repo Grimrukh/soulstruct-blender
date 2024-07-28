@@ -68,7 +68,7 @@ class CreateMSBPart(LoggingOperator):
             )
 
         model_stem = get_bl_obj_tight_name(obj)
-        collection_name = f"{settings.map_stem} {part_subtype} Parts"
+        collection_name = f"{settings.map_stem} {part_subtype.get_nice_name()} Parts"
         part_collection = get_collection(collection_name, context.scene.collection)
 
         try:

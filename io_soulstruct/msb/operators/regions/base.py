@@ -68,7 +68,7 @@ class BaseImportSingleMSBRegion(LoggingOperator):
         msb_stem = settings.get_latest_map_stem_version()
         msb_path = settings.get_import_msb_path()  # will automatically use latest MSB version if known and enabled
         msb = get_cached_file(msb_path, settings.get_game_msb_class())  # type: MSB_TYPING
-        collection_name = msb_import_settings.get_collection_name(msb_stem, self.config.REGION_SUBTYPE)
+        collection_name = msb_import_settings.get_collection_name(msb_stem, self.config.COLLECTION_NAME)
         region_collection = get_collection(collection_name, context.scene.collection)  # does NOT hide in viewport
 
         # Get MSB region.
@@ -80,11 +80,11 @@ class BaseImportSingleMSBRegion(LoggingOperator):
             except KeyError:
                 continue
         else:
-            return self.error(f"MSB {self.config.REGION_SUBTYPE} '{region_name}' not found in MSB.")
+            return self.error(f"MSB {self.config.REGION_SUBTYPE} region '{region_name}' not found in MSB.")
 
         try:
-            bl_region = bl_region_type.new_from_entry(
-                self, context, settings, msb_stem, region, region_collection
+            bl_region = bl_region_type.new_from_soulstruct_obj(
+                self, context, region, region_name, region_collection
             )
         except Exception as ex:
             traceback.print_exc()
@@ -130,7 +130,7 @@ class BaseImportAllMSBRegions(LoggingOperator):
         msb_stem = settings.get_latest_map_stem_version()
         msb_path = settings.get_import_msb_path()  # will automatically use latest MSB version if known and enabled
         msb = get_cached_file(msb_path, settings.get_game_msb_class())  # type: MSB_TYPING
-        collection_name = msb_import_settings.get_collection_name(msb_stem, self.config.REGION_SUBTYPE)
+        collection_name = msb_import_settings.get_collection_name(msb_stem, self.config.COLLECTION_NAME)
         region_collection = get_collection(collection_name, context.scene.collection)
 
         combined_region_list = []
@@ -141,7 +141,8 @@ class BaseImportAllMSBRegions(LoggingOperator):
         for region in [region for region in combined_region_list if is_name_match(region.name)]:
             try:
                 # Don't need to get created object.
-                bl_region_type.new_from_entry(self, context, settings, msb_stem, region, region_collection)
+                bl_region_type.new_from_soulstruct_obj(
+                    self, context, region, region.name, region_collection)
             except Exception as ex:
                 traceback.print_exc()
                 self.error(f"Failed to import MSB {self.config.REGION_SUBTYPE} region '{region.name}': {ex}")
@@ -150,8 +151,8 @@ class BaseImportAllMSBRegions(LoggingOperator):
 
         if region_count == 0:
             self.warning(
-                f"No MSB {self.config.REGION_SUBTYPE} regions found with {msb_import_settings.entry_name_match_mode} filter: "
-                f"'{msb_import_settings.entry_name_match}'"
+                f"No MSB {self.config.REGION_SUBTYPE} regions found with {msb_import_settings.entry_name_match_mode} "
+                f"filter: '{msb_import_settings.entry_name_match}'"
             )
             return {"CANCELLED"}
 

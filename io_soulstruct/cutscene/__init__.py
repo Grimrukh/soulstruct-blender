@@ -4,12 +4,16 @@ __all__ = [
     "ImportHKXCutscene",
     "ExportHKXCutscene",
     "HKX_CUTSCENE_PT_hkx_cutscene_tools",
+
+    "CutsceneImportSettings",
+    "CutsceneExportSettings",
 ]
 
 import bpy
 
-from .import_hkx_cutscene import ImportHKXCutscene
-from .export_hkx_cutscene import ExportHKXCutscene
+from .import_operators import ImportHKXCutscene
+from .export_operators import ExportHKXCutscene
+from .properties import *
 
 
 class HKX_CUTSCENE_PT_hkx_cutscene_tools(bpy.types.Panel):

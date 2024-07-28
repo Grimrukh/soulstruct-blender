@@ -25,7 +25,7 @@ if tp.TYPE_CHECKING:
     from soulstruct.base.maps.msb import MSBEntryList
 
 
-class BaseImportSingleMSBPart(LoggingOperator, abc.ABC):
+class BaseImportSingleMSBPart(LoggingOperator):
 
     config: tp.ClassVar[MSBPartOperatorConfig]
 
@@ -71,7 +71,7 @@ class BaseImportSingleMSBPart(LoggingOperator, abc.ABC):
         map_stem = settings.get_oldest_map_stem_version() if not self.config.USE_LATEST_MAP_FOLDER else msb_stem
         msb_path = settings.get_import_msb_path()  # will automatically use latest MSB version if known and enabled
         msb = get_cached_file(msb_path, settings.get_game_msb_class())  # type: MSB_TYPING
-        collection_name = msb_import_settings.get_collection_name(msb_stem, self.config.PART_SUBTYPE)
+        collection_name = msb_import_settings.get_collection_name(msb_stem, self.config.collection_name)
         part_collection = get_collection(collection_name, context.scene.collection)
 
         # Get MSB part.
@@ -83,19 +83,20 @@ class BaseImportSingleMSBPart(LoggingOperator, abc.ABC):
 
         try:
             # NOTE: Instance creator may not always use `map_stem` (e.g. characters).
-            bl_part = bl_part_type.new_from_entry(self, context, settings, map_stem, part, part_collection)
+            bl_part = bl_part_type.new_from_soulstruct_obj(
+                self, context, part, part_name, part_collection, map_stem)
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Failed to import MSB {self.config.PART_SUBTYPE} part '{part.name}': {ex}")
 
         # Select and frame view on new instance.
-        self.set_active_obj(bl_part)
+        self.set_active_obj(bl_part.obj)
         bpy.ops.view3d.view_selected(use_all_regions=False)
 
         return {"FINISHED"}
 
 
-class BaseImportAllMSBParts(LoggingOperator, abc.ABC):
+class BaseImportAllMSBParts(LoggingOperator):
 
     config: tp.ClassVar[MSBPartOperatorConfig]
 
@@ -138,7 +139,7 @@ class BaseImportAllMSBParts(LoggingOperator, abc.ABC):
         map_stem = settings.get_oldest_map_stem_version() if not self.config.USE_LATEST_MAP_FOLDER else msb_stem
         msb_path = settings.get_import_msb_path()  # will automatically use latest MSB version if known and enabled
         msb = get_cached_file(msb_path, settings.get_game_msb_class())  # type: MSB_TYPING
-        collection_name = msb_import_settings.get_collection_name(msb_stem, self.config.PART_SUBTYPE)
+        collection_name = msb_import_settings.get_collection_name(msb_stem, self.config.collection_name)
         part_collection = get_collection(collection_name, context.scene.collection)
 
         part_list = getattr(msb, self.config.MSB_LIST_NAME)
@@ -147,7 +148,9 @@ class BaseImportAllMSBParts(LoggingOperator, abc.ABC):
         for part in [part for part in part_list if is_name_match(part.name)]:
             try:
                 # No need to return instance.
-                bl_part_type.new_from_entry(self, context, settings, map_stem, part, part_collection)
+                bl_part_type.new_from_soulstruct_obj(
+                    self, context, part, part.name, part_collection, map_stem
+                )
             except Exception as ex:
                 traceback.print_exc()
                 self.error(f"Failed to import MSB {self.config.PART_SUBTYPE} part '{part.name}': {ex}")
@@ -157,8 +160,8 @@ class BaseImportAllMSBParts(LoggingOperator, abc.ABC):
 
         if part_count == 0:
             self.warning(
-                f"No MSB {self.config.PART_SUBTYPE} parts found with {msb_import_settings.entry_name_match_mode} filter: "
-                f"'{msb_import_settings.entry_name_match}'"
+                f"No MSB {self.config.PART_SUBTYPE} parts found with {msb_import_settings.entry_name_match_mode} "
+                f"filter: '{msb_import_settings.entry_name_match}'"
             )
             return {"CANCELLED"}
 
@@ -244,7 +247,7 @@ class BaseExportMSBParts(LoggingOperator):
 
             bl_part = bl_part_type(obj)
 
-            bl_model = bl_part.part_props.model
+            bl_model = bl_part.subtype_properties.model
             if not bl_model:
                 return self.error(f"MSB Part '{bl_part.name}' has no model in Blender. No parts exported.")
             model_stem = get_bl_obj_tight_name(bl_model)

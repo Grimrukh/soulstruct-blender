@@ -92,6 +92,12 @@ def set_face_material(bl_mesh, bl_face, face_flags: int):
                 color = NAVMESH_UNKNOWN_FLAG_COLOR
         bl_material = create_basic_material(material_name, color, wireframe_pixel_width=2)
 
+    # Set viewport display diffuse color.
+    try:
+        bl_material.diffuse_color = bl_material.node_tree.nodes["Diffuse BSDF"].inputs["Color"].default_value
+    except (AttributeError, KeyError):
+        pass  # ignore
+
     # Add material to this mesh and this face.
     bl_face.material_index = len(bl_mesh.materials)
     bl_mesh.materials.append(bl_material)

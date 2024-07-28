@@ -75,7 +75,7 @@ class BlenderMSBRegion(SoulstructObject[MSBRegion, MSBRegionProps]):
             # No scale needed.
         elif "Sphere" in region_type_name:
             soulstruct_obj: MSBRegionSphere
-            bl_region.region_shape = MSBRegionShape.SPHERE
+            bl_region.shape = MSBRegionShape.SPHERE
             bl_region.obj.scale = (soulstruct_obj.radius, soulstruct_obj.radius, soulstruct_obj.radius)
             bl_region.obj.empty_display_type = "SPHERE"  # makes these regions much easier to click
         elif "Cylinder" in region_type_name:
@@ -85,8 +85,9 @@ class BlenderMSBRegion(SoulstructObject[MSBRegion, MSBRegionProps]):
             bl_region.obj.empty_display_type = "PLAIN_AXES"  # no great choice for cylinders but this is probably best
         elif "Box" in region_type_name:
             soulstruct_obj: MSBRegionBox
-            bl_region.region_shape = MSBRegionShape.BOX
+            bl_region.shape = MSBRegionShape.BOX
             bl_region.obj.scale = (soulstruct_obj.width, soulstruct_obj.depth, soulstruct_obj.height)
+            # TODO: CUBE vis is wrong, since origin is in center center, not bottom center...
             bl_region.obj.empty_display_type = "CUBE"  # makes these regions much easier to click
         else:
             raise MSBRegionImportError(f"Cannot import MSB region type/shape: {region_type_name}")

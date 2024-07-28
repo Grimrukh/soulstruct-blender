@@ -32,7 +32,7 @@ class BlenderMSBNavmesh(BlenderMSBPart[MSBNavmesh, MSBNavmeshProps]):
     PART_SUBTYPE = MSBPartSubtype.NAVMESH
     MODEL_SUBTYPES = ["navmesh_models"]
 
-    data: bpy.types.Mesh  # type override
+    __slots__ = []
 
     @property
     def navmesh_groups(self):
@@ -59,8 +59,12 @@ class BlenderMSBNavmesh(BlenderMSBPart[MSBNavmesh, MSBNavmeshProps]):
         collection: bpy.types.Collection = None,
         map_stem="",
     ) -> tp.Self:
-        bl_navmesh = cls.new(name, data=None, collection=collection)  # type: BlenderMSBNavmesh
+        bl_navmesh = super().new_from_soulstruct_obj(
+            operator, context, soulstruct_obj, name, collection, map_stem
+        )
+
         bl_navmesh.navmesh_groups = soulstruct_obj.navmesh_groups
+
         return bl_navmesh
 
     def to_soulstruct_obj(
@@ -75,7 +79,7 @@ class BlenderMSBNavmesh(BlenderMSBPart[MSBNavmesh, MSBNavmeshProps]):
         return navmesh
 
     @classmethod
-    def find_model(cls, model_name: str, map_stem: str) -> bpy.types.MeshObject:
+    def find_model_mesh(cls, model_name: str, map_stem: str) -> bpy.types.MeshObject:
         """Find the given navmesh model in the '{map_stem} Navmesh Models' collection in the current scene."""
         collection_name = f"{map_stem} Navmesh Models"
         try:
@@ -83,12 +87,12 @@ class BlenderMSBNavmesh(BlenderMSBPart[MSBNavmesh, MSBNavmeshProps]):
         except KeyError:
             raise MissingPartModelError(f"Collection '{collection_name}' not found in current scene.")
         for obj in collection.objects:
-            if obj.name == model_name and obj.soulstruct_type == "NAVMESH":
+            if obj.name == model_name and obj.soulstruct_type == SoulstructType.NAVMESH:
                 return obj
         raise MissingPartModelError(f"Navmesh model '{model_name}' not found in '{collection_name}' collection.")
 
     @classmethod
-    def import_model(
+    def import_model_mesh(
         cls,
         operator: LoggingOperator,
         context: bpy.types.Context,

@@ -25,8 +25,9 @@ from soulstruct.games import *
 from io_soulstruct.exceptions import *
 from io_soulstruct.general import *
 from io_soulstruct.utilities import *
-from io_soulstruct.flver.textures.export_textures import *
-from io_soulstruct.flver.models import BlenderFLVER
+from io_soulstruct.flver.image import *
+from io_soulstruct.flver.image.export_operators import export_map_area_textures
+from .types import BlenderFLVER
 
 if tp.TYPE_CHECKING:
     from io_soulstruct.type_checking import CHRBND_TYPING, OBJBND_TYPING, PARTSBND_TYPING
@@ -69,14 +70,14 @@ class ExportStandaloneFLVER(LoggingOperator, ExportHelper):
 
         bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
         settings = self.settings(context)
-        self.filepath = settings.game.process_dcx_path(f"{bl_flver.flver_stem}.flver")
+        self.filepath = settings.game.process_dcx_path(f"{bl_flver.tight_name}.flver")
         context.window_manager.fileselect_add(self)
         return {"RUNNING_MODAL"}
 
     def execute(self, context):
         try:
             bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
-        except FLVERError as ex:
+        except SoulstructTypeError as ex:
             return self.error(str(ex))
         settings = self.settings(context)
 
@@ -122,7 +123,7 @@ class ExportFLVERIntoBinder(LoggingOperator, ExportHelper):
         maxlen=255,
     )
 
-    dcx_type: get_dcx_enum_property(default="Null")
+    dcx_type: get_dcx_enum_property(default=DCXType.Null)
 
     overwrite_existing: BoolProperty(
         name="Overwrite Existing Entry",
@@ -161,7 +162,7 @@ class ExportFLVERIntoBinder(LoggingOperator, ExportHelper):
     def execute(self, context):
         try:
             bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
-        except FLVERError as ex:
+        except SoulstructTypeError as ex:
             return self.error(str(ex))
 
         # Automatic DCX for FLVERs in Binders is Null.
@@ -181,7 +182,7 @@ class ExportFLVERIntoBinder(LoggingOperator, ExportHelper):
                 return self.error("No FLVER files found in Binder and default entry ID was left as -1.")
             flver_entry = binder.set_default_entry(
                 entry_spec=self.default_entry_id,
-                new_path=self.default_entry_path.format(name=bl_flver.flver_stem),
+                new_path=self.default_entry_path.format(name=bl_flver.tight_name),
                 new_flags=self.default_entry_flags,
             )  # no data yet
             if flver_entry.data and not self.overwrite_existing:
@@ -195,16 +196,16 @@ class ExportFLVERIntoBinder(LoggingOperator, ExportHelper):
             if len(flver_entries) > 1:
                 # Look for FLVER with matching name.
                 for entry in flver_entries:
-                    if entry.minimal_stem == bl_flver.flver_stem:
+                    if entry.minimal_stem == bl_flver.tight_name:
                         self.info(
                             f"Multiple FLVER files found in Binder. Replacing entry with matching stem: "
-                            f"{bl_flver.flver_stem}"
+                            f"{bl_flver.tight_name}"
                         )
                         flver_entry = entry
                         break
                 else:
                     return self.error(
-                        f"Multiple FLVER files found in Binder, none of which have stem '{bl_flver.flver_stem}'. "
+                        f"Multiple FLVER files found in Binder, none of which have stem '{bl_flver.tight_name}'. "
                         f"Change the start of your exported object's name or erase one or more existing FLVERs first."
                     )
             else:
@@ -283,39 +284,35 @@ class ExportMapPieceFLVERs(LoggingOperator):
 
         for bl_flver in bl_flvers:
 
-            map_stem = settings.get_map_stem_for_export(bl_flver.root_obj, oldest=True)
+            map_stem = settings.get_map_stem_for_export(bl_flver.mesh, oldest=True)
             relative_map_path = Path(f"map/{map_stem}")
-            collected_texture_images = {}
+            texture_collection = DDSTextureCollection()
 
             try:
                 # We also pass the model name as the default bone name.
                 flver = bl_flver.to_soulstruct_obj(
                     self,
                     context,
-                    collected_texture_images,
+                    texture_collection,
                 )
             except Exception as ex:
                 traceback.print_exc()
                 return self.error(
-                    f"Cannot export Map Piece FLVER '{bl_flver.flver_stem}' from '{bl_flver.name}. Error: {ex}"
+                    f"Cannot export Map Piece FLVER '{bl_flver.tight_name}' from '{bl_flver.name}. Error: {ex}"
                 )
 
             flver.dcx_type = flver_dcx_type
-            settings.export_file(self, flver, relative_map_path / f"{bl_flver.flver_stem}.flver")
+            settings.export_file(self, flver, relative_map_path / f"{bl_flver.tight_name}.flver")
 
             if flver_export_settings.export_textures:
                 # Collect all Blender images for batched map area export.
                 area = settings.map_stem[:3]
-                area_textures = map_area_textures.setdefault(area, {})
-                area_textures |= collected_texture_images
+                area_textures = map_area_textures.setdefault(area, DDSTextureCollection())
+                area_textures |= texture_collection
 
         if map_area_textures:  # only non-empty if texture export enabled
-            export_map_area_textures(
-                self,
-                context,
-                settings,
-                map_area_textures,
-            )
+            for map_area, texture_collection in map_area_textures.items():
+                export_map_area_textures(self, context, map_area, texture_collection)
 
         # Select original active object.
         if active_object:
@@ -333,7 +330,7 @@ class BaseGameFLVERBinderExportOperator(LoggingOperator):
         settings: SoulstructSettings,
         binder_path_callback: tp.Callable[[BlenderFLVER], Path],
         binder_class: type[CHRBND_TYPING | OBJBND_TYPING | PARTSBND_TYPING],
-    ) -> tuple[str, CHRBND_TYPING | OBJBND_TYPING | PARTSBND_TYPING, FLVER, dict[str, bpy.types.Image]]:
+    ) -> tuple[str, CHRBND_TYPING | OBJBND_TYPING | PARTSBND_TYPING, FLVER, DDSTextureCollection]:
         bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
         cls_name = binder_class.__name__
 
@@ -349,27 +346,31 @@ class BaseGameFLVERBinderExportOperator(LoggingOperator):
         binder = binder_class.from_path(binder_path)
 
         self.to_object_mode()
-        textures = {}
+        texture_collection = DDSTextureCollection()
         try:
-            flver = bl_flver.to_soulstruct_obj(self, context, collected_texture_images=textures)
+            flver = bl_flver.to_soulstruct_obj(self, context, texture_collection=texture_collection)
         except Exception as ex:
             traceback.print_exc()
             raise FLVERExportError(
-                f"Cannot create exported FLVER '{bl_flver.flver_stem}' from Blender Mesh '{bl_flver.name}'. Error: {ex}"
+                f"Cannot create exported FLVER '{bl_flver.tight_name}' from Blender Mesh '{bl_flver.name}'. Error: {ex}"
             )
 
         flver.dcx_type = DCXType.Null  # no DCX inside any Binder here
 
-        return bl_flver.tight_name, binder, flver, textures
+        return bl_flver.tight_name, binder, flver, texture_collection
 
     def export_textures_to_binder_tpf(
         self,
         context,
         binder: CHRBND_TYPING | OBJBND_TYPING | PARTSBND_TYPING,
-        images: dict[str, bpy.types.Image],
+        texture_collection: DDSTextureCollection,
     ) -> bool:
-        # TODO: Get existing textures to resolve 'SAME' option for DDS format.
-        multi_tpf = export_images_to_tpf(context, self, images, enforce_max_chrbnd_tpf_size=binder.cls_name == "CHRBND")
+        multi_tpf = texture_collection.to_multi_texture_tpf(
+            self,
+            context,
+            enforce_max_chrbnd_tpf_size=binder.cls_name == "CHRBND",
+            find_same_format=None,  # TODO: Get existing textures to resolve 'SAME' option for DDS format
+        )
         if multi_tpf is None:
             return False  # textures exceeded bundled CHRBND capacity; handled by caller (game-specific)
 
@@ -394,8 +395,8 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
         if not cls.settings(context).can_auto_export or not context.active_object:
             return False
         try:
-            bl_flver = BlenderFLVER.from_bl_obj(context.active_object)
-        except FLVERError:
+            bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
+        except SoulstructTypeError:
             return False
         if not bl_flver.armature:
             # Character MUST have an Armature.
@@ -441,13 +442,13 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
         settings: SoulstructSettings,
         chrbnd: CHRBND_TYPING,
         model_stem: str,
-        images: dict[str, bpy.types.Image],
+        texture_collection: DDSTextureCollection,
     ) -> tp.Callable[[], None] | None:
 
         multi_tpf_succeeded = self.export_textures_to_binder_tpf(
             context,
             chrbnd,
-            images,
+            texture_collection,
         )
 
         if settings.is_game(DARK_SOULS_PTDE):
@@ -469,18 +470,18 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
                 return post_export_action
 
             # Otherwise, create loose folder with individual TPFs.
-            tpfs = export_images_to_multiple_tpfs(
-                context,
+            tpfs = texture_collection.to_single_texture_tpfs(
                 self,
-                images,
                 DCXType.Null,  # no DCX in PTDE
+                find_same_format=None,  # TODO
             )
 
             def post_export_action():
 
                 if tpfs:
-                    for texture_stem, tpf in tpfs.items():
-                        settings.export_file(self, tpf, relative_tpf_dir_path / f"{texture_stem}.tpf")
+                    for tpf in tpfs:
+                        # TPF `path` already set correctly to name.
+                        settings.export_file(self, tpf, relative_tpf_dir_path / tpf.path.name)
                     self.info(f"Exported {len(tpfs)} textures into loose character TPF folder '{model_stem}'.")
 
             return post_export_action
@@ -509,7 +510,9 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
                 return post_export_action
 
             # Otherwise, create CHRTPFBXF. This method will put the header in `chrbnd`.
-            chrtpfbdt_bytes, entry_count = self.create_chrtpfbxf(context, settings, chrbnd, model_stem, images)
+            chrtpfbdt_bytes, entry_count = self.create_chrtpfbxf(
+                context, settings, chrbnd, model_stem, texture_collection
+            )
 
             def post_export_action():
                 if chrtpfbdt_bytes:
@@ -529,14 +532,17 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
         settings: SoulstructSettings,
         chrbnd: CHRBND_TYPING,
         model_stem: str,
-        images: dict[str, bpy.types.Image],
+        texture_collection: DDSTextureCollection,
     ) -> tuple[bytes, int]:
         """Create CHRTPFBXF, put its header into CHRBND, and return the split data as bytes, along with entry count."""
         chrtpfbhd_entry_name = f"{model_stem}.chrtpfbhd"  # no DCX
 
         # TODO: Get existing textures to resolve 'SAME' option for DDS format.
-        chrtpfbxf = export_images_to_tpfbhd(
-            context, self, images, settings.game.get_dcx_type("tpf"), entry_path_parent=f"\\{model_stem}\\"
+        chrtpfbxf = texture_collection.to_tpfbhd(
+            self,
+            context,
+            tpf_dcx_type=settings.game.get_dcx_type("tpf"),
+            entry_path_parent=f"\\{model_stem}\\",
         )
         chrtpfbxf.dcx_type = DCXType.Null  # no DCX
 
@@ -583,8 +589,8 @@ class ExportObjectFLVER(BaseGameFLVERBinderExportOperator):
         if not cls.settings(context).can_auto_export or not context.active_object:
             return False
         try:
-            bl_flver = BlenderFLVER.from_bl_obj(context.active_object)
-        except FLVERError:
+            bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
+        except SoulstructTypeError:
             return False
         return bl_flver.name.startswith("o")
 
@@ -626,8 +632,8 @@ class ExportAssetFLVER(BaseGameFLVERBinderExportOperator):
         if not cls.settings(context).can_auto_export or not context.active_object:
             return False
         try:
-            bl_flver = BlenderFLVER.from_bl_obj(context.active_object)
-        except FLVERError:
+            bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
+        except SoulstructTypeError:
             return False
         return bl_flver.name.lower().startswith("aeg")
 
@@ -664,8 +670,8 @@ class ExportEquipmentFLVER(BaseGameFLVERBinderExportOperator):
         if not cls.settings(context).can_auto_export or not context.active_object:
             return False
         try:
-            bl_flver = BlenderFLVER.from_bl_obj(context.active_object)
-        except FLVERError:
+            bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
+        except SoulstructTypeError:
             return False
         if not bl_flver.armature:
             # Equipment MUST have an Armature.

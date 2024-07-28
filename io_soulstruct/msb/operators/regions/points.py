@@ -12,6 +12,7 @@ from .base import *
 
 msb_point_operator_config = MSBRegionOperatorConfig(
     REGION_SUBTYPE=MSBRegionSubtype.NA,
+    COLLECTION_NAME="Point Regions",
     MSB_LIST_NAMES=["points"],
     GAME_ENUM_NAME="point_region",
 )

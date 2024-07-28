@@ -22,6 +22,7 @@ from .msb_part import BlenderMSBPart
 if tp.TYPE_CHECKING:
     from soulstruct.darksouls1ptde.maps.msb import MSB
 
+
 class BlenderMSBCollision(BlenderMSBPart[MSBCollision, MSBCollisionProps]):
     """Not FLVER-based."""
 
@@ -30,7 +31,7 @@ class BlenderMSBCollision(BlenderMSBPart[MSBCollision, MSBCollisionProps]):
     PART_SUBTYPE = MSBPartSubtype.COLLISION
     MODEL_SUBTYPES = ["collision_models"]
 
-    data: bpy.types.Mesh  # type override
+    __slots__ = []
 
     AUTO_COLLISION_PROPS = [
         "sound_space_type",
@@ -54,8 +55,15 @@ class BlenderMSBCollision(BlenderMSBPart[MSBCollision, MSBCollisionProps]):
     camera_2_id: int
     unk_x27_x28: int
     attached_bonfire: int
-    environment_event: bpy.types.Object | None
     reflect_plane_height: float
+
+    @property
+    def environment_event(self) -> bpy.types.Object | None:
+        return self.subtype_properties.environment_event
+
+    @environment_event.setter
+    def environment_event(self, value: bpy.types.Object | None):
+        self.subtype_properties.environment_event = value
 
     @property
     def navmesh_groups(self):
@@ -103,7 +111,12 @@ class BlenderMSBCollision(BlenderMSBPart[MSBCollision, MSBCollisionProps]):
 
         bl_collision.navmesh_groups = soulstruct_obj.navmesh_groups
         bl_collision.environment_event = cls.entry_ref_to_bl_obj(
-            operator, soulstruct_obj, "environment_event", soulstruct_obj.environment_event, SoulstructType.MSB_EVENT
+            operator,
+            soulstruct_obj,
+            "environment_event",
+            soulstruct_obj.environment_event,
+            SoulstructType.MSB_EVENT,
+            missing_collection_name=f"{map_stem} Missing MSB References".lstrip(),
         )
         bl_collision.vagrant_entity_ids = soulstruct_obj.vagrant_entity_ids
 
@@ -143,7 +156,7 @@ class BlenderMSBCollision(BlenderMSBPart[MSBCollision, MSBCollisionProps]):
         return msb_collision
 
     @classmethod
-    def find_model(cls, model_name: str, map_stem: str) -> bpy.types.MeshObject:
+    def find_model_mesh(cls, model_name: str, map_stem: str) -> bpy.types.MeshObject:
         """Find the model of the given type in the 'Map Collision Models' collection in the current scene.
 
         Returns the Empty parent of all 'h' and 'l' submeshes of the collision (`children`).
@@ -159,7 +172,7 @@ class BlenderMSBCollision(BlenderMSBPart[MSBCollision, MSBCollisionProps]):
         raise MissingPartModelError(f"Collision model mesh '{model_name}' not found in '{collection_name}' collection.")
 
     @classmethod
-    def import_model(
+    def import_model_mesh(
         cls,
         operator: LoggingOperator,
         context: bpy.types.Context,

@@ -12,6 +12,7 @@ from .base import *
 
 msb_volume_operator_config = MSBRegionOperatorConfig(
     REGION_SUBTYPE=MSBRegionSubtype.NA,
+    COLLECTION_NAME="Volume Regions",
     MSB_LIST_NAMES=["spheres", "cylinders", "boxes"],
     GAME_ENUM_NAME="volume_region",
 )

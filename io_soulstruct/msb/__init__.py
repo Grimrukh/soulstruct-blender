@@ -14,6 +14,11 @@ __all__ = [
     "ImportAllMSBObjects",
     "ImportMSBAsset",
     "ImportAllMSBAssets",
+    "ImportMSBPlayerStart",
+    "ImportAllMSBPlayerStarts",
+    "ImportMSBConnectCollision",
+    "ImportAllMSBConnectCollisions",
+
     "ImportMSBPoint",
     "ImportMSBVolume",
     "ImportAllMSBPoints",
@@ -26,9 +31,11 @@ __all__ = [
     "ExportMSBMapPieces",
     "ExportMSBObjects",
     "ExportMSBCharacters",
+    "ExportMSBPlayerStarts",
     "ExportMSBCollisions",
     "ExportMSBNavmeshes",
     "ExportMSBNavmeshCollection",
+    "ExportMSBConnectCollisions",
 
     "CreateMSBPart",
     "DuplicateMSBPartModel",
@@ -49,10 +56,13 @@ __all__ = [
 
     "MSBToolsPanel",
     "MSBPartPanel",
+    "MSBMapPiecePartPanel",
     "MSBObjectPartPanel",
     "MSBCharacterPartPanel",
+    "MSBPlayerStartPartPanel",
     "MSBCollisionPartPanel",
     "MSBNavmeshPartPanel",
+    "MSBConnectCollisionPartPanel",
     "MSBRegionPanel",
 ]
 

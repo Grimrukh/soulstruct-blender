@@ -66,6 +66,7 @@ class MCGNodeProps(bpy.types.PropertyGroup):
         description="Triangle indices in Navmesh B directly in contact with this node",
     )
 
+
 class MCGEdgeProps(bpy.types.PropertyGroup):
 
     navmesh_part: bpy.props.PointerProperty(

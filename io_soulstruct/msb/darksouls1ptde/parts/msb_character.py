@@ -9,7 +9,7 @@ import typing as tp
 
 import bpy
 from io_soulstruct.exceptions import FLVERImportError
-from io_soulstruct.flver.textures.import_textures import TextureImportManager
+from io_soulstruct.flver.image.image_import_manager import ImageImportManager
 from io_soulstruct.flver.models import BlenderFLVER
 from io_soulstruct.flver.utilities import get_flvers_from_binder
 from io_soulstruct.msb.properties import MSBPartSubtype, MSBCharacterProps
@@ -31,7 +31,7 @@ class BlenderMSBCharacter(BlenderMSBPart[MSBCharacter, MSBCharacterProps]):
     PART_SUBTYPE = MSBPartSubtype.CHARACTER
     MODEL_SUBTYPES = ["character_models"]
 
-    data: bpy.types.Mesh  # type override
+    __slots__ = []
 
     AUTO_CHARACTER_PROPS = [
         "ai_id",
@@ -55,6 +55,14 @@ class BlenderMSBCharacter(BlenderMSBPart[MSBCharacter, MSBCharacterProps]):
     damage_animation: int
 
     @property
+    def draw_parent(self) -> bpy.types.Object | None:
+        return self.subtype_properties.draw_parent
+
+    @draw_parent.setter
+    def draw_parent(self, value: bpy.types.Object | None):
+        self.subtype_properties.draw_parent = value
+
+    @property
     def patrol_regions(self) -> list[bpy.types.Object | None]:
         return [
             getattr(self.subtype_properties, f"patrol_regions_{i}")
@@ -72,6 +80,14 @@ class BlenderMSBCharacter(BlenderMSBPart[MSBCharacter, MSBCharacterProps]):
             else:
                 setattr(self.subtype_properties, f"patrol_regions_{i}", None)
 
+    @property
+    def armature(self) -> bpy.types.ArmatureObject | None:
+        """Detect parent Armature of wrapped Mesh object. Rarely present for Parts."""
+        if self.obj.parent and self.obj.parent.type == "ARMATURE":
+            # noinspection PyTypeChecker
+            return self.obj.parent
+        return None
+
     @classmethod
     def new_from_soulstruct_obj(
         cls,
@@ -84,11 +100,17 @@ class BlenderMSBCharacter(BlenderMSBPart[MSBCharacter, MSBCharacterProps]):
     ) -> tp.Self:
         bl_character = super().new_from_soulstruct_obj(
             operator, context, soulstruct_obj, name, collection, map_stem
-        )  # type: tp.Self
+        )  # type: BlenderMSBCharacter
 
-        bl_character.character_props.is_dummy = isinstance(soulstruct_obj, MSBDummyCharacter)
+        missing_collection_name = f"{map_stem} Missing MSB References".lstrip()
+
         bl_character.draw_parent = cls.entry_ref_to_bl_obj(
-            operator, soulstruct_obj, "draw_parent", soulstruct_obj.draw_parent, SoulstructType.MSB_PART
+            operator,
+            soulstruct_obj,
+            "draw_parent",
+            soulstruct_obj.draw_parent,
+            SoulstructType.MSB_PART,
+            missing_collection_name=missing_collection_name,
         )
 
         bl_character.patrol_regions = [
@@ -98,12 +120,15 @@ class BlenderMSBCharacter(BlenderMSBPart[MSBCharacter, MSBCharacterProps]):
                 f"patrol_regions[{i}]",
                 soulstruct_obj.patrol_regions[i],
                 SoulstructType.MSB_REGION,
+                missing_collection_name=missing_collection_name,
             )
             for i in range(8)
         ]
 
         for name in cls.AUTO_CHARACTER_PROPS:
             setattr(bl_character, name, getattr(soulstruct_obj, name))
+
+        bl_character.subtype_properties.is_dummy = isinstance(soulstruct_obj, MSBDummyCharacter)
 
         return bl_character
 
@@ -133,26 +158,26 @@ class BlenderMSBCharacter(BlenderMSBPart[MSBCharacter, MSBCharacterProps]):
         return msb_character
 
     @classmethod
-    def find_model(cls, model_name: str, map_stem: str):
-        return find_flver_model(cls.PART_SUBTYPE, model_name)
+    def find_model_mesh(cls, model_name: str, map_stem="") -> bpy.types.MeshObject:
+        return find_flver_model(model_name).mesh
 
     @classmethod
-    def import_model(
+    def import_model_mesh(
         cls,
         operator: LoggingOperator,
         context: bpy.types.Context,
         model_name: str,
         map_stem="",  # not used
-    ) -> BlenderFLVER:
+    ) -> bpy.types.MeshObject:
         """Import the model of the given name into a collection in the current scene."""
         settings = operator.settings(context)
 
-        flver_import_settings = context.scene.flver_import_settings
+        import_settings = context.scene.flver_import_settings
         chrbnd_path = settings.get_import_file_path(f"chr/{model_name}.chrbnd")
 
         operator.info(f"Importing character FLVER from: {chrbnd_path.name}")
 
-        texture_import_manager = TextureImportManager(settings) if flver_import_settings.import_textures else None
+        texture_import_manager = ImageImportManager(operator, context) if import_settings.import_textures else None
 
         chrbnd = Binder.from_path(chrbnd_path)
         binder_flvers = get_flvers_from_binder(chrbnd, chrbnd_path, allow_multiple=False)
@@ -161,7 +186,7 @@ class BlenderMSBCharacter(BlenderMSBPart[MSBCharacter, MSBCharacterProps]):
         flver = binder_flvers[0]
 
         try:
-            return BlenderFLVER.new_from_soulstruct_obj(
+            bl_flver = BlenderFLVER.new_from_soulstruct_obj(
                 operator,
                 context,
                 flver,
@@ -172,6 +197,8 @@ class BlenderMSBCharacter(BlenderMSBPart[MSBCharacter, MSBCharacterProps]):
         except Exception as ex:
             traceback.print_exc()  # for inspection in Blender console
             raise FLVERImportError(f"Cannot import FLVER from CHRBND: {chrbnd_path.name}. Error: {ex}")
+
+        return bl_flver.mesh
 
 
 BlenderMSBCharacter.add_auto_subtype_props(*BlenderMSBCharacter.AUTO_CHARACTER_PROPS)

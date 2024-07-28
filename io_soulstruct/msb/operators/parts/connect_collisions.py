@@ -17,9 +17,9 @@ from .base import *
 
 msb_connect_collision_operator_config = MSBPartOperatorConfig(
     PART_SUBTYPE=MSBPartSubtype.CONNECT_COLLISION,
-    MSB_LIST_NAME="collisions",
+    MSB_LIST_NAME="connect_collisions",
     MSB_MODEL_LIST_NAMES=["collision_models"],
-    GAME_ENUM_NAME="collision_part",
+    GAME_ENUM_NAME="connect_collision_part",
 )
 
 

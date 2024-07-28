@@ -97,7 +97,6 @@ class MSBImportPanel(bpy.types.Panel):
         region_box.operator(ImportAllMSBVolumes.bl_idname)  # uses confirmation dialog
 
 
-
 class MSBExportPanel(bpy.types.Panel):
     """Panel for Soulstruct MSB export operators."""
     bl_label = "MSB Export"

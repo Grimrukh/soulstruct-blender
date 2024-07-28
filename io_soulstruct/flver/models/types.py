@@ -24,20 +24,26 @@ from soulstruct.containers.tpf import TPFTexture
 from soulstruct.utilities.maths import Vector3, Matrix3
 from soulstruct.utilities.text import natural_keys
 
-from io_soulstruct.exceptions import UnsupportedGameError, FLVERError, FLVERImportError, FLVERExportError
-from io_soulstruct.flver.materials.types import BlenderFLVERMaterial
-from io_soulstruct.flver.textures.import_textures import *
+from io_soulstruct.exceptions import *
+from io_soulstruct.flver.material.types import BlenderFLVERMaterial
+from io_soulstruct.flver.image.import_operators import *
+from io_soulstruct.flver.image.image_import_manager import ImageImportManager
+from io_soulstruct.flver.image.types import DDSTexture, DDSTextureCollection
+from io_soulstruct.general import GAME_CONFIG
 from io_soulstruct.general.cached import get_cached_mtdbnd, get_cached_matbinbnd
 from io_soulstruct.types import *
 from io_soulstruct.utilities import *
 from io_soulstruct.utilities.conversion import GAME_TO_BL_VECTOR, GAME_FORWARD_UP_VECTORS_TO_BL_EULER
+from .properties import *
 
 if tp.TYPE_CHECKING:
     from soulstruct.base.models.matbin import MATBINBND
-    from io_soulstruct.general import SoulstructSettings, GAME_CONFIG
-    from io_soulstruct.flver.properties import FLVERBoneProps, FLVERDummyProps, FLVERProps
+    from io_soulstruct.general import SoulstructSettings
 
-class BlenderFLVERDummy(SoulstructObject[FLVERDummyProps]):
+
+class BlenderFLVERDummy(SoulstructObject[Dummy, FLVERDummyProps]):
+
+    __slots__ = []
 
     TYPE = SoulstructType.FLVER_DUMMY
     OBJ_DATA_TYPE = SoulstructDataType.EMPTY
@@ -47,7 +53,40 @@ class BlenderFLVERDummy(SoulstructObject[FLVERDummyProps]):
         r"^(?P<model_name>.+)? *[Dd]ummy(?P<index><\d+>)? *(?P<reference_id>\[\d+\]) *(\.\d+)?$"
     )
 
-    parent_bone: bpy.types.Bone
+    AUTO_DUMMY_PROPS: tp.ClassVar[list[str]] = [
+        "color_rgba",
+        "flag_1",
+        "use_upward_vector",
+        "unk_x30",
+        "unk_x34"
+    ]
+
+    @property
+    def parent_bone(self):
+        if not self.parent or self.parent.type != "ARMATURE":
+            raise ValueError("Cannot get parent bone of Dummy without an Armature parent.")
+        # noinspection PyTypeChecker
+        armature = self.parent  # type: bpy.types.ArmatureObject
+        try:
+            return armature.data.bones[self.type_properties.parent_bone_name]
+        except KeyError:
+            raise KeyError(f"Parent bone '{self.type_properties.parent_bone_name}' of Dummy not found in Armature.")
+
+    @parent_bone.setter
+    def parent_bone(self, value: bpy.types.Bone | str):
+        if not self.parent or self.parent.type != "ARMATURE":
+            raise ValueError("Cannot set parent bone of Dummy without an Armature parent.")
+        # noinspection PyTypeChecker
+        armature = self.parent  # type: bpy.types.ArmatureObject
+        if isinstance(value, bpy.types.Bone):
+            self.type_properties.parent_bone_name = value.name
+        elif isinstance(value, str):
+            if value not in armature.data.bones:
+                raise ValueError(f"Bone '{value}' not found in Armature of Dummy.")
+            self.type_properties.parent_bone_name = value
+        else:
+            raise TypeError(f"Parent bone must be a Bone or string, not {type(value)}.")
+
     color_rgba: tuple[int, int, int, int]
     flag_1: bool
     use_upward_vector: bool
@@ -72,7 +111,7 @@ class BlenderFLVERDummy(SoulstructObject[FLVERDummyProps]):
         if armature is None:
             raise FLVERImportError("Cannot create Blender Dummy without an Armature object.")
 
-        bl_dummy = cls.new(name, data=None, collection=collection)
+        bl_dummy = cls.new(name, data=None, collection=collection)  # type: BlenderFLVERDummy
         bl_dummy.parent = armature
         bl_dummy.obj.empty_display_type = "ARROWS"  # best display type/size I've found (single arrow not sufficient)
         bl_dummy.obj.empty_display_size = 0.05
@@ -92,8 +131,9 @@ class BlenderFLVERDummy(SoulstructObject[FLVERDummyProps]):
             # Bone's FLVER translate is in the space of (i.e. relative to) this parent bone.
             # NOTE: This is NOT the same as the 'attach' bone, which is used as the actual Blender parent and
             # controls how the dummy moves during armature animations.
-            bl_dummy.parent_bone = armature.data[soulstruct_obj.parent_bone_index]
-            bl_parent_bone_matrix = armature.data[soulstruct_obj.parent_bone_index].matrix_local
+            bl_parent_bone = armature.data.bones[soulstruct_obj.parent_bone_index]
+            bl_dummy.parent_bone = bl_parent_bone
+            bl_parent_bone_matrix = bl_parent_bone.matrix_local
             bl_location = bl_parent_bone_matrix @ GAME_TO_BL_VECTOR(soulstruct_obj.translate)
         else:
             # Bone's location is in armature space. Leave `parent_bone` as None.
@@ -102,12 +142,13 @@ class BlenderFLVERDummy(SoulstructObject[FLVERDummyProps]):
         # Dummy moves with this bone during animations.
         if soulstruct_obj.attach_bone_index != -1:
             # Set true Blender parent.
-            bl_dummy.obj.parent_bone = armature.data[soulstruct_obj.attach_bone_index]
-            bl_dummy.parent_type = "BONE"
+            bl_attach_bone = armature.data.bones[soulstruct_obj.attach_bone_index]
+            bl_dummy.obj.parent_bone = bl_attach_bone.name  # note NAME, not Bone itself
+            bl_dummy.obj.parent_type = "BONE"
 
         # We need to set the dummy's world matrix, rather than its local matrix, to bypass its possible bone
         # attachment above.
-        bl_dummy.matrix_world = Matrix.LocRotScale(bl_location, bl_rotation_euler, Vector((1.0, 1.0, 1.0)))
+        bl_dummy.obj.matrix_world = Matrix.LocRotScale(bl_location, bl_rotation_euler, Vector((1.0, 1.0, 1.0)))
         
         return bl_dummy
 
@@ -181,7 +222,8 @@ class BlenderFLVERDummy(SoulstructObject[FLVERDummyProps]):
     @name.setter
     def name(self, value):
         raise ValueError(
-            "Cannot set name of Blender Dummy object directly. Use `model_name`, `index`, and `reference_id` properties."
+            "Cannot set name of Blender Dummy object directly. Use `model_name`, `index`, and `reference_id` "
+            "properties."
         )
 
     # region Dummy Name Components
@@ -217,7 +259,7 @@ class BlenderFLVERDummy(SoulstructObject[FLVERDummyProps]):
         match = self.DUMMY_NAME_RE.match(self.name)
         if match is None:
             raise ValueError(f"FLVER Dummy object name does not match expected pattern: {self.name}")
-        self.name = self._format_name(
+        self.name = self.format_name(
             model_name=value,
             index=int(match.group(2)[1:-1]) if match.group(2) is not None else None,
             reference_id=int(match.group(3)[1:-1]),
@@ -228,7 +270,7 @@ class BlenderFLVERDummy(SoulstructObject[FLVERDummyProps]):
         match = self.DUMMY_NAME_RE.match(self.name)
         if match is None:
             raise ValueError(f"FLVER Dummy object name does not match expected pattern: {self.name}")
-        self.name = self._format_name(
+        self.name = self.format_name(
             model_name=match.group(1),
             index=index,
             reference_id=int(match.group(3)[1:-1]),
@@ -250,7 +292,7 @@ class BlenderFLVERDummy(SoulstructObject[FLVERDummyProps]):
         match = self.DUMMY_NAME_RE.match(self.name)
         if match is None:
             raise ValueError(f"FLVER Dummy object name does not match expected pattern: {self.name}")
-        self.name = self._format_name(
+        self.name = self.format_name(
             model_name=match.group(1),
             index=int(match.group(2)[1:-1]) if match.group(2) else None,
             reference_id=value,
@@ -260,7 +302,10 @@ class BlenderFLVERDummy(SoulstructObject[FLVERDummyProps]):
     # endregion
 
 
-class BlenderFLVER(SoulstructObject[FLVERProps]):
+BlenderFLVERDummy.add_auto_type_props(*BlenderFLVERDummy.AUTO_DUMMY_PROPS)
+
+
+class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
     """Wrapper for a Blender object hierarchy that represents a `FLVER` model.
 
     Exposes convenience methods that access and/or modify different FLVER attributes.
@@ -292,10 +337,20 @@ class BlenderFLVER(SoulstructObject[FLVERProps]):
     TYPE = SoulstructType.FLVER
     OBJ_DATA_TYPE = SoulstructDataType.MESH
 
+    __slots__ = []
     obj: bpy.types.MeshObject  # type override
     data: bpy.types.Mesh  # type override
-    # Parent `Armature` of `Mesh`. Optional for models with one entirely default bone (most Map Pieces).
-    armature: bpy.types.ArmatureObject | None
+
+    AUTO_FLVER_PROPS: tp.ClassVar[str] = [
+        "big_endian",
+        "version",
+        "unicode",
+        "unk_x4a",
+        "unk_x4c",
+        "unk_x5c",
+        "unk_x5d",
+        "unk_x68",
+    ]
 
     big_endian: bool
     version: str  # `Version` enum name
@@ -306,11 +361,13 @@ class BlenderFLVER(SoulstructObject[FLVERProps]):
     unk_x5d: int
     unk_x68: int
 
-    def __init__(self, obj: bpy.types.MeshObject):
-        super().__init__(obj)
-        if obj.parent and obj.parent.type == "ARMATURE":
+    @property
+    def armature(self) -> bpy.types.ArmatureObject | None:
+        """Detect parent Armature of wrapped Mesh object."""
+        if self.obj.parent and self.obj.parent.type == "ARMATURE":
             # noinspection PyTypeChecker
-            self.armature = obj.parent
+            return self.obj.parent
+        return None
 
     @classmethod
     def from_armature_or_mesh(cls, obj: bpy.types.Object) -> BlenderFLVER:
@@ -424,7 +481,6 @@ class BlenderFLVER(SoulstructObject[FLVERProps]):
         self,
         context: bpy.types.Context,
         child_mesh_obj: bpy.types.MeshObject,
-        collections: list[bpy.types.Collection] = None,
         copy_pose=False,
     ) -> bpy.types.ArmatureObject:
         """Duplicate just the `armature` of this FLVER model. Mostly used internally during full duplication.
@@ -440,10 +496,8 @@ class BlenderFLVER(SoulstructObject[FLVERProps]):
             # TODO: Could copy 'implicit Armature' by creating a single-bone Armature with the same name as the model.
             raise FLVERError("No Armature to duplicate for FLVER model.")
 
-        collections = collections or [context.scene.collection]
-
         new_armature_obj = new_armature_object(self.armature.name, data=self.armature.data.copy())
-        for collection in collections:
+        for collection in child_mesh_obj.users_collection:
             collection.objects.link(new_armature_obj)
         # No properties taken from Armature.
         context.view_layer.objects.active = new_armature_obj
@@ -451,12 +505,12 @@ class BlenderFLVER(SoulstructObject[FLVERProps]):
         if copy_pose:
             # Copy pose bone transforms.
             context.view_layer.update()  # need Blender to create `linked_armature_obj.pose` now
-            for pose_bone in new_armature_obj.pose.bones:
-                source_bone = self.armature.pose.bones[pose_bone.name]
-                pose_bone.rotation_mode = "QUATERNION"  # should be default but being explicit
-                pose_bone.location = source_bone.location
-                pose_bone.rotation_quaternion = source_bone.rotation_quaternion
-                pose_bone.scale = source_bone.scale
+            for new_pose_bone in new_armature_obj.pose.bones:
+                source_bone = self.armature.pose.bones[new_pose_bone.name]
+                new_pose_bone.rotation_mode = "QUATERNION"  # should be default but being explicit
+                new_pose_bone.location = source_bone.location
+                new_pose_bone.rotation_quaternion = source_bone.rotation_quaternion
+                new_pose_bone.scale = source_bone.scale
 
         if child_mesh_obj:
             child_mesh_obj.parent = new_armature_obj
@@ -467,19 +521,14 @@ class BlenderFLVER(SoulstructObject[FLVERProps]):
 
         return new_armature_obj
 
-    def duplicate_dummies(
-        self,
-        context: bpy.types.Context,
-        collections: list[bpy.types.Collection] = None,
-    ) -> list[bpy.types.Object]:
+    def duplicate_dummies(self) -> list[bpy.types.Object]:
         """Duplicate all FLVER Dummies of this model to new Empty objects in the same collections."""
-        collections = collections or [context.scene.collection]
         new_dummies = []
         for dummy in self.get_dummies():
             new_dummy_obj = new_empty_object(dummy.name)
             new_dummy_obj.soulstruct_type = SoulstructType.FLVER_DUMMY
             copy_obj_property_group(dummy.obj, new_dummy_obj, "flver_dummy")
-            for collection in collections:
+            for collection in dummy.obj.users_collection:
                 collection.objects.link(new_dummy_obj)
             new_dummies.append(new_dummy_obj)
 
@@ -512,11 +561,11 @@ class BlenderFLVER(SoulstructObject[FLVERProps]):
                 new_mesh_obj.data.materials[i] = mat.copy()
 
         if self.armature:
-            new_armature_obj = self.duplicate_armature(context, new_mesh_obj, collections, copy_pose)
+            new_armature_obj = self.duplicate_armature(context, new_mesh_obj, copy_pose)
         else:
             new_armature_obj = None
 
-        new_dummies = self.duplicate_dummies(context, collections)
+        new_dummies = self.duplicate_dummies()
         for dummy in new_dummies:
             dummy.parent = new_armature_obj or new_mesh_obj
 
@@ -525,7 +574,6 @@ class BlenderFLVER(SoulstructObject[FLVERProps]):
     def duplicate_edit_mode(
         self,
         context: bpy.types.Context,
-        collections: list[bpy.types.Collection] = None,
         make_materials_single_user=True,
         copy_pose=True,
     ) -> BlenderFLVER:
@@ -535,8 +583,6 @@ class BlenderFLVER(SoulstructObject[FLVERProps]):
         """
         if context.edit_object != self.mesh:
             raise FLVERError(f"Mesh of FLVER model '{self.name}' is not currently being edited in Edit Mode.")
-
-        collections = collections or [context.scene.collection]
 
         # Duplicate selected mesh data, then separate it into new object. Note that the `separate` operator will add the
         # new mesh to the same collection(s) automatically.
@@ -550,7 +596,7 @@ class BlenderFLVER(SoulstructObject[FLVERProps]):
             raise FLVERError(f"Could not duplicate and separate selected part of mesh into new object.")
 
         # Mesh is already added to same collections as this one, but also add to those manually specified (or scene).
-        for collection in collections:
+        for collection in self.mesh.users_collection:
             collection.objects.link(new_mesh_obj)
 
         if make_materials_single_user:
@@ -559,15 +605,43 @@ class BlenderFLVER(SoulstructObject[FLVERProps]):
                 new_mesh_obj.data.materials[i] = mat.copy()
 
         if self.armature:
-            new_armature_obj = self.duplicate_armature(context, new_mesh_obj, collections, copy_pose)
+            new_armature_obj = self.duplicate_armature(context, new_mesh_obj, copy_pose)
         else:
             new_armature_obj = None
 
-        new_dummies = self.duplicate_dummies(context, collections)
+        new_dummies = self.duplicate_dummies()
         for dummy in new_dummies:
             dummy.parent = new_armature_obj or new_mesh_obj
 
         return self.__class__(new_mesh_obj)
+
+    @staticmethod
+    def create_default_armature_parent(
+        context: bpy.types.Context,
+        model_name: str,
+        mesh_child_obj: bpy.types.MeshObject = None,
+    ) -> bpy.types.ArmatureObject:
+        """Create a default Blender Armature for this FLVER with a single default, origin, eponymous bone.
+
+        This isn't needed for export, as the same Armature will be created for exported FLVER automatically.
+
+        Raises a `ValueError` if the FLVER already has an Armature, which must be deleted first.
+        """
+        armature_name = f"{model_name} Armature"
+        armature = new_armature_object(armature_name, bpy.data.armatures.new(armature_name))
+        context.view_layer.objects.active = armature
+        if bpy.ops.object.mode_set.poll():
+            bpy.ops.object.mode_set(mode="EDIT", toggle=False)
+        edit_bone = armature.data.edit_bones.new(model_name)  # type: bpy.types.EditBone
+        # Leave at origin. No usage flags set.
+        edit_bone.use_local_location = True
+        edit_bone.inherit_scale = "NONE"
+        if mesh_child_obj:
+            # Add Armature to same collections as Mesh.
+            for collection in mesh_child_obj.users_collection:
+                collection.objects.link(armature)
+            mesh_child_obj.parent = armature
+        return armature
 
     # endregion
 
@@ -580,7 +654,7 @@ class BlenderFLVER(SoulstructObject[FLVERProps]):
         context: bpy.types.Context,
         flver: FLVER,
         name: str,
-        texture_import_manager: TextureImportManager | None = None,
+        texture_import_manager: ImageImportManager | None = None,
         collection: bpy.types.Collection = None,
     ) -> BlenderFLVER:
         """Read a FLVER into a managed Blender Armature/Mesh.
@@ -616,10 +690,10 @@ class BlenderFLVER(SoulstructObject[FLVERProps]):
             operator.to_object_mode()
             operator.deselect_all()
             armature = new_armature_object(f"{name} Armature", bpy.data.armatures.new(f"{name} Armature"))
+            collection.objects.link(armature)  # needed before creating EditBones!
             cls.create_bl_bones(
                 operator, context, flver, armature, bl_bone_names, import_settings.base_edit_bone_length
             )
-            collection.objects.link(armature)
 
         try:
             bl_materials, submesh_bl_material_indices, bl_material_uv_layer_names = cls.create_materials(
@@ -657,10 +731,7 @@ class BlenderFLVER(SoulstructObject[FLVERProps]):
             # Armature is always created if there are Dummies, so we can safely create them here.
             for i, dummy in enumerate(flver.dummies):
                 dummy_name = BlenderFLVERDummy.format_name(name, i, dummy.reference_id, suffix=None)
-                bl_dummy = BlenderFLVERDummy.new_from_soulstruct_obj(
-                    operator, context, dummy, dummy_name, armature, collection
-                )
-                collection.objects.link(bl_dummy.obj)
+                BlenderFLVERDummy.new_from_soulstruct_obj(operator, context, dummy, dummy_name, armature, collection)
 
         # operator.info(f"Created FLVER Blender mesh '{name}' in {time.perf_counter() - start_time:.3f} seconds.")
 
@@ -693,7 +764,7 @@ class BlenderFLVER(SoulstructObject[FLVERProps]):
         flver: FLVER,
         model_name: str,
         material_blend_mode: str,
-        texture_import_manager: TextureImportManager | None = None,
+        texture_import_manager: ImageImportManager | None = None,
     ) -> tuple[list[BlenderFLVERMaterial], list[int], list[list[str]]]:
         """Create Blender materials needed for `flver`.
 
@@ -717,11 +788,11 @@ class BlenderFLVER(SoulstructObject[FLVERProps]):
                 for v in submesh_textures.values()
                 if v  # obviously ignore empty texture paths
             }
-            new_images = cls.load_texture_images(
+            texture_collection = cls.load_texture_images(
                 operator, context, model_name, all_texture_stems, texture_import_manager
             )
-            if new_images:
-                operator.info(f"Loaded {len(new_images)} textures in {time.perf_counter() - p:.3f} seconds.")
+            if texture_collection:
+                operator.info(f"Loaded {len(texture_collection)} textures in {time.perf_counter() - p:.3f} seconds.")
         else:
             operator.info("No imported textures or PNG cache folder given. No textures loaded for FLVER.")
 
@@ -948,11 +1019,10 @@ class BlenderFLVER(SoulstructObject[FLVERProps]):
 
         if not flver.submeshes:
             # FLVER has no meshes (e.g. c0000). Leave empty.
-            return new_mesh_object(f"{name} <EMPTY>", mesh_data)
-
+            return new_mesh_object(f"{name} <EMPTY>", mesh_data, SoulstructType.FLVER)
         if any(mesh.invalid_layout for mesh in flver.submeshes):
             # Corrupted submeshes (e.g. some DS1R map pieces). Leave empty.
-            return new_mesh_object(f"{name} <INVALID>", mesh_data)
+            return new_mesh_object(f"{name} <INVALID>", mesh_data, SoulstructType.FLVER)
 
         # p = time.perf_counter()
         # Create merged mesh.
@@ -1188,8 +1258,7 @@ class BlenderFLVER(SoulstructObject[FLVERProps]):
 
         # We need edit mode to create `EditBones` below.
         context.view_layer.objects.active = armature
-        if bpy.ops.object.mode_set.poll():
-            bpy.ops.object.mode_set(mode="EDIT", toggle=False)
+        operator.to_edit_mode()
 
         # noinspection PyTypeChecker
         armature_data = armature.data  # type: bpy.types.Armature
@@ -1200,12 +1269,12 @@ class BlenderFLVER(SoulstructObject[FLVERProps]):
         # They may be animated by HKX animations (and will affect their children appropriately) but will not actually
         # affect any vertices in the mesh.
 
-        if write_bone_type == "EDIT":
+        if write_bone_type == cls.BoneDataType.EDIT:
             cls.write_data_to_edit_bones(operator, flver, edit_bones, base_edit_bone_length)
             del edit_bones  # clear references to edit bones as we exit EDIT mode
             if bpy.ops.object.mode_set.poll():
                 bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
-        elif write_bone_type == "POSE":
+        elif write_bone_type == cls.BoneDataType.POSE:
             # This method will change back to OBJECT mode internally before setting pose bone data.
             cls.write_data_to_pose_bones(operator, flver, armature, edit_bones, base_edit_bone_length)
         else:
@@ -1226,7 +1295,7 @@ class BlenderFLVER(SoulstructObject[FLVERProps]):
             edit_bone: bpy.types.EditBone
 
             # Storing 'Unused' flag for now. TODO: If later games' other flags can't be safely auto-detected, store too.
-            edit_bone["Is Unused"] = bool(game_bone.usage_flags & FLVERBoneUsageFlags.UNUSED)
+            edit_bone.FLVER_BONE.is_unused = bool(game_bone.usage_flags & FLVERBoneUsageFlags.UNUSED)
 
             # If this is `False`, then a bone's rest pose rotation will NOT affect its relative pose basis translation.
             # That is, pose basis translation will be interpreted as being in parent space (or object for root bones)
@@ -1319,8 +1388,8 @@ class BlenderFLVER(SoulstructObject[FLVERProps]):
         context: bpy.types.Context,
         name: str,
         texture_stems: set[str],
-        texture_import_manager: TextureImportManager | None = None,
-    ) -> list[bpy.types.Image]:
+        texture_import_manager: ImageImportManager | None = None,
+    ) -> DDSTextureCollection:
         """Load texture images from either `png_cache` folder or TPFs found with `texture_import_manager`.
 
         Will NEVER load an image that is already in Blender's data, regardless of image type (identified by stem only).
@@ -1335,7 +1404,8 @@ class BlenderFLVER(SoulstructObject[FLVERProps]):
                 image_stems_to_replace.add(stem)
             else:
                 bl_image_stems.add(stem)
-        new_loaded_images = []
+
+        new_texture_collection = DDSTextureCollection()
 
         textures_to_load = {}  # type: dict[str, TPFTexture]
         for texture_stem in texture_stems:
@@ -1348,10 +1418,8 @@ class BlenderFLVER(SoulstructObject[FLVERProps]):
                 png_path = Path(settings.png_cache_directory, f"{texture_stem}.png")
                 if png_path.is_file():
                     # Found cached PNG.
-                    bl_image = bpy.data.images.load(str(png_path))
-                    if settings.pack_image_data:
-                        bl_image.pack()  # embed Image data into Blend file
-                    new_loaded_images.append(bl_image)
+                    dds_texture = DDSTexture.new_from_png_path(png_path, settings.pack_image_data)
+                    new_texture_collection.add(dds_texture)
                     bl_image_stems.add(texture_stem)
                     continue
 
@@ -1382,16 +1450,17 @@ class BlenderFLVER(SoulstructObject[FLVERProps]):
             for texture_stem, png_data in zip(textures_to_load.keys(), all_png_data):
                 if png_data is None:
                     continue  # failed to convert this texture
-                bl_image = import_png_as_image(
-                    texture_stem,
-                    png_data,
-                    write_png_directory,
+                dds_texture = DDSTexture.new_from_png_data(
+                    operator,
+                    name=texture_stem,
+                    png_data=png_data,
+                    png_cache_directory=write_png_directory,
                     replace_existing=texture_stem in image_stems_to_replace,
                     pack_image_data=settings.pack_image_data,
                 )
-                new_loaded_images.append(bl_image)
+                new_texture_collection.add(dds_texture)
 
-        return new_loaded_images
+        return new_texture_collection
 
     # endregion
 
@@ -1431,12 +1500,12 @@ class BlenderFLVER(SoulstructObject[FLVERProps]):
         self,
         operator: LoggingOperator,
         context: bpy.types.Context,
-        collected_texture_images: dict[str, bpy.types.Image] = None,
+        texture_collection: DDSTextureCollection = None,
     ) -> FLVER:
         """Wraps actual method with temp FLVER management."""
         self.clear_temp_flver()
         try:
-            return self._to_soulstruct_obj(operator, context, collected_texture_images)
+            return self._to_soulstruct_obj(operator, context, texture_collection)
         finally:
             self.clear_temp_flver()
 
@@ -1444,13 +1513,13 @@ class BlenderFLVER(SoulstructObject[FLVERProps]):
         self,
         operator: LoggingOperator,
         context: bpy.types.Context,
-        collected_texture_images: dict[str, bpy.types.Image] = None,
+        texture_collection: DDSTextureCollection = None,
     ) -> FLVER:
         """`FLVER` exporter. By far the most complicated function in the add-on!"""
 
         # This is passed all the way through to the node inspection in FLVER materials to map texture stems to Images.
-        if collected_texture_images is None:
-            collected_texture_images = {}
+        if texture_collection is None:
+            texture_collection = DDSTextureCollection()
 
         settings = operator.settings(context)
         flver = self._get_empty_flver(settings)
@@ -1476,8 +1545,8 @@ class BlenderFLVER(SoulstructObject[FLVERProps]):
             flver.bones = [default_bone]
             bl_bone_names = [default_bone.name]
         else:
-            flver.bones, bl_bone_names, bone_arma_transforms = self.create_bones(
-                operator, context, read_bone_type,
+            flver.bones, bl_bone_names, bone_arma_transforms = self.create_flver_bones(
+                operator, context, self.armature, read_bone_type,
             )
             flver.set_bone_children_siblings()  # only parents set in `create_bones`
             flver.set_bone_armature_space_transforms(bone_arma_transforms)
@@ -1527,7 +1596,7 @@ class BlenderFLVER(SoulstructObject[FLVERProps]):
             normal_tangent_dot_max=export_settings.normal_tangent_dot_max,
             create_lod_face_sets=export_settings.create_lod_face_sets,
             matdefs=matdefs,
-            collected_texture_images=collected_texture_images,
+            texture_collection=texture_collection,
         )
 
         # TODO: Bone bounding box space seems to be always local to the bone for characters and always in armature space
@@ -1556,7 +1625,7 @@ class BlenderFLVER(SoulstructObject[FLVERProps]):
         normal_tangent_dot_max: float,
         create_lod_face_sets: bool,
         matdefs: list[MatDef],
-        collected_texture_images: dict[str, bpy.types.Image],
+        texture_collection: DDSTextureCollection,
     ):
         """
         Construct a `MergedMesh` from Blender data, in a straightforward way (unfortunately using `for` loops over
@@ -1582,7 +1651,7 @@ class BlenderFLVER(SoulstructObject[FLVERProps]):
                 create_lod_face_sets,
                 matdef,
                 use_chr_layout,
-                collected_texture_images,
+                texture_collection,
             )
             split_submesh_defs.append(split_submesh_def)
 
@@ -1912,8 +1981,7 @@ class BlenderFLVER(SoulstructObject[FLVERProps]):
         # We need `EditBone` mode to retrieve custom properties, even if reading the actual transforms from pose later.
         # TODO: Still true for extension properties?
         context.view_layer.objects.active = armature
-        if bpy.ops.object.mode_set.poll():
-            bpy.ops.object.mode_set(mode="EDIT", toggle=False)
+        operator.to_edit_mode()
 
         edit_bone_names = [edit_bone.name for edit_bone in armature.data.edit_bones]
 
@@ -2062,7 +2130,7 @@ class BlenderFLVER(SoulstructObject[FLVERProps]):
     def test_obj(cls, obj: bpy.types.Object) -> bool:
         try:
             cls.parse_flver_obj(obj)
-        except FLVERError:
+        except SoulstructTypeError:
             return False
         return True
 
@@ -2074,15 +2142,15 @@ class BlenderFLVER(SoulstructObject[FLVERProps]):
             armature = mesh.parent if mesh.parent is not None and mesh.parent.type == "ARMATURE" else None
         elif obj.type == "ARMATURE":
             armature = obj
-            mesh_name = f"{obj.name} Mesh"
+            mesh_name = get_bl_obj_tight_name(armature)
             mesh_children = [child for child in armature.children if child.type == "MESH" and child.name == mesh_name]
             if not mesh_children:
-                raise FLVERError(
+                raise SoulstructTypeError(
                     f"Armature '{armature.name}' has no Mesh child '{mesh_name}'. Please create it, even if empty."
                 )
             mesh = mesh_children[0]
         else:
-            raise FLVERError(f"Selected object '{obj.name}' is not a Mesh or Armature. Cannot parse as FLVER.")
+            raise SoulstructTypeError(f"Selected object '{obj.name}' is not a Mesh or Armature. Cannot parse as FLVER.")
 
         # noinspection PyTypeChecker
         return armature, mesh
@@ -2100,3 +2168,6 @@ class BlenderFLVER(SoulstructObject[FLVERProps]):
             pass
 
     # endregion
+
+
+BlenderFLVER.add_auto_type_props(*BlenderFLVER.AUTO_FLVER_PROPS)

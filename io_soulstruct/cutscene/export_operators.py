@@ -2,25 +2,10 @@ from __future__ import annotations
 
 __all__ = ["ExportHKXCutscene"]
 
-import traceback
-import typing as tp
-from multiprocessing import Pool, Queue
-from pathlib import Path
-
-import bmesh
-import bpy
-from bpy.props import StringProperty, BoolProperty, IntProperty, EnumProperty
-from mathutils import Euler, Matrix, Vector
+from bpy.props import StringProperty
 from bpy_extras.io_utils import ExportHelper
-from soulstruct.dcx import DCXType
-
-from soulstruct.containers import Binder, BinderEntry
-from soulstruct.base.models.flver import FLVER, Version
-from soulstruct.base.models.flver.vertex_array import VertexArrayLayout, VertexArray
-from soulstruct.utilities.maths import Vector3
-
 from io_soulstruct.utilities import *
-from .utilities import HKXCutsceneExportError
+from soulstruct.dcx import DCXType
 
 
 class ExportHKXCutscene(LoggingOperator, ExportHelper):
@@ -39,6 +24,11 @@ class ExportHKXCutscene(LoggingOperator, ExportHelper):
     )
 
     dcx_type: get_dcx_enum_property(DCXType.DS1_DS2)  # DS1 RemoBND default
+
+    # TODO: Not ridiculously complicated anymore.
+    #   - Can require camera selection for export.
+    #   - Scan all MSB Parts with Armatures. Any with Actions prefixed with camera's cutscene name are used.
+    #   - Export to RemoBND just like Animation export, by just recording transforms (and camera focal length).
 
     @classmethod
     def poll(cls, context):

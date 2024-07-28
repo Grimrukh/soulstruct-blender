@@ -14,6 +14,7 @@ from io_soulstruct.utilities import LoggingOperator, get_bl_custom_prop
 from soulstruct.base.models.flver.material import Material, Texture, GXItem
 from soulstruct.base.models.flver.submesh import Submesh
 from soulstruct.base.models.flver.mesh_tools import SplitSubmeshDef
+from io_soulstruct.flver.image import DDSTexture, DDSTextureCollection
 from .shaders import NodeTreeBuilder
 
 if tp.TYPE_CHECKING:
@@ -82,17 +83,6 @@ class BlenderFLVERMaterial:
             gx_item_prop = self.type_properties.gx_items.add()  # type: FLVERGXItemProps
             gx_item_prop.from_gx_item(gx_item)
 
-    def __getattr__(self, item):
-        if item in self.type_properties.__annotations__:
-            return getattr(self.type_properties, item)
-        raise AttributeError(f"'{self.TYPE}' object has no attribute '{item}'.")
-
-    def __setattr__(self, key, value):
-        if key in self.type_properties.__annotations__:
-            setattr(self.type_properties, key, value)
-        else:
-            super().__setattr__(key, value)
-
     @classmethod
     def from_all_mesh_materials(cls, mesh: bpy.types.MeshObject) -> list[tp.Self]:
         return [cls(mat) for mat in mesh.data.materials]
@@ -115,11 +105,12 @@ class BlenderFLVERMaterial:
         Will use material texture stems to search for PNG or DDS images in the Blender image data. If no image is found,
         the texture will be left unassigned in the material.
 
-        Attempts to build a Blender node tree for the material. The only critical information stored in the node tree is the
-        sampler names (node labels) and image names (image node `Image` names) of the `ShaderNodeTexImage` nodes created.
-        We attempt to connect those textures to UV maps and BSDF nodes, but this is just an attempt to replicate the game
-        engine's shaders, and is not needed for FLVER export. (NOTE: Elden Ring tends to store texture paths in MATBIN files
-        rather than in the FLVER materials, so even the texture names may not be used on export.)
+        Attempts to build a Blender node tree for the material. The only critical information stored in the node tree is
+        the sampler names (node labels) and image names (image node `Image` names) of the `ShaderNodeTexImage` nodes
+        created. We attempt to connect those textures to UV maps and BSDF nodes, but this is just an attempt to
+        replicate the game engine's shaders, and is not needed for FLVER export. (NOTE: Elden Ring tends to store
+        texture paths in MATBIN files rather than in the FLVER materials, so even the texture names may not be used on
+        export.)
         """
 
         bl_material = bpy.data.materials.new(name=material_name)
@@ -149,8 +140,8 @@ class BlenderFLVERMaterial:
         material.gx_items = flver_material.gx_items
 
         if not matdef:
-            # Store FLVER sampler texture paths directly in custom properties. No shader tree will be built, but at least
-            # we can faithfully write FLVER texture paths back to files on export.
+            # Store FLVER sampler texture paths directly in custom properties. No shader tree will be built, but
+            # at least we can faithfully write FLVER texture paths back to files on export.
             # TODO: Show in FLVER Material panel.
             for sampler_name, texture_stem in flver_sampler_texture_stems.items():
                 bl_material[f"Path[{sampler_name}]"] = texture_stem
@@ -176,8 +167,8 @@ class BlenderFLVERMaterial:
                 if warn_missing_textures:
                     operator.warning(
                         f"Sampler '{sampler_name}' given in FLVER does not seem to be supported by material definition "
-                        f"'{matdef.name}' with shader '{matdef.shader_stem}'. Texture node will be created, but with no UV "
-                        f"layer input.",
+                        f"'{matdef.name}' with shader '{matdef.shader_stem}'. Texture node will be created, but with "
+                        f"no UV layer input.",
                     )
                 sampler_texture_stems[sampler_name] = texture_stem
                 continue
@@ -216,7 +207,7 @@ class BlenderFLVERMaterial:
         operator: LoggingOperator,
         context: bpy.types.Context,
         matdef: MatDef,
-        collected_texture_images: dict[str, bpy.types.Image] = None,
+        texture_collection: DDSTextureCollection = None,
     ) -> Material:
         """Create a FLVER material from Blender material custom properties and texture nodes.
 
@@ -253,8 +244,8 @@ class BlenderFLVERMaterial:
         texture paths are always permitted if the sampler name is found. Note that the FLVER material importer will
         always create empty Image Texture nodes or empty string properties for samplers with no texture path.
         """
-        if collected_texture_images is None:
-            collected_texture_images = {}
+        if texture_collection is None:
+            texture_collection = DDSTextureCollection()
         name = self.tight_name
 
         export_settings = context.scene.flver_export_settings
@@ -304,10 +295,11 @@ class BlenderFLVERMaterial:
                 # Check node named with sampler alias or game-specific name (sans any 'Sampler Prefix').
                 for key in (sampler.alias, sampler_name):
                     if key in texture_nodes:
-                        node_image = texture_nodes.pop(key).image  # consumes node
+                        node_image = texture_nodes.pop(key).image  # type: bpy.types.Image | None  # consumes node
                         if node_image:
                             texture_stem = Path(node_image.name).stem
-                            collected_texture_images[texture_stem] = node_image
+                            if len(node_image.pixels) > 4:
+                                texture_collection.add(DDSTexture(node_image))
                         sampler_found = True
 
             if texture_stem and texture_stem == sampler.matbin_texture_stem:
@@ -365,14 +357,14 @@ class BlenderFLVERMaterial:
         create_lod_face_sets: bool,
         matdef: MatDef,
         use_chr_layout: bool,
-        collected_texture_images: dict[str, bpy.types.Image] = None,
+        texture_collection: DDSTextureCollection = None,
     ) -> SplitSubmeshDef:
         """Use given `matdef` to create a `SplitSubmeshDef` for the given Blender material with either a character
         layout or a map piece layout, depending on `use_chr_layout`."""
 
         # Some Blender materials may be variants representing distinct Submesh/FaceSet properties; these will be
         # mapped to the same FLVER `Material`/`VertexArrayLayout` combo (created here).
-        flver_material = self.to_flver_material(operator, context, matdef, collected_texture_images)
+        flver_material = self.to_flver_material(operator, context, matdef, texture_collection)
         if use_chr_layout:
             array_layout = matdef.get_character_layout()
         else:
@@ -397,3 +389,22 @@ class BlenderFLVERMaterial:
             submesh_kwargs,
             used_uv_layer_names,
         )
+
+
+for prop_name in (
+    "flags",
+    "mat_def_path",
+    "unk_x18",
+    "is_bind_pose",
+    "default_bone_index",
+    "face_set_count",
+    "sampler_prefix",
+):
+    setattr(
+        BlenderFLVERMaterial,
+        prop_name,
+        property(
+            lambda self, pn=prop_name: self.type_properties[pn],
+            lambda self, value, pn=prop_name: setattr(self.type_properties, pn, value)
+        ),
+    )

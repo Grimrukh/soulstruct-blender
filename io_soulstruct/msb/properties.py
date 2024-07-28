@@ -32,16 +32,19 @@ from io_soulstruct.types import SoulstructType
 
 
 class MSBPartSubtype(StrEnum):
-    NONE = "None"
-    MAP_PIECE = "Map Piece"
-    OBJECT = "Object"
-    ASSET = "Asset"
-    CHARACTER = "Character"
-    PLAYER_START = "Player Start"
-    COLLISION = "Collision"
-    NAVMESH = "Navmesh"
-    CONNECT_COLLISION = "Connect Collision"
-    OTHER = "Other"
+    NONE = "NONE"
+    MAP_PIECE = "MSB_MAP_PIECE"
+    OBJECT = "MSB_OBJECT"
+    ASSET = "MSB_ASSET"
+    CHARACTER = "MSB_CHARACTER"
+    PLAYER_START = "MSB_PLAYER_START"
+    COLLISION = "MSB_COLLISION"
+    NAVMESH = "MSB_NAVMESH"
+    CONNECT_COLLISION = "MSB_CONNECT_COLLISION"
+    OTHER = "MSB_OTHER"
+
+    def get_nice_name(self) -> str:
+        return f"{self.value.replace('MSB_', '').replace('_', ' ').title()}"
 
     def is_flver(self) -> bool:
         return self in {MSBPartSubtype.MAP_PIECE, MSBPartSubtype.OBJECT, MSBPartSubtype.ASSET, MSBPartSubtype.CHARACTER}
@@ -584,7 +587,7 @@ class MSBConnectCollisionProps(bpy.types.PropertyGroup):
     collision: bpy.props.PointerProperty(
         name="Collision Part",
         description="Collision part to which this Connect Collision is attached",
-        type=bpy.types.MeshObject,
+        type=bpy.types.Object,
         poll=lambda self, obj: obj.soulstruct_type == SoulstructType.COLLISION,
     )
     map_area: bpy.props.IntProperty(

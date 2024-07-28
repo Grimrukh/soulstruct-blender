@@ -12,15 +12,13 @@ from pathlib import Path
 
 import bpy
 from io_soulstruct import SoulstructSettings
-from io_soulstruct.flver.textures.export_textures import export_map_area_textures
+from io_soulstruct.flver.image import DDSTextureCollection, export_map_area_textures
 from io_soulstruct.flver.models import BlenderFLVER
 from io_soulstruct.msb.operator_config import MSBPartOperatorConfig
 from io_soulstruct.msb.properties import MSBPartSubtype
 from io_soulstruct.utilities import *
+from soulstruct.base.models.flver import FLVER
 from .base import *
-
-if tp.TYPE_CHECKING:
-    from soulstruct.base.models.flver import FLVER
 
 
 msb_map_piece_operator_config = MSBPartOperatorConfig(
@@ -59,11 +57,11 @@ class ExportMSBMapPieces(BaseExportMSBParts):
     config = msb_map_piece_operator_config
 
     map_piece_flvers: dict[Path, FLVER]
-    map_area_textures: dict[str, dict[str, bpy.types.Image]]
+    map_area_texture_collections: dict[str, DDSTextureCollection]
 
     def init(self, context, settings):
         self.map_piece_flvers = {}
-        self.map_area_textures = {}
+        self.map_area_texture_collections = {}
 
     def export_model(
         self,
@@ -75,8 +73,8 @@ class ExportMSBMapPieces(BaseExportMSBParts):
         """Export FLVER model."""
         settings = operator.settings(context)
         bl_flver = BlenderFLVER.from_armature_or_mesh(model_mesh)
-        collected_texture_images = {}
-        flver = bl_flver.to_soulstruct_obj(operator, context, collected_texture_images)
+        texture_collection = DDSTextureCollection()
+        flver = bl_flver.to_soulstruct_obj(operator, context, texture_collection)
         flver.dcx_type = settings.game.get_dcx_type("flver")
 
         # TODO: Elden Ring will need to export into MAPBNDs (alongside existing grass files).
@@ -86,8 +84,8 @@ class ExportMSBMapPieces(BaseExportMSBParts):
         if context.scene.flver_export_settings.export_textures:
             # Collect all Blender images for batched map area export.
             area = settings.map_stem[:3]
-            area_textures = self.map_area_textures.setdefault(area, {})
-            area_textures |= collected_texture_images
+            area_textures = self.map_area_texture_collections.setdefault(area, DDSTextureCollection())
+            area_textures |= texture_collection
 
         self.map_piece_flvers[flver_path] = flver
 
@@ -96,11 +94,7 @@ class ExportMSBMapPieces(BaseExportMSBParts):
         for relative_flver_path, flver in self.map_piece_flvers.items():
             settings.export_file(self, flver, relative_flver_path)
 
-        if self.map_area_textures:
+        if self.map_area_texture_collections:
             # Export all Map Piece textures collected during FLVER export to their areas.
-            export_map_area_textures(
-                self,
-                context,
-                self.settings(context),
-                self.map_area_textures,
-            )
+            for map_area, dds_textures in self.map_area_texture_collections.items():
+                export_map_area_textures(self, context, map_area, dds_textures)

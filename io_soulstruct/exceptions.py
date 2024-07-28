@@ -6,8 +6,9 @@ __all__ = [
     "FLVERImportError",
     "FLVERExportError",
     "MaterialImportError",
-    "HKXCutsceneImportError",
-    "HKXCutsceneExportError",
+    "TextureExportError",
+    "CutsceneImportError",
+    "CutsceneExportError",
     "NVMImportError",
     "NavGraphImportError",
     "NavGraphExportError",
@@ -17,6 +18,8 @@ __all__ = [
     "MSBPartImportError",
     "MSBPartExportError",
     "MSBRegionImportError",
+    "AnimationImportError",
+    "AnimationExportError",
 ]
 
 from soulstruct.exceptions import SoulstructError
@@ -57,12 +60,16 @@ class MaterialImportError(SoulstructBlenderError):
     pass
 
 
-class HKXCutsceneImportError(SoulstructBlenderError):
+class TextureExportError(SoulstructBlenderError):
+    """Raised when there is a problem exporting textures."""
+
+
+class CutsceneImportError(SoulstructBlenderError):
     """Exception raised during HKX cutscene import."""
     pass
 
 
-class HKXCutsceneExportError(SoulstructBlenderError):
+class CutsceneExportError(SoulstructBlenderError):
     """Exception raised during HKX cutscene export."""
     pass
 
@@ -111,3 +118,13 @@ class MSBPartExportError(SoulstructBlenderError):
 
 class MSBRegionImportError(SoulstructBlenderError):
     """Raised by any problem with importing an MSB Region instance."""
+
+
+class AnimationImportError(SoulstructBlenderError):
+    """Exception raised during HKX animation import."""
+    pass
+
+
+class AnimationExportError(SoulstructBlenderError):
+    """Exception raised during HKX animation export."""
+    pass

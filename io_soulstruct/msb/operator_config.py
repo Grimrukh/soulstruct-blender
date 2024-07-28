@@ -48,6 +48,10 @@ class MSBPartOperatorConfig:
     def get_bl_part_type(self, game: Game) -> tp.Type[darksouls1ptde.BlenderMSBPart]:
         return BLENDER_MSB_PART_TYPES[game][self.PART_SUBTYPE]
 
+    @property
+    def collection_name(self):
+        return self.PART_SUBTYPE.get_nice_name() + " Parts"
+
 
 BLENDER_MSB_REGION_TYPES = {
     DARK_SOULS_PTDE: {
@@ -66,6 +70,7 @@ class MSBRegionOperatorConfig:
     """Configuration for MSB Region import operators."""
 
     REGION_SUBTYPE: MSBRegionSubtype
+    COLLECTION_NAME: str
     MSB_LIST_NAMES: list[str]  # e.g. ['spheres', 'cylinders', 'boxes']
     GAME_ENUM_NAME: str | None  # e.g. 'point_region' or 'volume_region'
 

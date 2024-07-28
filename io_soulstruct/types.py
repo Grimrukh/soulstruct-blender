@@ -12,8 +12,10 @@ import typing as tp
 import bpy
 from mathutils import Vector, Euler
 from soulstruct.utilities.future import StrEnum
-from io_soulstruct.utilities import LoggingOperator, copy_obj_property_group
 from .exceptions import SoulstructTypeError
+
+if tp.TYPE_CHECKING:
+    from io_soulstruct.utilities import LoggingOperator, copy_obj_property_group
 
 
 class SoulstructType(StrEnum):
@@ -52,6 +54,8 @@ SOULSTRUCT_PROPS_T = tp.TypeVar("SOULSTRUCT_PROPS_T", bound=bpy.types.PropertyGr
 class SoulstructObject(abc.ABC, tp.Generic[SOULSTRUCT_T, SOULSTRUCT_PROPS_T]):
     """Base class for Blender objects wrapped with implicit Soulstruct 'types'."""
 
+    __slots__ = ["obj"]
+
     TYPE: tp.ClassVar[SoulstructType]
     OBJ_DATA_TYPE: tp.ClassVar[SoulstructDataType]
     SOULSTRUCT_CLASS: tp.ClassVar[type]
@@ -88,8 +92,8 @@ class SoulstructObject(abc.ABC, tp.Generic[SOULSTRUCT_T, SOULSTRUCT_PROPS_T]):
                     raise SoulstructTypeError(f"Cannot create an EMPTY object with data.")
                 obj = bpy.data.objects.new(name, None)
             case SoulstructDataType.MESH:
-                # Permitted to be initialized as Empty.
-                if data is not None and not isinstance(data, bpy.types.Mesh):
+                # NOT permitted to be initialized as Empty.
+                if not isinstance(data, bpy.types.Mesh):
                     raise SoulstructTypeError(f"Data for MESH object must be a Mesh, not {type(data).__name__}.")
                 obj = bpy.data.objects.new(name, data)
             case _:
@@ -107,7 +111,7 @@ class SoulstructObject(abc.ABC, tp.Generic[SOULSTRUCT_T, SOULSTRUCT_PROPS_T]):
         soulstruct_obj: SOULSTRUCT_T,
         name: str,
         collection: bpy.types.Collection = None,
-    ):
+    ) -> tp.Self:
         """Create a new Blender object from Soulstruct object.
 
         Operator and context are both required for logging, global settings, and context management.
@@ -120,6 +124,16 @@ class SoulstructObject(abc.ABC, tp.Generic[SOULSTRUCT_T, SOULSTRUCT_PROPS_T]):
             )
         return cls.new(name, data=None, collection=collection)  # type: tp.Self
 
+    @classmethod
+    def find_in_data(cls, name: str) -> tp.Self:
+        try:
+            obj = bpy.data.objects[name]
+        except KeyError:
+            raise KeyError(f"No Blender object named '{name}' found.")
+        if obj.soulstruct_type != cls.TYPE:
+            raise SoulstructTypeError(f"Found Blender object '{name}', but it is not a {cls.TYPE} Soulstruct object.")
+        return cls(obj)
+
     def create_soulstruct_obj(self) -> SOULSTRUCT_T:
         return self.SOULSTRUCT_CLASS()
 
@@ -130,7 +144,7 @@ class SoulstructObject(abc.ABC, tp.Generic[SOULSTRUCT_T, SOULSTRUCT_PROPS_T]):
     @property
     def type_properties(self) -> SOULSTRUCT_PROPS_T:
         """Properties of 'supertype'. Subclasses may have additional 'subtype' properties."""
-        return getattr(self, self.TYPE)
+        return getattr(self.obj, self.TYPE)
 
     def copy_type_properties_from(self, source_obj: bpy.types.Object | SoulstructObject):
         """Use annotations of to copy properties to `self.properties`."""
@@ -147,17 +161,6 @@ class SoulstructObject(abc.ABC, tp.Generic[SOULSTRUCT_T, SOULSTRUCT_PROPS_T]):
         if dest_obj.soulstruct_type != self.TYPE:
             raise SoulstructTypeError(f"Dest object '{dest_obj.name}' is not a {self.TYPE} Soulstruct object.")
         copy_obj_property_group(self.obj, dest_obj, self.TYPE)
-
-    def __getattr__(self, item):
-        if item in self.type_properties.__annotations__:
-            return getattr(self.type_properties, item)
-        raise AttributeError(f"'{self.TYPE}' object has no attribute '{item}'.")
-
-    def __setattr__(self, key, value):
-        if key in self.type_properties.__annotations__:
-            setattr(self.type_properties, key, value)
-        else:
-            super().__setattr__(key, value)
 
     @property
     def name(self):

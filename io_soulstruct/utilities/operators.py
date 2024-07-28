@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 __all__ = [
+    "Context",
     "LoggingOperator",
     "LoggingImportOperator",
     "LoggingExportOperator",
@@ -11,10 +12,11 @@ import typing as tp
 from pathlib import Path
 
 import bpy
+from bpy.types import Context
 from bpy_extras.io_utils import ImportHelper, ExportHelper
+from soulstruct.dcx import DCXType
 
 if tp.TYPE_CHECKING:
-    from soulstruct.dcx import DCXType
     from io_soulstruct.general.core import SoulstructSettings
 
 
@@ -116,7 +118,7 @@ class LoggingExportOperator(LoggingOperator, ExportHelper):
 
 
 def get_dcx_enum_property(
-    default: str | DCXType = "Auto",
+    default: str | DCXType = "AUTO",
     name="Compression",
     description="Type of DCX compression to apply to exported file or Binder entry",
 ):
@@ -128,13 +130,13 @@ def get_dcx_enum_property(
     return bpy.props.EnumProperty(
         name=name,
         items=[
-            ("Auto", "Auto", "Use Soulstruct default DCX for this game, file type, and export target"),
-            ("Null", "None", "Export without any DCX compression"),
-            ("DCX_EDGE", "DES", "Demon's Souls compression"),
-            ("DCX_DFLT_10000_24_9", "DS1/DS2", "Dark Souls 1/2 compression"),
-            ("DCX_DFLT_10000_44_9", "BB/DS3", "Bloodborne/Dark Souls 3 compression"),
-            ("DCX_DFLT_11000_44_9", "Sekiro", "Sekiro compression (requires Oodle DLL)"),
-            ("DCX_KRAK", "Elden Ring", "Elden Ring compression (requires Oodle DLL)"),
+            ("AUTO", "Auto", "Use Soulstruct default DCX for this game, file type, and export target"),
+            (DCXType.Null.name, "None", "Export without any DCX compression"),
+            (DCXType.DCX_EDGE.name, "DES", "Demon's Souls compression"),
+            (DCXType.DCX_DFLT_10000_24_9.name, "DS1/DS2", "Dark Souls 1/2 compression"),
+            (DCXType.DCX_DFLT_10000_44_9.name, "BB/DS3", "Bloodborne/Dark Souls 3 compression"),
+            (DCXType.DCX_DFLT_11000_44_9.name, "Sekiro", "Sekiro compression (requires Oodle DLL)"),
+            (DCXType.DCX_KRAK.name, "Elden Ring", "Elden Ring compression (requires Oodle DLL)"),
         ],
         description=description,
         default=default if isinstance(default, str) else default.name,

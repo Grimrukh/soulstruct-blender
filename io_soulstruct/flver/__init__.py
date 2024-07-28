@@ -52,8 +52,11 @@ __all__ = [
     "ImportTextures",
     "BakeLightmapSettings",
     "BakeLightmapTextures",
+    "DDSTexture",
+    "DDSTextureProps",
     "TextureExportSettings",
 
+    "FLVERPropsPanel",
     "FLVERImportPanel",
     "FLVERExportPanel",
     "TextureExportSettingsPanel",
@@ -72,13 +75,47 @@ __all__ = [
 import bpy
 
 from io_soulstruct.misc_operators import CopyMeshSelectionOperator, CutMeshSelectionOperator
+from io_soulstruct.types import *
 
-from .materials import *
+from .material import *
 from .models import *
 from .misc_operators import *
 from .properties import *
-from .textures import *
+from .image import *
 from .utilities import *
+
+
+def get_active_flver_obj(context: bpy.types.Context):
+    obj = context.active_object
+    if obj is not None and obj.soulstruct_type == SoulstructType.FLVER:
+        return obj
+    return None
+
+
+class FLVERPropsPanel(bpy.types.Panel):
+    """Draw a Panel in the Object properties window exposing the appropriate FLVER fields for active object."""
+    bl_label = "FLVER Properties"
+    bl_idname = "OBJECT_PT_flver"
+    bl_space_type = 'PROPERTIES'
+    bl_region_type = 'WINDOW'
+    bl_context = "object"
+
+    @classmethod
+    def poll(cls, context):
+        return get_active_flver_obj(context) is not None
+
+    def draw(self, context):
+        layout = self.layout
+
+        obj = get_active_flver_obj(context)
+        if obj is None:
+            # Should already fail Panel poll.
+            layout.label(text="No active FLVER.")
+            return
+
+        props = obj.FLVER
+        for prop in props.__annotations__:
+            layout.prop(props, prop)
 
 
 class FLVERImportPanel(bpy.types.Panel):
@@ -134,44 +171,6 @@ class FLVERExportPanel(bpy.types.Panel):
         game_export_box.operator(ExportCharacterFLVER.bl_idname)
         game_export_box.operator(ExportObjectFLVER.bl_idname)
         game_export_box.operator(ExportEquipmentFLVER.bl_idname)
-
-
-class TextureExportSettingsPanel(bpy.types.Panel):
-    """Panel for Soulstruct FLVER texture export settings."""
-    bl_label = "Texture Export Settings"
-    bl_idname = "SCENE_PT_texture_export_settings"
-    bl_space_type = "VIEW_3D"
-    bl_region_type = "UI"
-    bl_category = "FLVER"
-    bl_options = {'DEFAULT_CLOSED'}
-
-    def draw(self, context):
-        # TODO: These are DS1 fields. Need other games. (Use their own settings classes.)
-        settings = bpy.context.scene.texture_export_settings
-        for prop, split in (
-            ("overwrite_existing_map_textures", 0),
-            ("require_power_of_two", 0),
-            ("platform", 0.6),
-            ("diffuse_format", 0.6),
-            ("diffuse_mipmap_count", 0),
-            ("specular_format", 0.6),
-            ("specular_mipmap_count", 0),
-            ("bumpmap_format", 0.6),
-            ("bumpmap_mipmap_count", 0),
-            ("height_format", 0.6),
-            ("height_mipmap_count", 0),
-            ("lightmap_format", 0.6),
-            ("lightmap_mipmap_count", 0),
-            ("max_chrbnd_tpf_size", 0),
-            ("map_tpfbhd_count", 0),
-        ):
-            if split > 0:
-                row = self.layout.row(align=True)
-                split = row.split(factor=split)
-                split.column().label(text=prop.replace("_", " ").title())
-                split.column().prop(settings, prop, text="")
-            else:
-                self.layout.prop(settings, prop)
 
 
 class FLVERLightmapsPanel(bpy.types.Panel):

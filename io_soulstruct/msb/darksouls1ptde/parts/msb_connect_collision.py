@@ -27,9 +27,17 @@ class BlenderMSBConnectCollision(BlenderMSBPart[MSBConnectCollision, MSBConnectC
     PART_SUBTYPE = MSBPartSubtype.CONNECT_COLLISION
     MODEL_SUBTYPES = ["collision_models"]
 
-    data: bpy.types.Mesh  # type override
+    __slots__ = []
 
     collision: bpy.types.Object | None
+
+    @property
+    def collision(self) -> bpy.types.MeshObject | None:
+        return self.subtype_properties.collision
+
+    @collision.setter
+    def collision(self, value: bpy.types.MeshObject | None):
+        self.subtype_properties.collision = value
 
     @property
     def connected_map_id(self) -> tuple[int, int, int, int]:
@@ -59,11 +67,16 @@ class BlenderMSBConnectCollision(BlenderMSBPart[MSBConnectCollision, MSBConnectC
     ) -> tp.Self:
 
         bl_connect_collision = super().new_from_soulstruct_obj(
-            operator, context, soulstruct_obj, name, collection
+            operator, context, soulstruct_obj, name, collection, map_stem
         )  # type: BlenderMSBConnectCollision
 
         bl_connect_collision.collision = cls.entry_ref_to_bl_obj(
-            operator, soulstruct_obj, "collision", soulstruct_obj.collision, SoulstructType.MSB_PART
+            operator,
+            soulstruct_obj,
+            "collision",
+            soulstruct_obj.collision,
+            SoulstructType.MSB_PART,
+            missing_collection_name=f"{map_stem} Missing MSB References".lstrip(),
         )
         bl_connect_collision.connected_map_id = soulstruct_obj.connected_map_id
 
@@ -84,7 +97,7 @@ class BlenderMSBConnectCollision(BlenderMSBPart[MSBConnectCollision, MSBConnectC
         return connect_collision
 
     @classmethod
-    def find_model(cls, model_name: str, map_stem: str) -> bpy.types.MeshObject:
+    def find_model_mesh(cls, model_name: str, map_stem: str) -> bpy.types.MeshObject:
         """Find the model of the given type in the 'Map Collision Models' collection in the current scene.
 
         Returns the Empty parent of all 'h' and 'l' submeshes of the collision (`children`).
@@ -100,7 +113,7 @@ class BlenderMSBConnectCollision(BlenderMSBPart[MSBConnectCollision, MSBConnectC
         raise MissingPartModelError(f"Collision model mesh '{model_name}' not found in '{collection_name}' collection.")
 
     @classmethod
-    def import_model(
+    def import_model_mesh(
         cls,
         operator: LoggingOperator,
         context: bpy.types.Context,
