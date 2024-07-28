@@ -3,6 +3,7 @@ from __future__ import annotations
 __all__ = [
     "MAP_STEM_RE",
     "BLENDER_DUPE_RE",
+    "MapStem",
     "CachedEnumItems",
     "get_bl_custom_prop",
     "is_uniform",
@@ -28,6 +29,48 @@ from soulstruct.utilities.maths import Vector3
 
 MAP_STEM_RE = re.compile(r"^m(?P<area>\d\d)_(?P<block>\d\d)_(?P<cc>\d\d)_(?P<dd>\d\d)$")
 BLENDER_DUPE_RE = re.compile(r"^(.*)\.(\d+)$")
+
+
+class MapStem(tp.NamedTuple):
+    aa: int
+    bb: int
+    cc: int
+    dd: int
+
+    @property
+    def area(self):
+        return self.aa
+
+    @property
+    def block(self):
+        return self.bb
+
+    @property
+    def version(self):
+        return self.dd
+
+    @property
+    def tile_x(self):
+        return self.cc
+
+    @property
+    def tile_z(self):
+        return self.dd
+
+    @classmethod
+    def from_string(cls, map_stem: str) -> MapStem:
+        match = MAP_STEM_RE.match(map_stem)
+        if match is None:
+            raise ValueError(f"Map stem '{map_stem}' does not match expected pattern.")
+        return cls(
+            aa=int(match.group("area")),
+            bb=int(match.group("block")),
+            cc=int(match.group("cc")),
+            dd=int(match.group("dd")),
+        )
+
+    def to_string(self) -> str:
+        return f"m{self.aa:02d}_{self.bb:02d}_{self.cc:02d}_{self.dd:02d}"
 
 
 @dataclass(slots=True, frozen=True)

@@ -19,6 +19,7 @@ class BlenderMSBRegion(SoulstructObject[MSBRegion, MSBRegionProps]):
     OBJ_DATA_TYPE = SoulstructDataType.EMPTY
     SOULSTRUCT_CLASS = MSBRegion
 
+    __slots__ = []
     data: None  # type override
 
     @property

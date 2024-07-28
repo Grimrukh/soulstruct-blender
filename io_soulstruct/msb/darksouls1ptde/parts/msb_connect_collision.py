@@ -28,7 +28,6 @@ class BlenderMSBConnectCollision(BlenderMSBPart[MSBConnectCollision, MSBConnectC
     MODEL_SUBTYPES = ["collision_models"]
 
     __slots__ = []
-
     collision: bpy.types.Object | None
 
     @property

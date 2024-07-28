@@ -28,6 +28,8 @@ class BlenderMSBPlayerStart(BlenderMSBPart[MSBPlayerStart, MSBPlayerStartProps])
     PART_SUBTYPE = MSBPartSubtype.PLAYER_START
     MODEL_SUBTYPES = ["player_models", "character_models"]
 
+    __slots__ = []
+
     # No additional Player Start properties.
 
     @property

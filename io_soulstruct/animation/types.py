@@ -451,10 +451,10 @@ class SoulstructAnimation:
             rot = armature.rotation_euler
             root_motion_sample = (loc[0], loc[1], loc[2], rot[2])  # XYZ and Z rotation (soon to be game Y)
             root_motion_samples.append(root_motion_sample)
-            if not has_root_motion and len(root_motion_samples) >= 2 and root_motion_samples[-1] != root_motion_samples[
-                -2]:
-                # Some actual root motion has appeared.
-                has_root_motion = True
+            if not has_root_motion:
+                if len(root_motion_samples) >= 2 and root_motion_samples[-1] != root_motion_samples[-2]:
+                    # Some actual root motion has appeared.
+                    has_root_motion = True
 
             for bone in skeleton_hkx.skeleton.bones:
                 try:
@@ -474,7 +474,7 @@ class SoulstructAnimation:
 
         if has_root_motion:
             root_motion = np.array(root_motion_samples, dtype=np.float32)
-            # Swap Y and Z and negate rotation.
+            # Swap translate Y/Z and negate rotation Z (soon to be Y).
             root_motion = np.c_[root_motion[:, 0], root_motion[:, 2], root_motion[:, 1], -root_motion[:, 3]]
         else:
             root_motion = None

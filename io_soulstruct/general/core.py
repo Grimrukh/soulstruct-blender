@@ -23,7 +23,7 @@ from soulstruct.games import *
 from soulstruct.utilities.files import read_json, write_json, create_bak
 
 from io_soulstruct.exceptions import *
-from io_soulstruct.utilities.misc import CachedEnumItems, is_path_and_file, is_path_and_dir, get_collection_map_stem
+from io_soulstruct.utilities import *
 
 if tp.TYPE_CHECKING:
     from soulstruct.base.models.shaders import MatDef
@@ -73,17 +73,21 @@ _USE_OLD_MAP_VERSION = (".flver", ".hkxbhd", ".hkxbdt")
 _USE_NEW_MAP_VERSION = (".msb", ".nvmbnd", ".mcg", ".mcp")
 
 
-MAP_DIR_FILTERS_RE = {
-    "ALL": lambda map_dir: True,
-    "LEGACY_DUNGEONS": lambda map_dir: int(map_dir.name[1:3]) < 60 and not 30 <= int(map_dir.name[1:3]) <= 34,
-    "GENERIC_DUNGEONS": lambda map_dir: 30 <= int(map_dir.name[1:3]) <= 34,
-    "ALL_DUNGEONS": lambda map_dir: int(map_dir.name[1:3]) < 60,
-    "OVERWORLD_SMALL": lambda map_dir: map_dir.name[1:3] == "60" and map_dir.name[11] == "0",
-    "OVERWORLD_MEDIUM": lambda map_dir: map_dir.name[1:3] == "60" and map_dir.name[11] == "1",
-    "OVERWORLD_LARGE": lambda map_dir: map_dir.name[1:3] == "60" and map_dir.name[11] == "2",
-    "OVERWORLD_SMALL_V1": lambda map_dir: map_dir.name[1:3] == "60" and map_dir.name[11] == "0" and map_dir.name[10] != "0",
-    "OVERWORLD_MEDIUM_V1": lambda map_dir: map_dir.name[1:3] == "60" and map_dir.name[11] == "1" and map_dir.name[10] != "0",
-    "OVERWORLD_LARGE_V1": lambda map_dir: map_dir.name[1:3] == "60" and map_dir.name[11] == "2" and map_dir.name[10] != "0",
+# Applicable to Elden Ring only. Other games don't need these map categories.
+ELDEN_RING_MAP_STEM_FILTERS_RE = {
+    "ALL": lambda map_stem: True,
+    "LEGACY_DUNGEONS": lambda map_stem: map_stem.area < 30 or map_stem.area in {35, 39},
+    "GENERIC_DUNGEONS": lambda map_stem: 30 <= map_stem.area <= 43 and map_stem.area not in {35, 39},
+    "ALL_DUNGEONS": lambda map_stem: map_stem.area < 60,
+    "OVERWORLD_SMALL": lambda map_stem: map_stem.area == 60 and map_stem.version == 0,
+    "OVERWORLD_MEDIUM": lambda map_stem: map_stem.area == 60 and map_stem.version == 1,
+    "OVERWORLD_LARGE": lambda map_stem: map_stem.area == 60 and map_stem.version == 2,
+    "OVERWORLD_SMALL_V1": lambda map_stem: map_stem.area == 60 and map_stem.version == 10,
+    "OVERWORLD_MEDIUM_V1": lambda map_stem: map_stem.area == 60 and map_stem.version == 11,
+    "OVERWORLD_LARGE_V1": lambda map_stem: map_stem.area == 60 and map_stem.version == 12,
+    "DLC_OVERWORLD_SMALL": lambda map_stem: map_stem.area == 61 and map_stem.version == 0,
+    "DLC_OVERWORLD_MEDIUM": lambda map_stem: map_stem.area == 61 and map_stem.version == 1,
+    "DLC_OVERWORLD_LARGE": lambda map_stem: map_stem.area == 61 and map_stem.version == 2,
 }
 
 
@@ -109,7 +113,7 @@ def _get_map_stem_items(self, context: bpy.types.Context) -> list[tuple[str, str
     else:
         filter_mode = "ALL"
         include_empty_map_tiles = True
-    filter_func = MAP_DIR_FILTERS_RE[filter_mode]
+    map_stem_filter_func = ELDEN_RING_MAP_STEM_FILTERS_RE[filter_mode]
 
     game_directory = settings.game_directory
     game_map_dir_path = Path(game_directory, "map") if game_directory else None
@@ -127,7 +131,8 @@ def _get_map_stem_items(self, context: bpy.types.Context) -> list[tuple[str, str
         _MAP_STEM_FILTER_MODE == f"{filter_mode} {include_empty_map_tiles}"
         and _MAP_STEM_ENUM.is_valid(game_map_dir_path, project_map_dir_path)
     ):
-        return _MAP_STEM_ENUM.items  # cached still valid
+        # Filter hasn't changed and cached enum is still valid.
+        return _MAP_STEM_ENUM.items
 
     game_map_stem_names = []
     project_map_stem_names = []
@@ -138,12 +143,13 @@ def _get_map_stem_items(self, context: bpy.types.Context) -> list[tuple[str, str
             # Maps are inside area subfolders like 'm10' or 'm60'.
 
             if not include_empty_map_tiles:
-                # Extend filter function to check MSB size.
+                # Extend filter function to check MSB size of small overworld tiles.
                 def er_filter_func(map_dir_: Path):
-                    if not filter_func(map_dir_):
+                    map_stem_ = MapStem.from_string(map_dir_.name)
+                    if not map_stem_filter_func(map_stem_):
                         return False
-                    if not map_dir_.name.startswith("m60") or not map_dir_.name.endswith("00"):
-                        return True  # not small overworld
+                    if map_stem_.area not in {60, 61} or map_stem_.version != 0:
+                        return True  # never ignore non-small, non-V0, and/or non-overworld maps
                     msb_path = map_dir_ / f"../../mapstudio/{map_dir_.name}.msb.dcx"
                     if not msb_path.is_file():
                         return True  # to be safe
@@ -152,7 +158,9 @@ def _get_map_stem_items(self, context: bpy.types.Context) -> list[tuple[str, str
                         return False  # no navmesh data
                     return True
             else:
-                er_filter_func = filter_func
+                def er_filter_func(map_dir_: Path):
+                    # Only need map stem.
+                    return map_stem_filter_func(MapStem.from_string(map_dir_.name))
 
             if is_path_and_dir(game_map_dir_path):
                 for area in sorted(game_map_dir_path.glob("m??")):
@@ -177,13 +185,13 @@ def _get_map_stem_items(self, context: bpy.types.Context) -> list[tuple[str, str
                 game_map_stem_names = [
                     map_dir.name
                     for map_dir in sorted(game_map_dir_path.glob("m??_??_??_??"))
-                    if map_dir.is_dir() and filter_func(map_dir)
+                    if map_dir.is_dir() and map_stem_filter_func(MapStem.from_string(map_dir.name))
                 ]
             if is_path_and_dir(project_map_dir_path):
                 project_map_stem_names = [
                     map_dir.name
                     for map_dir in sorted(project_map_dir_path.glob("m??_??_??_??"))
-                    if map_dir.is_dir() and filter_func(map_dir)
+                    if map_dir.is_dir() and map_stem_filter_func(MapStem.from_string(map_dir.name))
                 ]
 
     if not is_path_and_dir(game_map_dir_path):
@@ -207,6 +215,7 @@ def _get_map_stem_items(self, context: bpy.types.Context) -> list[tuple[str, str
         def get_map_desc(map_stem: str) -> str:
             return f"Map {map_stem}"
 
+    # TODO: Get rid of this (P) (G) rubbish?
     map_stems = [
         (name, name, get_map_desc(name))
         for name in shared_map_stem_names
@@ -316,9 +325,13 @@ class SoulstructSettings(bpy.types.PropertyGroup):
             ("OVERWORLD_SMALL", "Overworld (Small) Only", "Show only map stems for overworld small tiles"),
             ("OVERWORLD_MEDIUM", "Overworld (Medium) Only", "Show only map stems for overworld medium tiles"),
             ("OVERWORLD_LARGE", "Overworld (Large) Only", "Show only map stems for overworld large tiles"),
-            ("OVERWORLD_SMALL_V1", "Overworld (Small V1+) Only", "Show only map stems for overworld small tiles (version 1+)"),
-            ("OVERWORLD_MEDIUM_V1", "Overworld (Medium V1+) Only", "Show only map stems for overworld medium tiles (version 1+"),
-            ("OVERWORLD_LARGE_V1", "Overworld (Large V1+) Only", "Show only map stems for overworld large tiles (version 1+)"),
+            ("OVERWORLD_SMALL_V1", "Overworld (Small V1) Only", "Show only map stems for small tiles (version 1)"),
+            ("OVERWORLD_MEDIUM_V1", "Overworld (Medium V1) Only", "Show only map stems for medium tiles (version 1)"),
+            ("OVERWORLD_LARGE_V1", "Overworld (Large V1) Only", "Show only map stems for large tiles (version 1)"),
+            ("DLC_OVERWORLD_SMALL", "DLC Overworld (Small) Only", "Show only map stems for overworld small tiles"),
+            ("DLC_OVERWORLD_MEDIUM", "DLC Overworld (Medium) Only", "Show only map stems for overworld medium tiles"),
+            ("DLC_OVERWORLD_LARGE", "DLC Overworld (Large) Only", "Show only map stems for overworld large tiles"),
+            # NOTE: There are V1 DLC overworld maps, but few enough that they can be included with the above filters.
         ],
     )
 
