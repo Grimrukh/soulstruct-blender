@@ -6,6 +6,7 @@ __all__ = [
 
 import numpy as np
 
+
 def np_cross(array_a: np.ndarray, array_b: np.ndarray) -> np.ndarray:
     """Hack for PyCharm/Numpy conflict where `np.cross` is typed as `NoReturn` for boolean arrays. Both sides seem
     to be pointing fingers at the other for this. Personally, I think it's stupid for Numpy to force type checkers

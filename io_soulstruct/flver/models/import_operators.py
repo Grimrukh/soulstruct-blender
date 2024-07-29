@@ -168,11 +168,11 @@ class ImportFLVER(BaseFLVERImportOperator):
 
     def invoke(self, context, _event):
         """Set the initial directory based on Global Settings."""
-        game_directory = self.settings(context).game_directory
-        if game_directory and game_directory.is_dir():
+        game_directory = self.settings(context).game_directory_path
+        if is_path_and_dir(game_directory):
             self.directory = str(game_directory)
             context.window_manager.fileselect_add(self)
-            return {'RUNNING_MODAL'}
+            return {"RUNNING_MODAL"}
         return super().invoke(context, _event)
 
 
@@ -197,18 +197,27 @@ class ImportMapPieceFLVER(BaseFLVERImportOperator):
 
     @classmethod
     def poll(cls, context):
-        return bool(cls.settings(context).get_import_map_path())
+        try:
+            cls.settings(context).get_import_map_dir_path()
+            return True
+        except FileNotFoundError:
+            return False
 
     def invoke(self, context, _event):
         """Set the initial directory based on Global Settings."""
         settings = self.settings(context)
-        # Map Piece FLVERs come from the oldest version of the map.
-        map_path = settings.get_import_map_path(map_stem=settings.get_oldest_map_stem_version())
-        if map_path and Path(map_path).is_dir():
-            self.directory = str(map_path)
-            context.window_manager.fileselect_add(self)
-            return {'RUNNING_MODAL'}
-        return super().invoke(context, _event)
+        # Map Piece FLVERs come from the oldest version of the map in DS1.
+        if settings.is_game("DARK_SOULS_PTDE", "DARK_SOULS_DSR"):
+            map_piece_map_stem = settings.get_oldest_map_stem_version()
+        else:
+            map_piece_map_stem = settings.map_stem
+        try:
+            map_dir = settings.get_import_map_dir_path(map_stem=map_piece_map_stem)
+        except NotADirectoryError:
+            return super().invoke(context, _event)
+        self.directory = str(map_dir)
+        context.window_manager.fileselect_add(self)
+        return {"RUNNING_MODAL"}
 
     def get_collection(self, context: bpy.types.Context, file_directory_name: str):
         """Assumes file directory name is a map stem."""
@@ -253,7 +262,7 @@ class ImportCharacterFLVER(BaseFLVERImportOperator):
         if chr_dir and chr_dir.is_dir():
             self.directory = str(chr_dir)
             context.window_manager.fileselect_add(self)
-            return {'RUNNING_MODAL'}
+            return {"RUNNING_MODAL"}
         return super().invoke(context, _event)
 
     # Base `execute` method is fine.
@@ -301,7 +310,7 @@ class ImportObjectFLVER(BaseFLVERImportOperator):
         if obj_dir and obj_dir.is_dir():
             self.directory = str(obj_dir)
             context.window_manager.fileselect_add(self)
-            return {'RUNNING_MODAL'}
+            return {"RUNNING_MODAL"}
         return super().invoke(context, _event)
 
     # Base `execute` method is fine.
@@ -339,7 +348,7 @@ class ImportAssetFLVER(BaseFLVERImportOperator):
         if asset_dir and asset_dir.is_dir():
             self.directory = str(asset_dir)
             context.window_manager.fileselect_add(self)
-            return {'RUNNING_MODAL'}
+            return {"RUNNING_MODAL"}
         return super().invoke(context, _event)
 
     # Base `execute` method is fine.
@@ -382,7 +391,7 @@ class ImportEquipmentFLVER(BaseFLVERImportOperator):
         if parts_dir and parts_dir.is_dir():
             self.directory = str(parts_dir)
             context.window_manager.fileselect_add(self)
-            return {'RUNNING_MODAL'}
+            return {"RUNNING_MODAL"}
         return super().invoke(context, _event)
 
     # Base `execute` method is fine.

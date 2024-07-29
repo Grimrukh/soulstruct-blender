@@ -177,13 +177,13 @@ class ImportHKXAnimation(BaseImportHKXAnimation, ImportHelper):
 
     def invoke(self, context, _event):
         """Set the initial directory based on Global Settings."""
-        game_directory = self.settings(context).game_directory
+        game_directory = self.settings(context).game_directory_path
         game_chr_directory = game_directory / "chr"
         for directory in (game_chr_directory, game_directory):
             if directory and directory.is_dir():
                 self.directory = str(directory)
                 context.window_manager.fileselect_add(self)
-                return {'RUNNING_MODAL'}
+                return {"RUNNING_MODAL"}
         return super().invoke(context, _event)
 
     def execute(self, context):

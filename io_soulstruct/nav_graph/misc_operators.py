@@ -17,7 +17,6 @@ from soulstruct.darksouls1r.events.enums import NavmeshFlag
 
 from io_soulstruct.exceptions import SoulstructTypeError, MCGEdgeCreationError
 from io_soulstruct.msb.darksouls1r import BlenderMSBNavmesh
-from io_soulstruct.navmesh.nvm.types import BlenderNVM
 from io_soulstruct.types import *
 from io_soulstruct.utilities import LoggingOperator
 from .utilities import *
@@ -299,9 +298,7 @@ class RecomputeEdgeCost(LoggingOperator):
             start_face_i = min(node_a_triangles)
             end_face_i = min(node_b_triangles)
 
-            bl_nvm = BlenderNVM(edge_navmesh)
-
-            total_cost = bl_nvm.get_best_cost(start_face_i, end_face_i)
+            total_cost = get_best_cost(edge_navmesh.data, start_face_i, end_face_i)
             if total_cost == 0.0:
                 self.warning(f"No path found in either direction between nodes for edge '{bl_edge.name}'.")
                 continue
@@ -498,7 +495,9 @@ class AutoCreateMCG(LoggingOperator):
             for cluster in exit_clusters:
                 for face, face_verts in cluster:
 
-                    for j, (other_navmesh_part, other_exit_clusters) in enumerate(zip(navmesh_parts, navmesh_exit_clusters)):
+                    for j, (other_navmesh_part, other_exit_clusters) in enumerate(
+                        zip(navmesh_parts, navmesh_exit_clusters)
+                    ):
                         if other_navmesh_part is navmesh_part:
                             continue
 

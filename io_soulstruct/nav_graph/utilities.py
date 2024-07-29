@@ -114,7 +114,7 @@ def get_navmesh_step_cost(
     from_face: BMFace,
     to_face: BMFace,
     distance: float,
-    flags_layer = None,
+    flags_layer=None,
     all_faces_passable=False,
 ) -> float:
     """Get the cost (for MCG edges) of travelling to a face with `face_flags` whose centroid is `distance` away.

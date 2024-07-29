@@ -3,7 +3,7 @@ from __future__ import annotations
 __all__ = [
     "ImportNVM",
     "ImportNVMWithBinderChoice",
-    "ImportNVMFromNVMBND",
+    "ImportSelectedMapNVM",
 
     "ExportLooseNVM",
     "ExportNVMIntoBinder",
@@ -17,10 +17,10 @@ __all__ = [
     "ImportAllDLCOverworldNVMHKTs",
     "NVMHKTImportSettings",
 
-    "NVM_PT_ds1_navmesh_import",
-    "NVM_PT_ds1_navmesh_export",
-    "NVM_PT_ds1_navmesh_tools",
-    "NVM_PT_er_navmesh_import",
+    "NavmeshDS1ImportPanel",
+    "NavmeshDS1ExportPanel",
+    "NavmeshDS1ToolsPanel",
+    "NavmeshERImportPanel",
 
     "NavmeshFaceSettings",
     "AddNVMFaceFlags",
@@ -49,7 +49,7 @@ _navmesh_type_items = [
 ]
 
 
-class NVM_PT_ds1_navmesh_import(bpy.types.Panel):
+class NavmeshDS1ImportPanel(bpy.types.Panel):
     bl_label = "DS1 Navmesh Import"
     bl_idname = "NVM_PT_ds1_navmesh_import"
     bl_space_type = "VIEW_3D"
@@ -60,7 +60,7 @@ class NVM_PT_ds1_navmesh_import(bpy.types.Panel):
     # noinspection PyUnusedLocal
     def draw(self, context):
         settings = context.scene.soulstruct_settings
-        if settings.game_variable_name != "DARK_SOULS_DSR":
+        if not settings.is_game("DARK_SOULS_DSR"):
             self.layout.label(text="Dark Souls: Remastered only.")
             return
 
@@ -70,11 +70,10 @@ class NVM_PT_ds1_navmesh_import(bpy.types.Panel):
         quick_box = self.layout.box()
         quick_box.label(text="From Game/Project")
         quick_box.prop(context.scene.soulstruct_settings, "import_bak_file", text="From .BAK File")
-        quick_box.prop(context.scene.soulstruct_game_enums, "nvm")
-        quick_box.operator(ImportNVMFromNVMBND.bl_idname)
+        quick_box.operator(ImportSelectedMapNVM.bl_idname)
 
 
-class NVM_PT_ds1_navmesh_export(bpy.types.Panel):
+class NavmeshDS1ExportPanel(bpy.types.Panel):
     bl_label = "DS1 Navmesh Export"
     bl_idname = "NVM_PT_ds1_navmesh_export"
     bl_space_type = "VIEW_3D"
@@ -99,7 +98,7 @@ class NVM_PT_ds1_navmesh_export(bpy.types.Panel):
         map_export_box.operator(ExportNVMIntoNVMBND.bl_idname)
 
 
-class NVM_PT_ds1_navmesh_tools(bpy.types.Panel):
+class NavmeshDS1ToolsPanel(bpy.types.Panel):
     bl_label = "DS1 Navmesh Tools"
     bl_idname = "NVM_PT_ds1_navmesh_tools"
     bl_space_type = "VIEW_3D"
@@ -180,7 +179,7 @@ def layout_selected_faces(bm: bmesh.types.BMesh, layout, context, selected_faces
     del bm
 
 
-class NVM_PT_er_navmesh_import(bpy.types.Panel):
+class NavmeshERImportPanel(bpy.types.Panel):
     bl_label = "ER Navmesh Import"
     bl_idname = "NVM_PT_er_navmesh_import"
     bl_space_type = "VIEW_3D"
@@ -210,7 +209,6 @@ class NVM_PT_er_navmesh_import(bpy.types.Panel):
         quick_box = self.layout.box()
         quick_box.label(text="From Game/Project")
         quick_box.prop(context.scene.soulstruct_settings, "import_bak_file", text="From .BAK File")
-        quick_box.prop(context.scene.soulstruct_game_enums, "nvmhkt")
         quick_box.operator(ImportNVMHKTFromNVMHKTBND.bl_idname)
         quick_box.operator(ImportAllNVMHKTsFromNVMHKTBND.bl_idname)
         quick_box.operator(ImportAllOverworldNVMHKTs.bl_idname)

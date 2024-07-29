@@ -79,8 +79,8 @@ class SetMaterialTexture0(_SetMaterialTexture):
 
     bl_idname = "object.set_material_texture_0"
     bl_label = "Set Material Texture 0"
-    bl_description = ("Set the first diffuse texture (e.g. 'g_Diffuse' in DS1) of the selected material to the selected "
-                      "texture. Will attempt to set specular and normal textures as well, if nodes exist")
+    bl_description = ("Set the first diffuse texture (e.g. 'g_Diffuse' in DS1) of the selected material to the "
+                      "selected texture. Will attempt to set specular and normal textures as well, if nodes exist")
 
     SLOT_SUFFIX = "_0"
 

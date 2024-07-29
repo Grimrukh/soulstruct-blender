@@ -9,14 +9,14 @@ TODO: Currently only supports map collision HKX files from Dark Souls Remastered
 from __future__ import annotations
 
 __all__ = [
-    "HKXImportInfo",
-    "HKXMapCollisionImportError",
     "ImportHKXMapCollision",
     "ImportHKXMapCollisionWithBinderChoice",
-    "ImportHKXMapCollisionFromHKXBHD",
+    "ImportSelectedMapHKXMapCollision",
 ]
 
-import time
+import shutil
+import tempfile
+
 import re
 import traceback
 import typing as tp
@@ -24,19 +24,23 @@ from pathlib import Path
 
 import bpy
 from bpy_extras.io_utils import ImportHelper
-
-from soulstruct.containers import BinderEntry
-
+from soulstruct.containers import BinderEntry, EntryNotFoundError
 from soulstruct_havok.wrappers.hkx2015 import MapCollisionHKX
 from soulstruct_havok.wrappers.hkx2015.hkx_binder import BothResHKXBHD
-
-from io_soulstruct.general import SoulstructGameEnums
+from io_soulstruct.exceptions import MapCollisionImportError
 from io_soulstruct.utilities import *
-from .core import *
+from .types import BlenderMapCollision
 
 
 HKX_NAME_RE = re.compile(r".*\.hkx(\.dcx)?")
 HKXBHD_NAME_RE = re.compile(r"^[hl].*\.hkxbhd(\.dcx)?$")
+
+
+class HKXImportInfo(tp.NamedTuple):
+    """Holds information about a HKX to import into Blender."""
+    model_name: str
+    hi_hkx: MapCollisionHKX  # parsed HKX
+    lo_hkx: MapCollisionHKX  # parsed HKX
 
 
 class ImportHKXMapCollision(LoggingOperator, ImportHelper):
@@ -68,23 +72,19 @@ class ImportHKXMapCollision(LoggingOperator, ImportHelper):
         default=False,
     )
 
-    merge_submeshes: bpy.props.BoolProperty(
-        name="Merge Submeshes",
-        description="Merge all submeshes into a single mesh, using material to define submeshes",
-        default=False,
-    )
-
     files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'})
     directory: bpy.props.StringProperty(options={'HIDDEN'})
 
     def invoke(self, context, _event):
         """Set the initial directory based on Global Settings."""
-        map_path = self.settings(context).get_import_map_path()
-        if map_path and map_path.is_dir():
-            self.directory = str(map_path)
-            context.window_manager.fileselect_add(self)
-            return {'RUNNING_MODAL'}
-        return super().invoke(context, _event)
+        try:
+            map_dir = self.settings(context).get_import_map_dir_path()
+        except NotADirectoryError:
+            return super().invoke(context, _event)
+
+        self.directory = str(map_dir)
+        context.window_manager.fileselect_add(self)
+        return {"RUNNING_MODAL"}
 
     def execute(self, context):
 
@@ -107,22 +107,22 @@ class ImportHKXMapCollision(LoggingOperator, ImportHelper):
                         entry for entry in both_res_hkxbhd.hi_res.entries if self.check_hkx_entry_model_id(entry)
                     ]
                     if not hi_hkx_entries:
-                        raise HKXMapCollisionImportError(
+                        raise MapCollisionImportError(
                             f"Found no entry with model ID {self.collision_model_id} in hi-res HKXBHD."
                         )
                     if len(hi_hkx_entries) > 1:
-                        raise HKXMapCollisionImportError(
+                        raise MapCollisionImportError(
                             f"Found multiple entries with model ID {self.collision_model_id} in hi-res HKXBHD."
                         )
                     lo_hkx_entries = [
                         entry for entry in both_res_hkxbhd.lo_res.entries if self.check_hkx_entry_model_id(entry)
                     ]
                     if not lo_hkx_entries:
-                        raise HKXMapCollisionImportError(
+                        raise MapCollisionImportError(
                             f"Found no entry with model ID {self.collision_model_id} in lo-res HKXBHD."
                         )
                     if len(lo_hkx_entries) > 1:
-                        raise HKXMapCollisionImportError(
+                        raise MapCollisionImportError(
                             f"Found multiple entries with model ID {self.collision_model_id} in lo-res HKXBHD."
                         )
                     # Import single specified collision model.
@@ -166,29 +166,19 @@ class ImportHKXMapCollision(LoggingOperator, ImportHelper):
 
             if isinstance(import_info, BothResHKXBHD):
                 # Defer through entry selection operator.
-                ImportHKXMapCollisionWithBinderChoice.run(import_info, self.merge_submeshes)
+                ImportHKXMapCollisionWithBinderChoice.run(import_info)
                 continue
 
             self.info(f"Importing HKX: {import_info.model_name}")
 
             # Import single HKX.
             try:
-                if self.merge_submeshes:
-                    # Single mesh object.
-                    hkx_model = import_hkx_model_merged(
-                        import_info.hi_hkx, import_info.model_name, lo_hkx=import_info.lo_hkx
-                    )
-                else:
-                    # Empty parent of submesh objects.
-                    hkx_model = import_hkx_model_split(
-                        import_info.hi_hkx, import_info.model_name, lo_hkx=import_info.lo_hkx
-                    )
+                BlenderMapCollision.new_from_soulstruct_obj(
+                    self, context, import_info.hi_hkx, import_info.model_name, lo_hkx=import_info.lo_hkx
+                )
             except Exception as ex:
                 traceback.print_exc()  # for inspection in Blender console
                 return self.error(f"Cannot import HKX: {import_info.model_name}. Error: {ex}")
-            context.scene.collection.objects.link(hkx_model)
-            for child in hkx_model.children:
-                context.scene.collection.objects.link(child)
 
         return {"FINISHED"}
 
@@ -216,7 +206,6 @@ class ImportHKXMapCollisionWithBinderChoice(LoggingOperator):
 
     # For deferred import in `execute()`.
     both_res_hkxbhd: BothResHKXBHD = None
-    merge_submeshes: bool = False
     enum_options: list[tuple[tp.Any, str, str]] = []
 
     choices_enum: bpy.props.EnumProperty(items=get_binder_entry_choices)
@@ -240,26 +229,17 @@ class ImportHKXMapCollisionWithBinderChoice(LoggingOperator):
         )
 
         try:
-            if self.merge_submeshes:
-                # Single mesh object.
-                hkx_model = import_hkx_model_merged(hi_hkx, model_name, lo_hkx)
-            else:
-                # Empty parent of submesh objects.
-                hkx_model = import_hkx_model_split(hi_hkx, model_name, lo_hkx)
+            BlenderMapCollision.new_from_soulstruct_obj(self, context, hi_hkx, model_name, lo_hkx=lo_hkx)
         except Exception as ex:
             traceback.print_exc()
             return self.error(
                 f"Cannot import HKX '{model_name}' from '{self.both_res_hkxbhd.path}'. Error: {ex}"
             )
-        context.scene.collection.objects.link(hkx_model)
-        for child in hkx_model.children:
-            context.scene.collection.objects.link(child)
 
         return {"FINISHED"}
 
     @classmethod
-    def run(cls, both_res_hkxbhd: BothResHKXBHD, merge_submeshes: bool):
-        cls.merge_submeshes = merge_submeshes
+    def run(cls, both_res_hkxbhd: BothResHKXBHD):
         cls.both_res_hkxbhd = both_res_hkxbhd
         enum_options = []
         for model_id, (hi_name, lo_name) in both_res_hkxbhd.get_both_res_entries_dict().items():
@@ -274,69 +254,158 @@ class ImportHKXMapCollisionWithBinderChoice(LoggingOperator):
         bpy.ops.wm.hkx_map_collision_binder_choice_operator("INVOKE_DEFAULT")
 
 
-class ImportHKXMapCollisionFromHKXBHD(LoggingOperator):
-    bl_idname = "import_scene.hkx_map_collision_entry"
+class ImportSelectedMapHKXMapCollision(LoggingOperator):
+    bl_idname = "import_scene.selected_map_hkx_map_collision"
     bl_label = "Import Map Collision"
     bl_description = "Import selected HKX map collision entry from selected game map HKXBHD"
 
+    # Set by `invoke` when entry choices are written to temp directory (for DSR).
+    both_res_hkxbhd: BothResHKXBHD
+
+    temp_directory: bpy.props.StringProperty(
+        name="Temp HKXBHD Directory",
+        description="Temporary directory containing hi-res HKXBHD entry choices",
+        default="",
+        options={'HIDDEN'},
+    )
+
+    filter_glob: bpy.props.StringProperty(
+        default="*",
+        options={'HIDDEN'},
+        maxlen=255,  # Max internal buffer length, longer would be clamped.
+    )
+
+    filepath: bpy.props.StringProperty(
+        name="File Path",
+        description="Chosen HKXBHD entry",
+        maxlen=1024,
+        subtype="FILE_PATH",
+    )
+    files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'})
+    directory: bpy.props.StringProperty(options={'HIDDEN'})
+
+    ENTRY_NAME_RE = re.compile(r"\((\d+)\) (.+)")
+
     @classmethod
     def poll(cls, context):
-        game_lists = context.scene.soulstruct_game_enums  # type: SoulstructGameEnums
-        return game_lists.hkx_map_collision not in {"", "0"}
+        settings = cls.settings(context)
+        map_stem = settings.get_oldest_map_stem_version()  # collision uses oldest
+        if not settings.is_game("DARK_SOULS_PTDE", "DARK_SOULS_DSR"):
+            return False
+        # Either loose HKX files in map directory (PTDE) or a pair of resolution HKXBHDs (DSR).
+        try:
+            settings.get_import_map_dir_path(map_stem=map_stem)
+        except NotADirectoryError:
+            return False
+        return True
 
-    def execute(self, context):
+    @classmethod
+    def get_both_res_hkxbhd(cls, context) -> BothResHKXBHD | None:
+        settings = cls.settings(context)
+        oldest_map_stem = settings.get_oldest_map_stem_version()
+        try:
+            map_dir = settings.get_import_map_dir_path(map_stem=oldest_map_stem)
+        except NotADirectoryError:
+            return None
+        return BothResHKXBHD.from_map_path(map_dir)
 
-        start_time = time.perf_counter()
+    def invoke(self, context, event):
+        """Unpack valid Binder entry choices to temp directory for user to select from."""
+        if self.temp_directory:
+            shutil.rmtree(self.temp_directory, ignore_errors=True)
+            self.temp_directory = ""
 
         settings = self.settings(context)
-        game_lists = context.scene.soulstruct_game_enums  # type: SoulstructGameEnums
+        if settings.is_game("DARK_SOULS_PTDE"):
+            # HKX files are already loose. Just use map folder (oldest).
+            try:
+                map_dir = settings.get_import_map_dir_path(map_stem=settings.get_oldest_map_stem_version())
+            except NotADirectoryError as ex:
+                return self.error(f"Could not find map directory. Error: {ex}")
+            self.directory = str(map_dir)
+            context.window_manager.fileselect_add(self)
+            return {"RUNNING_MODAL"}
 
-        hkx_entry_name = game_lists.hkx_map_collision
-        if hkx_entry_name in {"", "0"}:
-            return self.error("No HKX map collision entry selected.")
-
-        # Get oldest version of map folder, if option enabled.
+        # Dark Souls Remastered needs an unpacked `BothResHKXBHD`.
         map_stem = settings.get_oldest_map_stem_version()
+        self.both_res_hkxbhd = self.get_both_res_hkxbhd(context)
+        if self.both_res_hkxbhd is None:
+            return self.error("No Binders could be loaded for HKX Map Collision model import.")
 
-        collision_import_settings = context.scene.hkx_map_collision_import_settings
+        self.temp_directory = tempfile.mkdtemp(suffix="_" + map_stem)
+        for entry in self.both_res_hkxbhd.hi_res.entries:
+            # We use the index to ensure unique file names while allowing duplicate entry names (e.g. Regions).
+            file_name = f"({entry.id}) {entry.name}"  # name will include extension
+            file_path = Path(self.temp_directory, file_name)
+            with file_path.open("w") as f:
+                f.write(entry.name)
 
+        # No subdirectories used.
+        self.directory = self.temp_directory
+        context.window_manager.fileselect_add(self)
+        return {"RUNNING_MODAL"}
+
+    def get_selected_hkx_pairs(self) -> list[tuple[MapCollisionHKX, MapCollisionHKX]]:
+        if not getattr(self, "binder", None):
+            self.error("No Binder loaded. Did you cancel the file selection?")
+            return []
+
+        file_paths = [Path(self.directory, file.name) for file in self.files]
+        hkx_pairs = []
+        for path in file_paths:
+            match = self.ENTRY_NAME_RE.match(path.stem)
+            if not match:
+                self.error(f"Selected file does not match expected format '(i) Name': {self.filepath}")
+                return []  # one error cancels all imports
+
+            entry_id, entry_name = int(match.group(1)), match.group(2)
+            try:
+                hi_hkx, lo_hkx = self.both_res_hkxbhd.get_both_hkx(entry_name)  # neither can be missing
+            except EntryNotFoundError as ex:
+                self.error(f"Error reading HKX for '{entry_name}': {ex}")
+                return []
+            hkx_pairs.append((hi_hkx, lo_hkx))
+        return hkx_pairs
+
+    def execute(self, context):
         try:
-            # Import source may depend on suffix of entry enum.
-            if hkx_entry_name.endswith(" (G)"):
-                both_res_hkxbhd = BothResHKXBHD.from_map_path(settings.get_game_map_path(map_stem=map_stem))
-            elif hkx_entry_name.endswith(" (P)"):
-                both_res_hkxbhd = BothResHKXBHD.from_map_path(settings.get_project_map_path(map_stem=map_stem))
-            else:  # no suffix, so we use whichever source is preferred
-                both_res_hkxbhd = BothResHKXBHD.from_map_path(settings.get_import_map_path(map_stem=map_stem))
-        except Exception as ex:
-            return self.error(f"Could not load HKXBHD for map '{map_stem}'. Error: {ex}")
+            hkx_pairs = self.get_selected_hkx_pairs()
+            if not hkx_pairs:
+                return {"CANCELLED"}  # relevant error already reported
+            for hi_hkx, lo_hkx in hkx_pairs:
+                try:
+                    self._import_hkx_pair(context, hi_hkx, lo_hkx)
+                except Exception as ex:
+                    self.error(f"Error occurred while importing HKX '{hi_hkx.path_name}': {ex}")
+                    return {"CANCELLED"}
+            return {"FINISHED"}
+        finally:
+            if self.temp_directory:
+                shutil.rmtree(self.temp_directory, ignore_errors=True)
+                self.temp_directory = ""
+
+    def _import_hkx_pair(self, context, hi_hkx: MapCollisionHKX, lo_hkx: MapCollisionHKX):
+
+        settings = self.settings(context)
+        map_stem = settings.get_oldest_map_stem_version()
+        # NOTE: Currently no Map Collision model import settings.
+
+        collection = get_collection(f"{map_stem} Collision Models", context.scene.collection)
 
         # Import single HKX.
-        model_name = hkx_entry_name.split(".")[0]
-        hi_hkx, lo_hkx = both_res_hkxbhd.get_both_hkx(model_name)
+        model_name = hi_hkx.path_minimal_stem  # set by `BothResHKXBHD` entry loader
         try:
-            if collision_import_settings.merge_submeshes:
-                # Single mesh object.
-                hkx_model = import_hkx_model_merged(hi_hkx, model_name, lo_hkx)
-            else:
-                # Empty parent of submesh objects.
-                hkx_model = import_hkx_model_split(hi_hkx, model_name, lo_hkx)
+            bl_map_collision = BlenderMapCollision.new_from_soulstruct_obj(
+                self, context, hi_hkx, model_name, collection=collection, lo_hkx=lo_hkx
+            )
         except Exception as ex:
             traceback.print_exc()  # for inspection in Blender console
-            return self.error(f"Cannot import HKX '{model_name}' from HKXBHDs in {map_stem}. Error: {ex}")
-        collection = get_collection(f"{map_stem} Collision Models", context.scene.collection)
-        collection.objects.link(hkx_model)
-        for child in hkx_model.children:
-            collection.objects.link(child)
+            return self.error(f"Cannot import HKX '{model_name}' from HKXBHDs in map {map_stem}. Error: {ex}")
 
-        p = time.perf_counter() - start_time
-        self.info(
-            f"Imported HKX map collision '{hkx_model.name}' from {model_name} in map {map_stem} in {p} s."
-        )
+        self.info(f"Imported HKX map collision '{bl_map_collision.name}' from {model_name} in map {map_stem}.")
 
         # Select and frame view on newly imported Mesh.
-        self.set_active_obj(hkx_model)
-        if collision_import_settings.merge_submeshes:
-            bpy.ops.view3d.view_selected(use_all_regions=False)
+        self.set_active_obj(bl_map_collision.obj)
+        bpy.ops.view3d.view_selected(use_all_regions=False)
 
         return {"FINISHED"}

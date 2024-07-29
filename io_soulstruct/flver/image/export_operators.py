@@ -30,15 +30,16 @@ def export_map_area_textures(
         operator.error("Map textures not exported: only supported for Dark Souls: Remastered.")
         return
 
-    import_area_dir = settings.get_game_path(f"map/{map_area}")
-    export_area_dir = settings.get_project_path(f"map/{map_area}")
+    import_area_dir = settings.game_root and settings.game_root.get_dir_path(f"map/{map_area}")
+    export_area_dir = settings.project_root and settings.project_root.get_dir_path(f"map/{map_area}")
     if not export_area_dir and not settings.also_export_to_game:
         # Should be caught by `settings.can_export` check in poll, but making extra sure here that any sort
         # of TPFBHD export is possible before the expensive DDS conversion call below.
         operator.error("Map textures not exported: game export path not set and export-to-import disabled.")
         return  # no point checking other areas
     if not (import_area_dir and import_area_dir.is_dir()) and not (
-        export_area_dir and export_area_dir.is_dir()):
+        export_area_dir and export_area_dir.is_dir()
+    ):
         operator.error(
             f"Textures not written. Cannot find map texture Binders to modify from either export "
             f"(preferred) or import (backup) map area directory: 'map/{map_area}"

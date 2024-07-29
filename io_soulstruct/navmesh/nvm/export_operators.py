@@ -56,7 +56,7 @@ class ExportLooseNVM(LoggingOperator, ExportHelper):
         settings = self.settings(context)
         self.filepath = settings.game.process_dcx_path(f"{model_stem}.nvm")
         context.window_manager.fileselect_add(self)
-        return {'RUNNING_MODAL'}
+        return {"RUNNING_MODAL"}
 
     def execute(self, context):
         if not self.poll(context):

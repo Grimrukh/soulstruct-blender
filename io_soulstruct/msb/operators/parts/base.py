@@ -16,6 +16,7 @@ import bpy
 from io_soulstruct.general import SoulstructSettings
 from io_soulstruct.general.cached import get_cached_file
 from io_soulstruct.msb.operator_config import MSBPartOperatorConfig
+from io_soulstruct.msb.utilities import BaseMSBEntrySelectOperator
 from io_soulstruct.types import SoulstructType
 from io_soulstruct.utilities.misc import *
 from io_soulstruct.utilities.operators import LoggingOperator
@@ -23,35 +24,31 @@ from io_soulstruct.utilities.operators import LoggingOperator
 if tp.TYPE_CHECKING:
     from io_soulstruct.type_checking import MSB_TYPING
     from soulstruct.base.maps.msb import MSBEntryList
+    from soulstruct.darksouls1ptde.maps.parts import MSBPart
 
 
-class BaseImportSingleMSBPart(LoggingOperator):
+class BaseImportSingleMSBPart(BaseMSBEntrySelectOperator):
 
     config: tp.ClassVar[MSBPartOperatorConfig]
 
     @classmethod
-    def poll(cls, context):
-        settings = cls.settings(context)
+    def get_msb_list_names(cls, context) -> list[str]:
+        return [cls.config.MSB_LIST_NAME]
 
+    @classmethod
+    def poll(cls, context):
+        if not super().poll(context):
+            return False
+        settings = cls.settings(context)
         try:
             cls.config.get_bl_part_type(settings.game)
         except KeyError:
             return False
+        return True  # MSB exists
 
-        msb_path = settings.get_import_msb_path()
-        if not is_path_and_file(msb_path):
-            return False
-        part = getattr(context.scene.soulstruct_game_enums, cls.config.GAME_ENUM_NAME)
-        if part in {"", "0"}:
-            return False  # no enum option selected
-        return True  # MSB exists and a Character part name is selected from enum
-
-    def execute(self, context: bpy.types.Context):
+    def _import_entry(self, context: bpy.types.Context, entry: MSBPart):
         """Import MSB Part of this subclass's subtype from value of `config.GAME_ENUM_NAME` Blender enum property."""
-
         settings = self.settings(context)
-        msb_import_settings = context.scene.msb_import_settings
-
         try:
             bl_part_type = self.config.get_bl_part_type(settings.game)
         except KeyError:
@@ -59,35 +56,18 @@ class BaseImportSingleMSBPart(LoggingOperator):
                 f"Cannot import MSB Part subtype `{self.config.PART_SUBTYPE}` for game {settings.game.name}."
             )
 
-        part_name = getattr(context.scene.soulstruct_game_enums, self.config.GAME_ENUM_NAME)
-        if part_name in {"", "0"}:
-            return self.error(f"Invalid MSB {self.config.PART_SUBTYPE} selection: {part_name}")
-
-        if not settings.get_import_map_path():  # validation
-            return self.error("Game directory and map stem must be set in Blender's Soulstruct global settings.")
-
         # We always use the latest MSB, if the setting is enabled.
         msb_stem = settings.get_latest_map_stem_version()
         map_stem = settings.get_oldest_map_stem_version() if not self.config.USE_LATEST_MAP_FOLDER else msb_stem
-        msb_path = settings.get_import_msb_path()  # will automatically use latest MSB version if known and enabled
-        msb = get_cached_file(msb_path, settings.get_game_msb_class())  # type: MSB_TYPING
-        collection_name = msb_import_settings.get_collection_name(msb_stem, self.config.collection_name)
+        collection_name = context.scene.msb_import_settings.get_collection_name(msb_stem, self.config.collection_name)
         part_collection = get_collection(collection_name, context.scene.collection)
-
-        # Get MSB part.
-        part_list = getattr(msb, self.config.MSB_LIST_NAME)
-        try:
-            part = part_list.find_entry_name(part_name)
-        except KeyError:
-            return self.error(f"MSB {self.config.PART_SUBTYPE} '{part_name}' not found in MSB.")
 
         try:
             # NOTE: Instance creator may not always use `map_stem` (e.g. characters).
-            bl_part = bl_part_type.new_from_soulstruct_obj(
-                self, context, part, part_name, part_collection, map_stem)
+            bl_part = bl_part_type.new_from_soulstruct_obj(self, context, entry, entry.name, part_collection, map_stem)
         except Exception as ex:
             traceback.print_exc()
-            return self.error(f"Failed to import MSB {self.config.PART_SUBTYPE} part '{part.name}': {ex}")
+            return self.error(f"Failed to import MSB {self.config.PART_SUBTYPE} part '{entry.name}': {ex}")
 
         # Select and frame view on new instance.
         self.set_active_obj(bl_part.obj)
@@ -103,14 +83,15 @@ class BaseImportAllMSBParts(LoggingOperator):
     @classmethod
     def poll(cls, context):
         settings = cls.settings(context)
-        msb_path = settings.get_import_msb_path()
 
         try:
             cls.config.get_bl_part_type(settings.game)
         except KeyError:
             return False
 
-        if not is_path_and_file(msb_path):
+        try:
+            settings.get_import_msb_path()
+        except FileNotFoundError:
             return False
         return True  # MSB exists and a Character part name is selected from enum
 
@@ -130,7 +111,9 @@ class BaseImportAllMSBParts(LoggingOperator):
                 f"Cannot import MSB Part subtype `{self.config.PART_SUBTYPE}` for game {settings.game.name}."
             )
 
-        if not settings.get_import_map_path():  # validation
+        try:
+            settings.get_import_map_dir_path()  # validation
+        except NotADirectoryError:
             return self.error("Game directory and map stem must be set in Blender's Soulstruct global settings.")
 
         msb_import_settings = context.scene.msb_import_settings
@@ -313,7 +296,7 @@ class BaseExportMSBParts(LoggingOperator):
                     )
 
             # NOTE: `map_stem` passed for SIB path generation should be the oldest map stem, not the latest.
-            msb_part = bl_part.to_entry(self, context, settings, map_stem, msb)
+            msb_part = bl_part.to_soulstruct_obj(self, context, map_stem, msb)
             msb_list = getattr(msb, self.config.MSB_LIST_NAME)  # type: MSBEntryList
             try:
                 existing_msb_part = msb_list.find_entry_name(part_name)

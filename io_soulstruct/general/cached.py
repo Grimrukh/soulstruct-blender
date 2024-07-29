@@ -20,7 +20,7 @@ if tp.TYPE_CHECKING:
     from soulstruct.base.models.matbin import MATBINBND
     from soulstruct.base.base_binary_file import BASE_BINARY_FILE_T
     from io_soulstruct.utilities import LoggingOperator
-    from .core import SoulstructSettings
+    from .properties import SoulstructSettings
 
 
 # Maps file paths to `(BaseBinaryFile, blake2b_hash)` tuples for caching. Useful for inspecting, say, MSB files

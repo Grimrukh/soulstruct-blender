@@ -659,12 +659,11 @@ class MSBRegionProps(bpy.types.PropertyGroup):
             (MSBRegionShape.POINT, "Point", "Point with location and rotation only"),
             # NOTE: 2D region shapes not supported (never used in game AFAIK).
             (MSBRegionShape.SPHERE, "Sphere", "Volume region defined by radius (max of X/Y/Z scale)"),
-            (MSBRegionShape.CYLINDER, "Cylinder", "Volume region defined by radius (max of X/Y scale) and height (Z scale)"),
+            (MSBRegionShape.CYLINDER, "Cylinder", "Volume region with radius (X/Y scale max) and height (Z scale)"),
             (MSBRegionShape.BOX, "Box", "Volume region defined by X/Y/Z scale"),
         ],
         default=MSBRegionShape.NONE,
     )
-
 
 
 # TODO: MSB Event subtype/property support.

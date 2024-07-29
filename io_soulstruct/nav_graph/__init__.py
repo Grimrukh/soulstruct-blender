@@ -23,10 +23,10 @@ __all__ = [
     "MCGEdgeProps",
     "NavGraphComputeSettings",
 
-    "MCG_PT_ds1_mcg_import",
-    "MCG_PT_ds1_mcg_export",
-    "MCG_PT_ds1_mcg_draw",
-    "MCG_PT_ds1_mcg_tools",
+    "MCGImportPanel",
+    "MCGExportPanel",
+    "MCGDrawPanel",
+    "MCGToolsPanel",
 ]
 
 from .draw_mcg import *

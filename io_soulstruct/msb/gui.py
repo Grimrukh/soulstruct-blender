@@ -34,7 +34,7 @@ class MSBToolsPanel(bpy.types.Panel):
 
     def draw(self, context):
         self.layout.operator(CreateMSBPart.bl_idname, icon='MESH_CUBE')
-        self.layout.operator(DuplicateMSBPartModel.bl_idname, icon='MESH_CUBE')
+        self.layout.operator(DuplicateMSBPartModel.bl_idname, icon='DUPLICATE')
 
         region_draw_box = self.layout.box()
         region_draw_box.label(text="Region Draw Settings")

@@ -6,6 +6,7 @@ __all__ = [
     "ExportHKXMapCollisionIntoHKXBHD",
 ]
 
+import re
 import traceback
 from pathlib import Path
 
@@ -20,7 +21,11 @@ from soulstruct_havok.wrappers.hkx2015.hkx_binder import BothResHKXBHD
 
 from io_soulstruct.types import SoulstructType
 from io_soulstruct.utilities import *
-from .core import *
+from .types import *
+
+
+LOOSE_HKX_COLLISION_STEM_RE = re.compile(r"^([hl])(\w{6})A(\d\d)$")  # game-readable model name; no extensions
+NUMERIC_HKX_COLLISION_STEM_RE = re.compile(r"^([hl])(\d{4})B(\d)A(\d\d)$")  # standard map model name; no extensions
 
 
 class ExportLooseHKXMapCollision(LoggingOperator, ExportHelper):
@@ -54,7 +59,7 @@ class ExportLooseHKXMapCollision(LoggingOperator, ExportHelper):
             return False  # TODO: DS1R only.
         if not context.active_object:
             return False
-        if context.active_object != SoulstructType.COLLISION:
+        if context.active_object.soulstruct_type != SoulstructType.COLLISION:
             return False
         return True
 
@@ -68,7 +73,7 @@ class ExportLooseHKXMapCollision(LoggingOperator, ExportHelper):
         settings = self.settings(context)
         self.filepath = settings.game.process_dcx_path(f"{model_stem}.hkx")
         context.window_manager.fileselect_add(self)
-        return {'RUNNING_MODAL'}
+        return {"RUNNING_MODAL"}
 
     def execute(self, context):
         if not self.poll(context):
@@ -76,6 +81,7 @@ class ExportLooseHKXMapCollision(LoggingOperator, ExportHelper):
 
         # noinspection PyTypeChecker
         hkx_model = context.active_object  # type: bpy.types.MeshObject
+        bl_map_collision = BlenderMapCollision(hkx_model)
 
         hkx_path = Path(self.filepath)
         if not LOOSE_HKX_COLLISION_STEM_RE.match(hkx_path.name) is None:
@@ -108,7 +114,7 @@ class ExportLooseHKXMapCollision(LoggingOperator, ExportHelper):
             hi_name = hi_path.name.split(".")[0]  # needed for internal HKX name
 
         try:
-            hi_hkx, lo_hkx = export_hkx_map_collision(self, hkx_model, hi_name=hi_name, lo_name=lo_name)
+            hi_hkx, lo_hkx = bl_map_collision.to_hkx_pair(self, hkx_model, hi_name=hi_name, lo_name=lo_name)
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Cannot get exported HKX for '{hkx_model.name}'. Error: {ex}")
@@ -188,31 +194,30 @@ class ExportHKXMapCollisionIntoBinder(LoggingOperator, ImportHelper):
 
         # noinspection PyTypeChecker
         hkx_model = context.active_object  # type: bpy.types.MeshObject
+        bl_map_collision = BlenderMapCollision(hkx_model)
 
-        model_stem = hkx_model.name.split(" ")[0].split(".")[0]
-        if not LOOSE_HKX_COLLISION_STEM_RE.match(model_stem):
+        model_name = bl_map_collision.tight_name
+        if not LOOSE_HKX_COLLISION_STEM_RE.match(model_name):
             self.warning(
-                f"HKX map collision model name '{model_stem}' should generally be 'h....B.A..' or 'l....B.A..'."
+                f"HKX map collision model name '{model_name}' should generally be 'h....B.A..' or 'l....B.A..'."
             )
         # NOTE: If this is a new collision, its name must be in standard numeric format so that the map can be
         # detected for the new Binder entry path.
         # TODO: Honestly, probably don't need the full entry path in the Binder.
 
         both_res_hkxbhd = BothResHKXBHD.from_map_path(Path(self.filepath).parent)
-        hi_name = f"h{model_stem[1:]}"
-        lo_name = f"l{model_stem[1:]}"
 
         try:
-            hi_hkx, lo_hkx = export_hkx_map_collision(self, hkx_model, hi_name=hi_name, lo_name=lo_name)
+            hi_hkx, lo_hkx = bl_map_collision.to_hkx_pair(self, hkx_model)
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Cannot get exported HKX for '{hkx_model.name}'. Error: {ex}")
         if hi_hkx:
             hi_hkx.dcx_type = DCXType[self.dcx_type]
-            both_res_hkxbhd.hi_res.set_hkx(hi_name, hi_hkx)
+            both_res_hkxbhd.hi_res.set_hkx(hi_hkx.path_stem, hi_hkx)
         if lo_hkx:
             lo_hkx.dcx_type = DCXType[self.dcx_type]
-            both_res_hkxbhd.lo_res.set_hkx(lo_name, lo_hkx)
+            both_res_hkxbhd.lo_res.set_hkx(lo_hkx.path_stem, lo_hkx)
 
         # We only write hi-res to a new temporary file until lo-res is confirmed to write.
         hi_temp_path = None
@@ -274,32 +279,33 @@ class ExportHKXMapCollisionIntoHKXBHD(LoggingOperator):
 
         settings = self.settings(context)
         dcx_type = DCXType.DS1_DS2  # DS1R (inside HKXBHD)
+        bl_map_collisions = BlenderMapCollision.from_selected_objects(context)  # type: list[BlenderMapCollision]
 
         opened_both_res_hkxbhds = {}  # type: dict[str, BothResHKXBHD]  # keys are map stems
         return_strings = set()
 
-        for hkx_model in context.selected_objects:
-            hkx_model: bpy.types.MeshObject
+        for bl_map_collision in bl_map_collisions:
 
-            if hkx_model.name[0] not in "hl":
-                self.error(f"Selected mesh '{hkx_model.name}' must start with 'h' or 'l' to export as collision.")
+            if bl_map_collision.name[0] not in "hl":
+                self.error(
+                    f"Selected mesh '{bl_map_collision.name}' must start with 'h' or 'l' to export as collision."
+                )
                 continue
 
-            map_stem = settings.get_map_stem_for_export(hkx_model, oldest=True)
-            model_stem = hkx_model.name.split(" ")[0].split(".")[0]
+            map_stem = settings.get_map_stem_for_export(bl_map_collision.obj, oldest=True)
 
-            if not LOOSE_HKX_COLLISION_STEM_RE.match(model_stem):
+            model_name = bl_map_collision.tight_name
+            if not LOOSE_HKX_COLLISION_STEM_RE.match(model_name):
                 return self.error(
-                    f"Model name '{model_stem}' detected from selected mesh '{hkx_model.name}' does not match the "
-                    f"required name pattern for a DS1 HKX collision model: 'h......A..' or 'l......A..'"
+                    f"Model name '{model_name}' detected from selected mesh '{bl_map_collision.name}' does not match "
+                    f"the required name pattern for a DS1 HKX collision model: 'h......A..' or 'l......A..'"
                 )
-
             # If HKX name is standard, check that it matches the selected map stem and warn user if not.
-            numeric_match = NUMERIC_HKX_COLLISION_STEM_RE.match(model_stem)
+            numeric_match = NUMERIC_HKX_COLLISION_STEM_RE.match(model_name)
             if numeric_match is None:
                 self.warning(
-                    f"Model name '{model_stem}' detected from selected mesh '{hkx_model.name}' does not match the "
-                    f"standard name pattern for a DS1 HKX collision model: 'h####B#A##' or 'l####B#A##'. Exporting "
+                    f"Model name '{model_name}' detected from selected mesh '{bl_map_collision.name}' does not match "
+                    f"the standard name pattern for a DS1 HKX collision model: 'h####B#A##' or 'l####B#A##'. Exporting "
                     f"anyway."
                 )
             else:
@@ -307,24 +313,16 @@ class ExportHKXMapCollisionIntoHKXBHD(LoggingOperator):
                 expected_map_stem = f"m{area:02d}_{block:02d}_00_00"
                 if expected_map_stem != map_stem:
                     self.warning(
-                        f"Map area and/or block in name of detected model name '{model_stem}' of selected mesh "
-                        f"'{hkx_model.name}' does not match the export destination map '{map_stem}'. Exporting anyway."
+                        f"Map area and/or block in name of detected model name '{model_name}' of selected mesh "
+                        f"'{bl_map_collision.name}' does not match the export destination map '{map_stem}'. Exporting "
+                        f"anyway."
                     )
 
-            if model_stem.startswith("h"):
-                hi_name = model_stem
-                lo_name = f"l{model_stem[1:]}"
-            else:  # must start with 'l'
-                hi_name = f"h{model_stem[1:]}"
-                lo_name = model_stem
-
             try:
-                hi_hkx, lo_hkx = export_hkx_map_collision(
-                    self, hkx_model, hi_name=hi_name, lo_name=lo_name, require_hi=True, use_hi_if_missing_lo=True
-                )
+                hi_hkx, lo_hkx = bl_map_collision.to_hkx_pair(self, require_hi=True, use_hi_if_missing_lo=True)
             except Exception as ex:
                 traceback.print_exc()
-                self.error(f"Cannot get exported hi/lo HKX for '{hkx_model.name}'. Error: {ex}")
+                self.error(f"Cannot get exported hi/lo HKX for '{bl_map_collision.name}'. Error: {ex}")
                 continue
             hi_hkx.dcx_type = dcx_type
             lo_hkx.dcx_type = dcx_type
@@ -340,13 +338,15 @@ class ExportHKXMapCollisionIntoHKXBHD(LoggingOperator):
                                 f"Could not find file '{relative_path}' for map '{map_stem}'. Error: {ex}"
                             )
 
-                opened_both_res_hkxbhds[map_stem] = BothResHKXBHD.from_map_path(
-                    settings.get_import_map_path(map_stem=map_stem)
-                )
+                try:
+                    map_dir = settings.get_import_map_dir_path(map_stem=map_stem)
+                except NotADirectoryError:
+                    return self.error(f"Could not find map data directory for map '{map_stem}'.")
+                opened_both_res_hkxbhds[map_stem] = BothResHKXBHD.from_map_path(map_dir)
 
-            opened_both_res_hkxbhds[map_stem].hi_res.set_hkx(hi_name, hi_hkx)
-            opened_both_res_hkxbhds[map_stem].lo_res.set_hkx(lo_name, lo_hkx)
-            self.info(f"Added HKX {hi_name} and {lo_name} to {map_stem} HKXBHDs.")
+            opened_both_res_hkxbhds[map_stem].hi_res.set_hkx(hi_hkx.path_stem, hi_hkx)
+            opened_both_res_hkxbhds[map_stem].lo_res.set_hkx(lo_hkx.path_stem, lo_hkx)
+            self.info(f"Added hi-res and lo-res HKX for {model_name} to {map_stem} HKXBHDs.")
 
         for map_stem, both_res_hkxbhd in opened_both_res_hkxbhds.items():
             return_strings |= settings.export_file(

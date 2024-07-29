@@ -86,7 +86,7 @@ class CreateMSBPart(LoggingOperator):
 class DuplicateMSBPartModel(LoggingOperator):
 
     bl_idname = "object.duplicate_part_model"
-    bl_label = "Duplicate to New Part Model"
+    bl_label = "Single-User Model"
     bl_description = (
         "Duplicate model of selected MSB Part to a new model with given name (or text before first underscore in Part "
         "name by default). Bone poses will also be copied if this is a Map Piece Part. Must be in Object Mode"
@@ -133,7 +133,7 @@ class DuplicateMSBPartModel(LoggingOperator):
             MSBPartSubtype.MAP_PIECE, MSBPartSubtype.OBJECT, MSBPartSubtype.CHARACTER, MSBPartSubtype.ASSET
         }:
             # Model is a FLVER.
-            old_bl_flver = BlenderFLVER.from_bl_obj(old_model)
+            old_bl_flver = BlenderFLVER(old_model)
             old_model_name = old_bl_flver.name  # get from root object
             # TODO: Move below to a `BlenderFLVER.duplicate()` method.
             #  Then add methods for Collision and Navmeshes (easy, just Mesh data).

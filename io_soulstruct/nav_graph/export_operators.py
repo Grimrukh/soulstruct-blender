@@ -76,7 +76,7 @@ class ExportMCG(LoggingOperator, ExportHelper):
         obj = context.selected_objects[0]
         self.filepath = get_bl_obj_tight_name(obj, new_ext=".mcg")
         context.window_manager.fileselect_add(self)
-        return {'RUNNING_MODAL'}
+        return {"RUNNING_MODAL"}
 
     def execute(self, context):
         selected_objs = [obj for obj in context.selected_objects]
@@ -199,20 +199,20 @@ class ExportMCGMCPToMap(LoggingOperator):
         if not MAP_STEM_RE.match(map_stem):
             raise ValueError(f"Invalid map stem: {map_stem}")
 
-        relative_mcg_path = Path(f"map/{map_stem}/{map_stem}.mcg")  # no DCX
+        relative_mcg_path = Path(f"{map_stem}.mcg")  # no DCX
+
         # We prefer to read the MSB and NVMBND in the project directory if they exist. We do not prepare/copy them to
         # the project because they are not modified and the user may not want to include them in a mod package.
-        msb_path = settings.get_project_msb_path(map_stem)
-        if not is_path_and_file(msb_path):
-            msb_path = settings.get_game_msb_path(map_stem)
-        if not is_path_and_file(msb_path):
+        import_roots = [settings.project_root, settings.game_root]
+        msb_path = settings.get_first_existing_msb_path(import_roots, map_stem=map_stem)
+        if not msb_path:
             return self.error(
                 f"Could not find MSB file required for MCG export for map {map_stem} in project or game directory."
             )
-        nvmbnd_path = settings.get_project_path(f"map/{map_stem}/{map_stem}.nvmbnd")
-        if not is_path_and_file(nvmbnd_path):
-            nvmbnd_path = settings.get_game_path(f"map/{map_stem}/{map_stem}.nvmbnd")
-        if not is_path_and_file(nvmbnd_path):
+        nvmbnd_path = settings.get_first_existing_map_file_path(
+            f"{map_stem}.nvmbnd", roots=import_roots, map_stem=map_stem
+        )
+        if not nvmbnd_path:
             return self.error(
                 f"Could not find NVMBND binder required for MCG export for map {map_stem} in project or game directory."
             )
@@ -246,10 +246,11 @@ class ExportMCGMCPToMap(LoggingOperator):
         # Any error here will not affect MCG write (already done above).
 
         # This will be the MCG path just exported.
-        mcg_path = settings.get_project_path(relative_mcg_path)
-        if not is_path_and_file(mcg_path) and settings.also_export_to_game:
-            mcg_path = settings.get_game_path(relative_mcg_path)
-        if not is_path_and_file(mcg_path):
+        export_roots = [settings.project_root]
+        if settings.also_export_to_game:
+            export_roots += [settings.game_root]
+        mcg_path = settings.get_first_existing_map_file_path(relative_mcg_path, roots=export_roots, map_stem=map_stem)
+        if not mcg_path:
             self.warning(f"Could not find MCG file just exported: {mcg_path}. MCP not auto-generated.")
             return {"FINISHED"}
 

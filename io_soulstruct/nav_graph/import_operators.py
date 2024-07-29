@@ -109,12 +109,14 @@ class ImportSelectedMapMCG(LoggingOperator):
         map_stem = settings.get_latest_map_stem_version()  # MCG uses latest
         if not map_stem:
             return
-        mcg_path = settings.get_game_map_path(f"{map_stem}.mcg")
-        if not mcg_path.is_file():
-            return self.error(f"Could not find MCG file '{mcg_path}'.")
-        msb_path = settings.get_game_msb_path()
-        if not msb_path.is_file():
-            return self.error(f"Could not find MSB file '{msb_path}'.")
+        try:
+            mcg_path = settings.get_import_map_file_path(f"{map_stem}.mcg", map_stem=map_stem)
+        except FileNotFoundError:
+            return self.error(f"Could not find MCG file '{map_stem}.mcg' in selected map {map_stem}.")
+        try:
+            msb_path = settings.get_import_msb_path(map_stem)
+        except FileNotFoundError:
+            return self.error(f"Could not find MSB file for selected map {map_stem}.")
         try:
             msb = MSB.from_path(msb_path)
         except Exception as ex:
@@ -182,9 +184,10 @@ class ImportSelectedMapMCP(LoggingOperator):
 
         settings = self.settings(context)
         map_stem = settings.get_latest_map_stem_version()  # MCP uses latest
-        mcp_path = settings.get_game_map_path(f"{map_stem}.mcp")
-        if not mcp_path.is_file():
-            return self.error(f"Could not find MCP file '{mcp_path}'.")
+        try:
+            mcp_path = settings.get_import_map_file_path(f"{map_stem}.mcp", map_stem=map_stem)
+        except FileNotFoundError:
+            return self.error(f"Could not find MCP file '{map_stem}.mcp' in selected map {map_stem}.")
 
         try:
             mcp = MCP.from_path(mcp_path)

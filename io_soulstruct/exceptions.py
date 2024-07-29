@@ -7,12 +7,15 @@ __all__ = [
     "FLVERExportError",
     "MaterialImportError",
     "TextureExportError",
+    "MapCollisionImportError",
+    "MapCollisionExportError",
     "CutsceneImportError",
     "CutsceneExportError",
     "NVMImportError",
     "NavGraphImportError",
     "NavGraphExportError",
     "MCGEdgeCreationError",
+    "NVMHKTImportError",
     "MissingPartModelError",
     "MissingMSBEntryError",
     "MSBPartImportError",
@@ -64,6 +67,14 @@ class TextureExportError(SoulstructBlenderError):
     """Raised when there is a problem exporting textures."""
 
 
+class MapCollisionImportError(SoulstructBlenderError):
+    pass
+
+
+class MapCollisionExportError(SoulstructBlenderError):
+    pass
+
+
 class CutsceneImportError(SoulstructBlenderError):
     """Exception raised during HKX cutscene import."""
     pass
@@ -96,6 +107,11 @@ class NavGraphExportError(SoulstructBlenderError):
 
 class MCGEdgeCreationError(SoulstructBlenderError):
     """Exception raised during MCG edge creation."""
+    pass
+
+
+class NVMHKTImportError(SoulstructBlenderError):
+    """Exception raised during NVMHKT import."""
     pass
 
 

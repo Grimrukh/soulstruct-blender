@@ -1,7 +1,7 @@
 __all__ = [
     "ImportNVM",
     "ImportNVMWithBinderChoice",
-    "ImportNVMFromNVMBND",
+    "ImportSelectedMapNVM",
 
     "ExportLooseNVM",
     "ExportNVMIntoBinder",

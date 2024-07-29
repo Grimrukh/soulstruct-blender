@@ -12,10 +12,11 @@ from soulstruct_havok.wrappers.hkx2015.hkx_binder import BothResHKXBHD
 
 import bpy
 from io_soulstruct import SoulstructSettings
-from io_soulstruct.collision.model_export import export_hkx_map_collision, HKXMapCollisionExportError
+from io_soulstruct.exceptions import MapCollisionExportError
+from io_soulstruct.collision.types import BlenderMapCollision
 from io_soulstruct.msb.operator_config import MSBPartOperatorConfig
 from io_soulstruct.msb.properties import MSBPartSubtype
-from io_soulstruct.utilities import get_bl_obj_tight_name, LoggingOperator
+from io_soulstruct.utilities import LoggingOperator
 from .base import *
 
 
@@ -23,7 +24,6 @@ msb_collision_operator_config = MSBPartOperatorConfig(
     PART_SUBTYPE=MSBPartSubtype.COLLISION,
     MSB_LIST_NAME="collisions",
     MSB_MODEL_LIST_NAMES=["collision_models"],
-    GAME_ENUM_NAME="collision_part",
 )
 
 
@@ -73,24 +73,14 @@ class ExportMSBCollisions(BaseExportMSBParts):
         """Export the given Blender model object to a game model file and return the path and binary data."""
 
         settings = operator.settings(context)
-        model_stem = get_bl_obj_tight_name(model_mesh)
         dcx_type = settings.game.get_dcx_type("hkx")  # will have DCX inside HKXBHD
 
-        if model_stem.startswith("h"):
-            hi_name = model_stem
-            lo_name = f"l{model_stem[1:]}"
-        elif model_stem.startswith("l"):
-            hi_name = f"h{model_stem[1:]}"
-            lo_name = model_stem
-        else:
-            raise HKXMapCollisionExportError(f"Collision model name '{model_stem}' does not start with 'h' or 'l'.")
+        bl_map_collision = BlenderMapCollision(model_mesh)
 
         try:
-            hi_hkx, lo_hkx = export_hkx_map_collision(
-                self, model_mesh, hi_name=hi_name, lo_name=lo_name, require_hi=True, use_hi_if_missing_lo=True
-            )
+            hi_hkx, lo_hkx = bl_map_collision.to_hkx_pair(self, require_hi=True, use_hi_if_missing_lo=True)
         except Exception as ex:
-            raise HKXMapCollisionExportError(f"Cannot get exported hi/lo HKX for '{model_mesh.name}'. Error: {ex}")
+            raise MapCollisionExportError(f"Cannot get exported hi/lo HKX for '{model_mesh.name}'. Error: {ex}")
         hi_hkx.dcx_type = dcx_type
         lo_hkx.dcx_type = dcx_type
 
@@ -103,17 +93,23 @@ class ExportMSBCollisions(BaseExportMSBParts):
                     try:
                         settings.prepare_project_file(relative_path, must_exist=True)
                     except FileNotFoundError as ex:
-                        raise HKXMapCollisionExportError(
+                        raise MapCollisionExportError(
                             f"Could not find file '{relative_path}' for map '{map_stem}'. Error: {ex}"
                         )
             # We start with import path Binders. If we are exporting to the project, the `prepare` calls above will have
             # created the initial Binders there already, replacing them with the current game ones if `Prefer Import
             # from Project` is disabled.
-            import_map_path = settings.get_import_map_path(map_stem)
-            self.opened_both_res_hkxbhds[map_stem] = BothResHKXBHD.from_map_path(import_map_path)
+            try:
+                import_map_dir = settings.get_import_map_dir_path(map_stem=map_stem)
+            except FileNotFoundError as ex:
+                raise MapCollisionExportError(
+                    f"Could not find map directory with existing HKX binders for {map_stem}. Error: {ex}"
+                )
+            self.opened_both_res_hkxbhds[map_stem] = BothResHKXBHD.from_map_path(import_map_dir)
 
-        self.opened_both_res_hkxbhds[map_stem].hi_res.set_hkx(hi_name, hi_hkx)
-        self.opened_both_res_hkxbhds[map_stem].lo_res.set_hkx(lo_name, lo_hkx)
+        # Stems set during creation.
+        self.opened_both_res_hkxbhds[map_stem].hi_res.set_hkx(hi_hkx.path_stem, hi_hkx)
+        self.opened_both_res_hkxbhds[map_stem].lo_res.set_hkx(lo_hkx.path_stem, lo_hkx)
 
     def finish_model_export(self, context: bpy.types.Context, settings: SoulstructSettings):
         # Export all opened HKXBHDs.

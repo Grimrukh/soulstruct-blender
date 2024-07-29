@@ -95,16 +95,15 @@ def menu_func_view3d_mt(self, context):
 CLASSES = (
     # region Basic
     SoulstructSettings,
-    SoulstructGameEnums,
     GlobalSettingsPanel,
     GlobalSettingsPanel_FLVERView,
-    SelectGameDirectory,
-    SelectProjectDirectory,
-    SelectMapDirectory,
+    # SelectGameDirectory,
+    # SelectProjectDirectory,
+    SelectGameMapDirectory,
+    SelectProjectMapDirectory,
     SelectPNGCacheDirectory,
     SelectCustomMTDBNDFile,
     SelectCustomMATBINBNDFile,
-    ClearCachedLists,
     LoadCollectionsFromBlend,
     # endregion
 
@@ -143,8 +142,6 @@ CLASSES = (
 
     FLVERToolSettings,
     CopyToNewFLVER,
-    DeleteFLVER,
-    DeleteFLVERAndData,
     RenameFLVER,
     SelectDisplayMaskID,
     SetSmoothCustomNormals,
@@ -206,19 +203,22 @@ CLASSES = (
 
     ImportHKXMapCollision,
     ImportHKXMapCollisionWithBinderChoice,
-    ImportHKXMapCollisionFromHKXBHD,
-    HKXMapCollisionImportSettings,
+    ImportSelectedMapHKXMapCollision,
 
     ExportLooseHKXMapCollision,
     ExportHKXMapCollisionIntoBinder,
     ExportHKXMapCollisionIntoHKXBHD,
-    HKX_COLLISION_PT_hkx_map_collisions,
+    MapCollisionPanel,
 
     SelectHiResFaces,
     SelectLoResFaces,
+
+    MapCollisionProps,
+    MapCollisionImportSettings,
     # endregion
 
-    # TODO: Cutscene operators need a bit more work.
+    # region Cutscenes
+    GlobalSettingsPanel_CutsceneView,
     ImportHKXCutscene,
     ExportHKXCutscene,
     HKX_CUTSCENE_PT_hkx_cutscene_tools,
@@ -235,7 +235,7 @@ CLASSES = (
 
     ImportNVM,
     ImportNVMWithBinderChoice,
-    ImportNVMFromNVMBND,
+    ImportSelectedMapNVM,
     ExportLooseNVM,
     ExportNVMIntoBinder,
     ExportNVMIntoNVMBND,
@@ -248,10 +248,10 @@ CLASSES = (
     ImportAllDLCOverworldNVMHKTs,
     NVMHKTImportSettings,
 
-    NVM_PT_ds1_navmesh_import,
-    NVM_PT_ds1_navmesh_export,
-    NVM_PT_ds1_navmesh_tools,
-    NVM_PT_er_navmesh_import,
+    NavmeshDS1ImportPanel,
+    NavmeshDS1ExportPanel,
+    NavmeshDS1ToolsPanel,
+    NavmeshERImportPanel,
     NavmeshFaceSettings,
     AddNVMFaceFlags,
     RemoveNVMFaceFlags,
@@ -260,6 +260,8 @@ CLASSES = (
     # endregion
 
     # region Nav Graph (MCG)
+    GlobalSettingsPanel_NavGraphView,
+
     ImportMCG,
     ImportSelectedMapMCG,
     ImportMCP,
@@ -274,10 +276,10 @@ CLASSES = (
     MCGNodeProps,
     MCGEdgeProps,
     NavGraphComputeSettings,
-    MCG_PT_ds1_mcg_import,
-    MCG_PT_ds1_mcg_export,
-    MCG_PT_ds1_mcg_draw,
-    MCG_PT_ds1_mcg_tools,
+    MCGImportPanel,
+    MCGExportPanel,
+    MCGDrawPanel,
+    MCGToolsPanel,
     # endregion
 
     # region MSB
@@ -330,8 +332,7 @@ CLASSES = (
     MSBConnectCollisionProps,
     MSBRegionProps,
 
-    MSBImportPanel,
-    MSBExportPanel,
+    MSBImportExportPanel,
     MSBToolsPanel,
     MSBPartPanel,
 
@@ -365,7 +366,6 @@ def havok_menu_func_export(self, context):
 
 SCENE_POINTERS = dict(
     soulstruct_settings=SoulstructSettings,
-    soulstruct_game_enums=SoulstructGameEnums,
     flver_import_settings=FLVERImportSettings,
     flver_export_settings=FLVERExportSettings,
     texture_export_settings=TextureExportSettings,
@@ -373,7 +373,7 @@ SCENE_POINTERS = dict(
     flver_tool_settings=FLVERToolSettings,
     material_tool_settings=MaterialToolSettings,
     mesh_move_settings=MeshMoveSettings,
-    hkx_map_collision_import_settings=HKXMapCollisionImportSettings,
+    map_collision_import_settings=MapCollisionImportSettings,
     navmesh_face_settings=NavmeshFaceSettings,
     nav_graph_compute_settings=NavGraphComputeSettings,
     nvmhkt_import_settings=NVMHKTImportSettings,
@@ -391,6 +391,8 @@ SCENE_POINTERS = dict(
 OBJECT_POINTERS = dict(
     FLVER=FLVERProps,
     FLVER_DUMMY=FLVERDummyProps,
+
+    COLLISION=MapCollisionProps,
 
     NVM_EVENT_ENTITY=NVMEventEntityProps,
     MCG=MCGProps,

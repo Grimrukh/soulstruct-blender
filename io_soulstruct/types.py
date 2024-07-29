@@ -199,6 +199,14 @@ class SoulstructObject(abc.ABC, tp.Generic[SOULSTRUCT_T, SOULSTRUCT_PROPS_T]):
     def rotation_euler(self, value: Euler):
         self.obj.rotation_euler = value
 
+    def __getitem__(self, item: str):
+        """Wraps Blender object custom properties."""
+        return self.obj.__getitem__(item)
+
+    def __setitem__(self, key: str, value: tp.Any):
+        """Wraps Blender object custom properties."""
+        self.obj.__setitem__(key, value)
+
     @classmethod
     def from_active_object(cls, context: bpy.types.Context) -> tp.Self:
         obj = context.active_object

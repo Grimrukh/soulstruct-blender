@@ -6,17 +6,14 @@ __all__ = [
     "NVMBND_NAME_RE",
     "NAVMESH_FLAG_COLORS",
     "NAVMESH_MULTIPLE_FLAG_COLOR",
-    "NVMImportInfo",
     "set_face_material",
 ]
 
 import re
-import typing as tp
-from pathlib import Path
 
 import bpy
 from io_soulstruct.utilities.materials import hsv_color, create_basic_material
-from soulstruct.darksouls1r.maps.navmesh import NVM, NavmeshFlag
+from soulstruct.darksouls1r.maps.navmesh import NavmeshFlag
 
 ANY_NVM_NAME_RE = re.compile(r"^(?P<stem>.*)\.nvm(?P<dcx>\.dcx)?$")
 STANDARD_NVM_STEM_RE = re.compile(r"^n(\d{4})B(?P<B>\d)A(?P<A>\d{2})$")  # no extensions
@@ -45,14 +42,6 @@ NAVMESH_FLAG_COLORS = {
 }
 NAVMESH_MULTIPLE_FLAG_COLOR = hsv_color(0.0, 0.0, 1.0)  # WHITE
 NAVMESH_UNKNOWN_FLAG_COLOR = hsv_color(0.0, 0.0, 0.25)  # GREY
-
-
-class NVMImportInfo(tp.NamedTuple):
-    """Holds information about a navmesh to import into Blender."""
-    path: Path  # source file for NVM (likely a Binder path)
-    model_file_stem: str  # generally stem of NVM file or Binder entry
-    bl_name: str  # name to assign to Blender object (usually same as `model_file_stem`)
-    nvm: NVM  # parsed NVM
 
 
 def set_face_material(bl_mesh, bl_face, face_flags: int):

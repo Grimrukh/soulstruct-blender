@@ -8,8 +8,8 @@ import traceback
 import typing as tp
 
 import bpy
-from io_soulstruct.exceptions import MissingPartModelError
-from io_soulstruct.collision.model_import import *
+from io_soulstruct.exceptions import MissingPartModelError, MapCollisionImportError
+from io_soulstruct.collision.types import BlenderMapCollision
 from io_soulstruct.msb.properties import MSBPartSubtype, MSBCollisionProps
 from io_soulstruct.types import *
 from io_soulstruct.utilities import *
@@ -186,28 +186,31 @@ class BlenderMSBCollision(BlenderMSBPart[MSBCollision, MSBCollisionProps]):
         settings = operator.settings(context)
 
         # NOTE: Hi and lo-res binders could come from different import folders (project vs. game).
-        hi_res_hkxbhd_path = settings.get_import_map_path(f"h{map_stem[1:]}.hkxbhd")
-        lo_res_hkxbhd_path = settings.get_import_map_path(f"l{map_stem[1:]}.hkxbhd")
+        try:
+            hi_res_hkxbhd_path = settings.get_import_map_file_path(f"h{map_stem[1:]}.hkxbhd")
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Cannot find hi-res HKXBHD for map {map_stem}.")
+        try:
+            lo_res_hkxbhd_path = settings.get_import_map_file_path(f"l{map_stem[1:]}.hkxbhd")
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Cannot find lo-res HKXBHD for map {map_stem}.")
+
         both_res_hkxbhd = BothResHKXBHD.from_both_paths(hi_res_hkxbhd_path, lo_res_hkxbhd_path)
         hi_hkx, lo_hkx = both_res_hkxbhd.get_both_hkx(model_name)
         collection = get_collection(f"{map_stem} Collision Models", context.scene.collection)
 
         # Import single HKX.
         try:
-            hkx_model = import_hkx_model_merged(hi_hkx, model_name=model_name, lo_hkx=lo_hkx)
+            bl_map_collision = BlenderMapCollision.new_from_soulstruct_obj(
+                operator, context, hi_hkx, model_name, collection=collection, lo_hkx=lo_hkx
+            )
         except Exception as ex:
             traceback.print_exc()  # for inspection in Blender console
-            raise HKXMapCollisionImportError(
+            raise MapCollisionImportError(
                 f"Cannot import HKX '{model_name}' from HKXBHDs in map {map_stem}. Error: {ex}"
             )
-        collection.objects.link(hkx_model)
-        for child in hkx_model.children:
-            collection.objects.link(child)
 
-        # TODO: HKX import is so fast that this just slows the console down when importing all collisions.
-        # operator.info(f"Imported HKX '{hkx_model.name}' from model '{model_name}' in map {map_stem}.")
-
-        return hkx_model
+        return bl_map_collision.obj
 
 
 BlenderMSBCollision.add_auto_subtype_props(*BlenderMSBCollision.AUTO_COLLISION_PROPS)

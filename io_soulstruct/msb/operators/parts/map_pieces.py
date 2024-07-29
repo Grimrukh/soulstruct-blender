@@ -7,7 +7,6 @@ __all__ = [
     "ExportMSBMapPieces",
 ]
 
-import typing as tp
 from pathlib import Path
 
 import bpy
@@ -25,7 +24,6 @@ msb_map_piece_operator_config = MSBPartOperatorConfig(
     PART_SUBTYPE=MSBPartSubtype.MAP_PIECE,
     MSB_LIST_NAME="map_pieces",
     MSB_MODEL_LIST_NAMES=["map_piece_models"],
-    GAME_ENUM_NAME="map_piece_part",
 )
 
 

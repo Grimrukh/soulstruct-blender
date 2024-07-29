@@ -26,8 +26,6 @@ __all__ = [
 
     "FLVERToolSettings",
     "CopyToNewFLVER",
-    "DeleteFLVER",
-    "DeleteFLVERAndData",
     "RenameFLVER",
     "SelectDisplayMaskID",
     "SetSmoothCustomNormals",
@@ -310,8 +308,6 @@ class FLVEROtherToolsPanel(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
-        layout.operator(DeleteFLVER.bl_idname)
-        layout.operator(DeleteFLVERAndData.bl_idname)
 
         name_box = layout.box()
         name_box.prop(context.scene.soulstruct_settings, "new_model_name")

@@ -24,6 +24,8 @@ class BlenderMCG(SoulstructObject[MCG, MCGProps]):
     OBJ_DATA_TYPE = SoulstructDataType.EMPTY
     SOULSTRUCT_CLASS = MCG
 
+    __slots__ = []
+
     node_parent: bpy.types.Object
     edge_parent: bpy.types.Object
 
@@ -289,9 +291,23 @@ class BlenderMCGNode(SoulstructObject[MCGNode, MCGNodeProps]):
     OBJ_DATA_TYPE = SoulstructDataType.EMPTY
     SOULSTRUCT_CLASS = MCGNode
 
-    unknown_offset: int
-    navmesh_a: bpy.types.Object | None
-    navmesh_b: bpy.types.Object | None
+    __slots__ = []
+
+    @property
+    def unknown_offset(self) -> int:
+        return self.type_properties.unknown_offset
+
+    @unknown_offset.setter
+    def unknown_offset(self, value: int):
+        self.type_properties.unknown_offset = value
+
+    @property
+    def navmesh_a(self) -> bpy.types.MeshObject | None:
+        return self.type_properties.navmesh_a
+
+    @navmesh_a.setter
+    def navmesh_a(self, value: bpy.types.MeshObject | None):
+        self.type_properties.navmesh_a = value
 
     @property
     def navmesh_a_triangles(self) -> list[int]:
@@ -302,6 +318,14 @@ class BlenderMCGNode(SoulstructObject[MCGNode, MCGNodeProps]):
         self.type_properties.navmesh_a_triangles.clear()
         for index in value:
             self.type_properties.navmesh_a_triangles.add().index = index
+
+    @property
+    def navmesh_b(self) -> bpy.types.MeshObject | None:
+        return self.type_properties.navmesh_b
+
+    @navmesh_b.setter
+    def navmesh_b(self, value: bpy.types.MeshObject | None):
+        self.type_properties.navmesh_b = value
 
     @property
     def navmesh_b_triangles(self) -> list[int]:
@@ -353,7 +377,9 @@ class BlenderMCGNode(SoulstructObject[MCGNode, MCGNodeProps]):
                 try:
                     navmesh_name = navmesh_part_names[navmesh_index]
                 except IndexError:
-                    raise NavGraphImportError(f"'{bl_node.name}' has invalid navmesh {nav.upper()} index: {navmesh_index}")
+                    raise NavGraphImportError(
+                        f"'{bl_node.name}' has invalid navmesh {nav.upper()} index: {navmesh_index}"
+                    )
                 navmesh_part = find_obj(navmesh_name, soulstruct_type=SoulstructType.MSB_PART)
                 if navmesh_part is None:
                     # Not acceptable. Parts must be imported before MCG.
@@ -384,7 +410,7 @@ class BlenderMCGNode(SoulstructObject[MCGNode, MCGNodeProps]):
     ) -> MCGNode:
         node = MCGNode(
             translate=BL_TO_GAME_VECTOR3(self.location),
-            unknown_offset=self.mcg_node_props.unknown_offset,
+            unknown_offset=self.type_properties.unknown_offset,
             dead_end_navmesh_index=-1,  # may be set below
         )
 
@@ -392,18 +418,18 @@ class BlenderMCGNode(SoulstructObject[MCGNode, MCGNodeProps]):
             node_navmesh_info = {}
 
         # Get navmesh A (must ALWAYS be present).
-        if self.mcg_node_props.navmesh_a is None:
+        if self.navmesh_a is None:
             raise NavGraphExportError(f"Node '{self.name}' does not have Navmesh A set.")
-        navmesh_a_name = self.mcg_node_props.navmesh_a.name  # type: str
-        navmesh_a_triangles = [triangle.index for triangle in self.mcg_node_props.navmesh_a_triangles]
+        navmesh_a_name = self.navmesh_a.name  # type: str
+        navmesh_a_triangles = self.navmesh_a_triangles
         node_navmesh_info[navmesh_a_name] = navmesh_a_triangles
         if navmesh_nodes is not None:
             navmesh_nodes[navmesh_a_name].append(node)
 
-        if self.mcg_node_props.navmesh_b is None:
+        if self.navmesh_b is None:
             raise NavGraphExportError(f"Node '{self.name}' does not have Navmesh B set.")
-        navmesh_b_name = self.mcg_node_props.navmesh_b.name  # type: str
-        navmesh_b_triangles = [triangle.index for triangle in self.mcg_node_props.navmesh_b_triangles]
+        navmesh_b_name = self.navmesh_b.name  # type: str
+        navmesh_b_triangles = self.navmesh_b_triangles
         node_navmesh_info[navmesh_b_name] = navmesh_b_triangles
         if navmesh_nodes is not None:
             navmesh_nodes[navmesh_b_name].append(node)
@@ -423,10 +449,39 @@ class BlenderMCGEdge(SoulstructObject[MCGEdge, MCGEdgeProps]):
     OBJ_DATA_TYPE = SoulstructDataType.EMPTY
     SOULSTRUCT_CLASS = MCGEdge
 
-    node_a: bpy.types.Object | None
-    navmesh_part: bpy.types.MeshObject | None
-    node_b: bpy.types.Object | None
-    cost: float
+    __slots__ = []
+
+    @property
+    def node_a(self) -> bpy.types.Object | None:
+        return self.type_properties.node_a
+
+    @node_a.setter
+    def node_a(self, value: bpy.types.Object | None):
+        self.type_properties.node_a = value
+
+    @property
+    def node_b(self) -> bpy.types.Object | None:
+        return self.type_properties.node_b
+
+    @node_b.setter
+    def node_b(self, value: bpy.types.Object | None):
+        self.type_properties.node_b = value
+
+    @property
+    def navmesh_part(self) -> bpy.types.MeshObject | None:
+        return self.type_properties.navmesh_part
+
+    @navmesh_part.setter
+    def navmesh_part(self, value: bpy.types.MeshObject | None):
+        self.type_properties.navmesh_part = value
+
+    @property
+    def cost(self) -> float:
+        return self.type_properties.cost
+
+    @cost.setter
+    def cost(self, value: float):
+        self.type_properties.cost = value
 
     @classmethod
     def new_from_soulstruct_obj(
@@ -525,6 +580,6 @@ class BlenderMCGEdge(SoulstructObject[MCGEdge, MCGEdgeProps]):
                 raise NavGraphExportError(
                     f"Node {bl_node.name} does not specify its triangles in MSB Navmesh part {navmesh_part_name} "
                     f"(edge {self.name}). You must fix your navmeshes and navmesh graph in Blender first."
-            )
+                )
 
         return edge

@@ -2119,7 +2119,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
     def get_selected_flvers(cls, context: bpy.types.Context) -> list[BlenderFLVER]:
         """Get the Mesh and (optional) Armature components of ALL selected FLVER objects of either type."""
         if not context.selected_objects:
-            raise FLVERError("No FLVER Meshes or Armatures selected.")
+            raise SoulstructTypeError("No FLVER Meshes or Armatures selected.")
         flvers = []
         for obj in context.selected_objects:
             _, mesh = cls.parse_flver_obj(obj)

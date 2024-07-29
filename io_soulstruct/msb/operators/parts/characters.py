@@ -24,7 +24,6 @@ msb_character_operator_config = MSBPartOperatorConfig(
     PART_SUBTYPE=MSBPartSubtype.CHARACTER,
     MSB_LIST_NAME="characters",
     MSB_MODEL_LIST_NAMES=["character_models"],
-    GAME_ENUM_NAME="character_part",
 )
 
 

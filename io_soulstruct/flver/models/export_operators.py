@@ -458,14 +458,15 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
             if multi_tpf_succeeded:
 
                 def post_export_action():
-                    export_tpf_dir_path = settings.get_project_path(relative_tpf_dir_path)
-                    if is_path_and_dir(export_tpf_dir_path):
-                        # Delete loose TPF folder (in favor of new Binder TPF).
-                        export_tpf_dir_path.rmdir()
-                    if settings.also_export_to_game:
-                        import_tpf_dir_path = settings.get_game_path(relative_tpf_dir_path)
-                        if is_path_and_dir(import_tpf_dir_path):
-                            import_tpf_dir_path.rmdir()
+                    if settings.project_root:
+                        export_dir = settings.project_root.get_dir_path(relative_tpf_dir_path, if_exist=True)
+                        if export_dir:
+                            # Delete loose TPF folder (in favor of new Binder TPF).
+                            export_dir.rmdir()
+                    if settings.also_export_to_game and settings.game_root:
+                        import_dir = settings.game_root.get_dir_path(relative_tpf_dir_path, if_exist=True)
+                        if import_dir:
+                            import_dir.rmdir()
 
                 return post_export_action
 
@@ -477,7 +478,6 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
             )
 
             def post_export_action():
-
                 if tpfs:
                     for tpf in tpfs:
                         # TPF `path` already set correctly to name.
@@ -498,14 +498,15 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
                     pass
 
                 def post_export_action():
-                    export_chrtpfbdt_path = settings.get_project_path(relative_chrtpfbdt_path)
-                    if is_path_and_file(export_chrtpfbdt_path):
-                        # Delete CHRTPFBDT (in favor of new TPF).
-                        export_chrtpfbdt_path.unlink()
-                    if settings.also_export_to_game:
-                        import_chrtpfbdt_path = settings.get_game_path(relative_chrtpfbdt_path)
-                        if is_path_and_file(import_chrtpfbdt_path):
-                            import_chrtpfbdt_path.unlink()
+                    if settings.project_root:
+                        export_path = settings.project_root.get_file_path(relative_chrtpfbdt_path, if_exist=True)
+                        if export_path:
+                            # Delete CHRTPFBDT (in favor of new TPF).
+                            export_path.unlink()
+                    if settings.also_export_to_game and settings.game_root:
+                        import_path = settings.game_root.get_file_path(relative_chrtpfbdt_path, if_exist=True)
+                        if import_path:
+                            import_path.unlink()
 
                 return post_export_action
 

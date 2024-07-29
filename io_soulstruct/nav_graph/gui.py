@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 __all__ = [
-    "MCG_PT_ds1_mcg_import",
-    "MCG_PT_ds1_mcg_export",
-    "MCG_PT_ds1_mcg_draw",
-    "MCG_PT_ds1_mcg_tools",
+    "MCGImportPanel",
+    "MCGExportPanel",
+    "MCGDrawPanel",
+    "MCGToolsPanel",
 ]
 
 import bpy
@@ -13,7 +13,7 @@ from .export_operators import *
 from .misc_operators import *
 
 
-class MCG_PT_ds1_mcg_import(bpy.types.Panel):
+class MCGImportPanel(bpy.types.Panel):
     bl_label = "DS1 MCG Import"
     bl_idname = "MCG_PT_ds1_mcg_import"
     bl_space_type = "VIEW_3D"
@@ -35,12 +35,11 @@ class MCG_PT_ds1_mcg_import(bpy.types.Panel):
         quick_box = self.layout.box()
         quick_box.label(text="From Game/Project")
         quick_box.prop(context.scene.soulstruct_settings, "import_bak_file", text="From .BAK File")
-        quick_box.prop(context.scene.soulstruct_game_enums, "nvm")
         quick_box.operator(ImportSelectedMapMCG.bl_idname)
         quick_box.operator(ImportSelectedMapMCP.bl_idname)
 
 
-class MCG_PT_ds1_mcg_export(bpy.types.Panel):
+class MCGExportPanel(bpy.types.Panel):
     bl_label = "DS1 MCG Export"
     bl_idname = "MCG_PT_ds1_mcg_export"
     bl_space_type = "VIEW_3D"
@@ -66,7 +65,7 @@ class MCG_PT_ds1_mcg_export(bpy.types.Panel):
         map_export_box.operator(ExportMCGMCPToMap.bl_idname)
 
 
-class MCG_PT_ds1_mcg_draw(bpy.types.Panel):
+class MCGDrawPanel(bpy.types.Panel):
     bl_label = "DS1 MCG Drawing"
     bl_idname = "MCG_PT_ds1_mcg_draw"
     bl_space_type = "VIEW_3D"
@@ -95,8 +94,7 @@ class MCG_PT_ds1_mcg_draw(bpy.types.Panel):
         self.layout.prop(mcg_draw_settings, "mcg_edge_triangles_highlight_enabled")
 
 
-
-class MCG_PT_ds1_mcg_tools(bpy.types.Panel):
+class MCGToolsPanel(bpy.types.Panel):
     bl_label = "DS1 MCG Tools"
     bl_idname = "MCG_PT_ds1_navmesh_tools"
     bl_space_type = "VIEW_3D"

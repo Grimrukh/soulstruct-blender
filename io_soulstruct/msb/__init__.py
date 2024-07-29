@@ -51,8 +51,7 @@ __all__ = [
     "MSBConnectCollisionProps",
     "MSBRegionProps",
 
-    "MSBImportPanel",
-    "MSBExportPanel",
+    "MSBImportExportPanel",
 
     "MSBToolsPanel",
     "MSBPartPanel",

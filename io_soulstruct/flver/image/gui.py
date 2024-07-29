@@ -6,6 +6,7 @@ __all__ = [
 
 import bpy
 
+
 class TextureExportSettingsPanel(bpy.types.Panel):
     """Panel for Soulstruct FLVER texture export settings."""
     bl_label = "Texture Export Settings"

@@ -307,7 +307,7 @@ class ImageImportManager:
     def _find_texbnd(self, source_dir: Path, model_stem: str, res: str):
         """Find character TPFs in a TEXBND next to the CHRBND. (Always DCX for games that use it.)"""
         texbnd_path = source_dir / f"{model_stem}{res}.texbnd.dcx"
-        if not texbnd_path in self._scanned_binder_paths and texbnd_path.is_file():
+        if texbnd_path not in self._scanned_binder_paths and texbnd_path.is_file():
             self._scanned_binder_paths.add(texbnd_path)
             texbnd = Binder.from_path(texbnd_path)
             for tpf_entry in texbnd.find_entries_matching_name(TPF_RE):
@@ -321,7 +321,7 @@ class ImageImportManager:
     def _find_common_body(self, source_dir):
         """Find 'parts/common_body.tpf.dcx' character TPFs. Used by many non-c0000 characters."""
         common_body_path = source_dir / "../parts/common_body.tpf.dcx"
-        if not "common_body" in self._scanned_tpf_sources and common_body_path.is_file():
+        if "common_body" not in self._scanned_tpf_sources and common_body_path.is_file():
             # Multi-texture TPF; we unpack it now.
             self._scanned_tpf_sources.add("common_body")
             common_body = TPF.from_path(common_body_path)
@@ -352,4 +352,3 @@ class ImageImportManager:
             tpf_stem = tpf_path.name.split(".")[0]
             if tpf_stem not in self._scanned_tpf_sources:
                 self._pending_tpf_sources.setdefault(tpf_stem, tpf_path)
-

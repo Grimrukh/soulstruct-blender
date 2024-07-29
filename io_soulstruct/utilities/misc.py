@@ -109,7 +109,10 @@ class CachedEnumItems:
         use_value_source_suffix=True,
         desc_callback: tp.Callable[[str], str] = None,
     ) -> CachedEnumItems:
-        """Scan a directory for files and cache them by path."""
+        """Scan a directory for files and cache them by path.
+
+        NOTE: Not currently used by anything, but kept around in case.
+        """
         items_1 = []
         if is_path_and_dir(scan_directory_1):
             for f in (file for file in sorted(scan_directory_1.glob(glob)) if file.is_file()):

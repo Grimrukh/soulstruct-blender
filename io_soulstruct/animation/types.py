@@ -41,6 +41,32 @@ class SoulstructAnimation:
     def name(self, value: str):
         self.action.name = value
 
+    @property
+    def animation_stem(self):
+        """Try to extract the animation stem from the action name.
+
+        Action name should be in the format `{model_name}}|{anim_name}` and may have a Blender dupe suffix. If there is
+        no pipe in the name, we return the whole thing.
+
+        Example:
+            'c1234|a00_0000.001' -> 'a00_0000'
+        """
+        if "|" not in self.action.name:
+            return self.action.name
+        return self.action.name.split("|")[-1].split(".")[0]
+
+    @property
+    def animation_id(self) -> int:
+        """Try to parse animation stem as an ID.
+
+        Example:
+            'c1234|a12_0500.001' -> 120500
+        """
+        try:
+            return int(self.animation_stem.removeprefix("a"))
+        except ValueError:
+            raise ValueError(f"Could not parse animation ID from Action name '{self.name}'.")
+
     @classmethod
     def from_armature_animation_data(cls, armature: bpy.types.ArmatureObject) -> SoulstructAnimation:
         """Load from current animation data of given `armature`."""

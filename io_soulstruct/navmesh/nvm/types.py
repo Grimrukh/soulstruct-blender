@@ -25,6 +25,8 @@ class BlenderNVM(SoulstructObject[NVM, NVMProps]):
     OBJ_DATA_TYPE = SoulstructDataType.MESH
     SOULSTRUCT_CLASS = NVM
 
+    __slots__ = []
+
     obj: bpy.types.MeshObject
     data: bpy.types.Mesh
 
@@ -229,6 +231,8 @@ class BlenderNVMEventEntity(SoulstructObject[NVMEventEntity, NVMEventEntityProps
     OBJ_DATA_TYPE = SoulstructDataType.EMPTY
     SOULSTRUCT_CLASS = NVMEventEntity
 
+    __slots__ = []
+
     @property
     def entity_id(self) -> int:
         return self.type_properties.entity_id
@@ -239,13 +243,13 @@ class BlenderNVMEventEntity(SoulstructObject[NVMEventEntity, NVMEventEntityProps
 
     @property
     def triangle_indices(self) -> list[int]:
-        return [face.index for face in self.props.triangle_indices]
+        return [face.index for face in self.type_properties.triangle_indices]
 
     @triangle_indices.setter
     def triangle_indices(self, indices: list[int]):
-        self.props.triangle_indices.clear()
+        self.type_properties.triangle_indices.clear()
         for index in indices:
-            self.props.triangle_indices.add().index = index
+            self.type_properties.triangle_indices.add().index = index
 
     @classmethod
     def new_from_soulstruct_obj(

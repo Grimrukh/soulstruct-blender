@@ -19,7 +19,6 @@ msb_object_operator_config = MSBPartOperatorConfig(
     PART_SUBTYPE=MSBPartSubtype.OBJECT,
     MSB_LIST_NAME="objects",
     MSB_MODEL_LIST_NAMES=["object_models"],
-    GAME_ENUM_NAME="object_part",
 )
 
 

@@ -68,7 +68,7 @@ class ExportLooseHKXAnimation(LoggingOperator, ExportHelper):
         action = bl_flver.armature.animation_data.action
         self.filepath = action.name.split("|")[-1].split(" ")[0].split(".")[0] + ".hkx"
         context.window_manager.fileselect_add(self)
-        return {'RUNNING_MODAL'}
+        return {"RUNNING_MODAL"}
 
     def execute(self, context):
         self.info("Executing HKX animation export...")
@@ -221,6 +221,7 @@ class BaseExportTypedHKXAnimation(LoggingOperator):
             return False
         return bool(bl_flver.armature and bl_flver.armature.animation_data and bl_flver.armature.animation_data.action)
 
+
 class ExportCharacterHKXAnimation(BaseExportTypedHKXAnimation):
     """Export active animation from selected character Armature into that character's game ANIBND."""
     bl_idname = "export_scene.hkx_character_animation"
@@ -266,12 +267,7 @@ class ExportCharacterHKXAnimation(BaseExportTypedHKXAnimation):
 
         # Get animation stem from action name. We will re-format its ID in the selected game's known format (e.g. to
         # support cross-game conversion).
-        animation_id_str = bl_animation.name.split("|")[-1].split(".")[0]  # e.g. from 'c1234|a00_0000.001' to 'a00_0000'
-        animation_id_str = animation_id_str.lstrip("a")
-        try:
-            animation_id = int(animation_id_str)
-        except ValueError:
-            return self.error(f"Could not parse animation ID from action name '{bl_animation.name}'.")
+        animation_id = bl_animation.animation_id
 
         try:
             animation_name = get_animation_name(animation_id, self.ANIMATION_STEM_TEMPLATE, prefix="a")
@@ -351,7 +347,7 @@ class ExportObjectHKXAnimation(BaseExportTypedHKXAnimation):
 
         # Get animation stem from action name. We will re-format its ID in the selected game's known format (e.g. to
         # support cross-game conversion).
-        animation_id_str = bl_animation.name.split("|")[-1].split(".")[0]  # e.g. from 'c1234|a00_0000.001' to 'a00_0000'
+        animation_id_str = bl_animation.animation_stem
         animation_id_str = animation_id_str.lstrip("a")
         try:
             animation_id = int(animation_id_str)

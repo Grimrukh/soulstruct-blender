@@ -82,6 +82,7 @@ class RegionDrawSettings(bpy.types.PropertyGroup):
         max=10.0,
     )
 
+
 MAP_VOLUME_COLLECTION_RE = re.compile(r"^(?P<map_stem>.+) (.*)Volumes(.*)$")
 
 UNIT_CIRCLE_32 = [

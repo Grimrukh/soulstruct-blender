@@ -22,6 +22,7 @@ from io_soulstruct.types import SoulstructType
 from io_soulstruct.utilities import LoggingOperator, get_bl_obj_tight_name, MAP_STEM_RE
 from soulstruct.dcx import DCXType
 from soulstruct.darksouls1r.maps.navmesh import NVMBND
+from soulstruct.darksouls1r.maps.parts import MSBNavmesh
 from soulstruct.utilities.text import natural_keys
 from .base import *
 
@@ -33,7 +34,6 @@ msb_navmesh_operator_config = MSBPartOperatorConfig(
     PART_SUBTYPE=MSBPartSubtype.NAVMESH,
     MSB_LIST_NAME="navmeshes",
     MSB_MODEL_LIST_NAMES=["navmesh_models"],
-    GAME_ENUM_NAME="navmesh_part",
     USE_LATEST_MAP_FOLDER=True,
 )
 
@@ -81,7 +81,7 @@ class ExportMSBNavmeshes(BaseExportMSBParts):
             nvmbnd.entries = list(sorted(nvmbnd.entries, key=lambda e: e.name))
             for i, entry in enumerate(nvmbnd.entries):
                 entry.entry_id = i
-            settings.export_file(self, nvmbnd, nvmbnd.path.relative_to(settings.game_directory))
+            settings.export_file(self, nvmbnd, nvmbnd.path.relative_to(settings.game_directory_path))
         self.info(f"Exported NVMBNDs with new NVM models for {len(self.opened_nvmbnds)} maps.")
 
     def export_model(
@@ -119,7 +119,6 @@ class ExportMSBNavmeshes(BaseExportMSBParts):
 
         model_stem = get_bl_obj_tight_name(model_mesh)
         nvmbnd.nvms[model_stem] = nvm  # no file suffix needed in `NVMBND` keys
-
 
 
 class ExportMSBNavmeshCollection(LoggingOperator):
@@ -164,20 +163,16 @@ class ExportMSBNavmeshCollection(LoggingOperator):
         return context.window_manager.invoke_props_dialog(self)
 
     def execute(self, context):
-
         settings = self.settings(context)
-        bl_navmesh_type = self.config.get_bl_part_type(settings.game)
-
         if not settings.map_stem and not settings.detect_map_from_collection:
             return self.error(
                 "No game map directory specified in Soulstruct settings and `Detect Map from Collection` is disabled."
-            )        
-        
+            )
+
+        bl_navmesh_type = self.config.get_bl_part_type(settings.game)
+        bl_navmeshes = bl_navmesh_type.from_collection_objects(context.collection)
         # Important that we match Blender hierarchy sorting, as this will be used to index MCG and MCP files.
-        bl_navmeshes = sorted(
-            [bl_navmesh_type(obj) for obj in context.collection.objects],
-            key=lambda o: natural_keys(o.name)
-        )
+        bl_navmeshes = sorted(bl_navmeshes, key=lambda o: natural_keys(o.name))
 
         for bl_navmesh in bl_navmeshes:
             if not bl_navmesh.model:
@@ -241,7 +236,7 @@ class ExportMSBNavmeshCollection(LoggingOperator):
                 nvmbnd.nvms[model_stem] = nvm  # no file suffix needed in `NVMBND` keys
 
             # Create MSB Navmesh part. It will find the above model automatically.
-            navmesh_part = bl_navmesh.to_entry(self, context, settings, map_stem, msb)
+            navmesh_part = bl_navmesh.to_soulstruct_obj(self, context, map_stem, msb)  # type: MSBNavmesh
             msb.navmeshes.append(navmesh_part)
 
         # Sort models parts, just in case any weird custom names were used. We don't sort parts because their order

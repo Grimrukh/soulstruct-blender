@@ -70,6 +70,7 @@ def move_mesh_selection(
 
     return {"FINISHED"}
 
+
 class CopyMeshSelectionOperator(LoggingOperator):
     bl_idname = "object.copy_mesh_selection"
     bl_label = "Copy Edit Mesh Selection to Mesh"

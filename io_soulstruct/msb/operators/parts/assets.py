@@ -15,7 +15,6 @@ msb_asset_operator_config = MSBPartOperatorConfig(
     PART_SUBTYPE=MSBPartSubtype.ASSET,
     MSB_LIST_NAME="assets",
     MSB_MODEL_LIST_NAMES=["asset_models"],
-    GAME_ENUM_NAME="asset_part",
 )
 
 

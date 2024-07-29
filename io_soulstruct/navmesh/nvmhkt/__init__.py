@@ -14,3 +14,4 @@ __all__ = [
 ]
 
 from .model_import import *
+from .properties import *

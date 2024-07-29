@@ -271,7 +271,9 @@ class DDSTextureCollection(dict[str, DDSTexture]):
                 texture.image.filepath_raw = str(DDSTexture._TEMP_IMAGE_PATH)
                 texture.image.save()  # TODO: sometimes fails with 'No error' (depending on how Blender is storing data)
                 is_dx10 = texture.dds_format[:3] in {"BC5", "BC7"}
-                texconv_config = TexconvConfig(output_dir, dds_format, is_dx10, texture.mipmap_count, DDSTexture._TEMP_IMAGE_PATH)
+                texconv_config = TexconvConfig(
+                    output_dir, dds_format, is_dx10, texture.mipmap_count, DDSTexture._TEMP_IMAGE_PATH
+                )
 
                 dds_formats.append(dds_format)
                 configs.append(texconv_config)

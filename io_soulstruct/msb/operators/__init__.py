@@ -39,8 +39,7 @@ __all__ = [
     "ImportAllMSBPoints",
     "ImportAllMSBVolumes",
 
-    "MSBImportPanel",
-    "MSBExportPanel",
+    "MSBImportExportPanel",
 ]
 
 from .parts import *

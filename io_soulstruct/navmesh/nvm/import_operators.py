@@ -13,10 +13,9 @@ from __future__ import annotations
 __all__ = [
     "ImportNVM",
     "ImportNVMWithBinderChoice",
-    "ImportNVMFromNVMBND",
+    "ImportSelectedMapNVM",
 ]
 
-import time
 import traceback
 import typing as tp
 from pathlib import Path
@@ -24,12 +23,11 @@ from pathlib import Path
 import bpy
 from bpy_extras.io_utils import ImportHelper
 
-from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
+from soulstruct.containers import Binder, BinderEntry
 from soulstruct.darksouls1r.maps.navmesh.nvm import NVM
 
 from io_soulstruct.exceptions import NVMImportError
 from io_soulstruct.utilities import *
-from io_soulstruct.general import *
 from io_soulstruct.navmesh.nvm.types import *
 from io_soulstruct.navmesh.nvm.utilities import *
 
@@ -50,14 +48,14 @@ class ImportNVMMixin:
     navmesh_model_id: int
     import_all_from_binder: bool
 
-    def load_from_binder(self, binder: Binder, file_path: Path) -> list[NVMImportInfo | NVMImportChoiceInfo]:
+    def load_from_binder(self, binder: Binder, file_path: Path) -> list[tuple[str, NVM] | NVMImportChoiceInfo]:
         """Load one or more `NVM` files from a `Binder` and queue them for import.
 
         Will queue up a list of Binder entries if `self.import_all_from_binder` is False and `navmesh_model_id`
         import setting is -1.
 
-        Returns a list of `NVMImportInfo` or `NVMImportChoiceInfo` objects, depending on whether the Binder contains
-        multiple entries that the user may need to choose from.
+        Returns a list of `(model_name, NVM)` tuples and/or `NVMImportChoiceInfo` objects, depending on whether the
+        Binder contains multiple entries that the user may need to choose from.
         """
         nvm_entries = binder.find_entries_matching_name(ANY_NVM_NAME_RE)
         if not nvm_entries:
@@ -75,7 +73,7 @@ class ImportNVMMixin:
             # Binder contains multiple (matching) entries.
             if self.import_all_from_binder:
                 # Load all detected/matching KX entries in binder and queue them for import.
-                new_import_infos = []  # type: list[NVMImportInfo]
+                new_import_infos = []  # type: list[tuple[str, NVM]]
                 for entry in nvm_entries:
                     try:
                         nvm = entry.to_binary_file(NVM)
@@ -83,7 +81,7 @@ class ImportNVMMixin:
                         self.warning(f"Error occurred while reading NVM Binder entry '{entry.name}': {ex}")
                     else:
                         nvm.path = Path(entry.name)  # also done in `GameFile`, but explicitly needed below
-                        new_import_infos.append(NVMImportInfo(file_path, entry.minimal_stem, entry.minimal_stem, nvm))
+                        new_import_infos.append((entry.minimal_stem, nvm))
                 return new_import_infos
 
             # Queue up all matching Binder entries instead of loaded NVM instances; user will choose entry in pop-up.
@@ -96,7 +94,7 @@ class ImportNVMMixin:
             self.warning(f"Error occurred while reading NVM Binder entry '{nvm_entries[0].name}': {ex}")
             return []
 
-        return [NVMImportInfo(file_path, nvm_entries[0].minimal_stem, nvm_entries[0].minimal_stem, nvm)]
+        return [(nvm_entries[0].minimal_stem, nvm)]
 
     def check_nvm_entry_model_id(self, nvm_entry: BinderEntry) -> bool:
         """Checks if the given NVM Binder entry matches the given navmesh model ID."""
@@ -155,10 +153,10 @@ class ImportNVM(LoggingOperator, ImportHelper, ImportNVMMixin):
     )
 
     def execute(self, context):
-        print("Executing NVM import...")
+        self.info("Executing NVM import...")
 
         file_paths = [Path(self.directory, file.name) for file in self.files]
-        import_infos = []  # type: list[NVMImportInfo | NVMImportChoiceInfo]
+        import_infos = []  # type: list[tuple[str, NVM] | NVMImportChoiceInfo]
 
         for file_path in file_paths:
 
@@ -175,8 +173,8 @@ class ImportNVM(LoggingOperator, ImportHelper, ImportNVMMixin):
                 except Exception as ex:
                     self.warning(f"Error occurred while reading NVM file '{file_path.name}': {ex}")
                 else:
-                    model_file_stem = file_path.name.split(".")[0]
-                    new_non_choice_import_infos = [NVMImportInfo(file_path, model_file_stem, model_file_stem, nvm)]
+                    model_name = file_path.name.split(".")[0]
+                    new_non_choice_import_infos = [(model_name, nvm)]
                     import_infos.extend(new_non_choice_import_infos)
 
         for import_info in import_infos:
@@ -191,20 +189,22 @@ class ImportNVM(LoggingOperator, ImportHelper, ImportNVMMixin):
                 )
                 continue
 
-            self.info(f"Importing NVM model {import_info.model_file_stem} as '{import_info.bl_name}'.")
+            model_name, nvm = import_info
+
+            self.info(f"Importing NVM model {model_name}.")
 
             # Import single NVM.
             try:
-                bl_nvm = BlenderNVM.new_from_soulstruct_obj(self, context, import_info.nvm, import_info.bl_name)
+                bl_nvm = BlenderNVM.new_from_soulstruct_obj(self, context, nvm, model_name)
             except Exception as ex:
                 traceback.print_exc()  # for inspection in Blender console
-                return self.error(f"Cannot import NVM: {import_info.path}. Error: {ex}")
+                return self.error(f"Cannot import NVM: {model_name}. Error: {ex}")
 
             if self.use_material:
-                bl_nvm.set_face_materials(import_info.nvm)
+                bl_nvm.set_face_materials(nvm)
 
             if self.create_quadtree_boxes:
-                bl_nvm.create_nvm_quadtree(context, import_info.nvm, bl_nvm.name)
+                bl_nvm.create_nvm_quadtree(context, nvm, bl_nvm.name)
 
         return {"FINISHED"}
 
@@ -248,15 +248,15 @@ class ImportNVMWithBinderChoice(LoggingOperator):
         entry = self.nvm_entries[choice]
 
         nvm = entry.to_binary_file(NVM)
-        import_info = NVMImportInfo(self.binder_file_path, entry.minimal_stem, entry.minimal_stem, nvm)
+        model_name = entry.minimal_stem
         nvm_model_name = entry.name.split(".")[0]
 
         try:
             bl_nvm = BlenderNVM.new_from_soulstruct_obj(
                 self,
                 context,
-                import_info.nvm,
-                import_info.bl_name,
+                nvm,
+                model_name,
                 collection=None,
             )
         except Exception as ex:
@@ -264,10 +264,10 @@ class ImportNVMWithBinderChoice(LoggingOperator):
             return self.error(f"Cannot import NVM {nvm_model_name} from '{self.binder_file_path.name}'. Error: {ex}")
 
         if self.use_material:
-            bl_nvm.set_face_materials(import_info.nvm)
+            bl_nvm.set_face_materials(nvm)
 
         if self.create_quadtree_boxes:
-            bl_nvm.create_nvm_quadtree(context, import_info.nvm, bl_nvm.name)
+            bl_nvm.create_nvm_quadtree(context, nvm, bl_nvm.name)
 
         return {"FINISHED"}
 
@@ -288,9 +288,9 @@ class ImportNVMWithBinderChoice(LoggingOperator):
         bpy.ops.wm.nvm_binder_choice_operator("INVOKE_DEFAULT")
 
 
-class ImportNVMFromNVMBND(LoggingOperator):
+class ImportSelectedMapNVM(BinderEntrySelectOperator):
     """Import a NVM from the current selected value of listed game map NVMs."""
-    bl_idname = "import_scene.nvm_entry"
+    bl_idname = "import_scene.selected_map_nvm"
     bl_label = "Import NVM"
     bl_description = "Import selected NVM from game map directory's NVMBND binder"
 
@@ -310,75 +310,55 @@ class ImportNVMFromNVMBND(LoggingOperator):
 
     @classmethod
     def poll(cls, context):
-        if cls.settings(context).game_variable_name != "DARK_SOULS_DSR":
+        settings = cls.settings(context)
+        if settings.is_game("DARK_SOULS_DSR"):
             return False
-        game_lists = context.scene.soulstruct_game_enums  # type: SoulstructGameEnums
-        return game_lists.nvm not in {"", "0"}
 
-    def execute(self, context):
+    @classmethod
+    def filter_binder_entry(cls, context, entry: BinderEntry) -> bool:
+        """NVMBND shouldn't contain non-NVM entries, but just in case."""
+        return entry.suffix == ".nvm"
 
-        start_time = time.perf_counter()
-
-        settings = self.settings(context)
-        if settings.game_variable_name != "DARK_SOULS_DSR":
-            return self.error("NVM import from game NVMBND is only available for Dark Souls Remastered.")
-
-        nvm_entry_name = context.scene.soulstruct_game_enums.nvm
-        if nvm_entry_name in {"", "0"}:
-            return self.error("No NVM entry selected.")
-
-        # NVMBND files are sourced from the latest 'map' subfolder version.
-        map_stem = settings.get_latest_map_stem_version()
-
-        # Import source may depend on suffix of entry enum.
-        # TODO: I hate this garbage. Just force user to set whether they want to scan/import from Game XOR Project.
-        if nvm_entry_name.endswith(" (G)"):
-            nvm_entry_name = nvm_entry_name.removesuffix(" (G)")
-            nvmbnd_path = settings.get_game_map_path(f"{map_stem}.nvmbnd")
-        elif nvm_entry_name.endswith(" (P)"):
-            nvm_entry_name = nvm_entry_name.removesuffix(" (P)")
-            nvmbnd_path = settings.get_project_map_path(f"{map_stem}.nvmbnd")
-        else:  # no suffix, so we use whichever source is preferred
-            nvmbnd_path = settings.get_import_map_path(f"{map_stem}.nvmbnd")
-
-        if not is_path_and_file(nvmbnd_path):  # validation
-            return self.error(f"Could not find NVMBND file for map '{map_stem}': {nvmbnd_path}")
-
-        bl_name = nvm_entry_name.split(".")[0]
-
-        nvmbnd = Binder.from_path(nvmbnd_path)
+    @classmethod
+    def get_binder(cls, context) -> Binder | None:
+        """Find game or project NVMBND for map."""
+        settings = cls.settings(context)
+        map_stem = settings.get_latest_map_stem_version()  # always uses latest in DS1
         try:
-            nvm_entry = nvmbnd.find_entry_name(nvm_entry_name)
-        except EntryNotFoundError:
-            return self.error(f"Could not find NVM entry '{nvm_entry_name}' in NVMBND file '{nvmbnd_path.name}'.")
+            nvmbnd_path = settings.get_import_map_file_path(f"{map_stem}.nvmbnd")
+        except FileNotFoundError:
+            return None  # failed
+        return Binder.from_path(nvmbnd_path)
 
-        import_info = NVMImportInfo(
-            nvmbnd_path, nvm_entry.minimal_stem, bl_name, nvm_entry.to_binary_file(NVM)
-        )
+    def _import_entry(self, context, entry: BinderEntry):
+        settings = self.settings(context)
+        map_stem = settings.get_latest_map_stem_version()  # always uses latest in DS1
+
+        nvm = entry.to_binary_file(NVM)
+        model_name = entry.minimal_stem
 
         collection = get_collection(f"{map_stem} Navmesh Models", context.scene.collection)
 
-        self.info(f"Importing NVM model {import_info.model_file_stem} as '{import_info.bl_name}'.")
+        self.info(f"Importing NVM model '{model_name}'.")
 
         try:
             bl_nvm = BlenderNVM.new_from_soulstruct_obj(
                 self,
                 context,
-                import_info.nvm,
-                import_info.bl_name,
+                nvm,
+                model_name,
                 collection=collection,
             )
         except Exception as ex:
             traceback.print_exc()  # for inspection in Blender console
-            return self.error(f"Cannot import NVM: {import_info.path}. Error: {ex}")
+            return self.error(f"Cannot import NVM {model_name} from Binder '{self.binder.path}'. Error: {ex}")
 
         if self.use_material:
-            bl_nvm.set_face_materials(import_info.nvm)
+            bl_nvm.set_face_materials(nvm)
 
         if self.create_quadtree_boxes:
-            bl_nvm.create_nvm_quadtree(context, import_info.nvm, bl_nvm.name)
+            bl_nvm.create_nvm_quadtree(context, nvm, bl_nvm.name)
 
-        p = time.perf_counter() - start_time
-        self.info(f"Imported NVM {nvm_entry_name} from {nvmbnd_path.name} in {p} s.")
+        self.info(f"Imported NVM {model_name} from Binder '{self.binder.path_name}'.")
 
         return {"FINISHED"}

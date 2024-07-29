@@ -349,7 +349,9 @@ def draw_mcg_edge_cost_labels():
     except AttributeError:
         blf.size(almost_match_font_id, 18)  # default
     try:
-        blf.color(almost_match_font_id, *bpy.context.scene.mcg_draw_settings.mcg_almost_same_cost_edge_label_font_color, 1.0)
+        blf.color(
+            almost_match_font_id, *bpy.context.scene.mcg_draw_settings.mcg_almost_same_cost_edge_label_font_color, 1.0
+        )
     except AttributeError:
         blf.color(almost_match_font_id, 1.0, 1.0, 0.7, 1)  # default (yellow)
 

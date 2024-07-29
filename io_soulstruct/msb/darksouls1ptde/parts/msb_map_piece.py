@@ -56,7 +56,10 @@ class BlenderMSBMapPiece(BlenderMSBPart[MSBMapPiece, MSBMapPieceProps]):
         """Import the model of the given name into a collection in the current scene."""
         settings = operator.settings(context)
         flver_import_settings = context.scene.flver_import_settings
-        flver_path = settings.get_import_map_path(f"{model_name}.flver")
+        try:
+            flver_path = settings.get_import_map_file_path(f"{model_name}.flver")
+        except FileNotFoundError:
+            raise FLVERImportError(f"Cannot find FLVER model file for Map Piece: {model_name}.")
 
         operator.info(f"Importing map piece FLVER: {flver_path}")
 

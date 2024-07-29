@@ -15,23 +15,22 @@ __all__ = [
 ]
 
 import re
-import time
 import traceback
 import typing as tp
 from pathlib import Path
+
+import time
+from soulstruct_havok.wrappers.hkx2018.file_types import NavmeshHKX
 
 import bpy
 from bpy_extras.io_utils import ImportHelper
 from mathutils import Vector
 
-from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
-from soulstruct_havok.wrappers.hkx2018.file_types import NavmeshHKX
-
+from io_soulstruct.exceptions import NVMHKTImportError
+from io_soulstruct.navmesh.nvmhkt.utilities import get_dungeons_to_overworld_dict
 from io_soulstruct.utilities import *
-from io_soulstruct.general import *
+from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
 from .core import *
-from ..utilities import get_dungeons_to_overworld_dict
-
 
 ANY_NVMHKT_NAME_RE = re.compile(r"^(?P<stem>.*)\.hkx$")  # no DCX inside DCX-compressed NVMHKTBNDs
 STANDARD_NVMHKT_STEM_RE = re.compile(r"^n(\d\d_\d\d_\d\d_\d\d)_(\d{6})$")  # no extensions
@@ -54,14 +53,16 @@ class ImportNVMHKTMixin:
     navmesh_model_id: int
     import_all_from_binder: bool
 
-    def load_from_binder(self, binder: Binder, file_path: Path) -> list[NVMHKTImportInfo | NVMHKTImportChoiceInfo]:
+    def load_from_binder(
+        self, binder: Binder, file_path: Path
+    ) -> list[tuple[str, NavmeshHKX] | NVMHKTImportChoiceInfo]:
         """Load one or more `NVMHKT` files from a `Binder` and queue them for import.
 
         Will queue up a list of Binder entries if `self.import_all_from_binder` is False and `navmesh_model_id`
         import setting is -1.
 
-        Returns a list of `NVMHKTImportInfo` or `NVMHKTImportChoiceInfo` objects, depending on whether the Binder contains
-        multiple entries that the user may need to choose from.
+        Returns a list of `NVMHKTImportInfo` or `NVMHKTImportChoiceInfo` objects, depending on whether the Binder
+        contains multiple entries that the user may need to choose from.
         """
         nvm_entries = binder.find_entries_matching_name(ANY_NVMHKT_NAME_RE)
         if not nvm_entries:
@@ -79,15 +80,15 @@ class ImportNVMHKTMixin:
             # Binder contains multiple (matching) entries.
             if self.import_all_from_binder:
                 # Load all detected/matching KX entries in binder and queue them for import.
-                new_import_infos = []  # type: list[NVMHKTImportInfo]
+                new_import_infos = []  # type: list[tuple[str, NavmeshHKX]]
                 for entry in nvm_entries:
                     try:
-                        nvm = entry.to_binary_file(NavmeshHKX)
+                        nvmhkt = entry.to_binary_file(NavmeshHKX)
                     except Exception as ex:
                         self.warning(f"Error occurred while reading NVMHKT Binder entry '{entry.name}': {ex}")
                     else:
-                        nvm.path = Path(entry.name)  # also done in `GameFile`, but explicitly needed below
-                        new_import_infos.append(NVMHKTImportInfo(file_path, entry.minimal_stem, entry.minimal_stem, nvm))
+                        nvmhkt.path = Path(entry.name)  # also done in `GameFile`, but explicitly needed below
+                        new_import_infos.append((entry.minimal_stem, nvmhkt))
                 return new_import_infos
 
             # Queue up all matching Binder entries instead of loaded NVMHKT instances; user will choose entry in pop-up.
@@ -95,12 +96,12 @@ class ImportNVMHKTMixin:
 
         # Binder only contains one (matching) NVMHKT.
         try:
-            nvm = nvm_entries[0].to_binary_file(NavmeshHKX)
+            nvmhkt = nvm_entries[0].to_binary_file(NavmeshHKX)
         except Exception as ex:
             self.warning(f"Error occurred while reading NVMHKT Binder entry '{nvm_entries[0].name}': {ex}")
             return []
 
-        return [NVMHKTImportInfo(file_path, nvm_entries[0].minimal_stem, nvm_entries[0].minimal_stem, nvm)]
+        return [(nvm_entries[0].minimal_stem, nvmhkt)]
 
     def check_nvm_entry_model_id(self, nvm_entry: BinderEntry) -> bool:
         """Checks if the given NVMHKT Binder entry matches the given navmesh model ID."""
@@ -157,7 +158,7 @@ class ImportNVMHKT(LoggingOperator, ImportHelper, ImportNVMHKTMixin):
         self.info("Executing NVMHKT import...")
 
         file_paths = [Path(self.directory, file.name) for file in self.files]
-        import_infos = []  # type: list[NVMHKTImportInfo | NVMHKTImportChoiceInfo]
+        import_infos = []  # type: list[tuple[str, NavmeshHKX] | NVMHKTImportChoiceInfo]
 
         for file_path in file_paths:
 
@@ -170,12 +171,12 @@ class ImportNVMHKT(LoggingOperator, ImportHelper, ImportNVMHKTMixin):
             else:
                 # Loose NVMHKT.
                 try:
-                    nvm = NavmeshHKX.from_path(file_path)
+                    nvmhkt = NavmeshHKX.from_path(file_path)
                 except Exception as ex:
                     self.warning(f"Error occurred while reading NVMHKT file '{file_path.name}': {ex}")
                 else:
-                    model_file_stem = file_path.name.split(".")[0]
-                    new_non_choice_import_infos = [NVMHKTImportInfo(file_path, model_file_stem, model_file_stem, nvm)]
+                    model_name = file_path.name.split(".")[0]
+                    new_non_choice_import_infos = [(model_name, nvmhkt)]
                     import_infos.extend(new_non_choice_import_infos)
 
         importer = NVMHKTImporter(self, context)
@@ -188,21 +189,23 @@ class ImportNVMHKT(LoggingOperator, ImportHelper, ImportNVMHKTMixin):
                     importer=importer,
                     binder_file_path=import_info.path,
                     use_material=self.use_material,
-                    nvm_entries=import_info.entries,
+                    nvmhkt_entries=import_info.entries,
                 )
                 continue
 
-            self.info(f"Importing NVMHKT model {import_info.model_file_stem} as '{import_info.bl_name}'.")
+            model_name, nvmhkt = import_info
+
+            self.info(f"Importing NVMHKT model {model_name}.")
 
             # Import single NVMHKT.
             try:
-                importer.import_nvmhkt(import_info, use_material=self.use_material)
+                importer.import_nvmhkt(nvmhkt, model_name, use_material=self.use_material)
             except Exception as ex:
                 # Delete any objects created prior to exception.
                 for obj in importer.all_bl_objs:
                     bpy.data.objects.remove(obj)
                 traceback.print_exc()  # for inspection in Blender console
-                return self.error(f"Cannot import NVMHKT: {import_info.path}. Error: {ex}")
+                return self.error(f"Cannot import NVMHKT {model_name}. Error: {ex}")
 
         return {"FINISHED"}
 
@@ -245,20 +248,19 @@ class ImportNVMHKTWithBinderChoice(LoggingOperator):
         choice = int(self.choices_enum)
         entry = self.nvmhkt_entries[choice]
 
-        nvm = entry.to_binary_file(NavmeshHKX)
-        import_info = NVMHKTImportInfo(self.binder_file_path, entry.minimal_stem, entry.minimal_stem, nvm)
-        nvm_model_name = entry.name.split(".")[0]
+        model_name = entry.minimal_stem
+        nvmhkt = entry.to_binary_file(NavmeshHKX)
 
         self.importer.operator = self
         self.importer.context = context
 
         try:
-            self.importer.import_nvmhkt(import_info, use_material=self.use_material)
+            self.importer.import_nvmhkt(nvmhkt, model_name, use_material=self.use_material)
         except Exception as ex:
             for obj in self.importer.all_bl_objs:
                 bpy.data.objects.remove(obj)
             traceback.print_exc()
-            return self.error(f"Cannot import NVMHKT {nvm_model_name} from '{self.binder_file_path.name}'. Error: {ex}")
+            return self.error(f"Cannot import NVMHKT {model_name} from '{self.binder_file_path.name}'. Error: {ex}")
 
         return {"FINISHED"}
 
@@ -268,18 +270,18 @@ class ImportNVMHKTWithBinderChoice(LoggingOperator):
         importer: NVMHKTImporter,
         binder_file_path: Path,
         use_material: bool,
-        nvm_entries: list[BinderEntry],
+        nvmhkt_entries: list[BinderEntry],
     ):
         cls.importer = importer
         cls.binder_file_path = binder_file_path
-        cls.enum_options = [(str(i), entry.name, "") for i, entry in enumerate(nvm_entries)]
+        cls.enum_options = [(str(i), entry.name, "") for i, entry in enumerate(nvmhkt_entries)]
         cls.use_material = use_material
-        cls.nvmhkt_entries = nvm_entries
+        cls.nvmhkt_entries = nvmhkt_entries
         # noinspection PyUnresolvedReferences
         bpy.ops.wm.nvmhkt_binder_choice_operator("INVOKE_DEFAULT")
 
 
-class ImportNVMHKTFromNVMHKTBND(LoggingOperator):
+class ImportNVMHKTFromNVMHKTBND(BinderEntrySelectOperator):
     """Import a NVMHKT from the current selected value of listed game map NVMHKTs."""
     bl_idname = "import_scene.nvmhkt_entry"
     bl_label = "Import NVMHKT"
@@ -297,65 +299,46 @@ class ImportNVMHKTFromNVMHKTBND(LoggingOperator):
     def poll(cls, context):
         if not cls.settings(context).is_game("ELDEN_RING"):
             return False
-        game_lists = context.scene.soulstruct_game_enums  # type: SoulstructGameEnums
-        return game_lists.nvmhkt not in {"", "0"}
+        settings = cls.settings(context)
+        try:
+            settings.get_import_map_file_path(f"{settings.map_stem}.nvmhktbnd")
+        except FileNotFoundError:
+            return False
 
-    def execute(self, context):
+    @classmethod
+    def get_binder(cls, context) -> Binder | None:
+        settings = cls.settings(context)
+        map_stem = settings.map_stem  # NOT smart-versioned; Elden Ring map versions are game progress dependent
+        try:
+            nvmhktbnd_path = settings.get_import_map_file_path(f"{map_stem}.nvmhktbnd")
+        except FileNotFoundError:
+            return None
+        return Binder.from_path(nvmhktbnd_path)
 
+    def _import_entry(self, context, entry: BinderEntry):
         start_time = time.perf_counter()
 
         settings = self.settings(context)
-        if settings.game_variable_name != "ELDEN_RING":
-            return self.error("NVMHKT import from game NVMHKTBND is only available for Elden Ring.")
-
-        nvmhkt_entry_name = context.scene.soulstruct_game_enums.nvmhkt
-        if nvmhkt_entry_name in {"", "0"}:
-            return self.error("No NVMHKT entry selected.")
-
-        # NVMHKTBND files are sourced from the latest 'map' subfolder version.
-        map_stem = settings.get_latest_map_stem_version()
-
-        # Import source may depend on suffix of entry enum.
-        if nvmhkt_entry_name.endswith(" (G)"):
-            nvmhkt_entry_name = nvmhkt_entry_name.removesuffix(" (G)")
-            nvmbnd_path = settings.get_game_map_path(f"{map_stem}.nvmhktbnd")
-        elif nvmhkt_entry_name.endswith(" (P)"):
-            nvmhkt_entry_name = nvmhkt_entry_name.removesuffix(" (P)")
-            nvmbnd_path = settings.get_project_map_path(f"{map_stem}.nvmhktbnd")
-        else:  # no suffix, so we use whichever source is preferred
-            nvmbnd_path = settings.get_import_map_path(f"{map_stem}.nvmhktbnd")
-
-        if not is_path_and_file(nvmbnd_path):  # validation
-            return self.error(f"Could not find NVMHKTBND file for map '{map_stem}': {nvmbnd_path}")
-
-        bl_name = nvmhkt_entry_name.split(".")[0]
-
-        nvmhktbnd = Binder.from_path(nvmbnd_path)
-        try:
-            nvm_entry = nvmhktbnd.find_entry_name(nvmhkt_entry_name)
-        except EntryNotFoundError:
-            return self.error(f"Could not find NVMHKT entry '{nvmhkt_entry_name}' in NVMHKTBND file '{nvmbnd_path.name}'.")
-
-        import_info = NVMHKTImportInfo(
-            nvmbnd_path, nvm_entry.minimal_stem, bl_name, nvm_entry.to_binary_file(NavmeshHKX)
-        )
+        map_stem = settings.map_stem
+        model_name = entry.minimal_stem
+        nvmhkt = entry.to_binary_file(NavmeshHKX)
 
         collection = get_collection(f"{map_stem} Navmesh Models", context.scene.collection)
         importer = NVMHKTImporter(self, context, collection=collection)
 
-        self.info(f"Importing NVMHKT model {import_info.model_file_stem} as '{import_info.bl_name}'.")
+        self.info(f"Importing NVMHKT model {model_name}.")
 
         try:
-            importer.import_nvmhkt(import_info, use_material=self.use_material)
+            importer.import_nvmhkt(nvmhkt, model_name, use_material=self.use_material)
         except Exception as ex:
             # Delete any objects created prior to exception.
             for obj in importer.all_bl_objs:
                 bpy.data.objects.remove(obj)
             traceback.print_exc()  # for inspection in Blender console
-            return self.error(f"Cannot import NVMHKT: {import_info.path}. Error: {ex}")
+            return self.error(f"Cannot import NVMHKT: {model_name}. Error: {ex}")
 
         p = time.perf_counter() - start_time
-        self.info(f"Imported NVMHKT {nvmhkt_entry_name} from {nvmbnd_path.name} in {p} s.")
+        self.info(f"Imported NVMHKT {model_name} in {p} s.")
 
         return {"FINISHED"}
 
@@ -379,18 +362,15 @@ class ImportAllNVMHKTBase(LoggingOperator):
             )
             raise
 
-        bl_name = entry_name.split(".")[0]
-
-        import_info = NVMHKTImportInfo(
-            nvmhktbnd.path, hkx_entry.minimal_stem, bl_name, hkx_entry.to_binary_file(NavmeshHKX)
-        )
+        model_name = hkx_entry.minimal_stem
+        nvmhkt = hkx_entry.to_binary_file(NavmeshHKX)
 
         importer = NVMHKTImporter(self, context, collection=collection)
 
-        self.info(f"Importing NVMHKT model {import_info.model_file_stem} as '{import_info.bl_name}'.")
+        self.info(f"Importing NVMHKT model {model_name}.")
 
         try:
-            return importer.import_nvmhkt(import_info, use_material=self.use_material)
+            return importer.import_nvmhkt(nvmhkt, model_name, use_material=self.use_material)
         except Exception:
             # Delete any objects created prior to exception.
             for obj in importer.all_bl_objs:
@@ -439,7 +419,7 @@ class ImportAllNVMHKTsFromNVMHKTBND(ImportAllNVMHKTBase):
             return self.error("NVMHKT import from game NVMHKTBND is only available for Elden Ring.")
 
         map_stem = settings.map_stem
-        nvmhktbnd_path = settings.get_import_map_path(f"{map_stem}.nvmhktbnd.dcx")
+        nvmhktbnd_path = settings.get_import_map_file_path(f"{map_stem}.nvmhktbnd.dcx")
         if not nvmhktbnd_path:
             return self.error(f"Could not find NVMHKTBND file for map '{map_stem}'.")
         small_tile_match = re.match(r"(m60|m61)_(\d\d)_(\d\d)_(\d)0", map_stem)
@@ -456,8 +436,8 @@ class ImportAllNVMHKTsFromNVMHKTBND(ImportAllNVMHKTBase):
         importer = NVMHKTImporter(self, context, collection=collection)
         models = []
 
-        def get_bl_name(entry_):
-            bl_name_ = entry_.name.split(".")[0]
+        def correct_model_name(bl_name_: str):
+            """Handles Elden Ring's map versioning for navmeshes."""
             if import_settings.correct_model_versions and map_stem[10] != "0":
                 if bl_name_[10] == map_stem[10]:
                     self.info(f"Model version in NVMHKT name already matches V1+ map version: {bl_name_}")
@@ -472,17 +452,14 @@ class ImportAllNVMHKTsFromNVMHKTBND(ImportAllNVMHKTBase):
 
         if import_settings.import_hires_navmeshes:
 
-            for entry in nvmhktbnd.find_entries_matching_name(re.compile("n.*\.hkx")):
-                bl_name = get_bl_name(entry)
+            for entry in nvmhktbnd.find_entries_matching_name(re.compile(r"n.*\.hkx")):
+                model_name = correct_model_name(entry.minimal_stem)
+                nvmhkt = entry.to_binary_file(NavmeshHKX)
 
-                import_info = NVMHKTImportInfo(
-                    nvmhktbnd.path, entry.minimal_stem, bl_name, entry.to_binary_file(NavmeshHKX)
-                )
-
-                self.info(f"Importing NVMHKT model {import_info.model_file_stem} as '{import_info.bl_name}'.")
+                self.info(f"Importing NVMHKT model {model_name}.")
 
                 try:
-                    bl_nvmhkt = importer.import_nvmhkt(import_info, use_material=self.use_material)
+                    bl_nvmhkt = importer.import_nvmhkt(nvmhkt, model_name, use_material=self.use_material)
                 except Exception:
                     # Delete any objects created prior to exception.
                     for obj in importer.all_bl_objs:
@@ -509,17 +486,14 @@ class ImportAllNVMHKTsFromNVMHKTBND(ImportAllNVMHKTBase):
                 models.append(bl_nvmhkt)
 
         if import_settings.import_lores_navmeshes:
-            for entry in nvmhktbnd.find_entries_matching_name(re.compile("o.*\.hkx")):
-                bl_name = get_bl_name(entry)
+            for entry in nvmhktbnd.find_entries_matching_name(re.compile(r"o.*\.hkx")):
+                model_name = correct_model_name(entry.minimal_stem)
+                nvmhkt = entry.to_binary_file(NavmeshHKX)
 
-                import_info = NVMHKTImportInfo(
-                    nvmhktbnd.path, entry.minimal_stem, bl_name, entry.to_binary_file(NavmeshHKX)
-                )
-
-                self.info(f"Importing NVMHKT model {import_info.model_file_stem} as '{import_info.bl_name}'.")
+                self.info(f"Importing NVMHKT model {model_name}.")
 
                 try:
-                    bl_nvmhkt = importer.import_nvmhkt(import_info, use_material=self.use_material)
+                    bl_nvmhkt = importer.import_nvmhkt(nvmhkt, model_name, use_material=self.use_material)
                 except Exception:
                     # Delete any objects created prior to exception.
                     for obj in importer.all_bl_objs:

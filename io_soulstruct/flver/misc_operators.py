@@ -2,8 +2,6 @@ from __future__ import annotations
 
 __all__ = [
     "CopyToNewFLVER",
-    "DeleteFLVER",
-    "DeleteFLVERAndData",
     "RenameFLVER",
     "SelectDisplayMaskID",
     "SetSmoothCustomNormals",
@@ -33,7 +31,7 @@ from mathutils import Matrix, Vector, Quaternion
 
 from soulstruct.base.models.flver import Material
 
-from io_soulstruct.exceptions import FLVERError
+from io_soulstruct.exceptions import SoulstructTypeError
 from io_soulstruct.utilities import *
 from .models.types import BlenderFLVER
 
@@ -59,72 +57,13 @@ class CopyToNewFLVER(LoggingOperator):
             return self.error("Must select a Mesh in Edit Mode.")
 
         settings = self.settings(context)
-        bl_flver = BlenderFLVER.from_bl_obj(context.active_object, operator=self)
+        bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
         new_bl_flver = bl_flver.duplicate_edit_mode(
             context=context,
             make_materials_single_user=True,
             copy_pose=True,
         )
         new_bl_flver.rename(settings.new_model_name or f"{bl_flver.name}_Copy")
-
-        return {"FINISHED"}
-
-
-class DeleteFLVER(LoggingOperator):
-
-    bl_idname = "object.delete_flver"
-    bl_label = "Delete FLVER (Objects)"
-    bl_description = "Delete Armature of selected FLVER and all its children"
-
-    @classmethod
-    def poll(cls, context):
-        return context.mode == "OBJECT" and context.active_object and context.active_object.type in {"ARMATURE", "MESH"}
-
-    def execute(self, context):
-        if not self.poll(context):
-            return self.error("Must select a Mesh or Armature in Object Mode.")
-
-        armature = context.active_object
-        if armature.type == "MESH":
-            armature = armature.parent
-            if armature.type != "ARMATURE":
-                return self.error("Selected object is not an Armature or a child of an Armature.")
-
-        for child in armature.children:
-            bpy.data.objects.remove(child)
-        bpy.data.objects.remove(armature)
-
-        return {"FINISHED"}
-
-
-class DeleteFLVERAndData(LoggingOperator):
-
-    bl_idname = "object.delete_flver_and_data"
-    bl_label = "Delete FLVER (Objects + Data)"
-    bl_description = ("Delete Armature/Mesh of selected FLVER and all its children, as well as any Mesh data blocks "
-                      "(but not materials or textures)")
-
-    @classmethod
-    def poll(cls, context):
-        if context.mode != "OBJECT" or not context.active_object:
-            return False
-        try:
-            BlenderFLVER.from_bl_obj(context.active_object)
-        except FLVERError:
-            return False
-        return True
-
-    def execute(self, context):
-        bl_flver = BlenderFLVER.from_bl_obj(context.active_object)
-        for child in bl_flver.root_obj.children_recursive:
-            if child.type == "MESH":
-                bpy.data.meshes.remove(child.data)
-            bpy.data.objects.remove(child)
-        if bl_flver.armature:
-            bpy.data.armatures.remove(bl_flver.armature.data)
-            bpy.data.objects.remove(bl_flver.armature)
-        bpy.data.meshes.remove(bl_flver.mesh.data)
-        bpy.data.objects.remove(bl_flver.mesh)
 
         return {"FINISHED"}
 
@@ -150,7 +89,7 @@ class RenameFLVER(LoggingOperator):
         if not settings.new_model_name:
             return self.error("No new model name specified.")
 
-        bl_flver = BlenderFLVER.from_bl_obj(context.active_object, operator=self)
+        bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
         bl_flver.rename(settings.new_model_name)
 
         return {"FINISHED"}
@@ -639,7 +578,7 @@ class FindMissingTexturesInPNGCache(LoggingOperator):
 
         try:
             bl_flvers = BlenderFLVER.get_selected_flvers(context)
-        except FLVERError as ex:
+        except SoulstructTypeError as ex:
             return self.error(str(ex))
 
         meshes_data = [bl_flver.mesh.data for bl_flver in bl_flvers]
@@ -713,8 +652,8 @@ def draw_dummy_ids():
 
     obj = bpy.context.selected_objects[0]
     try:
-        bl_flver = BlenderFLVER.from_bl_obj(obj)
-    except FLVERError:
+        bl_flver = BlenderFLVER.from_armature_or_mesh(obj)
+    except SoulstructTypeError:
         return
 
     bl_dummies = bl_flver.get_dummies()
@@ -746,14 +685,10 @@ class HideAllDummiesOperator(LoggingOperator):
     def poll(cls, context):
         if not context.active_object:
             return False
-        try:
-            BlenderFLVER.from_bl_obj(context.active_object)
-        except IndexError:
-            return False
-        return True
+        return BlenderFLVER.test_obj(context.active_object)
 
     def execute(self, context):
-        bl_dummies = BlenderFLVER.from_bl_obj(context.active_object).get_dummies(self)
+        bl_dummies = BlenderFLVER.from_armature_or_mesh(context.active_object).get_dummies(self)
         for bl_dummy in bl_dummies:
             bl_dummy.obj.hide_viewport = True
 
@@ -770,14 +705,10 @@ class ShowAllDummiesOperator(LoggingOperator):
     def poll(cls, context):
         if not context.active_object:
             return False
-        try:
-            BlenderFLVER.from_bl_obj(context.active_object)
-        except IndexError:
-            return False
-        return True
+        return BlenderFLVER.test_obj(context.active_object)
 
     def execute(self, context):
-        bl_dummies = BlenderFLVER.from_bl_obj(context.active_object).get_dummies(self)
+        bl_dummies = BlenderFLVER.from_armature_or_mesh(context.active_object).get_dummies(self)
         for bl_dummy in bl_dummies:
             bl_dummy.obj.hide_viewport = False
 

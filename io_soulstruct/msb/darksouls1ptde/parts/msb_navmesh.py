@@ -11,14 +11,13 @@ import bpy
 from io_soulstruct.exceptions import NVMImportError, MissingPartModelError
 from io_soulstruct.msb.properties import MSBPartSubtype, MSBNavmeshProps
 from io_soulstruct.navmesh.nvm.types import *
-from io_soulstruct.navmesh.nvm.utilities import *
 from io_soulstruct.types import *
 from io_soulstruct.utilities import LoggingOperator, get_collection
 from soulstruct.base.maps.msb.utils import GroupBitSet128
 from soulstruct.containers import Binder, EntryNotFoundError
 from soulstruct.darksouls1r.maps.navmesh.nvm import NVM
 from soulstruct.darksouls1r.maps.parts import MSBNavmesh
-from .msb_part import BlenderMSBPart, PART_T
+from .msb_part import BlenderMSBPart
 
 if tp.TYPE_CHECKING:
     from soulstruct.darksouls1r.maps.msb import MSB
@@ -33,6 +32,7 @@ class BlenderMSBNavmesh(BlenderMSBPart[MSBNavmesh, MSBNavmeshProps]):
     MODEL_SUBTYPES = ["navmesh_models"]
 
     __slots__ = []
+    data: bpy.types.Mesh
 
     @property
     def navmesh_groups(self):
@@ -73,7 +73,7 @@ class BlenderMSBNavmesh(BlenderMSBPart[MSBNavmesh, MSBNavmeshProps]):
         context: bpy.types.Context,
         map_stem="",
         msb: MSB = None,
-    ) -> PART_T:
+    ) -> MSBNavmesh:
         navmesh = super().to_soulstruct_obj(operator, context, map_stem=map_stem, msb=msb)
         navmesh.navmesh_groups = self.navmesh_groups
         return navmesh
@@ -104,14 +104,11 @@ class BlenderMSBNavmesh(BlenderMSBPart[MSBNavmesh, MSBNavmeshProps]):
         NOTE: `map_stem` should already be set to latest version if option is enabled. This function is agnostic.
         """
         settings = operator.settings(context)
-        if not settings.get_import_map_path():  # validation
-            raise NVMImportError(
-                "Game directory and map stem must be set in Blender's Soulstruct global settings."
-            )
 
-        nvmbnd_path = settings.get_import_map_path(f"{map_stem}.nvmbnd")
-        if not nvmbnd_path or not nvmbnd_path.is_file():
-            raise NVMImportError(f"Could not find NVMBND file for map '{map_stem}': {nvmbnd_path}")
+        try:
+            nvmbnd_path = settings.get_import_map_file_path(f"{map_stem}.nvmbnd")
+        except FileNotFoundError:
+            raise NVMImportError(f"Could not find NVMBND file for map {map_stem}.")
 
         nvm_entry_name = model_name + ".nvm"  # no DCX in DSR
         nvmbnd = Binder.from_path(nvmbnd_path)
@@ -120,25 +117,22 @@ class BlenderMSBNavmesh(BlenderMSBPart[MSBNavmesh, MSBNavmeshProps]):
         except EntryNotFoundError:
             raise NVMImportError(f"Could not find NVM entry '{nvm_entry_name}' in NVMBND file '{nvmbnd_path.name}'.")
 
-        import_info = NVMImportInfo(
-            nvmbnd_path, nvm_entry.minimal_stem, model_name, nvm_entry.to_binary_file(NVM)
-        )
-
+        nvm = nvm_entry.to_binary_file(NVM)
         collection = get_collection(f"{map_stem} Navmesh Models", context.scene.collection)
 
         try:
             bl_nvm = BlenderNVM.new_from_soulstruct_obj(
                 operator,
                 context,
-                import_info.nvm,
-                import_info.bl_name,
+                nvm,
+                model_name,
                 collection=collection,
             )
         except Exception as ex:
             traceback.print_exc()  # for inspection in Blender console
-            raise NVMImportError(f"Cannot import NVM: {import_info.path}. Error: {ex}")
+            raise NVMImportError(f"Cannot import NVM: {model_name}. Error: {ex}")
 
-        bl_nvm.set_face_materials(import_info.nvm)
+        bl_nvm.set_face_materials(nvm)
         # Don't create quadtree boxes.
 
         # TODO: NVM import is so fast that this just slows the console down when importing all navmeshes.

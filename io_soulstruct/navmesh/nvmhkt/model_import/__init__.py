@@ -1,6 +1,4 @@
 __all__ = [
-    "NVMHKTImportError",
-    "NVMHKTImportInfo",
     "NVMHKTImporter",
 
     "ImportNVMHKT",
@@ -9,10 +7,7 @@ __all__ = [
     "ImportAllNVMHKTsFromNVMHKTBND",
     "ImportAllOverworldNVMHKTs",
     "ImportAllDLCOverworldNVMHKTs",
-
-    "NVMHKTImportSettings",
 ]
 
 from .core import *
 from .operators import *
-from .settings import *
