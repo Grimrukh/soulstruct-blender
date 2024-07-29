@@ -1751,7 +1751,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
 
             if len(bone_indices) > 4:
                 raise FLVERExportError(
-                    f"Vertex cannot be weighted to {len(bone_indices)} bones (max 1 for Map Pieces, 4 for others)."
+                    f"Vertex {i} cannot be weighted to {len(bone_indices)} bones (max 1 for Map Pieces, 4 for others)."
                 )
             elif len(bone_indices) == 0:
                 if len(bl_bone_names) == 1 and not use_chr_layout:
