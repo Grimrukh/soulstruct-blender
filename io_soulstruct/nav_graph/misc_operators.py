@@ -1,6 +1,11 @@
 from __future__ import annotations
 
 __all__ = [
+    "AddMCGNodeNavmeshATriangleIndex",
+    "RemoveMCGNodeNavmeshATriangleIndex",
+    "AddMCGNodeNavmeshBTriangleIndex",
+    "RemoveMCGNodeNavmeshBTriangleIndex",
+
     "JoinMCGNodesThroughNavmesh",
     "SetNodeNavmeshTriangles",
     "RefreshMCGNames",
@@ -21,6 +26,74 @@ from io_soulstruct.types import *
 from io_soulstruct.utilities import LoggingOperator
 from .utilities import *
 from .types import *
+
+
+class AddMCGNodeNavmeshATriangleIndex(bpy.types.Operator):
+    bl_idname = "mcg_node.add_navmesh_a_triangle_index"
+    bl_label = "Add Navmesh A Triangle"
+
+    @classmethod
+    def poll(cls, context: bpy.types.Context):
+        return context.active_object and context.active_object.soulstruct_type == SoulstructType.MCG_NODE
+
+    def execute(self, context):
+        bl_node = context.active_object
+        bl_node.MCG_NODE.navmesh_a_triangles.add()
+        return {'FINISHED'}
+
+
+class RemoveMCGNodeNavmeshATriangleIndex(bpy.types.Operator):
+    bl_idname = "mcg_node.remove_navmesh_a_triangle_index"
+    bl_label = "Remove Navmesh A Triangle"
+
+    @classmethod
+    def poll(cls, context):
+        return (
+            context.active_object
+            and context.active_object.soulstruct_type == SoulstructType.MCG_NODE
+            and len(context.active_object.MCG_NODE.navmesh_a_triangles) > 0
+        )
+
+    def execute(self, context):
+        obj = context.active_object
+        index = obj.MCG_NODE_navmesh_a_triangle_index
+        obj.MCG_NODE.navmesh_a_triangles.remove(index)
+        obj.MCG_NODE.navmesh_a_triangle_index = max(0, index - 1)
+        return {'FINISHED'}
+
+
+class AddMCGNodeNavmeshBTriangleIndex(bpy.types.Operator):
+    bl_idname = "mcg_node.add_navmesh_b_triangle_index"
+    bl_label = "Add Navmesh B Triangle"
+
+    @classmethod
+    def poll(cls, context: bpy.types.Context):
+        return context.active_object and context.active_object.soulstruct_type == SoulstructType.MCG_NODE
+
+    def execute(self, context):
+        bl_node = context.active_object
+        bl_node.MCG_NODE.navmesh_b_triangles.add()
+        return {'FINISHED'}
+
+
+class RemoveMCGNodeNavmeshBTriangleIndex(bpy.types.Operator):
+    bl_idname = "mcg_node.remove_navmesh_b_triangle_index"
+    bl_label = "Remove Navmesh B Triangle"
+
+    @classmethod
+    def poll(cls, context):
+        return (
+            context.active_object
+            and context.active_object.soulstruct_type == SoulstructType.MCG_NODE
+            and len(context.active_object.MCG_NODE.navmesh_b_triangles) > 0
+        )
+
+    def execute(self, context):
+        obj = context.active_object
+        index = obj.MCG_NODE.navmesh_b_triangle_index
+        obj.MCG_NODE.navmesh_b_triangles.remove(index)
+        obj.MCG_NODE.navmesh_b_triangle_index = max(0, index - 1)
+        return {'FINISHED'}
 
 
 class JoinMCGNodesThroughNavmesh(LoggingOperator):
@@ -155,21 +228,21 @@ class SetNodeNavmeshTriangles(LoggingOperator):
 
 
 class RefreshMCGNames(LoggingOperator):
-    bl_idname = "io_soulstruct_scene.refresh_mcg_names"
+    bl_idname = "scene.refresh_mcg_names"
     bl_label = "Refresh MCG Names"
     bl_description = "Refresh all MCG node and edge names in the selected MCG hierarchy"
 
     @classmethod
     def poll(cls, context):
         try:
-            BlenderMCG.from_selected_object(context)
+            BlenderMCG.from_active_object(context)
         except SoulstructTypeError:
             return False
         return True
 
     def execute(self, context):
 
-        bl_mcg = BlenderMCG.from_selected_object(context)  # type: BlenderMCG
+        bl_mcg = BlenderMCG.from_active_object(context)  # type: BlenderMCG
         map_stem = bl_mcg.tight_name
 
         bl_nodes = bl_mcg.get_nodes()
@@ -234,14 +307,14 @@ class RecomputeEdgeCost(LoggingOperator):
     """Compute the expected cost of moving from the given edge's start node (lowest face index) to its end node (also
     lowest face index).
 
-    Result is stored in "Blender Cost" custom property on edge, which the cost label draw hook will check and display
+    Result is stored in "New Cost" custom property on edge, which the cost label draw hook will check and display
     alongside the true loaded MCG costs. The `UpdateEdgeCost` operator can be used to override "Cost" with "Blender
     Cost" and delete the latter property, causing the new cost to be exported to MCG edges (rather than just being for
     comparison).
     """
     bl_idname = "mesh.recompute_mcg_edge_cost"
     bl_label = "Recompute Edge Costs"
-    bl_description = "Recompute costs of selected MCG edges and store in \"Blender Cost\" custom property"
+    bl_description = "Recompute costs of selected MCG edges and store in \"New Cost\" custom property"
 
     @classmethod
     def poll(cls, context):
@@ -304,7 +377,7 @@ class RecomputeEdgeCost(LoggingOperator):
                 continue
 
             # We just use a custom property for this, not a real `BlenderMCGNode` property.
-            bl_edge["Blender Cost"] = total_cost
+            bl_edge["New Cost"] = total_cost
 
         return {"FINISHED"}
 
@@ -381,8 +454,9 @@ class AutoCreateMCG(LoggingOperator):
     matter in-game.
     """
     bl_idname = "mesh.auto_create_mcg"
-    bl_label = "Auto Create Full MCG"
-    bl_description = "Create an entire MCG hierarchy of nodes/edges using all navmesh 'Exit' faces"
+    bl_label = "Create MCG from Navmeshes"
+    bl_description = ("Create an entire MCG hierarchy of nodes/edges using all navmesh 'Exit' faces. Use by selecting "
+                      "a COMPLETE, ORDERED collection of a map's MSB Navmesh parts")
 
     # Holds all navmesh BMeshes so they can be freed and deleted without fail.
     navmesh_bmeshes: list[bmesh.types.BMesh]
@@ -396,6 +470,10 @@ class AutoCreateMCG(LoggingOperator):
         except SoulstructTypeError:
             return False
         return True
+
+    def invoke(self, context, event):
+        """Confirmation dialog."""
+        return context.window_manager.invoke_confirm(self, event)
 
     def execute(self, context):
 

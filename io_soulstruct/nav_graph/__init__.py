@@ -13,9 +13,16 @@ __all__ = [
     "draw_mcg_edges",
     "draw_mcg_edge_cost_labels",
 
+    "AddMCGNodeNavmeshATriangleIndex",
+    "RemoveMCGNodeNavmeshATriangleIndex",
+    "AddMCGNodeNavmeshBTriangleIndex",
+    "RemoveMCGNodeNavmeshBTriangleIndex",
     "JoinMCGNodesThroughNavmesh",
     "SetNodeNavmeshTriangles",
     "RefreshMCGNames",
+    "RecomputeEdgeCost",
+    "FindCheapestPath",
+    "AutoCreateMCG",
 
     "MCGProps",
     "NVMFaceIndex",
@@ -23,10 +30,14 @@ __all__ = [
     "MCGEdgeProps",
     "NavGraphComputeSettings",
 
-    "MCGImportPanel",
-    "MCGExportPanel",
+    "MCGPropsPanel",
+    "OBJECT_UL_int_collection",
+    "MCGNodePropsPanel",
+    "MCGEdgePropsPanel",
+    "MCGImportExportPanel",
     "MCGDrawPanel",
     "MCGToolsPanel",
+    "MCGGeneratorPanel",
 ]
 
 from .draw_mcg import *

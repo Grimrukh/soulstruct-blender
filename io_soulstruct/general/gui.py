@@ -31,34 +31,40 @@ class _GlobalSettingsPanel_ViewMixin:
         layout.label(text="Project Directory:")
         layout.prop(settings, "str_project_directory", text="")
 
-        box = layout.box()
-        box.prop(settings, "import_bak_file")
-        box.prop(settings, "prefer_import_from_project")
-        box.prop(settings, "also_export_to_game")
-        box.prop(settings, "smart_map_version_handling")
-
-        layout.operator(LoadCollectionsFromBlend.bl_idname, text="Load BLEND Collections")
+        header, panel = layout.panel("Import/Export Settings", default_closed=True)
+        header.label(text="Import/Export Settings")
+        if panel:
+            panel.prop(settings, "import_bak_file")
+            panel.prop(settings, "prefer_import_from_project")
+            panel.prop(settings, "also_export_to_game")
+            panel.prop(settings, "smart_map_version_handling")
 
         layout.label(text="Selected Map:")
         layout.prop(settings, "map_stem", text="")
         layout.operator(SelectGameMapDirectory.bl_idname)
         layout.operator(SelectProjectMapDirectory.bl_idname)
 
-        if settings.is_game("ELDEN_RING"):
-            layout.label(text="Custom MATBINBND Path:")
-            layout.prop(settings, "str_matbinbnd_path", text="")
-        else:
-            layout.label(text="Custom MTDBND Path:")
-            layout.prop(settings, "str_mtdbnd_path", text="")
+        header, panel = layout.panel("Material/Texture Settings", default_closed=True)
+        header.label(text="Material/Texture Settings")
+        if panel:
+            if settings.is_game("ELDEN_RING"):
+                panel.label(text="Custom MATBINBND Path:")
+                panel.prop(settings, "str_matbinbnd_path", text="")
+            else:
+                panel.label(text="Custom MTDBND Path:")
+                panel.prop(settings, "str_mtdbnd_path", text="")
 
-        layout.label(text="PNG Cache Directory:")
-        layout.prop(settings, "str_png_cache_directory", text="")
-        layout.row().prop(settings, "read_cached_pngs")
-        layout.row().prop(settings, "write_cached_pngs")
-        layout.row().prop(settings, "pack_image_data")
+            panel.label(text="PNG Cache Directory:")
+            panel.prop(settings, "str_png_cache_directory", text="")
+            panel.row().prop(settings, "read_cached_pngs")
+            panel.row().prop(settings, "write_cached_pngs")
+            panel.row().prop(settings, "pack_image_data")
+
+        layout.operator(LoadCollectionsFromBlend.bl_idname, text="Load BLEND Collections")
 
         # Convenience: expose Soulstruct Type of active object, for manual editing.
         if context.active_object:
+            layout.label(text=f"Name: {context.active_object.name}")
             layout.prop(context.active_object, "soulstruct_type", text="Active Object Type")
 
 
@@ -78,6 +84,7 @@ class GlobalSettingsPanel_FLVERView(bpy.types.Panel, _GlobalSettingsPanel_ViewMi
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "FLVER"
+    bl_options = {"DEFAULT_CLOSED"}
 
 
 class GlobalSettingsPanel_MSBView(bpy.types.Panel, _GlobalSettingsPanel_ViewMixin):
@@ -87,6 +94,7 @@ class GlobalSettingsPanel_MSBView(bpy.types.Panel, _GlobalSettingsPanel_ViewMixi
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "MSB"
+    bl_options = {"DEFAULT_CLOSED"}
 
 
 class GlobalSettingsPanel_NavmeshView(bpy.types.Panel, _GlobalSettingsPanel_ViewMixin):
@@ -96,15 +104,17 @@ class GlobalSettingsPanel_NavmeshView(bpy.types.Panel, _GlobalSettingsPanel_View
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "Navmesh"
+    bl_options = {"DEFAULT_CLOSED"}
 
 
 class GlobalSettingsPanel_NavGraphView(bpy.types.Panel, _GlobalSettingsPanel_ViewMixin):
     """VIEW properties panel for Soulstruct global settings."""
     bl_label = "General Settings"
-    bl_idname = "VIEW_PT_soulstruct_settings_cutscene"
+    bl_idname = "VIEW_PT_soulstruct_settings_navgraph"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "NavGraph (MCG)"
+    bl_options = {"DEFAULT_CLOSED"}
 
 
 class GlobalSettingsPanel_AnimationView(bpy.types.Panel, _GlobalSettingsPanel_ViewMixin):
@@ -114,6 +124,7 @@ class GlobalSettingsPanel_AnimationView(bpy.types.Panel, _GlobalSettingsPanel_Vi
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "Animation"
+    bl_options = {"DEFAULT_CLOSED"}
 
 
 class GlobalSettingsPanel_CollisionView(bpy.types.Panel, _GlobalSettingsPanel_ViewMixin):
@@ -123,6 +134,7 @@ class GlobalSettingsPanel_CollisionView(bpy.types.Panel, _GlobalSettingsPanel_Vi
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "Collision"
+    bl_options = {"DEFAULT_CLOSED"}
 
 
 class GlobalSettingsPanel_CutsceneView(bpy.types.Panel, _GlobalSettingsPanel_ViewMixin):
@@ -132,3 +144,4 @@ class GlobalSettingsPanel_CutsceneView(bpy.types.Panel, _GlobalSettingsPanel_Vie
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "Cutscene"
+    bl_options = {"DEFAULT_CLOSED"}

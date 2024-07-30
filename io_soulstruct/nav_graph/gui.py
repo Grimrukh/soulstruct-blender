@@ -1,117 +1,268 @@
 from __future__ import annotations
 
 __all__ = [
-    "MCGImportPanel",
-    "MCGExportPanel",
+    "MCGPropsPanel",
+    "OBJECT_UL_int_collection",
+    "MCGNodePropsPanel",
+    "MCGEdgePropsPanel",
+    "MCGImportExportPanel",
     "MCGDrawPanel",
     "MCGToolsPanel",
+    "MCGGeneratorPanel",
 ]
 
+import typing as tp
+
 import bpy
+from io_soulstruct.types import SoulstructType
 from .import_operators import *
 from .export_operators import *
 from .misc_operators import *
 
 
-class MCGImportPanel(bpy.types.Panel):
-    bl_label = "DS1 MCG Import"
-    bl_idname = "MCG_PT_ds1_mcg_import"
-    bl_space_type = "VIEW_3D"
-    bl_region_type = "UI"
-    bl_category = "NavGraph (MCG)"
-    bl_options = {'DEFAULT_CLOSED'}
+class MCGPropsPanel(bpy.types.Panel):
+    """Draw a Panel in the Object properties window exposing the appropriate MCG fields for active object."""
+    bl_label = "MCG Properties"
+    bl_idname = "OBJECT_PT_mcg"
+    bl_space_type = 'PROPERTIES'
+    bl_region_type = 'WINDOW'
+    bl_context = "object"
 
-    # noinspection PyUnusedLocal
+    @classmethod
+    def poll(cls, context):
+        if not context.active_object:
+            return False
+        return context.active_object.soulstruct_type == SoulstructType.MCG
+
     def draw(self, context):
-        settings = context.scene.soulstruct_settings
-        if settings.game_variable_name != "DARK_SOULS_DSR":
-            self.layout.label(text="Dark Souls: Remastered only.")
-            return
-
-        import_loose_box = self.layout.box()
-        import_loose_box.operator(ImportMCG.bl_idname)
-        import_loose_box.operator(ImportMCP.bl_idname)
-
-        quick_box = self.layout.box()
-        quick_box.label(text="From Game/Project")
-        quick_box.prop(context.scene.soulstruct_settings, "import_bak_file", text="From .BAK File")
-        quick_box.operator(ImportSelectedMapMCG.bl_idname)
-        quick_box.operator(ImportSelectedMapMCP.bl_idname)
+        bl_node = context.active_object
+        props = bl_node.MCG
+        for prop in props.__annotations__:
+            self.layout.prop(props, prop)
 
 
-class MCGExportPanel(bpy.types.Panel):
-    bl_label = "DS1 MCG Export"
-    bl_idname = "MCG_PT_ds1_mcg_export"
-    bl_space_type = "VIEW_3D"
-    bl_region_type = "UI"
-    bl_category = "NavGraph (MCG)"
-    bl_options = {'DEFAULT_CLOSED'}
+class OBJECT_UL_int_collection(bpy.types.UIList):
+    """Draws a list of items."""
+    PROP_NAME: tp.ClassVar[str] = "index"
 
-    # noinspection PyUnusedLocal
+    def draw_item(
+        self,
+        context,
+        layout,
+        data,
+        item,
+        icon,
+        active_data,
+        active_property,
+        index=0,
+        flt_flag=0,
+    ):
+        if self.layout_type in {'DEFAULT', 'COMPACT'}:
+            row = layout.row()
+            row.label(text=f"Triangle {index}:")
+            row.prop(item, self.PROP_NAME, text="", emboss=False)
+        elif self.layout_type == 'GRID':
+            layout.alignment = 'CENTER'
+            layout.label(text=f"Triangle {index}:")
+            layout.prop(item, self.PROP_NAME, text="", emboss=False)
+
+
+class MCGNodePropsPanel(bpy.types.Panel):
+    """Draw a Panel in the Object properties window exposing the appropriate MCG_NODE fields for active object."""
+    bl_label = "MCG Node Properties"
+    bl_idname = "OBJECT_PT_mcg_node"
+    bl_space_type = 'PROPERTIES'
+    bl_region_type = 'WINDOW'
+    bl_context = "object"
+
+    @classmethod
+    def poll(cls, context):
+        if not context.active_object:
+            return False
+        return context.active_object.soulstruct_type == SoulstructType.MCG_NODE
+
     def draw(self, context):
-        settings = context.scene.soulstruct_settings
-        if settings.game_variable_name != "DARK_SOULS_DSR":
-            self.layout.label(text="Dark Souls: Remastered only.")
-            return
+        layout = self.layout
+        bl_node = context.active_object
+        props = bl_node.MCG_NODE
 
-        export_box = self.layout.box()
-        export_box.operator(ExportMCG.bl_idname, text="Export MCG + MCP")
+        layout.prop(props, "unknown_offset")
+        layout.prop(props, "navmesh_a")
+        layout.prop(props, "navmesh_b")
 
-        map_export_box = self.layout.box()
-        map_export_box.label(text="Export to Map")
-        map_export_box.prop(
-            context.window_manager.operator_properties_last(ExportMCGMCPToMap.bl_idname), "detect_map_from_parent"
+        layout.label(text="Navmesh A Triangles:")
+        row = layout.row()
+        row.template_list(
+            listtype_name=OBJECT_UL_int_collection.__name__,
+            list_id="",
+            dataptr=bl_node.MCG_NODE,
+            propname="navmesh_a_triangles",
+            active_dataptr=bl_node.MCG_NODE,
+            active_propname="navmesh_a_triangle_index",
         )
-        map_export_box.operator(ExportMCGMCPToMap.bl_idname)
+        col = row.column(align=True)
+        col.operator(AddMCGNodeNavmeshATriangleIndex.bl_idname, icon='ADD', text="")
+        col.operator(RemoveMCGNodeNavmeshATriangleIndex.bl_idname, icon='REMOVE', text="")
+
+        layout.label(text="Navmesh B Triangles:")
+        row = layout.row()
+        row.template_list(
+            listtype_name=OBJECT_UL_int_collection.__name__,
+            list_id="",
+            dataptr=bl_node.MCG_NODE,
+            propname="navmesh_b_triangles",
+            active_dataptr=bl_node.MCG_NODE,
+            active_propname="navmesh_b_triangle_index",
+        )
+        col = row.column(align=True)
+        col.operator(AddMCGNodeNavmeshBTriangleIndex.bl_idname, icon='ADD', text="")
+        col.operator(RemoveMCGNodeNavmeshBTriangleIndex.bl_idname, icon='REMOVE', text="")
+
+
+class MCGEdgePropsPanel(bpy.types.Panel):
+    """Draw a Panel in the Object properties window exposing the appropriate MCG_EDGE fields for active object."""
+    bl_label = "MCG Edge Properties"
+    bl_idname = "OBJECT_PT_mcg_edge"
+    bl_space_type = 'PROPERTIES'
+    bl_region_type = 'WINDOW'
+    bl_context = "object"
+
+    @classmethod
+    def poll(cls, context):
+        if not context.active_object:
+            return False
+        return context.active_object.soulstruct_type == SoulstructType.MCG_EDGE
+
+    def draw(self, context):
+        bl_edge = context.active_object
+        props = bl_edge.MCG_EDGE
+        for prop in props.__annotations__:
+            self.layout.prop(props, prop)
+
+
+class MCGImportExportPanel(bpy.types.Panel):
+    bl_label = "MCG Import/Export"
+    bl_idname = "MCG_PT_mcg_import_export"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "NavGraph (MCG)"
+    bl_options = {"DEFAULT_CLOSED"}
+
+    # noinspection PyUnusedLocal
+    def draw(self, context):
+        settings = context.scene.soulstruct_settings
+
+        if not settings.is_game("DARK_SOULS_DSR"):
+            self.layout.label(text="NavGraph (MCG) supported for DSR only.")
+            return
+
+        header, panel = self.layout.panel("Import", default_closed=False)
+        header.label(text="Import")
+        if panel:
+            panel.label(text="Import from Game/Project:")
+            panel.label(text=f"Map: {settings.map_stem}")
+            panel.operator(ImportSelectedMapMCG.bl_idname)
+            panel.operator(ImportSelectedMapMCP.bl_idname)
+            panel.label(text="Generic Import:")
+            panel.operator(ImportMCG.bl_idname, text="Import Any MCG")
+            panel.operator(ImportMCP.bl_idname, text="Import Any MCP")
+
+        header, panel = self.layout.panel("Export", default_closed=False)
+        header.label(text="Export")
+        if panel:
+            panel.label(text="Export to Game/Project:")
+            panel.prop(
+                context.window_manager.operator_properties_last(ExportMCGMCPToMap.bl_idname), "detect_map_from_parent"
+            )
+            panel.operator(ExportMCGMCPToMap.bl_idname)
+            panel.label(text="Generic Export:")
+            panel.operator(ExportMCG.bl_idname, text="Export MCG + MCP")
 
 
 class MCGDrawPanel(bpy.types.Panel):
-    bl_label = "DS1 MCG Drawing"
-    bl_idname = "MCG_PT_ds1_mcg_draw"
-    bl_space_type = "VIEW_3D"
-    bl_region_type = "UI"
-    bl_category = "Navmesh"
-    bl_options = {'DEFAULT_CLOSED'}
-
-    # noinspection PyUnusedLocal
-    def draw(self, context):
-        """Still shown if game is not DSR."""
-        mcg_draw_settings = context.scene.mcg_draw_settings
-        self.layout.prop(mcg_draw_settings, "mcg_parent")
-        self.layout.prop(mcg_draw_settings, "mcg_graph_draw_enabled")
-        self.layout.prop(mcg_draw_settings, "mcg_graph_draw_selected_nodes_only")
-        self.layout.prop(mcg_draw_settings, "mcg_graph_color")
-        self.layout.prop(mcg_draw_settings, "mcg_node_label_draw_enabled")
-        self.layout.prop(mcg_draw_settings, "mcg_node_label_font_size")
-        self.layout.prop(mcg_draw_settings, "mcg_node_label_font_color")
-        self.layout.prop(mcg_draw_settings, "mcg_edge_label_font_size")
-        # Color options in one row with no labels.
-        self.layout.label(text="Edge Label Colors (Match, Close, Bad):")
-        row = self.layout.row()
-        row.prop(mcg_draw_settings, "mcg_edge_label_font_color", text="")
-        row.prop(mcg_draw_settings, "mcg_almost_same_cost_edge_label_font_color", text="")
-        row.prop(mcg_draw_settings, "mcg_bad_cost_edge_label_font_color", text="")
-        self.layout.prop(mcg_draw_settings, "mcg_edge_triangles_highlight_enabled")
-
-
-class MCGToolsPanel(bpy.types.Panel):
-    bl_label = "DS1 MCG Tools"
-    bl_idname = "MCG_PT_ds1_navmesh_tools"
+    bl_label = "MCG Drawing"
+    bl_idname = "MCG_PT_mcg_draw"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "NavGraph (MCG)"
-    bl_options = {'DEFAULT_CLOSED'}
+    bl_options = {"DEFAULT_CLOSED"}
 
     # noinspection PyUnusedLocal
     def draw(self, context):
         """Still shown if game is not DSR."""
-        self.layout.operator(JoinMCGNodesThroughNavmesh.bl_idname)
-        self.layout.operator(SetNodeNavmeshTriangles.bl_idname)
-        self.layout.operator(RefreshMCGNames.bl_idname)
-        compute_box = self.layout.box()
-        compute_box.prop(context.scene.nav_graph_compute_settings, "select_path")
-        compute_box.prop(context.scene.nav_graph_compute_settings, "wall_multiplier")
-        compute_box.prop(context.scene.nav_graph_compute_settings, "obstacle_multiplier")
-        compute_box.operator(RecomputeEdgeCost.bl_idname)
-        compute_box.operator(FindCheapestPath.bl_idname)
-        compute_box.operator(AutoCreateMCG.bl_idname)
+        layout = self.layout
+        mcg_draw_settings = context.scene.mcg_draw_settings
+
+        layout.label(text="MCG Parent Object:")
+        layout.prop(mcg_draw_settings, "mcg_parent", text="")
+        layout.prop(mcg_draw_settings, "draw_graph")
+        drawn = {
+            "mcg_parent",
+            "draw_graph",
+            "edge_label_font_color",
+            "close_cost_edge_label_font_color",
+            "different_cost_edge_label_font_color",
+        }
+
+        header, panel = layout.panel("Detailed Settings", default_closed=False)
+        header.label(text="Detailed Settings")
+        if panel:
+            for prop_name in mcg_draw_settings.__annotations__:
+                if prop_name in drawn:
+                    continue
+                layout.prop(mcg_draw_settings, prop_name)
+
+        layout.label(text="Edge Cost Label Colors:")
+        row = layout.row()
+        for label, prop_name in [
+            ("Match", "edge_label_font_color"),
+            ("Almost", "close_cost_edge_label_font_color"),
+            ("Bad", "different_cost_edge_label_font_color"),
+        ]:
+            column = row.column()
+            column.label(text=label)
+            column.prop(mcg_draw_settings, prop_name, text="")
+
+
+class MCGToolsPanel(bpy.types.Panel):
+    bl_label = "MCG Tools"
+    bl_idname = "MCG_PT_navmesh_tools"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "NavGraph (MCG)"
+    bl_options = {"DEFAULT_CLOSED"}
+
+    # noinspection PyUnusedLocal
+    def draw(self, context):
+        """Still shown if game is not DSR."""
+        layout = self.layout
+        layout.operator(JoinMCGNodesThroughNavmesh.bl_idname)
+        layout.operator(SetNodeNavmeshTriangles.bl_idname)
+        layout.operator(RefreshMCGNames.bl_idname)
+
+
+class MCGGeneratorPanel(bpy.types.Panel):
+    bl_label = "MCG Generator"
+    bl_idname = "MCG_PT_navmesh_generator"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "NavGraph (MCG)"
+    bl_options = {"DEFAULT_CLOSED"}
+
+    # noinspection PyUnusedLocal
+    def draw(self, context):
+        """Still shown if game is not DSR."""
+        layout = self.layout
+
+        header, panel = layout.panel("Settings", default_closed=False)
+        header.label(text="Settings")
+        if panel:
+            nav_graph_compute_settings = context.scene.nav_graph_compute_settings
+            panel.prop(nav_graph_compute_settings, "select_path")
+            panel.prop(nav_graph_compute_settings, "wall_multiplier")
+            panel.prop(nav_graph_compute_settings, "obstacle_multiplier")
+
+        layout.operator(RecomputeEdgeCost.bl_idname)
+        layout.operator(FindCheapestPath.bl_idname)
+        layout.label(text="Complete MCG Generation:")
+        layout.operator(AutoCreateMCG.bl_idname)

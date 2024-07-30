@@ -371,6 +371,8 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
 
     @classmethod
     def from_armature_or_mesh(cls, obj: bpy.types.Object) -> BlenderFLVER:
+        if not obj:
+            raise SoulstructTypeError("No Object given.")
         _, mesh = cls.parse_flver_obj(obj)
         return cls(mesh)
 
@@ -537,7 +539,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
     def duplicate(
         self,
         context: bpy.types.Context,
-        collections: list[bpy.types.Collection] = None,
+        collections: tp.Sequence[bpy.types.Collection] = None,
         make_materials_single_user=True,
         copy_pose=True,
     ):
@@ -2129,7 +2131,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
     @classmethod
     def test_obj(cls, obj: bpy.types.Object) -> bool:
         try:
-            cls.parse_flver_obj(obj)
+            cls.from_armature_or_mesh(obj)
         except SoulstructTypeError:
             return False
         return True

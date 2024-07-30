@@ -24,7 +24,10 @@ class BlenderMCG(SoulstructObject[MCG, MCGProps]):
     OBJ_DATA_TYPE = SoulstructDataType.EMPTY
     SOULSTRUCT_CLASS = MCG
 
-    __slots__ = []
+    __slots__ = [
+        "node_parent",
+        "edge_parent",
+    ]
 
     node_parent: bpy.types.Object
     edge_parent: bpy.types.Object
@@ -186,6 +189,10 @@ class BlenderMCG(SoulstructObject[MCG, MCGProps]):
 
         # Automatically set node and edge parents for drawing.
         context.scene.mcg_draw_settings.mcg_parent = bl_mcg.obj
+
+        # Invoke 'scene.refresh_mcg_names' operator.
+        operator.set_active_obj(bl_mcg.obj)
+        getattr(bpy.ops.scene, "refresh_mcg_names")()
 
         return bl_mcg
 
@@ -388,9 +395,7 @@ class BlenderMCGNode(SoulstructObject[MCGNode, MCGNodeProps]):
                     )
 
                 setattr(bl_node, f"navmesh_{nav}", navmesh_part)
-                nav_triangles = getattr(bl_node, f"navmesh_{nav}_triangles")
-                for triangle in navmesh_triangles:
-                    nav_triangles.add().index = triangle
+                setattr(bl_node, f"navmesh_{nav}_triangles", navmesh_triangles)
 
         return bl_node
 
@@ -506,10 +511,10 @@ class BlenderMCGEdge(SoulstructObject[MCGEdge, MCGEdgeProps]):
             # Not acceptable. Parts must be imported before MCG.
             raise NavGraphImportError(f"'{bl_edge.name}' references missing MSB Navmesh object: {navmesh_name}")
 
-        bl_edge.mcg_edge_props.cost = soulstruct_obj.cost
-        bl_edge.mcg_edge_props.navmesh_part = navmesh_part
-        bl_edge.mcg_edge_props.node_a = node_a
-        bl_edge.mcg_edge_props.node_b = node_b
+        bl_edge.cost = soulstruct_obj.cost
+        bl_edge.navmesh_part = navmesh_part
+        bl_edge.node_a = node_a
+        bl_edge.node_b = node_b
         return bl_edge
 
     def to_soulstruct_obj(

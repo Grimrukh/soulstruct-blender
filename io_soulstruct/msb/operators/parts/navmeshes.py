@@ -154,7 +154,7 @@ class ExportMSBNavmeshCollection(LoggingOperator):
             and len(context.collection.objects) > 0
             and all(
                 obj.soulstruct_type == SoulstructType.MSB_PART
-                and obj.msb_part_props.part_subtype == MSBPartSubtype.NAVMESH
+                and obj.MSB_PART.part_subtype == MSBPartSubtype.NAVMESH
                 for obj in context.collection.objects
             )
         )

@@ -16,6 +16,7 @@ __all__ = [
 
 import re
 import traceback
+import typing
 import typing as tp
 from pathlib import Path
 
@@ -346,6 +347,10 @@ class ImportNVMHKTFromNVMHKTBND(BinderEntrySelectOperator):
 class ImportAllNVMHKTBase(LoggingOperator):
 
     use_material: bool
+
+    def invoke(self, context, event):
+        """Confirmation dialog."""
+        return context.window_manager.invoke_confirm(self, event)
 
     def import_nvmhktbnd_entry(
         self,

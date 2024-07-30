@@ -99,9 +99,7 @@ class ImportSelectedMapMCG(LoggingOperator):
 
     @classmethod
     def poll(cls, context):
-        if not cls.settings(context).map_stem:
-            return False
-        return True
+        return bool(cls.settings(context).map_stem)
 
     def execute(self, context):
 

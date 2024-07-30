@@ -55,7 +55,7 @@ class NavmeshDS1ImportPanel(bpy.types.Panel):
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "Navmesh"
-    bl_options = {'DEFAULT_CLOSED'}
+    bl_options = {"DEFAULT_CLOSED"}
 
     # noinspection PyUnusedLocal
     def draw(self, context):
@@ -79,7 +79,7 @@ class NavmeshDS1ExportPanel(bpy.types.Panel):
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "Navmesh"
-    bl_options = {'DEFAULT_CLOSED'}
+    bl_options = {"DEFAULT_CLOSED"}
 
     # noinspection PyUnusedLocal
     def draw(self, context):
@@ -104,7 +104,7 @@ class NavmeshDS1ToolsPanel(bpy.types.Panel):
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "Navmesh"
-    bl_options = {'DEFAULT_CLOSED'}
+    bl_options = {"DEFAULT_CLOSED"}
 
     # noinspection PyUnusedLocal
     def draw(self, context):
@@ -185,7 +185,7 @@ class NavmeshERImportPanel(bpy.types.Panel):
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "Navmesh"
-    bl_options = {'DEFAULT_CLOSED'}
+    bl_options = {"DEFAULT_CLOSED"}
 
     # noinspection PyUnusedLocal
     def draw(self, context):

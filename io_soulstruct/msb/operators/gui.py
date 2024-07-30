@@ -15,13 +15,15 @@ class MSBImportExportPanel(bpy.types.Panel):
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "MSB"
-    bl_options = {'DEFAULT_CLOSED'}
+    bl_options = {"DEFAULT_CLOSED"}
 
     def draw(self, context):
 
-        ss_settings = context.scene.soulstruct_settings
+        settings = context.scene.soulstruct_settings
 
-        header, panel = self.layout.panel("Import Settings", default_closed=False)
+        self.layout.label(text=f"Map: {settings.map_stem}")
+
+        header, panel = self.layout.panel("Import Settings", default_closed=True)
         header.label(text="Import Settings")
         if panel:
             panel.label(text="Entry Name Match:")
@@ -30,7 +32,7 @@ class MSBImportExportPanel(bpy.types.Panel):
             panel.prop(context.scene.msb_import_settings, "entry_name_match_mode", text="")
             panel.prop(context.scene.msb_import_settings, "include_pattern_in_parent_name")
 
-        header, panel = self.layout.panel("Export Settings", default_closed=False)
+        header, panel = self.layout.panel("Export Settings", default_closed=True)
         header.label(text="Export Settings")
         if panel:
             panel.prop(context.scene.soulstruct_settings, "detect_map_from_collection")
@@ -88,7 +90,7 @@ class MSBImportExportPanel(bpy.types.Panel):
             panel, [ImportMSBCharacter, ImportAllMSBCharacters], [ExportMSBCharacters],
         )
 
-        if ss_settings.is_game("ELDEN_RING"):
+        if settings.is_game("ELDEN_RING"):
             header, panel = self.layout.panel("Assets", default_closed=True)
             header.label(text="Assets")
             self.panel_import_export_operators(

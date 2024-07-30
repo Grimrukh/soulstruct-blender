@@ -30,16 +30,17 @@ class MSBToolsPanel(bpy.types.Panel):
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "MSB"
-    bl_options = {'DEFAULT_CLOSED'}
+    bl_options = {"DEFAULT_CLOSED"}
 
     def draw(self, context):
         self.layout.operator(CreateMSBPart.bl_idname, icon='MESH_CUBE')
         self.layout.operator(DuplicateMSBPartModel.bl_idname, icon='DUPLICATE')
 
-        region_draw_box = self.layout.box()
-        region_draw_box.label(text="Region Draw Settings")
-        for prop in RegionDrawSettings.__annotations__:
-            region_draw_box.prop(context.scene.region_draw_settings, prop)
+        header, panel = self.layout.panel("Region Draw Settings", default_closed=True)
+        header.label(text="Region Draw Settings")
+        if panel:
+            for prop_name in RegionDrawSettings.__annotations__:
+                panel.prop(context.scene.region_draw_settings, prop_name)
 
 
 def get_active_part_obj(context) -> bpy.types.Object | None:
@@ -165,7 +166,7 @@ class MSBCharacterPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
 class MSBPlayerStartPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate MSB Character fields for active object."""
     bl_label = "MSB Character Settings"
-    bl_idname = "OBJECT_PT_msb_character"
+    bl_idname = "OBJECT_PT_msb_player_start"
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
     bl_context = "object"

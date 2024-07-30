@@ -66,6 +66,18 @@ class MCGNodeProps(bpy.types.PropertyGroup):
         description="Triangle indices in Navmesh B directly in contact with this node",
     )
 
+    # Internal for GUI only:
+    navmesh_a_triangle_index: bpy.props.IntProperty(
+        name="Navmesh A Triangle Index",
+        default=0,
+        description="Index of the currently selected Navmesh A triangle",
+    )
+    navmesh_b_triangle_index: bpy.props.IntProperty(
+        name="Navmesh B Triangle Index",
+        default=0,
+        description="Index of the currently selected Navmesh B triangle",
+    )
+
 
 class MCGEdgeProps(bpy.types.PropertyGroup):
 

@@ -75,7 +75,7 @@ class BlenderNVM(SoulstructObject[NVM, NVMProps]):
             bl_event = BlenderNVMEventEntity.new_from_soulstruct_obj(
                 operator, context, nvm_event, nvm_event_name, collection, location=avg_pos
             )
-            bl_event.obj.parent = bl_nvm
+            bl_event.obj.parent = bl_nvm.obj
 
         bm.to_mesh(mesh)
         del bm

@@ -71,24 +71,30 @@ bl_info = {
 }
 
 
+# TODO: Add more operators to menu functions.
+
+
 # noinspection PyUnusedLocal
 def menu_func_import(self, context):
-    self.layout.operator(ImportFLVER.bl_idname, text="FLVER (.flver/.*bnd)")
-    self.layout.operator(ImportNVM.bl_idname, text="NVM (.nvm/.nvmbnd)")
-    self.layout.operator(ImportMCG.bl_idname, text="MCG (.mcg)")
+    layout = self.layout
+    layout.operator(ImportFLVER.bl_idname, text="FLVER (.flver/.*bnd)")
+    layout.operator(ImportNVM.bl_idname, text="NVM (.nvm/.nvmbnd)")
+    layout.operator(ImportMCG.bl_idname, text="MCG (.mcg)")
 
 
 # noinspection PyUnusedLocal
 def menu_func_export(self, context):
-    self.layout.operator(ExportStandaloneFLVER.bl_idname, text="FLVER (.flver)")
-    self.layout.operator(ExportFLVERIntoBinder.bl_idname, text="FLVER to Binder (.*bnd)")
-    self.layout.operator(ExportLooseNVM.bl_idname, text="NVM (.nvm)")
-    self.layout.operator(ExportNVMIntoBinder.bl_idname, text="NVM to Binder (.nvmbnd)")
+    layout = self.layout
+    layout.operator(ExportStandaloneFLVER.bl_idname, text="FLVER (.flver)")
+    layout.operator(ExportFLVERIntoBinder.bl_idname, text="FLVER to Binder (.*bnd)")
+    layout.operator(ExportLooseNVM.bl_idname, text="NVM (.nvm)")
+    layout.operator(ExportNVMIntoBinder.bl_idname, text="NVM to Binder (.nvmbnd)")
 
 
 # noinspection PyUnusedLocal
 def menu_func_view3d_mt(self, context):
-    self.layout.operator(CopyMeshSelectionOperator.bl_idname, text="Copy Mesh Selection to Mesh")
+    layout = self.layout
+    layout.operator(CopyMeshSelectionOperator.bl_idname, text="Copy Mesh Selection to Mesh")
 
 
 # Classes to register.
@@ -168,12 +174,9 @@ CLASSES = (
     FLVERPropsPanel,
     FLVERImportPanel,
     FLVERExportPanel,
-    TextureExportSettingsPanel,
-    # FLVERLightmapsPanel,  # TODO: not quite ready
-    FLVERMeshToolsPanel,
+    FLVERModelToolsPanel,
     FLVERMaterialToolsPanel,
-    FLVERDummyToolsPanel,
-    FLVEROtherToolsPanel,
+    # FLVERLightmapsPanel,  # TODO: not quite ready
     FLVERUVMapsPanel,
     # endregion
 
@@ -195,7 +198,8 @@ CLASSES = (
 
     ArmatureActionChoiceOperator,
     SelectArmatureActionOperator,
-    HKX_ANIMATION_PT_hkx_animations,
+    AnimationImportExportPanel,
+    AnimationToolsPanel,
     # endregion
 
     # region Havok Collision
@@ -221,9 +225,9 @@ CLASSES = (
     GlobalSettingsPanel_CutsceneView,
     ImportHKXCutscene,
     ExportHKXCutscene,
-    HKX_CUTSCENE_PT_hkx_cutscene_tools,
     CutsceneImportSettings,
     CutsceneExportSettings,
+    CutsceneImportExportPanel,
     # endregion
 
     # region Navmesh
@@ -269,17 +273,31 @@ CLASSES = (
     ExportMCG,
     ExportMCGMCPToMap,
     MCGDrawSettings,
+
+    AddMCGNodeNavmeshATriangleIndex,
+    RemoveMCGNodeNavmeshATriangleIndex,
+    AddMCGNodeNavmeshBTriangleIndex,
+    RemoveMCGNodeNavmeshBTriangleIndex,
     JoinMCGNodesThroughNavmesh,
     SetNodeNavmeshTriangles,
     RefreshMCGNames,
+    RecomputeEdgeCost,
+    FindCheapestPath,
+    AutoCreateMCG,
+
     MCGProps,
     MCGNodeProps,
     MCGEdgeProps,
     NavGraphComputeSettings,
-    MCGImportPanel,
-    MCGExportPanel,
+
+    MCGPropsPanel,
+    OBJECT_UL_int_collection,
+    MCGNodePropsPanel,
+    MCGEdgePropsPanel,
+    MCGImportExportPanel,
     MCGDrawPanel,
     MCGToolsPanel,
+    MCGGeneratorPanel,
     # endregion
 
     # region MSB

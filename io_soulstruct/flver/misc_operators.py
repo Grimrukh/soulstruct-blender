@@ -156,7 +156,9 @@ class SetSmoothCustomNormals(LoggingOperator):
 
     @classmethod
     def poll(cls, context):
-        return context.mode in {"OBJECT", "EDIT_MESH"}
+        if context.mode == "OBJECT":
+            return context.active_object is not None and context.active_object.type == "MESH"
+        return context.mode == "EDIT_MESH"
 
     def execute(self, context):
         is_object = context.mode == "OBJECT"

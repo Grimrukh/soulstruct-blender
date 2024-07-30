@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 __all__ = [
+
     "get_neighbors",
     "a_star",
     "get_navmesh_step_cost",

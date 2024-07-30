@@ -96,6 +96,10 @@ class ImportTextures(LoggingImportOperator):
     files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'})
     directory: bpy.props.StringProperty(options={'HIDDEN'})
 
+    def invoke(self, context, _event):
+        """Offer Operator options with dialog."""
+        return context.window_manager.invoke_props_dialog(self)
+
     def execute(self, context):
 
         # TODO: Respect general PNG cache settings, including optional data pack.
@@ -290,4 +294,3 @@ class ImportTextures(LoggingImportOperator):
             # NOT packed into `.blend` file.
             self.info(f"Loaded image texture file: {image_path.name}")
         return {image_path.stem: DDSTexture(bl_image)}
-

@@ -104,12 +104,13 @@ class DuplicateMSBPartModel(LoggingOperator):
 
         settings = self.settings(context)
         part = context.active_object
-        # noinspection PyUnresolvedReferences
-        part_props = context.active_object.msb_part_props  # type: MSBPartProps
-        old_model = part_props.model
+
+        old_model = part.MSB_PART.model
         if old_model is None:
             return self.error("Active MSB Part does not have a model object reference.")
-        old_part_name = context.active_object.name
+
+        part_subtype = part.MSB_PART.part_subtype
+        old_part_name = part.name
 
         if not settings.new_model_name:
             new_model_name = old_part_name.split("_")[0]
@@ -129,7 +130,7 @@ class DuplicateMSBPartModel(LoggingOperator):
         # Find all collections containing source model.
         source_collections = old_model.users_collection
 
-        if part_props.part_subtype in {
+        if part_subtype in {
             MSBPartSubtype.MAP_PIECE, MSBPartSubtype.OBJECT, MSBPartSubtype.CHARACTER, MSBPartSubtype.ASSET
         }:
             # Model is a FLVER.
@@ -141,23 +142,23 @@ class DuplicateMSBPartModel(LoggingOperator):
             new_bl_flver = old_bl_flver.duplicate(
                 new_model_name,
                 collections=source_collections,
-                copy_pose=part_props.part_subtype == MSBPartSubtype.MAP_PIECE,
+                copy_pose=part_subtype == MSBPartSubtype.MAP_PIECE,
             )
             new_bl_flver.rename(new_model_name)
             new_model = new_bl_flver.mesh
-        elif part_props.part_subtype == MSBPartSubtype.COLLISION:
+        elif part_subtype == MSBPartSubtype.COLLISION:
             old_model_name = old_model.name
             new_model = new_mesh_object(new_model_name, old_model.data.copy())
             copy_obj_property_group(old_model, new_model, "hkx_map_collision")
-        elif part_props.part_subtype == MSBPartSubtype.NAVMESH:
+        elif part_subtype == MSBPartSubtype.NAVMESH:
             old_model_name = old_model.name
             new_model = new_mesh_object(new_model_name, old_model.data.copy())
             copy_obj_property_group(old_model, new_model, "nvm")
         else:
-            return self.error(f"Cannot yet duplicate model of MSB Part subtype: {part_props.part_subtype}")
+            return self.error(f"Cannot yet duplicate model of MSB Part subtype: {part_subtype}")
 
         # Update MSB Part model reference. (`model.update` will update Part data-block.)
-        part_props.model = new_model
+        part.MSB_PART.model = new_model
 
         if rename_part:
             # New model created successfully. Now we update the MSB Part's name to reflect it, and use its name.
