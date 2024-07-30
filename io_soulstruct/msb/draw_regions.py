@@ -18,12 +18,8 @@ import bpy
 import gpu
 from gpu_extras.batch import batch_for_shader
 from mathutils import Matrix
-
-
-if bpy.app.version[0] == 4:
-    UNIFORM_COLOR_SHADER = "UNIFORM_COLOR"
-else:
-    UNIFORM_COLOR_SHADER = "3D_UNIFORM_COLOR"
+from io_soulstruct.types import SoulstructType
+from io_soulstruct.msb.properties import MSBRegionShape
 
 
 class RegionDrawSettings(bpy.types.PropertyGroup):
@@ -96,7 +92,7 @@ UNIT_CIRCLE_32_TOP = [
 CIRCLE_Z_MAT = Matrix()
 CIRCLE_Y_MAT = Matrix.Rotation(math.radians(90.0), 4, 'X')
 CIRCLE_X_MAT = Matrix.Rotation(math.radians(90.0), 4, 'Y')
-SHADER = gpu.shader.from_builtin(UNIFORM_COLOR_SHADER)
+SHADER = gpu.shader.from_builtin("UNIFORM_COLOR")
 CIRCLE_BATCH = batch_for_shader(SHADER, "LINE_LOOP", {'pos': UNIT_CIRCLE_32})
 CIRCLE_TOP_BATCH = batch_for_shader(SHADER, "LINE_LOOP", {'pos': UNIT_CIRCLE_32_TOP})
 
@@ -124,29 +120,31 @@ CUBE_BATCH = batch_for_shader(SHADER, "LINES", {'pos': [CUBE_VERTICES[i] for edg
 
 # noinspection PyUnresolvedReferences
 def draw_region_volumes():
-    settings = bpy.context.scene.region_draw_settings
-    if settings.draw_mode == "NONE":
+    draw_settings = bpy.context.scene.region_draw_settings
+    if draw_settings.draw_mode == "NONE":
         return  # don't draw any regions
-
-    volume_types = {"Sphere", "Cylinder", "Box"}
 
     # Find all regions to draw.
     regions = {
-        "Sphere": [],
-        "Cylinder": [],
-        "Box": [],
+        MSBRegionShape.SPHERE: [],
+        MSBRegionShape.CYLINDER: [],
+        MSBRegionShape.BOX: [],
     }
 
-    match settings.draw_mode:
+    def register_obj(obj_: bpy.types.Object):
+        if obj_.soulstruct_type != SoulstructType.MSB_REGION:
+            return
+        if obj_.MSB_REGION.shape in regions:
+            regions[obj_.MSB_REGION.shape].append(obj_)
+
+    match draw_settings.draw_mode:
         case "ACTIVE_COLLECTION":
             region_collection = bpy.context.collection
             for obj in region_collection.objects:
-                if obj.type == "EMPTY" and obj.region_shape in volume_types:
-                    regions[obj.region_shape].append(obj)
+                register_obj(obj)
         case "SELECTED":
             for obj in bpy.context.selected_objects:
-                if obj.type == "EMPTY" and obj.region_shape in volume_types:
-                    regions[obj.region_shape].append(obj)
+                register_obj(obj)
         case "MAP":
             map_stem = bpy.context.scene.soulstruct_settings.get_oldest_map_stem_version()  # for MSB
             region_collections = [
@@ -155,21 +153,19 @@ def draw_region_volumes():
             ]
             for collection in region_collections:
                 for obj in collection.objects:
-                    if obj.type == "EMPTY" and obj.region_shape in volume_types:
-                        regions[obj.region_shape].append(obj)
+                    register_obj(obj)
         case "ALL":
             for obj in bpy.context.scene.collection.all_objects:
-                if obj.type == "EMPTY" and obj.region_shape in volume_types:
-                    regions[obj.region_shape].append(obj)
+                register_obj(obj)
 
     SHADER.bind()
-    gpu.state.line_width_set(settings.line_width)
+    gpu.state.line_width_set(draw_settings.line_width)
     # gpu.state.blend_set("ALPHA")
 
-    SHADER.uniform_float("color", (*settings.region_color, 1.0))
+    SHADER.uniform_float("color", (*draw_settings.region_color, 1.0))
 
-    if settings.draw_cylinders:
-        for cylinder in regions["Cylinder"]:
+    if draw_settings.draw_cylinders:
+        for cylinder in regions[MSBRegionShape.CYLINDER]:
             cylinder_loc = Matrix.Translation(cylinder.location)
             cylinder_rot = cylinder.rotation_euler.to_matrix().to_4x4()
             cylinder_radius = max(cylinder.scale[0], cylinder.scale[1])
@@ -183,8 +179,8 @@ def draw_region_volumes():
             CIRCLE_TOP_BATCH.draw(SHADER)
             gpu.matrix.pop()
 
-    if settings.draw_boxes:
-        for box in regions["Box"]:
+    if draw_settings.draw_boxes:
+        for box in regions[MSBRegionShape.BOX]:
             box_transform = Matrix.LocRotScale(box.location, box.rotation_euler, box.scale)
             gpu.matrix.push()
             gpu.matrix.multiply_matrix(box_transform)
@@ -192,15 +188,15 @@ def draw_region_volumes():
             gpu.matrix.pop()
 
     # We draw spheres last so we can use the RGB color option.
-    if settings.draw_spheres:
-        if settings.use_rgb_spheres:
+    if draw_settings.draw_spheres:
+        if draw_settings.use_rgb_spheres:
             sphere_colors = [
                 (0.0, 0.0, 1.0), (0.0, 1.0, 0.0), (1.0, 0.0, 0.0)
             ]
         else:
             sphere_colors = None
 
-        for sphere in regions["Sphere"]:
+        for sphere in regions[MSBRegionShape.SPHERE]:
 
             sphere_loc = Matrix.Translation(sphere.location)
             sphere_rot = sphere.rotation_euler.to_matrix().to_4x4()

@@ -55,21 +55,79 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         default=DARK_SOULS_DSR.variable_name,
     )
 
-    str_game_directory: bpy.props.StringProperty(
-        name="Game Directory",
-        description="Root (containing EXE/BIN) of game directory to import files from when they are missing from the "
-                    "project directory, and optionally export to if 'Also Export to Game' is enabled",
+    # Directories are set and saved for each game, so you can switch between them without having to set this again.
+    # The prefixes to these directories are identical to the `Game.submodule_name` attribute of that game and are
+    # retrieved dynamically.
+
+    # region Game/Project Directories
+    darksouls1ptde_game_root_str: bpy.props.StringProperty(
+        name="DS1:PTDE Game Root",
+        description="Root (containing EXE) of game directory to import files from when they are missing from the "
+                    "project directory, and optionally export to if 'Also Export to Game' is enabled. Files must be "
+                    "unpacked with UDSFM",
         default="",
-        subtype="FILE_PATH",
+        subtype="DIR_PATH",
     )
 
-    str_project_directory: bpy.props.StringProperty(
-        name="Project Directory",
+    darksouls1ptde_project_root_str: bpy.props.StringProperty(
+        name="DS1:PTDE Project Root",
         description="Project root directory with game-like structure to export to. Files for import and Binders needed "
                     "for exporting new entries will also be sourced here first if they exist",
         default="",
-        subtype="FILE_PATH",
+        subtype="DIR_PATH",
     )
+
+    darksouls1r_game_root_str: bpy.props.StringProperty(
+        name="DS1R Game Root",
+        description="Root (containing EXE) of game directory to import files from when they are missing from the "
+                    "project directory, and optionally export to if 'Also Export to Game' is enabled. DS1R files "
+                    "should already be unpacked",
+        default="",
+        subtype="DIR_PATH",
+    )
+
+    darksouls1r_project_root_str: bpy.props.StringProperty(
+        name="DS1R Project Root",
+        description="Project root directory with game-like structure to export to. Files for import and Binders needed "
+                    "for exporting new entries will also be sourced here first if they exist",
+        default="",
+        subtype="DIR_PATH",
+    )
+
+    bloodborne_game_root_str: bpy.props.StringProperty(
+        name="Bloodborne Game Root",
+        description="Root (containing BIN) of game directory to import files from when they are missing from the "
+                    "project directory, and optionally export to if 'Also Export to Game' is enabled. BB files "
+                    "should already be unpacked",
+        default="",
+        subtype="DIR_PATH",
+    )
+
+    bloodborne_project_root_str: bpy.props.StringProperty(
+        name="Bloodborne Project Root",
+        description="Project root directory with game-like structure to export to. Files for import and Binders needed "
+                    "for exporting new entries will also be sourced here first if they exist",
+        default="",
+        subtype="DIR_PATH",
+    )
+
+    eldenring_game_root_str: bpy.props.StringProperty(
+        name="Elden Ring Game Root",
+        description="Root (containing EXE) of game directory to import files from when they are missing from the "
+                    "project directory, and optionally export to if 'Also Export to Game' is enabled. File must be "
+                    "unpacked with UXM",
+        default="",
+        subtype="DIR_PATH",
+    )
+
+    eldenring_project_root_str: bpy.props.StringProperty(
+        name="ER Project Directory",
+        description="Project root directory with game-like structure to export to. Files for import and Binders needed "
+                    "for exporting new entries will also be sourced here first if they exist",
+        default="",
+        subtype="DIR_PATH",
+    )
+    # endregion
 
     prefer_import_from_project: bpy.props.BoolProperty(
         name="Prefer Import from Project",
@@ -83,24 +141,27 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         default=False,
     )
 
-    map_stem_filter_mode: bpy.props.EnumProperty(
-        name="Map Stem Filter Mode",
+    er_map_filter_mode: bpy.props.EnumProperty(
+        name="Elden Ring Map Filter",
         description="Filter mode for Map Stem dropdown. Only used by Elden Ring",
         items=[
-            ("ALL", "All", "Show all map stems. Dropdown may grow too large in Elden Ring"),
-            ("LEGACY_DUNGEONS", "Legacy Dungeons Only", "Show only map stems for legacy dungeons and special maps"),
-            ("GENERIC_DUNGEONS", "Generic Dungeons Only", "Show only map stems for generic (non-legacy) dungeons"),
-            ("ALL_DUNGEONS", "All Dungeons Only", "Show only map stems for legacy/generic dungeons (not m60)"),
-            ("OVERWORLD_SMALL", "Overworld (Small) Only", "Show only map stems for overworld small tiles"),
-            ("OVERWORLD_MEDIUM", "Overworld (Medium) Only", "Show only map stems for overworld medium tiles"),
-            ("OVERWORLD_LARGE", "Overworld (Large) Only", "Show only map stems for overworld large tiles"),
-            ("OVERWORLD_SMALL_V1", "Overworld (Small V1) Only", "Show only map stems for small tiles (version 1)"),
-            ("OVERWORLD_MEDIUM_V1", "Overworld (Medium V1) Only", "Show only map stems for medium tiles (version 1)"),
-            ("OVERWORLD_LARGE_V1", "Overworld (Large V1) Only", "Show only map stems for large tiles (version 1)"),
-            ("DLC_OVERWORLD_SMALL", "DLC Overworld (Small) Only", "Show only map stems for overworld small tiles"),
-            ("DLC_OVERWORLD_MEDIUM", "DLC Overworld (Medium) Only", "Show only map stems for overworld medium tiles"),
-            ("DLC_OVERWORLD_LARGE", "DLC Overworld (Large) Only", "Show only map stems for overworld large tiles"),
-            # NOTE: There are V1 DLC overworld maps, but few enough that they can be included with the above filters.
+            ("ALL_DUNGEONS", "All Dungeons Only (m10-m59)", "Show only dungeons (with DLC"),
+            ("LEGACY_DUNGEONS", "Legacy Dungeons Only (m10-m29)", "Show only legacy dungeons (with DLC)"),
+            ("GENERIC_DUNGEONS", "Generic Dungeons Only (m30-m59)", "Show only generic dungeons (with DLC)"),
+
+            ("OVERWORLD_SMALL", "Overworld (Small) Only", "Show only overworld small tiles"),
+            ("OVERWORLD_MEDIUM", "Overworld (Medium) Only", "Show only overworld medium tiles"),
+            ("OVERWORLD_LARGE", "Overworld (Large) Only", "Show only overworld large tiles"),
+            ("OVERWORLD_SMALL_V1", "Overworld (Small V1) Only", "Show only small tiles (version 1)"),
+            ("OVERWORLD_MEDIUM_V1", "Overworld (Medium V1) Only", "Show only medium tiles (version 1)"),
+            ("OVERWORLD_LARGE_V1", "Overworld (Large V1) Only", "Show only large tiles (version 1)"),
+
+            ("DLC_OVERWORLD_SMALL", "DLC Overworld (Small) Only", "Show only overworld small tiles"),
+            ("DLC_OVERWORLD_MEDIUM", "DLC Overworld (Medium) Only", "Show only overworld medium tiles"),
+            ("DLC_OVERWORLD_LARGE", "DLC Overworld (Large) Only", "Show only overworld large tiles"),
+            ("DLC_OVERWORLD_SMALL_V1", "DLC Overworld (Small) Only", "Show only overworld small tiles (version 1"),
+            ("DLC_OVERWORLD_MEDIUM_V1", "DLC Overworld (Medium) Only", "Show only overworld medium tiles (version 1"),
+            ("DLC_OVERWORLD_LARGE_V1", "DLC Overworld (Large) Only", "Show only overworld large tiles (version 1"),
         ],
     )
 
@@ -137,7 +198,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         name="PNG Cache Directory",
         description="Path of directory to read/write cached PNG textures (from game DDS textures)",
         default="",
-        subtype="FILE_PATH",
+        subtype="DIR_PATH",
     )
 
     read_cached_pngs: bpy.props.BoolProperty(
@@ -205,20 +266,26 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         return game.variable_name if game else ""
 
     @property
-    def game_directory_path(self) -> Path | None:
-        return Path(self.str_game_directory) if self.str_game_directory else None
+    def game_root_path(self) -> Path | None:
+        game_submodule_name = self.game.submodule_name
+        prop_name = f"{game_submodule_name}_game_root_str"
+        game_root_str = getattr(self, prop_name, "")
+        return Path(game_root_str) if game_root_str else None
 
     @property
-    def project_directory_path(self) -> Path | None:
-        return Path(self.str_project_directory) if self.str_project_directory else None
+    def project_root_path(self) -> Path | None:
+        game_submodule_name = self.game.submodule_name
+        prop_name = f"{game_submodule_name}_project_root_str"
+        project_root_str = getattr(self, prop_name, "")
+        return Path(project_root_str) if project_root_str else None
 
     @property
     def game_root(self) -> GameStructure | None:
-        return GameStructure(self, self.game_directory_path) if self.game_directory_path else None
+        return GameStructure(self, self.game_root_path) if self.game_root_path else None
 
     @property
     def project_root(self) -> GameStructure | None:
-        return GameStructure(self, self.project_directory_path) if self.project_directory_path else None
+        return GameStructure(self, self.project_root_path) if self.project_root_path else None
 
     @property
     def mtdbnd_path(self) -> Path | None:
@@ -254,12 +321,20 @@ class SoulstructSettings(bpy.types.PropertyGroup):
                 return True
         return False
 
+    def get_game_root_prop_name(self):
+        """Get the name of the game root property for the current game."""
+        return f"{self.game.submodule_name}_game_root_str"
+
+    def get_project_root_prop_name(self):
+        """Get the name of the project root property for the current game."""
+        return f"{self.game.submodule_name}_project_root_str"
+
     def auto_set_game(self):
         """Determine `game` enum value from `game_directory`."""
-        if not self.str_game_directory:
+        if not self.game_root_path:
             return
         for game in SUPPORTED_GAMES:
-            executable_path = Path(self.str_game_directory, game.executable_name)
+            executable_path = Path(self.game_root_path, game.executable_name)
             if executable_path.is_file():
                 self.game_enum = game.variable_name
                 return
@@ -417,9 +492,9 @@ class SoulstructSettings(bpy.types.PropertyGroup):
     def can_auto_export(self) -> bool:
         """Checks if `project_directory` is set and/or `game_directory` is set and `also_export_to_game`
         is enabled, in which case auto-export operators will poll `True`."""
-        if self.str_project_directory:
+        if self.project_root_path:
             return True  # can definitely export to project
-        if self.str_game_directory and self.also_export_to_game:
+        if self.game_root_path and self.also_export_to_game:
             return True  # can export to game, even if project not set
         return False
 
@@ -458,7 +533,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):
             if game_root and self.also_export_to_game:
                 # Copy all written files to game directory, rather than re-exporting.
                 for written_path in written:
-                    written_relative_path = written_path.relative_to(self.str_project_directory)
+                    written_relative_path = written_path.relative_to(self.project_root_path)
                     game_path = game_root.get_file_path(written_relative_path)
                     if game_path.is_file():
                         create_bak(game_path)  # we may be about to replace it
@@ -602,6 +677,8 @@ class SoulstructSettings(bpy.types.PropertyGroup):
 
         Never creates a `.bak` backup file.
 
+        Returns the project file path.
+
         Args:
             relative_path: Path relative to game root directory.
             overwrite_existing: If `False`, the file will not be copied if it already exists in the project directory.
@@ -615,12 +692,12 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         if overwrite_existing is None:
             overwrite_existing = not self.prefer_import_from_project
 
-        if self.str_game_directory:
+        if self.game_root_path:
             game_path = self.game_root.get_file_path(relative_path, dcx_type=dcx_type)
         else:
             game_path = None
 
-        if self.str_project_directory:
+        if self.project_root_path:
             project_path = self.project_root.get_file_path(relative_path, dcx_type=dcx_type)
         else:
             project_path = None
@@ -685,10 +762,10 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         NOTE: Those should generally only be called for loose files or files inside uncompressed split BHD binders
         (usually TPFs). Files inside compressed BND binders never use DCX, as far as I'm aware.
 
-        If `dcx_type_name` is not "Auto", it is returned directly.
+        If `dcx_type_name` is not "AUTO", it is returned directly.
         """
 
-        if dcx_type_name != "Auto":
+        if dcx_type_name != "AUTO":
             # Manual DCX type given.
             return DCXType[dcx_type_name]
         return self.game.get_dcx_type(class_name)

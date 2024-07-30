@@ -72,7 +72,7 @@ class MSBImportExportPanel(bpy.types.Panel):
             panel.operator(ExportMSBMapPieces.bl_idname)
 
         header, panel = self.layout.panel("Collisions", default_closed=True)
-        header.label(text="Collision Import Settings")
+        header.label(text="Collisions")
         # TODO: Hiding collision submesh split option. Too annoying with MSB Part instances.
         self.panel_import_export_operators(
             panel, [ImportMSBMapCollision, ImportAllMSBMapCollisions], [ExportMSBCollisions],

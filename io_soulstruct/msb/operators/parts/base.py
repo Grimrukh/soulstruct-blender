@@ -22,9 +22,9 @@ from io_soulstruct.utilities.misc import *
 from io_soulstruct.utilities.operators import LoggingOperator
 
 if tp.TYPE_CHECKING:
-    from io_soulstruct.type_checking import MSB_TYPING
+    from io_soulstruct.type_checking import MSB_TYPING, MSB_PART_TYPING
     from soulstruct.base.maps.msb import MSBEntryList
-    from soulstruct.darksouls1ptde.maps.parts import MSBPart
+    from soulstruct.base.maps.msb.models import BaseMSBModel
 
 
 class BaseImportSingleMSBPart(BaseMSBEntrySelectOperator):
@@ -46,7 +46,7 @@ class BaseImportSingleMSBPart(BaseMSBEntrySelectOperator):
             return False
         return True  # MSB exists
 
-    def _import_entry(self, context: bpy.types.Context, entry: MSBPart):
+    def _import_entry(self, context: bpy.types.Context, entry: MSB_PART_TYPING):
         """Import MSB Part of this subclass's subtype from value of `config.GAME_ENUM_NAME` Blender enum property."""
         settings = self.settings(context)
         try:
@@ -195,7 +195,7 @@ class BaseExportMSBParts(LoggingOperator):
         """
 
     @abc.abstractmethod
-    def finish_model_export(self, context: bpy.types.Context, settings: SoulstructSettings):
+    def finish_model_export(self, context: bpy.types.Context, settings: SoulstructSettings) -> set[str]:
         """Export all models prepared during `export_model()` calls."""
 
     def execute(self, context):
@@ -230,7 +230,7 @@ class BaseExportMSBParts(LoggingOperator):
 
             bl_part = bl_part_type(obj)
 
-            bl_model = bl_part.subtype_properties.model
+            bl_model = bl_part.type_properties.model
             if not bl_model:
                 return self.error(f"MSB Part '{bl_part.name}' has no model in Blender. No parts exported.")
             model_stem = get_bl_obj_tight_name(bl_model)
@@ -242,7 +242,8 @@ class BaseExportMSBParts(LoggingOperator):
             relative_msb_path = settings.get_relative_msb_path(msb_stem)  # will use latest MSB version
 
             if relative_msb_path not in opened_msbs:
-                # Open new MSB. We start with the game MSB unless `Prefer Import from Project` is enabled.
+                # Open new MSB. Initial MSBs are opened from the project (unless not set and game export is enabled).
+                # They are first copied there from the game if not already in the project.
                 try:
                     msb_path = settings.prepare_project_file(relative_msb_path)
                 except FileNotFoundError as ex:
@@ -266,26 +267,28 @@ class BaseExportMSBParts(LoggingOperator):
             # NOTE: We don't delete the existing MSB part until the last moment, once we have the new Part ready to go
             # and the Model has successfully been written, if appropriate.
 
-            msb_model = msb.map_piece_models.new()
-            msb_model.set_name_from_model_file_stem(model_stem)
-            msb_model.set_auto_sib_path(map_stem=map_stem)
+            # noinspection PyTypeChecker
+            msb_model_class = msb.map_piece_models.subtype_info.entry_class  # type: type[BaseMSBModel]
+            msb_model_name = msb_model_class.model_file_stem_to_model_name(model_stem)
 
-            msb_model_lists_names = []
+            msb_model_names = set()
             for msb_model_list_name in self.config.MSB_MODEL_LIST_NAMES:
-                msb_model_list = getattr(msb, msb_model_list_name)
-                msb_model_lists_names += [model.name for model in msb_model_list]
-            if msb_model.name not in msb_model_lists_names:
-                # Add new model to MSB. Otherwise, existing one is fine.
-                getattr(msb, self.config.MSB_MODEL_LIST_NAMES[0]).append(msb_model)
+                msb_model_list = msb[msb_model_list_name]
+                msb_model_names |= {model.name for model in msb_model_list}
+            if msb_model_name not in msb_model_names:
+                # Add new model to MSB. Otherwise, existing one is fine (and we'd have to inherit all references to it).
+                msb_model = msb.map_piece_models.new()
+                msb_model.set_name_from_model_file_stem(model_stem)
+                msb_model.set_auto_sib_path(map_stem=map_stem)
+                msb[self.config.MSB_MODEL_LIST_NAMES[0]].append(msb_model)  # first list is preferred
+                is_new_model = True
+            else:
+                # We don't need to get the existing model.
+                is_new_model = False
 
             if (
                 self.config.PART_SUBTYPE.is_map_geometry()
-                and (
-                    model_export_mode == "ALWAYS_GEOMETRY"
-                    or (
-                        model_export_mode == "IF_NEW"
-                        and msb_model.name not in msb.map_piece_models.get_entry_names()
-                    ))
+                and (model_export_mode == "ALWAYS_GEOMETRY" or (model_export_mode == "IF_NEW" and is_new_model))
             ):
                 try:
                     self.export_model(self, context, bl_model, map_stem)
@@ -297,23 +300,29 @@ class BaseExportMSBParts(LoggingOperator):
 
             # NOTE: `map_stem` passed for SIB path generation should be the oldest map stem, not the latest.
             msb_part = bl_part.to_soulstruct_obj(self, context, map_stem, msb)
-            msb_list = getattr(msb, self.config.MSB_LIST_NAME)  # type: MSBEntryList
+            msb_list = msb[self.config.MSB_LIST_NAME]  # type: MSBEntryList
             try:
                 existing_msb_part = msb_list.find_entry_name(part_name)
             except KeyError:
-                pass
+                # Append new part to bottom of list.
+                msb_list.append(msb_part)
             else:
                 # We delete existing MSB Part with the same name. There's basically zero chance that you'd want to NOT
-                # overwrite exported MSB entries many times, so I don't do any checking.
-                msb_list.remove(existing_msb_part)
-            msb_list.append(msb_part)
+                # overwrite exported MSB entries many times, so I don't do any checking. We inherit its referrers and
+                # take its index.
+                msb_part.inherit_referrers(existing_msb_part)
+                part_index = msb_list.index(existing_msb_part)
+                msb_list[part_index] = msb_part  # replace part
 
         # Write modified MSBs.
+        any_success = False
         for relative_msb_path, msb in opened_msbs.items():
-            settings.export_file(self, msb, relative_msb_path)
+            return_code = settings.export_file(self, msb, relative_msb_path, class_name="MSB")
+            if return_code == {"FINISHED"}:
+                any_success = True
 
         # Select original active object.
         if active_object:
             context.view_layer.objects.active = active_object
 
-        return {"FINISHED"}
+        return {"FINISHED" if any_success else "CANCELLED"}

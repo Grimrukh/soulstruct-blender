@@ -15,6 +15,7 @@ from io_soulstruct.types import *
 from io_soulstruct.utilities import *
 from soulstruct.base.maps.msb.utils import GroupBitSet128
 from soulstruct.darksouls1ptde.maps.enums import CollisionHitFilter
+from soulstruct.darksouls1ptde.maps.models import MSBCollisionModel
 from soulstruct.darksouls1ptde.maps.parts import MSBCollision
 from soulstruct_havok.wrappers.hkx2015.hkx_binder import BothResHKXBHD
 from .msb_part import BlenderMSBPart
@@ -28,6 +29,7 @@ class BlenderMSBCollision(BlenderMSBPart[MSBCollision, MSBCollisionProps]):
 
     OBJ_DATA_TYPE = SoulstructDataType.MESH
     SOULSTRUCT_CLASS = MSBCollision
+    SOULSTRUCT_MODEL_CLASS = MSBCollisionModel
     PART_SUBTYPE = MSBPartSubtype.COLLISION
     MODEL_SUBTYPES = ["collision_models"]
 
@@ -146,7 +148,7 @@ class BlenderMSBCollision(BlenderMSBPart[MSBCollision, MSBCollisionProps]):
 
         msb_collision.navmesh_groups = self.navmesh_groups
         msb_collision.environment_event = self.bl_obj_to_entry_ref(
-            msb, "environment_event", self.environment_event, msb_collision
+            msb, "environment_event", self.environment_event, msb_collision, entry_subtype="environments"
         )
         msb_collision.vagrant_entity_ids = self.vagrant_entity_ids
 
@@ -157,19 +159,12 @@ class BlenderMSBCollision(BlenderMSBPart[MSBCollision, MSBCollisionProps]):
 
     @classmethod
     def find_model_mesh(cls, model_name: str, map_stem: str) -> bpy.types.MeshObject:
-        """Find the model of the given type in the 'Map Collision Models' collection in the current scene.
-
-        Returns the Empty parent of all 'h' and 'l' submeshes of the collision (`children`).
-        """
-        collection_name = f"{map_stem} Collision Models"
-        try:
-            collection = bpy.data.collections[collection_name]
-        except KeyError:
-            raise MissingPartModelError(f"Collection '{collection_name}' not found in current scene.")
-        for obj in collection.objects:
-            if obj.name == model_name and obj.type == "MESH":
-                return obj
-        raise MissingPartModelError(f"Collision model mesh '{model_name}' not found in '{collection_name}' collection.")
+        """Find the given Collision model in Blender data."""
+        obj = find_obj(name=model_name, find_stem=True, soulstruct_type=SoulstructType.COLLISION)
+        if obj is None:
+            raise MissingPartModelError(f"Collision model mesh '{model_name}' not found in Blender data.")
+        # noinspection PyTypeChecker
+        return obj
 
     @classmethod
     def import_model_mesh(

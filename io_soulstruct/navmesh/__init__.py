@@ -37,16 +37,11 @@ import bpy
 
 from soulstruct.darksouls1r.events.enums import NavmeshFlag
 
+from io_soulstruct.exceptions import SoulstructTypeError
 from io_soulstruct.types import *
 from .nvm import *
 from .nvm.utilities import set_face_material
 from .nvmhkt import *
-
-
-_navmesh_type_items = [
-    (str(nvmt.value), nvmt.name, "") for nvmt in NavmeshFlag
-    if nvmt.value > 0
-]
 
 
 class NavmeshDS1ImportPanel(bpy.types.Panel):
@@ -64,13 +59,12 @@ class NavmeshDS1ImportPanel(bpy.types.Panel):
             self.layout.label(text="Dark Souls: Remastered only.")
             return
 
-        import_loose_box = self.layout.box()
-        import_loose_box.operator(ImportNVM.bl_idname)
-
-        quick_box = self.layout.box()
-        quick_box.label(text="From Game/Project")
-        quick_box.prop(context.scene.soulstruct_settings, "import_bak_file", text="From .BAK File")
-        quick_box.operator(ImportSelectedMapNVM.bl_idname)
+        layout = self.layout
+        layout.label(text="Import from Game/Project:")
+        layout.label(text=f"Map: {settings.map_stem}")
+        layout.operator(ImportSelectedMapNVM.bl_idname)
+        layout.label(text="Generic Import:")
+        layout.operator(ImportNVM.bl_idname)
 
 
 class NavmeshDS1ExportPanel(bpy.types.Panel):
@@ -88,14 +82,21 @@ class NavmeshDS1ExportPanel(bpy.types.Panel):
             self.layout.label(text="Dark Souls: Remastered only.")
             return
 
-        export_box = self.layout.box()
-        export_box.operator(ExportLooseNVM.bl_idname)
-        export_box.operator(ExportNVMIntoBinder.bl_idname)
+        try:
+            BlenderNVM.from_selected_objects(context)
+        except SoulstructTypeError:
+            self.layout.label(text="Select one or more navmesh (NVM) models.")
+            return
 
-        map_export_box = self.layout.box()
-        map_export_box.label(text="Export to Map")
-        map_export_box.prop(context.scene.soulstruct_settings, "detect_map_from_collection")
-        map_export_box.operator(ExportNVMIntoNVMBND.bl_idname)
+        layout = self.layout
+        layout.label(text="Export to Game/Project:")
+        layout.label(text=f"Map: {settings.map_stem}")
+        layout.prop(context.scene.soulstruct_settings, "detect_map_from_collection")
+        layout.operator(ExportNVMIntoNVMBND.bl_idname)
+
+        layout.label("Generic Export:")
+        layout.operator(ExportLooseNVM.bl_idname)
+        layout.operator(ExportNVMIntoBinder.bl_idname)
 
 
 class NavmeshDS1ToolsPanel(bpy.types.Panel):
@@ -114,6 +115,8 @@ class NavmeshDS1ToolsPanel(bpy.types.Panel):
         selected_faces_box = self.layout.box()
         # noinspection PyTypeChecker
         obj = context.edit_object
+
+        # Selected object can be a NVM model or an MSB Navmesh part referencing one. We modify the same Mesh data.
         if bpy.context.mode == "EDIT_MESH" and obj and (obj.soulstruct_type == SoulstructType.NAVMESH or (
             obj.soulstruct_type == SoulstructType.MSB_PART and obj.MSB_PART.part_subtype == "Navmesh"
         )):

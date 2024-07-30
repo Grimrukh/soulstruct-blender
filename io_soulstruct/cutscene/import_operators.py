@@ -75,7 +75,7 @@ class ImportHKXCutscene(LoggingOperator, ImportHelper):
         settings = self.settings(context)
 
         # If import directory is not set, we assume the RemoBND is in the usual game `remo` folder.
-        game_directory = settings.game_directory_path or remobnd_path.parent.parent
+        game_directory = settings.game_root_path or remobnd_path.parent.parent
 
         map_studio_path = Path(game_directory, "map/MapStudio")
         map_studio_directory = MapStudioDirectory.from_path(map_studio_path)

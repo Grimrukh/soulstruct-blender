@@ -16,16 +16,6 @@ from soulstruct.utilities.maths import Vector2
 from io_soulstruct.exceptions import MaterialImportError
 from io_soulstruct.utilities.operators import LoggingOperator
 
-# Main node input for specular strength is called "Specular IOR Level" in Blender 4.X, but "Specular" prior to that.
-if bpy.app.version[0] == 4:
-    PRINCIPLED_SPECULAR_INPUT = "Specular IOR Level"
-    PRINCIPLED_SHININESS_INPUT = "Sheen Weight"
-    PRINCIPLED_TRANSMISSION_INPUT = "Transmission Weight"
-else:
-    PRINCIPLED_SPECULAR_INPUT = "Specular"
-    PRINCIPLED_SHININESS_INPUT = "Sheen"
-    PRINCIPLED_TRANSMISSION_INPUT = "Transmission"
-
 
 @dataclass(slots=True)
 class NodeTreeBuilder:
@@ -116,7 +106,7 @@ class NodeTreeBuilder:
         """Build UV and texture nodes. Used by all games."""
 
         self.uv_nodes = {}
-        self.tex_image_nodes = {}  # type: dict[str, bpy.types.Node]
+        self.tex_image_nodes = {}  # type: dict[str, bpy.types.ShaderNodeTexImage]
         uv_scale_nodes = {}
 
         # We add Image Texture nodes in `MatDef` order, not FLVER order.
@@ -226,7 +216,10 @@ class NodeTreeBuilder:
         """
 
         bsdf_node = self.add_principled_bsdf_node("Main 0 BSDF")
-        diffuse_bsdf_node = self.new("ShaderNodeBsdfDiffuse", location=(self.BSDF_X, self.bsdf_y))
+        # noinspection PyTypeChecker
+        diffuse_bsdf_node = self.new(
+            "ShaderNodeBsdfDiffuse", location=(self.BSDF_X, self.bsdf_y)
+        )  # type: bpy.types.ShaderNodeBsdfDiffuse
         self.bsdf_y -= 1000
 
         # Mix Principled BSDF 0 with snow diffuse.
@@ -449,13 +442,13 @@ class NodeTreeBuilder:
                 self.link(tex_image_node.outputs["Alpha"], bsdf_node.inputs["Alpha"])
 
         elif sampler.alias.endswith("Shininess"):
-            self.link(color_output, bsdf_node.inputs[PRINCIPLED_SHININESS_INPUT])
+            self.link(color_output, bsdf_node.inputs["Sheen Weight"])
 
     def normal_to_bsdf_node(
         self,
         tex_image_node: bpy.types.Node,
         uv_layer_name: str,
-        bsdf_node: bpy.types.ShaderNodeBsdfPrincipled,
+        bsdf_node: bpy.types.ShaderNodeBsdfPrincipled | bpy.types.ShaderNodeBsdfDiffuse,
     ):
         """Connect given normal node (by node name) to given BSDF node, via a normal map node.
 
@@ -517,6 +510,7 @@ class NodeTreeBuilder:
             mix_node.inputs["Fac"].default_value = float(mix_fac_input)
         else:
             self.link(mix_fac_input, mix_node.inputs["Fac"])
+        # noinspection PyTypeChecker
         return mix_node
 
     def get_bl_image(self, sampler_name: str) -> bpy.types.Image | None:
@@ -542,7 +536,7 @@ class NodeTreeBuilder:
 
     def specular_to_principled(
         self,
-        y: int,
+        y: float,
         color_output: bpy.types.NodeSocketColor,
         bsdf_node: bpy.types.ShaderNodeBsdfPrincipled,
         is_metallic=False,
@@ -570,10 +564,10 @@ class NodeTreeBuilder:
         self.link(color_output, separate_color_node.inputs["Color"])
         self.link(separate_color_node.outputs["Red"], red_math_node.inputs[1])
         self.link(separate_color_node.outputs["Green"], green_math_node.inputs[1])
-        red_input = "Metallic" if is_metallic else PRINCIPLED_SPECULAR_INPUT
+        red_input = "Metallic" if is_metallic else "Specular IOR Level"
         self.link(red_math_node.outputs["Value"], bsdf_node.inputs[red_input])
         self.link(green_math_node.outputs["Value"], bsdf_node.inputs["Roughness"])
-        self.link(separate_color_node.outputs["Blue"], bsdf_node.inputs[PRINCIPLED_TRANSMISSION_INPUT])  # not inverted
+        self.link(separate_color_node.outputs["Blue"], bsdf_node.inputs["Transmission Weight"])  # not inverted
 
         separate_color_node.hide = True
         red_math_node.hide = True
@@ -643,7 +637,9 @@ class NodeTreeBuilder:
         node.inputs[1].default_value = [scale.x, scale.y, 1.0]
         return node
 
-    def add_tex_image_node(self, name: str, image: bpy.types.Image | None, label: str = None, hide=False):
+    def add_tex_image_node(
+        self, name: str, image: bpy.types.Image | None, label: str = None, hide=False
+    ) -> bpy.types.ShaderNodeTexImage:
         node = self.new(
             "ShaderNodeTexImage",
             location=(self.TEX_X, self.tex_y),
@@ -656,9 +652,10 @@ class NodeTreeBuilder:
             self.tex_y -= 50  # packed closer together
         else:
             self.tex_y -= 300
+        # noinspection PyTypeChecker
         return node
 
-    def add_principled_bsdf_node(self, bsdf_name: str, label: str = ""):
+    def add_principled_bsdf_node(self, bsdf_name: str, label: str = "") -> bpy.types.ShaderNodeBsdfPrincipled:
         node = self.new(
             "ShaderNodeBsdfPrincipled",
             location=(self.BSDF_X, self.bsdf_y),
@@ -667,9 +664,11 @@ class NodeTreeBuilder:
             label=label or bsdf_name,
         )
         self.bsdf_y -= 1000
+        # noinspection PyTypeChecker
         return node
 
-    def add_normal_map_node(self, uv_map_name: str, location_y: float, strength=1.0):
+    def add_normal_map_node(self, uv_map_name: str, location_y: float, strength=1.0) -> bpy.types.ShaderNodeNormalMap:
+        # noinspection PyTypeChecker
         return self.new(
             "ShaderNodeNormalMap",
             location=(self.POST_TEX_X, location_y),

@@ -134,8 +134,8 @@ class SoulstructObject(abc.ABC, tp.Generic[SOULSTRUCT_T, SOULSTRUCT_PROPS_T]):
             raise SoulstructTypeError(f"Found Blender object '{name}', but it is not a {cls.TYPE} Soulstruct object.")
         return cls(obj)
 
-    def create_soulstruct_obj(self) -> SOULSTRUCT_T:
-        return self.SOULSTRUCT_CLASS()
+    def create_soulstruct_obj(self, *args, **kwargs) -> SOULSTRUCT_T:
+        return self.SOULSTRUCT_CLASS(*args, **kwargs)
 
     @abc.abstractmethod
     def to_soulstruct_obj(self, operator: LoggingOperator, context: bpy.types.Context) -> SOULSTRUCT_T:

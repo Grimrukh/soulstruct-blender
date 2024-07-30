@@ -6,11 +6,17 @@ __all__ = [
     "GAME_CONFIG",
 ]
 
+from types import ModuleType
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from soulstruct.base.models.flver import Version
 from soulstruct.games import *
+from soulstruct.bloodborne.maps import constants as bb_constants
+from soulstruct.darksouls1ptde.maps import constants as ds1ptde_constants
+from soulstruct.darksouls1r.maps import constants as ds1r_constants
+from soulstruct.darksouls3.maps import constants as ds3_constants
+from soulstruct.eldenring.maps import constants as er_constants
 
 
 @dataclass(slots=True)
@@ -25,6 +31,8 @@ class GameConfig:
     # Indicates which file types prefer OLD versions of the map, and which prefer NEW.
     use_new_map: tuple[str, ...] = ()
     use_old_map: tuple[str, ...] = ()
+
+    map_constants: ModuleType = None
 
     def process_file_map_stem_version(self, map_stem: str, *parts: str | Path) -> str:
         if not parts:
@@ -53,6 +61,7 @@ GAME_CONFIG = {
         },
         use_new_map=(".msb", ".nvmbnd", ".mcg", ".mcp"),
         use_old_map=(".flver", ".hkxbhd", ".hkxbdt"),
+        map_constants=ds1ptde_constants,
     ),
     DARK_SOULS_DSR: GameConfig(
         uses_matbin=False,
@@ -65,14 +74,17 @@ GAME_CONFIG = {
         },
         use_new_map=(".msb", ".nvmbnd", ".mcg", ".mcp"),
         use_old_map=(".flver", ".hkxbhd", ".hkxbdt"),
+        map_constants=ds1r_constants,
     ),
     BLOODBORNE: GameConfig(
         uses_matbin=False,
         flver_default_version=Version.Bloodborne_DS3_A,
+        map_constants=bb_constants,
     ),
     DARK_SOULS_3: GameConfig(
         uses_matbin=False,
         flver_default_version=Version.Bloodborne_DS3_A,
+        map_constants=ds3_constants,
     ),
     SEKIRO: GameConfig(
         uses_matbin=False,
@@ -81,5 +93,6 @@ GAME_CONFIG = {
     ELDEN_RING: GameConfig(
         uses_matbin=True,
         flver_default_version=Version.Sekiro_EldenRing,
+        map_constants=er_constants,
     ),
 }

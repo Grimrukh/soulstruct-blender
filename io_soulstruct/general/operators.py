@@ -18,7 +18,8 @@ from pathlib import Path
 import bpy
 from bpy_extras.io_utils import ImportHelper
 
-from io_soulstruct.utilities import LoggingOperator, MAP_STEM_RE
+from io_soulstruct.general.game_config import GAME_CONFIG
+from io_soulstruct.utilities import LoggingOperator
 
 if tp.TYPE_CHECKING:
     from .game_structure import GameStructure
@@ -61,7 +62,7 @@ class SelectGameDirectory(LoggingOperator):
             # We use browser's current `directory`, not `filepath` itself.
             game_directory = Path(self.directory).resolve()
             settings = self.settings(context)
-            settings.str_game_directory = str(game_directory)
+            settings.game_root_path = str(game_directory)
             settings.auto_set_game()
 
         return {"FINISHED"}
@@ -95,10 +96,18 @@ class SelectProjectDirectory(LoggingOperator):
             # We use browser's current `directory`, not `filepath` itself.
             project_directory = Path(self.directory).resolve()
             settings = self.settings(context)
-            settings.str_project_directory = str(project_directory)
+            settings.project_root_path = str(project_directory)
             # We do NOT auto-set game here, because the user may be exporting to any folder.
 
         return {"FINISHED"}
+
+
+_DETECTED_MAP_ENUM_ITEMS = []  # type: list[tuple[str, str, str]]
+
+
+# noinspection PyUnusedLocal
+def _get_detected_map_enum_items(self, context):
+    return _DETECTED_MAP_ENUM_ITEMS
 
 
 class _SelectMapDirectory(LoggingOperator):
@@ -109,55 +118,110 @@ class _SelectMapDirectory(LoggingOperator):
     Does not change game/project subdirectory. Purely takes the name of the chosen folder. But for clarity, raises an
     error if the chosen folder is not a game/project subdirectory.
     """
+    SOURCE: tp.ClassVar[str]
 
     directory: str
+    map_choice: str  # EnumProperty
 
     @classmethod
     @abc.abstractmethod
-    def get_root(cls, context) -> GameStructure:
+    def get_root(cls, context) -> GameStructure | None:
         ...
 
     @classmethod
     def poll(cls, context):
         return cls.get_root(context) is not None
 
+    @staticmethod
+    def set_map_options(
+        map_dir: Path,
+        glob_str="m??_??_??_??",
+        extra_filter: tp.Callable[[str], bool] = None,
+        get_map_desc: tp.Callable[[str], str] = None,
+    ):
+        _DETECTED_MAP_ENUM_ITEMS.clear()
+        for map_stem_folder in map_dir.glob(glob_str):
+            map_stem = map_stem_folder.name
+            if extra_filter and not extra_filter(map_stem):
+                continue  # ignore this map
+            if get_map_desc:
+                try:
+                    desc = get_map_desc(map_stem)
+                except (KeyError, AttributeError, ValueError):
+                    desc = f"Map {map_stem}"
+            else:
+                desc = f"Map {map_stem}"
+
+            _DETECTED_MAP_ENUM_ITEMS.append((map_stem, map_stem, desc))
+
+    def set_map_options_eldenring(self, map_dir: Path, filter_mode: str):
+        """Elden Ring nests overworld maps under m60/m61, and checks an extra filter enum."""
+
+        def get_map_desc(map_stem: str):
+            return GAME_CONFIG["ELDEN_RING"].map_constants.get_map(map_stem).verbose_name
+
+        if filter_mode.endswith("DUNGEONS"):
+            # Dungeons. Possible extra area check.
+            if filter_mode.startswith("LEGACY"):
+                def extra_filter(map_stem: str):
+                    return 10 <= int(map_stem[1:3]) < 30
+            elif filter_mode.startswith("GENERIC"):
+                def extra_filter(map_stem: str):
+                    return 30 <= int(map_stem[1:3]) < 60
+            else:
+                extra_filter = None
+            return self.set_map_options(map_dir, extra_filter=extra_filter, get_map_desc=get_map_desc)
+
+        if filter_mode.startswith("OVERWORLD"):
+            # Check 'm60' subfolder.
+            glob_str = "m60/m60_??_??_"
+        elif filter_mode.startswith("DLC_OVERWORLD"):
+            # Check 'm61' subfolder.
+            glob_str = "m61/m61_??_??_"
+        else:
+            # Unrecognized.
+            return
+
+        if filter_mode.endswith("_V1"):
+            glob_str += "1"
+
+        if "OVERWORLD_SMALL" in filter_mode:
+            glob_str += "0"
+        elif "OVERWORLD_MEDIUM" in filter_mode:
+            glob_str += "1"
+        elif "OVERWORLD_LARGE" in filter_mode:
+            glob_str += "2"
+
+        return self.set_map_options(map_dir, glob_str, get_map_desc=get_map_desc)
+
     def invoke(self, context, _event):
         """Set the initial directory."""
-        root = self.get_root(context)
-        if root is not None and (map_dir := root.get_dir_path("map", if_exist=True)):
-            self.directory = str(map_dir)
-        else:
-            for steam_common_location in STEAM_COMMON_LOCATIONS:
-                if steam_common_location.is_dir():
-                    self.directory = str(steam_common_location)
-                    break
-        context.window_manager.fileselect_add(self)
-        return {"RUNNING_MODAL"}
+        global _DETECTED_MAP_ENUM_ITEMS
 
-    def validate_directory(self, context, map_directory: Path):
-        """Make sure it's in '{root}/map'."""
+        settings = self.settings(context)
         root = self.get_root(context)
         if not root:
-            self.error("No game or project root found to validate map directory.")
-            return False
-        if not map_directory.is_dir():
-            self.error("Selected directory does not exist.")
-            return False
-        if not map_directory.parent == root.get_dir_path("map"):
-            self.error("Selected directory is not a subdirectory of the 'map' directory.")
-            return False
-        if not MAP_STEM_RE.match(map_directory.name):
-            self.warning("Selected directory does not appear to be a valid map directory name. Allowing anyway.")
-        return True
+            return self.error(f"{self.SOURCE} directory not set.")
+        map_dir = root.get_dir_path("map", if_exist=True)  # type: Path | None
+        if not map_dir:
+            return self.error(f"{self.SOURCE} 'map' directory not found.")
+        if settings.is_game("ELDEN_RING"):
+            self.set_map_options_eldenring(map_dir, settings.er_map_filter_mode)
+        else:
+
+            def get_map_desc(map_stem: str):
+                try:
+                    return GAME_CONFIG[settings.game].map_constants.get_map(map_stem).verbose_name
+                except (KeyError, AttributeError, ValueError):
+                    return map_stem
+
+            self.set_map_options(map_dir, get_map_desc=get_map_desc)
+
+        return context.window_manager.invoke_props_dialog(self)
 
     def execute(self, context):
-        if self.directory:
-            map_directory = Path(self.directory).resolve()
-            if not self.validate_directory(context, map_directory):
-                return {"CANCELLED"}
-
-            settings = self.settings(context)
-            settings.map_stem = map_directory.name
+        settings = self.settings(context)
+        settings.map_stem = self.map_choice
 
         return {"FINISHED"}
 
@@ -168,12 +232,12 @@ class SelectGameMapDirectory(_SelectMapDirectory):
     bl_label = "Select Map from Game"
     bl_description = "Select a map subdirectory in game 'map' folder"
 
-    directory: bpy.props.StringProperty()
+    SOURCE = "Game"
 
-    filter_glob: bpy.props.StringProperty(
-        default="m??_??_??_??",
-        options={'HIDDEN'},
-        maxlen=255,  # Max internal buffer length, longer would be clamped.
+    map_choice: bpy.props.EnumProperty(
+        name="Game Map",
+        description="Subfolders of 'map' in selected game directory",
+        items=_get_detected_map_enum_items,
     )
 
     @classmethod
@@ -188,12 +252,12 @@ class SelectProjectMapDirectory(_SelectMapDirectory):
     bl_label = "Select Map from Project"
     bl_description = "Select a map subdirectory in project 'map' folder"
 
-    directory: bpy.props.StringProperty()
+    SOURCE = "Project"
 
-    filter_glob: bpy.props.StringProperty(
-        default="m??_??_??_??",
-        options={'HIDDEN'},
-        maxlen=255,  # Max internal buffer length, longer would be clamped.
+    map_choice: bpy.props.EnumProperty(
+        name="Project Map",
+        description="Subfolders of 'map' in selected project directory",
+        items=_get_detected_map_enum_items,
     )
 
     @classmethod

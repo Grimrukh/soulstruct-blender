@@ -14,6 +14,7 @@ __all__ = [
 import bpy
 
 from .operators import *
+from .properties import SoulstructSettings
 
 
 class _GlobalSettingsPanel_ViewMixin:
@@ -22,14 +23,18 @@ class _GlobalSettingsPanel_ViewMixin:
     layout: bpy.types.UILayout
 
     def draw(self, context):
-        settings = context.scene.soulstruct_settings
+        settings = context.scene.soulstruct_settings  # type: SoulstructSettings
         layout = self.layout
         layout.prop(settings, "game_enum")
 
-        layout.label(text="Game Directory:")
-        layout.prop(settings, "str_game_directory", text="")
-        layout.label(text="Project Directory:")
-        layout.prop(settings, "str_project_directory", text="")
+        game = settings.game
+        if game:
+            layout.label(text="Game Root:")
+            layout.prop(settings, settings.get_game_root_prop_name(), text="")
+            layout.label(text="Project Root:")
+            layout.prop(settings, settings.get_project_root_prop_name(), text="")
+        else:
+            layout.label(text="Unsupported Game")
 
         header, panel = layout.panel("Import/Export Settings", default_closed=True)
         header.label(text="Import/Export Settings")

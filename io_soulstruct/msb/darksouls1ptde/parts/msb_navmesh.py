@@ -12,10 +12,11 @@ from io_soulstruct.exceptions import NVMImportError, MissingPartModelError
 from io_soulstruct.msb.properties import MSBPartSubtype, MSBNavmeshProps
 from io_soulstruct.navmesh.nvm.types import *
 from io_soulstruct.types import *
-from io_soulstruct.utilities import LoggingOperator, get_collection
+from io_soulstruct.utilities import *
 from soulstruct.base.maps.msb.utils import GroupBitSet128
 from soulstruct.containers import Binder, EntryNotFoundError
 from soulstruct.darksouls1r.maps.navmesh.nvm import NVM
+from soulstruct.darksouls1ptde.maps.models import MSBNavmeshModel
 from soulstruct.darksouls1r.maps.parts import MSBNavmesh
 from .msb_part import BlenderMSBPart
 
@@ -28,6 +29,7 @@ class BlenderMSBNavmesh(BlenderMSBPart[MSBNavmesh, MSBNavmeshProps]):
 
     OBJ_DATA_TYPE = SoulstructDataType.MESH
     SOULSTRUCT_CLASS = MSBNavmesh
+    SOULSTRUCT_MODEL_CLASS = MSBNavmeshModel
     PART_SUBTYPE = MSBPartSubtype.NAVMESH
     MODEL_SUBTYPES = ["navmesh_models"]
 
@@ -80,16 +82,12 @@ class BlenderMSBNavmesh(BlenderMSBPart[MSBNavmesh, MSBNavmeshProps]):
 
     @classmethod
     def find_model_mesh(cls, model_name: str, map_stem: str) -> bpy.types.MeshObject:
-        """Find the given navmesh model in the '{map_stem} Navmesh Models' collection in the current scene."""
-        collection_name = f"{map_stem} Navmesh Models"
-        try:
-            collection = bpy.data.collections[collection_name]
-        except KeyError:
-            raise MissingPartModelError(f"Collection '{collection_name}' not found in current scene.")
-        for obj in collection.objects:
-            if obj.name == model_name and obj.soulstruct_type == SoulstructType.NAVMESH:
-                return obj
-        raise MissingPartModelError(f"Navmesh model '{model_name}' not found in '{collection_name}' collection.")
+        """Find the given Navmesh model in Blender data."""
+        obj = find_obj(name=model_name, find_stem=True, soulstruct_type=SoulstructType.NAVMESH)
+        if obj is None:
+            raise MissingPartModelError(f"Navmesh model mesh '{model_name}' not found in Blender data.")
+        # noinspection PyTypeChecker
+        return obj
 
     @classmethod
     def import_model_mesh(

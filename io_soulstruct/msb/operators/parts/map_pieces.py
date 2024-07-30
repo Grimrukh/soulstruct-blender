@@ -96,3 +96,5 @@ class ExportMSBMapPieces(BaseExportMSBParts):
             # Export all Map Piece textures collected during FLVER export to their areas.
             for map_area, dds_textures in self.map_area_texture_collections.items():
                 export_map_area_textures(self, context, map_area, dds_textures)
+
+        return {"FINISHED"}

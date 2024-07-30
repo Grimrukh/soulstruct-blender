@@ -6,6 +6,7 @@ __all__ = [
 
 import re
 import typing as tp
+from pathlib import Path
 
 import bmesh
 import bpy
@@ -98,8 +99,8 @@ class BlenderMapCollision(SoulstructObject[MapCollisionHKX, MapCollisionProps]):
             lo_vertices, lo_faces, lo_face_materials = cls.join_hkx_meshes(
                 lo_submeshes, lo_bl_mat_indices, initial_offset=len(vertices)
             )
-            vertices = np.stack((vertices, lo_vertices), axis=0)
-            faces = np.stack((faces, lo_faces), axis=0)
+            vertices = np.vstack((vertices, lo_vertices))
+            faces = np.vstack((faces, lo_faces))
             face_materials = np.concatenate([face_materials, lo_face_materials])
 
         # Swap vertex Y and Z coordinates.
@@ -157,7 +158,7 @@ class BlenderMapCollision(SoulstructObject[MapCollisionHKX, MapCollisionProps]):
 
         bm = bmesh.new()
         bm.from_mesh(self.obj.data)
-        bmesh.ops.triangulate(bm, faces=bm.faces[:], quad_method="BEAUTY", ngon_method="BEAUTY")
+        bmesh.ops.triangulate(bm, faces=bm.faces, quad_method="BEAUTY", ngon_method="BEAUTY")
         tri_mesh_data = bpy.data.meshes.new("__TEMP_HKX__")
         # No need to copy materials over (no UV, etc.)
         bm.to_mesh(tri_mesh_data)
@@ -240,7 +241,7 @@ class BlenderMapCollision(SoulstructObject[MapCollisionHKX, MapCollisionProps]):
                 # Bundled template HKX serves fine.
                 # DCX applied by caller.
             )
-            hi_hkx.path = f"{hi_name}.hkx"
+            hi_hkx.path = Path(f"{hi_name}.hkx")
         else:
             if require_hi:
                 raise MapCollisionExportError(f"No 'hi' HKX meshes found in mesh '{self.name}'.")
@@ -255,7 +256,7 @@ class BlenderMapCollision(SoulstructObject[MapCollisionHKX, MapCollisionProps]):
                 # Bundled template HKX serves fine.
                 # DCX applied by caller.
             )
-            lo_hkx.path = f"{lo_name}.hkx"
+            lo_hkx.path = Path(f"{lo_name}.hkx")
         elif use_hi_if_missing_lo:
             # Duplicate hi-res meshes and materials for lo-res (but use lo-res name).
             lo_hkx = MapCollisionHKX.from_meshes(
@@ -299,8 +300,8 @@ class BlenderMapCollision(SoulstructObject[MapCollisionHKX, MapCollisionProps]):
             vert_stack.append(vertices)
             face_materials.extend([material_index] * len(faces))
             offset += len(vertices)
-        vertices = np.stack(vert_stack, axis=0)
-        faces = np.stack(face_stack, axis=0)
+        vertices = np.vstack(vert_stack)
+        faces = np.vstack(face_stack)
         return vertices, faces, np.array(face_materials)
 
     @classmethod

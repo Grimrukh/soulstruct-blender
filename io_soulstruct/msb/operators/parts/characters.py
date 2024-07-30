@@ -67,4 +67,4 @@ class ExportMSBCharacters(BaseExportMSBParts):
         pass
 
     def finish_model_export(self, context: bpy.types.Context, settings: SoulstructSettings):
-        pass
+        return {"FINISHED"}

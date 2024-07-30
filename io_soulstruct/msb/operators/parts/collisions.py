@@ -46,7 +46,7 @@ class ImportAllMSBMapCollisions(BaseImportAllMSBParts):
 class ExportMSBCollisions(BaseExportMSBParts):
     """Export one or more HKX collision files into a FromSoftware DSR map directory BHD."""
 
-    bl_idname = "export_scene_map.msb_hkx_map_collision"
+    bl_idname = "export_scene_map.msb_map_collision"
     bl_label = "Export Map Collision"
     bl_description = (
         "Export transform and model of HKX map collisions into MSB and HKXBHD binder in appropriate game map (DS1R)"
@@ -116,3 +116,4 @@ class ExportMSBCollisions(BaseExportMSBParts):
         for map_stem, both_res_hkxbhd in self.opened_both_res_hkxbhds.items():
             settings.export_file(self, both_res_hkxbhd.hi_res, Path(f"map/{map_stem}/h{map_stem[1:]}.hkxbhd"))
             settings.export_file(self, both_res_hkxbhd.lo_res, Path(f"map/{map_stem}/l{map_stem[1:]}.hkxbhd"))
+        return {"FINISHED"}

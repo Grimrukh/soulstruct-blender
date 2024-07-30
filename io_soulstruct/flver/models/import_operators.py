@@ -168,7 +168,7 @@ class ImportFLVER(BaseFLVERImportOperator):
 
     def invoke(self, context, _event):
         """Set the initial directory based on Global Settings."""
-        game_directory = self.settings(context).game_directory_path
+        game_directory = self.settings(context).game_root_path
         if is_path_and_dir(game_directory):
             self.directory = str(game_directory)
             context.window_manager.fileselect_add(self)

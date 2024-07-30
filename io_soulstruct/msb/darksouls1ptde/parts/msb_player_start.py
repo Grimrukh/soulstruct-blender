@@ -16,6 +16,7 @@ from io_soulstruct.msb.utilities import find_flver_model
 from io_soulstruct.types import *
 from io_soulstruct.utilities import LoggingOperator, get_collection
 from soulstruct.containers import Binder
+from soulstruct.darksouls1ptde.maps.models import MSBCharacterModel
 from soulstruct.darksouls1ptde.maps.parts import MSBPlayerStart
 from .msb_part import BlenderMSBPart
 
@@ -25,6 +26,7 @@ class BlenderMSBPlayerStart(BlenderMSBPart[MSBPlayerStart, MSBPlayerStartProps])
 
     OBJ_DATA_TYPE = SoulstructDataType.MESH
     SOULSTRUCT_CLASS = MSBPlayerStart
+    SOULSTRUCT_MODEL_CLASS = MSBCharacterModel  # or `MSBPlayerStartModel` but we don't need that here
     PART_SUBTYPE = MSBPartSubtype.PLAYER_START
     MODEL_SUBTYPES = ["player_models", "character_models"]
 

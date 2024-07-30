@@ -14,7 +14,7 @@ from io_soulstruct.msb.properties import MSBPartSubtype, MSBPartProps
 from io_soulstruct.types import *
 from io_soulstruct.utilities import *
 from soulstruct.base.maps.msb.utils import GroupBitSet128
-from soulstruct.darksouls1ptde.maps.msb import MSBPart
+from soulstruct.darksouls1ptde.maps.msb import MSBPart, MSBModel
 
 if tp.TYPE_CHECKING:
     from soulstruct.base.maps.msb import MSBEntry
@@ -35,6 +35,7 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
     TYPE = SoulstructType.MSB_PART
     # OBJ_DATA_TYPE is subtype-dependent.
     SOULSTRUCT_CLASS: tp.ClassVar[type[MSBPart]]
+    SOULSTRUCT_MODEL_CLASS: tp.ClassVar[type[MSBModel]]
     EXPORT_TIGHT_NAME = True  # for MSB parts, we always use tight names
     PART_SUBTYPE: tp.ClassVar[MSBPartSubtype]
     MODEL_SUBTYPES: tp.ClassVar[list[str]]  # for `MSB` model search on export
@@ -169,7 +170,7 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
         if was_missing:
             operator.warning(
                 f"Referenced MSB entry '{ref_entry.name}' in field '{prop_name}' of MSB part '{part.name}' not "
-                f"found. Creating empty reference."
+                f"found in Blender data. Creating empty reference."
             )
         return pointer_obj
 
@@ -179,16 +180,23 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
         prop_name: str,
         bl_obj: bpy.types.Object | None,
         part: MSBPart,
+        entry_subtype: str = None
     ) -> MSBEntry | None:
 
         if not bl_obj:
             return None  # leave part field as `None`
+        if entry_subtype:
+            subtypes = (entry_subtype,)
+        else:
+            subtypes = ()
 
         try:
             if bl_obj.soulstruct_type == SoulstructType.MSB_PART:
-                msb_entry = msb.find_part_name(get_bl_obj_tight_name(bl_obj))
+                msb_entry = msb.find_part_name(get_bl_obj_tight_name(bl_obj), subtypes=subtypes)
             elif bl_obj.soulstruct_type == SoulstructType.MSB_REGION:
-                msb_entry = msb.find_region_name(get_bl_obj_tight_name(bl_obj))
+                msb_entry = msb.find_region_name(bl_obj.name, subtypes=subtypes)  # full name
+            elif bl_obj.soulstruct_type == SoulstructType.MSB_EVENT:
+                msb_entry = msb.find_event_name(bl_obj.name, subtypes=subtypes)  # full name
             else:
                 raise SoulstructTypeError(f"Blender object '{bl_obj.name}' is not an MSB Part or Region.")
             return msb_entry
@@ -221,16 +229,20 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
         msb: MSB,
         part: MSBPart,
     ) -> MSBEntry | None:
+        """Find model in MSB with matching name to this object's `model` reference."""
 
         if not self.model:
             operator.warning(f"MSB Part '{part.name}' has no model set in Blender.")
             return None  # leave part field as `None`
 
-        model_name = get_bl_obj_tight_name(self.model)
+        # We use the `MSBModel` subclass to determine what name to look for.
+        msb_model_name = self.SOULSTRUCT_MODEL_CLASS.model_file_stem_to_model_name(get_bl_obj_tight_name(self.model))
         try:
-            return msb.find_model_name(model_name, subtypes=self.MODEL_SUBTYPES)
+            return msb.find_model_name(msb_model_name, subtypes=self.MODEL_SUBTYPES)
         except KeyError:
-            raise MissingPartModelError(f"Model '{model_name}' not found in MSB model lists.")
+            raise MissingPartModelError(
+                f"Model '{msb_model_name}' (from Blender model '{self.model.name}') not found in MSB model lists."
+            )
 
     @classmethod
     def new(
@@ -321,7 +333,7 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
             raise ValueError("MSB must be provided to convert Blender MSB Part to `MSBPart`, to resolve references.")
 
         # Creation can be overridden (e.g. to make 'Dummy' versions of entry types).
-        part = self.create_soulstruct_obj()  # type: PART_T
+        part = self.create_soulstruct_obj(name=self.tight_name if self.EXPORT_TIGHT_NAME else self.name)  # type: PART_T
 
         part.set_auto_sib_path(map_stem)
         self.set_part_transform(part)
@@ -368,4 +380,5 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
             )
 
 
-BlenderMSBPart.add_auto_subtype_props(*BlenderMSBPart.AUTO_PART_PROPS)
+BlenderMSBPart.add_auto_type_props(*BlenderMSBPart.AUTO_PART_PROPS)
+# Subtype props added by subclasses.

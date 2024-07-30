@@ -51,15 +51,23 @@ class BlenderFLVERMaterial:
     def node_tree(self):
         return self.material.node_tree
 
+    AUTO_MATERIAL_PROPS = [
+        "flags",
+        "mat_def_path",
+        "unk_x18",
+        "is_bind_pose",
+        "default_bone_index",
+        "face_set_count",
+        "sampler_prefix",
+    ]
+
     flags: int
     mat_def_path: str
     unk_x18: int
     is_bind_pose: bool
     default_bone_index: int
     face_set_count: int
-
-    # Convenience for reducing long sampler names; not a real FLVER Material property.
-    sampler_prefix: str
+    sampler_prefix: str  # for sampler truncation; not a real imported/exported FLVER Material property
 
     @property
     def use_backface_culling(self) -> bool:
@@ -273,11 +281,12 @@ class BlenderFLVERMaterial:
             # TODO: Only for certain older games like DS1R?
             allowed_missing_sampler_names = {"Detail 0 Normal"}
 
+        # noinspection PyTypeChecker
         texture_nodes = {
             node.name: node
             for node in self.node_tree.nodes
             if node.type == "TEX_IMAGE"
-        }
+        }  # type: dict[str, bpy.types.ShaderNodeTexImage]
 
         for sampler in matdef.samplers:
 
@@ -295,7 +304,8 @@ class BlenderFLVERMaterial:
                 # Check node named with sampler alias or game-specific name (sans any 'Sampler Prefix').
                 for key in (sampler.alias, sampler_name):
                     if key in texture_nodes:
-                        node_image = texture_nodes.pop(key).image  # type: bpy.types.Image | None  # consumes node
+                        texture_node = texture_nodes.pop(key)  # type: bpy.types.ShaderNodeTexImage
+                        node_image = texture_node.image  # type: bpy.types.Image | None  # consumes node
                         if node_image:
                             texture_stem = Path(node_image.name).stem
                             if len(node_image.pixels) > 4:
@@ -390,21 +400,15 @@ class BlenderFLVERMaterial:
             used_uv_layer_names,
         )
 
+    @classmethod
+    def add_auto_type_props(cls, *names):
+        for prop_name in names:
+            setattr(
+                cls, prop_name, property(
+                    lambda self, pn=prop_name: getattr(self.type_properties, pn),
+                    lambda self, value, pn=prop_name: setattr(self.type_properties, pn, value),
+                )
+            )
 
-for prop_name in (
-    "flags",
-    "mat_def_path",
-    "unk_x18",
-    "is_bind_pose",
-    "default_bone_index",
-    "face_set_count",
-    "sampler_prefix",
-):
-    setattr(
-        BlenderFLVERMaterial,
-        prop_name,
-        property(
-            lambda self, pn=prop_name: self.type_properties[pn],
-            lambda self, value, pn=prop_name: setattr(self.type_properties, pn, value)
-        ),
-    )
+
+BlenderFLVERMaterial.add_auto_type_props(*BlenderFLVERMaterial.AUTO_MATERIAL_PROPS)

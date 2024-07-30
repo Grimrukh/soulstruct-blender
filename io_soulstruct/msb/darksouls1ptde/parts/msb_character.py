@@ -17,6 +17,7 @@ from io_soulstruct.msb.utilities import find_flver_model
 from io_soulstruct.types import *
 from io_soulstruct.utilities import LoggingOperator, get_collection
 from soulstruct.containers import Binder
+from soulstruct.darksouls1ptde.maps.models import MSBCharacterModel
 from soulstruct.darksouls1ptde.maps.parts import MSBCharacter, MSBDummyCharacter
 from .msb_part import BlenderMSBPart
 
@@ -28,6 +29,7 @@ class BlenderMSBCharacter(BlenderMSBPart[MSBCharacter, MSBCharacterProps]):
 
     OBJ_DATA_TYPE = SoulstructDataType.MESH
     SOULSTRUCT_CLASS = MSBCharacter
+    SOULSTRUCT_MODEL_CLASS = MSBCharacterModel
     PART_SUBTYPE = MSBPartSubtype.CHARACTER
     MODEL_SUBTYPES = ["character_models"]
 

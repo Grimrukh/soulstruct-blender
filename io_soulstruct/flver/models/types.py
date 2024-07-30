@@ -202,10 +202,10 @@ class BlenderFLVERDummy(SoulstructObject[Dummy, FLVERDummyProps]):
         if self.obj.parent_type == "BONE":  # NOTE: only possible for dummies parented to the Armature
             # Dummy has an 'attach bone' that is its Blender parent.
             try:
-                attach_bone_index = armature.data.bones.find(self.obj.parent_bone.name)
+                attach_bone_index = armature.data.bones.find(self.obj.parent_bone)
             except ValueError:
                 raise FLVERExportError(
-                    f"Dummy '{self.name}' attach bone (Blender parent) '{self.obj.parent_bone.name}' "
+                    f"Dummy '{self.name}' attach bone (Blender parent) '{self.obj.parent_bone}' "
                     f"not in Armature."
                 )
             dummy.attach_bone_index = attach_bone_index
@@ -262,7 +262,7 @@ class BlenderFLVERDummy(SoulstructObject[Dummy, FLVERDummyProps]):
         self.name = self.format_name(
             model_name=value,
             index=int(match.group(2)[1:-1]) if match.group(2) is not None else None,
-            reference_id=int(match.group(3)[1:-1]),
+            reference_id=int(match.group(3)[1:-1]),  # remove brackets
             suffix=match.group(4),
         )
 
@@ -273,7 +273,7 @@ class BlenderFLVERDummy(SoulstructObject[Dummy, FLVERDummyProps]):
         self.name = self.format_name(
             model_name=match.group(1),
             index=index,
-            reference_id=int(match.group(3)[1:-1]),
+            reference_id=int(match.group(3)[1:-1]),  # remove brackets
             suffix=match.group(4),
         )
 
@@ -283,7 +283,7 @@ class BlenderFLVERDummy(SoulstructObject[Dummy, FLVERDummyProps]):
         if match is None:
             raise ValueError(f"FLVER Dummy object name does not match expected pattern: {self.name}")
         try:
-            return int(match.group(3))
+            return int(match.group(3)[1:-1])  # remove brackets
         except ValueError:
             raise ValueError(f"FLVER Dummy object name does not match expected pattern: {self.name}")
 
@@ -409,6 +409,10 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
                 operator.warning(f"Ignoring FLVER Empty child with non-Dummy name: '{child.name}'")
         return sorted(dummies, key=lambda d: natural_keys(d.name))
 
+    def get_materials(self) -> list[BlenderFLVERMaterial]:
+        """Get all Mesh materials as `BlenderFLVERMaterial` objects."""
+        return [BlenderFLVERMaterial(mat) for mat in self.mesh.data.materials]
+
     # region Utility Methods
 
     def rename(self, new_name: str, old_name=""):
@@ -434,17 +438,10 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         old_name = old_name or self.tight_name
 
         if self.armature:
-            if self.armature.data.name == self.armature.name:
-                # Source model. Rename Armature data-block.
-                self.armature.data.name = new_name
-                self.mesh.data.name = f"{new_name} Mesh"
-            self.armature.name = new_name
-            self.mesh.name = f"{new_name} Mesh"
-        else:
-            if self.mesh.data.name == self.mesh.name:
-                # Source model. Rename Mesh data-block.
-                self.mesh.data.name = new_name
-            self.mesh.name = new_name
+            self.armature.name = f"{new_name} Armature"
+            self.armature.data.name = f"{new_name} Armature"
+        self.mesh.name = new_name
+        self.mesh.data.name = new_name
 
         for mat in self.mesh.data.materials:
             # Replace all string occurrences.
@@ -1132,16 +1129,12 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
 
         # Enable custom split normals and assign them.
         loop_normal_data = merged_mesh.loop_normals[valid_loop_indices]  # NOT raveled
-        # Check Blender version:
-        if bpy.app.version < (4, 1):
-            # Not need from Blender 4.1, which creates the relevant `mesh.corner_normals` collection automatically.
-            mesh_data.create_normals_split()
-        mesh_data.normals_split_custom_set(loop_normal_data)  # one normal per loop
-        if bpy.app.version < (4, 1):
-            # Removed in Blender 4.1. Custom normals are used when present.
-            mesh_data.use_auto_smooth = True
-            mesh_data.calc_normals_split()  # copy custom split normal data into API mesh loops
 
+        # NOTE: `Mesh.create_normals_split()` removed in Blender 4.1. I no longer support older versions than that.
+        # New versions of Blender automatically create the `mesh.corner_normals` collection automatically.
+        # We also don't need to enable `use_auto_smooth` or call `calc_normals_split()` anymore.
+
+        mesh_data.normals_split_custom_set(loop_normal_data)  # one normal per loop
         mesh_data.update()
 
         return merged_mesh.vertex_data["bone_weights"], merged_mesh.vertex_data["bone_indices"]
@@ -1573,7 +1566,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
 
         matdefs = []
         for bl_material in self.mesh.data.materials:
-            mat_def_name = Path(bl_material.flver_material.mat_def_path).name
+            mat_def_name = Path(bl_material.FLVER_MATERIAL.mat_def_path).name
             if GAME_CONFIG[settings.game].uses_matbin:
                 matdef = matdef_class.from_matbinbnd_or_name(mat_def_name, matbinbnd)
             else:
@@ -1643,7 +1636,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         #    also split their submeshes manually in Blender, if they wish.
         split_submesh_defs = []  # type: list[SplitSubmeshDef]
 
-        bl_materials = BlenderFLVERMaterial.from_all_mesh_materials(self.mesh)
+        bl_materials = self.get_materials()
 
         for matdef, bl_material in zip(matdefs, bl_materials, strict=True):
             bl_material: BlenderFLVERMaterial
@@ -1925,7 +1918,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         # Automatically triangulate the mesh.
         bm = bmesh.new()
         bm.from_mesh(self.mesh.data)
-        bmesh.ops.triangulate(bm, faces=bm.faces[:], quad_method="BEAUTY", ngon_method="BEAUTY")
+        bmesh.ops.triangulate(bm, faces=bm.faces, quad_method="BEAUTY", ngon_method="BEAUTY")
         tri_mesh_data = bpy.data.meshes.new("__TEMP_FLVER__")  # will be deleted during `finally` block of caller
         if bpy.app.version < (4, 1):
             # Removed in Blender 4.1. (Now implicit from the presence of custom normals.)
@@ -2086,7 +2079,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         read_bone_type = self.BoneDataType.NONE
         warn_partial_bind_pose = False
         for bl_material in self.mesh.data.materials:
-            if bl_material.flver_material.is_bind_pose:  # typically: characters, objects, parts
+            if bl_material.FLVER_MATERIAL.is_bind_pose:  # typically: characters, objects, parts
                 if not read_bone_type:
                     read_bone_type = self.BoneDataType.EDIT  # write bone transforms from EditBones
                 elif read_bone_type == self.BoneDataType.POSE:
@@ -2152,7 +2145,10 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
                 )
             mesh = mesh_children[0]
         else:
-            raise SoulstructTypeError(f"Selected object '{obj.name}' is not a Mesh or Armature. Cannot parse as FLVER.")
+            raise SoulstructTypeError(f"Given object '{obj.name}' is not a Mesh or Armature. Cannot parse as FLVER.")
+
+        if mesh.soulstruct_type != SoulstructType.FLVER:
+            raise SoulstructTypeError(f"Given Mesh object '{mesh.name}' is not a FLVER Mesh.")
 
         # noinspection PyTypeChecker
         return armature, mesh

@@ -47,16 +47,16 @@ class FLVERImportPanel(bpy.types.Panel):
         layout = self.layout
         settings = context.scene.soulstruct_settings
 
-        game_import_box = layout.box()
-        game_import_box.label(text="Import from Game/Project")
-        game_import_box.operator(ImportMapPieceFLVER.bl_idname)
-        game_import_box.operator(ImportCharacterFLVER.bl_idname)
+        layout.label(text="Import from Game/Project:")
+        layout.operator(ImportMapPieceFLVER.bl_idname)
+        layout.operator(ImportCharacterFLVER.bl_idname)
         if settings.is_game("ELDEN_RING"):
-            game_import_box.operator(ImportAssetFLVER.bl_idname)
+            layout.operator(ImportAssetFLVER.bl_idname)
         else:
-            game_import_box.operator(ImportObjectFLVER.bl_idname)
-        game_import_box.operator(ImportEquipmentFLVER.bl_idname)
+            layout.operator(ImportObjectFLVER.bl_idname)
+        layout.operator(ImportEquipmentFLVER.bl_idname)
 
+        layout.label(text="Generic Import:")
         layout.operator(ImportFLVER.bl_idname, text="Import Any FLVER")
 
 
@@ -68,15 +68,6 @@ class FLVERExportPanel(bpy.types.Panel):
     bl_region_type = "UI"
     bl_category = "FLVER"
     bl_options = {"DEFAULT_CLOSED"}
-
-    @classmethod
-    def poll(cls, context):
-        """At least one FLVER must be selected."""
-        try:
-            bl_flvers = BlenderFLVER.from_selected_objects(context)
-        except SoulstructTypeError:
-            return False
-        return len(bl_flvers) > 0
 
     def draw(self, context):
         layout = self.layout
@@ -91,6 +82,17 @@ class FLVERExportPanel(bpy.types.Panel):
             panel.prop(context.scene.flver_export_settings, "create_lod_face_sets")
             panel.prop(context.scene.flver_export_settings, "base_edit_bone_length")
             panel.prop(context.scene.flver_export_settings, "normal_tangent_dot_max")
+
+        if not context.selected_objects:
+            layout.label(text="Select some FLVER models.")
+            layout.label(text="MSB Parts cannot be selected.")
+            return
+
+        for obj in context.selected_objects:
+            if not BlenderFLVER.test_obj(obj):
+                layout.label(text="Select some FLVER models.")
+                layout.label(text="MSB Parts cannot be selected.")
+                return
 
         layout.label(text="Export to Selected Game/Project/Map:")
         layout.operator(ExportMapPieceFLVERs.bl_idname)

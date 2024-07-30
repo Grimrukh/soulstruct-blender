@@ -31,7 +31,6 @@ from .types import BlenderFLVER
 
 if tp.TYPE_CHECKING:
     from io_soulstruct.type_checking import CHRBND_TYPING, OBJBND_TYPING, PARTSBND_TYPING
-    from .properties import FLVERExportSettings
 
 
 # region Generic Exporters
@@ -166,7 +165,7 @@ class ExportFLVERIntoBinder(LoggingOperator, ExportHelper):
             return self.error(str(ex))
 
         # Automatic DCX for FLVERs in Binders is Null.
-        dcx_type = DCXType[self.dcx_type] if self.dcx_type != "Auto" else DCXType.Null
+        dcx_type = DCXType[self.dcx_type] if self.dcx_type != "AUTO" else DCXType.Null
 
         self.to_object_mode()
         binder_file_path = Path(self.filepath)

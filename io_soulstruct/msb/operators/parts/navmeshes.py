@@ -81,8 +81,9 @@ class ExportMSBNavmeshes(BaseExportMSBParts):
             nvmbnd.entries = list(sorted(nvmbnd.entries, key=lambda e: e.name))
             for i, entry in enumerate(nvmbnd.entries):
                 entry.entry_id = i
-            settings.export_file(self, nvmbnd, nvmbnd.path.relative_to(settings.game_directory_path))
+            settings.export_file(self, nvmbnd, nvmbnd.path.relative_to(settings.game_root_path))
         self.info(f"Exported NVMBNDs with new NVM models for {len(self.opened_nvmbnds)} maps.")
+        return {"FINISHED"}
 
     def export_model(
         self,

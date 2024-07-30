@@ -12,6 +12,7 @@ from io_soulstruct.msb.properties import MSBPartSubtype, MSBConnectCollisionProp
 from io_soulstruct.types import *
 from io_soulstruct.utilities import *
 from soulstruct.darksouls1ptde.maps import MSB
+from soulstruct.darksouls1ptde.maps.models import MSBCollisionModel
 from soulstruct.darksouls1ptde.maps.parts import MSBConnectCollision
 from .msb_collision import BlenderMSBCollision
 from .msb_part import BlenderMSBPart
@@ -22,6 +23,7 @@ class BlenderMSBConnectCollision(BlenderMSBPart[MSBConnectCollision, MSBConnectC
 
     OBJ_DATA_TYPE = SoulstructDataType.MESH
     SOULSTRUCT_CLASS = MSBConnectCollision
+    SOULSTRUCT_MODEL_CLASS = MSBCollisionModel
     PART_SUBTYPE = MSBPartSubtype.CONNECT_COLLISION
     MODEL_SUBTYPES = ["collision_models"]
 
@@ -95,19 +97,12 @@ class BlenderMSBConnectCollision(BlenderMSBPart[MSBConnectCollision, MSBConnectC
 
     @classmethod
     def find_model_mesh(cls, model_name: str, map_stem: str) -> bpy.types.MeshObject:
-        """Find the model of the given type in the 'Map Collision Models' collection in the current scene.
-
-        Returns the Empty parent of all 'h' and 'l' submeshes of the collision (`children`).
-        """
-        collection_name = f"{map_stem} Collision Models"
-        try:
-            collection = bpy.data.collections[collection_name]
-        except KeyError:
-            raise MissingPartModelError(f"Collection '{collection_name}' not found in current scene.")
-        for obj in collection.objects:
-            if obj.name == model_name and obj.type == "MESH":
-                return obj
-        raise MissingPartModelError(f"Collision model mesh '{model_name}' not found in '{collection_name}' collection.")
+        """Find the given Collision model in Blender data."""
+        obj = find_obj(name=model_name, find_stem=True, soulstruct_type=SoulstructType.COLLISION)
+        if obj is None:
+            raise MissingPartModelError(f"Collision model mesh '{model_name}' not found in Blender data.")
+        # noinspection PyTypeChecker
+        return obj
 
     @classmethod
     def import_model_mesh(

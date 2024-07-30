@@ -17,6 +17,7 @@ from io_soulstruct.msb.utilities import find_flver_model
 from io_soulstruct.types import *
 from io_soulstruct.utilities import *
 from soulstruct.containers import Binder
+from soulstruct.darksouls1ptde.maps.models import MSBObjectModel
 from soulstruct.darksouls1ptde.maps.parts import MSBObject, MSBDummyObject
 from .msb_part import BlenderMSBPart
 
@@ -29,6 +30,7 @@ class BlenderMSBObject(BlenderMSBPart[MSBObject, MSBObjectProps]):
 
     OBJ_DATA_TYPE = SoulstructDataType.MESH
     SOULSTRUCT_CLASS = MSBObject
+    SOULSTRUCT_MODEL_CLASS = MSBObject
     PART_SUBTYPE = MSBPartSubtype.OBJECT
     MODEL_SUBTYPES = ["object_models"]
 

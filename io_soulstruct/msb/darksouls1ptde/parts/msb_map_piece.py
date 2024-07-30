@@ -17,6 +17,7 @@ from io_soulstruct.msb.utilities import find_flver_model
 from io_soulstruct.types import *
 from io_soulstruct.utilities import LoggingOperator, get_collection
 from soulstruct.base.models.flver import FLVER
+from soulstruct.darksouls1ptde.maps.models import MSBMapPieceModel
 from soulstruct.darksouls1ptde.maps.msb import MSBMapPiece
 from .msb_part import BlenderMSBPart
 
@@ -25,6 +26,7 @@ class BlenderMSBMapPiece(BlenderMSBPart[MSBMapPiece, MSBMapPieceProps]):
 
     OBJ_DATA_TYPE = SoulstructDataType.MESH
     SOULSTRUCT_CLASS = MSBMapPiece
+    SOULSTRUCT_MODEL_CLASS = MSBMapPieceModel
     PART_SUBTYPE = MSBPartSubtype.MAP_PIECE
     MODEL_SUBTYPES = ["map_piece_models"]
 
