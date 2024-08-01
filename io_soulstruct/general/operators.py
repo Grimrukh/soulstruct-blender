@@ -1,11 +1,9 @@
 from __future__ import annotations
 
 __all__ = [
-    "SelectGameDirectory",
-    "SelectProjectDirectory",
     "SelectGameMapDirectory",
     "SelectProjectMapDirectory",
-    "SelectPNGCacheDirectory",
+    "SelectImageCacheDirectory",
     "SelectCustomMTDBNDFile",
     "SelectCustomMATBINBNDFile",
     "LoadCollectionsFromBlend",
@@ -32,74 +30,6 @@ STEAM_COMMON_LOCATIONS = [
     Path(f"{drive}:/Steam/steamapps/common")
     for drive in "CDEFGH"
 ]
-
-
-class SelectGameDirectory(LoggingOperator):
-    """Browse for global game directory."""
-    bl_idname = "soulstruct.select_game_directory"
-    bl_label = "Select Game Directory"
-    bl_description = "Select game directory with browser"
-
-    directory: bpy.props.StringProperty()
-
-    filter_glob: bpy.props.StringProperty(
-        default="",
-        options={'HIDDEN'},
-        maxlen=255,  # Max internal buffer length, longer would be clamped.
-    )
-
-    def invoke(self, context, _event):
-        """Set the initial directory to browse in, if it exists."""
-        for steam_common_location in STEAM_COMMON_LOCATIONS:
-            if steam_common_location.is_dir():
-                self.directory = str(steam_common_location)
-                break
-        context.window_manager.fileselect_add(self)
-        return {"RUNNING_MODAL"}
-
-    def execute(self, context):
-        if self.directory:
-            # We use browser's current `directory`, not `filepath` itself.
-            game_directory = Path(self.directory).resolve()
-            settings = self.settings(context)
-            settings.game_root_path = str(game_directory)
-            settings.auto_set_game()
-
-        return {"FINISHED"}
-
-
-class SelectProjectDirectory(LoggingOperator):
-    """Browse for global project directory."""
-    bl_idname = "soulstruct.select_project_directory"
-    bl_label = "Select Project Directory"
-    bl_description = "Select project directory with browser"
-
-    directory: bpy.props.StringProperty()
-
-    filter_glob: bpy.props.StringProperty(
-        default="",
-        options={'HIDDEN'},
-        maxlen=255,  # Max internal buffer length, longer would be clamped.
-    )
-
-    def invoke(self, context, _event):
-        """Set the initial directory to browse in, if it exists."""
-        for steam_common_location in STEAM_COMMON_LOCATIONS:
-            if steam_common_location.is_dir():
-                self.directory = str(steam_common_location)
-                break
-        context.window_manager.fileselect_add(self)
-        return {"RUNNING_MODAL"}
-
-    def execute(self, context):
-        if self.directory:
-            # We use browser's current `directory`, not `filepath` itself.
-            project_directory = Path(self.directory).resolve()
-            settings = self.settings(context)
-            settings.project_root_path = str(project_directory)
-            # We do NOT auto-set game here, because the user may be exporting to any folder.
-
-        return {"FINISHED"}
 
 
 _DETECTED_MAP_ENUM_ITEMS = []  # type: list[tuple[str, str, str]]
@@ -266,11 +196,11 @@ class SelectProjectMapDirectory(_SelectMapDirectory):
         return settings.project_root
 
 
-class SelectPNGCacheDirectory(LoggingOperator):
-    """Browse for global PNG texture cache directory."""
-    bl_idname = "soulstruct.select_png_cache_directory"
-    bl_label = "Select PNG Cache Directory"
-    bl_description = "Select PNG texture cache directory with browser"
+class SelectImageCacheDirectory(LoggingOperator):
+    """Browse for global image cache directory."""
+    bl_idname = "soulstruct.select_image_cache_directory"
+    bl_label = "Select Image Cache Directory"
+    bl_description = "Select image texture cache directory with browser"
 
     directory: bpy.props.StringProperty()
 
@@ -296,9 +226,9 @@ class SelectPNGCacheDirectory(LoggingOperator):
 
     def execute(self, context):
         if self.directory:
-            png_cache_directory = Path(self.directory).resolve()
+            image_cache_directory = Path(self.directory).resolve()
             settings = self.settings(context)
-            settings.str_png_cache_directory = str(png_cache_directory)
+            settings.str_image_cache_directory = str(image_cache_directory)
         return {"FINISHED"}
 
 

@@ -23,6 +23,7 @@ __all__ = [
     "MSBRegionImportError",
     "AnimationImportError",
     "AnimationExportError",
+    "BatchOperationUnsupportedError",
 ]
 
 from soulstruct.exceptions import SoulstructError
@@ -143,4 +144,9 @@ class AnimationImportError(SoulstructBlenderError):
 
 class AnimationExportError(SoulstructBlenderError):
     """Exception raised during HKX animation export."""
+    pass
+
+
+class BatchOperationUnsupportedError(SoulstructBlenderError):
+    """Raised when a batch operation is not supported for the selected game/file type."""
     pass

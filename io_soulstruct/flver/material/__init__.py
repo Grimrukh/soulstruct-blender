@@ -7,8 +7,11 @@ __all__ = [
     "FLVERGXItemProps",
 
     "BlenderFLVERMaterial",
+
+    "FLVERMaterialPropsPanel",
 ]
 
 from .misc_operators import *
 from .properties import FLVERMaterialProps, FLVERGXItemProps
 from .types import BlenderFLVERMaterial
+from .gui import *

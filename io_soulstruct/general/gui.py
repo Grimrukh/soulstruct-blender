@@ -59,11 +59,12 @@ class _GlobalSettingsPanel_ViewMixin:
                 panel.label(text="Custom MTDBND Path:")
                 panel.prop(settings, "str_mtdbnd_path", text="")
 
-            panel.label(text="PNG Cache Directory:")
-            panel.prop(settings, "str_png_cache_directory", text="")
-            panel.row().prop(settings, "read_cached_pngs")
-            panel.row().prop(settings, "write_cached_pngs")
-            panel.row().prop(settings, "pack_image_data")
+            panel.label(text="Image Cache Directory:")
+            panel.prop(settings, "str_image_cache_directory", text="")
+            panel.prop(settings, "image_cache_format")
+            panel.prop(settings, "read_cached_images")
+            panel.prop(settings, "write_cached_images")
+            panel.prop(settings, "pack_image_data")
 
         layout.operator(LoadCollectionsFromBlend.bl_idname, text="Load BLEND Collections")
 

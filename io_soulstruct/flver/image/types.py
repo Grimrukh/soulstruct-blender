@@ -35,9 +35,8 @@ class DDSTexture:
 
     image: bpy.types.Image
 
-    _TEMP_IMAGE_PATH = Path(f"~/AppData/Local/Temp/temp.png").expanduser()
-
     def __init__(self, image: bpy.types.Image):
+        # TODO: Could there be real game textures that are 1 pixel?
         if len(image.pixels) <= 4:
             raise SoulstructTypeError(
                 f"Blender image '{self.name}' contains one or less pixels. Cannot use as DDS Texture.")
@@ -99,45 +98,51 @@ class DDSTexture:
         self.image.pixels = value
 
     @classmethod
-    def new_from_png_path(
+    def new_from_image_path(
         cls,
-        png_path: Path | str,
+        image_path: Path | str,
         pack_image_data=False,
     ) -> DDSTexture:
-        bl_image = bpy.data.images.load(str(png_path))
+        """Load Blender Image from image path, and optionally pack image data into Blend file.
+
+        Image can be any supported Blender format.
+        """
+        bl_image = bpy.data.images.load(str(image_path))
         if pack_image_data:
             bl_image.pack()  # embed Image data into Blend file
         return cls(bl_image)
 
     @classmethod
-    def new_from_png_data(
+    def new_from_image_data(
         cls,
         operator: LoggingOperator,
         name: str,
-        png_data: bytes,
-        png_cache_directory: Path = None,
+        image_format: str,
+        image_data: bytes,
+        image_cache_directory: Path = None,
         replace_existing=False,
         pack_image_data=False,
     ) -> DDSTexture:
         """Import PNG data into Blender as an Image, optionally replacing an existing image with the same name.
 
-        If `pack_image_data` is True and `png_cache_directory` is given, the PNG data will be embedded in the `.blend`
+        If `pack_image_data` is True and `image_cache_directory` is given, the PNG data will be embedded in the `.blend`
         file. Otherwise, it will be linked to the original PNG file.
         """
-        if png_cache_directory is None:
+        image_name = f"{name}.{image_format.lower()}"
+        if image_cache_directory is None:
             # Use a temporarily file.
-            write_png_path = Path(f"~/AppData/Local/Temp/{name}.png").expanduser()
-            is_temp_png = True
+            write_image_path = Path(f"~/AppData/Local/Temp/{image_name}").expanduser()
+            is_temp_image = True
             if not pack_image_data:
                 operator.warning(
-                    "Must pack PNG image data into Blender file when `png_cache_directory` is not given ('Write Cached "
-                    "PNGs' disabled)."
+                    "Must pack image data into Blender file when `image_cache_directory` is not given ('Write Cached "
+                    "Images' disabled)."
                 )
         else:
-            write_png_path = png_cache_directory / f"{name}.png"
-            is_temp_png = False
+            write_image_path = image_cache_directory / image_name
+            is_temp_image = False
 
-        write_png_path.write_bytes(png_data)
+        write_image_path.write_bytes(image_data)
 
         try:
             if not replace_existing:
@@ -145,21 +150,21 @@ class DDSTexture:
                 raise KeyError
             image = bpy.data.images[name]
         except KeyError:
-            image = bpy.data.images.load(str(write_png_path))
-            if is_temp_png or pack_image_data:
+            image = bpy.data.images.load(str(write_image_path))
+            if is_temp_image or pack_image_data:
                 image.pack()  # embed PNG in Blend file
         else:
             if image.packed_file:
                 image.unpack(method="USE_ORIGINAL")
-            image.filepath_raw = str(write_png_path)
-            image.file_format = "PNG"
+            image.filepath_raw = str(write_image_path)
+            image.file_format = image_format
             image.source = "FILE"
             image.reload()
-            if is_temp_png or pack_image_data:
+            if is_temp_image or pack_image_data:
                 image.pack()  # embed new PNG in Blend file
 
-        if is_temp_png:
-            write_png_path.unlink(missing_ok=True)
+        if is_temp_image:
+            write_image_path.unlink(missing_ok=True)
 
         bl_image = cls(image)
         bl_image.dds_format = BlenderDDSFormat.SAME
@@ -197,11 +202,12 @@ class DDSTexture:
                 f"Blender image '{self.name}' contains one or less pixels. Cannot export it."
             )
 
-        self.image.filepath_raw = str(self._TEMP_IMAGE_PATH)  # TODO: matters if Blender file is not actually a PNG?
+        temp_image_path = Path(f"~/AppData/Local/Temp/temp.{self.image.file_format.lower()}").expanduser()
+        self.image.filepath_raw = temp_image_path
         self.image.save()  # TODO: sometimes fails with 'No error' (depending on how Blender is storing image data?)
         with tempfile.TemporaryDirectory() as output_dir:
             is_dx10 = self.dds_format[:3] in {"BC5", "BC7"}
-            texconv_config = TexconvConfig(output_dir, dds_format, is_dx10, self.mipmap_count, self._TEMP_IMAGE_PATH)
+            texconv_config = TexconvConfig(output_dir, dds_format, is_dx10, self.mipmap_count, temp_image_path)
             try:
                 data = texconv_to_dds(texconv_config)
                 if data is None:
@@ -260,25 +266,27 @@ class DDSTextureCollection(dict[str, DDSTexture]):
 
         textures = self.get_sorted_textures()
 
-        with tempfile.TemporaryDirectory() as output_dir:
-            for texture in textures:
-                dds_format = texture.get_dds_format_str(find_same_format)
-                if len(texture.pixels) <= 4:
-                    # Shouldn't be possible by `DDSTexture` initialization, but Image may be modified after that...
-                    raise TextureExportError(
-                        f"Blender image '{texture.name}' contains one or less pixels. Cannot export it."
+        with tempfile.TemporaryDirectory() as input_dir:
+            with tempfile.TemporaryDirectory() as output_dir:
+                for texture in textures:
+                    dds_format = texture.get_dds_format_str(find_same_format)
+                    if len(texture.pixels) <= 4:
+                        # Shouldn't be possible by `DDSTexture` initialization, but Image may be modified after that...
+                        raise TextureExportError(
+                            f"Blender image '{texture.name}' contains one or less pixels. Cannot export it."
+                        )
+                    temp_image_path = Path(input_dir, texture.image.name)
+                    texture.image.filepath_raw = str(temp_image_path)
+                    texture.image.save()  # TODO: sometimes fails with 'No error'?
+                    is_dx10 = texture.dds_format[:3] in {"BC5", "BC7"}
+                    texconv_config = TexconvConfig(
+                        output_dir, dds_format, is_dx10, texture.mipmap_count, temp_image_path
                     )
-                texture.image.filepath_raw = str(DDSTexture._TEMP_IMAGE_PATH)
-                texture.image.save()  # TODO: sometimes fails with 'No error' (depending on how Blender is storing data)
-                is_dx10 = texture.dds_format[:3] in {"BC5", "BC7"}
-                texconv_config = TexconvConfig(
-                    output_dir, dds_format, is_dx10, texture.mipmap_count, DDSTexture._TEMP_IMAGE_PATH
-                )
 
-                dds_formats.append(dds_format)
-                configs.append(texconv_config)
+                    dds_formats.append(dds_format)
+                    configs.append(texconv_config)
 
-            dds_data_list = batch_texconv_to_dds(configs)
+                dds_data_list = batch_texconv_to_dds(configs)
 
         data_formats = []
         for dds_texture, dds_data, dds_format in zip(textures, dds_data_list, dds_formats):

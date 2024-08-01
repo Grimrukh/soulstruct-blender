@@ -8,16 +8,15 @@ import traceback
 import typing as tp
 
 import bpy
-from io_soulstruct.exceptions import FLVERImportError
-from io_soulstruct.flver.models import BlenderFLVER
+from io_soulstruct.exceptions import FLVERImportError, MissingPartModelError
 from io_soulstruct.flver.image.image_import_manager import ImageImportManager
+from io_soulstruct.flver.models import BlenderFLVER
 from io_soulstruct.flver.utilities import get_flvers_from_binder
 from io_soulstruct.msb.properties import MSBPartSubtype, MSBObjectProps
-from io_soulstruct.msb.utilities import find_flver_model
+from io_soulstruct.msb.utilities import find_flver_model, batch_import_flver_models
 from io_soulstruct.types import *
 from io_soulstruct.utilities import *
 from soulstruct.containers import Binder
-from soulstruct.darksouls1ptde.maps.models import MSBObjectModel
 from soulstruct.darksouls1ptde.maps.parts import MSBObject, MSBDummyObject
 from .msb_part import BlenderMSBPart
 
@@ -137,12 +136,12 @@ class BlenderMSBObject(BlenderMSBPart[MSBObject, MSBObjectProps]):
 
         operator.info(f"Importing object FLVER from: {objbnd_path.name}")
 
-        texture_import_manager = ImageImportManager(operator, context) if import_settings.import_textures else None
+        image_import_manager = ImageImportManager(operator, context) if import_settings.import_textures else None
 
         objbnd = Binder.from_path(objbnd_path)
         binder_flvers = get_flvers_from_binder(objbnd, objbnd_path, allow_multiple=True)
-        if texture_import_manager:
-            texture_import_manager.find_flver_textures(objbnd_path, objbnd)
+        if image_import_manager:
+            image_import_manager.find_flver_textures(objbnd_path, objbnd)
         flver = binder_flvers[0]  # TODO: ignoring secondary Object FLVERs for now
 
         try:
@@ -151,7 +150,7 @@ class BlenderMSBObject(BlenderMSBPart[MSBObject, MSBObjectProps]):
                 context,
                 flver,
                 model_name,
-                texture_import_manager=texture_import_manager,
+                image_import_manager=image_import_manager,
                 collection=get_collection("Object Models", context.scene.collection),
             )
         except Exception as ex:
@@ -160,6 +159,46 @@ class BlenderMSBObject(BlenderMSBPart[MSBObject, MSBObjectProps]):
 
         # Only need to return the Mesh.
         return bl_flver.mesh
+
+    @classmethod
+    def batch_import_models(
+        cls,
+        operator: LoggingOperator,
+        context: bpy.types.Context,
+        parts: list[MSBObject],
+        map_stem: str,
+    ):
+        """Import all models for a batch of MSB Parts, as needed, in parallel as much as possible."""
+        settings = operator.settings(context)
+
+        model_datas = {}
+        model_objbnds = {}
+        for part in parts:
+            if not part.model:
+                continue  # ignore (warning will appear when `bl_part.model` assignes None)
+            model_name = part.model.get_model_file_stem(map_stem)
+            try:
+                cls.find_model_mesh(model_name, map_stem)
+            except MissingPartModelError:
+                # Queue up path for batch import.
+                objbnd_path = settings.get_import_file_path(f"obj/{model_name}.objbnd")
+                operator.info(f"Importing object FLVER from: {objbnd_path.name}")
+                objbnd = Binder.from_path(objbnd_path)
+                flver_entries = objbnd.find_entries_matching_name(r".*\.flver(\.dcx)?")
+                if not flver_entries:
+                    raise FLVERImportError(f"Cannot find a FLVER file in OBJBND {objbnd_path}.")
+                # TODO: Ignoring secondary object FLVERs for now.
+                model_datas[model_name] = flver_entries[0].get_uncompressed_data()
+                model_objbnds[model_name] = objbnd
+
+        batch_import_flver_models(
+            operator,
+            context,
+            model_datas,
+            map_stem,
+            cls.PART_SUBTYPE.get_nice_name(),
+            flver_source_binders=model_objbnds,
+        )
 
 
 BlenderMSBObject.add_auto_subtype_props(*BlenderMSBObject.AUTO_OBJECT_PROPS)

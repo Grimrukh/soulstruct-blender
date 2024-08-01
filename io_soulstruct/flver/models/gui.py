@@ -7,7 +7,6 @@ __all__ = [
 ]
 
 import bpy
-from io_soulstruct.exceptions import SoulstructTypeError
 from .import_operators import *
 from .export_operators import *
 from .types import BlenderFLVER

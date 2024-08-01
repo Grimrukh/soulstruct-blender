@@ -13,6 +13,9 @@ import bpy
 from soulstruct.base.models.mtd import MTDBND
 from soulstruct.darksouls1r.models.shaders import MatDef as DS1R_MatDef
 
+from io_soulstruct.exceptions import SoulstructTypeError
+from io_soulstruct.flver.material.types import BlenderFLVERMaterial
+from io_soulstruct.flver.models.types import BlenderFLVER
 from io_soulstruct.utilities.operators import LoggingOperator
 
 
@@ -81,7 +84,11 @@ class BakeLightmapTextures(LoggingOperator):
     @classmethod
     def poll(cls, context):
         """FLVER meshes must be selected."""
-        return context.selected_objects and all(obj.type == "MESH" for obj in context.selected_objects)
+        try:
+            bl_flvers = BlenderFLVER.from_selected_objects(context)
+        except SoulstructTypeError:
+            return False
+        return True
 
     def execute(self, context):
         """
@@ -100,15 +107,7 @@ class BakeLightmapTextures(LoggingOperator):
         mtdbnd = settings.get_mtdbnd(self)
         bake_settings = context.scene.bake_lightmap_settings
 
-        # Get all selected FLVER meshes.
-        flver_meshes = []
-        for flver_mesh in context.selected_objects:
-            if flver_mesh.type != "MESH":
-                return self.error(f"Selected object '{flver_mesh.name}' is not a mesh.")
-            flver_meshes.append(flver_mesh)
-
-        if not flver_meshes:
-            return self.error("No meshes selected for lightmap baking.")
+        bl_flvers = BlenderFLVER.from_selected_objects(context)  # type: list[BlenderFLVER]
 
         # Set up variables/function to restore original state after bake.
         original_lightmap_strengths = []  # pairs of `(node, value)`
@@ -131,12 +130,11 @@ class BakeLightmapTextures(LoggingOperator):
         self.cleanup_callback = restore_originals
 
         target_image = None  # type: bpy.types.Image | None
-        for mesh in flver_meshes:
-            mesh: bpy.types.MeshObject
+        for bl_flver in bl_flvers:
 
-            for material_slot in mesh.material_slots:
+            for material_slot in bl_flver.mesh.material_slots:
                 material_target_image = self.parse_flver_material(
-                    mesh,
+                    bl_flver,
                     material_slot,
                     mtdbnd,
                     bake_settings,
@@ -160,7 +158,7 @@ class BakeLightmapTextures(LoggingOperator):
                 self.warning(f"Error during cleanup callback after Bake Lightmap operation failed: {ex2}")
             return self.error(f"Error occurred during Cycles bake operation: {ex}")
 
-        self.info(f"Baked lightmap texture for {len(flver_meshes)} meshes: {target_image.name}")
+        self.info(f"Baked lightmap texture for {len(bl_flvers)} FLVERs: {target_image.name}")
         try:
             self.cleanup_callback()
         except Exception as ex:
@@ -170,7 +168,7 @@ class BakeLightmapTextures(LoggingOperator):
 
     def parse_flver_material(
         self,
-        mesh: bpy.types.MeshObject,
+        bl_flver: BlenderFLVER,
         material_slot: bpy.types.MaterialSlot,
         mtdbnd: MTDBND,
         bake_settings: BakeLightmapSettings,
@@ -190,22 +188,28 @@ class BakeLightmapTextures(LoggingOperator):
         selected meshes/materials are using the same lightmap texture. If no lightmap texture node is found, an error
         will be raised, to ensure that the user is fully aware of what meshes they are trying to bake.
         """
-        bl_material = material_slot.material
-
-        try:
-            mtd_name = Path(bl_material["Mat Def Path"]).name
-        except KeyError:
-            raise ValueError(f"Material '{bl_material.name}' of mesh {mesh.name} has no 'Mat Def Path' property.")
-        material_info = DS1R_MatDef.from_mtdbnd_or_name(mtd_name, mtdbnd)
+        mesh = bl_flver.mesh
+        bl_material = BlenderFLVERMaterial(material_slot.material)
+        if not bl_material.mat_def_path:
+            raise ValueError(f"Material '{bl_material.name}' of mesh {mesh.name} has no MTD path set.")
+        mtd_name = Path(bl_material.mat_def_path).name
+        matdef = DS1R_MatDef.from_mtdbnd_or_name(mtd_name, mtdbnd)
 
         texture_node_name = bake_settings.texture_node_name
 
         try:
+            # noinspection PyTypeChecker
             lightmap_node = bl_material.node_tree.nodes[texture_node_name]
         except KeyError:
             raise ValueError(
                 f"Material '{bl_material.name}' of mesh {mesh.name} has no texture node named '{texture_node_name}'."
             )
+        if lightmap_node.type != "TEX_IMAGE":
+            raise ValueError(
+                f"Material '{bl_material.name}' of mesh {mesh.name} has a node named '{texture_node_name}', but it is "
+                f"not an Image Texture node."
+            )
+        lightmap_node: bpy.types.ShaderNodeTexImage
 
         lightmap_image = lightmap_node.image
         if not lightmap_image:
@@ -256,12 +260,12 @@ class BakeLightmapTextures(LoggingOperator):
                 f"is hidden from rendering."
             )
 
-        if material_info.is_water:
+        if matdef.is_water:
             self.info(
                 f"Bake will NOT include material '{bl_material.name}' of mesh {mesh.name} with "
                 f"water MTD shader: {mtd_name}"
             )
-        elif not bake_settings.bake_edge_shaders and material_info.edge:
+        elif not bake_settings.bake_edge_shaders and matdef.edge:
             self.info(
                 f"Bake will NOT include material '{bl_material.name}' of mesh {mesh.name} with "
                 f"'Edge' MTD shader: {mtd_name}"

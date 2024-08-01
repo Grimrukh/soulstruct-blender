@@ -50,10 +50,10 @@ class ImageImportManager:
         self.context = context
 
         self._binder_paths = {}
-        self._pending_tpf_sources = {}
-        self._tpf_textures = {}
+        self._pending_tpf_sources = {}  # NOTE: keys are all lower case
+        self._tpf_textures = {}  # NOTE: keys are all lower case
         self._scanned_binder_paths = set()
-        self._scanned_tpf_sources = set()
+        self._scanned_tpf_sources = set()  # NOTE: all lower case
 
     def find_flver_textures(self, flver_source_path: Path, flver_binder: Binder = None, prefer_hi_res=True):
         """Register known game Binders/TPFs to be opened as needed.
@@ -157,7 +157,7 @@ class ImageImportManager:
     def scan_binder_textures(self, binder: Binder):
         """Register all TPFs in an arbitrary opened Binder (usually the one containing the FLVER) as pending sources."""
         for tpf_entry in binder.find_entries_matching_name(TPF_RE):
-            tpf_entry_stem = tpf_entry.name.split(".")[0]
+            tpf_entry_stem = tpf_entry.name.split(".")[0].lower()
             if tpf_entry_stem not in self._scanned_tpf_sources:
                 self._pending_tpf_sources.setdefault(tpf_entry_stem, tpf_entry)
 
@@ -165,9 +165,11 @@ class ImageImportManager:
         """Find texture from its stem across all registered/loaded texture file sources.
 
         If `model_name` is given, multi-DDS TPFs with that name will also be opened and checked.
+
+        Texture stem is NOT case-sensitive.
         """
-        # TODO: Add a 'hint' argument that helps efficiently find map piece textures in arbitrary maps, based on the
-        #  map prefix of `texture_stem`, so that
+        model_name = model_name.lower()
+        texture_stem = texture_stem.lower()
 
         if texture_stem in self._tpf_textures:
             # Already found and loaded.
@@ -212,7 +214,7 @@ class ImageImportManager:
         self._scanned_binder_paths.add(binder_path)
         binder = Binder.from_path(binder_path)
         for tpf_entry in binder.find_entries_matching_name(TPF_RE):
-            tpf_entry_stem = tpf_entry.name.split(".")[0]
+            tpf_entry_stem = tpf_entry.name.split(".")[0].lower()
             if tpf_entry_stem not in self._scanned_tpf_sources:
                 self._pending_tpf_sources.setdefault(tpf_entry_stem, tpf_entry)
 
@@ -225,7 +227,7 @@ class ImageImportManager:
             tpf = TPF.from_path(tpf_path_or_entry)
         for texture in tpf.textures:
             # TODO: Handle duplicate textures/overwrites. Currently ignoring duplicates.
-            self._tpf_textures.setdefault(texture.name, texture)
+            self._tpf_textures.setdefault(texture.name.lower(), texture)
 
     def _find_map_tpfs(self, map_area_block_dir: Path):
         """Find 'mAA' directory adjacent to given 'mAA_BB_CC_DD' directory and find all TPFBHD split Binders in it.
@@ -255,12 +257,12 @@ class ImageImportManager:
                     self._binder_paths.setdefault(binder_stem, tpf_or_tpfbhd_path)
             elif TPF_RE.match(tpf_or_tpfbhd_path.name):
                 # Loose map multi-texture TPF (usually 'mXX_9999.tpf'). We unpack all textures in it immediately.
-                tpf_stem = tpf_or_tpfbhd_path.name.split(".")[0]
+                tpf_stem = tpf_or_tpfbhd_path.name.split(".")[0].lower()
                 if tpf_stem not in self._scanned_tpf_sources:
                     tpf = TPF.from_path(tpf_or_tpfbhd_path)
                     for texture in tpf.textures:
                         # TODO: Handle duplicate textures/overwrites. Currently ignoring duplicates.
-                        self._tpf_textures.setdefault(texture.name, texture)
+                        self._tpf_textures.setdefault(texture.name.lower(), texture)
                     self._scanned_tpf_sources.add(tpf_stem)
 
     def _find_tpfs_in_dir(self, tpf_dir: Path):
@@ -270,7 +272,7 @@ class ImageImportManager:
             return
 
         for tpf_path in tpf_dir.glob("*.tpf"):
-            tpf_stem = tpf_path.name.split(".")[0]
+            tpf_stem = tpf_path.name.split(".")[0].lower()
             if tpf_stem not in self._scanned_tpf_sources:
                 self._pending_tpf_sources.setdefault(tpf_stem, tpf_path)
 
@@ -279,7 +281,7 @@ class ImageImportManager:
         chr_tpf_dir = source_dir / model_stem
         if chr_tpf_dir.is_dir():
             for tpf_path in chr_tpf_dir.glob("*.tpf"):  # no DCX in PTDE
-                tpf_stem = tpf_path.name.split(".")[0]
+                tpf_stem = tpf_path.name.split(".")[0].lower()
                 if tpf_stem not in self._scanned_tpf_sources:
                     self._pending_tpf_sources.setdefault(tpf_stem, tpf_path)
 
@@ -300,7 +302,7 @@ class ImageImportManager:
         tpfbxf = Binder.from_bytes(tpfbhd_entry.data, bdt_data=tpfbdt_path.read_bytes())
         for tpf_entry in tpfbxf.find_entries_matching_name(TPF_RE):
             # These are very likely to be used by the FLVER, but we still queue them up rather than open them now.
-            tpf_stem = tpf_entry.name.split(".")[0]
+            tpf_stem = tpf_entry.name.split(".")[0].lower()
             if tpf_stem not in self._scanned_tpf_sources:
                 self._pending_tpf_sources.setdefault(tpf_stem, tpf_entry)
 
@@ -316,7 +318,7 @@ class ImageImportManager:
                 texbnd_tpf = TPF.from_binder_entry(tpf_entry)
                 self._scanned_tpf_sources.add(tpf_stem)
                 for texture in texbnd_tpf.textures:
-                    self._tpf_textures.setdefault(texture.name, texture)
+                    self._tpf_textures.setdefault(texture.name.lower(), texture)
 
     def _find_common_body(self, source_dir):
         """Find 'parts/common_body.tpf.dcx' character TPFs. Used by many non-c0000 characters."""
@@ -326,7 +328,7 @@ class ImageImportManager:
             self._scanned_tpf_sources.add("common_body")
             common_body = TPF.from_path(common_body_path)
             for texture in common_body.textures:
-                self._tpf_textures.setdefault(texture.name, texture)
+                self._tpf_textures.setdefault(texture.name.lower(), texture)
 
     def _find_parts_common_tpfs(self, source_dir: Path):
         """Find and immediately load all textures inside multi-texture 'Common' TPFs (e.g. player skin)."""
@@ -336,7 +338,7 @@ class ImageImportManager:
             self._scanned_tpf_sources.add(common_tpf_stem)
             for texture in common_tpf.textures:
                 # TODO: Handle duplicate textures/overwrites. Currently ignoring duplicates.
-                self._tpf_textures.setdefault(texture.name, texture)
+                self._tpf_textures.setdefault(texture.name.lower(), texture)
 
     def _find_aeg_tpfs(self, source_dir: Path):
         aeg_directory_match = AEG_STEM_RE.match(source_dir.name)
@@ -349,6 +351,6 @@ class ImageImportManager:
             return
 
         for tpf_path in aet_directory.glob("*.tpf"):
-            tpf_stem = tpf_path.name.split(".")[0]
+            tpf_stem = tpf_path.name.split(".")[0].lower()
             if tpf_stem not in self._scanned_tpf_sources:
                 self._pending_tpf_sources.setdefault(tpf_stem, tpf_path)

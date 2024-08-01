@@ -7,13 +7,14 @@ __all__ = [
 import re
 import traceback
 import typing as tp
+from pathlib import Path
 
 import bpy
-from io_soulstruct.exceptions import FLVERImportError
-from io_soulstruct.flver.models import BlenderFLVER
+from io_soulstruct.exceptions import FLVERImportError, MissingPartModelError
 from io_soulstruct.flver.image.image_import_manager import ImageImportManager
+from io_soulstruct.flver.models import BlenderFLVER
 from io_soulstruct.msb.properties import MSBPartSubtype, MSBMapPieceProps
-from io_soulstruct.msb.utilities import find_flver_model
+from io_soulstruct.msb.utilities import find_flver_model, batch_import_flver_models
 from io_soulstruct.types import *
 from io_soulstruct.utilities import LoggingOperator, get_collection
 from soulstruct.base.models.flver import FLVER
@@ -59,7 +60,7 @@ class BlenderMSBMapPiece(BlenderMSBPart[MSBMapPiece, MSBMapPieceProps]):
         settings = operator.settings(context)
         flver_import_settings = context.scene.flver_import_settings
         try:
-            flver_path = settings.get_import_map_file_path(f"{model_name}.flver")
+            flver_path = settings.get_import_map_file_path(f"{model_name}.flver", map_stem=map_stem)
         except FileNotFoundError:
             raise FLVERImportError(f"Cannot find FLVER model file for Map Piece: {model_name}.")
 
@@ -68,8 +69,8 @@ class BlenderMSBMapPiece(BlenderMSBPart[MSBMapPiece, MSBMapPieceProps]):
         flver = FLVER.from_path(flver_path)
 
         if flver_import_settings.import_textures:
-            texture_import_manager = ImageImportManager(operator, context)
-            texture_import_manager.find_flver_textures(flver_path)
+            image_import_manager = ImageImportManager(operator, context)
+            image_import_manager.find_flver_textures(flver_path)
             area_re = re.compile(r"^m\d\d_")
             texture_map_areas = {
                 texture_path.stem[:3]
@@ -78,9 +79,9 @@ class BlenderMSBMapPiece(BlenderMSBPart[MSBMapPiece, MSBMapPieceProps]):
             }
             for map_area in texture_map_areas:
                 map_area_dir = (flver_path.parent / f"../{map_area}").resolve()
-                texture_import_manager.find_specific_map_textures(map_area_dir)
+                image_import_manager.find_specific_map_textures(map_area_dir)
         else:
-            texture_import_manager = None
+            image_import_manager = None
 
         map_piece_model_collection = get_collection(f"{map_stem} Map Piece Models", context.scene.collection)
         try:
@@ -89,7 +90,7 @@ class BlenderMSBMapPiece(BlenderMSBPart[MSBMapPiece, MSBMapPieceProps]):
                 context,
                 flver,
                 model_name,
-                texture_import_manager=texture_import_manager,
+                image_import_manager=image_import_manager,
                 collection=map_piece_model_collection,
             )
         except Exception as ex:
@@ -123,7 +124,54 @@ class BlenderMSBMapPiece(BlenderMSBPart[MSBMapPiece, MSBMapPieceProps]):
             if bl_flver.armature:
                 # This handles parenting, rigging, etc.
                 bl_flver.duplicate_armature(context, bl_map_piece.obj, copy_pose=True)
+                # Rename Part Armature object.
+                bl_map_piece.armature.name = f"{name} Armature"
                 # Rename modifier for clarity.
                 bl_map_piece.obj.modifiers["FLVER Armature"].name = "Part Armature"
 
         return bl_map_piece
+
+    @classmethod
+    def batch_import_models(
+        cls,
+        operator: LoggingOperator,
+        context: bpy.types.Context,
+        parts: list[MSBMapPiece],
+        map_stem: str,
+    ):
+        """Import all models for a batch of MSB Parts, as needed, in parallel as much as possible."""
+        settings = operator.settings(context)
+
+        model_datas = {}  # type: dict[str, Path]
+        for part in parts:
+            if not part.model:
+                continue  # ignore (warning will appear when `bl_part.model` assignes None)
+            model_name = part.model.get_model_file_stem(map_stem)
+            try:
+                cls.find_model_mesh(model_name, map_stem)
+            except MissingPartModelError:
+                # Queue up path for batch import.
+                model_path = settings.get_import_map_file_path(f"{model_name}.flver", map_stem=map_stem)
+                if model_path.is_file():  # otherwise, we'll get a handled error later
+                    model_datas[model_name] = model_path
+
+        def image_import_callback(image_import_manager: ImageImportManager, flver: FLVER):
+            area_re = re.compile(r"^m\d\d_")
+            texture_map_areas = {
+                texture_path.stem[:3]
+                for texture_path in flver.get_all_texture_paths()
+                if re.match(area_re, texture_path.stem)
+            }
+            for map_area in texture_map_areas:
+                map_area_dir = (flver.path.parent / f"../{map_area}").resolve()
+                image_import_manager.find_specific_map_textures(map_area_dir)
+
+        batch_import_flver_models(
+            operator,
+            context,
+            model_datas,
+            map_stem,
+            cls.PART_SUBTYPE.get_nice_name(),
+            flver_source_binders=None,
+            image_import_callback=image_import_callback,
+        )

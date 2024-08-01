@@ -194,31 +194,42 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         subtype="FILE_PATH",
     )
 
-    str_png_cache_directory: bpy.props.StringProperty(
-        name="PNG Cache Directory",
-        description="Path of directory to read/write cached PNG textures (from game DDS textures)",
+    str_image_cache_directory: bpy.props.StringProperty(
+        name="Image Cache Directory",
+        description="Path of directory to read/write cached image textures (from game DDS textures)",
         default="",
         subtype="DIR_PATH",
     )
 
-    read_cached_pngs: bpy.props.BoolProperty(
-        name="Read Cached PNGs",
-        description="Read cached PNGs with matching stems from PNG cache (if given) rather than converting DDS "
-                    "textures of imported FLVERs",
+    image_cache_format: bpy.props.EnumProperty(
+        name="Image Cache Format",
+        description="Format of cached image textures. Both lossless; PNG files take up less space but load slower",
+        items=[
+            ("TGA", "TGA", "TGA format"),
+            ("PNG", "PNG", "PNG format"),
+        ],
+        default="TGA",
+    )
+
+    read_cached_images: bpy.props.BoolProperty(
+        name="Read Cached Images",
+        description="Read cached images of the given format with matching stems from image cache directory if given, "
+                    "rather than finding and converting DDS textures of imported FLVERs",
         default=True,
     )
 
-    write_cached_pngs: bpy.props.BoolProperty(
-        name="Write Cached PNGs",
-        description="Write cached PNGs of imported FLVER textures (converted from DDS files) to PNG cache if given, so "
-                    "they can be loaded more quickly in the future or modified by the user without DDS headaches",
+    write_cached_images: bpy.props.BoolProperty(
+        name="Write Cached Images",
+        description="Write cached images of the given format of imported FLVER textures (converted from DDS files) to "
+                    "image cache directory if given, so they can be loaded more quickly in the future or modified by "
+                    "the user without DDS headaches",
         default=True,
     )
 
     pack_image_data: bpy.props.BoolProperty(
         name="Pack Image Data",
-        description="Pack Blender Image texture data into Blend file, rather than simply linking to the cached PNG "
-                    "image on disk (if it exists)",
+        description="Pack Blender Image texture data into Blend file, rather than simply linking to the cached "
+                    "image file on disk (if it exists and is loaded). Uncached DDS texture data will always be packed",
         default=False,
     )
 
@@ -296,8 +307,8 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         return Path(self.str_matbinbnd_path) if self.str_matbinbnd_path else None
 
     @property
-    def png_cache_directory(self) -> Path | None:
-        return Path(self.str_png_cache_directory) if self.str_png_cache_directory else None
+    def image_cache_directory(self) -> Path | None:
+        return Path(self.str_image_cache_directory) if self.str_image_cache_directory else None
 
     # endregion
 
@@ -483,6 +494,12 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         if not path:
             raise FileNotFoundError(f"MSB file for map '{map_stem}' not found in project or game directory.")
         return path
+
+    def get_cached_image_path(self, image_stem: str):
+        """Get the path to a cached image file in the image cache directory."""
+        if not self.str_image_cache_directory:
+            raise NotADirectoryError("No image cache directory set.")
+        return self.image_cache_directory / f"{image_stem}.{self.image_cache_format.lower()}"
 
     # endregion
 

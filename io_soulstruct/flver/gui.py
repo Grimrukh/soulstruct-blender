@@ -159,7 +159,7 @@ class FLVERMaterialToolsPanel(bpy.types.Panel):
         if panel:
             panel.label(text="Textures:")
             panel.operator(ImportTextures.bl_idname)
-            panel.operator(FindMissingTexturesInPNGCache.bl_idname)
+            panel.operator(FindMissingTexturesInImageCache.bl_idname)
             # panel.operator(ExportTexturesIntoBinder.bl_idname)  # TODO: not yet functional
 
 

@@ -99,6 +99,7 @@ class BlenderFLVERMaterial:
     def new_from_flver_material(
         cls,
         operator: LoggingOperator,
+        context: bpy.types.Context,
         flver_material: Material,
         flver_sampler_texture_stems: dict[str, str],
         material_name: str,
@@ -107,6 +108,7 @@ class BlenderFLVERMaterial:
         vertex_color_count: int,
         blend_mode="HASHED",
         warn_missing_textures=True,
+        bl_materials_by_matdef_name: dict[str, bpy.types.Material] = None,
     ) -> BlenderFLVERMaterial:
         """Create a new Blender material from a FLVER material.
 
@@ -119,17 +121,27 @@ class BlenderFLVERMaterial:
         replicate the game engine's shaders, and is not needed for FLVER export. (NOTE: Elden Ring tends to store
         texture paths in MATBIN files rather than in the FLVER materials, so even the texture names may not be used on
         export.)
-        """
 
-        bl_material = bpy.data.materials.new(name=material_name)
-        bl_material.use_nodes = True
-        if blend_mode:
-            if matdef and matdef.edge:
-                # Always uses "CLIP".
-                bl_material.blend_method = "CLIP"
-                bl_material.alpha_threshold = 0.5
-            else:
-                bl_material.blend_method = blend_mode
+        If `bl_materials_by_matdef_name` is given, new Materials will be copied from existing Materials with the same
+        MATDEF name, and only the textures updated. This is more efficient than creating identical shader node trees
+        over and over for multiple materials.
+        """
+        if bl_materials_by_matdef_name is not None and flver_material.mat_def_name in bl_materials_by_matdef_name:
+            copied = True
+            bl_material = bl_materials_by_matdef_name[flver_material.mat_def_name].copy()
+            bl_material.name = material_name
+            # `use_nodes` already set up, and blend settings will match same MatDef.
+        else:
+            copied = False
+            bl_material = bpy.data.materials.new(name=material_name)
+            bl_material.use_nodes = True
+            if blend_mode:
+                if matdef and matdef.edge:
+                    # Always uses "CLIP".
+                    bl_material.blend_method = "CLIP"
+                    bl_material.alpha_threshold = 0.5
+                else:
+                    bl_material.blend_method = blend_mode
 
         material = cls(bl_material)
         # Real Material properties:
@@ -189,24 +201,63 @@ class BlenderFLVERMaterial:
             # Override texture path.
             sampler_texture_stems[sampler_name] = texture_stem
 
-        # Try to build shader nodetree.
-        try:
-            builder = NodeTreeBuilder(
-                operator=operator,
-                material=bl_material,
-                matdef=matdef,
-                sampler_texture_stems=sampler_texture_stems,
-                vertex_color_count=vertex_color_count,
-            )
-            builder.build()
-        except (MaterialImportError, KeyError, ValueError, IndexError) as ex:
-            operator.warning(
-                f"Error building shader for material '{material_name}'. Textures written to custom properties. Error:\n"
-                f"    {ex}"
-            )
-            for sampler_name, texture_stem in flver_sampler_texture_stems.items():
-                bl_material[f"Path[{sampler_name}]"] = texture_stem
-            return material
+        if not copied:
+            # Try to build shader nodetree.
+            try:
+                builder = NodeTreeBuilder(
+                    operator=operator,
+                    context=context,
+                    material=bl_material,
+                    matdef=matdef,
+                    sampler_texture_stems=sampler_texture_stems,
+                    vertex_color_count=vertex_color_count,
+                )
+                builder.build()
+            except (MaterialImportError, KeyError, ValueError, IndexError) as ex:
+                operator.warning(
+                    f"Error building shader for material '{material_name}'. Textures written to custom properties. "
+                    f"Error:\n  {ex}"
+                )
+                for sampler_name, texture_stem in flver_sampler_texture_stems.items():
+                    bl_material[f"Path[{sampler_name}]"] = texture_stem
+
+            if bl_materials_by_matdef_name is not None:
+                # Record material for MatDef for future copying.
+                bl_materials_by_matdef_name[flver_material.mat_def_name] = bl_material
+        else:
+            # Just replace appropriate texture nodes.
+            tex_nodes_by_name = {
+                node.name: node
+                for node in material.get_image_texture_nodes()
+            }
+            for sampler_name, texture_stem in sampler_texture_stems.items():
+                if sampler_name in tex_nodes_by_name:
+                    if not texture_stem:
+                        # No texture given in MATBIN or FLVER.
+                        tex_nodes_by_name[sampler_name].image = None
+                        continue
+
+                    # TODO: NodeTreeBuilder has identical method.
+                    # Search for Blender image with no extension, TGA, PNG, or DDS, in that order of preference.
+                    for image_name in (
+                        f"{texture_stem}", f"{texture_stem}.tga", f"{texture_stem}.png", f"{texture_stem}.dds"
+                    ):
+                        try:
+                            bl_image = bpy.data.images[image_name]
+                            break
+                        except KeyError:
+                            pass
+                    else:
+                        # Blender image not found. Create empty 1x1 Blender image.
+                        bl_image = bpy.data.images.new(name=texture_stem, width=1, height=1, alpha=True)
+                        bl_image.pixels = [1.0, 0.0, 1.0, 1.0]  # magenta
+                        if context.scene.flver_import_settings.import_textures:  # otherwise, expected to be missing
+                            operator.warning(
+                                f"Could not find texture '{texture_stem}' in Blender image data. "
+                                f"Created 1x1 magenta Image."
+                            )
+
+                    tex_nodes_by_name[sampler_name].image = bl_image
 
         return material
 
@@ -399,6 +450,13 @@ class BlenderFLVERMaterial:
             submesh_kwargs,
             used_uv_layer_names,
         )
+
+    def get_image_texture_nodes(self, with_image_only=False) -> list[bpy.types.ShaderNodeTexImage]:
+        # noinspection PyTypeChecker,PyUnresolvedReferences
+        return [
+            node for node in self.node_tree.nodes
+            if node.type == "TEX_IMAGE" and (not with_image_only or node.image is not None)
+        ]
 
     @classmethod
     def add_auto_type_props(cls, *names):

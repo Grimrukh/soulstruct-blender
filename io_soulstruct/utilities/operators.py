@@ -60,9 +60,12 @@ class LoggingOperator(bpy.types.Operator):
         try:
             execute = getattr(self, "_execute")
         except AttributeError:
-            return self.error(f"Operator {self.bl_idname} does not have an `_execute` method to wrap with profiler.")
+            return self.error(
+                f"Operator {self.bl_idname} does not have an `_execute` method to wrap with profiler. "
+                f"It must define either `execute` (normal) or `_execute` (profiled)."
+            )
         from soulstruct.utilities.inspection import profile_function
-        decorated_execute = profile_function(20, sort="cumtime")(execute)
+        decorated_execute = profile_function(20, sort="tottime")(execute)
         return decorated_execute(context)
 
     @staticmethod

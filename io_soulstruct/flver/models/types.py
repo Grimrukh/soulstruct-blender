@@ -362,6 +362,14 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
     unk_x68: int
 
     @property
+    def submesh_vertices_merged(self) -> bool:
+        return self.type_properties.submesh_vertices_merged
+
+    @submesh_vertices_merged.setter
+    def submesh_vertices_merged(self, value: bool):
+        self.type_properties.submesh_vertices_merged = value
+
+    @property
     def armature(self) -> bpy.types.ArmatureObject | None:
         """Detect parent Armature of wrapped Mesh object."""
         if self.obj.parent and self.obj.parent.type == "ARMATURE":
@@ -653,14 +661,43 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         context: bpy.types.Context,
         flver: FLVER,
         name: str,
-        texture_import_manager: ImageImportManager | None = None,
+        image_import_manager: ImageImportManager | None = None,
         collection: bpy.types.Collection = None,
+        merged_mesh: MergedMesh = None,
+        bl_materials: tp.Sequence[BlenderFLVERMaterial] = None,
     ) -> BlenderFLVER:
         """Read a FLVER into a managed Blender Armature/Mesh.
 
         If the FLVER has only a single bone with all-default properties for this game, and no Dummies, no Armature will
         be created and the Mesh will be the root object. This is useful for simple static models like map pieces.
+
+        `merged_mesh` can be created in advance (e.g. in parallel) and passed in directly for the corresponding `FLVER`.
+        If so, `bl_materials` must also be given, and should have been created in advance to get the `MergedMesh`
+        arguments anyway.
+
+        NOTE: FLVER (for DS1 at least) supports a maximum of 38 bones per sub-mesh. When this maximum is reached, a new
+        FLVER submesh is created. All of these sub-meshes are unified in Blender under the same material slot, and will
+        be split again on export as needed.
+
+        Some FLVER submeshes also use the same material, but have different `Mesh` or `FaceSet` properties such as
+        `use_backface_culling`. Backface culling is a material option in Blender, so these submeshes will use different
+        Blender material 'variants' even though they use the same FLVER material. The FLVER exporter will start by
+        creating a FLVER material for every Blender material slot, then unify any identical FLVER material instances and
+        redirect any differences like `use_backface_culling` or `is_bind_pose` to the FLVER mesh.
+
+        Breakdown:
+            - Blender stores POSITION, BONE WEIGHTS, and BONE INDICES on vertices. Any differences here will require
+            genuine vertex duplication in Blender. (Of course, vertices at the same position in the same sub-mesh should
+            essentially ALWAYS have the same bone weights and indices.)
+            - Blender stores MATERIAL SLOT INDEX on faces. This is how different FLVER submeshes are represented.
+            - Blender stores UV COORDINATES, VERTEX COLORS, and NORMALS on face loops ('vertex instances'). This gels
+            with what FLVER meshes want to do.
+            - Blender does not import tangents or bitangents. These are calculated on export.
         """
+        if merged_mesh and not bl_materials:
+            raise ValueError("If `merged_mesh` is given, `bl_materials` must also be given.")
+        elif not merged_mesh and bl_materials:
+            raise ValueError("If `bl_materials` are given, `merged_mesh` must also be given.")
 
         collection = collection or context.scene.collection
         import_settings = context.scene.flver_import_settings
@@ -694,30 +731,57 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
                 operator, context, flver, armature, bl_bone_names, import_settings.base_edit_bone_length
             )
 
-        try:
-            bl_materials, submesh_bl_material_indices, bl_material_uv_layer_names = cls.create_materials(
-                operator,
-                context,
-                flver,
-                model_name=name,
-                material_blend_mode=import_settings.material_blend_mode,
-                texture_import_manager=texture_import_manager,
-            )
-        except MatDefError:
-            # No materials will be created! TODO: Surely not.
-            bl_materials = []
-            submesh_bl_material_indices = []
-            bl_material_uv_layer_names = []
+        if bpy.ops.object.mode_set.poll():
+            bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
 
-        mesh = cls.create_flver_mesh(
-            operator,
-            flver,
-            name,
-            armature is not None,
-            bl_bone_names,
-            submesh_bl_material_indices,
-            bl_material_uv_layer_names,
-        )
+        mesh_data = bpy.data.meshes.new(name=name)
+
+        if not flver.submeshes:
+            # FLVER has no meshes (e.g. c0000). Leave empty.
+            mesh = new_mesh_object(f"{name} <EMPTY>", mesh_data, SoulstructType.FLVER)
+            bl_materials = []
+        elif any(mesh.invalid_layout for mesh in flver.submeshes):
+            # Corrupted submeshes (e.g. some DS1R map pieces) that couldn't be fixed by `FLVER` class. Leave empty.
+            mesh = new_mesh_object(f"{name} <INVALID>", mesh_data, SoulstructType.FLVER)
+            bl_materials = []
+        elif merged_mesh:
+            # Merged mesh already given. Implies that Blender materials are handled manually as well.
+            bl_vert_bone_weights, bl_vert_bone_indices = cls.create_bl_mesh(mesh_data, merged_mesh)
+            mesh = new_mesh_object(name, mesh_data, SoulstructType.FLVER)
+            if armature:
+                cls.create_bone_vertex_groups(mesh, bl_bone_names, bl_vert_bone_weights, bl_vert_bone_indices)
+        else:
+            # Create materials and `MergedMesh` now.
+            try:
+                bl_materials, submesh_bl_material_indices, bl_material_uv_layer_names = cls.create_materials(
+                    operator,
+                    context,
+                    flver,
+                    model_name=name,
+                    material_blend_mode=import_settings.material_blend_mode,
+                    image_import_manager=image_import_manager,
+                    # No cached MatDef materials to pass in.
+                )
+            except MatDefError:
+                # No materials will be created! TODO: Surely not.
+                bl_materials = []
+                submesh_bl_material_indices = ()
+                bl_material_uv_layer_names = ()
+
+            # p = time.perf_counter()
+            # Create merged mesh.
+            merged_mesh = MergedMesh.from_flver(
+                flver,
+                submesh_bl_material_indices,
+                material_uv_layer_names=bl_material_uv_layer_names,
+                merge_vertices=import_settings.merge_submesh_vertices,
+            )
+            # self.operator.info(f"Merged FLVER submeshes in {time.perf_counter() - p} s")
+            bl_vert_bone_weights, bl_vert_bone_indices = cls.create_bl_mesh(mesh_data, merged_mesh)
+            mesh = new_mesh_object(name, mesh_data, SoulstructType.FLVER)
+            if armature:
+                cls.create_bone_vertex_groups(mesh, bl_bone_names, bl_vert_bone_weights, bl_vert_bone_indices)
+
         collection.objects.link(mesh)
         for bl_material in bl_materials:
             mesh.data.materials.append(bl_material.material)
@@ -746,6 +810,8 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         bl_flver.unk_x5d = flver.unk_x5d
         bl_flver.unk_x68 = flver.unk_x68
 
+        bl_flver.submesh_vertices_merged = import_settings.merge_submesh_vertices
+
         return bl_flver  # might be used by other importers
 
     @staticmethod
@@ -763,8 +829,9 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         flver: FLVER,
         model_name: str,
         material_blend_mode: str,
-        texture_import_manager: ImageImportManager | None = None,
-    ) -> tuple[list[BlenderFLVERMaterial], list[int], list[list[str]]]:
+        image_import_manager: ImageImportManager | None = None,
+        bl_materials_by_matdef_name: dict[str, Material] = None,
+    ) -> tuple[tuple[BlenderFLVERMaterial, ...], tuple[int, ...], tuple[tuple[str, ...], ...]]:
         """Create Blender materials needed for `flver`.
 
         We need to scan the FLVER to actually parse which unique combinations of Material/Submesh properties exist.
@@ -775,25 +842,28 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
 
         # Submesh-matched list of dictionaries mapping sample/texture type to texture path (only name matters).
         settings = operator.settings(context)
+        import_settings = context.scene.flver_import_settings
         mtdbnd = get_cached_mtdbnd(operator, settings) if not GAME_CONFIG[settings.game].uses_matbin else None
         matbinbnd = get_cached_matbinbnd(operator, settings) if GAME_CONFIG[settings.game].uses_matbin else None
         all_submesh_texture_stems = cls.get_submesh_flver_textures(flver, matbinbnd)
+        bl_materials_by_matdef_name = bl_materials_by_matdef_name or {}  # still worthwhile within one FLVER
 
-        if texture_import_manager or settings.png_cache_directory:
-            p = time.perf_counter()
-            all_texture_stems = {
-                v
-                for submesh_textures in all_submesh_texture_stems
-                for v in submesh_textures.values()
-                if v  # obviously ignore empty texture paths
-            }
-            texture_collection = cls.load_texture_images(
-                operator, context, model_name, all_texture_stems, texture_import_manager
-            )
-            if texture_collection:
-                operator.info(f"Loaded {len(texture_collection)} textures in {time.perf_counter() - p:.3f} seconds.")
-        else:
-            operator.info("No imported textures or PNG cache folder given. No textures loaded for FLVER.")
+        if import_settings.import_textures:
+            if image_import_manager or settings.str_image_cache_directory:
+                p = time.perf_counter()
+                all_texture_stems = {
+                    v
+                    for submesh_textures in all_submesh_texture_stems
+                    for v in submesh_textures.values()
+                    if v  # obviously ignore empty texture paths
+                }
+                texture_collection = cls.load_texture_images(
+                    operator, context, model_name, all_texture_stems, image_import_manager
+                )
+                if texture_collection:
+                    operator.info(f"Loaded {len(texture_collection)} textures in {time.perf_counter() - p:.3f} s.")
+            else:
+                operator.info("No imported textures or PNG cache folder given. No textures loaded for FLVER.")
 
         # Maps FLVER submeshes to their Blender material index to store per-face in the merged mesh.
         # Submeshes that originally indexed the same FLVER material may have different Blender 'variant' materials that
@@ -802,7 +872,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         # Blender material and be split again automatically on export (but likely not in an indentical way!).
         submesh_bl_material_indices = []
         # UV layer names used by each Blender material index (NOT each FLVER submesh).
-        bl_material_uv_layer_names = []  # type: list[list[str]]
+        bl_material_uv_layer_names = []  # type: list[tuple[str, ...]]
 
         # Map FLVER material hashes to the indices of variant Blender materials sourced from them, which hold distinct
         # Submesh/FaceSet properties.
@@ -860,6 +930,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
 
                 bl_material = BlenderFLVERMaterial.new_from_flver_material(
                     operator,
+                    context,
                     material,
                     flver_sampler_texture_stems=submesh_textures,
                     material_name=bl_material_name,
@@ -867,7 +938,8 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
                     submesh=submesh,
                     vertex_color_count=vertex_color_count,
                     blend_mode=material_blend_mode,
-                    warn_missing_textures=texture_import_manager is not None,
+                    warn_missing_textures=image_import_manager is not None,
+                    bl_materials_by_matdef_name=bl_materials_by_matdef_name,
                 )
 
                 submesh_bl_material_indices.append(bl_material_index)
@@ -875,12 +947,12 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
 
                 new_materials.append(bl_material)
                 if matdef:
-                    used_uv_layers = flver_matdefs[material_hash].get_used_uv_layers()
-                    bl_material_uv_layer_names.append([layer.name for layer in used_uv_layers])
+                    used_uv_layers = matdef.get_used_uv_layers()
+                    bl_material_uv_layer_names.append(tuple(layer.name for layer in used_uv_layers))
                 else:
                     # UV layer names not known for this material. `MergedMesh` will just use index, which may cause
                     # conflicting types of UV data to occupy the same Blender UV slot.
-                    bl_material_uv_layer_names.append([])
+                    bl_material_uv_layer_names.append(())
                 continue
 
             existing_variant_bl_indices = flver_material_hash_variants[material_hash]
@@ -927,6 +999,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
 
             bl_material = BlenderFLVERMaterial.new_from_flver_material(
                 operator,
+                context,
                 material,
                 submesh_textures,
                 material_name=variant_name,
@@ -934,6 +1007,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
                 submesh=submesh,
                 vertex_color_count=vertex_color_count,
                 blend_mode=material_blend_mode,
+                bl_materials_by_matdef_name=bl_materials_by_matdef_name,
             )
 
             new_bl_material_index = len(new_materials)
@@ -942,12 +1016,12 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
             new_materials.append(bl_material)
             if flver_matdefs[material_hash] is not None:
                 bl_material_uv_layer_names.append(
-                    [layer.name for layer in flver_matdefs[material_hash].get_used_uv_layers()]
+                    tuple(layer.name for layer in flver_matdefs[material_hash].get_used_uv_layers())
                 )
             else:
-                bl_material_uv_layer_names.append([])
+                bl_material_uv_layer_names.append(())
 
-        return new_materials, submesh_bl_material_indices, bl_material_uv_layer_names
+        return tuple(new_materials), tuple(submesh_bl_material_indices), tuple(bl_material_uv_layer_names)
 
     @staticmethod
     def get_submesh_flver_textures(
@@ -979,77 +1053,12 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         return all_submesh_texture_names
 
     @classmethod
-    def create_flver_mesh(
+    def create_bl_mesh(
         cls,
-        operator: LoggingOperator,
-        flver: FLVER,
-        name: str,
-        has_armature: bool,
-        bl_bone_names: list[str],
-        submesh_bl_material_indices: list[int],
-        bl_material_uv_layer_names: list[list[str]],
-    ) -> bpy.types.MeshObject:
-        """Create a single Blender mesh that combines all FLVER submeshes, using multiple material slots.
-
-        NOTE: FLVER (for DS1 at least) supports a maximum of 38 bones per sub-mesh. When this maximum is reached, a new
-        FLVER submesh is created. All of these sub-meshes are unified in Blender under the same material slot, and will
-        be split again on export as needed.
-
-        Some FLVER submeshes also use the same material, but have different `Mesh` or `FaceSet` properties such as
-        `use_backface_culling`. Backface culling is a material option in Blender, so these submeshes will use different
-        Blender material 'variants' even though they use the same FLVER material. The FLVER exporter will start by
-        creating a FLVER material for every Blender material slot, then unify any identical FLVER material instances and
-        redirect any differences like `use_backface_culling` or `is_bind_pose` to the FLVER mesh.
-
-        Breakdown:
-            - Blender stores POSITION, BONE WEIGHTS, and BONE INDICES on vertices. Any differences here will require
-            genuine vertex duplication in Blender. (Of course, vertices at the same position in the same sub-mesh should
-            essentially ALWAYS have the same bone weights and indices.)
-            - Blender stores MATERIAL SLOT INDEX on faces. This is how different FLVER submeshes are represented.
-            - Blender stores UV COORDINATES, VERTEX COLORS, and NORMALS on face loops ('vertex instances'). This gels
-            with what FLVER meshes want to do.
-            - Blender does not import tangents or bitangents. These are calculated on export.
-        """
-        if bpy.ops.object.mode_set.poll():
-            bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
-
-        # Armature parent object uses simply `name`. Mesh data/object has 'Mesh' suffix.
-        mesh_data = bpy.data.meshes.new(name=name)
-
-        if not flver.submeshes:
-            # FLVER has no meshes (e.g. c0000). Leave empty.
-            return new_mesh_object(f"{name} <EMPTY>", mesh_data, SoulstructType.FLVER)
-        if any(mesh.invalid_layout for mesh in flver.submeshes):
-            # Corrupted submeshes (e.g. some DS1R map pieces). Leave empty.
-            return new_mesh_object(f"{name} <INVALID>", mesh_data, SoulstructType.FLVER)
-
-        # p = time.perf_counter()
-        # Create merged mesh.
-        merged_mesh = MergedMesh.from_flver(
-            flver,
-            submesh_bl_material_indices,
-            material_uv_layer_names=bl_material_uv_layer_names,
-        )
-        # self.operator.info(f"Merged FLVER submeshes in {time.perf_counter() - p} s")
-
-        bl_vert_bone_weights, bl_vert_bone_indices = cls.create_bm_mesh(operator, mesh_data, merged_mesh)
-
-        mesh = new_mesh_object(name, mesh_data)
-        mesh.soulstruct_type = SoulstructType.FLVER
-
-        if has_armature:
-            cls.create_bone_vertex_groups(mesh, bl_bone_names, bl_vert_bone_weights, bl_vert_bone_indices)
-
-        return mesh
-
-    @classmethod
-    def create_bm_mesh(
-        cls,
-        operator: LoggingOperator,
         mesh_data: bpy.types.Mesh,
         merged_mesh: MergedMesh,
     ) -> tuple[np.ndarray, np.ndarray]:
-        """BMesh is more efficient for mesh construction and loop data layer assignment.
+        """Create Blender Mesh with plenty of efficient `foreach_set()` calls to `MergedMesh` arrays.
 
         Returns two arrays of bone indices and bone weights for the created Blender vertices.
         """
@@ -1060,80 +1069,49 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         merged_mesh.invert_vertex_uv(invert_u=False, invert_v=True)
         merged_mesh.normalize_normals()
 
-        bm = bmesh.new()
-        bm.from_mesh(mesh_data)  # bring over UV and vertex color data layers
+        vertex_count = merged_mesh.vertex_data.shape[0]
+        mesh_data.vertices.add(vertex_count)
+        mesh_data.vertices.foreach_set("co", np.array(merged_mesh.vertex_data["position"]).ravel())
 
-        # CREATE BLENDER VERTICES
-        for position in merged_mesh.vertex_data["position"]:
-            bm.verts.new(position)
-        bm.verts.ensure_lookup_table()
+        face_count = len(merged_mesh.faces)
+        face_loop_indices = merged_mesh.faces[:, :3].ravel()
+        if merged_mesh.vertices_merged:
+            loop_vertex_indices = merged_mesh.loop_vertex_indices[face_loop_indices]
+        else:
+            loop_vertex_indices = face_loop_indices
+        loop_starts = np.arange(0, face_count * 3, 3, dtype=np.int32)  # just [0, 3, 6, ...]
+        loop_totals = np.full(face_count, 3, dtype=np.int32)  # all triangles (3)
 
-        # Loop indices of `merged_mesh` that actually make it into Blender, as degenerate/duplicate faces are ignored.
-        # TODO: I think `MergedMesh` already removes all duplicate faces now, so if I also used it to remove degenerate
-        #  faces, I wouldn't have to keep track here.
-        valid_loop_indices = []
-        # TODO: go back to reporting occurrences per-submesh (`faces[:, 3]`)?
-        duplicate_face_count = 0
-        degenerate_face_count = 0
+        # Directly assign face indices
+        mesh_data.loops.add(len(loop_vertex_indices))
+        mesh_data.loops.foreach_set("vertex_index", loop_vertex_indices)
 
-        for face in merged_mesh.faces:
-
-            loop_indices = face[:3]
-            vertex_indices = merged_mesh.loop_vertex_indices[loop_indices]
-            bm_verts = [bm.verts[v_i] for v_i in vertex_indices]
-
-            try:
-                bm_face = bm.faces.new(bm_verts)
-            except ValueError as ex:
-                if "face already exists" in str(ex):
-                    # This is a duplicate face (happens rarely in vanilla FLVERs). We can ignore it.
-                    # No lasting harm done as, by assertion, no new BMesh vertices were created above. We just need
-                    # to remove the last three normals.
-                    duplicate_face_count += 1
-                    continue
-                if "found the same (BMVert) used multiple times" in str(ex):
-                    # Degenerate FLVER face (e.g. a line or point). These are not supported by Blender.
-                    degenerate_face_count += 1
-                    continue
-
-                print(f"Unhandled error for BMFace. Vertices: {[v.co for v in bm_verts]}")
-                raise ex
-
-            bm_face.material_index = face[3]
-            valid_loop_indices.extend(loop_indices)
+        # Set polygons
+        mesh_data.polygons.add(face_count)
+        mesh_data.polygons.foreach_set("loop_start", loop_starts)
+        mesh_data.polygons.foreach_set("loop_total", loop_totals)
+        mesh_data.polygons.foreach_set("material_index", merged_mesh.faces[:, 3])
 
         # self.operator.info(f"Created Blender mesh in {time.perf_counter() - p} s")
-
-        if degenerate_face_count or duplicate_face_count:
-            operator.warning(
-                f"{degenerate_face_count} degenerate and {duplicate_face_count} duplicate faces were ignored during "
-                f"FLVER import."
-            )
-
-        # TODO: Delete all unused vertices at this point (i.e. vertices that were only used by degen faces)?
-
-        bm.to_mesh(mesh_data)
-        bm.free()
 
         # Create and populate UV and vertex color data layers.
         for i, (uv_layer_name, merged_loop_uv_array) in enumerate(merged_mesh.loop_uvs.items()):
             # self.operator.info(f"Creating UV layer {i}: {uv_layer_name}")
             uv_layer = mesh_data.uv_layers.new(name=uv_layer_name, do_init=False)
-            loop_uv_data = merged_loop_uv_array[valid_loop_indices].ravel()
+            loop_uv_data = merged_loop_uv_array[loop_vertex_indices].ravel()
             uv_layer.data.foreach_set("uv", loop_uv_data)
         for i, merged_color_array in enumerate(merged_mesh.loop_vertex_colors):
             # self.operator.info(f"Creating Vertex Colors layer {i}: VertexColors{i}")
             color_layer = mesh_data.vertex_colors.new(name=f"VertexColors{i}")
-            loop_color_data = merged_color_array[valid_loop_indices].ravel()
+            loop_color_data = merged_color_array[loop_vertex_indices].ravel()
             color_layer.data.foreach_set("color", loop_color_data)
-
-        # Enable custom split normals and assign them.
-        loop_normal_data = merged_mesh.loop_normals[valid_loop_indices]  # NOT raveled
 
         # NOTE: `Mesh.create_normals_split()` removed in Blender 4.1. I no longer support older versions than that.
         # New versions of Blender automatically create the `mesh.corner_normals` collection automatically.
         # We also don't need to enable `use_auto_smooth` or call `calc_normals_split()` anymore.
 
+        mesh_data.update()  # CRITICAL, or `normals_split_custom_set` will crash Blender!
+        loop_normal_data = merged_mesh.loop_normals[loop_vertex_indices]  # NOT raveled
         mesh_data.normals_split_custom_set(loop_normal_data)  # one normal per loop
         mesh_data.update()
 
@@ -1383,74 +1361,78 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         context: bpy.types.Context,
         name: str,
         texture_stems: set[str],
-        texture_import_manager: ImageImportManager | None = None,
+        image_import_manager: ImageImportManager | None = None,
     ) -> DDSTextureCollection:
-        """Load texture images from either `png_cache` folder or TPFs found with `texture_import_manager`.
+        """Load texture images from PNG cache directory or TPFs found with `image_import_manager`.
 
         Will NEVER load an image that is already in Blender's data, regardless of image type (identified by stem only).
         """
         settings = operator.settings(context)
 
-        bl_image_stems = set()
-        image_stems_to_replace = set()
-        for image in bpy.data.images:
-            stem = Path(image.name).stem
-            if image.size[:] == (1, 1) and image.pixels[:] == (1.0, 0.0, 1.0, 1.0):
-                image_stems_to_replace.add(stem)
-            else:
-                bl_image_stems.add(stem)
+        # TODO: I was checking every Image in Blender's pixels to find 1x1 magenta dummy textures to replace, but that's
+        #  super slow as more and more textures are loaded.
+        bl_image_stems = {image_name.split(".")[0].lower() for image_name in bpy.data.images.keys()}
 
         new_texture_collection = DDSTextureCollection()
 
-        textures_to_load = {}  # type: dict[str, TPFTexture]
+        tpf_textures_to_load = {}  # type: dict[str, TPFTexture]
         for texture_stem in texture_stems:
+            texture_stem = texture_stem.lower()
             if texture_stem in bl_image_stems:
                 continue  # already loaded
-            if texture_stem in textures_to_load:
+            if texture_stem in tpf_textures_to_load:
                 continue  # already queued to load below
 
-            if settings.read_cached_pngs and settings.png_cache_directory:
-                png_path = Path(settings.png_cache_directory, f"{texture_stem}.png")
-                if png_path.is_file():
-                    # Found cached PNG.
-                    dds_texture = DDSTexture.new_from_png_path(png_path, settings.pack_image_data)
+            if settings.read_cached_images and settings.str_image_cache_directory:
+                # Not case-sensitive.
+                cached_path = settings.get_cached_image_path(texture_stem)
+                if cached_path.is_file():
+                    # Found cached image.
+                    dds_texture = DDSTexture.new_from_image_path(cached_path, settings.pack_image_data)
                     new_texture_collection.add(dds_texture)
                     bl_image_stems.add(texture_stem)
                     continue
 
-            if texture_import_manager:
+            if image_import_manager:
                 try:
-                    texture = texture_import_manager.get_flver_texture(texture_stem, name)
+                    texture = image_import_manager.get_flver_texture(texture_stem, name)
                 except KeyError as ex:
                     operator.warning(str(ex))
                 else:
-                    textures_to_load[texture_stem] = texture
+                    tpf_textures_to_load[texture_stem] = texture
                     continue
 
-            operator.warning(f"Could not find TPF or cached PNG '{texture_stem}' for FLVER '{name}'.")
+            operator.warning(f"Could not find TPF or cached image '{texture_stem}' for FLVER '{name}'.")
 
-        if textures_to_load:
-            for texture_stem in textures_to_load:
+        if tpf_textures_to_load:
+            for texture_stem in tpf_textures_to_load:
                 operator.info(f"Loading texture into Blender: {texture_stem}")
-            from time import perf_counter
-            t = perf_counter()
-            all_png_data = batch_get_tpf_texture_png_data(list(textures_to_load.values()))
-            if settings.png_cache_directory and settings.write_cached_pngs:
-                write_png_directory = Path(settings.png_cache_directory)
+            t = time.perf_counter()
+            image_format = settings.image_cache_format
+            if image_format == "TGA":
+                all_image_data = batch_get_tpf_texture_tga_data(list(tpf_textures_to_load.values()))
+            elif image_format == "PNG":
+                all_image_data = batch_get_tpf_texture_png_data(list(tpf_textures_to_load.values()))
             else:
-                write_png_directory = None
+                raise ValueError(f"Unsupported image format for DDS conversion: {image_format}")
+
+            if settings.write_cached_images:
+                write_image_directory = settings.image_cache_directory  # could be None
+            else:
+                write_image_directory = None
             operator.info(
-                f"Converted images in {perf_counter() - t} s (cached = {settings.write_cached_pngs})"
+                f"Converted images in {time.perf_counter() - t} s (cached = {settings.write_cached_images})"
             )
-            for texture_stem, png_data in zip(textures_to_load.keys(), all_png_data):
-                if png_data is None:
+            for texture_stem, image_data in zip(tpf_textures_to_load.keys(), all_image_data):
+                if image_data is None:
                     continue  # failed to convert this texture
-                dds_texture = DDSTexture.new_from_png_data(
+                dds_texture = DDSTexture.new_from_image_data(
                     operator,
                     name=texture_stem,
-                    png_data=png_data,
-                    png_cache_directory=write_png_directory,
-                    replace_existing=texture_stem in image_stems_to_replace,
+                    image_format=image_format,
+                    image_data=image_data,
+                    image_cache_directory=write_image_directory,
+                    replace_existing=False,  # not currently used
                     pack_image_data=settings.pack_image_data,
                 )
                 new_texture_collection.add(dds_texture)
@@ -1498,6 +1480,10 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         texture_collection: DDSTextureCollection = None,
     ) -> FLVER:
         """Wraps actual method with temp FLVER management."""
+        if not self.submesh_vertices_merged:
+            # TODO: Not true. I think `MergedMesh` immediately handles this, or at least, can do so easily. But the
+            #  main use of NOT merging vertices right now is for 'MSB only' mode anyway.
+            raise FLVERExportError("Cannot export FLVER that was imported with unmerged submesh vertices.")
         self.clear_temp_flver()
         try:
             return self._to_soulstruct_obj(operator, context, texture_collection)
@@ -1885,6 +1871,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         merged_mesh = MergedMesh(
             vertex_data=vertex_data,
             loop_vertex_indices=loop_vertex_indices,
+            vertices_merged=True,
             loop_normals=loop_normals,
             loop_normals_w=loop_normals_w,
             loop_tangents=[loop_tangents],

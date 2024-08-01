@@ -8,10 +8,10 @@ __all__ = [
 
 import abc
 import typing as tp
+from enum import StrEnum
 
 import bpy
 from mathutils import Vector, Euler
-from soulstruct.utilities.future import StrEnum
 from .exceptions import SoulstructTypeError
 
 if tp.TYPE_CHECKING:

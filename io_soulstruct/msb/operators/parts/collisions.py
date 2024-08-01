@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 __all__ = [
-    "ImportMSBMapCollision",
-    "ImportAllMSBMapCollisions",
+    "ImportMSBCollision",
+    "ImportAllMSBCollisions",
     "ExportMSBCollisions",
 ]
 
@@ -27,7 +27,7 @@ msb_collision_operator_config = MSBPartOperatorConfig(
 )
 
 
-class ImportMSBMapCollision(BaseImportSingleMSBPart):
+class ImportMSBCollision(BaseImportSingleMSBPart):
     bl_idname = "import_scene.msb_map_collision_part"
     bl_label = "Import MSB Collision Part"
     bl_description = "Import selected MSB Collision entry from selected game MSB"
@@ -35,7 +35,7 @@ class ImportMSBMapCollision(BaseImportSingleMSBPart):
     config = msb_collision_operator_config
 
 
-class ImportAllMSBMapCollisions(BaseImportAllMSBParts):
+class ImportAllMSBCollisions(BaseImportAllMSBParts):
     bl_idname = "import_scene.all_msb_map_collision_parts"
     bl_label = "Import All Collision Parts"
     bl_description = "Import HKX meshes and MSB transform of every MSB Collision part. Moderately slow"

@@ -13,6 +13,7 @@ import typing as tp
 from pathlib import Path
 
 import bpy
+from io_soulstruct.exceptions import BatchOperationUnsupportedError
 from io_soulstruct.general import SoulstructSettings
 from io_soulstruct.general.cached import get_cached_file
 from io_soulstruct.msb.operator_config import MSBPartOperatorConfig
@@ -127,8 +128,16 @@ class BaseImportAllMSBParts(LoggingOperator):
 
         part_list = getattr(msb, self.config.MSB_LIST_NAME)
         part_count = 0
+        parts = [part for part in part_list if is_name_match(part.name)]
 
-        for part in [part for part in part_list if is_name_match(part.name)]:
+        # Try to batch-import all absent models first.
+        try:
+            bl_part_type.batch_import_models(self, context, parts, map_stem=map_stem)
+        except BatchOperationUnsupportedError:
+            self.info(f"Batch import not supported for MSB {self.config.PART_SUBTYPE.get_nice_name()} models.")
+            pass  # parts will import their own models
+
+        for part in parts:
             try:
                 # No need to return instance.
                 bl_part_type.new_from_soulstruct_obj(

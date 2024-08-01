@@ -45,7 +45,7 @@ __all__ = [
     "ActivateUVTexture1",
     "ActiveUVLightmap",
     "FastUVUnwrap",
-    "FindMissingTexturesInPNGCache",
+    "FindMissingTexturesInImageCache",
     "SelectMeshChildren",
     "ImportTextures",
     "BakeLightmapSettings",
@@ -65,6 +65,8 @@ __all__ = [
     "BlenderFLVER",
     "BlenderFLVERDummy",
     "BlenderFLVERMaterial",
+
+    "FLVERMaterialPropsPanel",
 ]
 
 from .material import *

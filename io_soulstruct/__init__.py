@@ -19,10 +19,7 @@ addon_modules_path = str((Path(__file__).parent / "../io_soulstruct_lib").resolv
 if addon_modules_path not in sys.path:
     sys.path.append(addon_modules_path)
 
-if bpy.app.version >= (4, 1):
-    addon_modules_path_scipy = str((Path(__file__).parent / "../io_soulstruct_lib_311").resolve())
-else:  # Python 3.10 (Blender 4.0 or earlier)
-    addon_modules_path_scipy = str((Path(__file__).parent / "../io_soulstruct_lib_310").resolve())
+addon_modules_path_scipy = str((Path(__file__).parent / "../io_soulstruct_lib_311").resolve())
 if addon_modules_path_scipy not in sys.path:
     sys.path.append(addon_modules_path_scipy)
 
@@ -103,11 +100,9 @@ CLASSES = (
     SoulstructSettings,
     GlobalSettingsPanel,
     GlobalSettingsPanel_FLVERView,
-    # SelectGameDirectory,
-    # SelectProjectDirectory,
     SelectGameMapDirectory,
     SelectProjectMapDirectory,
-    SelectPNGCacheDirectory,
+    SelectImageCacheDirectory,
     SelectCustomMTDBNDFile,
     SelectCustomMATBINBNDFile,
     LoadCollectionsFromBlend,
@@ -162,7 +157,7 @@ CLASSES = (
     ActivateUVTexture1,
     ActiveUVLightmap,
     FastUVUnwrap,
-    FindMissingTexturesInPNGCache,
+    FindMissingTexturesInImageCache,
     SelectMeshChildren,
 
     DDSTextureProps,
@@ -178,6 +173,8 @@ CLASSES = (
     FLVERMaterialToolsPanel,
     # FLVERLightmapsPanel,  # TODO: not quite ready
     FLVERUVMapsPanel,
+
+    FLVERMaterialPropsPanel,
     # endregion
 
     # region Havok Animation
@@ -305,8 +302,8 @@ CLASSES = (
     MSBImportSettings,
     ImportMSBMapPiece,
     ImportAllMSBMapPieces,
-    ImportMSBMapCollision,
-    ImportAllMSBMapCollisions,
+    ImportMSBCollision,
+    ImportAllMSBCollisions,
     ImportMSBNavmesh,
     ImportAllMSBNavmeshes,
     ImportMSBCharacter,
@@ -492,10 +489,10 @@ def register():
             (SoulstructType.COLLISION, "Collision", "Map collision mesh model"),
 
             (SoulstructType.NAVMESH.name, "Navmesh", "Navmesh mesh model"),
-            (SoulstructType.NVM_EVENT_ENTITY.name, "NVM_EVENT_ENTITY", ""),
+            (SoulstructType.NVM_EVENT_ENTITY.name, "NVM Event Entity", ""),
             (SoulstructType.MCG.name, "MCG", "MCG navigation graph (DS1)"),
-            (SoulstructType.MCG_NODE.name, "MCG_NODE", "MCG navigation graph node (DS1)"),
-            (SoulstructType.MCG_EDGE.name, "MCG_EDGE", "MCG navigation graph edge (DS1)"),
+            (SoulstructType.MCG_NODE.name, "MCG Node", "MCG navigation graph node (DS1)"),
+            (SoulstructType.MCG_EDGE.name, "MCG Edge", "MCG navigation graph edge (DS1)"),
 
             (SoulstructType.MSB_PART, "MSB Part", "MSB part object"),  # NOT a FLVER data-block owner
             (SoulstructType.MSB_REGION, "MSB Region", "MSB region object"),

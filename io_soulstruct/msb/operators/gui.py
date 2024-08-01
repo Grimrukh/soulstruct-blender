@@ -23,8 +23,8 @@ class MSBImportExportPanel(bpy.types.Panel):
 
         self.layout.label(text=f"Map: {settings.map_stem}")
 
-        header, panel = self.layout.panel("Import Settings", default_closed=True)
-        header.label(text="Import Settings")
+        header, panel = self.layout.panel("MSB Import Settings", default_closed=True)
+        header.label(text="MSB Import Settings")
         if panel:
             panel.label(text="Entry Name Match:")
             panel.prop(context.scene.msb_import_settings, "entry_name_match", text="")
@@ -32,50 +32,39 @@ class MSBImportExportPanel(bpy.types.Panel):
             panel.prop(context.scene.msb_import_settings, "entry_name_match_mode", text="")
             panel.prop(context.scene.msb_import_settings, "include_pattern_in_parent_name")
 
-        header, panel = self.layout.panel("Export Settings", default_closed=True)
-        header.label(text="Export Settings")
+        header, panel = self.layout.panel("MSB Export Settings", default_closed=True)
+        header.label(text="MSB Export Settings")
         if panel:
             panel.prop(context.scene.soulstruct_settings, "detect_map_from_collection")
             panel.prop(context.scene.msb_export_settings, "model_export_mode")
+
+        header, panel = self.layout.panel("FLVER Import Settings", default_closed=True)
+        header.label(text="FLVER Import Settings")
+        if panel:
+            flver_import_settings = context.scene.flver_import_settings
+            for prop_name in flver_import_settings.__annotations__:
+                panel.prop(flver_import_settings, prop_name)
+
+        header, panel = self.layout.panel("FLVER Export Settings", default_closed=True)
+        header.label(text="FLVER Export Settings")
+        if panel:
+            flver_export_settings = context.scene.flver_export_settings
+            for prop_name in flver_export_settings.__annotations__:
+                panel.prop(flver_export_settings, prop_name)
 
         self.layout.label(text="Parts:")
 
         header, panel = self.layout.panel("Map Pieces", default_closed=True)
         header.label(text="Map Pieces")
-        if panel:
-            # We re-expose a selection of FLVER import settings for MSB map pieces here.
-            flver_import_box = panel.box()
-            flver_import_box.label(text="FLVER Import Settings")
-            for prop in (
-                "import_textures",
-                "omit_default_bone",
-                "material_blend_mode",
-                "base_edit_bone_length",
-            ):
-                flver_import_box.prop(context.scene.flver_import_settings, prop)
-
-            panel.operator(ImportMSBMapPiece.bl_idname)
-            panel.operator(ImportAllMSBMapPieces.bl_idname)
-
-            flver_export_box = panel.box()
-            flver_export_box.label(text="FLVER Export Settings")
-            for prop in (
-                "export_textures",
-                "create_lod_face_sets",
-                "base_edit_bone_length",
-                "allow_missing_textures",
-                "allow_unknown_texture_types",
-                "normal_tangent_dot_max",
-            ):
-                flver_export_box.prop(context.scene.flver_export_settings, prop)
-
-            panel.operator(ExportMSBMapPieces.bl_idname)
+        self.panel_import_export_operators(
+            panel, [ImportMSBMapPiece, ImportAllMSBMapPieces], [ExportMSBMapPieces],
+        )
 
         header, panel = self.layout.panel("Collisions", default_closed=True)
         header.label(text="Collisions")
         # TODO: Hiding collision submesh split option. Too annoying with MSB Part instances.
         self.panel_import_export_operators(
-            panel, [ImportMSBMapCollision, ImportAllMSBMapCollisions], [ExportMSBCollisions],
+            panel, [ImportMSBCollision, ImportAllMSBCollisions], [ExportMSBCollisions],
         )
 
         header, panel = self.layout.panel("Navmeshes", default_closed=True)

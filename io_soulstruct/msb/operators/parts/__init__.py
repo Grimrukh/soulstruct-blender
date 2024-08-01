@@ -18,8 +18,8 @@ __all__ = [
     "ImportAllMSBPlayerStarts",
     "ExportMSBPlayerStarts",
 
-    "ImportMSBMapCollision",
-    "ImportAllMSBMapCollisions",
+    "ImportMSBCollision",
+    "ImportAllMSBCollisions",
     "ExportMSBCollisions",
 
     "ImportMSBNavmesh",

@@ -26,8 +26,9 @@ __all__ = [
     "MSBRegionProps",
 ]
 
+from enum import StrEnum
+
 import bpy
-from soulstruct.utilities.future import StrEnum
 from io_soulstruct.types import SoulstructType
 
 
@@ -50,7 +51,7 @@ class MSBPartSubtype(StrEnum):
         return self in {MSBPartSubtype.MAP_PIECE, MSBPartSubtype.OBJECT, MSBPartSubtype.ASSET, MSBPartSubtype.CHARACTER}
 
     def is_map_geometry(self) -> bool:
-        """TODO: Asset is ambiguous here."""
+        """TODO: Asset is ambiguous here. Probably want more enum options."""
         return self in {MSBPartSubtype.MAP_PIECE, MSBPartSubtype.COLLISION, MSBPartSubtype.NAVMESH}
 
 
@@ -663,6 +664,23 @@ class MSBRegionProps(bpy.types.PropertyGroup):
             (MSBRegionShape.BOX, "Box", "Volume region defined by X/Y/Z scale"),
         ],
         default=MSBRegionShape.NONE,
+    )
+
+    # Three shape fields that are exposed differently depending on `shape` type. These are used to drive object scale.
+    shape_x: bpy.props.FloatProperty(
+        name="Shape X",
+        description="X dimension of region shape (sphere/cylinder radius or box width)",
+        default=1.0,
+    )
+    shape_y: bpy.props.FloatProperty(
+        name="Shape Y",
+        description="Y dimension of region shape (cylinder/box height)",
+        default=1.0,
+    )
+    shape_z: bpy.props.FloatProperty(
+        name="Shape Z",
+        description="Z dimension of region shape (box depth)",
+        default=1.0,
     )
 
 

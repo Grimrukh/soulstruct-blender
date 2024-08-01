@@ -22,6 +22,7 @@ class NodeTreeBuilder:
     """Wraps a Blender `NodeTree` and adds utility methods for creating/linking nodes for FLVER materials."""
 
     operator: LoggingOperator
+    context: bpy.types.Context
     material: bpy.types.Material
     matdef: MatDef
     sampler_texture_stems: dict[str, str]  # already combined from MATBIN (if present) and FLVER
@@ -80,10 +81,10 @@ class NodeTreeBuilder:
             )
 
         try:
-            if self.matdef.is_water:
+            if self.matdef.shader_category == "Water":
                 self.build_water_shader()
                 return
-            elif self.matdef.is_snow:  # TODO: I used to check texture count was 1 here.
+            elif self.matdef.shader_category == "Snow":
                 self.build_snow_shader()
                 return
         except MaterialImportError as ex:
@@ -127,7 +128,9 @@ class NodeTreeBuilder:
                 current_sampler_group = sampler.sampler_group
 
             bl_image = self.get_bl_image(sampler.name)
-            tex_image_node = self.add_tex_image_node(node_name, image=bl_image, label=node_label, hide=bl_image is None)
+            tex_image_node = self.add_tex_image_node(
+                name=node_name, image=bl_image, label=node_label, hide=bl_image is None
+            )
 
             # Dictionary keys are sampler aliases, not game-specific sampler names (though alias may fall back to that).
             self.tex_image_nodes[node_label] = tex_image_node
@@ -170,7 +173,7 @@ class NodeTreeBuilder:
             self.tex_y -= 100  # space these out a bit more
             bl_image = self.get_bl_image(sampler_name)
             tex_image_node = self.add_tex_image_node(
-                sampler_name, image=bl_image, label=sampler_name, hide=bl_image is None
+                name=sampler_name, image=bl_image, label=sampler_name, hide=bl_image is None
             )
             self.tex_image_nodes[sampler_name] = tex_image_node
 
@@ -514,22 +517,25 @@ class NodeTreeBuilder:
         return mix_node
 
     def get_bl_image(self, sampler_name: str) -> bpy.types.Image | None:
-        texture_stem = self.sampler_texture_stems[sampler_name]
+        """All Blender Images from textures (cached or DDS) are lower-case names. FLVER paths are not case-sensitive."""
+        texture_stem = self.sampler_texture_stems[sampler_name].lower()
         if not texture_stem:
             # No texture given in MATBIN or FLVER.
             return None
-        # Search for Blender image with no extension, PNG, or DDS, in that order of preference.
-        for image_name in (f"{texture_stem}", f"{texture_stem}.png", f"{texture_stem}.dds"):
-            if image_name in bpy.data.images:
+        # Search for Blender image with no extension, TGA, PNG, or DDS, in that order of preference.
+        for image_name in (f"{texture_stem}", f"{texture_stem}.tga", f"{texture_stem}.png", f"{texture_stem}.dds"):
+            try:
                 return bpy.data.images[image_name]
+            except KeyError:
+                pass
         else:
             # Blender image not found. Create empty 1x1 Blender image.
             bl_image = bpy.data.images.new(name=texture_stem, width=1, height=1, alpha=True)
             bl_image.pixels = [1.0, 0.0, 1.0, 1.0]  # magenta
-            self.operator.warning(
-                f"Could not find texture '{texture_stem}' (no extension, PNG, or DDS) in Blender image data. "
-                f"Created 1x1 magenta texture for node."
-            )
+            if self.context.scene.flver_import_settings.import_textures:  # otherwise, expected to be missing
+                self.operator.warning(
+                    f"Could not find texture '{texture_stem}' in Blender image data. Created 1x1 magenta Image."
+                )
             return bl_image
 
     # region Texture Input Methods
@@ -537,7 +543,7 @@ class NodeTreeBuilder:
     def specular_to_principled(
         self,
         y: float,
-        color_output: bpy.types.NodeSocketColor,
+        color_output: bpy.types.NodeSocket,
         bsdf_node: bpy.types.ShaderNodeBsdfPrincipled,
         is_metallic=False,
     ):

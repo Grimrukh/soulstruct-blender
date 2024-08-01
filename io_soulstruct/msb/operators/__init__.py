@@ -21,8 +21,8 @@ __all__ = [
     "ImportMSBAsset",
     "ImportAllMSBAssets",
 
-    "ImportMSBMapCollision",
-    "ImportAllMSBMapCollisions",
+    "ImportMSBCollision",
+    "ImportAllMSBCollisions",
     "ExportMSBCollisions",
 
     "ImportMSBNavmesh",

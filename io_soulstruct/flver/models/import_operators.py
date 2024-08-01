@@ -56,11 +56,8 @@ class BaseFLVERImportOperator(LoggingImportOperator):
 
     def draw(self, context):
         import_settings = context.scene.flver_import_settings
-
-        self.layout.prop(import_settings, "import_textures")
-        self.layout.prop(import_settings, "omit_default_bone")
-        self.layout.prop(import_settings, "material_blend_mode")
-        self.layout.prop(import_settings, "base_edit_bone_length")
+        for prop_name in import_settings.__annotations__:
+            self.layout.prop(import_settings, prop_name)
 
     def execute(self, context: bpy.types.Context):
         """Default import method for FLVERs."""
@@ -68,7 +65,7 @@ class BaseFLVERImportOperator(LoggingImportOperator):
         start_time = time.perf_counter()
 
         flvers = []  # holds `(bl_name, FLVER)` pairs
-        texture_import_manager = ImageImportManager(self, context)
+        image_import_manager = ImageImportManager(self, context)
 
         import_settings = context.scene.flver_import_settings
         use_matbinbnd = False  # auto-set if first FLVER is from Sekiro/Elden Ring
@@ -80,9 +77,9 @@ class BaseFLVERImportOperator(LoggingImportOperator):
                 binder = Binder.from_path(source_path)
                 binder_flvers = get_flvers_from_binder(binder, source_path, allow_multiple=True)
                 if import_settings.import_textures:
-                    texture_import_manager.find_flver_textures(source_path, binder)
+                    image_import_manager.find_flver_textures(source_path, binder)
                     for flver in binder_flvers:
-                        self.find_extra_textures(source_path, flver, texture_import_manager)
+                        self.find_extra_textures(source_path, flver, image_import_manager)
                 for flver in binder_flvers:
                     # TODO: Sekiro does NOT use MATBIN, so this test needs to change.
                     if flver.version == Version.Sekiro_EldenRing:
@@ -91,8 +88,8 @@ class BaseFLVERImportOperator(LoggingImportOperator):
             else:  # e.g. loose Map Piece FLVER
                 flver = FLVER.from_path(source_path)
                 if import_settings.import_textures:
-                    texture_import_manager.find_flver_textures(source_path)
-                    self.find_extra_textures(source_path, flver, texture_import_manager)
+                    image_import_manager.find_flver_textures(source_path)
+                    self.find_extra_textures(source_path, flver, image_import_manager)
                 flvers.append((source_path.name.split(".")[0], flver))
 
         if use_matbinbnd:
@@ -112,7 +109,7 @@ class BaseFLVERImportOperator(LoggingImportOperator):
                     context,
                     flver,
                     name=bl_name,
-                    texture_import_manager=texture_import_manager,
+                    image_import_manager=image_import_manager,
                     collection=collection,
                 )
             except Exception as ex:

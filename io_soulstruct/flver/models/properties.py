@@ -74,6 +74,13 @@ class FLVERProps(bpy.types.PropertyGroup):
         default=0,
     )
 
+    # INTERNAL USE
+    submesh_vertices_merged: bpy.props.BoolProperty(
+        name="Submesh Vertices Merged",
+        description="If disabled, submesh (material) vertices were NOT merged on import (faster but harder to edit)",
+        default=False,
+    )
+
 
 class FLVERDummyProps(bpy.types.PropertyGroup):
     """Extension properties for Blender objects that represent FLVER Dummy objects."""
@@ -156,6 +163,14 @@ class FLVERBoneProps(bpy.types.PropertyGroup):
 class FLVERImportSettings(bpy.types.PropertyGroup):
     """Common FLVER import settings. Drawn manually in operator browser windows."""
 
+    merge_submesh_vertices: bpy.props.BoolProperty(
+        name="Merge Submesh Vertices",
+        description="Carefully merge submesh (material) vertices into a single mesh for easier editing. If disabled, "
+                    "submeshes will still be merged into a single mesh, but their faces will not be joined at any "
+                    "edges or vertices, making them painful to edit (but faster to import)",
+        default=True,
+    )
+
     import_textures: bpy.props.BoolProperty(
         name="Import Textures",
         description="Import DDS textures from TPFs in expected locations for detected FLVER model source type",
@@ -186,28 +201,6 @@ class FLVERImportSettings(bpy.types.PropertyGroup):
         description="Length of edit bones corresponding to bone scale 1",
         default=0.2,
         min=0.01,
-    )
-
-    msb_entry_name_match: bpy.props.StringProperty(
-        name="MSB Part Name Match",
-        description="Glob/Regex for filtering MSB part names when importing all parts",
-        default="*",
-    )
-
-    msb_entry_name_match_mode: bpy.props.EnumProperty(
-        name="MSB Part Name Match Mode",
-        description="Whether to use glob or regex for MSB part name matching",
-        items=[
-            ("GLOB", "Glob", "Use glob for MSB part name matching"),
-            ("REGEX", "Regex", "Use regex for MSB part name matching"),
-        ],
-        default="GLOB",
-    )
-
-    include_pattern_in_parent_name: bpy.props.BoolProperty(
-        name="Include Pattern in Parent Name",
-        description="Include the glob/regex pattern in the name of the parent object for imported MSB parts",
-        default=True,
     )
 
 

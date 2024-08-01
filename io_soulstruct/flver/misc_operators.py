@@ -13,7 +13,7 @@ __all__ = [
     "ActivateUVTexture1",
     "ActiveUVLightmap",
     "FastUVUnwrap",
-    "FindMissingTexturesInPNGCache",
+    "FindMissingTexturesInImageCache",
     "SelectMeshChildren",
     "draw_dummy_ids",
     "HideAllDummiesOperator",
@@ -34,9 +34,6 @@ from soulstruct.base.models.flver import Material
 from io_soulstruct.exceptions import SoulstructTypeError
 from io_soulstruct.utilities import *
 from .models.types import BlenderFLVER
-
-if tp.TYPE_CHECKING:
-    from .properties import FLVERToolSettings
 
 
 class CopyToNewFLVER(LoggingOperator):
@@ -277,7 +274,8 @@ class BakeBonePoseToVertices(LoggingOperator):
     def poll(cls, context):
         """Must select at least one bone in Armature of active object."""
         if context.mode == "OBJECT" and context.active_object:
-            arma = context.active_object.find_armature()
+            # noinspection PyTypeChecker
+            arma = context.active_object.find_armature()  # type: bpy.types.ArmatureObject
             if arma and any(bone.select for bone in arma.data.bones):
                 return True
         return False
@@ -558,17 +556,18 @@ class FastUVUnwrap(LoggingOperator):
         return {"FINISHED"}
 
 
-class FindMissingTexturesInPNGCache(LoggingOperator):
+class FindMissingTexturesInImageCache(LoggingOperator):
     """Iterate over all texture nodes used by all materials of one or more selected FLVER meshes and (if currently a 1x1
-    dummy texture) find that PNG file in the PNG cache directory.
+    dummy texture) find that file in the image cache directory.
 
     This modified the Blender Image data, so obviously, it will affect all models/materials that use this texture.
 
-    Note that this will link the texture to the cached PNG file, rather than packing the image data into the Blend file.
+    Note that this will link the texture to the cached image file, rather than packing the image data into the Blend
+    file.
     """
-    bl_idname = "mesh.find_missing_textures_in_png_cache"
-    bl_label = "Find Missing Textures in PNG Cache"
-    bl_description = "Find missing texture names used by materials of selected FLVERs in PNG cache"
+    bl_idname = "mesh.find_missing_textures_in_image_cache"
+    bl_label = "Find Missing Textures in Image Cache"
+    bl_description = "Find missing texture names used by materials of selected FLVERs in image cache"
 
     @classmethod
     def poll(cls, context):
@@ -583,36 +582,34 @@ class FindMissingTexturesInPNGCache(LoggingOperator):
         except SoulstructTypeError as ex:
             return self.error(str(ex))
 
-        meshes_data = [bl_flver.mesh.data for bl_flver in bl_flvers]
-        checked_image_names = set()  # to avoid looking for the same PNG twice
+        checked_image_names = set()  # to avoid looking for the same image twice
+        image_suffix = f".{settings.image_cache_format.lower()}"
 
-        for mesh_data in meshes_data:
-            for bl_material in mesh_data.materials:
-                texture_nodes = [
-                    node for node in bl_material.node_tree.nodes
-                    if node.type == "TEX_IMAGE" and node.image is not None
-                ]
+        for bl_flver in bl_flvers:
+            for bl_material in bl_flver.get_materials():
+                texture_nodes = bl_material.get_image_texture_nodes(with_image_only=True)
                 for node in texture_nodes:
                     image = node.image  # type: bpy.types.Image
                     if image.size[0] != 1 or image.size[1] != 1:
                         continue
-                    # This is a dummy texture. Try to find it in the PNG cache.
+                    # This is a dummy texture. Try to find it in the image cache.
                     image_name = image.name
                     if image_name.endswith(".dds"):
-                        image_name = image_name[:-4] + ".png"
-                    elif not image_name.endswith(".png"):
-                        image_name += ".png"
+                        image_name = image_name.removesuffix(".dds") + image_suffix
+                    elif not image_name.endswith(image_suffix):
+                        image_name += image_suffix
                     if image_name in checked_image_names:
                         continue
                     checked_image_names.add(image_name)
-                    png_path = settings.png_cache_directory / image_name
-                    if png_path.is_file():
-                        image.filepath = str(png_path)
+                    image_path = settings.image_cache_directory / image_name
+                    if image_path.is_file():
+                        image.filepath = str(image_path)
+                        image.file_format = settings.image_cache_format
                         image.source = "FILE"
                         image.reload()
-                        self.info(f"Found and linked texture file '{image_name}' in PNG cache.")
+                        self.info(f"Found and linked texture file '{image_name}' in image cache.")
                     else:
-                        self.warning(f"Could not find texture file '{image_name}' in PNG cache.")
+                        self.warning(f"Could not find texture file '{image_name}' in image cache.")
 
         return {"FINISHED"}
 

@@ -8,7 +8,7 @@ import abc
 import typing as tp
 
 import bpy
-from io_soulstruct.exceptions import MissingPartModelError, MissingMSBEntryError, SoulstructTypeError
+from io_soulstruct.exceptions import *
 from io_soulstruct.flver.models import BlenderFLVER
 from io_soulstruct.msb.properties import MSBPartSubtype, MSBPartProps
 from io_soulstruct.types import *
@@ -243,6 +243,20 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
             raise MissingPartModelError(
                 f"Model '{msb_model_name}' (from Blender model '{self.model.name}') not found in MSB model lists."
             )
+
+    @classmethod
+    def batch_import_models(
+        cls,
+        operator: LoggingOperator,
+        context: bpy.types.Context,
+        parts: list[PART_T],
+        map_stem: str,
+    ):
+        """Import all models for a batch of MSB Parts, as needed, in parallel as much as possible.
+
+        Not available by defailt.
+        """
+        raise BatchOperationUnsupportedError(f"Cannot batch import MSB Part subtype: {cls.PART_SUBTYPE}")
 
     @classmethod
     def new(
