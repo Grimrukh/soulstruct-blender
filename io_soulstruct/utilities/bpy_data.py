@@ -15,7 +15,7 @@ import typing as tp
 import bpy
 
 from io_soulstruct.types import SoulstructType
-from .misc import get_bl_obj_tight_name, get_collection
+from .misc import get_bl_obj_tight_name, get_or_create_collection
 
 if tp.TYPE_CHECKING:
     PROPS_TYPE = tp.Union[tp.Dict[str, tp.Any], bpy.types.Object, None]
@@ -85,7 +85,7 @@ def find_obj_or_create_empty(
                 if get_bl_obj_tight_name(obj) == name and (soulstruct_type and obj.soulstruct_type == soulstruct_type):
                     return False, obj
 
-        missing_collection = get_collection(missing_collection_name, bpy.context.scene.collection)
+        missing_collection = get_or_create_collection(bpy.context.scene.collection, missing_collection_name)
         obj = bpy.data.objects.new(name, None)
         if soulstruct_type:
             obj.soulstruct_type = soulstruct_type

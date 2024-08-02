@@ -116,7 +116,11 @@ class BlenderMSBNavmesh(BlenderMSBPart[MSBNavmesh, MSBNavmeshProps]):
             raise NVMImportError(f"Could not find NVM entry '{nvm_entry_name}' in NVMBND file '{nvmbnd_path.name}'.")
 
         nvm = nvm_entry.to_binary_file(NVM)
-        collection = get_collection(f"{map_stem} Navmesh Models", context.scene.collection)
+        collection = get_or_create_collection(
+            context.scene.collection,
+            f"{map_stem} Models",
+            f"{map_stem} Navmesh Models",
+        )
 
         try:
             bl_nvm = BlenderNVM.new_from_soulstruct_obj(

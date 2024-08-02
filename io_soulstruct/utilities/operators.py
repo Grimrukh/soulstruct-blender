@@ -174,7 +174,6 @@ class BinderEntrySelectOperator(LoggingOperator):
         if self.temp_directory:
             shutil.rmtree(self.temp_directory, ignore_errors=True)
             self.temp_directory = ""
-        super().cancel(context)
 
     def invoke(self, context, event):
         """Unpack valid Binder entry choices to temp directory for user to select from."""

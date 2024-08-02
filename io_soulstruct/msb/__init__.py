@@ -24,6 +24,8 @@ __all__ = [
     "ImportAllMSBPoints",
     "ImportAllMSBVolumes",
 
+    "ImportFullMSB",
+
     "RegionDrawSettings",
     "draw_region_volumes",
 
@@ -37,6 +39,8 @@ __all__ = [
     "ExportMSBNavmeshCollection",
     "ExportMSBConnectCollisions",
 
+    "EnableSelectedNames",
+    "DisableSelectedNames",
     "CreateMSBPart",
     "DuplicateMSBPartModel",
 

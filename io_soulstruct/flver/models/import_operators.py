@@ -29,7 +29,6 @@ __all__ = [
 import re
 import time
 import traceback
-import typing as tp
 from pathlib import Path
 
 import bpy
@@ -44,9 +43,6 @@ from io_soulstruct.flver.utilities import *
 from io_soulstruct.general import SoulstructSettings
 from io_soulstruct.utilities import *
 from .types import BlenderFLVER
-
-if tp.TYPE_CHECKING:
-    from .properties import FLVERImportSettings
 
 
 FLVER_BINDER_RE = re.compile(r"^.*?\.(.*bnd)(\.dcx)?$")
@@ -218,7 +214,9 @@ class ImportMapPieceFLVER(BaseFLVERImportOperator):
 
     def get_collection(self, context: bpy.types.Context, file_directory_name: str):
         """Assumes file directory name is a map stem."""
-        return get_collection(f"{file_directory_name} Map Piece Models", context.scene.collection)
+        return get_or_create_collection(
+            context.scene.collection, f"{file_directory_name} Models", f"{file_directory_name} Map Piece Models"
+        )
 
     def find_extra_textures(self, flver_source_path: Path, flver: FLVER, image_import_manager: ImageImportManager):
         """Check all textures in FLVER for specific map 'mAA_' prefix textures and register TPFBHDs in those maps."""
@@ -275,7 +273,7 @@ class ImportCharacterFLVER(BaseFLVERImportOperator):
                 pass
 
     def get_collection(self, context: bpy.types.Context, file_directory_name: str):
-        return get_collection("Character Models", context.scene.collection)
+        return get_or_create_collection(context.scene.collection, "Character Models")
 
 
 class ImportObjectFLVER(BaseFLVERImportOperator):
@@ -313,7 +311,7 @@ class ImportObjectFLVER(BaseFLVERImportOperator):
     # Base `execute` method is fine.
 
     def get_collection(self, context: bpy.types.Context, file_directory_name: str):
-        return get_collection("Object Models", context.scene.collection)
+        return get_or_create_collection(context.scene.collection, "Object Models")
 
 
 class ImportAssetFLVER(BaseFLVERImportOperator):
@@ -351,7 +349,7 @@ class ImportAssetFLVER(BaseFLVERImportOperator):
     # Base `execute` method is fine.
 
     def get_collection(self, context: bpy.types.Context, file_directory_name: str):
-        return get_collection("Asset Models", context.scene.collection)
+        return get_or_create_collection(context.scene.collection, "Asset Models")
 
 
 class ImportEquipmentFLVER(BaseFLVERImportOperator):
@@ -394,6 +392,6 @@ class ImportEquipmentFLVER(BaseFLVERImportOperator):
     # Base `execute` method is fine.
 
     def get_collection(self, context: bpy.types.Context, file_directory_name: str):
-        return get_collection("Equipment Models", context.scene.collection)
+        return get_or_create_collection(context.scene.collection, "Equipment Models")
 
 # endregion

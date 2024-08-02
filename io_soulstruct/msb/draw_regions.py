@@ -19,7 +19,7 @@ import gpu
 from gpu_extras.batch import batch_for_shader
 from mathutils import Matrix
 from io_soulstruct.types import SoulstructType
-from io_soulstruct.msb.properties import MSBRegionShape
+from soulstruct.base.maps.msb.region_shapes import RegionShapeType
 
 
 class RegionDrawSettings(bpy.types.PropertyGroup):
@@ -34,25 +34,31 @@ class RegionDrawSettings(bpy.types.PropertyGroup):
             ("ALL", "All", "Draw all MSB regions in the scene"),
             ("NONE", "None", "Do not draw any MSB regions"),
         ],
-        default="ACTIVE_COLLECTION",
+        default="ALL",
+    )
+
+    draw_points: bpy.props.BoolProperty(
+        name="Draw Points",
+        description="Draw MSB Point regions",
+        default=True,
     )
 
     draw_spheres: bpy.props.BoolProperty(
         name="Draw Spheres",
         description="Draw MSB Sphere regions",
-        default=True,
+        default=False,
     )
 
     draw_cylinders: bpy.props.BoolProperty(
         name="Draw Cylinders",
         description="Draw MSB Cylinder regions",
-        default=True,
+        default=False,
     )
 
     draw_boxes: bpy.props.BoolProperty(
         name="Draw Boxes",
         description="Draw MSB Box regions",
-        default=True,
+        default=False,
     )
 
     region_color: bpy.props.FloatVectorProperty(
@@ -64,10 +70,18 @@ class RegionDrawSettings(bpy.types.PropertyGroup):
         max=1.0,
     )
 
-    use_rgb_spheres: bpy.props.BoolProperty(
-        name="Use RGB Spheres",
-        description="Use RGB colors for MSB Sphere regions",
-        default=False,
+    use_rgb_points: bpy.props.BoolProperty(
+        name="Use RGB Points",
+        description="Use RGB colors for MSB Point regions",
+        default=True,
+    )
+
+    point_radius: bpy.props.FloatProperty(
+        name="Point Radius",
+        description="Radius of circles used to draw MSB Point regions",
+        default=3.0,
+        min=1.0,
+        max=10.0,
     )
 
     line_width: bpy.props.FloatProperty(
@@ -126,16 +140,21 @@ def draw_region_volumes():
 
     # Find all regions to draw.
     regions = {
-        MSBRegionShape.SPHERE: [],
-        MSBRegionShape.CYLINDER: [],
-        MSBRegionShape.BOX: [],
+        RegionShapeType.Point: [],
+        RegionShapeType.Sphere: [],
+        RegionShapeType.Cylinder: [],
+        RegionShapeType.Box: [],
     }
 
     def register_obj(obj_: bpy.types.Object):
         if obj_.soulstruct_type != SoulstructType.MSB_REGION:
             return
-        if obj_.MSB_REGION.shape in regions:
-            regions[obj_.MSB_REGION.shape].append(obj_)
+        try:
+            shape_type = RegionShapeType[obj_.MSB_REGION.shape_type]
+        except KeyError:
+            return
+        if shape_type in regions:
+            regions[shape_type].append(obj_)
 
     match draw_settings.draw_mode:
         case "ACTIVE_COLLECTION":
@@ -165,7 +184,7 @@ def draw_region_volumes():
     SHADER.uniform_float("color", (*draw_settings.region_color, 1.0))
 
     if draw_settings.draw_cylinders:
-        for cylinder in regions[MSBRegionShape.CYLINDER]:
+        for cylinder in regions[RegionShapeType.Cylinder]:
             cylinder_loc = Matrix.Translation(cylinder.location)
             cylinder_rot = cylinder.rotation_euler.to_matrix().to_4x4()
             cylinder_radius = max(cylinder.scale[0], cylinder.scale[1])
@@ -180,33 +199,46 @@ def draw_region_volumes():
             gpu.matrix.pop()
 
     if draw_settings.draw_boxes:
-        for box in regions[MSBRegionShape.BOX]:
+        for box in regions[RegionShapeType.Box]:
             box_transform = Matrix.LocRotScale(box.location, box.rotation_euler, box.scale)
             gpu.matrix.push()
             gpu.matrix.multiply_matrix(box_transform)
             CUBE_BATCH.draw(SHADER)
             gpu.matrix.pop()
 
-    # We draw spheres last so we can use the RGB color option.
     if draw_settings.draw_spheres:
-        if draw_settings.use_rgb_spheres:
-            sphere_colors = [
-                (0.0, 0.0, 1.0), (0.0, 1.0, 0.0), (1.0, 0.0, 0.0)
-            ]
-        else:
-            sphere_colors = None
-
-        for sphere in regions[MSBRegionShape.SPHERE]:
+        for sphere in regions[RegionShapeType.Sphere]:
 
             sphere_loc = Matrix.Translation(sphere.location)
             sphere_rot = sphere.rotation_euler.to_matrix().to_4x4()
             sphere_scale = Matrix.Scale(max(sphere.scale), 4)
 
             for i, circle_rot in enumerate((CIRCLE_Z_MAT, CIRCLE_Y_MAT, CIRCLE_X_MAT)):
-                if sphere_colors:
-                    SHADER.uniform_float("color", (*sphere_colors[i], 1.0))
                 gpu.matrix.push()
                 gpu.matrix.multiply_matrix(sphere_loc @ sphere_rot @ circle_rot @ sphere_scale)
+                CIRCLE_BATCH.draw(SHADER)
+                gpu.matrix.pop()
+
+    # We draw points last so we can use the RGB color option.
+    if draw_settings.draw_points:
+        if draw_settings.use_rgb_points:
+            point_colors = [
+                (0.0, 0.0, 1.0), (0.0, 1.0, 0.0), (1.0, 0.0, 0.0)
+            ]
+        else:
+            point_colors = None
+
+        for point in regions[RegionShapeType.Point]:
+
+            point_loc = Matrix.Translation(point.location)
+            point_rot = point.rotation_euler.to_matrix().to_4x4()
+            point_scale = Matrix.Scale(draw_settings.point_radius, 4)
+
+            for i, circle_rot in enumerate((CIRCLE_Z_MAT, CIRCLE_Y_MAT, CIRCLE_X_MAT)):
+                if point_colors:
+                    SHADER.uniform_float("color", (*point_colors[i], 1.0))
+                gpu.matrix.push()
+                gpu.matrix.multiply_matrix(point_loc @ point_rot @ circle_rot @ point_scale)
                 CIRCLE_BATCH.draw(SHADER)
                 gpu.matrix.pop()
 

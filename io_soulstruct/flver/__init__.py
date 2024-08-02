@@ -74,5 +74,6 @@ from .models import *
 from .misc_operators import *
 from .properties import *
 from .image import *
+from .lightmaps import *
 from .utilities import *
 from .gui import *

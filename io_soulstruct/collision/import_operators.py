@@ -390,7 +390,9 @@ class ImportSelectedMapHKXMapCollision(LoggingOperator):
         map_stem = settings.get_oldest_map_stem_version()
         # NOTE: Currently no Map Collision model import settings.
 
-        collection = get_collection(f"{map_stem} Collision Models", context.scene.collection)
+        collection = get_or_create_collection(
+            context.scene.collection, f"{map_stem} Models", f"{map_stem} Collision Models"
+        )
 
         # Import single HKX.
         model_name = hi_hkx.path_minimal_stem  # set by `BothResHKXBHD` entry loader

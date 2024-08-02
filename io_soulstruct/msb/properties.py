@@ -30,6 +30,7 @@ from enum import StrEnum
 
 import bpy
 from io_soulstruct.types import SoulstructType
+from soulstruct.base.maps.msb.region_shapes import RegionShapeType
 
 
 class MSBPartSubtype(StrEnum):
@@ -621,17 +622,9 @@ class MSBConnectCollisionProps(bpy.types.PropertyGroup):
     )
 
 
-class MSBRegionShape(StrEnum):
-    NONE = "None"
-    POINT = "Point"
-    SPHERE = "Sphere"
-    CYLINDER = "Cylinder"
-    BOX = "Box"
-
-
 class MSBRegionSubtype(StrEnum):
     NONE = "None"
-    NA = "N/A"
+    ALL = "All"
 
 
 class MSBRegionProps(bpy.types.PropertyGroup):
@@ -645,41 +638,39 @@ class MSBRegionProps(bpy.types.PropertyGroup):
         description="MSB subtype (shape) of this Region object",
         items=[
             (MSBRegionSubtype.NONE, "None", "Not an MSB Region"),
-            (MSBRegionSubtype.NA, "N/A", "Older game with no region subtypes (only shapes)"),
+            (MSBRegionSubtype.ALL, "All", "Older game with no region subtypes (only shapes)"),
             # TODO: ER subtypes...
         ],
         default=MSBRegionSubtype.NONE,
     )
 
-    # TODO: Not a real `MSBRegion` field (sub-struct) yet, but WILL BE.
-    shape: bpy.props.EnumProperty(
+    shape_type: bpy.props.EnumProperty(
         name="MSB Region Subtype",
         description="MSB subtype (shape) of this Region object",
         items=[
-            (MSBRegionShape.NONE, "None", "Not an MSB Region"),
-            (MSBRegionShape.POINT, "Point", "Point with location and rotation only"),
-            # NOTE: 2D region shapes not supported (never used in game AFAIK).
-            (MSBRegionShape.SPHERE, "Sphere", "Volume region defined by radius (max of X/Y/Z scale)"),
-            (MSBRegionShape.CYLINDER, "Cylinder", "Volume region with radius (X/Y scale max) and height (Z scale)"),
-            (MSBRegionShape.BOX, "Box", "Volume region defined by X/Y/Z scale"),
+            (RegionShapeType.Point.name, "Point", "Point with location and rotation only"),
+            # TODO: 2D region shapes not yet supported (never used in game AFAIK).
+            (RegionShapeType.Sphere.name, "Sphere", "Volume region defined by radius (max of X/Y/Z scale)"),
+            (RegionShapeType.Cylinder.name, "Cylinder", "Volume region with radius (X/Y scale max) and height (Z scale)"),
+            (RegionShapeType.Box.name, "Box", "Volume region defined by X/Y/Z scale"),
         ],
-        default=MSBRegionShape.NONE,
+        default=RegionShapeType.Point.name,
     )
 
     # Three shape fields that are exposed differently depending on `shape` type. These are used to drive object scale.
     shape_x: bpy.props.FloatProperty(
         name="Shape X",
-        description="X dimension of region shape (sphere/cylinder radius or box width)",
+        description="X dimension of region shape (sphere/cylinder/circle radius or box/rect width)",
         default=1.0,
     )
     shape_y: bpy.props.FloatProperty(
         name="Shape Y",
-        description="Y dimension of region shape (cylinder/box height)",
+        description="Y dimension of region shape (box/rect depth)",
         default=1.0,
     )
     shape_z: bpy.props.FloatProperty(
         name="Shape Z",
-        description="Z dimension of region shape (box depth)",
+        description="Z dimension of region shape (cylinder/box height)",
         default=1.0,
     )
 

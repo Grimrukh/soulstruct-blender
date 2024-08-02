@@ -1523,7 +1523,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
                 f"'{self.tight_name}'."
              )
             default_bone = FLVERBone(name=self.tight_name)  # default transform and other fields
-            flver.bones = [default_bone]
+            flver.bones.append(default_bone)
             bl_bone_names = [default_bone.name]
         else:
             flver.bones, bl_bone_names, bone_arma_transforms = self.create_flver_bones(

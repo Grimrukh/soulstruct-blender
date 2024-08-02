@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 __all__ = [
+    "EnableSelectedNames",
+    "DisableSelectedNames",
     "CreateMSBPart",
     "DuplicateMSBPartModel",
 ]
@@ -12,7 +14,39 @@ from io_soulstruct.flver.models import BlenderFLVER
 from io_soulstruct.msb.operator_config import BLENDER_MSB_PART_TYPES
 from io_soulstruct.types import SoulstructType
 from io_soulstruct.utilities import *
-from .properties import MSBPartSubtype, MSBPartProps
+from .properties import MSBPartSubtype
+
+
+class EnableSelectedNames(LoggingOperator):
+
+    bl_idname = "object.enable_selected_names"
+    bl_label = "Enable Selected Names"
+    bl_description = "Enable name display for all selected objects"
+
+    @classmethod
+    def poll(cls, context):
+        return bool(context.selected_objects)
+
+    def execute(self, context):
+        for obj in context.selected_objects:
+            obj.show_name = True
+        return {"FINISHED"}
+
+
+class DisableSelectedNames(LoggingOperator):
+
+    bl_idname = "object.disable_selected_names"
+    bl_label = "Disable Selected Names"
+    bl_description = "Disable name display for all selected objects"
+
+    @classmethod
+    def poll(cls, context):
+        return bool(context.selected_objects)
+
+    def execute(self, context):
+        for obj in context.selected_objects:
+            obj.show_name = False
+        return {"FINISHED"}
 
 
 class CreateMSBPart(LoggingOperator):
@@ -68,8 +102,11 @@ class CreateMSBPart(LoggingOperator):
             )
 
         model_stem = get_bl_obj_tight_name(obj)
-        collection_name = f"{settings.map_stem} {part_subtype.get_nice_name()} Parts"
-        part_collection = get_collection(collection_name, context.scene.collection)
+        part_collection = get_or_create_collection(
+            context.scene.collection,
+            f"{settings.map_stem} Parts"
+            f"{settings.map_stem} {part_subtype.get_nice_name()} Parts"
+        )
 
         try:
             bl_part = bl_part_type.new_from_model_mesh(obj, f"{model_stem} Part", part_collection)

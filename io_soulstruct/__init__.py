@@ -321,6 +321,9 @@ CLASSES = (
     ImportMSBVolume,
     ImportAllMSBPoints,
     ImportAllMSBVolumes,
+
+    ImportFullMSB,
+
     RegionDrawSettings,
 
     MSBExportSettings,
@@ -333,6 +336,8 @@ CLASSES = (
     ExportMSBNavmeshCollection,
     ExportMSBConnectCollisions,
 
+    EnableSelectedNames,
+    DisableSelectedNames,
     CreateMSBPart,
     DuplicateMSBPartModel,
 

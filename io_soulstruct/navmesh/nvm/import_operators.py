@@ -337,7 +337,11 @@ class ImportSelectedMapNVM(BinderEntrySelectOperator):
         nvm = entry.to_binary_file(NVM)
         model_name = entry.minimal_stem
 
-        collection = get_collection(f"{map_stem} Navmesh Models", context.scene.collection)
+        collection = get_or_create_collection(
+            context.scene.collection,
+            f"{map_stem} Models",
+            f"{map_stem} Navmesh Models",
+        )
 
         self.info(f"Importing NVM model '{model_name}'.")
 

@@ -85,7 +85,6 @@ class ImportHKXCutscene(LoggingOperator, ImportHelper):
 
         self.info(f"Importing HKX cutscene: {remobnd.cutscene_name}")
 
-        msb_import_settings = context.scene.msb_import_settings
         bl_cutscene_parts = {}  # type: dict[str, BlenderMSBPart]
 
         for part_name, remo_part in remobnd.remo_parts.items():
@@ -108,9 +107,11 @@ class ImportHKXCutscene(LoggingOperator, ImportHelper):
 
             area, block = remo_part.map_area_block
             map_stem = f"m{area:02d}_{block:02d}_00_00"
-            collection_suffix = bl_part_type.PART_SUBTYPE.get_nice_name() + " Parts"
-            collection_name = msb_import_settings.get_collection_name(map_stem, collection_suffix)
-            part_collection = get_collection(collection_name, context.scene.collection)
+            part_collection = get_or_create_collection(
+                context.scene.collection,
+                f"{map_stem} Parts",
+                f"{map_stem} {bl_part_type.PART_SUBTYPE.get_nice_name()} Parts",
+            )
 
             try:
                 bl_part = bl_part_type.find_in_data(part_name)  # type: BlenderMSBPart

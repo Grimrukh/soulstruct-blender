@@ -33,6 +33,8 @@ class MSBToolsPanel(bpy.types.Panel):
     bl_options = {"DEFAULT_CLOSED"}
 
     def draw(self, context):
+        self.layout.operator(EnableSelectedNames.bl_idname, icon='HIDE_OFF')
+        self.layout.operator(DisableSelectedNames.bl_idname, icon='HIDE_ON')
         self.layout.operator(CreateMSBPart.bl_idname, icon='MESH_CUBE')
         self.layout.operator(DuplicateMSBPartModel.bl_idname, icon='DUPLICATE')
 

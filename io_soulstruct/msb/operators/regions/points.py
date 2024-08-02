@@ -11,9 +11,9 @@ from .base import *
 
 
 msb_point_operator_config = MSBRegionOperatorConfig(
-    REGION_SUBTYPE=MSBRegionSubtype.NA,
+    REGION_SUBTYPE=MSBRegionSubtype.ALL,
     COLLECTION_NAME="Point Regions",
-    MSB_LIST_NAMES=["points"],
+    MSB_LIST_NAME="region_points",
     GAME_ENUM_NAME="point_region",
 )
 

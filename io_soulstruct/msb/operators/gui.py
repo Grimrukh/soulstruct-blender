@@ -4,6 +4,7 @@ __all__ = [
 
 from .parts import *
 from .regions import *
+from .complete import *
 
 import bpy
 
@@ -30,7 +31,6 @@ class MSBImportExportPanel(bpy.types.Panel):
             panel.prop(context.scene.msb_import_settings, "entry_name_match", text="")
             panel.label(text="Match Mode:")
             panel.prop(context.scene.msb_import_settings, "entry_name_match_mode", text="")
-            panel.prop(context.scene.msb_import_settings, "include_pattern_in_parent_name")
 
         header, panel = self.layout.panel("MSB Export Settings", default_closed=True)
         header.label(text="MSB Export Settings")
@@ -110,6 +110,9 @@ class MSBImportExportPanel(bpy.types.Panel):
         if panel:
             panel.operator(ImportMSBVolume.bl_idname)
             panel.operator(ImportAllMSBVolumes.bl_idname)
+
+        self.layout.label(text="Complete:")
+        self.layout.operator(ImportFullMSB.bl_idname)
 
     @staticmethod
     def panel_import_export_operators(

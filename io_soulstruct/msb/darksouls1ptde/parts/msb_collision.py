@@ -192,7 +192,11 @@ class BlenderMSBCollision(BlenderMSBPart[MSBCollision, MSBCollisionProps]):
 
         both_res_hkxbhd = BothResHKXBHD.from_both_paths(hi_res_hkxbhd_path, lo_res_hkxbhd_path)
         hi_hkx, lo_hkx = both_res_hkxbhd.get_both_hkx(model_name)
-        collection = get_collection(f"{map_stem} Collision Models", context.scene.collection)
+        collection = get_or_create_collection(
+            context.scene.collection,
+            f"{map_stem} Models",
+            f"{map_stem} Collision Models",
+        )
 
         # Import single HKX.
         try:

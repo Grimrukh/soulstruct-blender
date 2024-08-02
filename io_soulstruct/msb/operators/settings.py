@@ -31,12 +31,6 @@ class MSBImportSettings(bpy.types.PropertyGroup):
         default="GLOB",
     )
 
-    include_pattern_in_parent_name: bpy.props.BoolProperty(
-        name="Include Pattern in Parent Name",
-        description="Include the glob/regex pattern in the name of the parent object for imported MSB entries",
-        default=True,
-    )
-
     def get_name_match_filter(self) -> tp.Callable[[str], bool]:
         match self.entry_name_match_mode:
             case "GLOB":
@@ -51,13 +45,6 @@ class MSBImportSettings(bpy.types.PropertyGroup):
                 raise ValueError(f"Invalid MSB entry name match mode: {self.entry_name_match_mode}")
 
         return is_name_match
-
-    def get_collection_name(self, map_stem: str, name: str):
-        """`name` should be something like 'Map Piece Parts' or 'Point Regions'."""
-        if self.include_pattern_in_parent_name:
-            return f"{map_stem} {name} ({self.entry_name_match})"
-        else:
-            return f"{map_stem} {name}"
 
 
 class MSBExportSettings(bpy.types.PropertyGroup):

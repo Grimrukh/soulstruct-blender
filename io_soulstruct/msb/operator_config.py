@@ -49,17 +49,17 @@ class MSBPartOperatorConfig:
 
     @property
     def collection_name(self):
-        return self.PART_SUBTYPE.get_nice_name() + " Parts"
+        return f"{self.PART_SUBTYPE.get_nice_name()} Parts"
 
 
 BLENDER_MSB_REGION_TYPES = {
     DARK_SOULS_PTDE: {
         # No subtypes, only shapes.
-        MSBRegionSubtype.NA: darksouls1ptde.BlenderMSBRegion,
+        MSBRegionSubtype.ALL: darksouls1ptde.BlenderMSBRegion,
     },
     DARK_SOULS_DSR: {
         # No subtypes, only shapes.
-        MSBRegionSubtype.NA: darksouls1ptde.BlenderMSBRegion,
+        MSBRegionSubtype.ALL: darksouls1ptde.BlenderMSBRegion,
     },
 }
 
@@ -70,7 +70,7 @@ class MSBRegionOperatorConfig:
 
     REGION_SUBTYPE: MSBRegionSubtype
     COLLECTION_NAME: str
-    MSB_LIST_NAMES: list[str]  # e.g. ['spheres', 'cylinders', 'boxes']
+    MSB_LIST_NAME: str
     GAME_ENUM_NAME: str | None  # e.g. 'point_region' or 'volume_region'
 
     def get_bl_region_type(self, game: Game) -> tp.Type[darksouls1ptde.BlenderMSBRegion]:

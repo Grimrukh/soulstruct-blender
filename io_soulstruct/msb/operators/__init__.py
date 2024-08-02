@@ -40,9 +40,12 @@ __all__ = [
     "ImportAllMSBVolumes",
 
     "MSBImportExportPanel",
+
+    "ImportFullMSB",
 ]
 
 from .parts import *
 from .regions import *
+from .complete import *
 from .settings import *
 from .gui import *

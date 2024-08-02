@@ -60,8 +60,11 @@ class BaseImportSingleMSBPart(BaseMSBEntrySelectOperator):
         # We always use the latest MSB, if the setting is enabled.
         msb_stem = settings.get_latest_map_stem_version()
         map_stem = settings.get_oldest_map_stem_version() if not self.config.USE_LATEST_MAP_FOLDER else msb_stem
-        collection_name = context.scene.msb_import_settings.get_collection_name(msb_stem, self.config.collection_name)
-        part_collection = get_collection(collection_name, context.scene.collection)
+        part_collection = get_or_create_collection(
+            context.scene.collection,
+            f"{map_stem} Parts",
+            f"{map_stem} {self.config.collection_name}",
+        )
 
         try:
             # NOTE: Instance creator may not always use `map_stem` (e.g. characters).
@@ -123,8 +126,11 @@ class BaseImportAllMSBParts(LoggingOperator):
         map_stem = settings.get_oldest_map_stem_version() if not self.config.USE_LATEST_MAP_FOLDER else msb_stem
         msb_path = settings.get_import_msb_path()  # will automatically use latest MSB version if known and enabled
         msb = get_cached_file(msb_path, settings.get_game_msb_class())  # type: MSB_TYPING
-        collection_name = msb_import_settings.get_collection_name(msb_stem, self.config.collection_name)
-        part_collection = get_collection(collection_name, context.scene.collection)
+        part_collection = get_or_create_collection(
+            context.scene.collection,
+            f"{map_stem} Parts",
+            f"{map_stem} {self.config.collection_name}",
+        )
 
         part_list = getattr(msb, self.config.MSB_LIST_NAME)
         part_count = 0

@@ -14,7 +14,7 @@ from io_soulstruct.flver.utilities import get_flvers_from_binder
 from io_soulstruct.msb.properties import MSBPartSubtype, MSBPlayerStartProps
 from io_soulstruct.msb.utilities import find_flver_model, batch_import_flver_models
 from io_soulstruct.types import *
-from io_soulstruct.utilities import LoggingOperator, get_collection
+from io_soulstruct.utilities import LoggingOperator, get_or_create_collection
 from soulstruct.containers import Binder
 from soulstruct.darksouls1ptde.maps.models import MSBCharacterModel
 from soulstruct.darksouls1ptde.maps.parts import MSBPlayerStart
@@ -75,7 +75,7 @@ class BlenderMSBPlayerStart(BlenderMSBPart[MSBPlayerStart, MSBPlayerStartProps])
                 flver,
                 model_name,
                 image_import_manager,
-                collection=get_collection("Character Models", context.scene.collection),
+                collection=get_or_create_collection(context.scene.collection, "Character Models"),
             )
         except Exception as ex:
             traceback.print_exc()  # for inspection in Blender console
@@ -110,7 +110,7 @@ class BlenderMSBPlayerStart(BlenderMSBPart[MSBPlayerStart, MSBPlayerStartProps])
                 flver_entries = chrbnd.find_entries_matching_name(r".*\.flver(\.dcx)?")
                 if not flver_entries:
                     raise FLVERImportError(f"Cannot find a FLVER file in CHRBND {chrbnd_path}.")
-                model_datas[model_name] = flver_entries[0].get_uncompressed_data()
+                model_datas[model_name] = flver_entries[0]
                 model_chrbnds[model_name] = chrbnd
 
         batch_import_flver_models(

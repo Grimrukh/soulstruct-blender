@@ -31,7 +31,7 @@ class BaseImportSingleMSBRegion(BaseMSBEntrySelectOperator):
 
     @classmethod
     def get_msb_list_names(cls, context) -> list[str]:
-        return cls.config.MSB_LIST_NAMES
+        return [cls.config.MSB_LIST_NAME]
 
     @classmethod
     def poll(cls, context):
@@ -48,7 +48,6 @@ class BaseImportSingleMSBRegion(BaseMSBEntrySelectOperator):
     def _import_entry(self, context, entry: MSBRegion):
 
         settings = self.settings(context)
-        msb_import_settings = context.scene.msb_import_settings
 
         try:
             bl_region_type = self.config.get_bl_region_type(settings.game)
@@ -59,8 +58,11 @@ class BaseImportSingleMSBRegion(BaseMSBEntrySelectOperator):
 
         # We always use the latest MSB, if the setting is enabled.
         msb_stem = settings.get_latest_map_stem_version()
-        collection_name = msb_import_settings.get_collection_name(msb_stem, self.config.COLLECTION_NAME)
-        region_collection = get_collection(collection_name, context.scene.collection)  # does NOT hide in viewport
+        region_collection = get_or_create_collection(
+            context.scene.collection,
+            f"{msb_stem} Regions",
+            f"{msb_stem} {self.config.COLLECTION_NAME}",
+        )
 
         try:
             bl_region = bl_region_type.new_from_soulstruct_obj(
@@ -108,15 +110,16 @@ class BaseImportAllMSBRegions(LoggingOperator):
         msb_stem = settings.get_latest_map_stem_version()
         msb_path = settings.get_import_msb_path()  # will automatically use latest MSB version if known and enabled
         msb = get_cached_file(msb_path, settings.get_game_msb_class())  # type: MSB_TYPING
-        collection_name = msb_import_settings.get_collection_name(msb_stem, self.config.COLLECTION_NAME)
-        region_collection = get_collection(collection_name, context.scene.collection)
+        region_collection = get_or_create_collection(
+            context.scene.collection,
+            f"{msb_stem} Regions",
+            f"{msb_stem} {self.config.COLLECTION_NAME}",
+        )
 
-        combined_region_list = []
-        for region_list in [getattr(msb, name) for name in self.config.MSB_LIST_NAMES]:
-            combined_region_list.extend(region_list)
+        region_list = getattr(msb, self.config.MSB_LIST_NAME)
         region_count = 0
 
-        for region in [region for region in combined_region_list if is_name_match(region.name)]:
+        for region in [region for region in region_list if is_name_match(region.name)]:
             try:
                 # Don't need to get created object.
                 bl_region_type.new_from_soulstruct_obj(
@@ -135,7 +138,7 @@ class BaseImportAllMSBRegions(LoggingOperator):
             return {"CANCELLED"}
 
         self.info(
-            f"Imported {region_count} / {len(combined_region_list)} MSB {self.config.REGION_SUBTYPE} regions in "
+            f"Imported {region_count} / {len(region_list)} MSB {self.config.REGION_SUBTYPE} regions in "
             f"{time.perf_counter() - start_time:.3f} seconds (filter: '{msb_import_settings.entry_name_match}')."
         )
 

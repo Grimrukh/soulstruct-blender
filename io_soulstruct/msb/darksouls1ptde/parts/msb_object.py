@@ -151,7 +151,7 @@ class BlenderMSBObject(BlenderMSBPart[MSBObject, MSBObjectProps]):
                 flver,
                 model_name,
                 image_import_manager=image_import_manager,
-                collection=get_collection("Object Models", context.scene.collection),
+                collection=get_or_create_collection(context.scene.collection, "Object Models"),
             )
         except Exception as ex:
             traceback.print_exc()  # for inspection in Blender console
@@ -188,7 +188,7 @@ class BlenderMSBObject(BlenderMSBPart[MSBObject, MSBObjectProps]):
                 if not flver_entries:
                     raise FLVERImportError(f"Cannot find a FLVER file in OBJBND {objbnd_path}.")
                 # TODO: Ignoring secondary object FLVERs for now.
-                model_datas[model_name] = flver_entries[0].get_uncompressed_data()
+                model_datas[model_name] = flver_entries[0]
                 model_objbnds[model_name] = objbnd
 
         batch_import_flver_models(

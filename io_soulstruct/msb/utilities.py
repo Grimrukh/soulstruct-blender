@@ -22,8 +22,7 @@ from io_soulstruct.flver.image.image_import_manager import ImageImportManager
 from io_soulstruct.general.cached import get_cached_file
 from io_soulstruct.types import SoulstructType
 from io_soulstruct.utilities import *
-# from soulstruct.base.base_binary_file import batch_read_base_binary_file, batch_read_base_binary_data
-from soulstruct.containers import Binder
+from soulstruct.containers import Binder, BinderEntry
 from soulstruct.base.maps.msb import MSB, MSBEntry  # must not be imported under `TYPE_CHECKING` guard
 from soulstruct.base.models.flver import FLVER
 from soulstruct.base.models.flver.mesh_tools import MergedMesh
@@ -92,7 +91,6 @@ class BaseMSBEntrySelectOperator(LoggingOperator):
         if self.temp_directory:
             shutil.rmtree(self.temp_directory, ignore_errors=True)
             self.temp_directory = ""
-        super().cancel(context)
 
     def invoke(self, context, event):
         """Unpack valid MSB entry choices to temp directory for user to select from."""
@@ -179,7 +177,7 @@ class BaseMSBEntrySelectOperator(LoggingOperator):
 def batch_import_flver_models(
     operator: LoggingOperator,
     context: Context,
-    flver_sources: dict[str, bytes | Path],
+    flver_sources: dict[str, BinderEntry | Path],
     map_stem: str,
     part_subtype_title: str,
     flver_source_binders: dict[str, Binder] = None,
@@ -194,10 +192,10 @@ def batch_import_flver_models(
 
     if all(isinstance(data, Path) for data in flver_sources.values()):
         flvers_list = FLVER.from_path_batch(list(flver_sources.values()))
-    elif all(isinstance(data, bytes) for data in flver_sources.values()):
-        flvers_list = FLVER.from_bytes_batch(list(flver_sources.values()))
+    elif all(isinstance(data, BinderEntry) for data in flver_sources.values()):
+        flvers_list = FLVER.from_binder_entry_batch(list(flver_sources.values()))
     else:
-        raise ValueError("All FLVER model data for batch importing must be either `bytes` or `Path` objects.")
+        raise ValueError("All FLVER model data for batch importing must be either `BinderEntry` or `Path` objects.")
     # Drop failed FLVERs immediately.
     flvers = {
         model_name: flver
@@ -211,10 +209,11 @@ def batch_import_flver_models(
     if flver_import_settings.import_textures:
         image_import_manager = ImageImportManager(operator, context)
         # Find textures for all loaded FLVERs.
-        for model_name, flver in flvers:
+        for model_name, flver in flvers.items():
+            source_binder = flver_source_binders.get(model_name, None)
             image_import_manager.find_flver_textures(
-                flver.path,
-                flver_source_binders.get(model_name, None),
+                source_binder.path if source_binder else flver.path,
+                source_binder,
             )
             if image_import_callback:
                 image_import_callback(image_import_manager, flver)
@@ -256,7 +255,19 @@ def batch_import_flver_models(
     operator.info(f"Merged {len(flvers)} {part_subtype_title} FLVERs in {time.perf_counter() - p:.2f} seconds.")
     p = time.perf_counter()
 
-    model_collection = get_collection(f"{map_stem} {part_subtype_title.capitalize()} Models", context.scene.collection)
+    if part_subtype_title in {"Character", "Object", "Asset", "Equipment"}:
+        # Not map-specific.
+        model_collection = get_or_create_collection(
+            context.scene.collection,
+            "Models",
+            f"{part_subtype_title} Models",
+        )
+    else:
+        model_collection = get_or_create_collection(
+            context.scene.collection,
+            f"{map_stem} Models",
+            f"{map_stem} {part_subtype_title} Models",
+        )
     for model_name, flver in flvers.items():
         try:
             BlenderFLVER.new_from_soulstruct_obj(

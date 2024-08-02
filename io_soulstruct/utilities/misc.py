@@ -6,7 +6,7 @@ __all__ = [
     "MapStem",
     "get_bl_custom_prop",
     "is_uniform",
-    "get_collection",
+    "get_or_create_collection",
     "is_path_and_file",
     "is_path_and_dir",
     "get_bl_obj_tight_name",
@@ -102,17 +102,26 @@ def is_uniform(vector: Vector | Vector3, rel_tol: float):
     return xy_close and xz_close and yz_close
 
 
-def get_collection(
-    name: str,
-    parent_collection: bpy.types.Collection = None,
+def get_or_create_collection(
+    root_collection: bpy.types.Collection,
+    *names: str,
 ) -> bpy.types.Collection:
-    """Find or create collection `name`."""
+    """Find or create collection `name`. If it doesn't exist, create it, nested inside the given hierarchy."""
+    names = list(names)
+    if not names:
+        raise ValueError("At least one Collection name must be provided.")
+    target_name = names.pop()
     try:
-        return bpy.data.collections[name]
+        return bpy.data.collections[target_name]
     except KeyError:
-        collection = bpy.data.collections.new(name)
-        if parent_collection:
-            parent_collection.children.link(collection)
+        collection = bpy.data.collections.new(target_name)
+        if not names:
+            # Reached top of hierarchy.
+            if root_collection:
+                root_collection.children.link(collection)
+            return collection
+        parent_collection = get_or_create_collection(root_collection, *names)
+        parent_collection.children.link(collection)
         return collection
 
 

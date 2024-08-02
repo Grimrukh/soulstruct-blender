@@ -300,11 +300,10 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
         those annoying old Map Pieces with "pre-posed vertices".
         """
         model = cls.model_ref_to_bl_obj(operator, context, soulstruct_obj, map_stem)
-
-        bl_part = cls.new(name, model.data, collection)  # type: tp.Self
+        model_mesh = model.data if model else bpy.data.meshes.new(name)
+        bl_part = cls.new(name, model_mesh, collection)  # type: tp.Self
         bl_part.set_bl_obj_transform(soulstruct_obj)
         bl_part.model = model
-        bl_part.obj.data = bl_part.model.data
         bl_part.draw_groups = soulstruct_obj.draw_groups
         bl_part.display_groups = soulstruct_obj.display_groups
         for name in cls.AUTO_PART_PROPS:

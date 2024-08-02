@@ -16,7 +16,7 @@ from io_soulstruct.flver.models import BlenderFLVER
 from io_soulstruct.msb.properties import MSBPartSubtype, MSBMapPieceProps
 from io_soulstruct.msb.utilities import find_flver_model, batch_import_flver_models
 from io_soulstruct.types import *
-from io_soulstruct.utilities import LoggingOperator, get_collection
+from io_soulstruct.utilities import LoggingOperator, get_or_create_collection
 from soulstruct.base.models.flver import FLVER
 from soulstruct.darksouls1ptde.maps.models import MSBMapPieceModel
 from soulstruct.darksouls1ptde.maps.msb import MSBMapPiece
@@ -83,7 +83,11 @@ class BlenderMSBMapPiece(BlenderMSBPart[MSBMapPiece, MSBMapPieceProps]):
         else:
             image_import_manager = None
 
-        map_piece_model_collection = get_collection(f"{map_stem} Map Piece Models", context.scene.collection)
+        map_piece_model_collection = get_or_create_collection(
+            context.scene.collection,
+            f"{map_stem} Models",
+            f"{map_stem} Map Piece Models",
+        )
         try:
             bl_flver = BlenderFLVER.new_from_soulstruct_obj(
                 operator,
