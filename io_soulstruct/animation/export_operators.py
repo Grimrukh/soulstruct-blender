@@ -245,7 +245,7 @@ class ExportCharacterHKXAnimation(BaseExportTypedHKXAnimation):
         bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
         bl_animation = SoulstructAnimation.from_armature_animation_data(bl_flver.armature)
 
-        model_name = bl_flver.tight_name
+        model_name = bl_flver.export_name
         if model_name == "c0000":
             return self.error("Automatic ANIBND import is not yet supported for c0000 (player model).")
 
@@ -321,7 +321,7 @@ class ExportObjectHKXAnimation(BaseExportTypedHKXAnimation):
 
         bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
         bl_animation = SoulstructAnimation.from_armature_animation_data(bl_flver.armature)
-        model_name = bl_flver.tight_name
+        model_name = bl_flver.export_name
 
         # Get OBJBND to modify from project (preferred) or game directory.
         relative_objbnd_path = Path(f"obj/{model_name}.objbnd")

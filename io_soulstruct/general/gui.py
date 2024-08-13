@@ -9,6 +9,7 @@ __all__ = [
     "GlobalSettingsPanel_AnimationView",
     "GlobalSettingsPanel_CollisionView",
     "GlobalSettingsPanel_CutsceneView",
+    "map_stem_box",
 ]
 
 import bpy
@@ -44,10 +45,7 @@ class _GlobalSettingsPanel_ViewMixin:
             panel.prop(settings, "also_export_to_game")
             panel.prop(settings, "smart_map_version_handling")
 
-        layout.label(text="Selected Map:")
-        layout.prop(settings, "map_stem", text="")
-        layout.operator(SelectGameMapDirectory.bl_idname)
-        layout.operator(SelectProjectMapDirectory.bl_idname)
+        map_stem_box(layout, settings)
 
         header, panel = layout.panel("Material/Texture Settings", default_closed=True)
         header.label(text="Material/Texture Settings")
@@ -151,3 +149,13 @@ class GlobalSettingsPanel_CutsceneView(bpy.types.Panel, _GlobalSettingsPanel_Vie
     bl_region_type = "UI"
     bl_category = "Cutscene"
     bl_options = {"DEFAULT_CLOSED"}
+
+
+def map_stem_box(layout: bpy.types.UILayout, settings: SoulstructSettings):
+    map_box = layout.box()
+    map_box.label(text="Selected Map:")
+    map_box.prop(settings, "map_stem", text="")
+    row = map_box.row()
+    split = row.split(factor=0.5)
+    split.column().operator(SelectGameMapDirectory.bl_idname, text="Select Game Map")
+    split.column().operator(SelectProjectMapDirectory.bl_idname, text="Select Project Map")

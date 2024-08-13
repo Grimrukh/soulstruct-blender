@@ -11,6 +11,7 @@ import bpy
 from io_soulstruct.exceptions import SoulstructTypeError
 from io_soulstruct.misc_operators import CopyMeshSelectionOperator, CutMeshSelectionOperator
 from .image import *
+from .lightmaps import *
 from .material import *
 from .misc_operators import *
 from .models.types import BlenderFLVER

@@ -200,10 +200,7 @@ class ImportMapPieceFLVER(BaseFLVERImportOperator):
         """Set the initial directory based on Global Settings."""
         settings = self.settings(context)
         # Map Piece FLVERs come from the oldest version of the map in DS1.
-        if settings.is_game("DARK_SOULS_PTDE", "DARK_SOULS_DSR"):
-            map_piece_map_stem = settings.get_oldest_map_stem_version()
-        else:
-            map_piece_map_stem = settings.map_stem
+        map_piece_map_stem = settings.get_oldest_map_stem_version() if settings.is_game_ds1() else settings.map_stem
         try:
             map_dir = settings.get_import_map_dir_path(map_stem=map_piece_map_stem)
         except NotADirectoryError:
@@ -263,7 +260,7 @@ class ImportCharacterFLVER(BaseFLVERImportOperator):
     # Base `execute` method is fine.
 
     def post_process_flver(self, context: bpy.types.Context, settings: SoulstructSettings, bl_flver: BlenderFLVER):
-        if settings.is_game("DARK_SOULS_PTDE", "DARK_SOULS_DSR"):
+        if settings.is_game_ds1():
             # Add character description to model name.
             try:
                 model_id = int(bl_flver.name[1:5])

@@ -7,6 +7,7 @@ __all__ = [
 ]
 
 import bpy
+from io_soulstruct.general.gui import map_stem_box
 from .import_operators import *
 from .export_operators import *
 from .types import BlenderFLVER
@@ -46,6 +47,10 @@ class FLVERImportPanel(bpy.types.Panel):
         layout = self.layout
         settings = context.scene.soulstruct_settings
 
+        map_stem_box(layout, settings)
+
+        # NOTE: Import settings are exposed within each individual operator (all use browser pop-ups).
+
         layout.label(text="Import from Game/Project:")
         layout.operator(ImportMapPieceFLVER.bl_idname)
         layout.operator(ImportCharacterFLVER.bl_idname)
@@ -71,16 +76,19 @@ class FLVERExportPanel(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
 
+        settings = context.scene.soulstruct_settings
+
         header, panel = layout.panel("FLVER Export Settings", default_closed=True)
         header.label(text="FLVER Export Settings")
         if panel:
-            panel.prop(context.scene.soulstruct_settings, "detect_map_from_collection")
-            panel.prop(context.scene.flver_export_settings, "export_textures")
-            panel.prop(context.scene.flver_export_settings, "allow_missing_textures")
-            panel.prop(context.scene.flver_export_settings, "allow_unknown_texture_types")
-            panel.prop(context.scene.flver_export_settings, "create_lod_face_sets")
-            panel.prop(context.scene.flver_export_settings, "base_edit_bone_length")
-            panel.prop(context.scene.flver_export_settings, "normal_tangent_dot_max")
+            export_settings = context.scene.flver_export_settings
+            panel.prop(settings, "detect_map_from_collection")
+            panel.prop(export_settings, "export_textures")
+            panel.prop(export_settings, "allow_missing_textures")
+            panel.prop(export_settings, "allow_unknown_texture_types")
+            panel.prop(export_settings, "create_lod_face_sets")
+            panel.prop(export_settings, "base_edit_bone_length")
+            panel.prop(export_settings, "normal_tangent_dot_max")
 
         if not context.selected_objects:
             layout.label(text="Select some FLVER models.")
@@ -92,6 +100,8 @@ class FLVERExportPanel(bpy.types.Panel):
                 layout.label(text="Select some FLVER models.")
                 layout.label(text="MSB Parts cannot be selected.")
                 return
+
+        map_stem_box(layout, settings)
 
         layout.label(text="Export to Selected Game/Project/Map:")
         layout.operator(ExportMapPieceFLVERs.bl_idname)

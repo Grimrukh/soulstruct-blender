@@ -443,7 +443,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         Blender's duplicate suffix, e.g. '.001', is stripped prior to the renaming of all components.
         """
 
-        old_name = old_name or self.tight_name
+        old_name = old_name or self.export_name
 
         if self.armature:
             self.armature.name = f"{new_name} Armature"
@@ -1520,9 +1520,9 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         if not self.armature or not self.armature.pose.bones:
             operator.info(  # not a warning
                 f"No non-empty Armature to export. Creating FLVER skeleton with a single default bone at origin named "
-                f"'{self.tight_name}'."
+                f"'{self.export_name}'."
              )
-            default_bone = FLVERBone(name=self.tight_name)  # default transform and other fields
+            default_bone = FLVERBone(name=self.export_name)  # default transform and other fields
             flver.bones.append(default_bone)
             bl_bone_names = [default_bone.name]
         else:
@@ -1894,7 +1894,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
             normal_tangent_dot_threshold=normal_tangent_dot_max,
             # NOTE: DS1 has a maximum submesh vertex count of 65535, as face vertex indices must be 16-bit globally.
             # Later games use 32-bit face vertex indices (max 4294967295).
-            max_submesh_vertex_count=65535 if settings.is_game("DARK_SOULS_PTDE", "DARK_SOULS_DSR") else 4294967295,
+            max_submesh_vertex_count=65535 if settings.is_game_ds1() else 4294967295,
         )
         operator.info(f"Split mesh into {len(flver.submeshes)} submeshes in {time.perf_counter() - p} s.")
 

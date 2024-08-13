@@ -25,12 +25,15 @@ if tp.TYPE_CHECKING:
 
 
 class BlenderMSBCollision(BlenderMSBPart[MSBCollision, MSBCollisionProps]):
-    """Not FLVER-based."""
+    """Not FLVER-based.
+
+    NOTE: `environment_event` circular reference is not represented in Blender. It is found on MSB export.
+    """
 
     OBJ_DATA_TYPE = SoulstructDataType.MESH
     SOULSTRUCT_CLASS = MSBCollision
     SOULSTRUCT_MODEL_CLASS = MSBCollisionModel
-    PART_SUBTYPE = MSBPartSubtype.COLLISION
+    PART_SUBTYPE = MSBPartSubtype.Collision
     MODEL_SUBTYPES = ["collision_models"]
 
     __slots__ = []
@@ -60,14 +63,6 @@ class BlenderMSBCollision(BlenderMSBPart[MSBCollision, MSBCollisionProps]):
     reflect_plane_height: float
 
     @property
-    def environment_event(self) -> bpy.types.Object | None:
-        return self.subtype_properties.environment_event
-
-    @environment_event.setter
-    def environment_event(self, value: bpy.types.Object | None):
-        self.subtype_properties.environment_event = value
-
-    @property
     def navmesh_groups(self):
         return self._get_groups_bit_set(self.subtype_properties.get_navmesh_groups_props_128())
 
@@ -75,7 +70,7 @@ class BlenderMSBCollision(BlenderMSBPart[MSBCollision, MSBCollisionProps]):
     def navmesh_groups(self, value: set[int] | GroupBitSet128):
         if isinstance(value, GroupBitSet128):
             value = value.enabled_bits
-        self._set_groups_bit_set(self.type_properties.get_draw_groups_props_128(), value)
+        self._set_groups_bit_set(self.subtype_properties.get_navmesh_groups_props_128(), value)
 
     @property
     def hit_filter(self) -> CollisionHitFilter:
@@ -105,21 +100,14 @@ class BlenderMSBCollision(BlenderMSBPart[MSBCollision, MSBCollisionProps]):
         name: str,
         collection: bpy.types.Collection = None,
         map_stem="",
+        try_import_model=True,
     ) -> tp.Self:
 
         bl_collision = super().new_from_soulstruct_obj(
-            operator, context, soulstruct_obj, name, collection, map_stem
+            operator, context, soulstruct_obj, name, collection, map_stem, try_import_model
         )  # type: tp.Self
 
         bl_collision.navmesh_groups = soulstruct_obj.navmesh_groups
-        bl_collision.environment_event = cls.entry_ref_to_bl_obj(
-            operator,
-            soulstruct_obj,
-            "environment_event",
-            soulstruct_obj.environment_event,
-            SoulstructType.MSB_EVENT,
-            missing_collection_name=f"{map_stem} Missing MSB References".lstrip(),
-        )
         bl_collision.vagrant_entity_ids = soulstruct_obj.vagrant_entity_ids
 
         try:
@@ -147,9 +135,6 @@ class BlenderMSBCollision(BlenderMSBPart[MSBCollision, MSBCollisionProps]):
         msb_collision = super().to_soulstruct_obj(operator, context, map_stem, msb)  # type: MSBCollision
 
         msb_collision.navmesh_groups = self.navmesh_groups
-        msb_collision.environment_event = self.bl_obj_to_entry_ref(
-            msb, "environment_event", self.environment_event, msb_collision, entry_subtype="environments"
-        )
         msb_collision.vagrant_entity_ids = self.vagrant_entity_ids
 
         for name in self.AUTO_COLLISION_PROPS:

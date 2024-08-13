@@ -30,7 +30,7 @@ class BlenderMSBCharacter(BlenderMSBPart[MSBCharacter, MSBCharacterProps]):
     OBJ_DATA_TYPE = SoulstructDataType.MESH
     SOULSTRUCT_CLASS = MSBCharacter
     SOULSTRUCT_MODEL_CLASS = MSBCharacterModel
-    PART_SUBTYPE = MSBPartSubtype.CHARACTER
+    PART_SUBTYPE = MSBPartSubtype.Character
     MODEL_SUBTYPES = ["character_models"]
 
     __slots__ = []
@@ -99,9 +99,10 @@ class BlenderMSBCharacter(BlenderMSBPart[MSBCharacter, MSBCharacterProps]):
         name: str,
         collection: bpy.types.Collection = None,
         map_stem="",
+        try_import_model=True,
     ) -> tp.Self:
         bl_character = super().new_from_soulstruct_obj(
-            operator, context, soulstruct_obj, name, collection, map_stem
+            operator, context, soulstruct_obj, name, collection, map_stem, try_import_model
         )  # type: BlenderMSBCharacter
 
         missing_collection_name = f"{map_stem} Missing MSB References".lstrip()
@@ -136,8 +137,8 @@ class BlenderMSBCharacter(BlenderMSBPart[MSBCharacter, MSBCharacterProps]):
 
     def create_soulstruct_obj(self):
         if self.subtype_properties.is_dummy:
-            return MSBDummyCharacter(name=self.tight_name)
-        return MSBCharacter(name=self.tight_name)
+            return MSBDummyCharacter(name=self.export_name)
+        return MSBCharacter(name=self.export_name)
 
     def to_soulstruct_obj(
         self,

@@ -6,11 +6,10 @@ from __future__ import annotations
 
 __all__ = [
     "RegionDrawSettings",
-    "draw_region_volumes",
+    "draw_msb_regions",
 ]
 
 import math
-import re
 
 import numpy as np
 
@@ -93,8 +92,6 @@ class RegionDrawSettings(bpy.types.PropertyGroup):
     )
 
 
-MAP_VOLUME_COLLECTION_RE = re.compile(r"^(?P<map_stem>.+) (.*)Volumes(.*)$")
-
 UNIT_CIRCLE_32 = [
     [math.cos(angle), math.sin(angle), 0]
     for angle in np.linspace(0, 2 * math.pi, 32)
@@ -132,8 +129,7 @@ CUBE_EDGES = [
 CUBE_BATCH = batch_for_shader(SHADER, "LINES", {'pos': [CUBE_VERTICES[i] for edge in CUBE_EDGES for i in edge]})
 
 
-# noinspection PyUnresolvedReferences
-def draw_region_volumes():
+def draw_msb_regions():
     draw_settings = bpy.context.scene.region_draw_settings
     if draw_settings.draw_mode == "NONE":
         return  # don't draw any regions
@@ -158,19 +154,16 @@ def draw_region_volumes():
 
     match draw_settings.draw_mode:
         case "ACTIVE_COLLECTION":
-            region_collection = bpy.context.collection
-            for obj in region_collection.objects:
+            for obj in bpy.context.collection.objects:
                 register_obj(obj)
         case "SELECTED":
             for obj in bpy.context.selected_objects:
                 register_obj(obj)
         case "MAP":
-            map_stem = bpy.context.scene.soulstruct_settings.get_oldest_map_stem_version()  # for MSB
-            region_collections = [
-                collection for collection in bpy.data.collections
-                if MAP_VOLUME_COLLECTION_RE.match(collection.name) and collection.name.startswith(map_stem)
-            ]
-            for collection in region_collections:
+            map_stem = bpy.context.scene.soulstruct_settings.get_latest_map_stem_version()  # for MSB
+            for collection in bpy.data.collections:
+                if not collection.name.startswith(map_stem):
+                    continue
                 for obj in collection.objects:
                     register_obj(obj)
         case "ALL":

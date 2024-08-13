@@ -290,7 +290,7 @@ class ImportSelectedMapHKXMapCollision(LoggingOperator):
     def poll(cls, context):
         settings = cls.settings(context)
         map_stem = settings.get_oldest_map_stem_version()  # collision uses oldest
-        if not settings.is_game("DARK_SOULS_PTDE", "DARK_SOULS_DSR"):
+        if not settings.is_game_ds1():
             return False
         # Either loose HKX files in map directory (PTDE) or a pair of resolution HKXBHDs (DSR).
         try:

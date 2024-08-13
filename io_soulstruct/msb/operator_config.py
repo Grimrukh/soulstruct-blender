@@ -2,76 +2,78 @@ from __future__ import annotations
 
 __all__ = [
     "BLENDER_MSB_PART_TYPES",
-    "MSBPartOperatorConfig",
+    "BLENDER_MSB_REGION_TYPES",
+    "BLENDER_MSB_EVENT_TYPES",
 ]
-
-import typing as tp
-from dataclasses import dataclass
 
 from io_soulstruct.msb import darksouls1ptde, darksouls1r
 from soulstruct.games import *
-from .properties import MSBPartSubtype, MSBRegionSubtype
+from .properties import MSBPartSubtype, MSBRegionSubtype, MSBEventSubtype
 
 
 BLENDER_MSB_PART_TYPES = {
     DARK_SOULS_PTDE: {
-        MSBPartSubtype.MAP_PIECE: darksouls1ptde.BlenderMSBMapPiece,
-        MSBPartSubtype.OBJECT: darksouls1ptde.BlenderMSBObject,
-        MSBPartSubtype.CHARACTER: darksouls1ptde.BlenderMSBCharacter,
-        MSBPartSubtype.PLAYER_START: darksouls1ptde.BlenderMSBPlayerStart,
-        MSBPartSubtype.COLLISION: darksouls1ptde.BlenderMSBCollision,
-        MSBPartSubtype.NAVMESH: darksouls1ptde.BlenderMSBNavmesh,
-        MSBPartSubtype.CONNECT_COLLISION: darksouls1ptde.BlenderMSBConnectCollision,
+        MSBPartSubtype.MapPiece: darksouls1ptde.BlenderMSBMapPiece,
+        MSBPartSubtype.Object: darksouls1ptde.BlenderMSBObject,
+        MSBPartSubtype.Character: darksouls1ptde.BlenderMSBCharacter,
+        MSBPartSubtype.PlayerStart: darksouls1ptde.BlenderMSBPlayerStart,
+        MSBPartSubtype.Collision: darksouls1ptde.BlenderMSBCollision,
+        MSBPartSubtype.Navmesh: darksouls1ptde.BlenderMSBNavmesh,
+        MSBPartSubtype.ConnectCollision: darksouls1ptde.BlenderMSBConnectCollision,
     },
     DARK_SOULS_DSR: {
-        MSBPartSubtype.MAP_PIECE: darksouls1r.BlenderMSBMapPiece,
-        MSBPartSubtype.OBJECT: darksouls1r.BlenderMSBObject,
-        MSBPartSubtype.CHARACTER: darksouls1r.BlenderMSBCharacter,
-        MSBPartSubtype.PLAYER_START: darksouls1r.BlenderMSBPlayerStart,
-        MSBPartSubtype.COLLISION: darksouls1r.BlenderMSBCollision,
-        MSBPartSubtype.NAVMESH: darksouls1r.BlenderMSBNavmesh,
-        MSBPartSubtype.CONNECT_COLLISION: darksouls1r.BlenderMSBConnectCollision,
+        MSBPartSubtype.MapPiece: darksouls1r.BlenderMSBMapPiece,
+        MSBPartSubtype.Object: darksouls1r.BlenderMSBObject,
+        MSBPartSubtype.Character: darksouls1r.BlenderMSBCharacter,
+        MSBPartSubtype.PlayerStart: darksouls1r.BlenderMSBPlayerStart,
+        MSBPartSubtype.Collision: darksouls1r.BlenderMSBCollision,
+        MSBPartSubtype.Navmesh: darksouls1r.BlenderMSBNavmesh,
+        MSBPartSubtype.ConnectCollision: darksouls1r.BlenderMSBConnectCollision,
     },
 }
-
-
-@dataclass(slots=True)
-class MSBPartOperatorConfig:
-    """Configuration for MSB Part import operators."""
-
-    PART_SUBTYPE: MSBPartSubtype
-    MSB_LIST_NAME: str
-    MSB_MODEL_LIST_NAMES: list[str]
-    USE_LATEST_MAP_FOLDER: bool = False
-
-    def get_bl_part_type(self, game: Game) -> tp.Type[darksouls1ptde.BlenderMSBPart]:
-        return BLENDER_MSB_PART_TYPES[game][self.PART_SUBTYPE]
-
-    @property
-    def collection_name(self):
-        return f"{self.PART_SUBTYPE.get_nice_name()} Parts"
 
 
 BLENDER_MSB_REGION_TYPES = {
     DARK_SOULS_PTDE: {
         # No subtypes, only shapes.
-        MSBRegionSubtype.ALL: darksouls1ptde.BlenderMSBRegion,
+        MSBRegionSubtype.All: darksouls1ptde.BlenderMSBRegion,
     },
     DARK_SOULS_DSR: {
         # No subtypes, only shapes.
-        MSBRegionSubtype.ALL: darksouls1ptde.BlenderMSBRegion,
+        MSBRegionSubtype.All: darksouls1ptde.BlenderMSBRegion,
     },
 }
 
 
-@dataclass(slots=True)
-class MSBRegionOperatorConfig:
-    """Configuration for MSB Region import operators."""
-
-    REGION_SUBTYPE: MSBRegionSubtype
-    COLLECTION_NAME: str
-    MSB_LIST_NAME: str
-    GAME_ENUM_NAME: str | None  # e.g. 'point_region' or 'volume_region'
-
-    def get_bl_region_type(self, game: Game) -> tp.Type[darksouls1ptde.BlenderMSBRegion]:
-        return BLENDER_MSB_REGION_TYPES[game][self.REGION_SUBTYPE]
+BLENDER_MSB_EVENT_TYPES = {
+    DARK_SOULS_PTDE: {
+        MSBEventSubtype.Light: darksouls1ptde.BlenderMSBLightEvent,
+        MSBEventSubtype.Sound: darksouls1ptde.BlenderMSBSoundEvent,
+        MSBEventSubtype.VFX: darksouls1ptde.BlenderMSBVFXEvent,
+        MSBEventSubtype.Wind: darksouls1ptde.BlenderMSBWindEvent,
+        MSBEventSubtype.Treasure: darksouls1ptde.BlenderMSBTreasureEvent,
+        MSBEventSubtype.Spawner: darksouls1ptde.BlenderMSBSpawnerEvent,
+        MSBEventSubtype.Message: darksouls1ptde.BlenderMSBMessageEvent,
+        MSBEventSubtype.ObjAct: darksouls1ptde.BlenderMSBObjActEvent,
+        MSBEventSubtype.SpawnPoint: darksouls1ptde.BlenderMSBSpawnPointEvent,
+        MSBEventSubtype.MapOffset: darksouls1ptde.BlenderMSBMapOffsetEvent,
+        MSBEventSubtype.Navigation: darksouls1ptde.BlenderMSBNavigationEvent,
+        MSBEventSubtype.Environment: darksouls1ptde.BlenderMSBEnvironmentEvent,
+        MSBEventSubtype.NPCInvasion: darksouls1ptde.BlenderMSBNPCInvasionEvent,
+    },
+    DARK_SOULS_DSR: {
+        MSBEventSubtype.Light: darksouls1r.BlenderMSBLightEvent,
+        MSBEventSubtype.Sound: darksouls1r.BlenderMSBSoundEvent,
+        MSBEventSubtype.VFX: darksouls1r.BlenderMSBVFXEvent,
+        MSBEventSubtype.Wind: darksouls1r.BlenderMSBWindEvent,
+        MSBEventSubtype.Treasure: darksouls1r.BlenderMSBTreasureEvent,
+        MSBEventSubtype.Spawner: darksouls1r.BlenderMSBSpawnerEvent,
+        MSBEventSubtype.Message: darksouls1r.BlenderMSBMessageEvent,
+        MSBEventSubtype.ObjAct: darksouls1r.BlenderMSBObjActEvent,
+        MSBEventSubtype.SpawnPoint: darksouls1r.BlenderMSBSpawnPointEvent,
+        MSBEventSubtype.MapOffset: darksouls1r.BlenderMSBMapOffsetEvent,
+        MSBEventSubtype.Navigation: darksouls1r.BlenderMSBNavigationEvent,
+        MSBEventSubtype.Environment: darksouls1r.BlenderMSBEnvironmentEvent,
+        MSBEventSubtype.NPCInvasion: darksouls1r.BlenderMSBNPCInvasionEvent,
+    },
+}

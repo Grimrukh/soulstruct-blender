@@ -139,7 +139,7 @@ class ExportNVMIntoBinder(LoggingOperator, ImportHelper):
         binder_stem = binder.path.name.split(".")[0]
 
         for bl_nvm in selected_bl_nvms:
-            model_stem = bl_nvm.tight_name
+            model_stem = bl_nvm.export_name
 
             try:
                 nvm = bl_nvm.to_soulstruct_obj(self, context)
@@ -256,7 +256,7 @@ class ExportNVMIntoNVMBND(LoggingOperator):
             else:
                 nvmbnd = opened_nvmbnds[relative_nvmbnd_path]
 
-            model_stem = bl_nvm.tight_name
+            model_stem = bl_nvm.export_name
 
             try:
                 nvm = bl_nvm.to_soulstruct_obj(self, context)

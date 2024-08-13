@@ -28,7 +28,7 @@ import numpy as np
 import typing as tp
 from dataclasses import dataclass
 
-import bpy.types
+import bpy
 from mathutils import Vector, Euler, Matrix, Quaternion as BlenderQuaternion
 
 from soulstruct.utilities.maths import Vector3, Vector4, Matrix3
@@ -221,12 +221,17 @@ class BlenderTransform:
         return BL_TO_GAME_VECTOR3(self.bl_scale)
 
     @classmethod
-    def from_bl_obj(cls, bl_obj) -> BlenderTransform:
-        return BlenderTransform(
-            bl_obj.location,
-            bl_obj.rotation_euler,
-            bl_obj.scale,
-        )
+    def from_bl_obj(cls, bl_obj: bpy.types.Object, use_world_transform=False) -> BlenderTransform:
+        if use_world_transform:
+            matrix = bl_obj.matrix_world
+            loc, rot, scale = matrix.decompose()  # rot is Quaternion
+            rotation_euler = rot.to_euler()
+        else:
+            loc = bl_obj.location
+            rotation_euler = bl_obj.rotation_euler
+            scale = bl_obj.scale
+
+        return BlenderTransform(loc, rotation_euler, scale)
 
     def to_matrix(self) -> Matrix:
         return Matrix.LocRotScale(self.bl_translate, self.bl_rotate, self.bl_scale)

@@ -332,6 +332,10 @@ class SoulstructSettings(bpy.types.PropertyGroup):
                 return True
         return False
 
+    def is_game_ds1(self) -> bool:
+        """Checks if current game is either version of Dark Souls 1."""
+        return self.is_game(DARK_SOULS_PTDE, DARK_SOULS_DSR)
+
     def get_game_root_prop_name(self):
         """Get the name of the game root property for the current game."""
         return f"{self.game.submodule_name}_game_root_str"

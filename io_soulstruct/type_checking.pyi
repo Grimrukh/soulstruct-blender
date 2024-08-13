@@ -9,6 +9,8 @@ __all__ = [
     "MSB_CHARACTER_TYPING",
     "MSB_OBJECT_TYPING",
     "MSB_ASSET_TYPING",
+    "MSB_EVENT_TYPING",
+    "MSB_REGION_TYPING",
     "CHRBND_TYPING",
     "OBJBND_TYPING",
     "PARTSBND_TYPING",
@@ -18,6 +20,8 @@ __all__ = [
 import typing as tp
 
 from soulstruct.base.maps.msb.parts import BaseMSBPart
+from soulstruct.base.maps.msb.regions import BaseMSBRegion
+from soulstruct.base.maps.msb.events import BaseMSBEvent
 
 from soulstruct.darksouls1ptde.maps.msb import MSB as PTDE_MSB
 from soulstruct.darksouls1r.maps.msb import MSB as DS1R_MSB
@@ -31,7 +35,7 @@ from soulstruct.darksouls1r.maps.parts import MSBPart as DS1R_MSBPart
 from soulstruct.bloodborne.maps.parts import MSBPart as BB_MSBPart
 from soulstruct.eldenring.maps.parts import MSBPart as ER_MSBPart
 
-MSB_PART_TYPING = tp.Union[PTDE_MSBPart, DS1R_MSBPart, BB_MSBPart, ER_MSBPart]
+MSB_PART_TYPING = tp.Union[BaseMSBPart, PTDE_MSBPart, DS1R_MSBPart, BB_MSBPart, ER_MSBPart]
 
 from soulstruct.darksouls1ptde.maps.parts import MSBMapPiece as PTDE_MSBMapPiece
 from soulstruct.darksouls1r.maps.parts import MSBMapPiece as DS1R_MSBMapPiece
@@ -71,6 +75,18 @@ MSB_OBJECT_TYPING = tp.Union[BaseMSBPart, PTDE_MSBObject, DS1R_MSBObject, BB_MSB
 from soulstruct.eldenring.maps.parts import MSBAsset as ER_MSBAsset
 
 MSB_ASSET_TYPING = tp.Union[BaseMSBPart, ER_MSBAsset]
+
+from soulstruct.darksouls1ptde.maps.events import MSBEvent as PTDE_MSBEvent
+from soulstruct.darksouls1r.maps.events import MSBEvent as DS1R_MSBEvent
+from soulstruct.bloodborne.maps.events import MSBEvent as BB_MSBEvent
+from soulstruct.eldenring.maps.events import MSBEvent as ER_MSBEvent
+MSB_EVENT_TYPING = tp.Union[BaseMSBEvent, PTDE_MSBEvent, DS1R_MSBEvent, BB_MSBEvent, ER_MSBEvent]
+
+from soulstruct.darksouls1ptde.maps.regions import MSBRegion as PTDE_MSBRegion
+from soulstruct.darksouls1r.maps.regions import MSBRegion as DS1R_MSBRegion
+from soulstruct.bloodborne.maps.regions import MSBRegion as BB_MSBRegion
+from soulstruct.eldenring.maps.regions import MSBRegion as ER_MSBRegion
+MSB_REGION_TYPING = tp.Union[BaseMSBRegion, PTDE_MSBRegion, DS1R_MSBRegion, BB_MSBRegion, ER_MSBRegion]
 
 from soulstruct.darksouls1ptde.models import CHRBND as PTDE_CHRBND, OBJBND as PTDE_OBJBND, PARTSBND as PTDE_PARTSBND
 from soulstruct.darksouls1r.models import CHRBND as DS1R_CHRBND, OBJBND as DS1R_OBJBND, PARTSBND as DS1R_PARTSBND

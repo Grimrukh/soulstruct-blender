@@ -7,8 +7,25 @@ __all__ = [
     "BlenderMSBCollision",
     "BlenderMSBNavmesh",
     "BlenderMSBConnectCollision",
+
     "BlenderMSBRegion",
+
+    "BlenderMSBEvent",
+    "BlenderMSBLightEvent",
+    "BlenderMSBSoundEvent",
+    "BlenderMSBVFXEvent",
+    "BlenderMSBWindEvent",
+    "BlenderMSBTreasureEvent",
+    "BlenderMSBSpawnerEvent",
+    "BlenderMSBMessageEvent",
+    "BlenderMSBObjActEvent",
+    "BlenderMSBSpawnPointEvent",
+    "BlenderMSBMapOffsetEvent",
+    "BlenderMSBNavigationEvent",
+    "BlenderMSBEnvironmentEvent",
+    "BlenderMSBNPCInvasionEvent",
 ]
 
 from .parts import *
 from .regions import *
+from .events import *

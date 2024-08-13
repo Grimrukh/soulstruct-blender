@@ -30,7 +30,7 @@ class BlenderMSBObject(BlenderMSBPart[MSBObject, MSBObjectProps]):
     OBJ_DATA_TYPE = SoulstructDataType.MESH
     SOULSTRUCT_CLASS = MSBObject
     SOULSTRUCT_MODEL_CLASS = MSBObject
-    PART_SUBTYPE = MSBPartSubtype.OBJECT
+    PART_SUBTYPE = MSBPartSubtype.Object
     MODEL_SUBTYPES = ["object_models"]
 
     __slots__ = []
@@ -74,9 +74,10 @@ class BlenderMSBObject(BlenderMSBPart[MSBObject, MSBObjectProps]):
         name: str,
         collection: bpy.types.Collection = None,
         map_stem="",
+        try_import_model=True,
     ) -> tp.Self:
         bl_obj = super().new_from_soulstruct_obj(
-            operator, context, soulstruct_obj, name, collection, map_stem
+            operator, context, soulstruct_obj, name, collection, map_stem, try_import_model
         )  # type: tp.Self
 
         bl_obj.draw_parent = cls.entry_ref_to_bl_obj(
@@ -97,8 +98,8 @@ class BlenderMSBObject(BlenderMSBPart[MSBObject, MSBObjectProps]):
 
     def create_soulstruct_obj(self):
         if self.subtype_properties.is_dummy:
-            return MSBDummyObject(name=self.tight_name)
-        return MSBObject(name=self.tight_name)
+            return MSBDummyObject(name=self.export_name)
+        return MSBObject(name=self.export_name)
 
     def to_soulstruct_obj(
         self,

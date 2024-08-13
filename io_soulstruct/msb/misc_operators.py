@@ -75,22 +75,22 @@ class CreateMSBPart(LoggingOperator):
             # Use name to detect Part subtype.
             name = obj.name.lower()
             if name[0] == "m":
-                part_subtype = MSBPartSubtype.MAP_PIECE
+                part_subtype = MSBPartSubtype.MapPiece
             elif name[0] == "o":
-                part_subtype = MSBPartSubtype.OBJECT
+                part_subtype = MSBPartSubtype.Object
             elif name[0] == "c":
-                part_subtype = MSBPartSubtype.CHARACTER
+                part_subtype = MSBPartSubtype.Character
             elif name[:3] == "aeg":
-                part_subtype = MSBPartSubtype.ASSET
+                part_subtype = MSBPartSubtype.Asset
             else:
                 return self.error(
                     f"Cannot guess MSB Part subtype (Map Piece, Object/Asset, or Character) from FLVER name '{name}'."
                 )
         elif obj.soulstruct_type == SoulstructType.COLLISION:
             # TODO: Another operator to create Connect Collision parts from Collision parts.
-            part_subtype = MSBPartSubtype.COLLISION
+            part_subtype = MSBPartSubtype.Collision
         elif obj.soulstruct_type == SoulstructType.NAVMESH:
-            part_subtype = MSBPartSubtype.NAVMESH
+            part_subtype = MSBPartSubtype.Navmesh
         else:
             return self.error(f"Cannot create MSB Part from model object with Soulstruct type '{obj.soulstruct_type}'.")
 
@@ -168,7 +168,7 @@ class DuplicateMSBPartModel(LoggingOperator):
         source_collections = old_model.users_collection
 
         if part_subtype in {
-            MSBPartSubtype.MAP_PIECE, MSBPartSubtype.OBJECT, MSBPartSubtype.CHARACTER, MSBPartSubtype.ASSET
+            MSBPartSubtype.MapPiece, MSBPartSubtype.Object, MSBPartSubtype.Character, MSBPartSubtype.Asset
         }:
             # Model is a FLVER.
             old_bl_flver = BlenderFLVER(old_model)
@@ -179,15 +179,15 @@ class DuplicateMSBPartModel(LoggingOperator):
             new_bl_flver = old_bl_flver.duplicate(
                 new_model_name,
                 collections=source_collections,
-                copy_pose=part_subtype == MSBPartSubtype.MAP_PIECE,
+                copy_pose=part_subtype == MSBPartSubtype.MapPiece,
             )
             new_bl_flver.rename(new_model_name)
             new_model = new_bl_flver.mesh
-        elif part_subtype == MSBPartSubtype.COLLISION:
+        elif part_subtype == MSBPartSubtype.Collision:
             old_model_name = old_model.name
             new_model = new_mesh_object(new_model_name, old_model.data.copy())
             copy_obj_property_group(old_model, new_model, "hkx_map_collision")
-        elif part_subtype == MSBPartSubtype.NAVMESH:
+        elif part_subtype == MSBPartSubtype.Navmesh:
             old_model_name = old_model.name
             new_model = new_mesh_object(new_model_name, old_model.data.copy())
             copy_obj_property_group(old_model, new_model, "nvm")

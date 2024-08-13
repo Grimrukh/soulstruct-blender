@@ -180,7 +180,7 @@ class ImportHKXCutscene(LoggingOperator, ImportHelper):
             try:
                 SoulstructAnimation.new_from_cutscene_cuts(
                     context,
-                    action_name=f"{remobnd.cutscene_name}[{bl_part.tight_name}]",
+                    action_name=f"{remobnd.cutscene_name}[{bl_part.export_name}]",
                     armature=bl_part.armature,
                     arma_cuts=all_cut_frames,
                     ignore_master_bone_name=self.IGNORE_MASTER_BONE_NAME,

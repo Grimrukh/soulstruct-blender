@@ -328,7 +328,7 @@ class BaseImportTypedHKXAnimation(BaseImportHKXAnimation):
 
     def execute(self, context):
         bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
-        model_name = bl_flver.tight_name
+        model_name = bl_flver.export_name
         if model_name == "c0000":
             return self.error("Automatic ANIBND import is not yet supported for character FLVER 'c0000' (Player).")
 

@@ -1,6 +1,7 @@
 __all__ = [
     "SoulstructBlenderError",
     "UnsupportedGameError",
+    "UnsupportedGameTypeError",
     "SoulstructTypeError",
     "FLVERError",
     "FLVERImportError",
@@ -36,6 +37,11 @@ class SoulstructBlenderError(SoulstructError):
 
 class UnsupportedGameError(SoulstructBlenderError):
     """Raised when trying to do something not supported for the selected game."""
+    pass
+
+
+class UnsupportedGameTypeError(SoulstructBlenderError):
+    """Raised when trying to handle an unsupported Soulstruct type for an otherwise supportede game."""
     pass
 
 

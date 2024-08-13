@@ -36,9 +36,10 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
     # OBJ_DATA_TYPE is subtype-dependent.
     SOULSTRUCT_CLASS: tp.ClassVar[type[MSBPart]]
     SOULSTRUCT_MODEL_CLASS: tp.ClassVar[type[MSBModel]]
-    EXPORT_TIGHT_NAME = True  # for MSB parts, we always use tight names
+    EXPORT_TIGHT_NAME: tp.ClassVar[bool] = True  # for MSB parts, we always use tight names
     PART_SUBTYPE: tp.ClassVar[MSBPartSubtype]
     MODEL_SUBTYPES: tp.ClassVar[list[str]]  # for `MSB` model search on export
+    MODEL_USES_LATEST_MAP: tp.ClassVar[bool] = False  # which map version folder to look for model in
 
     __slots__ = []
     obj: bpy.types.MeshObject
@@ -143,8 +144,8 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
         self.obj.rotation_euler = game_transform.bl_rotate
         self.obj.scale = game_transform.bl_scale
 
-    def set_part_transform(self, part: MSBPart):
-        bl_transform = BlenderTransform.from_bl_obj(self.obj)
+    def set_part_transform(self, part: MSBPart, use_world_transform=False):
+        bl_transform = BlenderTransform.from_bl_obj(self.obj, use_world_transform)
         part.translate = bl_transform.game_translate
         part.rotate = bl_transform.game_rotate_deg
         part.scale = bl_transform.game_scale
@@ -198,7 +199,7 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
             elif bl_obj.soulstruct_type == SoulstructType.MSB_EVENT:
                 msb_entry = msb.find_event_name(bl_obj.name, subtypes=subtypes)  # full name
             else:
-                raise SoulstructTypeError(f"Blender object '{bl_obj.name}' is not an MSB Part or Region.")
+                raise SoulstructTypeError(f"Blender object '{bl_obj.name}' is not an MSB Part, Region, or Event.")
             return msb_entry
         except KeyError:
             raise MissingMSBEntryError(
@@ -213,6 +214,7 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
         context: bpy.types.Context,
         part: MSBPart,
         map_stem: str,
+        try_import_model: bool,
     ) -> bpy.types.MeshObject | None:
         """Unlike resolving entry refs as new empty objects if missing, we try to import models."""
 
@@ -221,7 +223,7 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
             return None
 
         model_name = part.model.get_model_file_stem(map_stem)
-        return cls.find_or_import_model_mesh(operator, context, model_name, map_stem)
+        return cls.find_or_import_model_mesh(operator, context, model_name, map_stem, try_import_model)
 
     def bl_obj_to_model_ref(
         self,
@@ -276,12 +278,20 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
         context: bpy.types.Context,
         model_name: str,
         map_stem: str,  # not required by all subtypes
+        try_import_model: bool,
     ) -> bpy.types.MeshObject:
         """Find or create actual Blender model mesh. Not necessarily a FLVER mesh!"""
         try:
             return cls.find_model_mesh(model_name, map_stem)
         except MissingPartModelError:
-            model = cls.import_model_mesh(operator, context, model_name, map_stem)
+            if try_import_model:
+                model = cls.import_model_mesh(operator, context, model_name, map_stem)
+            else:
+                # Create empty icosphere model.
+                mesh = bpy.data.meshes.new(model_name)
+                cls.primitive_icosphere(mesh)
+                model = bpy.data.objects.new(model_name, mesh)
+                model["PLACEHOLDER"] = True  # some models are genuinely empty, so we need a way to tell for replacing
             return model
 
     @classmethod
@@ -293,13 +303,14 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
         name: str,
         collection: bpy.types.Collection = None,
         map_stem="",
+        try_import_model=True,
     ) -> tp.Self:
         """Create a fully-represented MSB Part linked to a source model in Blender.
 
         Subclasses will override this to set additional Part-specific properties, or even a Part Armature if needed for
         those annoying old Map Pieces with "pre-posed vertices".
         """
-        model = cls.model_ref_to_bl_obj(operator, context, soulstruct_obj, map_stem)
+        model = cls.model_ref_to_bl_obj(operator, context, soulstruct_obj, map_stem, try_import_model)
         model_mesh = model.data if model else bpy.data.meshes.new(name)
         bl_part = cls.new(name, model_mesh, collection)  # type: tp.Self
         bl_part.set_bl_obj_transform(soulstruct_obj)
@@ -328,10 +339,10 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
         if not bl_flver.armature:
             # This FLVER model doesn't have an Armature, implying the FLVER has only one default bone. We create that
             # for this Part, without assigning it to the FLVER.
-            BlenderFLVER.create_default_armature_parent(context, self.tight_name, self.obj)
+            BlenderFLVER.create_default_armature_parent(context, self.export_name, self.obj)
         else:
             # Duplicate model's Armature. This handles parenting, rigging, etc. We only copy pose for Map Pieces.
-            bl_flver.duplicate_armature(context, self.obj, copy_pose=self.PART_SUBTYPE == MSBPartSubtype.MAP_PIECE)
+            bl_flver.duplicate_armature(context, self.obj, copy_pose=self.PART_SUBTYPE == MSBPartSubtype.MapPiece)
             # Rename new modifier for clarity.
             self.obj.modifiers["FLVER Armature"].name = "Part Armature"
 
@@ -343,13 +354,14 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
         msb: MSB = None,
     ) -> PART_T:
         if msb is None:
-            raise ValueError("MSB must be provided to convert Blender MSB Part to `MSBPart`, to resolve references.")
+            raise ValueError("MSB must be provided to resolve Blender MSB references into real MSB entries.")
 
         # Creation can be overridden (e.g. to make 'Dummy' versions of entry types).
-        part = self.create_soulstruct_obj(name=self.tight_name if self.EXPORT_TIGHT_NAME else self.name)  # type: PART_T
+        part = self.create_soulstruct_obj(name=self.export_name)  # type: PART_T
 
         part.set_auto_sib_path(map_stem)
-        self.set_part_transform(part)
+        use_world_transform = context.scene.msb_export_settings.use_world_transforms
+        self.set_part_transform(part, use_world_transform=use_world_transform)
         part.model = self.bl_obj_to_model_ref(operator, msb, part)
         part.draw_groups = self.draw_groups
         part.display_groups = self.display_groups
@@ -391,6 +403,49 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
                     lambda self, value, pn=prop_name: setattr(self.subtype_properties, pn, value),
                 )
             )
+
+    @staticmethod
+    def primitive_icosphere(mesh: bpy.types.Mesh):
+        """Used as a dummy mesh for non-imported Part models."""
+        vertices = [
+            (0.0000, 0.0000, -1.0000),
+            (0.7236, -0.5257, -0.4472),
+            (-0.2764, -0.8506, -0.4472),
+            (-0.8944, 0.0000, -0.4472),
+            (-0.2764, 0.8506, -0.4472),
+            (0.7236, 0.5257, -0.4472),
+            (0.2764, -0.8506, 0.4472),
+            (-0.7236, -0.5257, 0.4472),
+            (-0.7236, 0.5257, 0.4472),
+            (0.2764, 0.8506, 0.4472),
+            (0.8944, 0.0000, 0.4472),
+            (0.0000, 0.0000, 1.0000),
+        ]
+        faces = [
+            (0, 1, 2),
+            (1, 0, 5),
+            (0, 2, 3),
+            (0, 3, 4),
+            (0, 4, 5),
+            (1, 5, 10),
+            (2, 1, 6),
+            (3, 2, 7),
+            (4, 3, 8),
+            (5, 4, 9),
+            (1, 10, 6),
+            (2, 6, 7),
+            (3, 7, 8),
+            (4, 8, 9),
+            (5, 9, 10),
+            (6, 10, 11),
+            (7, 6, 11),
+            (8, 7, 11),
+            (9, 8, 11),
+            (10, 9, 11),
+        ]
+        mesh.clear_geometry()
+        mesh.from_pydata(vertices, [], faces)
+        mesh.update()
 
 
 BlenderMSBPart.add_auto_type_props(*BlenderMSBPart.AUTO_PART_PROPS)

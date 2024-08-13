@@ -165,9 +165,9 @@ class FLVERImportSettings(bpy.types.PropertyGroup):
 
     merge_submesh_vertices: bpy.props.BoolProperty(
         name="Merge Submesh Vertices",
-        description="Carefully merge submesh (material) vertices into a single mesh for easier editing. If disabled, "
-                    "submeshes will still be merged into a single mesh, but their faces will not be joined at any "
-                    "edges or vertices, making them painful to edit (but faster to import)",
+        description="Carefully merge FLVER submesh (material) vertices into a single mesh for easier editing. If "
+                    "disabled, submeshes will still be merged into a single mesh, but their faces will not be joined "
+                    "at any edges or vertices, making them painful to edit (but faster to import)",
         default=True,
     )
 

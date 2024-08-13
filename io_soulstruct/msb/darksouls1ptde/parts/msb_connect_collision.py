@@ -24,7 +24,7 @@ class BlenderMSBConnectCollision(BlenderMSBPart[MSBConnectCollision, MSBConnectC
     OBJ_DATA_TYPE = SoulstructDataType.MESH
     SOULSTRUCT_CLASS = MSBConnectCollision
     SOULSTRUCT_MODEL_CLASS = MSBCollisionModel
-    PART_SUBTYPE = MSBPartSubtype.CONNECT_COLLISION
+    PART_SUBTYPE = MSBPartSubtype.ConnectCollision
     MODEL_SUBTYPES = ["collision_models"]
 
     __slots__ = []
@@ -63,10 +63,11 @@ class BlenderMSBConnectCollision(BlenderMSBPart[MSBConnectCollision, MSBConnectC
         name: str,
         collection: bpy.types.Collection = None,
         map_stem="",
+        try_import_model=True,
     ) -> tp.Self:
 
         bl_connect_collision = super().new_from_soulstruct_obj(
-            operator, context, soulstruct_obj, name, collection, map_stem
+            operator, context, soulstruct_obj, name, collection, map_stem, try_import_model
         )  # type: BlenderMSBConnectCollision
 
         bl_connect_collision.collision = cls.entry_ref_to_bl_obj(

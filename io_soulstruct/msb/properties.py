@@ -23,37 +23,63 @@ __all__ = [
     "MSBCollisionProps",
     "MSBNavmeshProps",
     "MSBConnectCollisionProps",
+
+    "MSBRegionSubtype",
     "MSBRegionProps",
+
+    "MSBEventSubtype",
+    "MSBEventProps",
+    "MSBLightEventProps",
+    "MSBSoundEventProps",
+    "MSBVFXEventProps",
+    "MSBWindEventProps",
+    "MSBTreasureEventProps",
+    "MSBSpawnerEventProps",
+    "MSBMessageEventProps",
+    "MSBObjActEventProps",
+    "MSBSpawnPointEventProps",
+    "MSBMapOffsetEventProps",
+    "MSBNavigationEventProps",
+    "MSBEnvironmentEventProps",
+    "MSBNPCInvasionEventProps",
+
+    "MSBImportSettings",
+    "MSBExportSettings",
 ]
 
+import re
+import typing as tp
 from enum import StrEnum
+from fnmatch import fnmatch
 
 import bpy
 from io_soulstruct.types import SoulstructType
 from soulstruct.base.maps.msb.region_shapes import RegionShapeType
+from .utilities import *
 
 
 class MSBPartSubtype(StrEnum):
+    """Union of Part subtypes across all games."""
     NONE = "NONE"
-    MAP_PIECE = "MSB_MAP_PIECE"
-    OBJECT = "MSB_OBJECT"
-    ASSET = "MSB_ASSET"
-    CHARACTER = "MSB_CHARACTER"
-    PLAYER_START = "MSB_PLAYER_START"
-    COLLISION = "MSB_COLLISION"
-    NAVMESH = "MSB_NAVMESH"
-    CONNECT_COLLISION = "MSB_CONNECT_COLLISION"
-    OTHER = "MSB_OTHER"
+    MapPiece = "MSB_MAP_PIECE"
+    Object = "MSB_OBJECT"
+    Asset = "MSB_ASSET"
+    Character = "MSB_CHARACTER"
+    PlayerStart = "MSB_PLAYER_START"
+    Collision = "MSB_COLLISION"
+    Navmesh = "MSB_NAVMESH"
+    ConnectCollision = "MSB_CONNECT_COLLISION"
+    Other = "MSB_OTHER"
 
     def get_nice_name(self) -> str:
         return f"{self.value.replace('MSB_', '').replace('_', ' ').title()}"
 
     def is_flver(self) -> bool:
-        return self in {MSBPartSubtype.MAP_PIECE, MSBPartSubtype.OBJECT, MSBPartSubtype.ASSET, MSBPartSubtype.CHARACTER}
+        return self in {MSBPartSubtype.MapPiece, MSBPartSubtype.Object, MSBPartSubtype.Asset, MSBPartSubtype.Character}
 
     def is_map_geometry(self) -> bool:
         """TODO: Asset is ambiguous here. Probably want more enum options."""
-        return self in {MSBPartSubtype.MAP_PIECE, MSBPartSubtype.COLLISION, MSBPartSubtype.NAVMESH}
+        return self in {MSBPartSubtype.MapPiece, MSBPartSubtype.Collision, MSBPartSubtype.Navmesh}
 
 
 # noinspection PyUnusedLocal
@@ -68,21 +94,28 @@ def _update_part_model(self, context):
             self.data = self.model.data
 
 
+_DRAW_PARAM_DEFAULTS = dict(
+    default=-1,
+    min=-1,
+    max=255,
+)
+
+
 class MSBPartProps(bpy.types.PropertyGroup):
     part_subtype: bpy.props.EnumProperty(
         name="MSB Part Subtype",
         description="MSB subtype of this Part object",
         items=[
             (MSBPartSubtype.NONE, "None", "Not an MSB Part"),
-            (MSBPartSubtype.MAP_PIECE, "Map Piece", "MSB MapPiece object"),
-            (MSBPartSubtype.OBJECT, "Object", "MSB Object object"),
-            (MSBPartSubtype.ASSET, "Asset", "MSB Asset object"),
-            (MSBPartSubtype.CHARACTER, "Character", "MSB Character object"),
-            (MSBPartSubtype.PLAYER_START, "Player Start", "MSB PlayerStart object"),
-            (MSBPartSubtype.COLLISION, "Collision", "MSB Collision object"),
-            (MSBPartSubtype.NAVMESH, "Navmesh", "MSB Navmesh object"),
-            (MSBPartSubtype.CONNECT_COLLISION, "Connect Collision", "MSB Connect Collision object"),
-            (MSBPartSubtype.OTHER, "Other", "MSB Other object"),
+            (MSBPartSubtype.MapPiece, "Map Piece", "MSB MapPiece object"),
+            (MSBPartSubtype.Object, "Object", "MSB Object object"),
+            (MSBPartSubtype.Asset, "Asset", "MSB Asset object"),
+            (MSBPartSubtype.Character, "Character", "MSB Character object"),
+            (MSBPartSubtype.PlayerStart, "Player Start", "MSB PlayerStart object"),
+            (MSBPartSubtype.Collision, "Collision", "MSB Collision object"),
+            (MSBPartSubtype.Navmesh, "Navmesh", "MSB Navmesh object"),
+            (MSBPartSubtype.ConnectCollision, "Connect Collision", "MSB Connect Collision object"),
+            (MSBPartSubtype.Other, "Other", "MSB Other object"),
         ],
         default=MSBPartSubtype.NONE,
     )
@@ -100,7 +133,7 @@ class MSBPartProps(bpy.types.PropertyGroup):
     )
 
     # Not used by all subtypes, but still a base Part field, and one we want to preserve if subtype ever changes.
-    entity_id: bpy.props.IntProperty(name="Entity ID", default=-1)
+    entity_id: bpy.props.IntProperty(name="Entity ID", default=-1, min=-1)
 
     draw_groups_0: bpy.props.BoolVectorProperty(
         name="Draw Groups [0, 31]",
@@ -169,54 +202,54 @@ class MSBPartProps(bpy.types.PropertyGroup):
         ]
 
     ambient_light_id: bpy.props.IntProperty(
-        name="Ambient Light DrawParam ID",
-        description="Draw parameter ID for this MSB Part object",
-        default=-1,
+        name="Ambient Light (Light Bank) ID",
+        description="Ambient light DrawParam ID for this MSB Part object (baked lighting, i.e. 'Light Bank')",
+        **_DRAW_PARAM_DEFAULTS,
     )
     fog_id: bpy.props.IntProperty(
-        name="Fog DrawParam ID",
-        description="Draw parameter ID for this MSB Part object",
-        default=-1,
+        name="Fog ID",
+        description="Fog DrawParam ID for this MSB Part object",
+        **_DRAW_PARAM_DEFAULTS,
     )
     scattered_light_id: bpy.props.IntProperty(
-        name="Scattered Light DrawParam ID",
-        description="Draw parameter ID for this MSB Part object",
-        default=-1,
+        name="Scattered Light ID",
+        description="Scattered light DrawParam ID for this MSB Part object",
+        **_DRAW_PARAM_DEFAULTS,
     )
     lens_flare_id: bpy.props.IntProperty(
-        name="Lens Flare DrawParam ID",
-        description="Draw parameter ID for this MSB Part object",
-        default=-1,
+        name="Lens Flare ID",
+        description="Lens flare DrawParam ID for this MSB Part object",
+        **_DRAW_PARAM_DEFAULTS,
     )
     shadow_id: bpy.props.IntProperty(
-        name="Shadow DrawParam ID",
-        description="Draw parameter ID for this MSB Part object",
-        default=-1,
+        name="Shadow ID",
+        description="Shadow DrawParam ID for this MSB Part object",
+        **_DRAW_PARAM_DEFAULTS,
     )
     dof_id: bpy.props.IntProperty(
-        name="Depth of Field DrawParam ID",
-        description="Draw parameter ID for this MSB Part object",
-        default=-1,
+        name="Depth of Field ID",
+        description="Depth of field DrawParam ID for this MSB Part object",
+        **_DRAW_PARAM_DEFAULTS,
     )
     tone_map_id: bpy.props.IntProperty(
-        name="Tone Map DrawParam ID",
-        description="Draw parameter ID for this MSB Part object",
-        default=-1,
+        name="Tone Map ID",
+        description="Tone map DrawParam ID for this MSB Part object",
+        **_DRAW_PARAM_DEFAULTS,
     )
     point_light_id: bpy.props.IntProperty(
-        name="Point Light DrawParam ID",
-        description="Draw parameter ID for this MSB Part object",
-        default=-1,
+        name="Point Light ID",
+        description="Point light DrawParam ID for this MSB Part object (i.e. player 'lantern')",
+        **_DRAW_PARAM_DEFAULTS,
     )
     tone_correction_id: bpy.props.IntProperty(
-        name="Tone Correction DrawParam ID",
-        description="Draw parameter ID for this MSB Part object",
-        default=-1,
+        name="Tone Correction ID",
+        description="Tone correction DrawParam ID for this MSB Part object",
+        **_DRAW_PARAM_DEFAULTS,
     )
     lod_id: bpy.props.IntProperty(
         name="Level of Detail ID",
         description="Level of Detail ID for this MSB Part object",
-        default=-1,
+        **_DRAW_PARAM_DEFAULTS,
     )
     is_shadow_source: bpy.props.BoolProperty(
         name="Casts Shadow",
@@ -275,6 +308,7 @@ class MSBObjectProps(bpy.types.PropertyGroup):
     default_animation: bpy.props.IntProperty(
         name="Default Animation",
         default=-1,
+        min=-1,
     )
     unk_x0e_x10: bpy.props.IntProperty(
         name="Unknown x0E-x10",
@@ -473,6 +507,8 @@ class MSBCollisionProps(bpy.types.PropertyGroup):
                     "Set to -1 to use map's default banner (mAA_BB -> AABB), but note that it must always be Forced in "
                     "this case",
         default=-1,
+        min=-1,
+        update=lambda self, context: setattr(self, "force_place_name_banner", True),
     )
     force_place_name_banner: bpy.props.BoolProperty(
         name="Force Place Name Banner",
@@ -482,25 +518,31 @@ class MSBCollisionProps(bpy.types.PropertyGroup):
     )
     play_region_id: bpy.props.IntProperty(
         name="Play Region ID",
-        description="Online/multiplayer play region ID for this collision. Must be set to 0 if a non-zero Stable "
-                    "Footing Flag is set",
+        description="Online/multiplayer play region ID for this collision. Must be set to 0 (NOT -1) if a non-zero "
+                    "Stable Footing Flag is set",
         default=0,
+        min=0,
+        update=lambda self, context: self._update_play_region_id(context),
     )
     stable_footing_flag: bpy.props.IntProperty(
         name="Stable Footing Flag",
         description="If non-zero, this flag must be enabled for this collision to be considered stable ground. Must be "
                     "set to 0 if a non-zero Play Region ID is set",
         default=0,
+        min=0,
+        update=lambda self, context: self._update_stable_footing_flag(context),
     )
     camera_1_id: bpy.props.IntProperty(
         name="Camera 1 ID",
         description="Primary camera ID (LockCamParam) to switch to when player steps on this collision",
         default=-1,
+        min=-1,
     )
     camera_2_id: bpy.props.IntProperty(
         name="Camera 1 ID",
         description="Secondary camera ID (LockCamParam) to switch to when player steps on this collision",
         default=-1,
+        min=-1,
     )
     unk_x27_x28: bpy.props.IntProperty(
         name="Unknown x27-x28",
@@ -511,12 +553,9 @@ class MSBCollisionProps(bpy.types.PropertyGroup):
         name="Attached Bonfire",
         description="Entity ID of optional attached bonfire, which will be unusable if enemies are on this collision",
         default=0,
+        min=0,
     )
-    environment_event: bpy.props.PointerProperty(
-        name="Environment Event (Cubemap)",
-        description="MSB Environment Event (cubemap) to use for specular reflection on this collision",
-        type=bpy.types.Object,
-    )
+    # NOTE: `environment_event` is not maintained in Blender. We just find the Environment event that references this.
     reflect_plane_height: bpy.props.FloatProperty(
         name="Reflect Plane Height",
         description="Height of the reflection plane for this collision, used for water reflections",
@@ -526,16 +565,19 @@ class MSBCollisionProps(bpy.types.PropertyGroup):
         name="Vagrant Entity ID [0]",
         description="Entity ID of Vagrant that can appear on this collision",
         default=-1,
+        min=-1,
     )
     vagrant_entity_ids_1: bpy.props.IntProperty(
         name="Vagrant Entity ID [1]",
         description="Entity ID of Vagrant that can appear on this collision",
         default=-1,
+        min=-1,
     )
     vagrant_entity_ids_2: bpy.props.IntProperty(
         name="Vagrant Entity ID [2]",
         description="Entity ID of Vagrant that can appear on this collision",
         default=-1,
+        min=-1,
     )
 
     def get_vagrant_entity_ids(self) -> list[int]:
@@ -548,6 +590,14 @@ class MSBCollisionProps(bpy.types.PropertyGroup):
         description="If enabled, this collision will be disabled on game load and must be enabled with EMEVD",
         default=False,
     )
+
+    def _update_play_region_id(self, _):
+        if self.play_region_id != 0:
+            self.stable_footing_flag = 0
+
+    def _update_stable_footing_flag(self, _):
+        if self.stable_footing_flag != 0:
+            self.play_region_id = 0
 
 
 class MSBNavmeshProps(bpy.types.PropertyGroup):
@@ -623,8 +673,9 @@ class MSBConnectCollisionProps(bpy.types.PropertyGroup):
 
 
 class MSBRegionSubtype(StrEnum):
-    NONE = "None"
-    ALL = "All"
+    """Union of Region subtypes across all games."""
+    NONE = "NONE"
+    All = "ALL"  # for games with no real subtypes (DS1, BB, ...)
 
 
 class MSBRegionProps(bpy.types.PropertyGroup):
@@ -638,7 +689,7 @@ class MSBRegionProps(bpy.types.PropertyGroup):
         description="MSB subtype (shape) of this Region object",
         items=[
             (MSBRegionSubtype.NONE, "None", "Not an MSB Region"),
-            (MSBRegionSubtype.ALL, "All", "Older game with no region subtypes (only shapes)"),
+            (MSBRegionSubtype.All, "All", "Older game with no region subtypes (only shapes)"),
             # TODO: ER subtypes...
         ],
         default=MSBRegionSubtype.NONE,
@@ -649,12 +700,14 @@ class MSBRegionProps(bpy.types.PropertyGroup):
         description="MSB subtype (shape) of this Region object",
         items=[
             (RegionShapeType.Point.name, "Point", "Point with location and rotation only"),
-            # TODO: 2D region shapes not yet supported (never used in game AFAIK).
-            (RegionShapeType.Sphere.name, "Sphere", "Volume region defined by radius (max of X/Y/Z scale)"),
-            (RegionShapeType.Cylinder.name, "Cylinder", "Volume region with radius (X/Y scale max) and height (Z scale)"),
-            (RegionShapeType.Box.name, "Box", "Volume region defined by X/Y/Z scale"),
+            (RegionShapeType.Circle.name, "Circle", "2D circle with radius (-> X/Y scale). Unused"),
+            (RegionShapeType.Sphere.name, "Sphere", "Volume with radius only (-> X/Y/Z scale)"),
+            (RegionShapeType.Cylinder.name, "Cylinder", "Volume with radius (-> X/Y scale) and height (-> Z scale)"),
+            (RegionShapeType.Rect.name, "Rect", "2D rectangle with width (X) and depth (Y). Unused"),
+            (RegionShapeType.Box.name, "Box", "Volume with width (X), depth (Y), and height (Z)"),
         ],
         default=RegionShapeType.Point.name,
+        update=lambda self, context: self._auto_shape_mesh(context),
     )
 
     # Three shape fields that are exposed differently depending on `shape` type. These are used to drive object scale.
@@ -674,8 +727,825 @@ class MSBRegionProps(bpy.types.PropertyGroup):
         default=1.0,
     )
 
+    def _auto_shape_mesh(self, _):
+        """Fully replace mesh when a new shape is selected."""
+        shape = RegionShapeType[self.shape_type]
+        obj = self.id_data  # type: bpy.types.MeshObject
+        if obj.type != "MESH":
+            return  # unsupported region object
+        mesh = obj.data  # type: bpy.types.Mesh
+        # Clear scale drivers. New ones will be created as appropriate.
+        for i in range(3):
+            obj.driver_remove("scale", i)
 
-# TODO: MSB Event subtype/property support.
-#   - Most should just attach to Regions and basically be treated as such.
-#       - Complication is separate, usable entity IDs for events and regions.
-#   - Can color-code their regions where present.
+        if shape == RegionShapeType.Point:
+            primitive_cube(mesh)
+            for v in mesh.vertices:
+                v.co *= 0.2  # scale down
+            # No drivers.
+        elif shape == RegionShapeType.Circle:
+            primitive_circle(mesh)
+            create_region_scale_driver(obj, "xx")
+        elif shape == RegionShapeType.Sphere:
+            primitive_sphere(mesh)
+            create_region_scale_driver(obj, "xxx")
+        elif shape == RegionShapeType.Cylinder:
+            primitive_cylinder(mesh)
+            create_region_scale_driver(obj, "xxz")
+        elif shape == RegionShapeType.Rect:
+            primitive_rect(mesh)
+            create_region_scale_driver(obj, "xy")
+        elif shape == RegionShapeType.Box:
+            primitive_cube(mesh)
+            create_region_scale_driver(obj, "xyz")
+        else:
+            # TODO: Handle Composite.
+            pass
+
+
+class MSBEventSubtype(StrEnum):
+    """Union of Event subtypes across all games."""
+    NONE = "NONE"
+    Light = "MSB_LIGHT"
+    Sound = "MSB_SOUND"
+    VFX = "MSB_VFX"
+    Wind = "MSB_WIND"
+    Treasure = "MSB_TREASURE"
+    Spawner = "MSB_SPAWNER"
+    Message = "MSB_MESSAGE"
+    ObjAct = "MSB_OBJ_ACT"
+    SpawnPoint = "MSB_SPAWN_POINT"
+    MapOffset = "MSB_MAP_OFFSET"
+    Navigation = "MSB_NAVIGATION"
+    Environment = "MSB_ENVIRONMENT"
+    NPCInvasion = "MSB_NPC_INVASION"
+
+    def get_nice_name(self) -> str:
+        return f"{self.value.replace('MSB_', '').replace('_', ' ').title()}"
+
+    @classmethod
+    def get_enum_name(cls, enum_value: str):
+        return cls(enum_value).name
+
+
+class MSBEventProps(bpy.types.PropertyGroup):
+
+    event_subtype: bpy.props.EnumProperty(
+        name="MSB Event Subtype",
+        description="MSB subtype of this Event object",
+        items=[
+            (MSBEventSubtype.NONE.name, "None", "Not an MSB Event"),
+            (MSBEventSubtype.Light.name, "Light", "MSB Light Event"),
+            (MSBEventSubtype.Sound.name, "Sound", "MSB Sound Event"),
+            (MSBEventSubtype.VFX.name, "VFX", "MSB VFX Event"),
+            (MSBEventSubtype.Wind.name, "Wind", "MSB Wind Event"),
+            (MSBEventSubtype.Treasure.name, "Treasure", "MSB Treasure Event"),
+            (MSBEventSubtype.Spawner.name, "Spawner", "MSB Spawner Event"),
+            (MSBEventSubtype.Message.name, "Message", "MSB Message Event"),
+            (MSBEventSubtype.ObjAct.name, "ObjAct", "MSB ObjAct (Object Action) Event"),
+            (MSBEventSubtype.SpawnPoint.name, "Spawn Point", "MSB Spawn Point Event"),
+            (MSBEventSubtype.MapOffset.name, "Map Offset", "MSB Map Offset Event"),
+            (MSBEventSubtype.Navigation.name, "Navigation", "MSB Navigation Event"),
+            (MSBEventSubtype.Environment.name, "Environment", "MSB Environment Event"),
+            (MSBEventSubtype.NPCInvasion.name, "NPC Invasion", "MSB NPC Invasion Event"),
+        ],
+        default=MSBEventSubtype.NONE.name,
+        update=lambda self, context: self._update_name_suffix(context),
+    )
+
+    entity_id: bpy.props.IntProperty(
+        name="Entity ID",
+        description="Entity ID of MSB Event. Not used by all subtypes",
+        default=-1,
+        min=-1,
+    )
+
+    attached_part: bpy.props.PointerProperty(
+        name="Attached Part",
+        description="MSB Part object to which this MSB Event is attached. Not used by all subtypes",
+        type=bpy.types.Object,
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_PART,
+    )
+
+    attached_region: bpy.props.PointerProperty(
+        name="Attached Region",
+        description="MSB Region object to which this MSB Event is attached. Not used by all subtypes",
+        type=bpy.types.Object,
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_REGION,
+    )
+
+    unknowns: bpy.props.IntVectorProperty(
+        name="Unknowns",
+        description="Four unknown integer values for DS1 MSB Events",
+        size=4,
+        default=(0, 0, 0, 0),
+    )
+
+    _EVENT_NAME_RE = re.compile(r"^(.*)<(.+)>(\.\d+)?$")
+
+    def _update_name_suffix(self, _):
+        """Update suffix is one current exists. Preserves dupe suffix."""
+        if match := self._EVENT_NAME_RE.match(self.name):
+            old_suffix = match.group(2)
+            if old_suffix in MSBEventSubtype.__members__:
+                obj = self.id_data  # type: bpy.types.Object
+                name = match.group(1).strip()
+                dupe_suffix = match.group(3) or ""
+                obj.name = f"{name} <{MSBEventSubtype.get_enum_name(obj.MSB_EVENT.event_subtype)}>{dupe_suffix}"
+
+
+class MSBLightEventProps(bpy.types.PropertyGroup):
+
+    point_light_id: bpy.props.IntProperty(
+        name="Point Light ID",
+        description="DrawParam ID of the point light to attach to this MSB Light Event",
+        **_DRAW_PARAM_DEFAULTS,
+    )
+
+
+class MSBSoundEventProps(bpy.types.PropertyGroup):
+
+    sound_type: bpy.props.EnumProperty(
+        name="Sound Type",
+        description="Type of sound to play. Determines sound file prefix letter",
+        items=[
+            ("a_Ambient", "a_Ambient", "Ambient"),
+            ("c_CharacterMotion", "c_CharacterMotion", "Character Motion"),
+            ("f_MenuEffect", "f_MenuEffect", "Menu Effect"),
+            ("o_Object", "o_Object", "Object"),
+            ("p_Cutscene", "p_Cutscene", "Cutscene"),
+            ("s_SFX", "s_SFX", "SFX"),
+            ("m_Music", "m_Music", "Music"),
+            ("v_Voice", "v_Voice", "Voice"),
+            ("x_FloorMaterialDependent", "x_FloorMaterialDependent", "Floor Material Dependent"),
+            ("b_ArmorMaterialDependent", "b_ArmorMaterialDependent", "Armor Material Dependent"),
+            ("g_Ghost", "g_Ghost", "Ghost"),
+        ],
+        default="s_SFX",
+    )
+
+    sound_id: bpy.props.IntProperty(
+        name="Sound ID",
+        description="ID of the sound to play",
+        default=0,
+        min=0,
+    )
+
+
+class MSBVFXEventProps(bpy.types.PropertyGroup):
+
+    vfx_id: bpy.props.IntProperty(
+        name="VFX ID",
+        description="ID of the VFX to play",
+        default=0,
+        min=0,
+    )
+
+
+class MSBWindEventProps(bpy.types.PropertyGroup):
+
+    wind_vector_min: bpy.props.FloatVectorProperty(
+        name="Wind Vector (Min)",
+        description="Wind vector minimum",
+        default=(0.0, 0.0, 0.0),
+    )
+    unk_x04_x08: bpy.props.FloatProperty(
+        name="Unk x04",
+        description="Unknown scalar related to wind vector minimum",
+        default=0.0,
+    )
+    wind_vector_max: bpy.props.FloatVectorProperty(
+        name="Wind Vector (Max)",
+        description="Wind vector maximum",
+        default=(0.0, 0.0, 0.0),
+    )
+    unk_x0c_x10: bpy.props.FloatProperty(
+        name="Unk x0c",
+        description="Unknown scalar related to wind vector maximum",
+        default=0.0,
+    )
+    wind_swing_cycles: bpy.props.FloatVectorProperty(
+        name="Wind Swing Cycles",
+        description="Likely periods of wind min/max oscillations",
+        size=4,
+        default=(0.0, 0.0, 0.0, 0.0),
+    )
+    wind_swing_powers: bpy.props.FloatVectorProperty(
+        name="Wind Swing Powers",
+        description="Likely amplitudes of wind min/max oscillations",
+        size=4,
+        default=(0.0, 0.0, 0.0, 0.0),
+    )
+
+
+class MSBTreasureEventProps(bpy.types.PropertyGroup):
+
+    treasure_part: bpy.props.PointerProperty(
+        name="Treasure Part",
+        description="MSB Part object to which treasure is attached (corpse/chest/empty). Replaces default event "
+                    "Attached Part",
+        type=bpy.types.Object,
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_PART,
+    )
+    item_lot_1: bpy.props.IntProperty(
+        name="Item Lot 1",
+        description="ItemLotParam ID 1 for treasure",
+        default=-1,
+    )
+    item_lot_2: bpy.props.IntProperty(
+        name="Item Lot 2",
+        description="ItemLotParam ID 2 for treasure",
+        default=-1,
+    )
+    item_lot_3: bpy.props.IntProperty(
+        name="Item Lot 3",
+        description="ItemLotParam ID 3 for treasure",
+        default=-1,
+    )
+    item_lot_4: bpy.props.IntProperty(
+        name="Item Lot 4",
+        description="ItemLotParam ID 4 for treasure",
+        default=-1,
+    )
+    item_lot_5: bpy.props.IntProperty(
+        name="Item Lot 5",
+        description="ItemLotParam ID 5 for treasure",
+        default=-1,
+    )
+    is_in_chest: bpy.props.BoolProperty(
+        name="Is In Chest",
+        description="If enabled, treasure is in a chest",
+        default=False,
+    )
+    is_hidden: bpy.props.BoolProperty(
+        name="Is Hidden",
+        description="If enabled, treasure is disabled on load and must be enabled with EMEVD",
+        default=False,
+    )
+
+
+class MSBSpawnerEventProps(bpy.types.PropertyGroup):
+
+    max_count: bpy.props.IntProperty(
+        name="Max Count",
+        description="Maximum number of characters that can be spawned per game load",
+        default=255,
+        min=0,
+        max=255,
+    )
+
+    spawner_type: bpy.props.IntProperty(
+        name="Spawner Type",
+        description="Spawner type",
+        default=0,
+        min=0,
+    )
+
+    limit_count: bpy.props.IntProperty(
+        name="Limit Count",
+        description="Limit count (-1 means no limit)",
+        default=-1,
+        min=-1,
+    )
+
+    min_spawner_count: bpy.props.IntProperty(
+        name="Minimum Spawner Count",
+        description="Ensure number of spawned living characters stays at or above this minimum",
+        default=1,
+        min=0,
+    )
+
+    max_spawner_count: bpy.props.IntProperty(
+        name="Maximum Spawner Count",
+        description="Ensure number of spawned living characters stays at or below this maximum",
+        default=1,
+        min=0,
+    )
+
+    min_interval: bpy.props.FloatProperty(
+        name="Minimum Interval",
+        description="Minimum time between spawns",
+        default=1.0,
+        min=0.0,
+    )
+
+    max_interval = bpy.props.FloatProperty(
+        name="Maximum Interval",
+        description="Maximum time between spawns",
+        default=1.0,
+        min=0.0,
+    )
+
+    initial_spawn_count: bpy.props.IntProperty(
+        name="Initial Spawn Count",
+        description="Number of characters to spawn on game load",
+        default=1,
+        min=0,
+    )
+
+    # region Spawn Parts
+
+    spawn_parts_0: bpy.props.PointerProperty(
+        type=bpy.types.Object,
+        name="Spawn Character 0",
+        description="MSB Character part to spawn at this step in the sequence",
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_PART,
+    )
+
+    spawn_parts_1: bpy.props.PointerProperty(
+        type=bpy.types.Object,
+        name="Spawn Character 1",
+        description="MSB Character part to spawn at this step in the sequence",
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_PART,
+    )
+
+    spawn_parts_2: bpy.props.PointerProperty(
+        type=bpy.types.Object,
+        name="Spawn Character 2",
+        description="MSB Character part to spawn at this step in the sequence",
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_PART,
+    )
+
+    spawn_parts_3: bpy.props.PointerProperty(
+        type=bpy.types.Object,
+        name="Spawn Character 3",
+        description="MSB Character part to spawn at this step in the sequence",
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_PART,
+    )
+
+    spawn_parts_4: bpy.props.PointerProperty(
+        type=bpy.types.Object,
+        name="Spawn Character 4",
+        description="MSB Character part to spawn at this step in the sequence",
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_PART,
+    )
+
+    spawn_parts_5: bpy.props.PointerProperty(
+        type=bpy.types.Object,
+        name="Spawn Character 5",
+        description="MSB Character part to spawn at this step in the sequence",
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_PART,
+    )
+
+    spawn_parts_6: bpy.props.PointerProperty(
+        type=bpy.types.Object,
+        name="Spawn Character 6",
+        description="MSB Character part to spawn at this step in the sequence",
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_PART,
+    )
+
+    spawn_parts_7: bpy.props.PointerProperty(
+        type=bpy.types.Object,
+        name="Spawn Character 7",
+        description="MSB Character part to spawn at this step in the sequence",
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_PART,
+    )
+
+    spawn_parts_8: bpy.props.PointerProperty(
+        type=bpy.types.Object,
+        name="Spawn Character 8",
+        description="MSB Character part to spawn at this step in the sequence",
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_PART,
+    )
+
+    spawn_parts_9: bpy.props.PointerProperty(
+        type=bpy.types.Object,
+        name="Spawn Character 9",
+        description="MSB Character part to spawn at this step in the sequence",
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_PART,
+    )
+
+    spawn_parts_10: bpy.props.PointerProperty(
+        type=bpy.types.Object,
+        name="Spawn Character 10",
+        description="MSB Character part to spawn at this step in the sequence",
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_PART,
+    )
+
+    spawn_parts_11: bpy.props.PointerProperty(
+        type=bpy.types.Object,
+        name="Spawn Character 11",
+        description="MSB Character part to spawn at this step in the sequence",
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_PART,
+    )
+
+    spawn_parts_12: bpy.props.PointerProperty(
+        type=bpy.types.Object,
+        name="Spawn Character 12",
+        description="MSB Character part to spawn at this step in the sequence",
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_PART,
+    )
+
+    spawn_parts_13: bpy.props.PointerProperty(
+        type=bpy.types.Object,
+        name="Spawn Character 13",
+        description="MSB Character part to spawn at this step in the sequence",
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_PART,
+    )
+
+    spawn_parts_14: bpy.props.PointerProperty(
+        type=bpy.types.Object,
+        name="Spawn Character 14",
+        description="MSB Character part to spawn at this step in the sequence",
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_PART,
+    )
+
+    spawn_parts_15: bpy.props.PointerProperty(
+        type=bpy.types.Object,
+        name="Spawn Character 15",
+        description="MSB Character part to spawn at this step in the sequence",
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_PART,
+    )
+
+    spawn_parts_16: bpy.props.PointerProperty(
+        type=bpy.types.Object,
+        name="Spawn Character 16",
+        description="MSB Character part to spawn at this step in the sequence",
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_PART,
+    )
+
+    spawn_parts_17: bpy.props.PointerProperty(
+        type=bpy.types.Object,
+        name="Spawn Character 17",
+        description="MSB Character part to spawn at this step in the sequence",
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_PART,
+    )
+
+    spawn_parts_18: bpy.props.PointerProperty(
+        type=bpy.types.Object,
+        name="Spawn Character 18",
+        description="MSB Character part to spawn at this step in the sequence",
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_PART,
+    )
+
+    spawn_parts_19: bpy.props.PointerProperty(
+        type=bpy.types.Object,
+        name="Spawn Character 19",
+        description="MSB Character part to spawn at this step in the sequence",
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_PART,
+    )
+
+    spawn_parts_20: bpy.props.PointerProperty(
+        type=bpy.types.Object,
+        name="Spawn Character 20",
+        description="MSB Character part to spawn at this step in the sequence",
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_PART,
+    )
+
+    spawn_parts_21: bpy.props.PointerProperty(
+        type=bpy.types.Object,
+        name="Spawn Character 21",
+        description="MSB Character part to spawn at this step in the sequence",
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_PART,
+    )
+
+    spawn_parts_22: bpy.props.PointerProperty(
+        type=bpy.types.Object,
+        name="Spawn Character 22",
+        description="MSB Character part to spawn at this step in the sequence",
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_PART,
+    )
+
+    spawn_parts_23: bpy.props.PointerProperty(
+        type=bpy.types.Object,
+        name="Spawn Character 23",
+        description="MSB Character part to spawn at this step in the sequence",
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_PART,
+    )
+
+    spawn_parts_24: bpy.props.PointerProperty(
+        type=bpy.types.Object,
+        name="Spawn Character 24",
+        description="MSB Character part to spawn at this step in the sequence",
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_PART,
+    )
+
+    spawn_parts_25: bpy.props.PointerProperty(
+        type=bpy.types.Object,
+        name="Spawn Character 25",
+        description="MSB Character part to spawn at this step in the sequence",
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_PART,
+    )
+
+    spawn_parts_26: bpy.props.PointerProperty(
+        type=bpy.types.Object,
+        name="Spawn Character 26",
+        description="MSB Character part to spawn at this step in the sequence",
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_PART,
+    )
+
+    spawn_parts_27: bpy.props.PointerProperty(
+        type=bpy.types.Object,
+        name="Spawn Character 27",
+        description="MSB Character part to spawn at this step in the sequence",
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_PART,
+    )
+
+    spawn_parts_28: bpy.props.PointerProperty(
+        type=bpy.types.Object,
+        name="Spawn Character 28",
+        description="MSB Character part to spawn at this step in the sequence",
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_PART,
+    )
+
+    spawn_parts_29: bpy.props.PointerProperty(
+        type=bpy.types.Object,
+        name="Spawn Character 29",
+        description="MSB Character part to spawn at this step in the sequence",
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_PART,
+    )
+
+    spawn_parts_30: bpy.props.PointerProperty(
+        type=bpy.types.Object,
+        name="Spawn Character 30",
+        description="MSB Character part to spawn at this step in the sequence",
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_PART,
+    )
+
+    spawn_parts_31: bpy.props.PointerProperty(
+        type=bpy.types.Object,
+        name="Spawn Character 31",
+        description="MSB Character part to spawn at this step in the sequence",
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_PART,
+    )
+
+    # endregion
+
+    def get_spawn_parts(self) -> list[bpy.types.Object | None]:
+        return [getattr(self, f"spawn_parts_{i}") for i in range(32)]
+
+    spawn_regions_0: bpy.props.PointerProperty(
+        type=bpy.types.Object,
+        name="Spawn Region 0",
+        description="MSB Region object to spawn characters at this step in the sequence",
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_REGION,
+    )
+
+    spawn_regions_1: bpy.props.PointerProperty(
+        type=bpy.types.Object,
+        name="Spawn Region 1",
+        description="MSB Region object to spawn characters at this step in the sequence",
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_REGION,
+    )
+
+    spawn_regions_2: bpy.props.PointerProperty(
+        type=bpy.types.Object,
+        name="Spawn Region 2",
+        description="MSB Region object to spawn characters at this step in the sequence",
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_REGION,
+    )
+
+    spawn_regions_3: bpy.props.PointerProperty(
+        type=bpy.types.Object,
+        name="Spawn Region 3",
+        description="MSB Region object to spawn characters at this step in the sequence",
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_REGION,
+    )
+
+    def get_spawn_regions(self) -> list[bpy.types.Object | None]:
+        return [getattr(self, f"spawn_regions_{i}") for i in range(4)]
+
+
+class MSBMessageEventProps(bpy.types.PropertyGroup):
+
+    text_id: bpy.props.IntProperty(
+        name="Text ID",
+        description="Soapstone message ID to display",
+        default=-1,
+    )
+    unk_x02_x04: bpy.props.IntProperty(
+        name="Unk x02",
+        description="Unknown integer value",
+        default=2,
+    )
+    is_hidden: bpy.props.BoolProperty(
+        name="Is Hidden",
+        description="If enabled, message is disabled on load and must be enabled with EMEVD",
+        default=False,
+    )
+
+
+class MSBObjActEventProps(bpy.types.PropertyGroup):
+
+    obj_act_entity_id: bpy.props.IntProperty(
+        name="ObjAct Entity ID",
+        description="ID of ObjAct trigger to check for in EMEVD. Replaces base MSB Event Entity ID",
+        default=-1,
+    )
+
+    obj_act_part: bpy.props.PointerProperty(
+        name="ObjAct Part",
+        description="MSB Part (likely Object) that ObjAct event is attached to. Replaces base MSB Event Attached Part",
+        type=bpy.types.Object,
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_PART,
+    )
+
+    obj_act_param_id: bpy.props.IntProperty(
+        name="ObjAct Param ID",
+        description="ObjAct Param ID to use for this event. -1 means ID will match ObjAct Part model ID",
+        default=-1,
+    )
+
+    obj_act_state: bpy.props.IntProperty(
+        name="ObjAct State",
+        description="Initial state of ObjAct Part controlled by this event",
+        default=0,
+    )
+
+    obj_act_flag: bpy.props.IntProperty(
+        name="ObjAct Flag",
+        description="Persistent flag used to record state of ObjAct Part controlled by this event (e.g. open/closed)",
+        default=0,
+    )
+
+
+class MSBSpawnPointEventProps(bpy.types.PropertyGroup):
+
+    spawn_point_region: bpy.props.PointerProperty(
+        name="Spawn Point Region",
+        description="MSB Region object defining the spawn point location. Replaces base MSB Event Attached Region",
+        type=bpy.types.Object,
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_REGION,
+    )
+
+
+class MSBMapOffsetEventProps(bpy.types.PropertyGroup):
+
+    # TODO: Standard game coordinate conversion.
+    translate: bpy.props.FloatVectorProperty(
+        name="Translate",
+        description="Translation offset for the map (in Blender coordinates)",
+        default=(0.0, 0.0, 0.0),
+    )
+
+    # TODO: Make sure to convert to radians and negate.
+    rotate_z: bpy.props.FloatProperty(
+        name="Rotate Z",
+        description="Z-axis rotation offset for the map (in degrees around Blender's vertical Z axis)",
+        default=0.0,
+    )
+
+
+class MSBNavigationEventProps(bpy.types.PropertyGroup):
+
+    navigation_region: bpy.props.PointerProperty(
+        name="Navigation Region",
+        description="MSB Region object defining the area of the navigation mesh corresponding to this Entity ID. NOTE: "
+                    "these events are dummy representations of events and IDs hard-coded into the NVM Navmesh model",
+        type=bpy.types.Object,
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_REGION,
+    )
+
+
+class MSBEnvironmentEventProps(bpy.types.PropertyGroup):
+
+    unk_x00_x04: bpy.props.IntProperty(
+        name="Unk x00",
+        description="Unknown integer value",
+        default=0,
+    )
+
+    unk_x04_x08: bpy.props.FloatProperty(
+        name="Unk x04",
+        description="Unknown float value",
+        default=1.0,
+    )
+
+    unk_x08_x0c: bpy.props.FloatProperty(
+        name="Unk x08",
+        description="Unknown float value",
+        default=1.0,
+    )
+
+    unk_x0c_x10: bpy.props.FloatProperty(
+        name="Unk x0c",
+        description="Unknown float value",
+        default=1.0,
+    )
+
+    unk_x10_x14: bpy.props.FloatProperty(
+        name="Unk x10",
+        description="Unknown float value",
+        default=1.0,
+    )
+
+    unk_x14_x18: bpy.props.FloatProperty(
+        name="Unk x14",
+        description="Unknown float value",
+        default=1.0,
+    )
+
+
+class MSBNPCInvasionEventProps(bpy.types.PropertyGroup):
+
+    host_entity_id: bpy.props.IntProperty(
+        name="Host Entity ID",
+        description="Entity ID of the host NPC for this invasion",
+        default=-1,
+    )
+
+    invasion_flag_id: bpy.props.IntProperty(
+        name="Invasion Flag ID",
+        description="Flag ID to set when this invasion is triggered",
+        default=-1,
+    )
+
+    spawn_point_region: bpy.props.PointerProperty(
+        name="Spawn Point Region",
+        description="MSB Region where the player should spawn when the invasion is triggered. Note that the base MSB "
+                    "Event Attached Region defines the area where the invasion can be triggered",
+        type=bpy.types.Object,
+        poll=lambda self, obj: obj.soulstruct_type == SoulstructType.MSB_REGION,
+    )
+
+
+class MSBImportSettings(bpy.types.PropertyGroup):
+    """Common MSB import settings. Drawn manually in operator browser windows."""
+
+    import_map_piece_models: bpy.props.BoolProperty(
+        name="Import Map Piece Models",
+        description="Import models for MSB Map Piece parts, rather than leaving them as empty meshes",
+        default=True,
+    )
+    import_collision_models: bpy.props.BoolProperty(
+        name="Import Collision Models",
+        description="Import models for MSB Collision/Connect Collision parts, rather than leaving them as empty meshes",
+        default=True,
+    )
+    import_navmesh_models: bpy.props.BoolProperty(
+        name="Import Navmesh Models",
+        description="Import models for MSB Navmesh parts, rather than leaving them as empty meshes",
+        default=True,
+    )
+    import_object_models: bpy.props.BoolProperty(
+        name="Import Object Models",
+        description="Import models for MSB Object/Asset parts, rather than leaving them as empty meshes",
+        default=True,
+    )
+    import_character_models: bpy.props.BoolProperty(
+        name="Import Character Models",
+        description="Import models for MSB Character parts, rather than leaving them as empty meshes",
+        default=True,
+    )
+
+    part_name_model_filter: bpy.props.StringProperty(
+        name="Part Name Model Import Filter",
+        description="Glob/Regex for filtering which MSB Parts should have their models loaded (if their type is "
+                    "also enabled for import), rather than leaving them as empty meshes",
+        default="*",
+    )
+
+    part_name_filter_match_mode: bpy.props.EnumProperty(
+        name="Part Name Filter Match Mode",
+        description="Whether to use glob or regex for MSB Part name matching for model import",
+        items=[
+            ("GLOB", "Glob", "Use glob (*, ?, etc.) for MSB Part name matching"),
+            ("REGEX", "Regex", "Use Python regular expressions for MSB Part name matching"),
+        ],
+        default="GLOB",
+    )
+
+    def get_name_match_filter(self) -> tp.Callable[[str], bool]:
+        match self.part_name_filter_match_mode:
+            case "GLOB":
+                def is_name_match(name: str):
+                    return self.part_name_model_filter in {"", "*"} or fnmatch(name, self.part_name_model_filter)
+            case "REGEX":
+                pattern = re.compile(self.part_name_model_filter)
+
+                def is_name_match(name: str):
+                    return self.part_name_model_filter == "" or re.match(pattern, name)
+            case _:  # should never happen
+                raise ValueError(f"Invalid MSB Part name match mode: {self.part_name_filter_match_mode}")
+        return is_name_match
+
+
+class MSBExportSettings(bpy.types.PropertyGroup):
+
+    use_world_transforms: bpy.props.BoolProperty(
+        name="Use World Transforms",
+        description="Use world transforms when exporting MSB entries, rather than local transforms. Recommended so "
+                    "that you can use Blender parenting to place groups of MSB entries and still see exactly what you "
+                    "see in Blender in-game",
+        default=True,
+    )
+
+    export_collision_models: bpy.props.BoolProperty(
+        name="Export Collision Models",
+        description="Export models for MSB Collision parts to new hi/lo-res HKXBHD Binders in map. Convenient way to "
+                    "ensure that collision models are synchronized with the MSB (Collision HKX export is quite fast)",
+        default=False,
+    )
+
+    export_navmesh_models: bpy.props.BoolProperty(
+        name="Export Navmesh Models",
+        description="Export models for MSB Navmesh parts to a new NVMBND Binder in map. Convenient way to ensure that "
+                    "navmesh models are synchronized with the MSB (NVM export is quite fast)",
+        default=False,
+    )
+
+    export_nvmdump: bpy.props.BoolProperty(
+        name="Export NVMDUMP",
+        description="Export NVMDUMP text file to map",
+        default=True,
+    )

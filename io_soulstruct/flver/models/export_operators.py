@@ -69,7 +69,7 @@ class ExportStandaloneFLVER(LoggingOperator, ExportHelper):
 
         bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
         settings = self.settings(context)
-        self.filepath = settings.game.process_dcx_path(f"{bl_flver.tight_name}.flver")
+        self.filepath = settings.game.process_dcx_path(f"{bl_flver.export_name}.flver")
         context.window_manager.fileselect_add(self)
         return {"RUNNING_MODAL"}
 
@@ -181,7 +181,7 @@ class ExportFLVERIntoBinder(LoggingOperator, ExportHelper):
                 return self.error("No FLVER files found in Binder and default entry ID was left as -1.")
             flver_entry = binder.set_default_entry(
                 entry_spec=self.default_entry_id,
-                new_path=self.default_entry_path.format(name=bl_flver.tight_name),
+                new_path=self.default_entry_path.format(name=bl_flver.export_name),
                 new_flags=self.default_entry_flags,
             )  # no data yet
             if flver_entry.data and not self.overwrite_existing:
@@ -195,16 +195,16 @@ class ExportFLVERIntoBinder(LoggingOperator, ExportHelper):
             if len(flver_entries) > 1:
                 # Look for FLVER with matching name.
                 for entry in flver_entries:
-                    if entry.minimal_stem == bl_flver.tight_name:
+                    if entry.minimal_stem == bl_flver.export_name:
                         self.info(
                             f"Multiple FLVER files found in Binder. Replacing entry with matching stem: "
-                            f"{bl_flver.tight_name}"
+                            f"{bl_flver.export_name}"
                         )
                         flver_entry = entry
                         break
                 else:
                     return self.error(
-                        f"Multiple FLVER files found in Binder, none of which have stem '{bl_flver.tight_name}'. "
+                        f"Multiple FLVER files found in Binder, none of which have stem '{bl_flver.export_name}'. "
                         f"Change the start of your exported object's name or erase one or more existing FLVERs first."
                     )
             else:
@@ -297,11 +297,11 @@ class ExportMapPieceFLVERs(LoggingOperator):
             except Exception as ex:
                 traceback.print_exc()
                 return self.error(
-                    f"Cannot export Map Piece FLVER '{bl_flver.tight_name}' from '{bl_flver.name}. Error: {ex}"
+                    f"Cannot export Map Piece FLVER '{bl_flver.export_name}' from '{bl_flver.name}. Error: {ex}"
                 )
 
             flver.dcx_type = flver_dcx_type
-            settings.export_file(self, flver, relative_map_path / f"{bl_flver.tight_name}.flver")
+            settings.export_file(self, flver, relative_map_path / f"{bl_flver.export_name}.flver")
 
             if flver_export_settings.export_textures:
                 # Collect all Blender images for batched map area export.
@@ -351,12 +351,12 @@ class BaseGameFLVERBinderExportOperator(LoggingOperator):
         except Exception as ex:
             traceback.print_exc()
             raise FLVERExportError(
-                f"Cannot create exported FLVER '{bl_flver.tight_name}' from Blender Mesh '{bl_flver.name}'. Error: {ex}"
+                f"Cannot create exported FLVER '{bl_flver.export_name}' from Blender Mesh '{bl_flver.name}'. Error: {ex}"
             )
 
         flver.dcx_type = DCXType.Null  # no DCX inside any Binder here
 
-        return bl_flver.tight_name, binder, flver, texture_collection
+        return bl_flver.export_name, binder, flver, texture_collection
 
     def export_textures_to_binder_tpf(
         self,
@@ -409,7 +409,7 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
             model_stem, chrbnd, flver, textures = self.get_binder_and_flver(
                 context,
                 settings,
-                lambda bl_flver: Path(f"chr/{bl_flver.tight_name}.chrbnd"),
+                lambda bl_flver: Path(f"chr/{bl_flver.export_name}.chrbnd"),
                 settings.game.from_game_submodule_import("models.chrbnd", "CHRBND"),
             )
         except FLVERExportError as ex:
@@ -601,7 +601,7 @@ class ExportObjectFLVER(BaseGameFLVERBinderExportOperator):
             model_stem, objbnd, flver, textures = self.get_binder_and_flver(
                 context,
                 settings,
-                lambda bl_flver: Path(f"obj/{bl_flver.tight_name}.objbnd"),
+                lambda bl_flver: Path(f"obj/{bl_flver.export_name}.objbnd"),
                 settings.game.from_game_submodule_import("models.objbnd", "OBJBND"),
             )
         except FLVERExportError as ex:
@@ -644,7 +644,7 @@ class ExportAssetFLVER(BaseGameFLVERBinderExportOperator):
             model_stem, geombnd, flver, exporter = self.get_binder_and_flver(
                 context,
                 settings,
-                lambda bl_flver: Path(f"asset/{bl_flver.tight_name[:6]}/{bl_flver.tight_name}.geombnd"),
+                lambda bl_flver: Path(f"asset/{bl_flver.export_name[:6]}/{bl_flver.export_name}.geombnd"),
                 settings.game.from_game_submodule_import("models.geombnd", "GEOMBND"),
             )
         except FLVERExportError as ex:

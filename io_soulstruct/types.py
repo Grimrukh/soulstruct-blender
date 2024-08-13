@@ -59,6 +59,7 @@ class SoulstructObject(abc.ABC, tp.Generic[SOULSTRUCT_T, SOULSTRUCT_PROPS_T]):
     TYPE: tp.ClassVar[SoulstructType]
     OBJ_DATA_TYPE: tp.ClassVar[SoulstructDataType]
     SOULSTRUCT_CLASS: tp.ClassVar[type]
+    EXPORT_TIGHT_NAME: tp.ClassVar[bool] = False
 
     # Subclasses may define their own further type hierarchies, like `SUBTYPE_NAME`.
 
@@ -174,6 +175,10 @@ class SoulstructObject(abc.ABC, tp.Generic[SOULSTRUCT_T, SOULSTRUCT_PROPS_T]):
     def tight_name(self):
         """Get the name of the object before the first space and/or dot. Used when exporting some game types."""
         return self.name.split(".")[0].split(" ")[0]
+
+    @property
+    def export_name(self):
+        return self.tight_name if self.EXPORT_TIGHT_NAME else self.name
 
     @property
     def parent(self) -> bpy.types.Object | None:

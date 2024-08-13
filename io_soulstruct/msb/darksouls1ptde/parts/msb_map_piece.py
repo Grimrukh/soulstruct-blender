@@ -28,11 +28,10 @@ class BlenderMSBMapPiece(BlenderMSBPart[MSBMapPiece, MSBMapPieceProps]):
     OBJ_DATA_TYPE = SoulstructDataType.MESH
     SOULSTRUCT_CLASS = MSBMapPiece
     SOULSTRUCT_MODEL_CLASS = MSBMapPieceModel
-    PART_SUBTYPE = MSBPartSubtype.MAP_PIECE
+    PART_SUBTYPE = MSBPartSubtype.MapPiece
     MODEL_SUBTYPES = ["map_piece_models"]
 
     __slots__ = []
-    obj: bpy.types.MeshObject
 
     # No additional Map Piece properties.
 
@@ -113,6 +112,7 @@ class BlenderMSBMapPiece(BlenderMSBPart[MSBMapPiece, MSBMapPieceProps]):
         name: str,
         collection: bpy.types.Collection = None,
         map_stem="",
+        try_import_model=True,
     ) -> tp.Self:
         """Map Pieces sometimes use bones to place vertex subsets, which look like nonsense without that positioning.
 
@@ -120,7 +120,7 @@ class BlenderMSBMapPiece(BlenderMSBPart[MSBMapPiece, MSBMapPieceProps]):
         never be used during Part export. (Cutscenes may also use it, though I don't think Map Pieces are "animated".)
         """
         bl_map_piece = super().new_from_soulstruct_obj(
-            operator, context, soulstruct_obj, name, collection, map_stem
+            operator, context, soulstruct_obj, name, collection, map_stem, try_import_model
         )  # type: BlenderMSBMapPiece
 
         if bl_map_piece.model:

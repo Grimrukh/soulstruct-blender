@@ -30,8 +30,9 @@ class BlenderMSBNavmesh(BlenderMSBPart[MSBNavmesh, MSBNavmeshProps]):
     OBJ_DATA_TYPE = SoulstructDataType.MESH
     SOULSTRUCT_CLASS = MSBNavmesh
     SOULSTRUCT_MODEL_CLASS = MSBNavmeshModel
-    PART_SUBTYPE = MSBPartSubtype.NAVMESH
+    PART_SUBTYPE = MSBPartSubtype.Navmesh
     MODEL_SUBTYPES = ["navmesh_models"]
+    MODEL_USES_LATEST_MAP = True  # only DS1 map asset to use latest map version for model import
 
     __slots__ = []
     data: bpy.types.Mesh
@@ -60,9 +61,10 @@ class BlenderMSBNavmesh(BlenderMSBPart[MSBNavmesh, MSBNavmeshProps]):
         name: str,
         collection: bpy.types.Collection = None,
         map_stem="",
+        try_import_model=True,
     ) -> tp.Self:
         bl_navmesh = super().new_from_soulstruct_obj(
-            operator, context, soulstruct_obj, name, collection, map_stem
+            operator, context, soulstruct_obj, name, collection, map_stem, try_import_model
         )
 
         bl_navmesh.navmesh_groups = soulstruct_obj.navmesh_groups

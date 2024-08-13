@@ -27,7 +27,7 @@ class BlenderMSBPlayerStart(BlenderMSBPart[MSBPlayerStart, MSBPlayerStartProps])
     OBJ_DATA_TYPE = SoulstructDataType.MESH
     SOULSTRUCT_CLASS = MSBPlayerStart
     SOULSTRUCT_MODEL_CLASS = MSBCharacterModel  # or `MSBPlayerStartModel` but we don't need that here
-    PART_SUBTYPE = MSBPartSubtype.PLAYER_START
+    PART_SUBTYPE = MSBPartSubtype.PlayerStart
     MODEL_SUBTYPES = ["player_models", "character_models"]
 
     __slots__ = []

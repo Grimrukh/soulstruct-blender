@@ -119,7 +119,7 @@ class SoulstructAnimation:
         try:
             bl_animation = cls.new_from_transform_frames(
                 context,
-                action_name=f"{bl_flver.tight_name}|{name}",
+                action_name=f"{bl_flver.export_name}|{name}",
                 armature=armature,
                 arma_frames=arma_frames,
                 root_motion=root_motion,

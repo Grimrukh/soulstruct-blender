@@ -196,7 +196,7 @@ class ExportHKXMapCollisionIntoBinder(LoggingOperator, ImportHelper):
         hkx_model = context.active_object  # type: bpy.types.MeshObject
         bl_map_collision = BlenderMapCollision(hkx_model)
 
-        model_name = bl_map_collision.tight_name
+        model_name = bl_map_collision.export_name
         if not LOOSE_HKX_COLLISION_STEM_RE.match(model_name):
             self.warning(
                 f"HKX map collision model name '{model_name}' should generally be 'h....B.A..' or 'l....B.A..'."
@@ -294,7 +294,7 @@ class ExportHKXMapCollisionIntoHKXBHD(LoggingOperator):
 
             map_stem = settings.get_map_stem_for_export(bl_map_collision.obj, oldest=True)
 
-            model_name = bl_map_collision.tight_name
+            model_name = bl_map_collision.export_name
             if not LOOSE_HKX_COLLISION_STEM_RE.match(model_name):
                 return self.error(
                     f"Model name '{model_name}' detected from selected mesh '{bl_map_collision.name}' does not match "

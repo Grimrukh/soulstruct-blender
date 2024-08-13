@@ -38,6 +38,7 @@ import bpy
 from soulstruct.darksouls1r.events.enums import NavmeshFlag
 
 from io_soulstruct.exceptions import SoulstructTypeError
+from io_soulstruct.general.gui import map_stem_box
 from io_soulstruct.types import *
 from .nvm import *
 from .nvm.utilities import set_face_material
@@ -60,8 +61,8 @@ class NavmeshDS1ImportPanel(bpy.types.Panel):
             return
 
         layout = self.layout
+        map_stem_box(layout, settings)
         layout.label(text="Import from Game/Project:")
-        layout.label(text=f"Map: {settings.map_stem}")
         layout.operator(ImportSelectedMapNVM.bl_idname)
         layout.label(text="Generic Import:")
         layout.operator(ImportNVM.bl_idname)
@@ -89,8 +90,8 @@ class NavmeshDS1ExportPanel(bpy.types.Panel):
             return
 
         layout = self.layout
+        map_stem_box(layout, settings)
         layout.label(text="Export to Game/Project:")
-        layout.label(text=f"Map: {settings.map_stem}")
         layout.prop(context.scene.soulstruct_settings, "detect_map_from_collection")
         layout.operator(ExportNVMIntoNVMBND.bl_idname)
 

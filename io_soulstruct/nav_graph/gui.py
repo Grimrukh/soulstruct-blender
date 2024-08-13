@@ -14,6 +14,7 @@ __all__ = [
 import typing as tp
 
 import bpy
+from io_soulstruct.general.gui import map_stem_box
 from io_soulstruct.types import SoulstructType
 from .import_operators import *
 from .export_operators import *
@@ -156,18 +157,19 @@ class MCGImportExportPanel(bpy.types.Panel):
             self.layout.label(text="NavGraph (MCG) supported for DSR only.")
             return
 
-        header, panel = self.layout.panel("Import", default_closed=False)
+        layout = self.layout
+        map_stem_box(layout, settings)
+        header, panel = layout.panel("Import", default_closed=False)
         header.label(text="Import")
         if panel:
             panel.label(text="Import from Game/Project:")
-            panel.label(text=f"Map: {settings.map_stem}")
             panel.operator(ImportSelectedMapMCG.bl_idname)
             panel.operator(ImportSelectedMapMCP.bl_idname)
             panel.label(text="Generic Import:")
             panel.operator(ImportMCG.bl_idname, text="Import Any MCG")
             panel.operator(ImportMCP.bl_idname, text="Import Any MCP")
 
-        header, panel = self.layout.panel("Export", default_closed=False)
+        header, panel = layout.panel("Export", default_closed=False)
         header.label(text="Export")
         if panel:
             panel.label(text="Export to Game/Project:")

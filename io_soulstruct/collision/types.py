@@ -143,7 +143,7 @@ class BlenderMapCollision(SoulstructObject[MapCollisionHKX, MapCollisionProps]):
         if not self.obj.material_slots:
             raise ValueError(f"HKX model mesh '{self.name}' has no materials for submesh detection.")
 
-        model_name = self.tight_name
+        model_name = self.export_name
         if model_name.startswith("h") or hi_name:
             hi_name = hi_name or model_name
             lo_name = lo_name or model_name.replace("h", "l", 1)

@@ -299,42 +299,11 @@ CLASSES = (
 
     # region MSB
     GlobalSettingsPanel_MSBView,
-    MSBImportSettings,
-    ImportMSBMapPiece,
-    ImportAllMSBMapPieces,
-    ImportMSBCollision,
-    ImportAllMSBCollisions,
-    ImportMSBNavmesh,
-    ImportAllMSBNavmeshes,
-    ImportMSBCharacter,
-    ImportAllMSBCharacters,
-    ImportMSBObject,
-    ImportAllMSBObjects,
-    ImportMSBAsset,
-    ImportAllMSBAssets,
-    ImportMSBPlayerStart,
-    ImportAllMSBPlayerStarts,
-    ImportMSBConnectCollision,
-    ImportAllMSBConnectCollisions,
-
-    ImportMSBPoint,
-    ImportMSBVolume,
-    ImportAllMSBPoints,
-    ImportAllMSBVolumes,
-
-    ImportFullMSB,
+    ImportMSB,
+    ExportMSB,
 
     RegionDrawSettings,
-
-    MSBExportSettings,
-    ExportMSBMapPieces,
-    ExportMSBObjects,
-    ExportMSBCharacters,
-    ExportMSBPlayerStarts,
-    ExportMSBCollisions,
-    ExportMSBNavmeshes,
-    ExportMSBNavmeshCollection,
-    ExportMSBConnectCollisions,
+    EventDrawSettings,
 
     EnableSelectedNames,
     DisableSelectedNames,
@@ -351,6 +320,8 @@ CLASSES = (
     MSBNavmeshProps,
     MSBConnectCollisionProps,
     MSBRegionProps,
+    MSBImportSettings,
+    MSBExportSettings,
 
     MSBImportExportPanel,
     MSBToolsPanel,
@@ -364,6 +335,35 @@ CLASSES = (
     MSBNavmeshPartPanel,
     MSBConnectCollisionPartPanel,
     MSBRegionPanel,
+    MSBEventPanel,
+    MSBLightEventPanel,
+    MSBSoundEventPanel,
+    MSBVFXEventPanel,
+    MSBWindEventPanel,
+    MSBTreasureEventPanel,
+    MSBSpawnerEventPanel,
+    MSBMessageEventPanel,
+    MSBObjActEventPanel,
+    MSBSpawnPointEventPanel,
+    MSBMapOffsetEventPanel,
+    MSBNavigationEventPanel,
+    MSBEnvironmentEventPanel,
+    MSBNPCInvasionEventPanel,
+
+    MSBEventProps,
+    MSBLightEventProps,
+    MSBSoundEventProps,
+    MSBVFXEventProps,
+    MSBWindEventProps,
+    MSBTreasureEventProps,
+    MSBSpawnerEventProps,
+    MSBMessageEventProps,
+    MSBObjActEventProps,
+    MSBSpawnPointEventProps,
+    MSBMapOffsetEventProps,
+    MSBNavigationEventProps,
+    MSBEnvironmentEventProps,
+    MSBNPCInvasionEventProps,
     # endregion
 )
 
@@ -401,6 +401,7 @@ SCENE_POINTERS = dict(
     msb_import_settings=MSBImportSettings,
     msb_export_settings=MSBExportSettings,
     region_draw_settings=RegionDrawSettings,
+    event_draw_settings=EventDrawSettings,
     animation_import_settings=AnimationImportSettings,
     animation_export_settings=AnimationExportSettings,
     cutscene_import_settings=CutsceneImportSettings,
@@ -430,6 +431,22 @@ OBJECT_POINTERS = dict(
     MSB_CONNECT_COLLISION=MSBConnectCollisionProps,
 
     MSB_REGION=MSBRegionProps,
+    # No real subtypes yet.
+
+    MSB_EVENT=MSBEventProps,
+    MSB_LIGHT=MSBLightEventProps,
+    MSB_SOUND=MSBSoundEventProps,
+    MSB_VFX=MSBVFXEventProps,
+    MSB_WIND=MSBWindEventProps,
+    MSB_TREASURE=MSBTreasureEventProps,
+    MSB_SPAWNER=MSBSpawnerEventProps,
+    MSB_MESSAGE=MSBMessageEventProps,
+    MSB_OBJ_ACT=MSBObjActEventProps,
+    MSB_SPAWN_POINT=MSBSpawnPointEventProps,
+    MSB_MAP_OFFSET=MSBMapOffsetEventProps,
+    MSB_NAVIGATION=MSBNavigationEventProps,
+    MSB_ENVIRONMENT=MSBEnvironmentEventProps,
+    MSB_NPC_INVASION=MSBNPCInvasionEventProps,
 )
 
 
@@ -543,7 +560,11 @@ def register():
     )
 
     SPACE_VIEW_3D_HANDLERS.append(
-        bpy.types.SpaceView3D.draw_handler_add(draw_region_volumes, (), "WINDOW", "POST_VIEW")
+        bpy.types.SpaceView3D.draw_handler_add(draw_msb_regions, (), "WINDOW", "POST_VIEW")
+    )
+
+    SPACE_VIEW_3D_HANDLERS.append(
+        bpy.types.SpaceView3D.draw_handler_add(draw_msb_events, (), "WINDOW", "POST_VIEW")
     )
 
     bpy.types.TOPBAR_MT_file_import.append(havok_menu_func_import)
