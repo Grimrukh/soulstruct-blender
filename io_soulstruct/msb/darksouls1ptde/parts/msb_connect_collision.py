@@ -64,10 +64,11 @@ class BlenderMSBConnectCollision(BlenderMSBPart[MSBConnectCollision, MSBConnectC
         collection: bpy.types.Collection = None,
         map_stem="",
         try_import_model=True,
+        model_collection: bpy.types.Collection = None,
     ) -> tp.Self:
 
         bl_connect_collision = super().new_from_soulstruct_obj(
-            operator, context, soulstruct_obj, name, collection, map_stem, try_import_model
+            operator, context, soulstruct_obj, name, collection, map_stem, try_import_model, model_collection
         )  # type: BlenderMSBConnectCollision
 
         bl_connect_collision.collision = cls.entry_ref_to_bl_obj(
@@ -112,9 +113,10 @@ class BlenderMSBConnectCollision(BlenderMSBPart[MSBConnectCollision, MSBConnectC
         context: bpy.types.Context,
         model_name: str,
         map_stem: str,
+        model_collection: bpy.types.Collection = None,
     ) -> bpy.types.MeshObject:
         """Import the Map Collison HKX model of the given name into a collection in the current scene.
 
         This just hijacks the model import class method of `BlenderMSBCollision`.
         """
-        return BlenderMSBCollision.import_model_mesh(operator, context, model_name, map_stem)
+        return BlenderMSBCollision.import_model_mesh(operator, context, model_name, map_stem, model_collection)

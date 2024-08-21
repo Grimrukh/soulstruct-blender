@@ -100,9 +100,10 @@ class BlenderMSBCharacter(BlenderMSBPart[MSBCharacter, MSBCharacterProps]):
         collection: bpy.types.Collection = None,
         map_stem="",
         try_import_model=True,
+        model_collection: bpy.types.Collection = None,
     ) -> tp.Self:
         bl_character = super().new_from_soulstruct_obj(
-            operator, context, soulstruct_obj, name, collection, map_stem, try_import_model
+            operator, context, soulstruct_obj, name, collection, map_stem, try_import_model, model_collection
         )  # type: BlenderMSBCharacter
 
         missing_collection_name = f"{map_stem} Missing MSB References".lstrip()
@@ -132,10 +133,12 @@ class BlenderMSBCharacter(BlenderMSBPart[MSBCharacter, MSBCharacterProps]):
             setattr(bl_character, name, getattr(soulstruct_obj, name))
 
         bl_character.subtype_properties.is_dummy = isinstance(soulstruct_obj, MSBDummyCharacter)
+        if bl_character.subtype_properties.is_dummy and context.scene.msb_import_settings.hide_dummy_entries:
+            bl_character.obj.hide_viewport = True
 
         return bl_character
 
-    def create_soulstruct_obj(self):
+    def _create_soulstruct_obj(self):
         if self.subtype_properties.is_dummy:
             return MSBDummyCharacter(name=self.export_name)
         return MSBCharacter(name=self.export_name)
@@ -171,6 +174,7 @@ class BlenderMSBCharacter(BlenderMSBPart[MSBCharacter, MSBCharacterProps]):
         context: bpy.types.Context,
         model_name: str,
         map_stem="",  # not used
+        model_collection: bpy.types.Collection = None,
     ) -> bpy.types.MeshObject:
         """Import the model of the given name into a collection in the current scene."""
         settings = operator.settings(context)
@@ -186,6 +190,13 @@ class BlenderMSBCharacter(BlenderMSBPart[MSBCharacter, MSBCharacterProps]):
             image_import_manager.find_flver_textures(chrbnd_path, chrbnd)
         flver = binder_flvers[0]
 
+        if not model_collection:
+            model_collection = get_or_create_collection(
+                context.scene.collection,
+                "Character Models",
+                hide_viewport=context.scene.msb_import_settings.hide_model_collections,
+            )
+
         try:
             bl_flver = BlenderFLVER.new_from_soulstruct_obj(
                 operator,
@@ -193,7 +204,7 @@ class BlenderMSBCharacter(BlenderMSBPart[MSBCharacter, MSBCharacterProps]):
                 flver,
                 model_name,
                 image_import_manager,
-                collection=get_or_create_collection(context.scene.collection, "Character Models"),
+                collection=model_collection,
             )
         except Exception as ex:
             traceback.print_exc()  # for inspection in Blender console

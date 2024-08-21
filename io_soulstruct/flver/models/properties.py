@@ -180,7 +180,7 @@ class FLVERImportSettings(bpy.types.PropertyGroup):
     omit_default_bone: bpy.props.BoolProperty(
         name="Omit Default Bone",
         description="If imported FLVER has a single default bone (e.g. standard Map Pieces), do not create an "
-                    "Armature object for it, and instead make the Mesh the root FLVER object",
+                    "Armature parent object for the FLVER Mesh (default bone will be created again on export)",
         default=True,
     )
 
@@ -217,9 +217,9 @@ class FLVERExportSettings(bpy.types.PropertyGroup):
 
     create_lod_face_sets: bpy.props.BoolProperty(
         name="Create LOD Face Sets",
-        description="Duplicate exported meshes (face set 0) to additional LOD face sets based on each material's "
-                    "'Face Set Count'. Not recommended for later games with high-resolution meshes (unfortunately no "
-                    "good solution for this yet)",
+        description="Duplicate exported meshes (face set 0) to additional Level of Detail (LoD) face sets based on "
+                    "each material's 'Face Set Count'. Acceptable for older games but not recommended for later games "
+                    "with high-res meshes (unfortunately no good solution for this yet)",
         default=False,
     )
 

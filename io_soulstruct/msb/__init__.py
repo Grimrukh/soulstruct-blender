@@ -6,13 +6,13 @@ __all__ = [
 
     "RegionDrawSettings",
     "draw_msb_regions",
-    "EventDrawSettings",
-    "draw_msb_events",
 
     "EnableSelectedNames",
     "DisableSelectedNames",
     "CreateMSBPart",
     "DuplicateMSBPartModel",
+    "FindEntityID",
+    "ColorMSBEvents",
 
     # PART
     "MSBPartSubtype",
@@ -47,6 +47,7 @@ __all__ = [
     # SETTINGS
     "MSBImportSettings",
     "MSBExportSettings",
+    "MSBToolSettings",
 
     "MSBImportExportPanel",
     "MSBToolsPanel",
@@ -82,6 +83,5 @@ from .import_operators import *
 from .export_operators import *
 from .misc_operators import *
 from .draw_regions import *
-from .draw_events import *
 from .gui import *
 from .properties import *

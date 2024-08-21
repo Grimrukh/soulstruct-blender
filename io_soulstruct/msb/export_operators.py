@@ -97,7 +97,7 @@ class ExportMSB(LoggingOperator):
         bl_events = []
         checked_names = set()
 
-        collections = [context.collection] + [context.collection.children_recursive]
+        collections = [context.collection] + list(context.collection.children_recursive)
         for col in collections:
             for obj in col.objects:
                 if obj.name in checked_names:
@@ -125,32 +125,34 @@ class ExportMSB(LoggingOperator):
         region_classes = BLENDER_MSB_REGION_TYPES[settings.game]
         region_count = 0
         for bl_region_obj in bl_regions:
-            bl_region_type = region_classes[bl_region_obj.MSB_REGION.region_subtype]
+            bl_region_type = region_classes[bl_region_obj.MSB_REGION.region_subtype_enum]
             bl_region = bl_region_type(bl_region_obj)  # type: IBlenderMSBRegion
             msb_region = bl_region.to_soulstruct_obj(self, context)  # type: BaseMSBRegion
             msb.add_entry(msb_region)
             region_count += 1
+            self.info(f"Added MSB Region: {msb_region.name}")
 
         # We add Parts next, carefully by subtype.
-        part_classes = BLENDER_MSB_REGION_TYPES[settings.game]  # type: dict[str, type[IBlenderMSBPart]]
+        part_classes = BLENDER_MSB_PART_TYPES[settings.game]  # type: dict[str, type[IBlenderMSBPart]]
         part_count = 0
         for bl_part_subtype in self.PART_SUBTYPE_ORDER:
-            bl_part_type = part_classes[bl_part_subtype]
+            try:
+                bl_part_type = part_classes[bl_part_subtype]
+            except KeyError:
+                continue  # not supported by this game
 
             # Get subtype parts. They are already sorted from above.
-            bl_subtype_parts = [obj for obj in bl_parts if obj.MSB_PART.part_subtype == bl_part_subtype.name]
+            bl_subtype_parts = [obj for obj in bl_parts if obj.MSB_PART.part_subtype_enum == bl_part_subtype]
+            self.info(f"Adding {len(bl_subtype_parts)} {bl_part_subtype} parts.")
 
             # The same Blender part subtype may be exported as multiple real subtypes (e.g. Object and DummyObject) so
             # we need to detect the correct MSB list on an individual basis.
             for bl_part_obj in bl_subtype_parts:
                 bl_part = bl_part_type(bl_part_obj)  # type: IBlenderMSBPart
-                msb_part = bl_part.to_soulstruct_obj(self, context, map_stem, msb)
-                msb.add_entry(msb_part)  # Blender part subtype is not 1:1 with MSB part subtype (e.g. `DummyObject`)
-
-                # TODO: This method is only in DS1 MSB at the moment, but it should be in the base class.
-                # noinspection PyTypeChecker
-                msb.auto_model(msb_part, map_stem)  # adds model to MSB automatically
+                msb_part = bl_part.to_soulstruct_obj(self, context, map_stem, msb)  # will create and add MSB model
+                msb.add_entry(msb_part)
                 part_count += 1
+                self.info(f"Added {bl_part_subtype} MSB Part: {msb_part.name}")
 
         # Sort all Models by name.
         for list_name in msb.get_subtype_list_names():
@@ -161,11 +163,12 @@ class ExportMSB(LoggingOperator):
         event_classes = BLENDER_MSB_EVENT_TYPES[settings.game]
         event_count = 0
         for bl_event_obj in bl_events:
-            bl_event_type = event_classes[bl_event_obj.MSB_EVENT.event_subtype]
+            bl_event_type = event_classes[bl_event_obj.MSB_EVENT.event_subtype_enum]
             bl_event = bl_event_type(bl_event_obj)  # type: IBlenderMSBEvent
-            msb_event = bl_event.to_soulstruct_obj(self, context)  # type: BaseMSBEvent
+            msb_event = bl_event.to_soulstruct_obj(self, context, map_stem, msb)  # type: BaseMSBEvent
             msb.add_entry(msb_event)
             event_count += 1
+            self.info(f"Added {bl_event_obj.MSB_EVENT.event_subtype_enum} MSB Event: {msb_event.name}")
 
         # Finalize automatic references (e.g. Collision environments).
         msb.set_auto_references()

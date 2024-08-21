@@ -4,7 +4,6 @@ __all__ = [
     "BlenderMapCollision",
 ]
 
-import re
 import typing as tp
 from pathlib import Path
 
@@ -16,9 +15,7 @@ from io_soulstruct.types import *
 from io_soulstruct.utilities import *
 from soulstruct_havok.wrappers.hkx2015 import MapCollisionHKX
 from .properties import MapCollisionProps
-
-
-HKX_MATERIAL_NAME_RE = re.compile(r"HKX (?P<index>\d+) \((?P<res>Hi|Lo)\).*")  # Blender HKX material name
+from .utilities import HKX_MATERIAL_NAME_RE
 
 
 class BlenderMapCollision(SoulstructObject[MapCollisionHKX, MapCollisionProps]):

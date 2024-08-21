@@ -1,23 +1,26 @@
 from __future__ import annotations
 
 __all__ = [
-    "MapCollisionPanel",
+    "MapCollisionImportExportPanel",
+    "MapCollisionToolsPanel",
 ]
 
 import bpy
 
+from io_soulstruct.exceptions import SoulstructTypeError
+from io_soulstruct.general.gui import map_stem_box
+from io_soulstruct.misc_operators import CopyMeshSelectionOperator, CutMeshSelectionOperator
 from .import_operators import *
 from .export_operators import *
 from .misc_operators import *
+from .types import BlenderMapCollision
 
-from io_soulstruct.misc_operators import CopyMeshSelectionOperator, CutMeshSelectionOperator
 
+class MapCollisionImportExportPanel(bpy.types.Panel):
+    """Contains import and export operators for HKX Map Collision models."""
 
-class MapCollisionPanel(bpy.types.Panel):
-    """Contains import, export, and miscellaneous operators."""
-
-    bl_label = "HKX Map Collisions"
-    bl_idname = "HKX_PT_hkx_map_collisions"
+    bl_label = "Collision Import/Export"
+    bl_idname = "HKX_PT_hkx_map_collision_import_export"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "Collision"
@@ -26,32 +29,58 @@ class MapCollisionPanel(bpy.types.Panel):
     # noinspection PyUnusedLocal
     def draw(self, context):
         settings = context.scene.soulstruct_settings
-        if settings.game_variable_name != "DARK_SOULS_DSR":
+        if not settings.is_game("DARK_SOULS_DSR"):
             self.layout.label(text="Dark Souls: Remastered only.")
             return
 
-        import_box = self.layout.box()
+        layout = self.layout
+        map_stem_box(layout, settings)
+
+        import_box = layout.box()
+        import_box.label(text="Import from Game/Project:")
+        import_box.operator(ImportSelectedMapHKXMapCollision.bl_idname)
+        import_box.label(text="Generic Import:")
         import_box.operator(ImportHKXMapCollision.bl_idname, text="Import Any Map Collision")
 
-        if settings.is_game("DARK_SOULS_DSR"):
-            map_import_box = import_box.box()
-            map_import_box.label(text="Import from Selected Map")
-            map_import_box.operator(ImportSelectedMapHKXMapCollision.bl_idname)
-
         export_box = self.layout.box()
+        try:
+            BlenderMapCollision.from_selected_objects(context)
+        except SoulstructTypeError:
+            export_box.label(text="Select some Collision models.")
+            export_box.label(text="MSB Parts cannot be selected.")
+            return
+
+        export_box.prop(context.scene.soulstruct_settings, "detect_map_from_collection")
+        export_box.label(text="Export to Game/Project:")
+        export_box.operator(ExportHKXMapCollisionIntoHKXBHD.bl_idname)
+        export_box.label(text="Generic Export:")
         export_box.operator(ExportLooseHKXMapCollision.bl_idname)
         export_box.operator(ExportHKXMapCollisionIntoBinder.bl_idname)
 
-        if settings.is_game("DARK_SOULS_DSR"):
-            map_export_box = export_box.box()
-            map_export_box.label(text="Export to Selected Map")
-            map_export_box.prop(context.scene.soulstruct_settings, "detect_map_from_collection")
-            map_export_box.operator(ExportHKXMapCollisionIntoHKXBHD.bl_idname)
 
-        misc_operators_box = self.layout.box()
-        misc_operators_box.operator(SelectHiResFaces.bl_idname)
-        misc_operators_box.operator(SelectLoResFaces.bl_idname)
+class MapCollisionToolsPanel(bpy.types.Panel):
+    """Contains miscellaneous settings/operators for HKX Map Collision models."""
+
+    bl_label = "Collision Tools"
+    bl_idname = "HKX_PT_hkx_map_collision_tools"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "Collision"
+    bl_options = {"DEFAULT_CLOSED"}
+
+    # noinspection PyUnusedLocal
+    def draw(self, context):
+
+        layout = self.layout
+
+        layout.label(text="Display Tools:")
+        layout.operator(SelectHiResFaces.bl_idname)
+        layout.prop(context.scene.map_collision_tool_settings, "hi_alpha")
+        layout.operator(SelectLoResFaces.bl_idname)
+        layout.prop(context.scene.map_collision_tool_settings, "lo_alpha")
+
+        layout.label(text="Mesh Tools:")
         # Useful in particular for creating HKX map collisions (e.g. from FLVER or high <> low res).
-        misc_operators_box.prop(context.scene.mesh_move_settings, "new_material_index")
-        misc_operators_box.operator(CopyMeshSelectionOperator.bl_idname)
-        misc_operators_box.operator(CutMeshSelectionOperator.bl_idname)
+        layout.prop(context.scene.mesh_move_settings, "new_material_index")
+        layout.operator(CopyMeshSelectionOperator.bl_idname)
+        layout.operator(CutMeshSelectionOperator.bl_idname)

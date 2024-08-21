@@ -54,6 +54,7 @@ class BlenderMSBMapPiece(BlenderMSBPart[MSBMapPiece, MSBMapPieceProps]):
         context: bpy.types.Context,
         model_name: str,
         map_stem: str,  # required for Map Pieces
+        model_collection: bpy.types.Collection = None,
     ) -> bpy.types.MeshObject:
         """Import the model of the given name into a collection in the current scene."""
         settings = operator.settings(context)
@@ -82,11 +83,13 @@ class BlenderMSBMapPiece(BlenderMSBPart[MSBMapPiece, MSBMapPieceProps]):
         else:
             image_import_manager = None
 
-        map_piece_model_collection = get_or_create_collection(
-            context.scene.collection,
-            f"{map_stem} Models",
-            f"{map_stem} Map Piece Models",
-        )
+        if not model_collection:
+            model_collection = get_or_create_collection(
+                context.scene.collection,
+                f"{map_stem} Models",
+                f"{map_stem} Map Piece Models",
+                hide_viewport=context.scene.msb_import_settings.hide_model_collections,
+            )
         try:
             bl_flver = BlenderFLVER.new_from_soulstruct_obj(
                 operator,
@@ -94,7 +97,7 @@ class BlenderMSBMapPiece(BlenderMSBPart[MSBMapPiece, MSBMapPieceProps]):
                 flver,
                 model_name,
                 image_import_manager=image_import_manager,
-                collection=map_piece_model_collection,
+                collection=model_collection,
             )
         except Exception as ex:
             traceback.print_exc()  # for inspection in Blender console
@@ -113,6 +116,7 @@ class BlenderMSBMapPiece(BlenderMSBPart[MSBMapPiece, MSBMapPieceProps]):
         collection: bpy.types.Collection = None,
         map_stem="",
         try_import_model=True,
+        model_collection: bpy.types.Collection = None,
     ) -> tp.Self:
         """Map Pieces sometimes use bones to place vertex subsets, which look like nonsense without that positioning.
 
@@ -120,10 +124,10 @@ class BlenderMSBMapPiece(BlenderMSBPart[MSBMapPiece, MSBMapPieceProps]):
         never be used during Part export. (Cutscenes may also use it, though I don't think Map Pieces are "animated".)
         """
         bl_map_piece = super().new_from_soulstruct_obj(
-            operator, context, soulstruct_obj, name, collection, map_stem, try_import_model
+            operator, context, soulstruct_obj, name, collection, map_stem, try_import_model, model_collection
         )  # type: BlenderMSBMapPiece
 
-        if bl_map_piece.model:
+        if bl_map_piece.model and not bl_map_piece.model.get("MSB_MODEL_PLACEHOLDER", False):
             bl_flver = BlenderFLVER(bl_map_piece.model)
             if bl_flver.armature:
                 # This handles parenting, rigging, etc.

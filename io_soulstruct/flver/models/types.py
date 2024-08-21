@@ -152,7 +152,7 @@ class BlenderFLVERDummy(SoulstructObject[Dummy, FLVERDummyProps]):
         
         return bl_dummy
 
-    def create_soulstruct_obj(self) -> Dummy:
+    def _create_soulstruct_obj(self) -> Dummy:
         return Dummy(
             reference_id=self.reference_id,  # stored in dummy name for editing convenience
             color_rgba=list(self.color_rgba),
@@ -172,7 +172,7 @@ class BlenderFLVERDummy(SoulstructObject[Dummy, FLVERDummyProps]):
         if not armature:
             raise ValueError("Cannot convert Blender Dummy to FLVER Dummy without an Armature object.")
 
-        dummy = self.create_soulstruct_obj()
+        dummy = self._create_soulstruct_obj()
 
         # We decompose the world matrix of the dummy to 'bypass' any attach bone to get its translate and rotate.
         # However, the translate may still be relative to a DIFFERENT parent bone, so we need to account for that below.

@@ -52,7 +52,8 @@ class BlenderMSBPlayerStart(BlenderMSBPart[MSBPlayerStart, MSBPlayerStartProps])
         operator: LoggingOperator,
         context: bpy.types.Context,
         model_name: str,
-        map_stem: str,
+        map_stem: str = "",  # not used
+        model_collection: bpy.types.Collection = None,
     ) -> bpy.types.MeshObject:
         settings = operator.settings(context)
         import_settings = context.scene.flver_import_settings
@@ -68,6 +69,14 @@ class BlenderMSBPlayerStart(BlenderMSBPart[MSBPlayerStart, MSBPlayerStartProps])
             image_import_manager.find_flver_textures(chrbnd_path, chrbnd)
         flver = binder_flvers[0]
 
+        if not model_collection:
+            # Player Start parts use Character models (even if MSB model is a 'Player' model).
+            model_collection = get_or_create_collection(
+                context.scene.collection,
+                "Character Models",
+                hide_viewport=context.scene.msb_import_settings.hide_model_collections,
+            )
+
         try:
             bl_flver = BlenderFLVER.new_from_soulstruct_obj(
                 operator,
@@ -75,11 +84,11 @@ class BlenderMSBPlayerStart(BlenderMSBPart[MSBPlayerStart, MSBPlayerStartProps])
                 flver,
                 model_name,
                 image_import_manager,
-                collection=get_or_create_collection(context.scene.collection, "Character Models"),
+                collection=model_collection,
             )
         except Exception as ex:
             traceback.print_exc()  # for inspection in Blender console
-            raise FLVERImportError(f"Cannot import FLVER from CHRBND: {chrbnd_path.name}. Error: {ex}")
+            raise FLVERImportError(f"Cannot import MSB Player Start FLVER from CHRBND: {chrbnd_path.name}. Error: {ex}")
 
         return bl_flver.mesh
 

@@ -18,6 +18,7 @@ from io_soulstruct.general.cached import get_cached_file
 from io_soulstruct.utilities import *
 from io_soulstruct.utilities.operators import LoggingOperator
 from soulstruct.games import *
+from soulstruct.utilities.misc import IDList
 
 if tp.TYPE_CHECKING:
     from io_soulstruct.type_checking import *
@@ -112,7 +113,7 @@ class ImportMSB(LoggingOperator):
         msb_path = settings.get_import_msb_path()  # will automatically use latest MSB version if known and enabled
         msb = get_cached_file(msb_path, settings.get_game_msb_class())  # type: MSB_TYPING
 
-        # Two separate sub-collections for MSB entries.
+        # Two separate sub-collections for MSB entries: Parts, and Regions/Events combined.
         parts_collection = get_or_create_collection(context.scene.collection, f"{msb_stem} MSB", f"{msb_stem} Parts")
         regions_events_collection = get_or_create_collection(
             context.scene.collection, f"{msb_stem} MSB", f"{msb_stem} Regions/Events"
@@ -122,7 +123,8 @@ class ImportMSB(LoggingOperator):
 
         # 1. Find all Parts that will have their models imported.
         part_name_filter = msb_import_settings.get_name_match_filter()
-        parts_with_models = {}
+        batched_parts_with_models = {}  # for batch import attempt
+        all_parts_with_models = IDList()  # for backup single import attempt
         for part in msb.get_parts():
 
             if not part.model:
@@ -147,11 +149,11 @@ class ImportMSB(LoggingOperator):
             else:
                 continue  # ignore Part with found model
 
-            parts = parts_with_models.setdefault(part.SUBTYPE_ENUM, [])
+            parts = batched_parts_with_models.setdefault(part.SUBTYPE_ENUM, IDList())
             parts.append(part)
 
-        # 2. Import all queued Part models.
-        for part_subtype, parts in parts_with_models.items():
+        # 2. Try to batch-import all queued Part models.
+        for part_subtype, parts in tuple(batched_parts_with_models.items()):
             bl_part_type = get_bl_part_type(parts[0])
             if bl_part_type.MODEL_USES_LATEST_MAP:
                 map_dir_stem = settings.get_latest_map_stem_version()
@@ -162,16 +164,8 @@ class ImportMSB(LoggingOperator):
                 # Import models for this Part subtype in parallel, as much as possible.
                 bl_part_type.batch_import_models(self, context, parts, map_stem=map_dir_stem)
             except BatchOperationUnsupportedError:
-                # Import models for this Part subtype one by one.
-                for part in parts:
-                    try:
-                        bl_part_type.new_from_soulstruct_obj(
-                            self, context, part, part.name, parts_collection, map_dir_stem
-                        )
-                    except Exception as ex:
-                        # Fatal error.
-                        traceback.print_exc()
-                        return self.error(f"Failed to import {part.cls_name} '{part.name}': {ex}")
+                # Import models for this Part subtype one by one below.
+                all_parts_with_models.extend(parts)
 
         # 3. Import Regions first, as they contain no MSB references.
         region_count = 0
@@ -197,12 +191,21 @@ class ImportMSB(LoggingOperator):
             for part in parts:
                 bl_part_type = get_bl_part_type(part)
                 part_subtype_collection = get_or_create_collection(
-                    parts_collection, f"{msb_stem} {bl_part_type.PART_SUBTYPE.get_nice_name()} Parts"
+                    parts_collection,
+                    f"{msb_stem} {bl_part_type.PART_SUBTYPE.get_nice_name()} Parts",
                 )
                 try:
-                    # If model isn't found, an empty one will be created.
+                    # We only import the model here if models were requested for this part subtype and batch import for
+                    # this subtype was unsupported above. Otherwise, an empty model will be created (with a warning).
+                    try_import_model = part in all_parts_with_models
                     bl_part_type.new_from_soulstruct_obj(
-                        self, context, part, part.name, part_subtype_collection, msb_stem, try_import_model=False
+                        self,
+                        context,
+                        part,
+                        part.name,
+                        collection=part_subtype_collection,
+                        map_stem=msb_stem,
+                        try_import_model=try_import_model,
                     )
                 except Exception as ex:
                     # Fatal error.

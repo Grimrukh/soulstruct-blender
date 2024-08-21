@@ -105,8 +105,13 @@ def is_uniform(vector: Vector | Vector3, rel_tol: float):
 def get_or_create_collection(
     root_collection: bpy.types.Collection,
     *names: str,
+    hide_viewport=False,
 ) -> bpy.types.Collection:
-    """Find or create collection `name`. If it doesn't exist, create it, nested inside the given hierarchy."""
+    """Find or create Collection `names[-1]`. If it doesn't exist, create it, nested inside the given `names` hierarchy,
+    starting at `root_collection`.
+
+    `hide_viewport` is only used if a new Collection is created.
+    """
     names = list(names)
     if not names:
         raise ValueError("At least one Collection name must be provided.")
@@ -115,12 +120,14 @@ def get_or_create_collection(
         return bpy.data.collections[target_name]
     except KeyError:
         collection = bpy.data.collections.new(target_name)
+        if hide_viewport:
+            collection.hide_viewport = True
         if not names:
             # Reached top of hierarchy.
             if root_collection:
                 root_collection.children.link(collection)
             return collection
-        parent_collection = get_or_create_collection(root_collection, *names)
+        parent_collection = get_or_create_collection(root_collection, *names, hide_viewport=hide_viewport)
         parent_collection.children.link(collection)
         return collection
 

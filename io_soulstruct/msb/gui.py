@@ -37,8 +37,8 @@ import bpy
 
 from io_soulstruct.general.gui import map_stem_box
 from io_soulstruct.types import SoulstructType
+from soulstruct.base.maps.msb.region_shapes import RegionShapeType
 from .draw_regions import *
-from .draw_events import *
 from .import_operators import *
 from .export_operators import *
 from .misc_operators import *
@@ -110,22 +110,28 @@ class MSBToolsPanel(bpy.types.Panel):
     bl_options = {"DEFAULT_CLOSED"}
 
     def draw(self, context):
-        self.layout.operator(EnableSelectedNames.bl_idname, icon='HIDE_OFF')
-        self.layout.operator(DisableSelectedNames.bl_idname, icon='HIDE_ON')
-        self.layout.operator(CreateMSBPart.bl_idname, icon='MESH_CUBE')
-        self.layout.operator(DuplicateMSBPartModel.bl_idname, icon='DUPLICATE')
+        layout = self.layout
+        layout.operator(FindEntityID.bl_idname, icon='VIEWZOOM')
+        layout.operator(EnableSelectedNames.bl_idname, icon='HIDE_OFF')
+        layout.operator(DisableSelectedNames.bl_idname, icon='HIDE_ON')
+        layout.operator(CreateMSBPart.bl_idname, icon='MESH_CUBE')
+        layout.operator(DuplicateMSBPartModel.bl_idname, icon='DUPLICATE')
 
-        header, panel = self.layout.panel("Region Draw Settings", default_closed=True)
+        event_box = layout.box()
+        event_box.label(text="Event Coloring:")
+        split = event_box.row().split(factor=0.25)
+        split.column().label(text="Color:")
+        split.column().prop(context.scene.msb_tool_settings, "event_color", text="")
+        event_box.prop(context.scene.msb_tool_settings, "event_color_type", text="Type")
+        event_box.prop(context.scene.msb_tool_settings, "event_color_active_collection_only")
+        event_box.operator(ColorMSBEvents.bl_idname, icon='COLOR')
+
+        header, panel = layout.panel("Region Draw Settings", default_closed=True)
         header.label(text="Region Draw Settings")
         if panel:
-            for prop_name in RegionDrawSettings.__annotations__:
-                panel.prop(context.scene.region_draw_settings, prop_name)
-
-        header, panel = self.layout.panel("Event Draw Settings", default_closed=True)
-        header.label(text="Event Draw Settings")
-        if panel:
-            for prop_name in EventDrawSettings.__annotations__:
-                panel.prop(context.scene.event_draw_settings, prop_name)
+            layout.prop(context.scene.region_draw_settings, "draw_point_axes")
+            panel.prop(context.scene.region_draw_settings, "point_radius")
+            panel.prop(context.scene.region_draw_settings, "line_width")
 
 
 def get_active_part_obj(context) -> bpy.types.Object | None:
@@ -144,7 +150,7 @@ def get_active_event_obj(context) -> bpy.types.Object | None:
     return None
 
 
-def draw_group_bit_set_prop(
+def group_bit_set_prop(
     layout: bpy.types.UILayout, props: bpy.types.PropertyGroup, prefix: str, label: str
 ) -> set[str]:
     prop_names = [prop for prop in props.__annotations__ if prop.startswith(prefix)]
@@ -195,8 +201,22 @@ class MSBPartPanel(bpy.types.Panel):
             layout.prop(props, pre_prop)
             handled.add(pre_prop)
 
-        handled |= draw_group_bit_set_prop(layout, props, "draw_groups_", "Draw Groups")
-        handled |= draw_group_bit_set_prop(layout, props, "display_groups_", "Display Groups")
+        handled |= group_bit_set_prop(layout, props, "draw_groups_", "Draw Groups")
+        handled |= group_bit_set_prop(layout, props, "display_groups_", "Display Groups")
+
+        header, panel = layout.panel("DrawParam IDs", default_closed=True)
+        header.label(text="DrawParam IDs")
+        if panel:
+            for prop_name in obj.MSB_PART.DRAW_PARAM_PROP_NAMES:
+                panel.prop(props, prop_name)
+        handled |= set(obj.MSB_PART.DRAW_PARAM_PROP_NAMES)
+
+        header, panel = layout.panel("Other Draw Settings", default_closed=True)
+        header.label(text="Other Draw Settings")
+        if panel:
+            for prop_name in obj.MSB_PART.OTHER_DRAW_PROP_NAMES:
+                panel.prop(props, prop_name)
+        handled |= set(obj.MSB_PART.OTHER_DRAW_PROP_NAMES)
 
         # TODO: Option to hide Part supertype properties that are known to be unused for this subtype.
         for prop in prop_names:
@@ -216,7 +236,7 @@ class _MSBPartSubtypePanelMixin:
     @classmethod
     def poll(cls, context):
         obj = get_active_part_obj(context)
-        return obj is not None and obj.MSB_PART.part_subtype == cls.part_subtype
+        return obj is not None and obj.MSB_PART.part_subtype_enum == cls.part_subtype
 
     def draw(self, context):
         layout = self.layout
@@ -230,12 +250,7 @@ class _MSBPartSubtypePanelMixin:
         # noinspection PyTypeChecker
         props = getattr(obj, self.part_subtype.value)
         prop_names = props.__annotations__.keys()
-        handled = set()
-        handled |= draw_group_bit_set_prop(layout, props, "navmesh_groups_", "Navmesh Groups")
-
         for prop in prop_names:
-            if prop in handled:
-                continue
             layout.prop(props, prop)
 
 
@@ -278,10 +293,40 @@ class MSBCharacterPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
     part_subtype = MSBPartSubtype.Character
     prop_group_type = MSBCharacterProps
 
+    def draw(self, context):
+        layout = self.layout
+
+        obj = get_active_part_obj(context)
+        if obj is None or obj.MSB_PART.part_subtype != self.part_subtype:
+            # Should already fail Panel poll.
+            layout.label(text=f"No active MSB {self.part_subtype}.")
+            return
+
+        # noinspection PyTypeChecker
+        props = getattr(obj, self.part_subtype.value)
+
+        header, panel = layout.panel("Basic Settings", default_closed=False)
+        header.label(text="Basic Settings")
+        if panel:
+            for prop_name in obj.MSB_CHARACTER.BASIC_SETTINGS:
+                panel.prop(props, prop_name)
+
+        header, panel = layout.panel("Patrol Settings", default_closed=True)
+        header.label(text="Patrol Settings")
+        if panel:
+            for prop_name in obj.MSB_CHARACTER.PATROL_SETTINGS:
+                panel.prop(props, prop_name)
+
+        header, panel = layout.panel("Advanced Settings", default_closed=True)
+        header.label(text="Advanced Settings")
+        if panel:
+            for prop_name in obj.MSB_CHARACTER.ADVANCED_SETTINGS:
+                panel.prop(props, prop_name)
+
 
 class MSBPlayerStartPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
-    """Draw a Panel in the Object properties window exposing the appropriate MSB Character fields for active object."""
-    bl_label = "MSB Character Settings"
+    """Draw a Panel in the Object properties window exposing the appropriate MSB PlayerStart fields for object."""
+    bl_label = "MSB Player Start Settings"
     bl_idname = "OBJECT_PT_msb_player_start"
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
@@ -306,6 +351,26 @@ class MSBCollisionPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
     part_subtype = MSBPartSubtype.Collision
     prop_group_type = MSBCollisionProps
 
+    def draw(self, context):
+        layout = self.layout
+
+        obj = get_active_part_obj(context)
+        if obj is None or obj.MSB_PART.part_subtype != self.part_subtype:
+            # Should already fail Panel poll.
+            layout.label(text=f"No active MSB {self.part_subtype}.")
+            return
+
+        # noinspection PyTypeChecker
+        props = getattr(obj, self.part_subtype.value)
+        prop_names = props.__annotations__.keys()
+        handled = set()
+        handled |= group_bit_set_prop(layout, props, "navmesh_groups_", "Navmesh Groups")
+
+        for prop in prop_names:
+            if prop in handled:
+                continue
+            layout.prop(props, prop)
+
 
 class MSBNavmeshPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate MSB Navmesh fields for active object."""
@@ -317,6 +382,26 @@ class MSBNavmeshPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
 
     part_subtype = MSBPartSubtype.Navmesh
     prop_group_type = MSBNavmeshProps
+
+    def draw(self, context):
+        layout = self.layout
+
+        obj = get_active_part_obj(context)
+        if obj is None or obj.MSB_PART.part_subtype != self.part_subtype:
+            # Should already fail Panel poll.
+            layout.label(text=f"No active MSB {self.part_subtype}.")
+            return
+
+        # noinspection PyTypeChecker
+        props = getattr(obj, self.part_subtype.value)
+        prop_names = props.__annotations__.keys()
+        handled = set()
+        handled |= group_bit_set_prop(layout, props, "navmesh_groups_", "Navmesh Groups")
+
+        for prop in prop_names:
+            if prop in handled:
+                continue
+            layout.prop(props, prop)
 
 
 class MSBConnectCollisionPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
@@ -354,8 +439,34 @@ class MSBRegionPanel(bpy.types.Panel):
             return
 
         props = obj.MSB_REGION
-        for prop in props.__annotations__:
-            layout.prop(props, prop)
+
+        layout.prop(props, "region_subtype")
+        layout.prop(props, "entity_id")
+
+        header, panel = layout.panel("Shape Settings", default_closed=False)
+        header.label(text="Shape Settings")
+        if panel:
+            panel.prop(props, "shape_type")
+            if props.shape_type_enum == RegionShapeType.Point:
+                panel.label(text="No shape data for Point.")
+            elif props.shape_type_enum == RegionShapeType.Circle:
+                panel.prop(props, "shape_x", text="Radius")
+            elif props.shape_type_enum == RegionShapeType.Sphere:
+                panel.prop(props, "shape_x", text="Radius")
+            elif props.shape_type_enum == RegionShapeType.Cylinder:
+                panel.prop(props, "shape_x", text="Radius")
+                panel.prop(props, "shape_z", text="Height")
+            elif props.shape_type_enum == RegionShapeType.Rect:
+                panel.prop(props, "shape_x", text="Width")
+                panel.prop(props, "shape_y", text="Depth")
+            elif props.shape_type_enum == RegionShapeType.Box:
+                panel.prop(props, "shape_x", text="Width")
+                panel.prop(props, "shape_y", text="Depth")
+                panel.prop(props, "shape_z", text="Height")
+            elif props.shape_type_enum == RegionShapeType.Composite:
+                panel.label(text="TODO: Cannot yet modify Composite shape.")
+
+        # All properties handled manually above.
 
 
 class MSBEventPanel(bpy.types.Panel):
@@ -404,8 +515,8 @@ class _MSBEventSubtypePanelMixin:
 
     @classmethod
     def poll(cls, context):
-        obj = get_active_part_obj(context)
-        return obj is not None and obj.MSB_EVENT.event_subtype == cls.event_subtype
+        obj = get_active_event_obj(context)
+        return obj is not None and obj.MSB_EVENT.event_subtype_enum == cls.event_subtype
 
     def draw(self, context):
         layout = self.layout

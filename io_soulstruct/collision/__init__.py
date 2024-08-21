@@ -12,10 +12,12 @@ __all__ = [
     "SelectHiResFaces",
     "SelectLoResFaces",
 
-    "MapCollisionPanel",
+    "MapCollisionImportExportPanel",
+    "MapCollisionToolsPanel",
 
     "MapCollisionProps",
     "MapCollisionImportSettings",
+    "MapCollisionToolSettings",
 
     "BlenderMapCollision",
 ]

@@ -74,10 +74,12 @@ class BlenderMSBCollision(BlenderMSBPart[MSBCollision, MSBCollisionProps]):
 
     @property
     def hit_filter(self) -> CollisionHitFilter:
-        return CollisionHitFilter(self.subtype_properties.hit_filter)
+        """Blender property is the name of the enum, not the integer value from the MSB."""
+        return CollisionHitFilter[self.subtype_properties.hit_filter]
 
     @hit_filter.setter
     def hit_filter(self, value: CollisionHitFilter):
+        """Blender property is the name of the enum, not the integer value from the MSB."""
         self.subtype_properties.hit_filter = value.name
 
     @property
@@ -101,10 +103,11 @@ class BlenderMSBCollision(BlenderMSBPart[MSBCollision, MSBCollisionProps]):
         collection: bpy.types.Collection = None,
         map_stem="",
         try_import_model=True,
+        model_collection: bpy.types.Collection = None,
     ) -> tp.Self:
 
         bl_collision = super().new_from_soulstruct_obj(
-            operator, context, soulstruct_obj, name, collection, map_stem, try_import_model
+            operator, context, soulstruct_obj, name, collection, map_stem, try_import_model, model_collection
         )  # type: tp.Self
 
         bl_collision.navmesh_groups = soulstruct_obj.navmesh_groups
@@ -135,6 +138,7 @@ class BlenderMSBCollision(BlenderMSBPart[MSBCollision, MSBCollisionProps]):
         msb_collision = super().to_soulstruct_obj(operator, context, map_stem, msb)  # type: MSBCollision
 
         msb_collision.navmesh_groups = self.navmesh_groups
+        msb_collision.hit_filter_id = self.hit_filter.value
         msb_collision.vagrant_entity_ids = self.vagrant_entity_ids
 
         for name in self.AUTO_COLLISION_PROPS:
@@ -158,6 +162,7 @@ class BlenderMSBCollision(BlenderMSBPart[MSBCollision, MSBCollisionProps]):
         context: bpy.types.Context,
         model_name: str,
         map_stem: str,
+        model_collection: bpy.types.Collection = None,
     ) -> bpy.types.MeshObject:
         """Import the Map Collison HKX model of the given name into a collection in the current scene.
 
@@ -177,16 +182,19 @@ class BlenderMSBCollision(BlenderMSBPart[MSBCollision, MSBCollisionProps]):
 
         both_res_hkxbhd = BothResHKXBHD.from_both_paths(hi_res_hkxbhd_path, lo_res_hkxbhd_path)
         hi_hkx, lo_hkx = both_res_hkxbhd.get_both_hkx(model_name)
-        collection = get_or_create_collection(
-            context.scene.collection,
-            f"{map_stem} Models",
-            f"{map_stem} Collision Models",
-        )
+
+        if not model_collection:
+            model_collection = get_or_create_collection(
+                context.scene.collection,
+                f"{map_stem} Models",
+                f"{map_stem} Collision Models",
+                hide_viewport=context.scene.msb_import_settings.hide_model_collections,
+            )
 
         # Import single HKX.
         try:
             bl_map_collision = BlenderMapCollision.new_from_soulstruct_obj(
-                operator, context, hi_hkx, model_name, collection=collection, lo_hkx=lo_hkx
+                operator, context, hi_hkx, model_name, collection=model_collection, lo_hkx=lo_hkx
             )
         except Exception as ex:
             traceback.print_exc()  # for inspection in Blender console

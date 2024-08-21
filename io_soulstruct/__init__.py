@@ -209,13 +209,15 @@ CLASSES = (
     ExportLooseHKXMapCollision,
     ExportHKXMapCollisionIntoBinder,
     ExportHKXMapCollisionIntoHKXBHD,
-    MapCollisionPanel,
+    MapCollisionImportExportPanel,
+    MapCollisionToolsPanel,
 
     SelectHiResFaces,
     SelectLoResFaces,
 
     MapCollisionProps,
     MapCollisionImportSettings,
+    MapCollisionToolSettings,
     # endregion
 
     # region Cutscenes
@@ -303,12 +305,13 @@ CLASSES = (
     ExportMSB,
 
     RegionDrawSettings,
-    EventDrawSettings,
 
     EnableSelectedNames,
     DisableSelectedNames,
     CreateMSBPart,
     DuplicateMSBPartModel,
+    FindEntityID,
+    ColorMSBEvents,
 
     MSBPartProps,
     MSBMapPieceProps,
@@ -322,6 +325,7 @@ CLASSES = (
     MSBRegionProps,
     MSBImportSettings,
     MSBExportSettings,
+    MSBToolSettings,
 
     MSBImportExportPanel,
     MSBToolsPanel,
@@ -394,14 +398,15 @@ SCENE_POINTERS = dict(
     material_tool_settings=MaterialToolSettings,
     mesh_move_settings=MeshMoveSettings,
     map_collision_import_settings=MapCollisionImportSettings,
+    map_collision_tool_settings=MapCollisionToolSettings,
     navmesh_face_settings=NavmeshFaceSettings,
     nav_graph_compute_settings=NavGraphComputeSettings,
     nvmhkt_import_settings=NVMHKTImportSettings,
     mcg_draw_settings=MCGDrawSettings,
     msb_import_settings=MSBImportSettings,
     msb_export_settings=MSBExportSettings,
+    msb_tool_settings=MSBToolSettings,
     region_draw_settings=RegionDrawSettings,
-    event_draw_settings=EventDrawSettings,
     animation_import_settings=AnimationImportSettings,
     animation_export_settings=AnimationExportSettings,
     cutscene_import_settings=CutsceneImportSettings,
@@ -561,10 +566,6 @@ def register():
 
     SPACE_VIEW_3D_HANDLERS.append(
         bpy.types.SpaceView3D.draw_handler_add(draw_msb_regions, (), "WINDOW", "POST_VIEW")
-    )
-
-    SPACE_VIEW_3D_HANDLERS.append(
-        bpy.types.SpaceView3D.draw_handler_add(draw_msb_events, (), "WINDOW", "POST_VIEW")
     )
 
     bpy.types.TOPBAR_MT_file_import.append(havok_menu_func_import)

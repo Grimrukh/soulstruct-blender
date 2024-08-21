@@ -9,6 +9,7 @@ __all__ = [
     "primitive_cylinder",
     "primitive_rect",
     "primitive_cube",
+    "primitive_three_axes",
     "create_region_scale_driver",
 ]
 
@@ -261,18 +262,20 @@ def batch_import_flver_models(
     operator.info(f"Merged {len(flvers)} {part_subtype_title} FLVERs in {time.perf_counter() - p:.2f} seconds.")
     p = time.perf_counter()
 
-    if part_subtype_title in {"Character", "Object", "Asset", "Equipment"}:
+    if part_subtype_title in {"Character", "Object", "Player Start", "Asset", "Equipment"}:
         # Not map-specific.
         model_collection = get_or_create_collection(
             context.scene.collection,
-            "Models",
+            "Game Models",
             f"{part_subtype_title} Models",
+            hide_viewport=context.scene.msb_import_settings.hide_model_collections,
         )
     else:
         model_collection = get_or_create_collection(
             context.scene.collection,
             f"{map_stem} Models",
             f"{map_stem} {part_subtype_title} Models",
+            hide_viewport=context.scene.msb_import_settings.hide_model_collections,
         )
     for model_name, flver in flvers.items():
         try:
@@ -1525,6 +1528,50 @@ def primitive_cube(mesh: bpy.types.Mesh):
         (2, 3, 7, 6),
         (0, 3, 7, 4),
         (1, 2, 6, 5),
+    ]
+    mesh.from_pydata(vertices, [], faces)
+    mesh.update()
+
+
+def primitive_three_axes(mesh: bpy.types.Mesh):
+    """Create a mesh with three prismic axes of length 1 to represent the transform at a point."""
+    mesh.clear_geometry()
+    vertices = [
+        (-0.1, -0.1, -0.1),
+        (-0.1, 0.1, -0.1),
+        (0.1, 0.1, -0.1),
+        (0.1, -0.1, -0.1),
+        (-0.1, -0.1, 0.1),
+        (-0.1, 0.1, 0.1),
+        (0.1, 0.1, 0.1),
+        (0.1, -0.1, 0.1),
+        (-0.1, -0.1, 0.9),
+        (0.1, -0.1, 0.9),
+        (-0.1, 0.1, 0.9),
+        (0.1, 0.1, 0.9),
+        (-0.1, 0.9, -0.1),
+        (0.1, 0.9, -0.1),
+        (-0.1, 0.9, 0.1),
+        (0.1, 0.9, 0.1),
+        (0.9, 0.1, -0.1),
+        (0.9, -0.1, -0.1),
+        (0.9, 0.1, 0.1),
+        (0.9, -0.1, 0.1),
+    ]
+    # Not all four-sided.
+    faces = [
+        (6, 7, 9, 11),
+        (7, 6, 18, 19),
+        (2, 6, 15, 13),
+        (8, 10, 11, 9),
+        (0, 3, 17, 19, 7, 9, 8, 4),
+        (5, 6, 11, 10),
+        (0, 1, 12, 13, 2, 16, 17, 3),
+        (12, 13, 15, 14),
+        (6, 5, 14, 15),
+        (16, 17, 19, 18),
+        (6, 2, 16, 18),
+        (0, 1, 12, 14, 5, 10, 8, 4),
     ]
     mesh.from_pydata(vertices, [], faces)
     mesh.update()

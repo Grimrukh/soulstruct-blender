@@ -38,7 +38,11 @@ class BlenderMSBEvent(SoulstructObject[MSBEvent, MSBEventProps], tp.Generic[EVEN
 
     @property
     def tight_name(self):
-        return self.obj.name.removesuffix(f"<{self.EVENT_SUBTYPE.name}>")[0].strip()
+        """Any name is permitted for events, including Unicode (Japanese) characters, and they do not have to be
+        unique in the MSB (though this makes Soulstruct EMEVD event scripting harder). We just remove any Blender
+        duplicate suffixes and the convenient '<SUBTYPE>' suffix added on import."""
+        name = match.group(1) if (match := BLENDER_DUPE_RE.match(self.obj.name)) else self.obj.name
+        return name.removesuffix(f"<{self.EVENT_SUBTYPE.name}>").strip()
 
     @property
     def subtype_properties(self) -> SUBTYPE_PROPS_T:
@@ -145,7 +149,7 @@ class BlenderMSBEvent(SoulstructObject[MSBEvent, MSBEventProps], tp.Generic[EVEN
         """Name has '<EventSubtype>' suffix for visibility, as Events aren't grouped like Parts."""
         name = f"{name} <{cls.EVENT_SUBTYPE.name}>"
         bl_event = super().new(name, data, collection)  # type: tp.Self
-        bl_event.obj.MSB_EVENT.event_subtype = cls.EVENT_SUBTYPE.name
+        bl_event.obj.MSB_EVENT.event_subtype = cls.EVENT_SUBTYPE.value  # NOT name
         bl_event.obj.empty_display_type = "SINGLE_ARROW"  # TODO: seems least annoying
         return bl_event
 
@@ -184,7 +188,7 @@ class BlenderMSBEvent(SoulstructObject[MSBEvent, MSBEventProps], tp.Generic[EVEN
         if msb is None:
             raise ValueError("MSB must be provided to resolve Blender MSB references into real MSB entries.")
 
-        event = self.create_soulstruct_obj(self.export_name)  # type: EVENT_T
+        event = self._create_soulstruct_obj(self.export_name)  # type: EVENT_T
 
         event.entity_id = self.entity_id
         event.unknowns = self.unknowns

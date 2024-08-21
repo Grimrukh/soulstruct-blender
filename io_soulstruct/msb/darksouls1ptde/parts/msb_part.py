@@ -12,6 +12,7 @@ from io_soulstruct.exceptions import *
 from io_soulstruct.flver.models import BlenderFLVER
 from io_soulstruct.msb.properties import MSBPartSubtype, MSBPartProps
 from io_soulstruct.types import *
+from io_soulstruct.types import SOULSTRUCT_T
 from io_soulstruct.utilities import *
 from soulstruct.base.maps.msb.utils import GroupBitSet128
 from soulstruct.darksouls1ptde.maps.msb import MSBPart, MSBModel
@@ -215,23 +216,30 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
         part: MSBPart,
         map_stem: str,
         try_import_model: bool,
+        model_collection: bpy.types.Collection = None,
     ) -> bpy.types.MeshObject | None:
-        """Unlike resolving entry refs as new empty objects if missing, we try to import models."""
+        """Similar to resolving entry reference, but we have the ability to import models if requested."""
 
         if not part.model:
             operator.warning(f"MSB Part '{part.name}' has no model set in the MSB.")
             return None
 
         model_name = part.model.get_model_file_stem(map_stem)
-        return cls.find_or_import_model_mesh(operator, context, model_name, map_stem, try_import_model)
+        return cls.find_or_import_model_mesh(
+            operator, context, model_name, map_stem, try_import_model, model_collection
+        )
 
-    def bl_obj_to_model_ref(
+    def set_msb_model(
         self,
         operator: LoggingOperator,
         msb: MSB,
         part: MSBPart,
-    ) -> MSBEntry | None:
-        """Find model in MSB with matching name to this object's `model` reference."""
+        map_stem: str,
+    ) -> None:
+        """Detect `model` name and call `msb.auto_model()` to find or create the MSB model entry of matching subtype.
+
+        Model is assigned to `part` automatically and is not returned here.
+        """
 
         if not self.model:
             operator.warning(f"MSB Part '{part.name}' has no model set in Blender.")
@@ -239,12 +247,7 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
 
         # We use the `MSBModel` subclass to determine what name to look for.
         msb_model_name = self.SOULSTRUCT_MODEL_CLASS.model_file_stem_to_model_name(get_bl_obj_tight_name(self.model))
-        try:
-            return msb.find_model_name(msb_model_name, subtypes=self.MODEL_SUBTYPES)
-        except KeyError:
-            raise MissingPartModelError(
-                f"Model '{msb_model_name}' (from Blender model '{self.model.name}') not found in MSB model lists."
-            )
+        msb.auto_model(part, msb_model_name, map_stem)
 
     @classmethod
     def batch_import_models(
@@ -279,19 +282,32 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
         model_name: str,
         map_stem: str,  # not required by all subtypes
         try_import_model: bool,
+        model_collection: bpy.types.Collection = None,
     ) -> bpy.types.MeshObject:
         """Find or create actual Blender model mesh. Not necessarily a FLVER mesh!"""
         try:
             return cls.find_model_mesh(model_name, map_stem)
         except MissingPartModelError:
             if try_import_model:
-                model = cls.import_model_mesh(operator, context, model_name, map_stem)
+                model = cls.import_model_mesh(operator, context, model_name, map_stem, model_collection)
             else:
-                # Create empty icosphere model.
-                mesh = bpy.data.meshes.new(model_name)
-                cls.primitive_icosphere(mesh)
-                model = bpy.data.objects.new(model_name, mesh)
-                model["PLACEHOLDER"] = True  # some models are genuinely empty, so we need a way to tell for replacing
+                # Find any Mesh object with model's name and MSB_MODEL_PLACEHOLDER property, or create empty icosphere.
+                try:
+                    model = bpy.data.objects[model_name]
+                    if not model.get("MSB_MODEL_PLACEHOLDER"):
+                        raise KeyError
+                except KeyError:
+                    # Create PLACEHOLDER icosphere.
+                    mesh = bpy.data.meshes.new(model_name)
+                    cls.primitive_icosphere(mesh)
+                    model = bpy.data.objects.new(model_name, mesh)
+                    model["MSB_MODEL_PLACEHOLDER"] = True  # some models are genuinely empty, so we need a way to tell
+                    placeholder_model_collection = get_or_create_collection(
+                        context.scene.collection,
+                        "Placeholder Models",
+                        hide_viewport=context.scene.msb_import_settings.hide_model_collections,
+                    )
+                    placeholder_model_collection.objects.link(model)
             return model
 
     @classmethod
@@ -304,13 +320,16 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
         collection: bpy.types.Collection = None,
         map_stem="",
         try_import_model=True,
+        model_collection: bpy.types.Collection = None,
     ) -> tp.Self:
         """Create a fully-represented MSB Part linked to a source model in Blender.
 
         Subclasses will override this to set additional Part-specific properties, or even a Part Armature if needed for
         those annoying old Map Pieces with "pre-posed vertices".
         """
-        model = cls.model_ref_to_bl_obj(operator, context, soulstruct_obj, map_stem, try_import_model)
+        model = cls.model_ref_to_bl_obj(
+            operator, context, soulstruct_obj, map_stem, try_import_model, model_collection
+        )
         model_mesh = model.data if model else bpy.data.meshes.new(name)
         bl_part = cls.new(name, model_mesh, collection)  # type: tp.Self
         bl_part.set_bl_obj_transform(soulstruct_obj)
@@ -346,6 +365,11 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
             # Rename new modifier for clarity.
             self.obj.modifiers["FLVER Armature"].name = "Part Armature"
 
+    def _create_soulstruct_obj(self) -> SOULSTRUCT_T:
+        """Create a new MSB Part instance of the appropriate subtype. Args are supplied automatically."""
+        # noinspection PyArgumentList
+        return self.SOULSTRUCT_CLASS(name=self.export_name)
+
     def to_soulstruct_obj(
         self,
         operator: LoggingOperator,
@@ -357,12 +381,12 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
             raise ValueError("MSB must be provided to resolve Blender MSB references into real MSB entries.")
 
         # Creation can be overridden (e.g. to make 'Dummy' versions of entry types).
-        part = self.create_soulstruct_obj(name=self.export_name)  # type: PART_T
+        part = self._create_soulstruct_obj()  # type: PART_T
 
         part.set_auto_sib_path(map_stem)
         use_world_transform = context.scene.msb_export_settings.use_world_transforms
         self.set_part_transform(part, use_world_transform=use_world_transform)
-        part.model = self.bl_obj_to_model_ref(operator, msb, part)
+        self.set_msb_model(operator, msb, part, map_stem)
         part.draw_groups = self.draw_groups
         part.display_groups = self.display_groups
         for name in self.AUTO_PART_PROPS:
@@ -390,6 +414,7 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
         context: bpy.types.Context,
         model_name: str,
         map_stem: str,  # not required by all subtypes
+        model_collection: bpy.types.Collection = None,
     ) -> bpy.types.MeshObject:
         """Use other Soulstruct for Blender submodules to import model for this MSB Part."""
 

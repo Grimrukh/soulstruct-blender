@@ -5,6 +5,8 @@ __all__ = [
     "DisableSelectedNames",
     "CreateMSBPart",
     "DuplicateMSBPartModel",
+    "FindEntityID",
+    "ColorMSBEvents",
 ]
 
 import bpy
@@ -208,5 +210,99 @@ class DuplicateMSBPartModel(LoggingOperator):
                     part.name = f"{new_part_prefix}{new_part_suffix}"
                     break
             # No need for `else` because part name cannot have been identical to model name in Blender!
+
+        return {"FINISHED"}
+
+
+class FindEntityID(LoggingOperator):
+
+    bl_idname = "object.find_msb_entity_id"
+    bl_label = "Find Entity ID"
+    bl_description = "Find and select the first MSB entry in the scene with the input entity ID"
+
+    entity_id: bpy.props.IntProperty(
+        name="Entity ID",
+        description="Entity ID to search for",
+        default=1000000,
+        min=1,
+        max=999999999,
+    )
+
+    active_collection_only: bpy.props.BoolProperty(
+        name="Active Collection Only",
+        description="Only search for MSB entries in the active collection and its children",
+        default=False,
+    )
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
+    def execute(self, context):
+
+        self.deselect_all()
+
+        entity_id = self.entity_id
+        collection = context.collection if self.active_collection_only else context.scene.collection
+        hits = 0
+        for obj in collection.all_objects:
+            if obj.soulstruct_type == SoulstructType.MSB_PART and obj.MSB_PART.entity_id == entity_id:
+                obj.select_set(True)
+                context.view_layer.objects.active = obj
+                hits += 1
+            if obj.soulstruct_type == SoulstructType.MSB_EVENT and obj.MSB_EVENT.entity_id == entity_id:
+                obj.select_set(True)
+                context.view_layer.objects.active = obj
+                hits += 1
+            if obj.soulstruct_type == SoulstructType.MSB_REGION and obj.MSB_REGION.entity_id == entity_id:
+                obj.select_set(True)
+                context.view_layer.objects.active = obj
+                hits += 1
+
+        if hits == 0:
+            return self.error(f"No MSB entries with Entity ID {entity_id} found.")
+        if hits > 1:
+            return self.warning(f"Multiple MSB entries with Entity ID {entity_id} found and selected.")
+
+        # Ideal: one object selected and active
+        bpy.ops.view3d.view_selected()
+        return {"FINISHED"}
+
+
+class ColorMSBEvents(LoggingOperator):
+
+    bl_idname = "object.color_msb_events"
+    bl_label = "Color MSB Events"
+    bl_description = ("Color MSB Event objects of the chosen type(s), and their parent Regions or Parts, in viewport. "
+                      "Viewport Wire Color mode should be set to 'Object' to see these colors")
+
+    # Settings are in `MSBToolSettings`.
+
+    def execute(self, context):
+        tool_settings = context.scene.msb_tool_settings
+
+        # Find all MSB Event objects to color.
+        if tool_settings.event_color_active_collection_only:
+            objects = context.collection.all_objects
+        else:
+            objects = context.scene.collection.all_objects
+
+        if tool_settings.event_color_type != "ALL":
+            objects = [
+                obj for obj in objects
+                if obj.soulstruct_type == SoulstructType.MSB_EVENT
+                and obj.MSB_EVENT.event_subtype == tool_settings.event_color_type  # enums are identical except for ALL
+            ]
+        else:
+            objects = [
+                obj for obj in objects
+                if obj.soulstruct_type == SoulstructType.MSB_EVENT
+            ]  # all subtypes
+
+        for event in objects:
+            event.color = tool_settings.event_color
+            if event.parent:
+                event.parent.color = tool_settings.event_color
+
+        self.info(f"Colored {len(objects)} MSB Event objects and their parents.")
 
         return {"FINISHED"}

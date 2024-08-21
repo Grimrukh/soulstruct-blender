@@ -135,7 +135,8 @@ class SoulstructObject(abc.ABC, tp.Generic[SOULSTRUCT_T, SOULSTRUCT_PROPS_T]):
             raise SoulstructTypeError(f"Found Blender object '{name}', but it is not a {cls.TYPE} Soulstruct object.")
         return cls(obj)
 
-    def create_soulstruct_obj(self, *args, **kwargs) -> SOULSTRUCT_T:
+    def _create_soulstruct_obj(self, *args, **kwargs) -> SOULSTRUCT_T:
+        """By default, will pass args and kwargs into Soulstruct class. Note that subtypes may supply their own args."""
         return self.SOULSTRUCT_CLASS(*args, **kwargs)
 
     @abc.abstractmethod
@@ -173,7 +174,8 @@ class SoulstructObject(abc.ABC, tp.Generic[SOULSTRUCT_T, SOULSTRUCT_PROPS_T]):
 
     @property
     def tight_name(self):
-        """Get the name of the object before the first space and/or dot. Used when exporting some game types."""
+        """Get the name of the object before the first space AND first dot (which automatically trims Blender duplicate
+        suffixes like '.002'). Used when exporting some game types."""
         return self.name.split(".")[0].split(" ")[0]
 
     @property

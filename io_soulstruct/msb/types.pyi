@@ -57,6 +57,7 @@ class IBlenderMSBPart(SoulstructObject, abc.ABC):
         collection: bpy.types.Collection = None,
         map_stem="",
         try_import_model=True,
+        model_collection: bpy.types.Collection = None,
     ) -> tp.Self:
         ...
 

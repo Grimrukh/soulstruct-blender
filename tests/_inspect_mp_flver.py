@@ -1,17 +1,17 @@
 from soulstruct import Path, FLVER
+from soulstruct.utilities.text import indent_lines
 
 
 WB_PATH = Path("C:/Steam/steamapps/common/DARK SOULS REMASTERED (Workbench)")
+VAN_PATH = Path("C:/Steam/steamapps/common/DARK SOULS REMASTERED (Vanilla Backup 1.03.1)")
 
 
 def main():
-    van_m2030B1A10 = FLVER.from_path(WB_PATH / "map/m10_01_00_00/m2030B1A10.flver.dcx.bak")
-    m2030B1A10 = FLVER.from_path(WB_PATH / "map/m10_01_00_00/m2030B1A10.flver.dcx")
-
-    for van_submesh, submesh in zip(van_m2030B1A10.submeshes, m2030B1A10.submeshes, strict=True):
-        print(van_submesh.vertices["uv_0"][:5])
-        print(submesh.vertices["uv_0"][:5])
-        print()
+    map_piece = FLVER.from_path(VAN_PATH / "map/m11_00_00_00/m2000B0A11.flver.dcx")
+    for submesh in map_piece.submeshes:
+        print(submesh.material.name)
+        for i, face_set in enumerate(submesh.face_sets):
+            print(f"  Face Set {i}: {indent_lines(repr(face_set))}")
 
 
 if __name__ == '__main__':

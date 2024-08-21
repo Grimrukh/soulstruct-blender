@@ -45,7 +45,7 @@ class BlenderMSBNavmesh(BlenderMSBPart[MSBNavmesh, MSBNavmeshProps]):
     def navmesh_groups(self, value: set[int] | GroupBitSet128):
         if isinstance(value, GroupBitSet128):
             value = value.enabled_bits
-        self._set_groups_bit_set(self.type_properties.get_draw_groups_props_128(), value)
+        self._set_groups_bit_set(self.subtype_properties.get_navmesh_groups_props_128(), value)
 
     def get_nvm_model(self) -> BlenderNVM:
         if not self.model:
@@ -62,12 +62,16 @@ class BlenderMSBNavmesh(BlenderMSBPart[MSBNavmesh, MSBNavmeshProps]):
         collection: bpy.types.Collection = None,
         map_stem="",
         try_import_model=True,
+        model_collection: bpy.types.Collection = None,
     ) -> tp.Self:
         bl_navmesh = super().new_from_soulstruct_obj(
-            operator, context, soulstruct_obj, name, collection, map_stem, try_import_model
+            operator, context, soulstruct_obj, name, collection, map_stem, try_import_model, model_collection
         )
 
         bl_navmesh.navmesh_groups = soulstruct_obj.navmesh_groups
+
+        # Show wireframe by default.
+        bl_navmesh.obj.show_wire = True
 
         return bl_navmesh
 
@@ -98,6 +102,7 @@ class BlenderMSBNavmesh(BlenderMSBPart[MSBNavmesh, MSBNavmeshProps]):
         context: bpy.types.Context,
         model_name: str,
         map_stem: str,
+        model_collection: bpy.types.Collection = None,
     ) -> bpy.types.MeshObject:
         """Import the Navmesh NVM model of the given name into a collection in the current scene.
 
@@ -118,11 +123,14 @@ class BlenderMSBNavmesh(BlenderMSBPart[MSBNavmesh, MSBNavmeshProps]):
             raise NVMImportError(f"Could not find NVM entry '{nvm_entry_name}' in NVMBND file '{nvmbnd_path.name}'.")
 
         nvm = nvm_entry.to_binary_file(NVM)
-        collection = get_or_create_collection(
-            context.scene.collection,
-            f"{map_stem} Models",
-            f"{map_stem} Navmesh Models",
-        )
+
+        if not model_collection:
+            model_collection = get_or_create_collection(
+                context.scene.collection,
+                f"{map_stem} Models",
+                f"{map_stem} Navmesh Models",
+                hide_viewport=context.scene.msb_import_settings.hide_model_collections,
+            )
 
         try:
             bl_nvm = BlenderNVM.new_from_soulstruct_obj(
@@ -130,7 +138,7 @@ class BlenderMSBNavmesh(BlenderMSBPart[MSBNavmesh, MSBNavmeshProps]):
                 context,
                 nvm,
                 model_name,
-                collection=collection,
+                collection=model_collection,
             )
         except Exception as ex:
             traceback.print_exc()  # for inspection in Blender console

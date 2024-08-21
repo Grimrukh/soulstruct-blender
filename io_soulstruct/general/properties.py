@@ -486,14 +486,20 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         return path
 
     def get_import_map_dir_path(self, *parts: str | Path, map_stem="") -> Path:
-        """Get the 'map/{map_stem}' directory path, and optionally further, in the preferred directory."""
+        """Get the 'map/{map_stem}' directory path, and optionally further, in the preferred directory.
+
+        Directory must exist, or a `NotADirectoryError` will be raised.
+        """
         path = self.get_first_existing_map_dir_path(*parts, roots=self.import_roots, map_stem=map_stem)
         if not path:
             raise NotADirectoryError(f"Map subdirectory not found in project or game directory with parts: {parts}")
         return path
 
     def get_import_msb_path(self, map_stem="") -> Path:
-        """Get the `map_stem` MSB path in the preferred `map/MapStudio` directory."""
+        """Get the `map_stem` MSB path in the preferred `map/MapStudio` directory.
+
+        MSB file must exist, or a `FileNotFoundError` will be raised.
+        """
         path = self.get_first_existing_msb_path(roots=self.import_roots, map_stem=map_stem)
         if not path:
             raise FileNotFoundError(f"MSB file for map '{map_stem}' not found in project or game directory.")

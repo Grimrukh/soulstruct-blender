@@ -121,26 +121,23 @@ class BlenderMSBRegion(SoulstructObject[MSBRegion, MSBRegionProps]):
             # Create a new tiny cube Mesh object to represent a Point. Manual GUI handles better drawing, since I don't
             # like any of Blender's Empty display modes for this, but still want something easily clickable.
             mesh = bpy.data.meshes.new(name)
-            primitive_cube(mesh)
-            for v in mesh.vertices:
-                v.co *= 0.2  # scale down
+            primitive_three_axes(mesh)
             bl_region = cls.new(name, mesh, collection)  # type: BlenderMSBRegion
+            bl_region.shape_type = RegionShapeType.Point
+            # Points also have axes enabled.
+            bl_region.obj.show_axis = True
         elif isinstance(soulstruct_obj.shape, CircleShape):
             mesh = bpy.data.meshes.new(name)
             primitive_circle(mesh)
             bl_region = cls.new(name, mesh, collection)  # type: BlenderMSBRegion
             bl_region.shape_type = RegionShapeType.Circle
             bl_region.radius = soulstruct_obj.shape.radius
-            # Drive X and Y scale from radius. Z scale is irrelevant.
-            # create_region_scale_driver(bl_region.obj, "xx")
         elif isinstance(soulstruct_obj.shape, SphereShape):
             mesh = bpy.data.meshes.new(name)
             primitive_cube(mesh)
             bl_region = cls.new(name, mesh, collection)  # type: BlenderMSBRegion
             bl_region.shape_type = RegionShapeType.Sphere
             bl_region.radius = soulstruct_obj.shape.radius
-            # Drive X, Y, and Z scale from radius.
-            # create_region_scale_driver(bl_region.obj, "xxx")
         elif isinstance(soulstruct_obj.shape, CylinderShape):
             mesh = bpy.data.meshes.new(name)
             primitive_cube(mesh)
@@ -148,8 +145,6 @@ class BlenderMSBRegion(SoulstructObject[MSBRegion, MSBRegionProps]):
             bl_region.shape_type = RegionShapeType.Cylinder
             bl_region.radius = soulstruct_obj.shape.radius
             bl_region.height = soulstruct_obj.shape.height
-            # Drive X and Y scale from radius, Z scale from height.
-            # create_region_scale_driver(bl_region.obj, "xxz")
         elif isinstance(soulstruct_obj.shape, RectShape):
             mesh = bpy.data.meshes.new(name)
             primitive_rect(mesh)
@@ -157,8 +152,6 @@ class BlenderMSBRegion(SoulstructObject[MSBRegion, MSBRegionProps]):
             bl_region.shape_type = RegionShapeType.Rect
             bl_region.width = soulstruct_obj.shape.width
             bl_region.depth = soulstruct_obj.shape.depth
-            # Drive X and Y scale from width and depth. Z scale is irrelevant.
-            # create_region_scale_driver(bl_region.obj, "xy")
         elif isinstance(soulstruct_obj.shape, BoxShape):
             mesh = bpy.data.meshes.new(name)
             primitive_cube(mesh)
@@ -167,15 +160,12 @@ class BlenderMSBRegion(SoulstructObject[MSBRegion, MSBRegionProps]):
             bl_region.width = soulstruct_obj.shape.width
             bl_region.depth = soulstruct_obj.shape.depth
             bl_region.height = soulstruct_obj.shape.height
-            # Drive all three scale dimensions.
-            # create_region_scale_driver(bl_region.obj, "xyz")
         else:
             # TODO: Handle Composite... Depends if the children are used anywhere else.
             raise MSBRegionImportError(f"Cannot yet import MSB region shape: {soulstruct_obj.shape_type}")
 
-        if soulstruct_obj.shape_type != RegionShapeType.Point:
-            # Set viewport display to Wire.
-            bl_region.obj.display_type = "WIRE"
+        # Set viewport display to Wire.
+        bl_region.obj.display_type = "WIRE"
 
         bl_region.set_obj_transform(soulstruct_obj)
         bl_region.type_properties.region_subtype = MSBRegionSubtype.All  # no subtypes for DS1
@@ -184,7 +174,7 @@ class BlenderMSBRegion(SoulstructObject[MSBRegion, MSBRegionProps]):
         return bl_region
 
     # noinspection PyArgumentList
-    def create_soulstruct_obj(self) -> MSBRegion:
+    def _create_soulstruct_obj(self) -> MSBRegion:
         shape_class = MSBRegion.SHAPE_CLASSES[self.shape_type.value]
         match self.shape_type.value:
             case RegionShapeType.Point:
@@ -205,7 +195,7 @@ class BlenderMSBRegion(SoulstructObject[MSBRegion, MSBRegionProps]):
         return MSBRegion(name=self.name, shape=shape)
 
     def to_soulstruct_obj(self, operator: LoggingOperator, context: bpy.types.Context) -> MSBRegion:
-        region = self.create_soulstruct_obj()
+        region = self._create_soulstruct_obj()
         use_world_transform = context.scene.msb_export_settings.use_world_transforms
         self.set_region_transform(region, use_world_transform=use_world_transform)
         region.entity_id = self.entity_id
