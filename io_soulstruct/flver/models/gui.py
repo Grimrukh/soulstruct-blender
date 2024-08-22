@@ -49,7 +49,7 @@ class FLVERImportPanel(bpy.types.Panel):
 
         map_stem_box(layout, settings)
 
-        # NOTE: Import settings are exposed within each individual operator (all use browser pop-ups).
+        # NOTE: FLVER import settings are exposed within each individual operator (all use browser pop-ups).
 
         layout.label(text="Import from Game/Project:")
         layout.operator(ImportMapPieceFLVER.bl_idname)

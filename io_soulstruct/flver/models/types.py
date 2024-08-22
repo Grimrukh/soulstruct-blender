@@ -1058,7 +1058,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         mesh_data: bpy.types.Mesh,
         merged_mesh: MergedMesh,
     ) -> tuple[np.ndarray, np.ndarray]:
-        """Create Blender Mesh with plenty of efficient `foreach_set()` calls to `MergedMesh` arrays.
+        """Create Blender Mesh with plenty of efficient `foreach_set()` calls to raveled `MergedMesh` arrays.
 
         Returns two arrays of bone indices and bone weights for the created Blender vertices.
         """
@@ -1076,17 +1076,20 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         face_count = len(merged_mesh.faces)
         face_loop_indices = merged_mesh.faces[:, :3].ravel()
         if merged_mesh.vertices_merged:
+            # Retrieve true vertex indices used by each face loop indexed in `merged_mesh.faces`.
             loop_vertex_indices = merged_mesh.loop_vertex_indices[face_loop_indices]
         else:
+            # No vertex merging occurred, so FLVER 'loops' and 'vertices' are still synonymous.
             loop_vertex_indices = face_loop_indices
-        loop_starts = np.arange(0, face_count * 3, 3, dtype=np.int32)  # just [0, 3, 6, ...]
-        loop_totals = np.full(face_count, 3, dtype=np.int32)  # all triangles (3)
 
-        # Directly assign face indices
+        # Directly assign face corner (loop) vertex indices.
         mesh_data.loops.add(len(loop_vertex_indices))
         mesh_data.loops.foreach_set("vertex_index", loop_vertex_indices)
 
-        # Set polygons
+        # Create triangle polygons.
+        # Blender polygons are defined by loop start and count (total), which is entirely on-rails here for triangles.
+        loop_starts = np.arange(0, face_count * 3, 3, dtype=np.int32)  # just [0, 3, 6, ...]
+        loop_totals = np.full(face_count, 3, dtype=np.int32)  # all triangles (3)
         mesh_data.polygons.add(face_count)
         mesh_data.polygons.foreach_set("loop_start", loop_starts)
         mesh_data.polygons.foreach_set("loop_total", loop_totals)
@@ -1098,12 +1101,13 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         for i, (uv_layer_name, merged_loop_uv_array) in enumerate(merged_mesh.loop_uvs.items()):
             # self.operator.info(f"Creating UV layer {i}: {uv_layer_name}")
             uv_layer = mesh_data.uv_layers.new(name=uv_layer_name, do_init=False)
-            loop_uv_data = merged_loop_uv_array[loop_vertex_indices].ravel()
+            loop_uv_data = merged_loop_uv_array[face_loop_indices].ravel()
             uv_layer.data.foreach_set("uv", loop_uv_data)
         for i, merged_color_array in enumerate(merged_mesh.loop_vertex_colors):
             # self.operator.info(f"Creating Vertex Colors layer {i}: VertexColors{i}")
+            # TODO: Apparently `vertex_colors` is deprecated in favor of "color attributes". Investigate.
             color_layer = mesh_data.vertex_colors.new(name=f"VertexColors{i}")
-            loop_color_data = merged_color_array[loop_vertex_indices].ravel()
+            loop_color_data = merged_color_array[face_loop_indices].ravel()
             color_layer.data.foreach_set("color", loop_color_data)
 
         # NOTE: `Mesh.create_normals_split()` removed in Blender 4.1. I no longer support older versions than that.
@@ -1111,7 +1115,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         # We also don't need to enable `use_auto_smooth` or call `calc_normals_split()` anymore.
 
         mesh_data.update()  # CRITICAL, or `normals_split_custom_set` will crash Blender!
-        loop_normal_data = merged_mesh.loop_normals[loop_vertex_indices]  # NOT raveled
+        loop_normal_data = merged_mesh.loop_normals[face_loop_indices]  # NOT raveled
         mesh_data.normals_split_custom_set(loop_normal_data)  # one normal per loop
         mesh_data.update()
 
@@ -1665,25 +1669,17 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         #  bone weights) in the original mesh.
         tri_mesh_data = self.create_triangulated_mesh(context, do_data_transfer=False)
 
-        # TODO: The tangent and bitangent of each vertex should be calculated from the UV map that is effectively
-        #  serving as the normal map ('_n' displacement texture) for that vertex. However, for multi-texture mesh
-        #  materials, vertex alpha blends two normal maps together, so the UV map for (bi)tangents will vary across
-        #  the mesh and would require external calculation here. Working on that...
-        #  For now, just calculating tangents from the first UV map.
-        #  Also note that map piece FLVERs only have Bitangent data for materials with two textures. Suspicious?
+        # TODO: Recalculate tangents for additional texture slots (stored as bitangents in DS1).
+        first_uv_layer_name = next(iter(bl_uv_layer_names))
         try:
-            # TODO: This function calls the required `calc_normals_split()` automatically, but if it was replaced,
-            #  a separate call of that would be needed to write the (rather inaccessible) custom split per-loop normal
-            #  data (pink lines in 3D View overlay) to each `loop.normal`. (Pre-4.1 only.)
-            tri_mesh_data.calc_tangents(uvmap="UVTexture0")
-            # bl_mesh_data.calc_normals_split()
+            tri_mesh_data.calc_tangents(uvmap=first_uv_layer_name)
         except RuntimeError as ex:
             # TODO: Some FLVER materials actually have no UVs, like 'C[Fur]_cloth' shader in Elden Ring. A FLVER made
             #  entirely of these materials would genuinely have no UVs in the merged Blender mesh -- but of course,
             #  that doesn't exist in vanilla files. (Also, it DOES have tangent data, which we'd need to calcualte
             #  somehow).
             raise RuntimeError(
-                f"Could not calculate vertex tangents from UV layer 'UVTexture0', which every FLVER mesh should have. "
+                f"Could not calculate vertex tangents from first UV layer '{first_uv_layer_name}'. "
                 f"Make sure the mesh is triangulated and not empty (delete any empty mesh). Error: {ex}"
             )
 
@@ -1844,6 +1840,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         tri_mesh_data.loops.foreach_get("vertex_index", loop_vertex_indices)
         tri_mesh_data.loops.foreach_get("normal", loop_normals.ravel())
         tri_mesh_data.loops.foreach_get("tangent", loop_tangents.ravel())
+
         # TODO: 99% sure that `bitangent` data in DS1 is used to store tangent data for the second normal map, which
         #  later games do by actually using a second tangent buffer.
         tri_mesh_data.loops.foreach_get("bitangent", loop_bitangents.ravel())
@@ -1861,10 +1858,18 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         loop_tangents = np_cross(loop_tangents, loop_normals)
         loop_bitangents = np_cross(loop_bitangents, loop_normals)
 
-        # Add default `w` components to tangents and bitangents (-1).
+        # Add default `w` components to tangents and bitangents (-1). May be negated into 1 below.
         minus_one = np.full((loop_count, 1), -1, dtype=np.float32)
         loop_tangents = np.concatenate((loop_tangents, minus_one), axis=1)
         loop_bitangents = np.concatenate((loop_bitangents, minus_one), axis=1)
+
+        # We need to check the determinant of every face's loop UVs to determine if the tangent should be negated due to
+        # mirrored UV mapping. Fortunately, we're already set up for vectorization here.
+        tangent_signs = self.get_mirrored_uv_face_indices(loop_uvs[first_uv_layer_name])
+        loop_tangents_reshaped = loop_tangents.reshape(-1, 3, 4)  # temporary reshape for easy negation
+        loop_tangents_reshaped *= tangent_signs[:, np.newaxis, np.newaxis]
+        loop_tangents = loop_tangents_reshaped.reshape(-1, 4)
+        operator.info(f"Detected {np.sum(tangent_signs < 0)} faces with mirrored UVs and negated their tangents.")
 
         operator.info(f"Constructed combined loop array in {time.perf_counter() - p} s.")
 
@@ -1897,6 +1902,23 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
             max_submesh_vertex_count=65535 if settings.is_game_ds1() else 4294967295,
         )
         operator.info(f"Split mesh into {len(flver.submeshes)} submeshes in {time.perf_counter() - p} s.")
+
+    @staticmethod
+    def get_mirrored_uv_face_indices(loop_uv_array: np.ndarray) -> np.ndarray:
+        """Uses the determinant of the UV face to determine if the UV mapping is mirrored.
+
+        Returns a 1D array matching face indices, with -1 indicating a mirrored face and 1 a non-mirrored face.
+        """
+        tangent_loop_uvs_reshaped = loop_uv_array.reshape(-1, 3, 2)  # every 3-row chunk now grouped by first dimension
+        face_uv0 = tangent_loop_uvs_reshaped[:, 0, :]
+        face_uv1 = tangent_loop_uvs_reshaped[:, 1, :]
+        face_uv2 = tangent_loop_uvs_reshaped[:, 2, :]
+        delta_u1 = face_uv1[:, 0] - face_uv0[:, 0]
+        delta_v1 = face_uv1[:, 1] - face_uv0[:, 1]
+        delta_u2 = face_uv2[:, 0] - face_uv0[:, 0]
+        delta_v2 = face_uv2[:, 1] - face_uv0[:, 1]
+        determinants = (delta_u1 * delta_v2) - (delta_u2 * delta_v1)
+        return np.where(determinants < 0, -1, 1)
 
     def create_triangulated_mesh(self, context: bpy.types.Context, do_data_transfer: bool = False) -> bpy.types.Mesh:
         """Use `bmesh` and the Data Transfer Modifier to create a temporary triangulated copy of the mesh (required

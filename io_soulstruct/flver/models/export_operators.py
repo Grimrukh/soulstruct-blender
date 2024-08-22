@@ -351,7 +351,7 @@ class BaseGameFLVERBinderExportOperator(LoggingOperator):
         except Exception as ex:
             traceback.print_exc()
             raise FLVERExportError(
-                f"Cannot create exported FLVER '{bl_flver.export_name}' from Blender Mesh '{bl_flver.name}'. Error: {ex}"
+                f"Cannot create exported FLVER '{bl_flver.export_name}' from Mesh '{bl_flver.name}'. Error: {ex}"
             )
 
         flver.dcx_type = DCXType.Null  # no DCX inside any Binder here
@@ -685,7 +685,7 @@ class ExportEquipmentFLVER(BaseGameFLVERBinderExportOperator):
             model_stem, partsbnd, flver, textures = self.get_binder_and_flver(
                 context,
                 settings,
-                lambda bl_flver: Path(f"parts/{model_stem}.partsbnd"),
+                lambda bl_flver: Path(f"parts/{bl_flver.export_name}.partsbnd"),
                 settings.game.from_game_submodule_import("models.partsbnd", "PARTSBND"),
             )
         except FLVERExportError as ex:
