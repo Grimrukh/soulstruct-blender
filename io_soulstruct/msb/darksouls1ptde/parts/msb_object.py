@@ -165,6 +165,7 @@ class BlenderMSBObject(BlenderMSBPart[MSBObject, MSBObjectProps]):
                 model_name,
                 image_import_manager=image_import_manager,
                 collection=model_collection,
+                force_bone_data_type=BlenderFLVER.BoneDataType.EDIT,
             )
         except Exception as ex:
             traceback.print_exc()  # for inspection in Blender console
@@ -190,6 +191,8 @@ class BlenderMSBObject(BlenderMSBPart[MSBObject, MSBObjectProps]):
             if not part.model:
                 continue  # ignore (warning will appear when `bl_part.model` assignes None)
             model_name = part.model.get_model_file_stem(map_stem)
+            if model_name in model_datas:
+                continue  # already queued for import
             try:
                 cls.find_model_mesh(model_name, map_stem)
             except MissingPartModelError:
@@ -203,6 +206,10 @@ class BlenderMSBObject(BlenderMSBPart[MSBObject, MSBObjectProps]):
                 # TODO: Ignoring secondary object FLVERs for now.
                 model_datas[model_name] = flver_entries[0]
                 model_objbnds[model_name] = objbnd
+
+        if not model_datas:
+            operator.info("No Object FLVER models to import.")
+            return  # nothing to import
 
         batch_import_flver_models(
             operator,

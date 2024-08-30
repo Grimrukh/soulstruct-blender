@@ -19,7 +19,10 @@ _all__ = [
     "BlenderFLVER",
     "BlenderFLVERDummy",
 
-    "FLVERPropsPanel"
+    "FLVERPropsPanel",
+    "FLVERDummyPropsPanel",
+    "FLVERImportPanel",
+    "FLVERExportPanel",
 ]
 
 from .import_operators import *

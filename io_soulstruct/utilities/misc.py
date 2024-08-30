@@ -120,8 +120,10 @@ def get_or_create_collection(
         return bpy.data.collections[target_name]
     except KeyError:
         collection = bpy.data.collections.new(target_name)
-        if hide_viewport:
-            collection.hide_viewport = True
+        # TODO: Prevents Armatures from being put into Edit mode.
+        #  Could temporarily enable collection when needed for new Armature.
+        # if hide_viewport:
+        #     collection.hide_viewport = True
         if not names:
             # Reached top of hierarchy.
             if root_collection:

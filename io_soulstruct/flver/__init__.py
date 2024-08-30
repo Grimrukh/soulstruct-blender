@@ -55,6 +55,7 @@ __all__ = [
     "TextureExportSettings",
 
     "FLVERPropsPanel",
+    "FLVERDummyPropsPanel",
     "FLVERImportPanel",
     "FLVERExportPanel",
     "FLVERModelToolsPanel",

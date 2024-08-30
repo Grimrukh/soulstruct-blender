@@ -336,6 +336,19 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         """Checks if current game is either version of Dark Souls 1."""
         return self.is_game(DARK_SOULS_PTDE, DARK_SOULS_DSR)
 
+    def get_game_split_mesh_kwargs(self) -> dict[str, int | bool]:
+        """TODO: Need to check/handle all games correctly here."""
+        if self.is_game_ds1():  # TODO: and probably DeS?
+            return dict(
+                use_submesh_bone_indices=True,
+                max_bones_per_submesh=38,
+                max_submesh_vertex_count=65535,  # faces use 16-bit vertex indices
+            )
+        return dict(
+            use_submesh_bone_indices=False,
+            max_submesh_vertex_count=4294967295,  # faces use 32-bit vertex indices
+        )
+
     def get_game_root_prop_name(self):
         """Get the name of the game root property for the current game."""
         return f"{self.game.submodule_name}_game_root_str"

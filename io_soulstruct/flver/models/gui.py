@@ -2,15 +2,17 @@ from __future__ import annotations
 
 __all__ = [
     "FLVERPropsPanel",
+    "FLVERDummyPropsPanel",
     "FLVERImportPanel",
     "FLVERExportPanel",
 ]
 
 import bpy
 from io_soulstruct.general.gui import map_stem_box
+from io_soulstruct.types import SoulstructType
 from .import_operators import *
 from .export_operators import *
-from .types import BlenderFLVER
+from .types import BlenderFLVER, BlenderFLVERDummy
 
 
 class FLVERPropsPanel(bpy.types.Panel):
@@ -30,6 +32,27 @@ class FLVERPropsPanel(bpy.types.Panel):
     def draw(self, context):
         bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
         props = bl_flver.type_properties
+        for prop in props.__annotations__:
+            self.layout.prop(props, prop)
+
+
+class FLVERDummyPropsPanel(bpy.types.Panel):
+    """Draw a Panel in the Object properties window exposing the appropriate FLVER Dummy fields for active object."""
+    bl_label = "FLVER Dummy Properties"
+    bl_idname = "OBJECT_PT_flver_dummy"
+    bl_space_type = 'PROPERTIES'
+    bl_region_type = 'WINDOW'
+    bl_context = "object"
+
+    @classmethod
+    def poll(cls, context):
+        if not context.active_object:
+            return False
+        return context.active_object.soulstruct_type == SoulstructType.FLVER_DUMMY
+
+    def draw(self, context):
+        bl_dummy = BlenderFLVERDummy.from_active_object(context)
+        props = bl_dummy.type_properties
         for prop in props.__annotations__:
             self.layout.prop(props, prop)
 

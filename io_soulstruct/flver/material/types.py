@@ -442,7 +442,7 @@ class BlenderFLVERMaterial:
             "face_set_count": face_set_count,
         }
         used_uv_layer_names = [layer.name for layer in matdef.get_used_uv_layers()]
-        operator.info(f"Created FLVER material: {flver_material.name} with UV layers: {used_uv_layer_names}")
+        operator.info(f"Created FLVER material '{flver_material.name}' with UV layers: {used_uv_layer_names}")
 
         return SplitSubmeshDef(
             flver_material,

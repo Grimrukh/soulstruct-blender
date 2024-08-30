@@ -98,6 +98,7 @@ class BlenderMSBMapPiece(BlenderMSBPart[MSBMapPiece, MSBMapPieceProps]):
                 model_name,
                 image_import_manager=image_import_manager,
                 collection=model_collection,
+                force_bone_data_type=BlenderFLVER.BoneDataType.POSE,
             )
         except Exception as ex:
             traceback.print_exc()  # for inspection in Blender console
@@ -155,6 +156,8 @@ class BlenderMSBMapPiece(BlenderMSBPart[MSBMapPiece, MSBMapPieceProps]):
             if not part.model:
                 continue  # ignore (warning will appear when `bl_part.model` assignes None)
             model_name = part.model.get_model_file_stem(map_stem)
+            if model_name in model_datas:
+                continue  # already queued for import
             try:
                 cls.find_model_mesh(model_name, map_stem)
             except MissingPartModelError:
@@ -173,6 +176,10 @@ class BlenderMSBMapPiece(BlenderMSBPart[MSBMapPiece, MSBMapPieceProps]):
             for map_area in texture_map_areas:
                 map_area_dir = (flver.path.parent / f"../{map_area}").resolve()
                 image_import_manager.find_specific_map_textures(map_area_dir)
+
+        if not model_datas:
+            operator.info("No Map Piece FLVER models to import.")
+            return  # nothing to import
 
         batch_import_flver_models(
             operator,

@@ -130,7 +130,7 @@ class ExportMSB(LoggingOperator):
             msb_region = bl_region.to_soulstruct_obj(self, context)  # type: BaseMSBRegion
             msb.add_entry(msb_region)
             region_count += 1
-            self.info(f"Added MSB Region: {msb_region.name}")
+            # self.info(f"Added MSB Region: {msb_region.name}")
 
         # We add Parts next, carefully by subtype.
         part_classes = BLENDER_MSB_PART_TYPES[settings.game]  # type: dict[str, type[IBlenderMSBPart]]
@@ -152,7 +152,7 @@ class ExportMSB(LoggingOperator):
                 msb_part = bl_part.to_soulstruct_obj(self, context, map_stem, msb)  # will create and add MSB model
                 msb.add_entry(msb_part)
                 part_count += 1
-                self.info(f"Added {bl_part_subtype} MSB Part: {msb_part.name}")
+                # self.info(f"Added {bl_part_subtype} MSB Part: {msb_part.name}")
 
         # Sort all Models by name.
         for list_name in msb.get_subtype_list_names():
@@ -168,7 +168,7 @@ class ExportMSB(LoggingOperator):
             msb_event = bl_event.to_soulstruct_obj(self, context, map_stem, msb)  # type: BaseMSBEvent
             msb.add_entry(msb_event)
             event_count += 1
-            self.info(f"Added {bl_event_obj.MSB_EVENT.event_subtype_enum} MSB Event: {msb_event.name}")
+            # self.info(f"Added {bl_event_obj.MSB_EVENT.event_subtype_enum} MSB Event: {msb_event.name}")
 
         # Finalize automatic references (e.g. Collision environments).
         msb.set_auto_references()

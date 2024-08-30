@@ -251,6 +251,7 @@ class ImportCharacterFLVER(BaseFLVERImportOperator):
 
     def invoke(self, context, _event):
         chr_dir = self.settings(context).get_import_dir_path("chr")
+        print(f"Character dir: {chr_dir} ({chr_dir.is_dir()})")
         if chr_dir and chr_dir.is_dir():
             self.directory = str(chr_dir)
             context.window_manager.fileselect_add(self)

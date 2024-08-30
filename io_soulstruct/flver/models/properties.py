@@ -75,9 +75,22 @@ class FLVERProps(bpy.types.PropertyGroup):
     )
 
     # INTERNAL USE
+    bone_data_type: bpy.props.EnumProperty(
+        name="Bone Data Type",
+        description="Indicates whether FLVER bone data was written to Edit Bones (rigged FLVERs such as Characters and "
+                    "Objects; Pose Bones can be used for viewing real animations) or Pose Bones (static FLVERs such as "
+                    "Map Pieces; Edit Bones all left at origin). The same data source will be used on FLVER export",
+        items=[
+            ("EditBone", "Edit Bones", "Bone data is written to Edit Bones (usually Characters, Objects, Assets)"),
+            ("PoseBone", "Pose Bones", "Bone data is written to Pose Bones (usually Map Pieces)"),
+        ],
+        default="EditBone",
+    )
+
     submesh_vertices_merged: bpy.props.BoolProperty(
         name="Submesh Vertices Merged",
-        description="If disabled, submesh (material) vertices were NOT merged on import (faster but harder to edit)",
+        description="If disabled, submesh (material) vertices were NOT merged on import (faster but harder to edit). "
+                    "For import posterity only; does not affect export",
         default=False,
     )
 
@@ -87,9 +100,8 @@ class FLVERDummyProps(bpy.types.PropertyGroup):
 
     parent_bone_name: bpy.props.StringProperty(
         name="In Space of Bone",
-        description="FLVER Bone that this Dummy's transform is parented to, if any. NOT the same as 'Attach' bone "
-                    "followed in animations, which is set as real Blender parent), but is manually used to affect "
-                    "exported transform",
+        description="Dummy transform in FLVER file is stored relative to this FLVER bone. NOT the same as the Dummy "
+                    "attach bone that can be followed during animations, which is set as its real Blender parent",
     )
     color_rgba: bpy.props.IntVectorProperty(
         name="Color RGBA",
@@ -99,9 +111,11 @@ class FLVERDummyProps(bpy.types.PropertyGroup):
         min=0,
         max=255,
     )
-    flag_1: bpy.props.BoolProperty(
-        name="Flag 1",
-        description="Unknown boolean flag at FLVER Dummy offset 0x2e",
+    follows_attach_bone: bpy.props.BoolProperty(
+        name="Follows Attach Bone",
+        description="If enabled, Dummy will follow its attach bone (Blender parent bone) during animations. Note that "
+                    "Dummies will always follow their attach bones here in Blender due to parenting, but will not do "
+                    "so in-game if this is disabled",
         default=True,  # seems more common
     )
     use_upward_vector: bpy.props.BoolProperty(

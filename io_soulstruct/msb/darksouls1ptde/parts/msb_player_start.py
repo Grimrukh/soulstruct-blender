@@ -85,6 +85,7 @@ class BlenderMSBPlayerStart(BlenderMSBPart[MSBPlayerStart, MSBPlayerStartProps])
                 model_name,
                 image_import_manager,
                 collection=model_collection,
+                force_bone_data_type=BlenderFLVER.BoneDataType.EDIT,
             )
         except Exception as ex:
             traceback.print_exc()  # for inspection in Blender console
@@ -121,6 +122,10 @@ class BlenderMSBPlayerStart(BlenderMSBPart[MSBPlayerStart, MSBPlayerStartProps])
                     raise FLVERImportError(f"Cannot find a FLVER file in CHRBND {chrbnd_path}.")
                 model_datas[model_name] = flver_entries[0]
                 model_chrbnds[model_name] = chrbnd
+
+        if not model_datas:
+            operator.info("No Player Start (Character) FLVER models to import.")
+            return  # nothing to import
 
         batch_import_flver_models(
             operator,

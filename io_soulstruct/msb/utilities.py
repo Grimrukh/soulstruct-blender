@@ -229,10 +229,16 @@ def batch_import_flver_models(
 
     # Brief non-parallel excursion: create Blender materials and `MergedMesh` arguments for each `FLVER`.
     flver_bl_materials = {}
+    flver_names_to_merge = []
+    flvers_to_merge = []
     flver_merged_mesh_args = []
     bl_materials_by_matdef_name = {}  # can re-use cache across all FLVERs!
     merge_submesh_vertices = flver_import_settings.merge_submesh_vertices
     for model_name, flver in flvers.items():
+        if not flver.submeshes:
+            # FLVER has no meshes. No materials or merging.
+            continue
+
         bl_materials, submesh_bl_material_indices, bl_material_uv_layer_names = BlenderFLVER.create_materials(
             operator,
             context,
@@ -243,6 +249,8 @@ def batch_import_flver_models(
             bl_materials_by_matdef_name=bl_materials_by_matdef_name,
         )
         flver_bl_materials[model_name] = bl_materials
+        flver_names_to_merge.append(model_name)
+        flvers_to_merge.append(flver)
         flver_merged_mesh_args.append(
             (submesh_bl_material_indices, bl_material_uv_layer_names, merge_submesh_vertices)
         )
@@ -253,10 +261,10 @@ def batch_import_flver_models(
     p = time.perf_counter()
 
     # Merge meshes in parallel. Empty meshes will be `None`.
-    flver_merged_meshes_list = MergedMesh.from_flver_batch(list(flvers.values()), flver_merged_mesh_args)
+    flver_merged_meshes_list = MergedMesh.from_flver_batch(flvers_to_merge, flver_merged_mesh_args)
     flver_merged_meshes = {  # nothing dropped
         model_name: merged_mesh
-        for model_name, merged_mesh in zip(flvers.keys(), flver_merged_meshes_list)
+        for model_name, merged_mesh in zip(flver_names_to_merge, flver_merged_meshes_list)
     }
 
     operator.info(f"Merged {len(flvers)} {part_subtype_title} FLVERs in {time.perf_counter() - p:.2f} seconds.")
@@ -278,6 +286,21 @@ def batch_import_flver_models(
             hide_viewport=context.scene.msb_import_settings.hide_model_collections,
         )
     for model_name, flver in flvers.items():
+
+        if flver.submeshes:
+            # Check for errors in merging and/or material creation.
+            if flver_merged_meshes[model_name] is None and flver_bl_materials[model_name] is not None:
+                operator.error(f"Cannot import FLVER '{model_name}' (path {flver.path_name}) due to `MergedMesh` error.")
+                continue
+            if flver_bl_materials[model_name] is None and flver_merged_meshes[model_name] is not None:
+                operator.error(f"Cannot import FLVER: '{model_name}' (path {flver.path_name}) due to material error.")
+                continue
+            merged_mesh = flver_merged_meshes[model_name]
+            bl_materials = flver_bl_materials[model_name]
+        else:
+            merged_mesh = None
+            bl_materials = None
+
         try:
             BlenderFLVER.new_from_soulstruct_obj(
                 operator,
@@ -286,8 +309,8 @@ def batch_import_flver_models(
                 name=model_name,
                 image_import_manager=image_import_manager,
                 collection=model_collection,
-                merged_mesh=flver_merged_meshes[model_name],
-                bl_materials=flver_bl_materials[model_name],
+                merged_mesh=merged_mesh,
+                bl_materials=bl_materials,
             )
         except Exception as ex:
             traceback.print_exc()  # for inspection in Blender console

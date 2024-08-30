@@ -167,6 +167,7 @@ CLASSES = (
     TextureExportSettings,
 
     FLVERPropsPanel,
+    FLVERDummyPropsPanel,
     FLVERImportPanel,
     FLVERExportPanel,
     FLVERModelToolsPanel,

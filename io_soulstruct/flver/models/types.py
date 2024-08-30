@@ -33,7 +33,6 @@ from io_soulstruct.general import GAME_CONFIG
 from io_soulstruct.general.cached import get_cached_mtdbnd, get_cached_matbinbnd
 from io_soulstruct.types import *
 from io_soulstruct.utilities import *
-from io_soulstruct.utilities.conversion import GAME_TO_BL_VECTOR, GAME_FORWARD_UP_VECTORS_TO_BL_EULER
 from .properties import *
 
 if tp.TYPE_CHECKING:
@@ -55,7 +54,7 @@ class BlenderFLVERDummy(SoulstructObject[Dummy, FLVERDummyProps]):
 
     AUTO_DUMMY_PROPS: tp.ClassVar[list[str]] = [
         "color_rgba",
-        "flag_1",
+        "follows_attach_bone",
         "use_upward_vector",
         "unk_x30",
         "unk_x34"
@@ -88,7 +87,7 @@ class BlenderFLVERDummy(SoulstructObject[Dummy, FLVERDummyProps]):
             raise TypeError(f"Parent bone must be a Bone or string, not {type(value)}.")
 
     color_rgba: tuple[int, int, int, int]
-    flag_1: bool
+    follows_attach_bone: bool
     use_upward_vector: bool
     unk_x30: int
     unk_x34: int
@@ -106,7 +105,7 @@ class BlenderFLVERDummy(SoulstructObject[Dummy, FLVERDummyProps]):
         """Create a wrapped Blender Dummy empty object from FLVER `Dummy`.
         
         Created Dummy will be parented to `Armature` via its attach bone index, and will also record its internal parent
-        bone (for its space).
+        bone (used to determine the space of its FLVER transform).
         """
         if armature is None:
             raise FLVERImportError("Cannot create Blender Dummy without an Armature object.")
@@ -117,38 +116,39 @@ class BlenderFLVERDummy(SoulstructObject[Dummy, FLVERDummyProps]):
         bl_dummy.obj.empty_display_size = 0.05
 
         bl_dummy.color_rgba = soulstruct_obj.color_rgba
-        bl_dummy.flag_1 = soulstruct_obj.flag_1
+        bl_dummy.follows_attach_bone = soulstruct_obj.follows_attach_bone
         bl_dummy.use_upward_vector = soulstruct_obj.use_upward_vector
         bl_dummy.unk_x30 = soulstruct_obj.unk_x30
         bl_dummy.unk_x34 = soulstruct_obj.unk_x34
         
         if soulstruct_obj.use_upward_vector:
-            bl_rotation_euler = GAME_FORWARD_UP_VECTORS_TO_BL_EULER(soulstruct_obj.forward, soulstruct_obj.upward)
-        else:  # TODO: I assume this is right (up-ignoring dummies only rotate around vertical axis)
-            bl_rotation_euler = GAME_FORWARD_UP_VECTORS_TO_BL_EULER(soulstruct_obj.forward, Vector3((0, 1, 0)))
+            bl_euler = GAME_FORWARD_UP_VECTORS_TO_BL_EULER(soulstruct_obj.forward, soulstruct_obj.upward)
+        else:  # use default upward
+            bl_euler = GAME_FORWARD_UP_VECTORS_TO_BL_EULER(soulstruct_obj.forward, Vector3((0, 1, 0)))
+
+        bl_location = GAME_TO_BL_VECTOR(soulstruct_obj.translate)
+        # This initial transform may still be in 'parent bone' space.
+        bl_dummy_transform = Matrix.LocRotScale(bl_location, bl_euler, (1, 1, 1))
 
         if soulstruct_obj.parent_bone_index != -1:
-            # Bone's FLVER translate is in the space of (i.e. relative to) this parent bone.
+            # Bone's FLVER transform is in the space of (i.e. relative to) this parent bone.
             # NOTE: This is NOT the same as the 'attach' bone, which is used as the actual Blender parent and
-            # controls how the dummy moves during armature animations.
+            # controls how the dummy moves during armature animations. This Dummy 'parent bone' is more for grouping and
+            # is generally a non-animated bone like 'Model_dmy' or 'Sfx'.
             bl_parent_bone = armature.data.bones[soulstruct_obj.parent_bone_index]
             bl_dummy.parent_bone = bl_parent_bone
             bl_parent_bone_matrix = bl_parent_bone.matrix_local
-            bl_location = bl_parent_bone_matrix @ GAME_TO_BL_VECTOR(soulstruct_obj.translate)
-        else:
-            # Bone's location is in armature space. Leave `parent_bone` as None.
-            bl_location = GAME_TO_BL_VECTOR(soulstruct_obj.translate)
+            bl_dummy_transform = bl_parent_bone_matrix @ bl_dummy_transform
 
         # Dummy moves with this bone during animations.
         if soulstruct_obj.attach_bone_index != -1:
-            # Set true Blender parent.
+            # Set true Blender parent. We manually compute the `matrix_local` of the Dummy to be relative to this bone.
             bl_attach_bone = armature.data.bones[soulstruct_obj.attach_bone_index]
+            bl_dummy_transform = bl_attach_bone.matrix_local.inverted() @ bl_dummy_transform
             bl_dummy.obj.parent_bone = bl_attach_bone.name  # note NAME, not Bone itself
             bl_dummy.obj.parent_type = "BONE"
 
-        # We need to set the dummy's world matrix, rather than its local matrix, to bypass its possible bone
-        # attachment above.
-        bl_dummy.obj.matrix_world = Matrix.LocRotScale(bl_location, bl_rotation_euler, Vector((1.0, 1.0, 1.0)))
+        bl_dummy.obj.matrix_local = bl_dummy_transform
         
         return bl_dummy
 
@@ -156,7 +156,7 @@ class BlenderFLVERDummy(SoulstructObject[Dummy, FLVERDummyProps]):
         return Dummy(
             reference_id=self.reference_id,  # stored in dummy name for editing convenience
             color_rgba=list(self.color_rgba),
-            flag_1=self.flag_1,
+            follows_attach_bone=self.follows_attach_bone,
             use_upward_vector=self.use_upward_vector,
             unk_x30=self.unk_x30,
             unk_x34=self.unk_x34,
@@ -174,30 +174,15 @@ class BlenderFLVERDummy(SoulstructObject[Dummy, FLVERDummyProps]):
 
         dummy = self._create_soulstruct_obj()
 
-        # We decompose the world matrix of the dummy to 'bypass' any attach bone to get its translate and rotate.
-        # However, the translate may still be relative to a DIFFERENT parent bone, so we need to account for that below.
-        bl_dummy_translate = self.obj.matrix_world.translation
-        bl_dummy_rotmat = self.obj.matrix_world.to_3x3()
+        # Dummy transforms are slightly complicated to manage. Most Dummies are parented to a specific FLVER bone in
+        # Blender (their 'attach bone'). However, Dummy transforms in FLVER files are given in the space of a DIFFERENT
+        # bone (their 'parent bone', if given), which is generally a more 'categorical' bone like 'Model_dmy' or
+        # 'Sfx' that is not used in animations. So to calculate the FLVER transform, we need to calculate:
+        #     parent_bone_transform_inv @ attach_bone_transform @ dummy_local_transform
+        # where each of the two bone transforms are just identity matrices if unused.
 
-        # NOTE: The Dummy 'parent bone' is NOT the bone it is parented to in Blender. That's the 'attach bone'. :/
-        parent_bone = self.parent_bone
-
-        if parent_bone:
-            # Dummy's Blender 'world' translate is actually given in the space of this bone in the FLVER file.
-            try:
-                parent_bone_index = armature.data.bones.find(parent_bone.name)
-            except ValueError:
-                raise FLVERExportError(f"Dummy '{self.name}' parent bone '{parent_bone.name}' not in Armature.")
-            dummy.parent_bone_index = parent_bone_index
-            bl_parent_bone_matrix_inv = armature.data.bones[parent_bone_index].matrix_local.inverted()
-            dummy.translate = BL_TO_GAME_VECTOR3(bl_parent_bone_matrix_inv @ bl_dummy_translate)
-        else:
-            dummy.parent_bone_index = -1
-            dummy.translate = BL_TO_GAME_VECTOR3(bl_dummy_translate)
-
-        forward, up = BL_ROTMAT_TO_GAME_FORWARD_UP_VECTORS(bl_dummy_rotmat)
-        dummy.forward = forward
-        dummy.upward = up if dummy.use_upward_vector else Vector3.zero()
+        # Start with Dummy local transform in Blender, which will be relative to its attach bone if set:
+        bl_dummy_transform = self.obj.matrix_local
 
         if self.obj.parent_type == "BONE":  # NOTE: only possible for dummies parented to the Armature
             # Dummy has an 'attach bone' that is its Blender parent.
@@ -209,9 +194,36 @@ class BlenderFLVERDummy(SoulstructObject[Dummy, FLVERDummyProps]):
                     f"not in Armature."
                 )
             dummy.attach_bone_index = attach_bone_index
+            # Use attach bone transform to convert Dummy transform to Armature space. We do this even if
+            # `follows_attach_bone` is False, because this is resolving a genuine Blender parent-child relation.
+            bl_attach_bone = armature.data.bones[attach_bone_index]
+            bl_dummy_transform = bl_attach_bone.matrix_local @ bl_dummy_transform
         else:
             # Dummy has no attach bone.
             dummy.attach_bone_index = -1
+
+        # NOTE: This 'Dummy parent bone' is NOT the bone it is parented to in Blender. That's the 'attach bone' above.
+        parent_bone = self.parent_bone
+
+        if parent_bone:
+            # Dummy's Blender 'world' translate is actually given in the space of this bone in the FLVER file.
+            try:
+                parent_bone_index = armature.data.bones.find(parent_bone.name)
+            except ValueError:
+                raise FLVERExportError(f"Dummy '{self.name}' parent bone '{parent_bone.name}' not in Armature.")
+            dummy.parent_bone_index = parent_bone_index
+            # Make Dummy transform relative to parent bone transform:
+            bl_parent_bone = armature.data.bones[parent_bone_index]
+            bl_dummy_transform = bl_parent_bone.matrix_local.inverted() @ bl_dummy_transform
+        else:
+            # Dummy has no parent bone. Its FLVER transform will be in the model space.
+            dummy.parent_bone_index = -1
+
+        # Extract translation and rotation from final transform.
+        dummy.translate = BL_TO_GAME_VECTOR3(bl_dummy_transform.translation)
+        forward, up = BL_ROTMAT_TO_GAME_FORWARD_UP_VECTORS(bl_dummy_transform.to_3x3())
+        dummy.forward = forward
+        dummy.upward = up if dummy.use_upward_vector else Vector3.zero()
 
         return dummy
 
@@ -336,6 +348,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
 
     TYPE = SoulstructType.FLVER
     OBJ_DATA_TYPE = SoulstructDataType.MESH
+    EXPORT_TIGHT_NAME = True
 
     __slots__ = []
     obj: bpy.types.MeshObject  # type override
@@ -368,6 +381,14 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
     @submesh_vertices_merged.setter
     def submesh_vertices_merged(self, value: bool):
         self.type_properties.submesh_vertices_merged = value
+
+    @property
+    def bone_data_type(self) -> BoneDataType:
+        return self.BoneDataType(self.type_properties.bone_data_type)
+
+    @bone_data_type.setter
+    def bone_data_type(self, value: BoneDataType):
+        self.type_properties.bone_data_type = self.BoneDataType(value)
 
     @property
     def armature(self) -> bpy.types.ArmatureObject | None:
@@ -665,6 +686,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         collection: bpy.types.Collection = None,
         merged_mesh: MergedMesh = None,
         bl_materials: tp.Sequence[BlenderFLVERMaterial] = None,
+        force_bone_data_type: BoneDataType = None,
     ) -> BlenderFLVER:
         """Read a FLVER into a managed Blender Armature/Mesh.
 
@@ -711,6 +733,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         ):
             # Single default bone can be auto-created on export. No Blender Armature parent needed/created.
             armature = None
+            write_bone_type = force_bone_data_type or cls.BoneDataType.POSE  # guess Map Piece (but won't matter)
         else:
             # Create FLVER bone index -> Blender bone name dictionary. (Blender names are UTF-8.)
             # This is done even when `existing_armature` is given, as the order of bones in this new FLVER may be
@@ -727,8 +750,14 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
             operator.deselect_all()
             armature = new_armature_object(f"{name} Armature", bpy.data.armatures.new(f"{name} Armature"))
             collection.objects.link(armature)  # needed before creating EditBones!
-            cls.create_bl_bones(
-                operator, context, flver, armature, bl_bone_names, import_settings.base_edit_bone_length
+            write_bone_type = cls.create_bl_bones(
+                operator,
+                context,
+                flver,
+                armature,
+                bl_bone_names,
+                import_settings.base_edit_bone_length,
+                force_bone_data_type,
             )
 
         if bpy.ops.object.mode_set.poll():
@@ -799,6 +828,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         # operator.info(f"Created FLVER Blender mesh '{name}' in {time.perf_counter() - start_time:.3f} seconds.")
 
         bl_flver = BlenderFLVER(mesh)
+        bl_flver.obj.FLVER.bone_data_type = write_bone_type.value
 
         # Assign FLVER header properties.
         bl_flver.big_endian = flver.big_endian
@@ -1171,7 +1201,8 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         armature: bpy.types.ArmatureObject,
         bl_bone_names: list[str],
         base_edit_bone_length: float,
-    ):
+        write_bone_type: BoneDataType = None,
+    ) -> BoneDataType:
         """Create FLVER bones on given `bl_armature_obj` in Blender.
 
         Bones can be a little confusing in Blender. See:
@@ -1198,35 +1229,40 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         transforms to PoseBone rather than EditBone. A warning will be logged if only some of them are `False`.
 
         The AABB of each bone is presumably generated to include all vertices that use that bone as a weight.
+
+        The detected `BoneDataType` is returned, which indicates whether bone data was written to `EditBones` or
+        `PoseBones`. This is saved to FLVER properties in Blender for export.
         """
 
-        write_bone_type = cls.BoneDataType.NONE
-        warn_partial_bind_pose = False
-        for mesh in flver.submeshes:
-            if mesh.is_bind_pose:  # characters, objects, parts
-                if not write_bone_type:
-                    write_bone_type = cls.BoneDataType.EDIT  # write bone transforms to EditBones
-                elif write_bone_type == cls.BoneDataType.POSE:
-                    warn_partial_bind_pose = True
-                    write_bone_type = cls.BoneDataType.EDIT
-                    break
-            else:  # map pieces
-                if not write_bone_type:
-                    write_bone_type = cls.BoneDataType.POSE  # write bone transforms to PoseBones
-                elif write_bone_type == cls.BoneDataType.EDIT:
-                    warn_partial_bind_pose = True
-                    break  # keep EDIT default
+        if not write_bone_type:
+            write_bone_type = cls.BoneDataType.NONE
+            warn_partial_bind_pose = False
+            for mesh in flver.submeshes:
+                if mesh.is_bind_pose:  # characters, objects, parts
+                    if not write_bone_type:
+                        write_bone_type = cls.BoneDataType.EDIT  # write bone transforms to EditBones
+                    elif write_bone_type == cls.BoneDataType.POSE:
+                        warn_partial_bind_pose = True
+                        write_bone_type = cls.BoneDataType.EDIT
+                        break
+                else:  # map pieces
+                    if not write_bone_type:
+                        write_bone_type = cls.BoneDataType.POSE  # write bone transforms to PoseBones
+                    elif write_bone_type == cls.BoneDataType.EDIT:
+                        warn_partial_bind_pose = True
+                        break  # keep EDIT default
 
-        if write_bone_type == cls.BoneDataType.NONE:
-            # TODO: FLVER has no submeshes?
-            operator.warning("FLVER has no submeshes. Bones written to EditBones.")
-            write_bone_type = cls.BoneDataType.EDIT
+            if write_bone_type == cls.BoneDataType.NONE:
+                # Default to EditBones. Happens often enough (plenty of empty Meshes) that I've disabled the warning.
+                # Note that Map Pieces (PoseBones mode) should never really be empty.
+                # operator.warning("FLVER has no submeshes. Bones written to EditBones.")
+                write_bone_type = cls.BoneDataType.EDIT
 
-        if warn_partial_bind_pose:
-            operator.warning(
-                "Some meshes in FLVER use `is_bind_pose` (bone data written to EditBones) and some do not "
-                "(bone data written to PoseBones). Writing all bone data to EditBones."
-            )
+            if warn_partial_bind_pose:
+                operator.warning(
+                    "Some meshes in FLVER use `is_bind_pose` (bone data written to EditBones) and some do not "
+                    "(bone data written to PoseBones). Writing all bone data to EditBones."
+                )
 
         # TODO: Theoretically, we could handled mixed bind pose/non-bind pose meshes IF AND ONLY IF they did not use the
         #  same bones. The bind pose bones could have their data written to EditBones, and the non-bind pose bones could
@@ -1257,6 +1293,8 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         else:
             # Should not be possible to reach.
             raise ValueError(f"Invalid `write_bone_type`: {write_bone_type}")
+
+        return write_bone_type  # can only be EDIT or POSE
 
     @staticmethod
     def create_edit_bones(
@@ -1484,10 +1522,6 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         texture_collection: DDSTextureCollection = None,
     ) -> FLVER:
         """Wraps actual method with temp FLVER management."""
-        if not self.submesh_vertices_merged:
-            # TODO: Not true. I think `MergedMesh` immediately handles this, or at least, can do so easily. But the
-            #  main use of NOT merging vertices right now is for 'MSB only' mode anyway.
-            raise FLVERExportError("Cannot export FLVER that was imported with unmerged submesh vertices.")
         self.clear_temp_flver()
         try:
             return self._to_soulstruct_obj(operator, context, texture_collection)
@@ -1515,7 +1549,8 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
 
         if self.armature:
             bl_dummies = self.get_dummies(operator)
-            read_bone_type = self.guess_read_bone_type(operator)
+            read_bone_type = self.bone_data_type  # set on import and managed by user afterward
+            # read_bone_type = self.guess_read_bone_type(operator)
             operator.info(f"Exporting FLVER '{self.name}' with bone data from {read_bone_type.capitalize()}Bones.")
         else:
             bl_dummies = []
@@ -1662,26 +1697,10 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
             )
 
         # 3. Create a triangulated copy of the mesh, so the user doesn't have to triangulate it themselves (though they
-        #  may want to do this anyway for absolute approval of the final asset). Custom split normals are copied to the
-        #  triangulated mesh using an applied Data Transfer modifier (UPDATE: disabled for now as it ruins sharp edges
-        #  even for existing triangles). Materials are copied over. Nothing else needs to be copied, as it is either
-        #  done automatically by triangulation (e.g. UVs, vertex colors) or is part of the unchanged vertex data (e.g.
-        #  bone weights) in the original mesh.
+        #  may want to do this anyway for absolute approval of the final asset). Materials are copied over. Nothing else
+        #  needs to be copied, as it is either done automatically by triangulation (e.g. UVs, vertex colors) or is part
+        #  of the unchanged vertex data (e.g. bone weights) in the original mesh.
         tri_mesh_data = self.create_triangulated_mesh(context, do_data_transfer=False)
-
-        # TODO: Recalculate tangents for additional texture slots (stored as bitangents in DS1).
-        first_uv_layer_name = next(iter(bl_uv_layer_names))
-        try:
-            tri_mesh_data.calc_tangents(uvmap=first_uv_layer_name)
-        except RuntimeError as ex:
-            # TODO: Some FLVER materials actually have no UVs, like 'C[Fur]_cloth' shader in Elden Ring. A FLVER made
-            #  entirely of these materials would genuinely have no UVs in the merged Blender mesh -- but of course,
-            #  that doesn't exist in vanilla files. (Also, it DOES have tangent data, which we'd need to calcualte
-            #  somehow).
-            raise RuntimeError(
-                f"Could not calculate vertex tangents from first UV layer '{first_uv_layer_name}'. "
-                f"Make sure the mesh is triangulated and not empty (delete any empty mesh). Error: {ex}"
-            )
 
         # 4. Construct arrays from Blender data and pass into a new `MergedMesh` for splitting.
 
@@ -1695,32 +1714,33 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         ]
         vertex_data = np.empty(vertex_count, dtype=vertex_data_dtype)
         vertex_positions = np.empty((vertex_count, 3), dtype=np.float32)
+        self.mesh.data.vertices.foreach_get("co", vertex_positions.ravel())
         vertex_bone_weights = np.zeros((vertex_count, 4), dtype=np.float32)  # default: 0.0
         vertex_bone_indices = np.full((vertex_count, 4), -1, dtype=np.int32)  # default: -1
 
-        vertex_groups_dict = {group.index: group for group in self.mesh.vertex_groups}  # for bone indices/weights
+        # Map bone names to their indices now to avoid `index()` calls in the loop.
+        bone_name_indices = {bone_name: i for i, bone_name in enumerate(bl_bone_names)}
+        # Map group indices to group objects for bone weights.
+        vertex_groups_dict = {group.index: group for group in self.mesh.vertex_groups}
         no_bone_warning_done = False
-        used_bone_indices = set()
+        used_bone_indices = set()  # for marking unused bones in FLVER
 
-        # TODO: Due to the unfortunate need to access Python attributes one by one, we need a `for` loop. Given the
-        #  retrieval of vertex bones, though, it's unlikely a simple `position` array assignment would remove the need.
-        # TODO: Surely I can use `vertices.foreach_get("co" / "groups")`?
         p = time.perf_counter()
 
-        # NOTE: We iterate over the original, non-triangulated mesh, as the vertices should be the same and these
-        # vertices have their bone vertex groups (which cannot easily be transferred to the triangulated copy).
+        # Unfortunately, there is no way to retrieve the weighted bones of vertices without iterating over all vertices.
+        # We iterate over the original, non-triangulated mesh, as the vertices should be the same and these vertices
+        # have their bone vertex groups (which cannot easily be transferred to the triangulated copy).
         for i, vertex in enumerate(self.mesh.data.vertices):
-            vertex_positions[i] = vertex.co  # TODO: would use `foreach_get` but still have to iterate for bones?
-
             bone_indices = []  # global (splitter will make them local to submesh if appropriate)
             bone_weights = []
-            for vertex_group in vertex.groups:  # only one for map pieces; max of 4 for other FLVER types
+            for vertex_group in vertex.groups:  # only one for Map Pieces; max of 4 for other FLVER types
                 mesh_group = vertex_groups_dict[vertex_group.group]
                 try:
-                    bone_index = bl_bone_names.index(mesh_group.name)
+                    bone_index = bone_name_indices[mesh_group.name]
                 except ValueError:
                     raise FLVERExportError(f"Vertex is weighted to invalid bone name: '{mesh_group.name}'.")
                 bone_indices.append(bone_index)
+                used_bone_indices.add(bone_index)
                 # We don't waste time calling retrieval method `weight()` for map pieces.
                 if use_chr_layout:
                     # TODO: `vertex_group` has `group` (int) and `weight` (float) on it already?
@@ -1740,14 +1760,11 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
                         )
                         no_bone_warning_done = True
                     bone_indices = [0]  # padded out below
+                    used_bone_indices.add(0)
                     # Leave weights as zero.
                 else:
                     # Can't guess which bone to weight to. Raise error.
                     raise FLVERExportError("Vertex is not weighted to any bones (cannot guess from multiple).")
-
-            # Before padding out bone indices with zeroes, mark these FLVER bones as used.
-            for bone_index in bone_indices:
-                used_bone_indices.add(bone_index)
 
             if use_chr_layout:
                 # Pad out bone weights and (unused) indices for rigged meshes.
@@ -1756,7 +1773,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
                 while len(bone_indices) < 4:
                     # NOTE: we use -1 here to optimize the mesh splitting process; it will be changed to 0 for write.
                     bone_indices.append(-1)
-            else:  # map pieces
+            else:  # Map Pieces
                 if len(bone_indices) == 1:
                     bone_indices *= 4  # duplicate single-element list to four-element list
                 else:
@@ -1792,18 +1809,20 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         p = time.perf_counter()
         loop_count = len(tri_mesh_data.loops)
 
+        # TODO: Could check combined `dtype` now to skip any arrays not needed by ANY materials.
+
         # UV arrays correspond to FLVER-wide sorted UV layer names.
         # Default UV data is 0.0 (each material may only use a subset of UVs).
-        loop_uvs = {
+        loop_uv_array_dict = {
             uv_layer_name: np.zeros((loop_count, 2), dtype=np.float32)
             for uv_layer_name in used_uv_layer_names
         }
 
         # Retrieve vertex colors.
-        # TODO: Like UVs, it's extremely unlikely -- and probably untrue in any vanilla FLVER -- that NO FLVER material
+        # NOTE: Like UVs, it's extremely unlikely -- and probably untrue in any vanilla FLVER -- that NO FLVER material
         #  uses even one vertex color. In this case, though, the default black color generated here will simply never
         #  make it to any of the `MatDef`-based submesh array layouts after this.
-        loop_colors = []
+        loop_color_arrays = []
         try:
             colors_layer_0 = tri_mesh_data.vertex_colors["VertexColors0"]
         except KeyError:
@@ -1811,10 +1830,10 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
             colors_layer_0 = None
             # Default to black with alpha 1.
             black = np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float32)
-            loop_colors.append(np.tile(black, (loop_count, 1)))
+            loop_color_arrays.append(np.tile(black, (loop_count, 1)))
         else:
             # Prepare for loop filling.
-            loop_colors.append(np.empty((loop_count, 4), dtype=np.float32))
+            loop_color_arrays.append(np.empty((loop_count, 4), dtype=np.float32))
 
         try:
             colors_layer_1 = tri_mesh_data.vertex_colors["VertexColors1"]
@@ -1823,53 +1842,52 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
             colors_layer_1 = None
         else:
             # Prepare for loop filling.
-            loop_colors.append(np.empty((loop_count, 4), dtype=np.float32))
+            loop_color_arrays.append(np.empty((loop_count, 4), dtype=np.float32))
         # TODO: Check for arbitrary additional vertex colors? Or first, scan all layouts to check what's expected.
 
         loop_vertex_indices = np.empty(loop_count, dtype=np.int32)
+        tri_mesh_data.loops.foreach_get("vertex_index", loop_vertex_indices)
+
         loop_normals = np.empty((loop_count, 3), dtype=np.float32)
+        tri_mesh_data.loops.foreach_get("normal", loop_normals.ravel())
         # TODO: Not exporting any real `normal_w` data yet. If used as a fake bone weight, it should be stored in a
         #  custom data layer or something.
         loop_normals_w = np.full((loop_count, 1), 127, dtype=np.uint8)
-        # TODO: could check combined `dtype` now to skip these if not needed by any materials.
-        #  (Related: mark these arrays as optional attributes in `MergedMesh`.)
-        # TODO: Currently only exporting one `tangent` array. Need to calculate tangents for each UV map, per material.
-        loop_tangents = np.empty((loop_count, 3), dtype=np.float32)
-        loop_bitangents = np.empty((loop_count, 3), dtype=np.float32)
 
-        tri_mesh_data.loops.foreach_get("vertex_index", loop_vertex_indices)
-        tri_mesh_data.loops.foreach_get("normal", loop_normals.ravel())
-        tri_mesh_data.loops.foreach_get("tangent", loop_tangents.ravel())
-
-        # TODO: 99% sure that `bitangent` data in DS1 is used to store tangent data for the second normal map, which
-        #  later games do by actually using a second tangent buffer.
-        tri_mesh_data.loops.foreach_get("bitangent", loop_bitangents.ravel())
         if colors_layer_0:
-            colors_layer_0.data.foreach_get("color", loop_colors[0].ravel())
+            colors_layer_0.data.foreach_get("color", loop_color_arrays[0].ravel())
         if colors_layer_1:
-            colors_layer_1.data.foreach_get("color", loop_colors[1].ravel())
+            colors_layer_1.data.foreach_get("color", loop_color_arrays[1].ravel())
         for uv_layer_name in used_uv_layer_names:
             uv_layer = tri_mesh_data.uv_layers[uv_layer_name]
             if len(uv_layer.data) == 0:
                 raise FLVERExportError(f"UV layer {uv_layer.name} contains no data.")
-            uv_layer.data.foreach_get("uv", loop_uvs[uv_layer_name].ravel())
+            uv_layer.data.foreach_get("uv", loop_uv_array_dict[uv_layer_name].ravel())
 
-        # Rotate tangents and bitangents to what FromSoft expects using cross product with normals.
-        loop_tangents = np_cross(loop_tangents, loop_normals)
-        loop_bitangents = np_cross(loop_bitangents, loop_normals)
+        # 5. Calculate individual tangent arrays for each 'UVTexture*' UV layer.
 
-        # Add default `w` components to tangents and bitangents (-1). May be negated into 1 below.
-        minus_one = np.full((loop_count, 1), -1, dtype=np.float32)
-        loop_tangents = np.concatenate((loop_tangents, minus_one), axis=1)
-        loop_bitangents = np.concatenate((loop_bitangents, minus_one), axis=1)
+        loop_tangent_arrays = []
+        uv_texture_layer_names = sorted([name for name in bl_uv_layer_names if name.startswith("UVTexture")])
+        for uv_name in uv_texture_layer_names:
+            loop_tangents = self.get_tangents_for_uv_layer(
+                operator, uv_name, loop_count, loop_normals, loop_uv_array_dict, tri_mesh_data,
+            )
+            loop_tangent_arrays.append(loop_tangents)
 
-        # We need to check the determinant of every face's loop UVs to determine if the tangent should be negated due to
-        # mirrored UV mapping. Fortunately, we're already set up for vectorization here.
-        tangent_signs = self.get_mirrored_uv_face_indices(loop_uvs[first_uv_layer_name])
-        loop_tangents_reshaped = loop_tangents.reshape(-1, 3, 4)  # temporary reshape for easy negation
-        loop_tangents_reshaped *= tangent_signs[:, np.newaxis, np.newaxis]
-        loop_tangents = loop_tangents_reshaped.reshape(-1, 4)
-        operator.info(f"Detected {np.sum(tangent_signs < 0)} faces with mirrored UVs and negated their tangents.")
+        # Assign second tangents array to bitangents in earlier games.
+        # TODO: Not sure if DS3 uses bitangents, but I doubt it. Bloodborne might, though.
+        if settings.is_game("DEMONS_SOULS", "DARK_SOULS_PTDE", "DARK_SOULS_DSR"):
+            # Early games only support up to two tangent arrays, and put the second in "bitangent" vertex array data.
+            if len(loop_tangent_arrays) > 2:
+                operator.warning(
+                    f"Game '{settings.game.name}' does not support more than two vertex tangent arrays (i.e. does not "
+                    f"support more than two 'UVTexture#' UV layers). Only the first two tangent arrays will be used."
+                )
+            loop_bitangents = loop_tangent_arrays[1] if len(loop_tangent_arrays) > 1 else None
+            loop_tangent_arrays = [loop_tangent_arrays[0]]
+        else:
+            # Later games support multiple vertex tangents and do not overload the bitangents.
+            loop_bitangents = None
 
         operator.info(f"Constructed combined loop array in {time.perf_counter() - p} s.")
 
@@ -1879,10 +1897,10 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
             vertices_merged=True,
             loop_normals=loop_normals,
             loop_normals_w=loop_normals_w,
-            loop_tangents=[loop_tangents],
+            loop_tangents=loop_tangent_arrays,
             loop_bitangents=loop_bitangents,
-            loop_vertex_colors=loop_colors,
-            loop_uvs=loop_uvs,
+            loop_vertex_colors=loop_color_arrays,
+            loop_uvs=loop_uv_array_dict,
             faces=faces,
         )
 
@@ -1893,18 +1911,49 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         p = time.perf_counter()
         flver.submeshes = merged_mesh.split_mesh(
             split_submesh_defs,
-            use_submesh_bone_indices=True,  # TODO: for DS1... when did this stop?
-            max_bones_per_submesh=38,  # TODO: for DS1... what about other games?
             unused_bone_indices_are_minus_one=True,  # saves some time within the splitter (no ambiguous zeroes)
             normal_tangent_dot_threshold=normal_tangent_dot_max,
-            # NOTE: DS1 has a maximum submesh vertex count of 65535, as face vertex indices must be 16-bit globally.
-            # Later games use 32-bit face vertex indices (max 4294967295).
-            max_submesh_vertex_count=65535 if settings.is_game_ds1() else 4294967295,
+            **settings.get_game_split_mesh_kwargs(),
         )
         operator.info(f"Split mesh into {len(flver.submeshes)} submeshes in {time.perf_counter() - p} s.")
 
+    @classmethod
+    def get_tangents_for_uv_layer(
+        cls,
+        operator: LoggingOperator,
+        uv_name: str,
+        loop_count: int,
+        loop_normals: np.ndarray,
+        loop_uvs: dict[str, np.ndarray],
+        tri_mesh_data: bpy.types.Mesh,
+    ) -> np.ndarray:
+        try:
+            tri_mesh_data.calc_tangents(uvmap=uv_name)
+        except RuntimeError as ex:
+            raise RuntimeError(
+                f"Could not calculate vertex tangents from UV layer '{uv_name}'. "
+                f"Make sure the mesh is triangulated and not empty (delete any empty mesh). Error: {ex}"
+            )
+        loop_tangents = np.empty((loop_count, 3), dtype=np.float32)
+        tri_mesh_data.loops.foreach_get("tangent", loop_tangents.ravel())
+        loop_tangents = np_cross(loop_tangents, loop_normals)
+        # Add default `w` components to tangents and bitangents (-1). May be negated into 1 below.
+        minus_one = np.full((loop_count, 1), -1, dtype=np.float32)
+        loop_tangents = np.concatenate((loop_tangents, minus_one), axis=1)
+        # We need to check the determinant of every face's loop UVs to determine if the tangent should be negated
+        # due to mirrored UV mapping. Fortunately, we're already set up for vectorization here.
+        loop_tangent_signs = cls.get_face_uv_tangent_signs(loop_uvs[uv_name])
+        loop_tangents_reshaped = loop_tangents.reshape(-1, 3, 4)  # temporary reshape for easy negation
+        loop_tangents_reshaped *= loop_tangent_signs[:, np.newaxis, np.newaxis]
+        loop_tangents = loop_tangents_reshaped.reshape(-1, 4)
+        operator.info(
+            f"Detected {np.sum(loop_tangent_signs < 0)} / {loop_tangent_signs.size} face loops with mirrored UVs in "
+            f"UV layer '{uv_name}' and negated their vertex tangents."
+        )
+        return loop_tangents
+
     @staticmethod
-    def get_mirrored_uv_face_indices(loop_uv_array: np.ndarray) -> np.ndarray:
+    def get_face_uv_tangent_signs(loop_uv_array: np.ndarray) -> np.ndarray:
         """Uses the determinant of the UV face to determine if the UV mapping is mirrored.
 
         Returns a 1D array matching face indices, with -1 indicating a mirrored face and 1 a non-mirrored face.
@@ -2141,23 +2190,22 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
     @staticmethod
     def parse_flver_obj(obj: bpy.types.Object) -> tuple[bpy.types.ArmatureObject | None, bpy.types.MeshObject]:
         """Parse a Blender object into a Mesh and (optional) Armature object."""
-        if obj.type == "MESH":
+        if obj.type == "MESH" and obj.soulstruct_type == SoulstructType.FLVER:
             mesh = obj
             armature = mesh.parent if mesh.parent is not None and mesh.parent.type == "ARMATURE" else None
         elif obj.type == "ARMATURE":
             armature = obj
-            mesh_name = get_bl_obj_tight_name(armature)
-            mesh_children = [child for child in armature.children if child.type == "MESH" and child.name == mesh_name]
-            if not mesh_children:
+            mesh_children = [child for child in armature.children if child.type == "MESH"]
+            if not mesh_children or mesh_children[0].soulstruct_type != SoulstructType.FLVER:
                 raise SoulstructTypeError(
-                    f"Armature '{armature.name}' has no Mesh child '{mesh_name}'. Please create it, even if empty."
+                    f"Armature '{armature.name}' has no FLVER Mesh child. Please create it, even if empty, and set its "
+                    f"Soulstruct object type to FLVER using the General Settings panel."
                 )
             mesh = mesh_children[0]
         else:
-            raise SoulstructTypeError(f"Given object '{obj.name}' is not a Mesh or Armature. Cannot parse as FLVER.")
-
-        if mesh.soulstruct_type != SoulstructType.FLVER:
-            raise SoulstructTypeError(f"Given Mesh object '{mesh.name}' is not a FLVER Mesh.")
+            raise SoulstructTypeError(
+                f"Given object '{obj.name}' is not a FLVER Mesh or Armature parent of such. Cannot parse as FLVER."
+            )
 
         # noinspection PyTypeChecker
         return armature, mesh
