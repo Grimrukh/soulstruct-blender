@@ -15,10 +15,12 @@ __all__ = [
     "ImportSelectedMapMCP",
 ]
 
+import traceback
 from pathlib import Path
 
 import bpy
 from bpy_extras.io_utils import ImportHelper
+from io_soulstruct.exceptions import NavGraphMissingNavmeshError
 from io_soulstruct.utilities import *
 from soulstruct.darksouls1r.maps import MSB
 from soulstruct.darksouls1r.maps.navmesh import MCG, MCP, NavmeshAABB
@@ -73,19 +75,23 @@ class ImportMCG(LoggingOperator, ImportHelper):
             except Exception as ex:
                 self.warning(f"Error occurred while reading MCG file '{file_path.name}': {ex}")
             else:
-                mcg.set_navmesh_references(msb.navmeshes)
+                # We don't set MSB navmesh references; Blender importer works directly with the navmesh indices.
                 mcgs.append(mcg)
 
         for i, mcg in enumerate(mcgs):
             map_stem = file_paths[i].name.split(".")[0]
-            BlenderMCG.new_from_soulstruct_obj(
-                self,
-                context,
-                mcg,
-                name=f"{map_stem} MCG",
-                collection=None,
-                navmesh_part_names=navmesh_part_names,
-            )
+            try:
+                BlenderMCG.new_from_soulstruct_obj(
+                    self,
+                    context,
+                    mcg,
+                    name=f"{map_stem} MCG",
+                    collection=None,
+                    navmesh_part_names=navmesh_part_names,
+                )
+            except Exception as ex:
+                traceback.print_exc()
+                self.error(f"Error occurred while importing MCG file '{file_paths[i].name}': {ex}")
 
         return {"FINISHED"}
 
@@ -126,15 +132,26 @@ class ImportSelectedMapMCG(LoggingOperator):
             mcg = MCG.from_path(mcg_path)
         except Exception as ex:
             return self.error(f"Error occurred while reading MCG file '{mcg_path}': {ex}")
+        # We don't set MSB navmesh references; Blender importer works directly with the navmesh indices.
 
-        BlenderMCG.new_from_soulstruct_obj(
-            self,
-            context,
-            mcg,
-            name=f"{map_stem} MCG",
-            collection=None,
-            navmesh_part_names=navmesh_part_names,
-        )
+        try:
+            BlenderMCG.new_from_soulstruct_obj(
+                self,
+                context,
+                mcg,
+                name=f"{map_stem} MCG",
+                collection=None,
+                navmesh_part_names=navmesh_part_names,
+            )
+        except NavGraphMissingNavmeshError as ex:
+            traceback.print_exc()
+            return self.error(
+                f"Error occurred while importing MCG file '{mcg_path}' due to missing an MSB Navmesh. The matching MSB "
+                f"must be imported before importing the map's MCG NavGraph. Full error: {ex}"
+            )
+        except Exception as ex:
+            traceback.print_exc()
+            return self.error(f"Error occurred while importing MCG file '{mcg_path}': {ex}")
 
         return {"FINISHED"}
 

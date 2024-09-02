@@ -52,7 +52,9 @@ class LoggingOperator(bpy.types.Operator):
             try:
                 self.cleanup_callback()
             except Exception as ex:
+                print(f"# ERROR: Error occurred during cleanup callback: {ex}")
                 self.report({"ERROR"}, f"Error occurred during cleanup callback: {ex}")
+        print(f"# ERROR: {msg}")
         self.report({"ERROR"}, msg)
         return {"CANCELLED"}
 

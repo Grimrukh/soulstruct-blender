@@ -56,7 +56,7 @@ class RemoveMCGNodeNavmeshATriangleIndex(bpy.types.Operator):
 
     def execute(self, context):
         obj = context.active_object
-        index = obj.MCG_NODE_navmesh_a_triangle_index
+        index = obj.MCG_NODE.navmesh_a_triangle_index
         obj.MCG_NODE.navmesh_a_triangles.remove(index)
         obj.MCG_NODE.navmesh_a_triangle_index = max(0, index - 1)
         return {'FINISHED'}
@@ -328,7 +328,7 @@ class RecomputeEdgeCost(LoggingOperator):
 
     def execute(self, context):
 
-        bl_edges = BlenderMCGEdge.from_selected_object(context)  # type: list[BlenderMCGEdge]
+        bl_edges = BlenderMCGEdge.from_selected_objects(context)  # type: list[BlenderMCGEdge]
         map_stem = bl_edges[0].tight_name
 
         for bl_edge in bl_edges:

@@ -199,7 +199,7 @@ class ExportMCGMCPToMap(LoggingOperator):
         if not MAP_STEM_RE.match(map_stem):
             raise ValueError(f"Invalid map stem: {map_stem}")
 
-        relative_mcg_path = Path(f"{map_stem}.mcg")  # no DCX
+        relative_mcg_path = Path(f"map/{map_stem}/{map_stem}.mcg")  # no DCX
 
         # We prefer to read the MSB and NVMBND in the project directory if they exist. We do not prepare/copy them to
         # the project because they are not modified and the user may not want to include them in a mod package.
@@ -249,7 +249,7 @@ class ExportMCGMCPToMap(LoggingOperator):
         export_roots = [settings.project_root]
         if settings.also_export_to_game:
             export_roots += [settings.game_root]
-        mcg_path = settings.get_first_existing_map_file_path(relative_mcg_path, roots=export_roots, map_stem=map_stem)
+        mcg_path = settings.get_first_existing_file_path(relative_mcg_path, roots=export_roots)
         if not mcg_path:
             self.warning(f"Could not find MCG file just exported: {mcg_path}. MCP not auto-generated.")
             return {"FINISHED"}

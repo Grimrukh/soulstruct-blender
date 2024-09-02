@@ -58,7 +58,10 @@ class MCGDrawSettings(bpy.types.PropertyGroup):
 
     @property
     def mcg(self) -> BlenderMCG | None:
-        return BlenderMCG(self.mcg_parent) if self.mcg_parent else None
+        try:
+            return BlenderMCG(self.mcg_parent) if self.mcg_parent else None
+        except SoulstructTypeError:
+            return None
 
 
 NODE_INDEX_RE = re.compile(r"Node (\d+)")

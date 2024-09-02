@@ -9,7 +9,7 @@ __all__ = [
 import typing as tp
 
 import bpy
-from io_soulstruct.exceptions import SoulstructTypeError, NavGraphImportError, NavGraphExportError
+from io_soulstruct.exceptions import *
 from io_soulstruct.types import *
 from io_soulstruct.utilities import *
 from soulstruct.darksouls1r.maps.navmesh import MCG, MCGNode
@@ -34,13 +34,22 @@ class BlenderMCG(SoulstructObject[MCG, MCGProps]):
 
     def __init__(self, obj: bpy.types.Object):
         super().__init__(obj)
-        try:
-            self.node_parent = next(c for c in obj.children if c.name.lower().endswith("nodes"))
-        except StopIteration:
+
+        # MCG parent should have two Empty children: a 'Nodes' sub-parent and an 'Edges' sub-parent.
+        # We look for these by name, ignoring Blender dupe suffix.
+        if len(obj.children) != 2:
+            raise ValueError(
+                f"MCG object '{obj.name}' must have exactly two children: '{{name}} Nodes' and '{{name}} Edges'."
+            )
+        for child in obj.children:
+            name = remove_dupe_suffix(child.name)
+            if name.lower().endswith("nodes"):
+                self.node_parent = child
+            elif name.lower().endswith("edges"):
+                self.edge_parent = child
+        if not hasattr(self, "node_parent"):
             raise ValueError(f"Could not find Nodes parent object as a child of MCG object '{obj.name}'.")
-        try:
-            self.edge_parent = next(c for c in obj.children if c.name.lower().endswith("edges"))
-        except StopIteration:
+        if not hasattr(self, "edge_parent"):
             raise ValueError(f"Could not find Edges parent object as a child of MCG object '{obj.name}'.")
 
     @property
@@ -114,6 +123,8 @@ class BlenderMCG(SoulstructObject[MCG, MCGProps]):
             raise ValueError("`navmesh_part_names` must be provided.")
 
         mcg = soulstruct_obj
+        if mcg.edges and mcg.edges[0].navmesh_index is None:
+            raise NavGraphImportError("Imported MCG must not have its MSB navmeshes dereferenced.")
         collection = collection or context.scene.collection
         operator.info(f"Importing MCG '{name}'.")
 
@@ -390,7 +401,7 @@ class BlenderMCGNode(SoulstructObject[MCGNode, MCGNodeProps]):
                 navmesh_part = find_obj(navmesh_name, soulstruct_type=SoulstructType.MSB_PART)
                 if navmesh_part is None:
                     # Not acceptable. Parts must be imported before MCG.
-                    raise NavGraphImportError(
+                    raise NavGraphMissingNavmeshError(
                         f"'{bl_node.name}' navmesh {nav.upper()} references missing MSB Navmesh object: {navmesh_name}"
                     )
 
@@ -509,7 +520,7 @@ class BlenderMCGEdge(SoulstructObject[MCGEdge, MCGEdgeProps]):
         navmesh_part = find_obj(navmesh_name, soulstruct_type=SoulstructType.MSB_PART)
         if navmesh_part is None:
             # Not acceptable. Parts must be imported before MCG.
-            raise NavGraphImportError(f"'{bl_edge.name}' references missing MSB Navmesh object: {navmesh_name}")
+            raise NavGraphMissingNavmeshError(f"'{bl_edge.name}' references missing MSB Navmesh object: {navmesh_name}")
 
         bl_edge.cost = soulstruct_obj.cost
         bl_edge.navmesh_part = navmesh_part

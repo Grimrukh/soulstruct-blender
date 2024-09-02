@@ -14,6 +14,7 @@ __all__ = [
     "CutsceneExportError",
     "NVMImportError",
     "NavGraphImportError",
+    "NavGraphMissingNavmeshError",
     "NavGraphExportError",
     "MCGEdgeCreationError",
     "NVMHKTImportError",
@@ -104,6 +105,11 @@ class NVMExportError(SoulstructBlenderError):
 
 class NavGraphImportError(SoulstructBlenderError):
     """Exception raised during NavGraph import."""
+    pass
+
+
+class NavGraphMissingNavmeshError(NavGraphImportError):
+    """Exception raised during NavGraph import when an MSB Navmesh is not found."""
     pass
 
 
