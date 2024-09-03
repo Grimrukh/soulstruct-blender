@@ -222,12 +222,13 @@ CLASSES = (
     # endregion
 
     # region Cutscenes
-    GlobalSettingsPanel_CutsceneView,
-    ImportHKXCutscene,
-    ExportHKXCutscene,
-    CutsceneImportSettings,
-    CutsceneExportSettings,
-    CutsceneImportExportPanel,
+    # TODO: Not quite ready.
+    # GlobalSettingsPanel_CutsceneView,
+    # ImportHKXCutscene,
+    # ExportHKXCutscene,
+    # CutsceneImportSettings,
+    # CutsceneExportSettings,
+    # CutsceneImportExportPanel,
     # endregion
 
     # region Navmesh

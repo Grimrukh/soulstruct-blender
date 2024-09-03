@@ -1575,34 +1575,34 @@ class MSBImportSettings(bpy.types.PropertyGroup):
 
     import_map_piece_models: bpy.props.BoolProperty(
         name="Import Map Piece Models",
-        description="Import models for MSB Map Piece parts, rather than using empty meshes",
+        description="Import models for MSB Map Piece parts, rather than using placeholder meshes",
         default=True,
     )
     import_collision_models: bpy.props.BoolProperty(
         name="Import Collision Models",
-        description="Import models for MSB Collision/Connect Collision parts, rather than using empty meshes",
+        description="Import models for MSB Collision/Connect Collision parts, rather than using placeholder meshes",
         default=True,
     )
     import_navmesh_models: bpy.props.BoolProperty(
         name="Import Navmesh Models",
-        description="Import models for MSB Navmesh parts, rather than using empty meshes",
+        description="Import models for MSB Navmesh parts, rather than using placeholder meshes",
         default=True,
     )
     import_object_models: bpy.props.BoolProperty(
         name="Import Object Models",
-        description="Import models for MSB Object/Asset parts, rather than using empty meshes",
+        description="Import models for MSB Object/Asset parts, rather than using placeholder meshes",
         default=True,
     )
     import_character_models: bpy.props.BoolProperty(
         name="Import Character Models",
-        description="Import models for MSB Character and MSB Player Start parts, rather than using empty meshes",
+        description="Import models for MSB Character and MSB Player Start parts, rather than using placeholder meshes",
         default=True,
     )
 
     part_name_model_filter: bpy.props.StringProperty(
         name="Part Name Model Import Filter",
         description="Glob/Regex for filtering which MSB Parts should have their models loaded (if their type is "
-                    "also enabled for import above), rather than using empty meshes",
+                    "also enabled for import above), rather than using placeholder meshes",
         default="*",
     )
 
