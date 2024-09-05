@@ -243,7 +243,7 @@ CLASSES = (
     ImportSelectedMapNVM,
     ExportLooseNVM,
     ExportNVMIntoBinder,
-    ExportNVMIntoNVMBND,
+    ExportNVMIntoSelectedMap,
 
     ImportNVMHKT,
     ImportNVMHKTWithBinderChoice,
@@ -411,8 +411,9 @@ SCENE_POINTERS = dict(
     region_draw_settings=RegionDrawSettings,
     animation_import_settings=AnimationImportSettings,
     animation_export_settings=AnimationExportSettings,
-    cutscene_import_settings=CutsceneImportSettings,
-    cutscene_export_settings=CutsceneExportSettings,
+    # TODO: Cutscene disabled.
+    # cutscene_import_settings=CutsceneImportSettings,
+    # cutscene_export_settings=CutsceneExportSettings,
 )
 
 

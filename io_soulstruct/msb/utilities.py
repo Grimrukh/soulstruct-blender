@@ -290,10 +290,10 @@ def batch_import_flver_models(
         if flver.submeshes:
             # Check for errors in merging and/or material creation.
             if flver_merged_meshes[model_name] is None and flver_bl_materials[model_name] is not None:
-                operator.error(f"Cannot import FLVER '{model_name}' (path {flver.path_name}) due to `MergedMesh` error.")
+                operator.error(f"Cannot import FLVER '{model_name}' ({flver.path_name}) due to `MergedMesh` error.")
                 continue
             if flver_bl_materials[model_name] is None and flver_merged_meshes[model_name] is not None:
-                operator.error(f"Cannot import FLVER: '{model_name}' (path {flver.path_name}) due to material error.")
+                operator.error(f"Cannot import FLVER: '{model_name}' ({flver.path_name}) due to material error.")
                 continue
             merged_mesh = flver_merged_meshes[model_name]
             bl_materials = flver_bl_materials[model_name]

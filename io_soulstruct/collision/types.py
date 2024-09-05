@@ -13,22 +13,25 @@ import numpy as np
 from io_soulstruct.exceptions import MapCollisionExportError
 from io_soulstruct.types import *
 from io_soulstruct.utilities import *
-from soulstruct_havok.wrappers.hkx2015 import MapCollisionHKX
+
+from soulstruct_havok.enums import PyHavokModule
+from soulstruct_havok.wrappers.shared.map_collision import *
+
 from .properties import MapCollisionProps
 from .utilities import HKX_MATERIAL_NAME_RE
 
 
-class BlenderMapCollision(SoulstructObject[MapCollisionHKX, MapCollisionProps]):
-    
+class BlenderMapCollision(SoulstructObject[MapCollisionModel, MapCollisionProps]):
+
     TYPE = SoulstructType.COLLISION
     OBJ_DATA_TYPE = SoulstructDataType.MESH
-    SOULSTRUCT_CLASS = MapCollisionHKX
-    
+    SOULSTRUCT_CLASS = MapCollisionModel
+
     obj: bpy.types.MeshObject
     data: bpy.types.Mesh
-    
+
     __slots__ = []
-    
+
     # No Map Collision model properties. Materials store their indices in their names.
 
     # HSV values for HKX materials, out of 360/100/100.
@@ -51,15 +54,13 @@ class BlenderMapCollision(SoulstructObject[MapCollisionHKX, MapCollisionProps]):
         cls,
         operator: LoggingOperator,
         context: bpy.types.Context,
-        soulstruct_obj: MapCollisionHKX,
+        soulstruct_obj: MapCollisionModel,
         name: str,
         collection: bpy.types.Collection = None,
-        lo_hkx: MapCollisionHKX = None,  # optional
-    ) -> BlenderMapCollision:
+        lo_collision: MapCollisionModel = None,  # optional
+    ) -> tp.Self:
         """Read a HKX or two (hi/lo) HKXs into a single Blender mesh, with materials representing res/submeshes."""
-        hi_hkx = soulstruct_obj
-        hi_submeshes = hi_hkx.to_meshes()
-        hkx_material_indices = hi_hkx.map_collision_physics_data.get_subpart_materials()
+        hi_collision = soulstruct_obj
 
         # Maps `(is_hi, hkx_mat_index)` to Blender material index for both resolutions.
         hkx_to_bl_material_indices = {}  # type: dict[tuple[bool, int], int]
@@ -78,23 +79,21 @@ class BlenderMapCollision(SoulstructObject[MapCollisionHKX, MapCollisionProps]):
 
         # Construct Blender materials corresponding to HKX res and material indices and collect indices.
         hi_bl_mat_indices = []  # matches length of `hi_submeshes`
-        for i in hkx_material_indices:
-            bl_mat_index = get_bl_mat_index(True, i)
+        for mesh in hi_collision.meshes:
+            bl_mat_index = get_bl_mat_index(True, mesh.material_index)
             hi_bl_mat_indices.append(bl_mat_index)
 
-        vertices, faces, face_materials = cls.join_hkx_meshes(hi_submeshes, hi_bl_mat_indices)
+        vertices, faces, face_materials = cls.join_collision_meshes(hi_collision, hi_bl_mat_indices)
 
-        if lo_hkx:
-            lo_submeshes = lo_hkx.to_meshes()
-            lo_hkx_material_indices = lo_hkx.map_collision_physics_data.get_subpart_materials()
+        if lo_collision:
             lo_bl_mat_indices = []  # matches length of `lo_submeshes`
             # Continue building `bl_materials` list and `hkx_to_bl_material_indices` dict from hi-res above.
-            for i in lo_hkx_material_indices:
-                bl_mat_index = get_bl_mat_index(False, i)
+            for mesh in lo_collision.meshes:
+                bl_mat_index = get_bl_mat_index(False, mesh.material_index)
                 lo_bl_mat_indices.append(bl_mat_index)
 
-            lo_vertices, lo_faces, lo_face_materials = cls.join_hkx_meshes(
-                lo_submeshes, lo_bl_mat_indices, initial_offset=len(vertices)
+            lo_vertices, lo_faces, lo_face_materials = cls.join_collision_meshes(
+                lo_collision, lo_bl_mat_indices, initial_offset=len(vertices)
             )
             vertices = np.vstack((vertices, lo_vertices))
             faces = np.vstack((faces, lo_faces))
@@ -119,7 +118,7 @@ class BlenderMapCollision(SoulstructObject[MapCollisionHKX, MapCollisionProps]):
         operator: LoggingOperator,
         context: bpy.types.Context,
     ):
-        raise TypeError("Cannot convert BlenderMapCollision to a single `MapCollisionHKX`. Use `to_hkx_pair()`.")
+        raise TypeError("Cannot convert BlenderMapCollision to a single `MapCollisionModel`. Use `to_hkx_pair()`.")
 
     def to_hkx_pair(
         self,
@@ -128,7 +127,8 @@ class BlenderMapCollision(SoulstructObject[MapCollisionHKX, MapCollisionProps]):
         use_hi_if_missing_lo=False,
         hi_name="",
         lo_name="",
-    ) -> tuple[MapCollisionHKX | None, MapCollisionHKX | None]:
+        py_havok_module=PyHavokModule.hk2015,
+    ) -> tuple[MapCollisionModel | None, MapCollisionModel | None]:
         """Create 'hi' and/or 'lo' HKX files by splitting given `hkx_model` into submeshes by material, or (if empty),
         directly from child submesh Mesh objects.
 
@@ -152,7 +152,6 @@ class BlenderMapCollision(SoulstructObject[MapCollisionHKX, MapCollisionProps]):
 
         # Automatically triangulate the mesh.
         self._clear_temp_hkx()
-
         bm = bmesh.new()
         bm.from_mesh(self.obj.data)
         bmesh.ops.triangulate(bm, faces=bm.faces, quad_method="BEAUTY", ngon_method="BEAUTY")
@@ -162,10 +161,8 @@ class BlenderMapCollision(SoulstructObject[MapCollisionHKX, MapCollisionProps]):
         bm.free()
         del bm
 
-        hi_hkx_meshes = []  # type: list[tuple[np.ndarray, np.ndarray]]  # vertices, faces
-        hi_hkx_material_indices = []  # type: list[int]
-        lo_hkx_meshes = []  # type: list[tuple[np.ndarray, np.ndarray]]  # vertices, faces
-        lo_hkx_material_indices = []  # type: list[int]
+        hi_hkx_meshes = []  # type: list[MapCollisionModelMesh]
+        lo_hkx_meshes = []  # type: list[MapCollisionModelMesh]
 
         # Note that it is possible that the user may have faces with different materials share vertices; this is fine,
         # and that vertex will be copied into each HKX submesh with a face loop that uses it.
@@ -188,6 +185,7 @@ class BlenderMapCollision(SoulstructObject[MapCollisionHKX, MapCollisionProps]):
             if not faces:
                 continue  # no faces use this material
 
+            # Extract HKX material index from name of Blender material.
             # We can use the original non-triangulated mesh's material slots.
             bl_material = self.obj.material_slots[bl_material_index].material
             mat_match = HKX_MATERIAL_NAME_RE.match(bl_material.name)
@@ -222,81 +220,75 @@ class BlenderMapCollision(SoulstructObject[MapCollisionHKX, MapCollisionProps]):
                     hkx_face.append(hkx_vert_index)
                 hkx_faces_list.append(hkx_face)
 
-            meshes, hkx_material_indices = (
-                (hi_hkx_meshes, hi_hkx_material_indices) if res == "h" else (lo_hkx_meshes, lo_hkx_material_indices)
+            meshes = hi_hkx_meshes if res == "h" else lo_hkx_meshes
+            mesh = MapCollisionModelMesh(
+                vertices=np.array(hkx_verts_list, dtype=np.float32),
+                faces=np.array(hkx_faces_list, dtype=np.uint32),  # TODO: why not native uint16?
+                material_index=hkx_material_index,
             )
-            meshes.append(
-                (np.array(hkx_verts_list, dtype=np.float32), np.array(hkx_faces_list, dtype=np.uint32))
-            )
-            hkx_material_indices.append(hkx_material_index)
+            meshes.append(mesh)
 
         if hi_hkx_meshes:
-            hi_hkx = MapCollisionHKX.from_meshes(
+            hi_collision = self.SOULSTRUCT_CLASS(
+                name=hi_name,
                 meshes=hi_hkx_meshes,
-                hkx_name=hi_name,
-                material_indices=hi_hkx_material_indices,
-                # Bundled template HKX serves fine.
-                # DCX applied by caller.
+                py_havok_module=py_havok_module,
             )
-            hi_hkx.path = Path(f"{hi_name}.hkx")
+            hi_collision.path = Path(f"{hi_name}.hkx")
         else:
             if require_hi:
                 raise MapCollisionExportError(f"No 'hi' HKX meshes found in mesh '{self.name}'.")
             operator.warning(f"No 'hi' HKX meshes found in mesh '{self.name}'. Continuing as `require_hi=False`.")
-            hi_hkx = None
+            hi_collision = None
 
         if lo_hkx_meshes:
-            lo_hkx = MapCollisionHKX.from_meshes(
+            lo_collision = self.SOULSTRUCT_CLASS(
+                name=lo_name,
                 meshes=lo_hkx_meshes,
-                hkx_name=lo_name,
-                material_indices=lo_hkx_material_indices,
-                # Bundled template HKX serves fine.
-                # DCX applied by caller.
+                py_havok_module=py_havok_module,
             )
-            lo_hkx.path = Path(f"{lo_name}.hkx")
+            lo_collision.path = Path(f"{lo_name}.hkx")
         elif use_hi_if_missing_lo:
             # Duplicate hi-res meshes and materials for lo-res (but use lo-res name).
-            lo_hkx = MapCollisionHKX.from_meshes(
+            lo_collision = self.SOULSTRUCT_CLASS(
+                name=lo_name,
                 meshes=hi_hkx_meshes,
-                hkx_name=lo_name,
-                material_indices=hi_hkx_material_indices,
-                # Bundled template HKX serves fine.
-                # DCX applied by caller.
+                py_havok_module=py_havok_module,
             )
         else:
             operator.warning(
                 f"No 'lo' HKX meshes found for '{lo_name}' and `use_hi_if_missing_lo=False`. No lo-res exported."
             )
-            lo_hkx = None
+            lo_collision = None
 
-        if not hi_hkx and not lo_hkx:
+        if not hi_collision and not lo_collision:
             raise MapCollisionExportError(
                 f"No material-based HKX submeshes could be created for HKX mesh '{self.name}'. Are all faces "
                 f"assigned to a material with name template 'HKX # (Hi|Lo)'?"
             )
 
-        return hi_hkx, lo_hkx
+        return hi_collision, lo_collision
 
     @staticmethod
-    def join_hkx_meshes(
-        meshes: list[tuple[np.ndarray, np.ndarray]], bl_material_indices: tp.Sequence[int], initial_offset=0
+    def join_collision_meshes(
+        collision: MapCollisionModel, bl_material_indices: tp.Sequence[int], initial_offset=0
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Concatenate all vertices and faces from a list of meshes by offsetting the face indices.
 
         Also returns array of face material indices for use with `foreach_set()` by simply coping the corresponding
         `bl_material_indices` element to all faces.
         """
-        if len(meshes) != len(bl_material_indices):
-            raise ValueError("Number of HKX meshes and material indices must match.")
+        if len(collision.meshes) != len(bl_material_indices):
+            raise ValueError("Number of HKX meshes and Blender material indices must match.")
         vert_stack = []
         face_stack = []
         face_materials = []
         offset = initial_offset
-        for (vertices, faces), material_index in zip(meshes, bl_material_indices, strict=True):
-            face_stack.append(faces + offset)
-            vert_stack.append(vertices)
-            face_materials.extend([material_index] * len(faces))
-            offset += len(vertices)
+        for mesh, bl_material_index in zip(collision.meshes, bl_material_indices, strict=True):
+            face_stack.append(mesh.faces + offset)
+            vert_stack.append(mesh.vertices)
+            face_materials.extend([bl_material_index] * mesh.face_count)
+            offset += mesh.vertex_count
         vertices = np.vstack(vert_stack)
         faces = np.vstack(face_stack)
         return vertices, faces, np.array(face_materials)
@@ -306,7 +298,7 @@ class BlenderMapCollision(SoulstructObject[MapCollisionHKX, MapCollisionProps]):
         material_name = f"HKX {hkx_material_index} ({'Hi' if is_hi_res else 'Lo'})"
         try:
             material_offset, material_base = divmod(hkx_material_index, 100)
-            hkx_material_enum = MapCollisionHKX.MapCollisionMaterial(material_base)
+            hkx_material_enum = MapCollisionMaterial(material_base)
         except ValueError:
             pass
         else:

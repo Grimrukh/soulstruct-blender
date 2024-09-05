@@ -3,7 +3,7 @@ from __future__ import annotations
 __all__ = [
     "ExportLooseNVM",
     "ExportNVMIntoBinder",
-    "ExportNVMIntoNVMBND",
+    "ExportNVMIntoSelectedMap",
 ]
 
 import traceback
@@ -201,18 +201,18 @@ class ExportNVMIntoBinder(LoggingOperator, ImportHelper):
         return {"FINISHED"}
 
 
-class ExportNVMIntoNVMBND(LoggingOperator):
+class ExportNVMIntoSelectedMap(LoggingOperator):
 
-    bl_idname = "export_scene.nvm_entry"
+    bl_idname = "export_scene.nvm_selected_map"
     bl_label = "Export NVM"
-    bl_description = "Export selected meshes as NVM navmeshes into selected game map NVMBND"
+    bl_description = "Export selected meshes as NVM navmeshes into selected map NVMBND"
 
     # Always overwrites existing NVM entries.
 
     @classmethod
     def poll(cls, context):
         """One or more 'n*' Meshes selected."""
-        if not cls.settings(context).is_game("DARK_SOULS_DSR"):
+        if not cls.settings(context).is_game_ds1():
             return False
         try:
             BlenderNVM.from_selected_objects(context)
@@ -222,11 +222,11 @@ class ExportNVMIntoNVMBND(LoggingOperator):
 
     def execute(self, context):
         if not self.poll(context):
-            return self.error("No valid 'n' meshes selected for quick NVM export.")
+            return self.error("No valid 'n' meshes selected for NVM export.")
 
         settings = self.settings(context)
-        if settings.game_variable_name != "DARK_SOULS_DSR":
-            return self.error("Quick NVM export is only supported for Dark Souls: Remastered.")
+        if not settings.is_game_ds1():
+            return self.error("NVM export is only supported for Dark Souls 1 (PTDE or DSR).")
 
         if not settings.map_stem and not settings.detect_map_from_collection:
             return self.error(

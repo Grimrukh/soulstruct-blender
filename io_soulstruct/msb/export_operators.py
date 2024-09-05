@@ -20,7 +20,7 @@ from soulstruct.darksouls1r.maps.msb import MSB as MSB_DSR
 from soulstruct.darksouls1r.maps.navmesh import NVMBND
 from soulstruct.dcx import DCXType
 from soulstruct.utilities.text import natural_keys
-from soulstruct_havok.wrappers.hkx2015.hkx_binder import HKXBHD, BothResHKXBHD
+from soulstruct_havok.wrappers.shared import HKXBHD, BothResHKXBHD
 from .operator_config import *
 from .properties import MSBPartSubtype
 

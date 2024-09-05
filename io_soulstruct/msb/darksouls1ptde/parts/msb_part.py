@@ -37,6 +37,7 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
     # OBJ_DATA_TYPE is subtype-dependent.
     SOULSTRUCT_CLASS: tp.ClassVar[type[MSBPart]]
     SOULSTRUCT_MODEL_CLASS: tp.ClassVar[type[MSBModel]]
+    BLENDER_MODEL_TYPE: SoulstructType
     EXPORT_TIGHT_NAME: tp.ClassVar[bool] = True  # for MSB parts, we always use tight names
     PART_SUBTYPE: tp.ClassVar[MSBPartSubtype]
     MODEL_SUBTYPES: tp.ClassVar[list[str]]  # for `MSB` model search on export

@@ -24,6 +24,7 @@ class BlenderMSBConnectCollision(BlenderMSBPart[MSBConnectCollision, MSBConnectC
     OBJ_DATA_TYPE = SoulstructDataType.MESH
     SOULSTRUCT_CLASS = MSBConnectCollision
     SOULSTRUCT_MODEL_CLASS = MSBCollisionModel
+    BLENDER_MODEL_TYPE = SoulstructType.COLLISION
     PART_SUBTYPE = MSBPartSubtype.ConnectCollision
     MODEL_SUBTYPES = ["collision_models"]
 
@@ -100,7 +101,7 @@ class BlenderMSBConnectCollision(BlenderMSBPart[MSBConnectCollision, MSBConnectC
     @classmethod
     def find_model_mesh(cls, model_name: str, map_stem: str) -> bpy.types.MeshObject:
         """Find the given Collision model in Blender data."""
-        obj = find_obj(name=model_name, find_stem=True, soulstruct_type=SoulstructType.COLLISION)
+        obj = find_obj(name=model_name, find_stem=True, soulstruct_type=cls.BLENDER_MODEL_TYPE)
         if obj is None:
             raise MissingPartModelError(f"Collision model mesh '{model_name}' not found in Blender data.")
         # noinspection PyTypeChecker

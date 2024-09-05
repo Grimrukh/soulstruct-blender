@@ -29,8 +29,8 @@ class MapCollisionImportExportPanel(bpy.types.Panel):
     # noinspection PyUnusedLocal
     def draw(self, context):
         settings = context.scene.soulstruct_settings
-        if not settings.is_game("DARK_SOULS_DSR"):
-            self.layout.label(text="Dark Souls: Remastered only.")
+        if not settings.is_game_ds1():
+            self.layout.label(text="DS1 (PTDE or DSR) only.")
             return
 
         layout = self.layout
@@ -43,6 +43,12 @@ class MapCollisionImportExportPanel(bpy.types.Panel):
         import_box.operator(ImportHKXMapCollision.bl_idname, text="Import Any Map Collision")
 
         export_box = self.layout.box()
+
+        # TODO: Haven't done final tests on HKX packfiles for PTDE collision export.
+        if not settings.is_game("DARK_SOULS_DSR"):
+            export_box.label(text="Export supported for DSR only.")
+            return
+
         try:
             BlenderMapCollision.from_selected_objects(context)
         except SoulstructTypeError:

@@ -56,7 +56,11 @@ class FLVERToolSettings(bpy.types.PropertyGroup):
         description="Only set alpha values for loops (face corners) that are part of selected faces",
         default=False,
     )
-    dummy_id_draw_enabled: bpy.props.BoolProperty(name="Draw Dummy IDs", default=False)
+    dummy_id_draw_enabled: bpy.props.BoolProperty(
+        name="Draw Dummy IDs",
+        description="Draw IDs of selected FLVER's Dummies in 3D view",
+        default=False,
+    )
     dummy_id_font_size: bpy.props.IntProperty(name="Dummy ID Font Size", default=16, min=1, max=100)
 
     uv_scale: bpy.props.FloatProperty(

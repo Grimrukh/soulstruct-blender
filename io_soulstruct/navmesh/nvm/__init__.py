@@ -5,7 +5,7 @@ __all__ = [
 
     "ExportLooseNVM",
     "ExportNVMIntoBinder",
-    "ExportNVMIntoNVMBND",
+    "ExportNVMIntoSelectedMap",
 
     "NVMProps",
     "NVMEventEntityProps",

@@ -17,7 +17,7 @@ from soulstruct.base.maps.msb.utils import GroupBitSet128
 from soulstruct.darksouls1ptde.maps.enums import CollisionHitFilter
 from soulstruct.darksouls1ptde.maps.models import MSBCollisionModel
 from soulstruct.darksouls1ptde.maps.parts import MSBCollision
-from soulstruct_havok.wrappers.hkx2015.hkx_binder import BothResHKXBHD
+from soulstruct_havok.wrappers.shared import MapCollisionModel, BothResHKXBHD
 from .msb_part import BlenderMSBPart
 
 if tp.TYPE_CHECKING:
@@ -33,6 +33,7 @@ class BlenderMSBCollision(BlenderMSBPart[MSBCollision, MSBCollisionProps]):
     OBJ_DATA_TYPE = SoulstructDataType.MESH
     SOULSTRUCT_CLASS = MSBCollision
     SOULSTRUCT_MODEL_CLASS = MSBCollisionModel
+    BLENDER_MODEL_TYPE = SoulstructType.COLLISION
     PART_SUBTYPE = MSBPartSubtype.Collision
     MODEL_SUBTYPES = ["collision_models"]
 
@@ -170,19 +171,6 @@ class BlenderMSBCollision(BlenderMSBPart[MSBCollision, MSBCollisionProps]):
         """
         settings = operator.settings(context)
 
-        # NOTE: Hi and lo-res binders could come from different import folders (project vs. game).
-        try:
-            hi_res_hkxbhd_path = settings.get_import_map_file_path(f"h{map_stem[1:]}.hkxbhd")
-        except FileNotFoundError:
-            raise FileNotFoundError(f"Cannot find hi-res HKXBHD for map {map_stem}.")
-        try:
-            lo_res_hkxbhd_path = settings.get_import_map_file_path(f"l{map_stem[1:]}.hkxbhd")
-        except FileNotFoundError:
-            raise FileNotFoundError(f"Cannot find lo-res HKXBHD for map {map_stem}.")
-
-        both_res_hkxbhd = BothResHKXBHD.from_both_paths(hi_res_hkxbhd_path, lo_res_hkxbhd_path)
-        hi_hkx, lo_hkx = both_res_hkxbhd.get_both_hkx(model_name)
-
         if not model_collection:
             model_collection = get_or_create_collection(
                 context.scene.collection,
@@ -191,15 +179,71 @@ class BlenderMSBCollision(BlenderMSBPart[MSBCollision, MSBCollisionProps]):
                 hide_viewport=context.scene.msb_import_settings.hide_model_collections,
             )
 
-        # Import single HKX.
-        try:
-            bl_map_collision = BlenderMapCollision.new_from_soulstruct_obj(
-                operator, context, hi_hkx, model_name, collection=model_collection, lo_hkx=lo_hkx
-            )
-        except Exception as ex:
-            traceback.print_exc()  # for inspection in Blender console
+        if settings.is_game("DARK_SOULS_PTDE"):
+            # No HKX binders; hi and lo-res models are loose HKX files in map directory.
+            hi_res_hkx_name = f"h{model_name[1:]}.hkx"
+            try:
+                hi_res_hkx_path = settings.get_import_map_file_path(hi_res_hkx_name)
+            except FileNotFoundError:
+                raise FileNotFoundError(f"Cannot find hi-res HKX '{hi_res_hkx_name}' for map {map_stem}.")
+            lo_res_hkx_name = f"l{model_name[1:]}.hkx"
+            try:
+                lo_res_hkx_path = settings.get_import_map_file_path(lo_res_hkx_name)
+            except FileNotFoundError:
+                raise FileNotFoundError(f"Cannot find lo-res HKX '{lo_res_hkx_name}' for map {map_stem}.")
+
+            try:
+                hi_collision = MapCollisionModel.from_path(hi_res_hkx_path)
+            except Exception as ex:
+                raise MapCollisionImportError(
+                    f"Cannot load hi-res HKX '{hi_res_hkx_name}' from map {map_stem}. Error: {ex}"
+                )
+            try:
+                lo_collision = MapCollisionModel.from_path(lo_res_hkx_path)
+            except Exception as ex:
+                raise MapCollisionImportError(
+                    f"Cannot load lo-res HKX '{lo_res_hkx_name}' from map {map_stem}. Error: {ex}"
+                )
+
+            # Import single HKX.
+            try:
+                bl_map_collision = BlenderMapCollision.new_from_soulstruct_obj(
+                    operator, context, hi_collision, model_name, collection=model_collection, lo_collision=lo_collision
+                )
+            except Exception as ex:
+                traceback.print_exc()  # for inspection in Blender console
+                raise MapCollisionImportError(
+                    f"Cannot import HKX '{model_name}' from HKXBHDs in map {map_stem}. Error: {ex}"
+                )
+
+        elif settings.is_game("DARK_SOULS_DSR"):
+            # NOTE: Hi and lo-res binders could end up being found in different import folders (project vs. game).
+            try:
+                hi_res_hkxbhd_path = settings.get_import_map_file_path(f"h{map_stem[1:]}.hkxbhd")
+            except FileNotFoundError:
+                raise FileNotFoundError(f"Cannot find hi-res HKXBHD for map {map_stem}.")
+            try:
+                lo_res_hkxbhd_path = settings.get_import_map_file_path(f"l{map_stem[1:]}.hkxbhd")
+            except FileNotFoundError:
+                raise FileNotFoundError(f"Cannot find lo-res HKXBHD for map {map_stem}.")
+
+            both_res_hkxbhd = BothResHKXBHD.from_both_paths(hi_res_hkxbhd_path, lo_res_hkxbhd_path)
+            hi_collision, lo_collision = both_res_hkxbhd.get_both_hkx(model_name)
+
+            # Import single HKX.
+            try:
+                bl_map_collision = BlenderMapCollision.new_from_soulstruct_obj(
+                    operator, context, hi_collision, model_name, collection=model_collection, lo_collision=lo_collision
+                )
+            except Exception as ex:
+                traceback.print_exc()  # for inspection in Blender console
+                raise MapCollisionImportError(
+                    f"Cannot import HKX '{model_name}' from HKXBHDs in map {map_stem}. Error: {ex}"
+                )
+
+        else:
             raise MapCollisionImportError(
-                f"Cannot import HKX '{model_name}' from HKXBHDs in map {map_stem}. Error: {ex}"
+                f"Cannot yet import HKX Collision models ('{model_name}') for game {settings.game.name} (only DS1)."
             )
 
         return bl_map_collision.obj

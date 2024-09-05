@@ -14,10 +14,10 @@ import bpy
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 
 from soulstruct.dcx import DCXType
-from soulstruct.games import DARK_SOULS_DSR
+from soulstruct.games import DARK_SOULS_PTDE, DARK_SOULS_DSR
 from soulstruct.utilities.files import create_bak
 
-from soulstruct_havok.wrappers.hkx2015.hkx_binder import BothResHKXBHD
+from soulstruct_havok.wrappers.shared import BothResHKXBHD
 
 from io_soulstruct.types import SoulstructType
 from io_soulstruct.utilities import *
@@ -81,7 +81,13 @@ class ExportLooseHKXMapCollision(LoggingOperator, ExportHelper):
 
         # noinspection PyTypeChecker
         hkx_model = context.active_object  # type: bpy.types.MeshObject
-        bl_map_collision = BlenderMapCollision(hkx_model)
+        settings = self.settings(context)
+        if settings.is_game(DARK_SOULS_PTDE):
+            bl_map_collision = BlenderMapCollision(hkx_model)
+        elif settings.is_game(DARK_SOULS_DSR):
+            bl_map_collision = BlenderMapCollision(hkx_model)
+        else:
+            return self.error("This operator only supports Dark Souls 1 (PTDE and DSR).")
 
         hkx_path = Path(self.filepath)
         if not LOOSE_HKX_COLLISION_STEM_RE.match(hkx_path.name) is None:

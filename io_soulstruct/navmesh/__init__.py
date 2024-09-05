@@ -7,7 +7,7 @@ __all__ = [
 
     "ExportLooseNVM",
     "ExportNVMIntoBinder",
-    "ExportNVMIntoNVMBND",
+    "ExportNVMIntoSelectedMap",
 
     "ImportNVMHKT",
     "ImportNVMHKTWithBinderChoice",
@@ -56,8 +56,8 @@ class NavmeshDS1ImportPanel(bpy.types.Panel):
     # noinspection PyUnusedLocal
     def draw(self, context):
         settings = context.scene.soulstruct_settings
-        if not settings.is_game("DARK_SOULS_DSR"):
-            self.layout.label(text="Dark Souls: Remastered only.")
+        if not settings.is_game_ds1():
+            self.layout.label(text="DS1 (PTDE or DSR) only.")
             return
 
         layout = self.layout
@@ -79,8 +79,8 @@ class NavmeshDS1ExportPanel(bpy.types.Panel):
     # noinspection PyUnusedLocal
     def draw(self, context):
         settings = context.scene.soulstruct_settings
-        if settings.game_variable_name != "DARK_SOULS_DSR":
-            self.layout.label(text="Dark Souls: Remastered only.")
+        if not settings.is_game_ds1():
+            self.layout.label(text="DS1 (PTDE or DSR) only.")
             return
 
         try:
@@ -93,7 +93,7 @@ class NavmeshDS1ExportPanel(bpy.types.Panel):
         map_stem_box(layout, settings)
         layout.label(text="Export to Game/Project:")
         layout.prop(context.scene.soulstruct_settings, "detect_map_from_collection")
-        layout.operator(ExportNVMIntoNVMBND.bl_idname)
+        layout.operator(ExportNVMIntoSelectedMap.bl_idname)
 
         layout.label("Generic Export:")
         layout.operator(ExportLooseNVM.bl_idname)
