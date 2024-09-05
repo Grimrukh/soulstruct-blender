@@ -48,6 +48,7 @@ class BaseImportHKXAnimation(LoggingOperator):
             return False
         if not bl_flver.armature:
             return False
+        return True
 
     def get_anibnd_skeleton_compendium(
         self, context: bpy.types.Context, model_name: str
@@ -361,8 +362,7 @@ class ImportCharacterHKXAnimation(BaseImportTypedHKXAnimation):
 
     @classmethod
     def poll(cls, context):
-        """Character FLVER (not MSB Part) must be selected.
-        """
+        """Character FLVER (not MSB Part) must be selected."""
         return super().poll(context) and context.active_object.name[0] == "c"
 
     def get_anibnd_skeleton_compendium(self, context: bpy.types.Context, model_name: str):

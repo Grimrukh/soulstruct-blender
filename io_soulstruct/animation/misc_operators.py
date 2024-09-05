@@ -8,6 +8,7 @@ import typing as tp
 
 import bpy
 
+from io_soulstruct.types import SoulstructType
 from io_soulstruct.utilities.operators import LoggingOperator
 
 
@@ -75,7 +76,7 @@ class SelectArmatureActionOperator(LoggingOperator):
     def poll(cls, context):
         """Animation's rigged armature must be selected (to extract bone names)."""
         try:
-            return context.selected_objects[0].type == "ARMATURE"
+            return context.selected_objects[0] and context.selected_objects[0].soulstruct_type == SoulstructType.FLVER
         except IndexError:
             return False
 
