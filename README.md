@@ -18,6 +18,9 @@ some time to polish and release them. I hope they serve you well and anticipate 
 have the bandwidth or inclination to support any longer in Soulstruct. Surface vertex normal handling was also greatly
 improved in Blender 4.1, making FLVER import/export significantly easier.
 
+(Older releases (1.9.3 and earlier) are still available in the Releases section, which support Blender versions all the
+way back to 3.7, but lack many features and are no longer updated.)
+
 ## Table of Contents
 
 - [Installation](#installation)
