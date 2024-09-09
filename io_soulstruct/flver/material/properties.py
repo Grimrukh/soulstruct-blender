@@ -5,29 +5,63 @@ __all__ = [
     "FLVERMaterialProps",
 ]
 
-import ast
-
 import bpy
 
 from soulstruct.base.models.flver.material import GXItem
 
 
+# noinspection PyUnusedLocal
+def _check_gx_item_category(self, context: str) -> None:
+    """Check that the GXItem category is four characters or empty."""
+    value = self.category
+    if not value:
+        return  # empty is permitted
+    if len(value) != 4:
+        self.category = ""
+        return
+    # Valid.
+
+
+# noinspection PyUnusedLocal
+def _check_gx_item_data(self, context: str) -> None:
+    """Check that the given value is a valid hexadecimal string. Otherwise, set it to an empty string."""
+    value = self.data
+    if not value:
+        return  # empty is permitted
+    value = value.replace(" ", "").upper()  # remove spaces
+    if len(value) % 2 != 0:
+        self.data = ""  # must be even number of characters
+        return
+    if not all(c in "0123456789ABCDEF" for c in value):
+        self.data = ""
+        return
+    # Valid.
+
+
 class FLVERGXItemProps(bpy.types.PropertyGroup):
-    """Extension properties for FLVER `GXItem` collection on `FLVERMaterialProps`."""
+    """Extension properties for FLVER `GXItem` collection on `FLVERMaterialProps`.
+
+    NOTE: Dummy item that appears last in each list is not imported in Blender and is auto-created on export.
+    """
     category: bpy.props.StringProperty(
         name="Category",
-        description="Category of this GX item",
+        description="Four-character category of this GX Item's function (e.g. 'GX00'). "
+                    "Items with empty category will be ignored on export",
         default="",
+        update=_check_gx_item_category
     )
     index: bpy.props.IntProperty(
         name="Index",
-        description="Index of this GX item",
+        description="Index of this GX Item's function (e.g. 100)",
         default=0,
+        min=-1,
+        max=9999,  # TODO: complete guess, probably never goes this high (999?)
     )
     data: bpy.props.StringProperty(
         name="Data",
-        description="Raw data of this GX item (Python bytes literal)",
-        default="b\"\"",
+        description="Raw data of this GX Item (hex string, e.g. '00 3F 80 00')",
+        default="",
+        update=_check_gx_item_data,
     )
 
     def from_gx_item(self, gx_item: GXItem):
@@ -36,20 +70,20 @@ class FLVERGXItemProps(bpy.types.PropertyGroup):
         except UnicodeDecodeError:
             self.category = ""
         self.index = gx_item.index
-        self.data = repr(gx_item.data)
+        self.data = " ".join(f"{b:02X}" for b in gx_item.data)
 
     def to_gx_item(self) -> GXItem:
         data = self.get_data_bytes()
         gx_item = GXItem(
             category=self.category.encode(),
             index=self.index,
-            size=len(data) + 12,
+            data=data,
         )
         gx_item.data = data
         return gx_item
 
     def get_data_bytes(self) -> bytes:
-        return ast.literal_eval(self.data)
+        return bytes(bytearray.fromhex(self.data))
 
 
 class FLVERMaterialProps(bpy.types.PropertyGroup):
@@ -98,6 +132,12 @@ class FLVERMaterialProps(bpy.types.PropertyGroup):
         name="GX Items",
         description="Collection of GX items for this material (DS2 and later only)",
         type=FLVERGXItemProps,
+    )
+
+    gx_item_index: bpy.props.IntProperty(
+        name="GX Item Index",
+        description="Index of selected GX item",
+        default=-1,
     )
 
     sampler_prefix: bpy.props.StringProperty(

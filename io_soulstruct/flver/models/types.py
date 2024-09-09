@@ -797,7 +797,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
                 submesh_bl_material_indices = ()
                 bl_material_uv_layer_names = ()
 
-            # p = time.perf_counter()
+            p = time.perf_counter()
             # Create merged mesh.
             merged_mesh = MergedMesh.from_flver(
                 flver,
@@ -805,7 +805,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
                 material_uv_layer_names=bl_material_uv_layer_names,
                 merge_vertices=import_settings.merge_submesh_vertices,
             )
-            # self.operator.info(f"Merged FLVER submeshes in {time.perf_counter() - p} s")
+            operator.info(f"Merged FLVER submeshes in {time.perf_counter() - p} s")
             bl_vert_bone_weights, bl_vert_bone_indices = cls.create_bl_mesh(mesh_data, merged_mesh)
             mesh = new_mesh_object(name, mesh_data, SoulstructType.FLVER)
             if armature:
@@ -1059,7 +1059,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         matbinbnd: MATBINBND | None,
     ) -> list[dict[str, str]]:
         """For each submesh, get a dictionary mapping sampler names (e.g. 'g_Diffuse') to texture path names (e.g.
-        'c2000_fur').
+        'c2000_fur'). The texture path names are always lower-case.
 
         These paths may come from the FLVER material (older games) or MATBIN (newer games). In the latter case, FLVER
         material paths are usually empty, but will be accepted as overrides if given.
@@ -1073,14 +1073,66 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
                 except KeyError:
                     pass  # missing
                 else:
-                    submesh_texture_stems |= matbin.get_all_sampler_stems()
+                    submesh_texture_stems |= matbin.get_all_sampler_stems(lower=True)
             for texture in submesh.material.textures:
                 if texture.path:
                     # FLVER texture path can also override MATBIN path.
-                    submesh_texture_stems[texture.texture_type] = texture.stem
+                    submesh_texture_stems[texture.texture_type] = texture.stem.lower()
             all_submesh_texture_names.append(submesh_texture_stems)
 
         return all_submesh_texture_names
+
+    @classmethod
+    def _create_bl_mesh_bm(
+        cls,
+        mesh_data: bpy.types.Mesh,
+        face_vertex_indices: np.ndarray,
+    ):
+        """Use `BMesh` to create mesh faces/loops."""
+        bm = bmesh.new()
+        bm.from_mesh(mesh_data)
+        bm.verts.ensure_lookup_table()
+
+        # Create faces.
+        for i, face in enumerate(face_vertex_indices):
+            try:
+                bm.faces.new([bm.verts[j] for j in face])
+            except ValueError as ex:
+                if "used multiple times" in str(ex):
+                    # Ignore degenerate face.
+                    raise ValueError(f"Degenerate face in FLVER MergedMesh with duplicate vertices: {face}")
+                raise
+
+        bm.to_mesh(mesh_data)
+        bm.free()
+        del bm
+
+        mesh_data.update()
+
+    @classmethod
+    def _create_bl_mesh_nonbm(
+        cls,
+        mesh_data: bpy.types.Mesh,
+        merged_mesh: MergedMesh,
+        face_count: int,
+        face_vertex_indices: np.ndarray,
+    ):
+        # return merged_mesh.vertex_data["bone_weights"], merged_mesh.vertex_data["bone_indices"]
+
+        # Directly assign face corner (loop) vertex indices.
+        mesh_data.loops.add(face_vertex_indices.size)
+        mesh_data.loops.foreach_set("vertex_index", face_vertex_indices.ravel())
+
+        # Create triangle polygons.
+        # Blender polygons are defined by loop start and count (total), which is entirely on-rails here for triangles.
+        loop_starts = np.arange(0, face_count * 3, 3, dtype=np.int32)  # just [0, 3, 6, ...]
+        loop_totals = np.full(face_count, 3, dtype=np.int32)  # all triangles (3)
+        mesh_data.polygons.add(face_count)
+        mesh_data.polygons.foreach_set("loop_start", loop_starts)
+        mesh_data.polygons.foreach_set("loop_total", loop_totals)
+        mesh_data.polygons.foreach_set("material_index", merged_mesh.faces[:, 3])
+
+        mesh_data.update(calc_edges=True)
 
     @classmethod
     def create_bl_mesh(
@@ -1099,53 +1151,52 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         merged_mesh.invert_vertex_uv(invert_u=False, invert_v=True)
         merged_mesh.normalize_normals()
 
+        # We can create vertices before `BMesh` easily.
         vertex_count = merged_mesh.vertex_data.shape[0]
         mesh_data.vertices.add(vertex_count)
         mesh_data.vertices.foreach_set("co", np.array(merged_mesh.vertex_data["position"]).ravel())
 
-        face_count = len(merged_mesh.faces)
-        face_loop_indices = merged_mesh.faces[:, :3].ravel()
+        all_faces = merged_mesh.faces[:, :3]  # drop material index column
         if merged_mesh.vertices_merged:
             # Retrieve true vertex indices used by each face loop indexed in `merged_mesh.faces`.
-            loop_vertex_indices = merged_mesh.loop_vertex_indices[face_loop_indices]
+            face_vertex_indices = merged_mesh.loop_vertex_indices[all_faces]
         else:
             # No vertex merging occurred, so FLVER 'loops' and 'vertices' are still synonymous.
-            loop_vertex_indices = face_loop_indices
+            face_vertex_indices = all_faces
 
-        # Directly assign face corner (loop) vertex indices.
-        mesh_data.loops.add(len(loop_vertex_indices))
-        mesh_data.loops.foreach_set("vertex_index", loop_vertex_indices)
+        # Drop faces that don't use three unique vertex indices.
+        # TODO: Try a vectorized approach that calculates the difference between each pair of the three columns, then
+        #  takes the minimum of those differences. Any row that ends up with zero is degenerate.
+        unique_mask = np.apply_along_axis(lambda row: len(np.unique(row)) == 3, 1, face_vertex_indices)
+        valid_face_vertex_indices = face_vertex_indices[unique_mask]
+        print(f"Removed {face_vertex_indices.shape[0] - valid_face_vertex_indices.shape[0]} degenerate faces.")
+        face_count = valid_face_vertex_indices.shape[0]
 
-        # Create triangle polygons.
-        # Blender polygons are defined by loop start and count (total), which is entirely on-rails here for triangles.
-        loop_starts = np.arange(0, face_count * 3, 3, dtype=np.int32)  # just [0, 3, 6, ...]
-        loop_totals = np.full(face_count, 3, dtype=np.int32)  # all triangles (3)
-        mesh_data.polygons.add(face_count)
-        mesh_data.polygons.foreach_set("loop_start", loop_starts)
-        mesh_data.polygons.foreach_set("loop_total", loop_totals)
-        mesh_data.polygons.foreach_set("material_index", merged_mesh.faces[:, 3])
+        # cls._create_bl_mesh_bm(mesh_data, valid_face_vertex_indices)
+        cls._create_bl_mesh_nonbm(mesh_data, merged_mesh, face_count, valid_face_vertex_indices)
 
         # self.operator.info(f"Created Blender mesh in {time.perf_counter() - p} s")
 
-        # Create and populate UV and vertex color data layers.
+        valid_face_loop_indices = all_faces[unique_mask].ravel()
+
+        # Create and populate UV and vertex color data layers (on loops).
         for i, (uv_layer_name, merged_loop_uv_array) in enumerate(merged_mesh.loop_uvs.items()):
             # self.operator.info(f"Creating UV layer {i}: {uv_layer_name}")
             uv_layer = mesh_data.uv_layers.new(name=uv_layer_name, do_init=False)
-            loop_uv_data = merged_loop_uv_array[face_loop_indices].ravel()
+            loop_uv_data = merged_loop_uv_array[valid_face_loop_indices].ravel()
             uv_layer.data.foreach_set("uv", loop_uv_data)
         for i, merged_color_array in enumerate(merged_mesh.loop_vertex_colors):
             # self.operator.info(f"Creating Vertex Colors layer {i}: VertexColors{i}")
             # TODO: Apparently `vertex_colors` is deprecated in favor of "color attributes". Investigate.
             color_layer = mesh_data.vertex_colors.new(name=f"VertexColors{i}")
-            loop_color_data = merged_color_array[face_loop_indices].ravel()
+            loop_color_data = merged_color_array[valid_face_loop_indices].ravel()
             color_layer.data.foreach_set("color", loop_color_data)
 
-        # NOTE: `Mesh.create_normals_split()` removed in Blender 4.1. I no longer support older versions than that.
-        # New versions of Blender automatically create the `mesh.corner_normals` collection automatically.
+        # NOTE: `Mesh.create_normals_split()` removed in Blender 4.1, and I no longer support older versions than that.
+        # New versions of Blender automatically create the `mesh.corner_normals` collection.
         # We also don't need to enable `use_auto_smooth` or call `calc_normals_split()` anymore.
 
-        mesh_data.update()  # CRITICAL, or `normals_split_custom_set` will crash Blender!
-        loop_normal_data = merged_mesh.loop_normals[face_loop_indices]  # NOT raveled
+        loop_normal_data = merged_mesh.loop_normals[valid_face_loop_indices]  # NOT raveled
         mesh_data.normals_split_custom_set(loop_normal_data)  # one normal per loop
         mesh_data.update()
 
@@ -1408,25 +1459,25 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         """Load texture images from PNG cache directory or TPFs found with `image_import_manager`.
 
         Will NEVER load an image that is already in Blender's data, regardless of image type (identified by stem only).
+        Note that these stems ARE case-sensitive, as I don't want them to change when a FLVER is imported and exported
+        without any other modifications. (The cached images are also case-sensitive.)
         """
         settings = operator.settings(context)
 
-        # TODO: I was checking every Image in Blender's pixels to find 1x1 magenta dummy textures to replace, but that's
+        # TODO: I was checking every Image in Blender's data to find 1x1 magenta dummy textures to replace, but that's
         #  super slow as more and more textures are loaded.
-        bl_image_stems = {image_name.split(".")[0].lower() for image_name in bpy.data.images.keys()}
+        bl_image_stems = {image_name.split(".")[0] for image_name in bpy.data.images.keys()}
 
         new_texture_collection = DDSTextureCollection()
 
         tpf_textures_to_load = {}  # type: dict[str, TPFTexture]
         for texture_stem in texture_stems:
-            texture_stem = texture_stem.lower()
             if texture_stem in bl_image_stems:
                 continue  # already loaded
             if texture_stem in tpf_textures_to_load:
                 continue  # already queued to load below
 
             if settings.read_cached_images and settings.str_image_cache_directory:
-                # Not case-sensitive.
                 cached_path = settings.get_cached_image_path(texture_stem)
                 if cached_path.is_file():
                     # Found cached image.
@@ -1437,6 +1488,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
 
             if image_import_manager:
                 try:
+                    # Searching for original texture is NOT case-sensitive.
                     texture = image_import_manager.get_flver_texture(texture_stem, name)
                 except KeyError as ex:
                     operator.warning(str(ex))
@@ -1564,12 +1616,14 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
             default_bone = FLVERBone(name=self.export_name)  # default transform and other fields
             flver.bones.append(default_bone)
             bl_bone_names = [default_bone.name]
+            using_default_bone = True
         else:
             flver.bones, bl_bone_names, bone_arma_transforms = self.create_flver_bones(
                 operator, context, self.armature, read_bone_type,
             )
             flver.set_bone_children_siblings()  # only parents set in `create_bones`
             flver.set_bone_armature_space_transforms(bone_arma_transforms)
+            using_default_bone = False
 
         # Make Mesh the active object again.
         context.view_layer.objects.active = self.mesh
@@ -1617,6 +1671,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
             create_lod_face_sets=export_settings.create_lod_face_sets,
             matdefs=matdefs,
             texture_collection=texture_collection,
+            using_default_bone=using_default_bone,
         )
 
         # TODO: Bone bounding box space seems to be always local to the bone for characters and always in armature space
@@ -1646,6 +1701,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         create_lod_face_sets: bool,
         matdefs: list[MatDef],
         texture_collection: DDSTextureCollection,
+        using_default_bone: bool,
     ):
         """
         Construct a `MergedMesh` from Blender data, in a straightforward way (unfortunately using `for` loops over
@@ -1707,11 +1763,21 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         # Slow part number 1: iterating over every Blender vertex to retrieve its position and bone weights/indices.
         # We at least know the size of the array in advance.
         vertex_count = len(tri_mesh_data.vertices)
-        vertex_data_dtype = [
-            ("position", "f", 3),  # TODO: support 4D position (see, e.g., Rykard slime in ER: c4711)
-            ("bone_weights", "f", 4),
-            ("bone_indices", "i", 4),
-        ]
+        if not use_chr_layout and settings.game_config.map_pieces_use_normal_w_bones:
+            # Bone weights/indices not in array. `normal_w` is used for single Map Piece bone.
+            vertex_data_dtype = [
+                ("position", "f", 3),
+            ]
+            use_normal_w_bone_index = True
+        else:
+            # Rigged FLVERs and older games' Map Pieces.
+            vertex_data_dtype = [
+                ("position", "f", 3),  # TODO: support 4D position (see, e.g., Rykard slime in ER: c4711)
+                ("bone_weights", "f", 4),
+                ("bone_indices", "i", 4),
+            ]
+            use_normal_w_bone_index = False
+
         vertex_data = np.empty(vertex_count, dtype=vertex_data_dtype)
         vertex_positions = np.empty((vertex_count, 3), dtype=np.float32)
         self.mesh.data.vertices.foreach_get("co", vertex_positions.ravel())
@@ -1753,7 +1819,9 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
             elif len(bone_indices) == 0:
                 if len(bl_bone_names) == 1 and not use_chr_layout:
                     # Omitted bone indices can be assumed to be the only bone in the skeleton.
-                    if not no_bone_warning_done:
+                    # We issue a warning (once) unless this FLVER export is using a default bone (no Armature), in which
+                    # case we obviously don't expect any vertices to be weighted to anything.
+                    if not using_default_bone and not no_bone_warning_done:
                         operator.warning(
                             f"WARNING: At least one vertex in mesh '{self.mesh.name}' is not weighted to any bones. "
                             f"Weighting in 'Map Piece' mode to only bone in skeleton: '{bl_bone_names[0]}'"
@@ -1764,7 +1832,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
                     # Leave weights as zero.
                 else:
                     # Can't guess which bone to weight to. Raise error.
-                    raise FLVERExportError("Vertex is not weighted to any bones (cannot guess from multiple).")
+                    raise FLVERExportError("Vertex is not weighted to any bones (cannot guess from multiple bones).")
 
             if use_chr_layout:
                 # Pad out bone weights and (unused) indices for rigged meshes.
@@ -1775,7 +1843,9 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
                     bone_indices.append(-1)
             else:  # Map Pieces
                 if len(bone_indices) == 1:
-                    bone_indices *= 4  # duplicate single-element list to four-element list
+                    # Duplicate single-element list to four-element list.
+                    # (This is done even for games that will write only a single Map Piece bone to `normal_w`.)
+                    bone_indices *= 4
                 else:
                     raise FLVERExportError(f"Non-CHR FLVER vertices must be weighted to exactly one bone (vertex {i}).")
 
@@ -1789,8 +1859,10 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
                 flver.bones[used_bone_index].usage_flags |= 8
 
         vertex_data["position"] = vertex_positions
-        vertex_data["bone_weights"] = vertex_bone_weights
-        vertex_data["bone_indices"] = vertex_bone_indices
+        if "bone_weights" in vertex_data.dtype.names:
+            vertex_data["bone_weights"] = vertex_bone_weights
+        if "bone_indices" in vertex_data.dtype.names:
+            vertex_data["bone_indices"] = vertex_bone_indices
 
         operator.info(f"Constructed combined vertex array in {time.perf_counter() - p} s.")
 
@@ -1850,9 +1922,18 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
 
         loop_normals = np.empty((loop_count, 3), dtype=np.float32)
         tri_mesh_data.loops.foreach_get("normal", loop_normals.ravel())
-        # TODO: Not exporting any real `normal_w` data yet. If used as a fake bone weight, it should be stored in a
-        #  custom data layer or something.
-        loop_normals_w = np.full((loop_count, 1), 127, dtype=np.uint8)
+        if use_normal_w_bone_index:
+            # New Map Pieces: single vertex bone index is stored in `normal_w` (as `uint8`).
+            # TODO: Given that the default `normal_w` value in older games is 127, this may be signed, and so the max
+            #  Map Piece bone count may actually be 127/128. Sticking with 256 for now.
+            if (max_bone_index := vertex_bone_indices.max()) > 255:
+                raise FLVERExportError(
+                    f"Map Piece mode only supports up to 256 bones (8-bit index), not: {max_bone_index}"
+                )
+            loop_normals_w = vertex_bone_indices[:, 0][loop_vertex_indices].astype(np.uint8).reshape(-1, 1)
+        else:
+            # Rigged models or old Map Pieces: `normal_w` is unused and defaults to 127.
+            loop_normals_w = np.full((loop_count, 1), 127, dtype=np.uint8)
 
         if colors_layer_0:
             colors_layer_0.data.foreach_get("color", loop_color_arrays[0].ravel())
@@ -1865,17 +1946,24 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
             uv_layer.data.foreach_get("uv", loop_uv_array_dict[uv_layer_name].ravel())
 
         # 5. Calculate individual tangent arrays for each 'UVTexture*' UV layer.
+        # TODO: Also need one for Bloodborne's 'UVBlood' layer.
+        #  Maybe make the NON-tangent UVs start with name 'UVData_'...
 
         loop_tangent_arrays = []
-        uv_texture_layer_names = sorted([name for name in bl_uv_layer_names if name.startswith("UVTexture")])
+        uv_texture_layer_names = sorted([
+            name for name in bl_uv_layer_names
+            if name.startswith("UVTexture")
+            or use_chr_layout and name.startswith("UVBlood")
+        ])
         for uv_name in uv_texture_layer_names:
             loop_tangents = self.get_tangents_for_uv_layer(
                 operator, uv_name, loop_count, loop_normals, loop_uv_array_dict, tri_mesh_data,
             )
             loop_tangent_arrays.append(loop_tangents)
 
-        # Assign second tangents array to bitangents in earlier games.
-        # TODO: Not sure if DS3 uses bitangents, but I doubt it. Bloodborne might, though.
+        # Assign second tangents array to bitangents in earlier games (DeS/DS1).
+        # TODO: Not sure if DS2 uses bitangent field.
+        # Bloodborne onwards properly use multiple tangent fields.
         if settings.is_game("DEMONS_SOULS", "DARK_SOULS_PTDE", "DARK_SOULS_DSR"):
             # Early games only support up to two tangent arrays, and put the second in "bitangent" vertex array data.
             if len(loop_tangent_arrays) > 2:
@@ -1978,9 +2066,6 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         bm.from_mesh(self.mesh.data)
         bmesh.ops.triangulate(bm, faces=bm.faces, quad_method="BEAUTY", ngon_method="BEAUTY")
         tri_mesh_data = bpy.data.meshes.new("__TEMP_FLVER__")  # will be deleted during `finally` block of caller
-        if bpy.app.version < (4, 1):
-            # Removed in Blender 4.1. (Now implicit from the presence of custom normals.)
-            tri_mesh_data.use_auto_smooth = True
         # Probably not necessary, but we copy material slots over, just case it causes `face.material_index` problems.
         for bl_mat in self.mesh.data.materials:
             tri_mesh_data.materials.append(bl_mat)

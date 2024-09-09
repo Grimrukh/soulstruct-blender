@@ -30,6 +30,10 @@ class GameConfig:
 
     uses_matbin: bool
     flver_default_version: Version
+    # True from Bloodborne (DS2?) onwards, where Map Piece FLVER vertices store their singular bone indices in the
+    # fourth 8-bit component of the 'normal_w' vertex array, rather than having a full useless four-bone `bone_indices`
+    # field like real rigged FLVERs.
+    map_pieces_use_normal_w_bones: bool
 
     msb_class: type[BaseMSB] | None = None
 
@@ -61,6 +65,7 @@ GAME_CONFIG = {
     DARK_SOULS_PTDE: GameConfig(
         uses_matbin=False,
         flver_default_version=Version.DarkSouls_A,
+        map_pieces_use_normal_w_bones=False,
         msb_class=ds1ptde_MSB,
         new_to_old_map={
             "m12_00_00_01": "m12_00_00_00",
@@ -75,6 +80,7 @@ GAME_CONFIG = {
     DARK_SOULS_DSR: GameConfig(
         uses_matbin=False,
         flver_default_version=Version.DarkSouls_A,
+        map_pieces_use_normal_w_bones=False,
         msb_class=ds1r_MSB,
         new_to_old_map={
             "m12_00_00_01": "m12_00_00_00",
@@ -89,21 +95,25 @@ GAME_CONFIG = {
     BLOODBORNE: GameConfig(
         uses_matbin=False,
         flver_default_version=Version.Bloodborne_DS3_A,
+        map_pieces_use_normal_w_bones=True,
         msb_class=bb_MSB,
         map_constants=bb_constants,
     ),
     DARK_SOULS_3: GameConfig(
         uses_matbin=False,
         flver_default_version=Version.Bloodborne_DS3_A,
+        map_pieces_use_normal_w_bones=True,
         map_constants=ds3_constants,
     ),
     SEKIRO: GameConfig(
         uses_matbin=False,
         flver_default_version=Version.Sekiro_EldenRing,
+        map_pieces_use_normal_w_bones=True,
     ),
     ELDEN_RING: GameConfig(
         uses_matbin=True,
         flver_default_version=Version.Sekiro_EldenRing,
+        map_pieces_use_normal_w_bones=True,
         msb_class=er_MSB,
         map_constants=er_constants,
     ),

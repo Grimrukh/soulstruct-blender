@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 __all__ = [
-    "ImportMSB",
-    "ExportMSB",
+    "ImportMapMSB",
+    "ExportMapMSB",
 
     "RegionDrawSettings",
     "draw_msb_regions",

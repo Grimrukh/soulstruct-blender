@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 __all__ = [
-    "ExportMSB",
+    "ExportMapMSB",
 ]
 
 import re
@@ -32,9 +32,12 @@ if tp.TYPE_CHECKING:
 _MSB_COLLECTION_RE = re.compile(r"^(m\d\d_\d\d_\d\d_\d\d) MSB$")
 
 
-class ExportMSB(LoggingOperator):
+# TODO: `ExportAnyMSB` operator.
 
-    bl_idname = "export_scene.msb"
+
+class ExportMapMSB(LoggingOperator):
+
+    bl_idname = "export_scene.map_msb"
     bl_label = "Export MSB"
     bl_options = {"REGISTER", "UNDO"}
     bl_description = ("Export all Parts, Regions, and Events in active collection to a new MSB for the appropriate "
@@ -186,6 +189,15 @@ class ExportMSB(LoggingOperator):
             f"Exported MSB {map_stem} successfully with {region_count} Regions, {event_count} Events, "
             f"{part_count} Parts, and {len(msb.get_models())} Models."
         )
+
+        soulstruct_project_root_path = settings.soulstruct_project_root_path
+        if soulstruct_project_root_path is not None and export_settings.export_soulstruct_jsons:
+            # Write MSB JSON to project 'maps' subfolder.
+            msb_json_path = soulstruct_project_root_path / "maps" / f"{map_stem}.json"
+            try:
+                msb.write_json(msb_json_path)
+            except Exception as ex:
+                self.error(f"Could not write MSB JSON to Soulstruct Project folder (MSBs still written). Error: {ex}")
 
         if export_settings.export_nvmdump and isinstance(msb, MSB_DSR):
             # Export NVMDUMP text file (DSR only).

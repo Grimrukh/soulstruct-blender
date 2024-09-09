@@ -29,12 +29,15 @@ class AnimationImportExportPanel(bpy.types.Panel):
         header, panel = self.layout.panel("Import", default_closed=False)
         header.label(text="Import")
         if panel:
-            panel.label(text="Import from Game/Project")
-            panel.operator(ImportCharacterHKXAnimation.bl_idname)
-            if settings.game_variable_name == "ELDEN_RING":
-                panel.operator(ImportAssetHKXAnimation.bl_idname)
+            if settings.import_roots != (None, None):
+                panel.label(text="Import from Game/Project")
+                panel.operator(ImportCharacterHKXAnimation.bl_idname)
+                if settings.game_variable_name == "ELDEN_RING":
+                    panel.operator(ImportAssetHKXAnimation.bl_idname)
+                else:
+                    panel.operator(ImportObjectHKXAnimation.bl_idname)
             else:
-                panel.operator(ImportObjectHKXAnimation.bl_idname)
+                panel.label(text="No game root path set.")
             panel.label(text="Generic Import:")
             panel.operator(ImportHKXAnimation.bl_idname, text="Import Any Animation")
 

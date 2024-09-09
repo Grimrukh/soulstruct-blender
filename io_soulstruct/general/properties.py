@@ -19,7 +19,7 @@ from soulstruct.games import *
 from soulstruct.utilities.files import read_json, write_json, create_bak
 from io_soulstruct.exceptions import *
 from io_soulstruct.utilities import *
-from .game_config import GAME_CONFIG
+from .game_config import GAME_CONFIG, GameConfig
 from .game_structure import GameStructure
 
 if tp.TYPE_CHECKING:
@@ -128,6 +128,14 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         subtype="DIR_PATH",
     )
     # endregion
+
+    soulstruct_project_root_str: bpy.props.StringProperty(
+        name="Soulstruct Project Root",
+        description="Optional root directory of a 'Soulstruct GUI' project with MSB JSON files, EVS event scripts, "
+                    "etc., which MSB JSONs can be automatically exported to in sync with MSB files",
+        default="",
+        subtype="DIR_PATH",
+    )
 
     prefer_import_from_project: bpy.props.BoolProperty(
         name="Prefer Import from Project",
@@ -299,6 +307,10 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         return GameStructure(self, self.project_root_path) if self.project_root_path else None
 
     @property
+    def soulstruct_project_root_path(self) -> Path | None:
+        return Path(self.soulstruct_project_root_str) if self.soulstruct_project_root_str else None
+
+    @property
     def mtdbnd_path(self) -> Path | None:
         return Path(self.str_mtdbnd_path) if self.str_mtdbnd_path else None
 
@@ -335,6 +347,10 @@ class SoulstructSettings(bpy.types.PropertyGroup):
     def is_game_ds1(self) -> bool:
         """Checks if current game is either version of Dark Souls 1."""
         return self.is_game(DARK_SOULS_PTDE, DARK_SOULS_DSR)
+
+    @property
+    def game_config(self) -> GameConfig:
+        return GAME_CONFIG[self.game]
 
     def get_game_split_mesh_kwargs(self) -> dict[str, int | bool]:
         """TODO: Need to check/handle all games correctly here."""
@@ -400,7 +416,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):
 
     @staticmethod
     def get_first_existing_map_file_path(
-        *parts: str | Path, roots: tp.Sequence[GameStructure], dcx_type: DCXType = None, map_stem=""
+        *parts: str | Path, roots: tp.Sequence[GameStructure], dcx_type: DCXType = None, map_stem: str = None
     ) -> Path | None:
         """Check ordered `roots` for 'map' file path, returning first that exists."""
         for root in roots:
@@ -413,7 +429,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):
 
     @staticmethod
     def get_first_existing_map_dir_path(
-        *parts: str | Path, roots: tp.Sequence[GameStructure], map_stem=""
+        *parts: str | Path, roots: tp.Sequence[GameStructure], map_stem: str = None
     ) -> Path | None:
         """Check ordered `roots` for 'map' dir path, returning first that exists."""
         for root in roots:
@@ -425,7 +441,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         return None
 
     @staticmethod
-    def get_first_existing_msb_path(roots: tp.Sequence[GameStructure], map_stem="") -> Path | None:
+    def get_first_existing_msb_path(roots: tp.Sequence[GameStructure], map_stem: str = None) -> Path | None:
         """Check ordered `roots` for MSB file path, returning first that exists."""
         for root in roots:
             if not root:
@@ -435,17 +451,19 @@ class SoulstructSettings(bpy.types.PropertyGroup):
                 return path
         return None
 
-    def get_oldest_map_stem_version(self, map_stem=""):
+    def get_oldest_map_stem_version(self, map_stem: str = None):
         """Check if `smart_map_version_handling` is enabled and return the oldest version of the map stem if so."""
-        map_stem = map_stem or self.map_stem
-        if not self.smart_map_version_handling or not self.game:
+        if map_stem is None:
+            map_stem = self.map_stem
+        if not map_stem or not self.smart_map_version_handling or not self.game:
             return map_stem
         return GAME_CONFIG[self.game].new_to_old_map.get(map_stem, map_stem)
 
-    def get_latest_map_stem_version(self, map_stem=""):
+    def get_latest_map_stem_version(self, map_stem: str = None):
         """Check if `smart_map_version_handling` is enabled and return the latest version of the map stem if so."""
-        map_stem = map_stem or self.map_stem
-        if not self.smart_map_version_handling or not self.game:
+        if map_stem is None:
+            map_stem = self.map_stem
+        if not map_stem or not self.smart_map_version_handling or not self.game:
             return map_stem
         return GAME_CONFIG[self.game].old_to_new_map.get(map_stem, map_stem)
 
@@ -483,7 +501,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         except NotADirectoryError:
             return False
 
-    def get_import_map_file_path(self, *parts: str | Path, dcx_type: DCXType = None, map_stem="") -> Path:
+    def get_import_map_file_path(self, *parts: str | Path, dcx_type: DCXType = None, map_stem: str = None) -> Path:
         """Get the 'map/{map_stem}' directory path, and optionally further, in the preferred directory.
 
         If `smart_map_version_handling` is enabled, this will redirect to the earliest or latest version of the map if
@@ -495,20 +513,23 @@ class SoulstructSettings(bpy.types.PropertyGroup):
             *parts, roots=self.import_roots, dcx_type=dcx_type, map_stem=map_stem
         )
         if not path:
+            # `parts` must be given.
             raise FileNotFoundError(f"Map file not found in project or game directory with parts: {parts}")
         return path
 
-    def get_import_map_dir_path(self, *parts: str | Path, map_stem="") -> Path:
+    def get_import_map_dir_path(self, *parts: str | Path, map_stem: str = None) -> Path:
         """Get the 'map/{map_stem}' directory path, and optionally further, in the preferred directory.
 
         Directory must exist, or a `NotADirectoryError` will be raised.
         """
         path = self.get_first_existing_map_dir_path(*parts, roots=self.import_roots, map_stem=map_stem)
         if not path:
-            raise NotADirectoryError(f"Map subdirectory not found in project or game directory with parts: {parts}")
+            if parts:
+                raise NotADirectoryError(f"Map subdirectory not found in project or game directory with parts: {parts}")
+            raise NotADirectoryError(f"Map directory not found in project or game directory.")
         return path
 
-    def get_import_msb_path(self, map_stem="") -> Path:
+    def get_import_msb_path(self, map_stem: str = None) -> Path:
         """Get the `map_stem` MSB path in the preferred `map/MapStudio` directory.
 
         MSB file must exist, or a `FileNotFoundError` will be raised.
@@ -943,16 +964,20 @@ class SoulstructSettings(bpy.types.PropertyGroup):
     # region Internal Methods
 
     def process_file_map_stem_version(self, map_stem: str, *parts: str | Path) -> str:
+        """If `smart_map_version_handling` is enabled, this will redirect to the version of the given map stem
+        (DD part) that is appropriate for the file type given in `parts` (if given)."""
         if not self.smart_map_version_handling or not parts:
+            # Nothing to process.
             return map_stem
         return GAME_CONFIG[self.game].process_file_map_stem_version(map_stem, *parts)
 
-    def get_relative_msb_path(self, map_stem="") -> Path | None:
+    def get_relative_msb_path(self, map_stem: str = None) -> Path | None:
         """Get relative MSB path of given `map_stem` (or selected by default) for selected game.
 
         If `smart_map_version_handling` is enabled, this will redirect to the latest version of the MSB.
         """
-        map_stem = map_stem or self.map_stem
+        if map_stem is None:
+            map_stem = self.map_stem
         if not map_stem:
             return None
         map_stem = self.process_file_map_stem_version(map_stem, f"{map_stem}.msb")

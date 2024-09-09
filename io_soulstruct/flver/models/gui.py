@@ -126,12 +126,19 @@ class FLVERExportPanel(bpy.types.Panel):
 
         map_stem_box(layout, settings)
 
-        layout.label(text="Export to Selected Game/Project/Map:")
-        layout.operator(ExportMapPieceFLVERs.bl_idname)
-        layout.operator(ExportCharacterFLVER.bl_idname)
-        layout.operator(ExportObjectFLVER.bl_idname)
-        layout.operator(ExportEquipmentFLVER.bl_idname)
+        layout.label(text="To Game/Project Map:")
+        if settings.can_auto_export:
+            if settings.map_stem:
+                layout.operator(ExportMapPieceFLVERs.bl_idname)
+            else:
+                layout.label(text="No game map selected.")
+                layout.label(text="Cannot export Map Pieces.")
+            layout.operator(ExportCharacterFLVER.bl_idname)
+            layout.operator(ExportObjectFLVER.bl_idname)
+            layout.operator(ExportEquipmentFLVER.bl_idname)
+        else:
+            layout.label(text="No export directory set.")
 
         layout.label(text="Generic Export:")
-        layout.operator(ExportStandaloneFLVER.bl_idname, text="Export Loose FLVER")
+        layout.operator(ExportLooseFLVER.bl_idname, text="Export Loose FLVER")
         layout.operator(ExportFLVERIntoBinder.bl_idname)

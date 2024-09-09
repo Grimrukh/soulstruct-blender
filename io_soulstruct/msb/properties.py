@@ -1673,6 +1673,12 @@ class MSBExportSettings(bpy.types.PropertyGroup):
         default=True,
     )
 
+    export_soulstruct_jsons: bpy.props.BoolProperty(
+        name="Export Soulstruct JSONs",
+        description="Export MSB JSON files to 'maps' directory in Soulstruct GUI Project Directory, if given",
+        default=False,
+    )
+
 
 class MSBToolSettings(bpy.types.PropertyGroup):
 

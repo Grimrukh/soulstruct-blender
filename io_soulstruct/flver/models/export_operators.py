@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 __all__ = [
-    "ExportStandaloneFLVER",
+    "ExportLooseFLVER",
     "ExportFLVERIntoBinder",
     "ExportMapPieceFLVERs",
     "ExportCharacterFLVER",
@@ -35,7 +35,7 @@ if tp.TYPE_CHECKING:
 
 # region Generic Exporters
 
-class ExportStandaloneFLVER(LoggingOperator, ExportHelper):
+class ExportLooseFLVER(LoggingOperator, ExportHelper):
     """Export one FLVER model from a Blender Armature parent to a file using a browser window."""
     bl_idname = "export_scene.flver"
     bl_label = "Export FLVER"

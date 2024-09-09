@@ -62,10 +62,12 @@ class NavmeshDS1ImportPanel(bpy.types.Panel):
 
         layout = self.layout
         map_stem_box(layout, settings)
-        layout.label(text="Import from Game/Project:")
-        layout.operator(ImportSelectedMapNVM.bl_idname)
-        layout.label(text="Generic Import:")
-        layout.operator(ImportNVM.bl_idname)
+        if settings.map_stem:
+            layout.label(text=f"From {settings.map_stem}:")
+            layout.operator(ImportSelectedMapNVM.bl_idname)
+        else:
+            layout.label(text="No game map selected.")
+        layout.operator(ImportNVM.bl_idname, text="Import Any NVM")
 
 
 class NavmeshDS1ExportPanel(bpy.types.Panel):

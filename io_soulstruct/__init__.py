@@ -82,7 +82,7 @@ def menu_func_import(self, context):
 # noinspection PyUnusedLocal
 def menu_func_export(self, context):
     layout = self.layout
-    layout.operator(ExportStandaloneFLVER.bl_idname, text="FLVER (.flver)")
+    layout.operator(ExportLooseFLVER.bl_idname, text="FLVER (.flver)")
     layout.operator(ExportFLVERIntoBinder.bl_idname, text="FLVER to Binder (.*bnd)")
     layout.operator(ExportLooseNVM.bl_idname, text="NVM (.nvm)")
     layout.operator(ExportNVMIntoBinder.bl_idname, text="NVM to Binder (.nvmbnd)")
@@ -128,7 +128,7 @@ CLASSES = (
     PrintGameTransform,
 
     FLVERExportSettings,
-    ExportStandaloneFLVER,
+    ExportLooseFLVER,
     ExportFLVERIntoBinder,
     ExportMapPieceFLVERs,
     ExportCharacterFLVER,
@@ -150,15 +150,18 @@ CLASSES = (
     InvertVertexAlpha,
     BakeBonePoseToVertices,
     ReboneVertices,
-    MaterialToolSettings,
-    SetMaterialTexture0,
-    SetMaterialTexture1,
     ActivateUVTexture0,
     ActivateUVTexture1,
     ActiveUVLightmap,
     FastUVUnwrap,
     FindMissingTexturesInImageCache,
     SelectMeshChildren,
+
+    MaterialToolSettings,
+    SetMaterialTexture0,
+    SetMaterialTexture1,
+    AddMaterialGXItem,
+    RemoveMaterialGXItem,
 
     DDSTextureProps,
     ImportTextures,
@@ -175,6 +178,7 @@ CLASSES = (
     # FLVERLightmapsPanel,  # TODO: not quite ready
     FLVERUVMapsPanel,
 
+    OBJECT_UL_flver_gx_item,
     FLVERMaterialPropsPanel,
     # endregion
 
@@ -292,7 +296,7 @@ CLASSES = (
     NavGraphComputeSettings,
 
     MCGPropsPanel,
-    OBJECT_UL_int_collection,
+    OBJECT_UL_nav_triangle,
     MCGNodePropsPanel,
     MCGEdgePropsPanel,
     MCGImportExportPanel,
@@ -303,8 +307,8 @@ CLASSES = (
 
     # region MSB
     GlobalSettingsPanel_MSBView,
-    ImportMSB,
-    ExportMSB,
+    ImportMapMSB,
+    ExportMapMSB,
 
     RegionDrawSettings,
 

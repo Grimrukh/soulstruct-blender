@@ -6,7 +6,7 @@ _all__ = [
     "ImportAssetFLVER",
     "ImportEquipmentFLVER",
 
-    "ExportStandaloneFLVER",
+    "ExportLooseFLVER",
     "ExportFLVERIntoBinder",
     "ExportMapPieceFLVERs",
     "ExportCharacterFLVER",

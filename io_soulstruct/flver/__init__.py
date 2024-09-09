@@ -8,7 +8,7 @@ __all__ = [
     "ImportAssetFLVER",
     "ImportEquipmentFLVER",
 
-    "ExportStandaloneFLVER",
+    "ExportLooseFLVER",
     "ExportFLVERIntoBinder",
     "ExportMapPieceFLVERs",
     "ExportCharacterFLVER",
@@ -41,6 +41,9 @@ __all__ = [
     "MaterialToolSettings",
     "SetMaterialTexture0",
     "SetMaterialTexture1",
+    "AddMaterialGXItem",
+    "RemoveMaterialGXItem",
+
     "ActivateUVTexture0",
     "ActivateUVTexture1",
     "ActiveUVLightmap",
@@ -67,6 +70,7 @@ __all__ = [
     "BlenderFLVERDummy",
     "BlenderFLVERMaterial",
 
+    "OBJECT_UL_flver_gx_item",
     "FLVERMaterialPropsPanel",
 ]
 

@@ -79,15 +79,19 @@ class BlenderFLVERMaterial:
 
     @property
     def gx_items(self) -> list[GXItem]:
+        """Ignores items with empty category. Final dummy item appended automatically."""
         return [
             gx_item_props.to_gx_item()
             for gx_item_props in self.type_properties.gx_items
-        ]
+            if len(gx_item_props.category) == 4
+        ] + [GXItem.new_dummy()]  # TODO: are these dummy values suitable for all games/FLVERs?
 
     @gx_items.setter
     def gx_items(self, value: list[GXItem]):
         self.type_properties.gx_items.clear()
         for gx_item in value:
+            if gx_item.is_dummy:
+                continue  # final dummy items not saved in Blender
             gx_item_prop = self.type_properties.gx_items.add()  # type: FLVERGXItemProps
             gx_item_prop.from_gx_item(gx_item)
 
@@ -112,8 +116,8 @@ class BlenderFLVERMaterial:
     ) -> BlenderFLVERMaterial:
         """Create a new Blender material from a FLVER material.
 
-        Will use material texture stems to search for PNG or DDS images in the Blender image data. If no image is found,
-        the texture will be left unassigned in the material.
+        Will use material texture stems to search for images of all supported formats in the Blender image data. If no
+        image is found, the texture will be left unassigned in the material.
 
         Attempts to build a Blender node tree for the material. The only critical information stored in the node tree is
         the sampler names (node labels) and image names (image node `Image` names) of the `ShaderNodeTexImage` nodes
@@ -157,7 +161,7 @@ class BlenderFLVERMaterial:
         #  games, but probably not for, say, Elden Ring map pieces. Some kind of auto-decimator may be in order.
         material.face_set_count = len(submesh.face_sets)
         material.use_backface_culling = submesh.use_backface_culling
-        material.gx_items = flver_material.gx_items
+        material.gx_items = flver_material.get_non_dummy_gx_items()  # final dummy `GXItem` not held in Blender
 
         if not matdef:
             # Store FLVER sampler texture paths directly in custom properties. No shader tree will be built, but
@@ -167,8 +171,8 @@ class BlenderFLVERMaterial:
                 bl_material[f"Path[{sampler_name}]"] = texture_stem
             return material
 
-        # Retrieve any texture paths given from the MATBIN.
-        sampler_texture_stems = {sampler.name: sampler.matbin_texture_stem for sampler in matdef.samplers}
+        # Retrieve any texture paths given by a MATBIN, if present. All lower-case.
+        sampler_texture_stems = {sampler.name: sampler.matbin_texture_stem.lower() for sampler in matdef.samplers}
 
         # Apply FLVER overrides to texture paths.
         found_sampler_names = set()
@@ -190,7 +194,7 @@ class BlenderFLVERMaterial:
                         f"'{matdef.name}' with shader '{matdef.shader_stem}'. Texture node will be created, but with "
                         f"no UV layer input.",
                     )
-                sampler_texture_stems[sampler_name] = texture_stem
+                sampler_texture_stems[sampler_name] = texture_stem.lower()
                 continue
 
             if not texture_stem:
@@ -199,7 +203,7 @@ class BlenderFLVERMaterial:
                 continue
 
             # Override texture path.
-            sampler_texture_stems[sampler_name] = texture_stem
+            sampler_texture_stems[sampler_name] = texture_stem.lower()
 
         if not copied:
             # Try to build shader nodetree.

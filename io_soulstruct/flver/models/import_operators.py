@@ -193,7 +193,7 @@ class ImportMapPieceFLVER(BaseFLVERImportOperator):
         try:
             cls.settings(context).get_import_map_dir_path()
             return True
-        except FileNotFoundError:
+        except NotADirectoryError:
             return False
 
     def invoke(self, context, _event):

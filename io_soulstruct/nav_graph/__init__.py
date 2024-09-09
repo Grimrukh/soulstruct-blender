@@ -31,7 +31,7 @@ __all__ = [
     "NavGraphComputeSettings",
 
     "MCGPropsPanel",
-    "OBJECT_UL_int_collection",
+    "OBJECT_UL_nav_triangle",
     "MCGNodePropsPanel",
     "MCGEdgePropsPanel",
     "MCGImportExportPanel",

@@ -1,7 +1,13 @@
 """Material operators."""
 from __future__ import annotations
 
-__all__ = ["MaterialToolSettings", "SetMaterialTexture0", "SetMaterialTexture1"]
+__all__ = [
+    "MaterialToolSettings",
+    "SetMaterialTexture0",
+    "SetMaterialTexture1",
+    "AddMaterialGXItem",
+    "RemoveMaterialGXItem",
+]
 
 import typing as tp
 
@@ -11,6 +17,7 @@ from io_soulstruct.utilities.operators import LoggingOperator
 
 
 class MaterialToolSettings(bpy.types.PropertyGroup):
+    """Miscellaneous settings used by various Material operators."""
 
     albedo_image: bpy.props.PointerProperty(
         name="Albedo Image",
@@ -93,6 +100,43 @@ class SetMaterialTexture1(_SetMaterialTexture):
                       "selected texture. Will attempt to set specular and normal textures as well, if nodes exist")
 
     SLOT_SUFFIX = "_1"
+
+
+class AddMaterialGXItem(bpy.types.Operator):
+    bl_idname = "material.add_gx_item"
+    bl_label = "Add GX Item"
+    bl_description = "Add a new GX Item to the active material"
+
+    @classmethod
+    def poll(cls, context: bpy.types.Context):
+        return context.active_object is not None and context.active_object.active_material is not None
+
+    def execute(self, context):
+        material = context.active_object.active_material
+        material.FLVER_MATERIAL.gx_items.add()
+        return {"FINISHED"}
+
+
+class RemoveMaterialGXItem(bpy.types.Operator):
+    bl_idname = "material.remove_gx_item"
+    bl_label = "Remove GX Item"
+    bl_description = "Remove the selected GX Item from the active material"
+
+    @classmethod
+    def poll(cls, context):
+        return (
+            context.active_object is not None
+            and context.active_object.active_material is not None
+            and len(context.active_object.active_material.FLVER_MATERIAL.gx_items) > 0
+            and context.active_object.active_material.FLVER_MATERIAL.gx_item_index != -1
+        )
+
+    def execute(self, context):
+        material = context.active_object.active_material
+        index = material.FLVER_MATERIAL.gx_item_index
+        material.FLVER_MATERIAL.gx_items.remove(index)
+        material.FLVER_MATERIAL.gx_item_index = max(0, index - 1)
+        return {"FINISHED"}
 
 
 # TODO:

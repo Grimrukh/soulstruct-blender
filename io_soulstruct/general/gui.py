@@ -44,6 +44,8 @@ class _GlobalSettingsPanel_ViewMixin:
             panel.prop(settings, "prefer_import_from_project")
             panel.prop(settings, "also_export_to_game")
             panel.prop(settings, "smart_map_version_handling")
+            panel.label(text="Soulstruct GUI Project Path:")
+            panel.prop(settings, "soulstruct_project_root_str", text="")
 
         map_stem_box(layout, settings)
 

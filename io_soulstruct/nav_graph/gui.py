@@ -2,7 +2,7 @@ from __future__ import annotations
 
 __all__ = [
     "MCGPropsPanel",
-    "OBJECT_UL_int_collection",
+    "OBJECT_UL_nav_triangle",
     "MCGNodePropsPanel",
     "MCGEdgePropsPanel",
     "MCGImportExportPanel",
@@ -42,7 +42,7 @@ class MCGPropsPanel(bpy.types.Panel):
             self.layout.prop(props, prop)
 
 
-class OBJECT_UL_int_collection(bpy.types.UIList):
+class OBJECT_UL_nav_triangle(bpy.types.UIList):
     """Draws a list of items."""
     PROP_NAME: tp.ClassVar[str] = "index"
 
@@ -94,7 +94,7 @@ class MCGNodePropsPanel(bpy.types.Panel):
         layout.label(text="Navmesh A Triangles:")
         row = layout.row()
         row.template_list(
-            listtype_name=OBJECT_UL_int_collection.__name__,
+            listtype_name=OBJECT_UL_nav_triangle.__name__,
             list_id="",
             dataptr=bl_node.MCG_NODE,
             propname="navmesh_a_triangles",
@@ -108,7 +108,7 @@ class MCGNodePropsPanel(bpy.types.Panel):
         layout.label(text="Navmesh B Triangles:")
         row = layout.row()
         row.template_list(
-            listtype_name=OBJECT_UL_int_collection.__name__,
+            listtype_name=OBJECT_UL_nav_triangle.__name__,
             list_id="",
             dataptr=bl_node.MCG_NODE,
             propname="navmesh_b_triangles",
@@ -162,10 +162,12 @@ class MCGImportExportPanel(bpy.types.Panel):
         header, panel = layout.panel("Import", default_closed=False)
         header.label(text="Import")
         if panel:
-            panel.label(text="Import from Game/Project:")
-            panel.operator(ImportSelectedMapMCG.bl_idname)
-            panel.operator(ImportSelectedMapMCP.bl_idname)
-            panel.label(text="Generic Import:")
+            if settings.map_stem:
+                panel.label(text=f"From {settings.map_stem}:")
+                panel.operator(ImportSelectedMapMCG.bl_idname)
+                panel.operator(ImportSelectedMapMCP.bl_idname)
+            else:
+                panel.label(text="No game map selected.")
             panel.operator(ImportMCG.bl_idname, text="Import Any MCG")
             panel.operator(ImportMCP.bl_idname, text="Import Any MCP")
 
