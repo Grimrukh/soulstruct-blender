@@ -10,7 +10,7 @@ __all__ = [
 
 import bpy
 
-from soulstruct.base.models.flver.bone import FLVERBoneUsageFlags
+from soulstruct.base.models.base.bone import FLVERBoneUsageFlags
 
 
 class FLVERProps(bpy.types.PropertyGroup):
@@ -30,6 +30,7 @@ class FLVERProps(bpy.types.PropertyGroup):
         description="Name of version enum for FLVER",
         items=[
             ("DEFAULT", "Selected Game", "Use default version of currently selected game in Blender"),
+            ("DemonsSouls", "DemonsSouls", "Standard DeS version"),
             ("DarkSouls2_Armor9320", "DarkSouls2_Armor9320", "Rare DS2 version"),
             ("DarkSouls_PS3_o0700_o0701", "DarkSouls_PS3_o0700_o0701", "Rare DS1 version for PS3"),
             ("DarkSouls_A", "DarkSouls_A", "Standard DS1 version (PTDE and DSR)"),
@@ -48,29 +49,53 @@ class FLVERProps(bpy.types.PropertyGroup):
         description="FLVER format uses unicode strings",
         default=True,  # TODO: automated from version?
     )
-    unk_x4a: bpy.props.BoolProperty(
+
+    # Modern `FLVER` unknowns:
+    f2_unk_x4a: bpy.props.BoolProperty(
         name="Unk x4a",
         description="Unknown bool at FLVER header offset 0x4a",
         default=False,
     )
-    unk_x4c: bpy.props.IntProperty(
+    f2_unk_x4c: bpy.props.IntProperty(
         name="Unk x4c",
         description="Unknown integer at FLVER header offset x4c",
         default=0,
     )
-    unk_x5c: bpy.props.IntProperty(
+    f2_unk_x5c: bpy.props.IntProperty(
         name="Unk x5c",
         description="Unknown integer at FLVER header offset x5c",
         default=0,
     )
-    unk_x5d: bpy.props.IntProperty(
+    f2_unk_x5d: bpy.props.IntProperty(
         name="Unk x5d",
         description="Unknown integer at FLVER header offset x5d",
         default=0,
     )
-    unk_x68: bpy.props.IntProperty(
+    f2_unk_x68: bpy.props.IntProperty(
         name="Unk x68",
         description="Unknown integer at FLVER header offset x68",
+        default=0,
+    )
+
+    # Old `FLVER0` unknowns:
+    f0_unk_x4a: bpy.props.IntProperty(
+        name="Unk x4a (FLVER0)",
+        description="Unknown integer at FLVER0 header offset x4a",
+        default=1,
+    )
+    f0_unk_x4b: bpy.props.IntProperty(
+        name="Unk x4b (FLVER0)",
+        description="Unknown integer at FLVER0 header offset x4b",
+        default=0,
+    )
+    f0_unk_x4c: bpy.props.IntProperty(
+        name="Unk x4c (FLVER0)",
+        description="Unknown integer at FLVER0 header offset x4c",
+        default=65535,
+    )
+    f0_unk_x5c: bpy.props.IntProperty(
+        name="Unk x5c (FLVER0)",
+        description="Unknown integer at FLVER0 header offset x5c",
         default=0,
     )
 

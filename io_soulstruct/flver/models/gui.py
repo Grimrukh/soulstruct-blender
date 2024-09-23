@@ -30,9 +30,14 @@ class FLVERPropsPanel(bpy.types.Panel):
         return BlenderFLVER.test_obj(context.active_object)
 
     def draw(self, context):
+        uses_flver0 = context.scene.soulstruct_settings.game_config.uses_flver0
         bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
         props = bl_flver.type_properties
         for prop in props.__annotations__:
+            if uses_flver0 and prop.startswith("f2_"):
+                continue  # do not show `FLVER` property for this game
+            elif not uses_flver0 and prop.startswith("f0_"):
+                continue  # do not show `FLVER0` property for this game
             self.layout.prop(props, prop)
 
 

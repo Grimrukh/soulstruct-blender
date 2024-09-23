@@ -10,6 +10,7 @@ __all__ = [
     "MSBCharacterPartPanel",
     "MSBPlayerStartPartPanel",
     "MSBCollisionPartPanel",
+    "MSBProtobossPartPanel",
     "MSBNavmeshPartPanel",
     "MSBConnectCollisionPartPanel",
 
@@ -38,11 +39,11 @@ import bpy
 from io_soulstruct.general.gui import map_stem_box
 from io_soulstruct.types import SoulstructType
 from soulstruct.base.maps.msb.region_shapes import RegionShapeType
-from .draw_regions import *
 from .import_operators import *
 from .export_operators import *
 from .misc_operators import *
 from .properties import *
+from .properties import MSBProtobossProps
 
 
 class MSBImportExportPanel(bpy.types.Panel):
@@ -65,15 +66,26 @@ class MSBImportExportPanel(bpy.types.Panel):
         header.label(text="MSB Import Settings")
         if panel:
             msb_import_settings = context.scene.msb_import_settings
-            for prop_name in msb_import_settings.__annotations__:
-                if prop_name == "part_name_model_filter":
-                    panel.label(text="Part Name Model Import Filter:")
-                    panel.prop(msb_import_settings, prop_name, text="")
-                elif prop_name == "part_name_filter_match_mode":
-                    panel.label(text="Part Name Filter Mode:")
-                    panel.prop(msb_import_settings, prop_name, text="")
-                else:
-                    panel.prop(msb_import_settings, prop_name)
+            import_props = list(msb_import_settings.__annotations__)
+            booleans = [prop for prop in import_props if prop.startswith("import_")]
+            for prop_name in booleans:
+                panel.prop(msb_import_settings, prop_name)
+                import_props.remove(prop_name)
+
+            row = panel.row()
+            split = row.split(factor=0.5)
+            split.operator(EnableAllImportModels.bl_idname, text="All")
+            split.operator(DisableAllImportModels.bl_idname, text="None")
+
+            panel.label(text="Part Name Model Import Filter:")
+            panel.prop(msb_import_settings, "part_name_model_filter", text="")
+            import_props.remove("part_name_model_filter")
+            panel.label(text="Part Name Filter Mode:")
+            panel.prop(msb_import_settings, "part_name_filter_match_mode", text="")
+            import_props.remove("part_name_filter_match_mode")
+
+            for prop_name in import_props:
+                panel.prop(msb_import_settings, prop_name)
 
         header, panel = layout.panel("FLVER Import Settings", default_closed=True)
         header.label(text="FLVER Import Settings")
@@ -200,7 +212,7 @@ class MSBPartPanel(bpy.types.Panel):
             return
 
         props = obj.MSB_PART
-        prop_names = props.__annotations__.keys()
+        prop_names = props.get_game_props(context.scene.soulstruct_settings.game)
         handled = set()
 
         for pre_prop in ("part_subtype", "model", "entity_id"):
@@ -255,7 +267,11 @@ class _MSBPartSubtypePanelMixin:
 
         # noinspection PyTypeChecker
         props = getattr(obj, self.part_subtype.value)
-        prop_names = props.__annotations__.keys()
+        prop_names = props.get_game_props(context.scene.soulstruct_settings.game)
+        if not prop_names:
+            layout.label(text="No additional properties.")
+            return
+
         for prop in prop_names:
             layout.prop(props, prop)
 
@@ -310,24 +326,40 @@ class MSBCharacterPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
 
         # noinspection PyTypeChecker
         props = getattr(obj, self.part_subtype.value)
+        prop_names = props.get_game_props(context.scene.soulstruct_settings.game)
 
         header, panel = layout.panel("Basic Settings", default_closed=False)
         header.label(text="Basic Settings")
         if panel:
             for prop_name in obj.MSB_CHARACTER.BASIC_SETTINGS:
+                if prop_name not in prop_names:
+                    continue
                 panel.prop(props, prop_name)
+                prop_names.remove(prop_name)
 
         header, panel = layout.panel("Patrol Settings", default_closed=True)
         header.label(text="Patrol Settings")
         if panel:
             for prop_name in obj.MSB_CHARACTER.PATROL_SETTINGS:
+                if prop_name not in prop_names:
+                    continue
                 panel.prop(props, prop_name)
+                prop_names.remove(prop_name)
 
         header, panel = layout.panel("Advanced Settings", default_closed=True)
         header.label(text="Advanced Settings")
         if panel:
             for prop_name in obj.MSB_CHARACTER.ADVANCED_SETTINGS:
+                if prop_name not in prop_names:
+                    continue
                 panel.prop(props, prop_name)
+                prop_names.remove(prop_name)
+
+        # Leftover:
+        header, panel = layout.panel("Other Settings", default_closed=True)
+        header.label(text="Other Settings")
+        for prop in prop_names:
+            layout.prop(props, prop)
 
 
 class MSBPlayerStartPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
@@ -339,11 +371,7 @@ class MSBPlayerStartPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
     bl_context = "object"
 
     part_subtype = MSBPartSubtype.PlayerStart
-    prop_group_type = None
-
-    def draw(self, context):
-        layout = self.layout
-        layout.label(text="No additional properties.")
+    prop_group_type = MSBPlayerStartProps
 
 
 class MSBCollisionPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
@@ -368,7 +396,7 @@ class MSBCollisionPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
 
         # noinspection PyTypeChecker
         props = getattr(obj, self.part_subtype.value)
-        prop_names = props.__annotations__.keys()
+        prop_names = props.get_game_props(context.scene.soulstruct_settings.game)
         handled = set()
         handled |= group_bit_set_prop(layout, props, "navmesh_groups_", "Navmesh Groups")
 
@@ -376,6 +404,18 @@ class MSBCollisionPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
             if prop in handled:
                 continue
             layout.prop(props, prop)
+
+
+class MSBProtobossPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
+    """Draw a Panel in the Object properties window exposing the appropriate MSB Protoboss fields for object."""
+    bl_label = "MSB Protoboss Settings"
+    bl_idname = "OBJECT_PT_msb_protoboss"
+    bl_space_type = 'PROPERTIES'
+    bl_region_type = 'WINDOW'
+    bl_context = "object"
+
+    part_subtype = MSBPartSubtype.Protoboss
+    prop_group_type = MSBProtobossProps
 
 
 class MSBNavmeshPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
@@ -400,7 +440,7 @@ class MSBNavmeshPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
 
         # noinspection PyTypeChecker
         props = getattr(obj, self.part_subtype.value)
-        prop_names = props.__annotations__.keys()
+        prop_names = props.get_game_props(context.scene.soulstruct_settings.game)
         handled = set()
         handled |= group_bit_set_prop(layout, props, "navmesh_groups_", "Navmesh Groups")
 
@@ -497,7 +537,7 @@ class MSBEventPanel(bpy.types.Panel):
             return
 
         props = obj.MSB_EVENT
-        prop_names = props.__annotations__.keys()
+        prop_names = props.get_game_props(context.scene.soulstruct_settings.game)
         handled = set()
 
         for pre_prop in ("event_subtype", "entity_id"):
@@ -535,7 +575,7 @@ class _MSBEventSubtypePanelMixin:
 
         # noinspection PyTypeChecker
         props = getattr(obj, self.event_subtype.value)
-        prop_names = props.__annotations__.keys()
+        prop_names = props.get_game_props(context.scene.soulstruct_settings.game)
         for prop in prop_names:
             layout.prop(props, prop)
 

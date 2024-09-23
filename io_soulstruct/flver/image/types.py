@@ -52,6 +52,7 @@ class DDSTexture:
 
     @dds_format.setter
     def dds_format(self, value: BlenderDDSFormat | str):
+        """NOTE: This is NOT set on texture import; it always defaults to 'SAME'."""
         self.texture_properties.dds_format = str(value)
 
     @property
@@ -117,7 +118,7 @@ class DDSTexture:
         cls,
         operator: LoggingOperator,
         name: str,
-        image_format: str,
+        image_format: BlenderImageFormat,
         image_data: bytes,
         image_cache_directory: Path = None,
         replace_existing=False,
@@ -128,7 +129,7 @@ class DDSTexture:
         If `pack_image_data` is True and `image_cache_directory` is given, the PNG data will be embedded in the `.blend`
         file. Otherwise, it will be linked to the original PNG file.
         """
-        image_name = f"{name}.{image_format.lower()}"
+        image_name = f"{name}{image_format.get_suffix()}"
         if image_cache_directory is None:
             # Use a temporarily file.
             write_image_path = Path(f"~/AppData/Local/Temp/{image_name}").expanduser()
@@ -221,7 +222,7 @@ class DDSTexture:
         data, dds_format = self.to_dds_data(operator, find_same_format)
         if data is None:
             raise TextureExportError(f"Could not convert texture '{self.name}' to DDS with format {dds_format}.")
-        return TPFTexture(name=self.stem, data=data, format=self.TPF_TEXTURE_FORMATS.get(dds_format, 1))
+        return TPFTexture(stem=self.stem, data=data, format=self.TPF_TEXTURE_FORMATS.get(dds_format, 1))
 
     def to_single_texture_tpf(
         self,
@@ -259,6 +260,8 @@ class DDSTextureCollection(dict[str, DDSTexture]):
         """Batch convert all textures in this collection to DDS format using `texconv`.
 
         Returns DDS data and actual DDS format used.
+
+        TODO: Need to de-headerize and/or re-swizzle DDS data for consoles.
         """
 
         dds_formats = []
@@ -343,7 +346,7 @@ class DDSTextureCollection(dict[str, DDSTexture]):
 
             tpf_textures.append(
                 TPFTexture(
-                    name=dds_texture.stem,
+                    stem=dds_texture.stem,
                     data=dds_data,
                     format=DDSTexture.TPF_TEXTURE_FORMATS.get(dds_format, 1),
                 )
@@ -386,7 +389,7 @@ class DDSTextureCollection(dict[str, DDSTexture]):
 
             # Create single-texture TPF.
             texture = TPFTexture(
-                name=dds_texture.stem,
+                stem=dds_texture.stem,
                 data=dds_data,
                 format=DDSTexture.TPF_TEXTURE_FORMATS.get(dds_format, 1),
             )
@@ -468,6 +471,10 @@ class DDSTextureCollection(dict[str, DDSTexture]):
         Does NOT save the TPFBHDs, to be consistent with the single-TPF and single-TPFBHD exporters above. Caller must
         do that.
         """
+        if not self:
+            operator.warning("No textures present to export to map area TPFBHDs.")
+            return []
+
         settings = operator.settings(context)
         if not settings.is_game("DARK_SOULS_DSR"):
             raise UnsupportedGameError(f"Cannot yet export map area TPFBHDs for game {settings.game.name}.")
@@ -482,11 +489,10 @@ class DDSTextureCollection(dict[str, DDSTexture]):
 
         def find_same_format(_stem: str) -> BlenderDDSFormat:
             try:
-                existing_entry = manager[_stem]
+                existing_texture = manager[_stem]
             except KeyError:
                 raise KeyError(f"Texture '{stem}' not found in map area TPFBHDs. Cannot detect 'SAME' DDS format.")
-            existing_tpf = TPF.from_binder_entry(existing_entry)
-            existing_dds = existing_tpf.textures[0].get_dds()
+            existing_dds = existing_texture.get_dds()
             _format = existing_dds.texconv_format
             if _format == "BC5U":
                 _format = "BC5_UNORM"
@@ -524,7 +530,7 @@ class DDSTextureCollection(dict[str, DDSTexture]):
             operator.info(f"Converted texture {stem} to DDS (format {dds_format}).")
             # Create single-texture TPF.
             tpf_texture = TPFTexture(
-                name=stem,
+                stem=stem,
                 data=dds_data,
                 format=DDSTexture.TPF_TEXTURE_FORMATS.get(dds_format, 1),
                 texture_type=TextureType.Texture,

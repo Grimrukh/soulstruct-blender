@@ -11,9 +11,11 @@ import bpy
 
 from io_soulstruct.exceptions import MaterialImportError, FLVERExportError
 from io_soulstruct.utilities import LoggingOperator, get_bl_custom_prop
-from soulstruct.base.models.flver.material import Material, Texture, GXItem
-from soulstruct.base.models.flver.submesh import Submesh
-from soulstruct.base.models.flver.mesh_tools import SplitSubmeshDef
+from soulstruct.base.models.base.mesh_tools import SplitSubmeshDef
+from soulstruct.base.models.base.material import BaseMaterial
+from soulstruct.base.models.base.submesh import BaseSubmesh
+from soulstruct.base.models.flver import Material, Texture, GXItem, Submesh
+from soulstruct.base.models.flver0 import Material as Material0, Texture as Texture0
 from io_soulstruct.flver.image import DDSTexture, DDSTextureCollection
 from .shaders import NodeTreeBuilder
 
@@ -61,12 +63,17 @@ class BlenderFLVERMaterial:
         "sampler_prefix",
     ]
 
-    flags: int
     mat_def_path: str
-    unk_x18: int
-    is_bind_pose: bool
     default_bone_index: int
     face_set_count: int
+
+    # `FLVER` only:
+    flags: int
+    unk_x18: int
+    is_bind_pose: bool
+
+    # No `FLVER0`-only properties.
+
     sampler_prefix: str  # for sampler truncation; not a real imported/exported FLVER Material property
 
     @property
@@ -104,11 +111,11 @@ class BlenderFLVERMaterial:
         cls,
         operator: LoggingOperator,
         context: bpy.types.Context,
-        flver_material: Material,
+        flver_material: BaseMaterial,
         flver_sampler_texture_stems: dict[str, str],
         material_name: str,
         matdef: MatDef | None,
-        submesh: Submesh,
+        submesh: BaseSubmesh,
         vertex_color_count: int,
         blend_mode="HASHED",
         warn_missing_textures=True,
@@ -149,24 +156,28 @@ class BlenderFLVERMaterial:
 
         material = cls(bl_material)
         # Real Material properties:
-        material.flags = flver_material.flags  # int
-        material.mat_def_path = flver_material.mat_def_path  # str
-        material.unk_x18 = flver_material.unk_x18  # int
-        # NOTE: Texture path prefixes not stored, as they aren't actually needed in the TPFBHDs.
-        # Submesh properties:
-        material.is_bind_pose = submesh.is_bind_pose
-        # NOTE: This index is sometimes invalid for vanilla map FLVERs (e.g., 1 when there is only one bone).
         material.default_bone_index = submesh.default_bone_index
-        # TODO: Currently, main face set is simply copied to all additional face sets on export. This is fine for early
-        #  games, but probably not for, say, Elden Ring map pieces. Some kind of auto-decimator may be in order.
-        material.face_set_count = len(submesh.face_sets)
-        material.use_backface_culling = submesh.use_backface_culling
-        material.gx_items = flver_material.get_non_dummy_gx_items()  # final dummy `GXItem` not held in Blender
+
+        material.mat_def_path = flver_material.mat_def_path  # str
+        if isinstance(flver_material, Material):
+            material.flags = flver_material.flags  # int
+            material.unk_x18 = flver_material.unk_x18  # int
+            material.gx_items = flver_material.get_non_dummy_gx_items()  # final dummy `GXItem` not held in Blender
+            # TODO: Currently, main face set is simply copied to all additional face sets on export. This is fine for
+            #  early games, but probably not for, say, Elden Ring map pieces. Some kind of auto-decimator is in order.
+            material.face_set_count = len(submesh.face_sets)
+
+        # Submesh properties:
+        material.use_backface_culling = submesh.use_backface_culling  # wraps `face_set[0].use_backface_culling`
+        if isinstance(submesh, Submesh):
+            material.is_bind_pose = submesh.is_bind_pose
+
+        # NOTE: Texture path prefixes not stored, as they aren't actually needed in the TPFBHDs.
+        # NOTE: This index is sometimes invalid for vanilla map FLVERs (e.g., 1 when there is only one bone).
 
         if not matdef:
             # Store FLVER sampler texture paths directly in custom properties. No shader tree will be built, but
             # at least we can faithfully write FLVER texture paths back to files on export.
-            # TODO: Show in FLVER Material panel.
             for sampler_name, texture_stem in flver_sampler_texture_stems.items():
                 bl_material[f"Path[{sampler_name}]"] = texture_stem
             return material
@@ -311,15 +322,23 @@ class BlenderFLVERMaterial:
             texture_collection = DDSTextureCollection()
         name = self.tight_name
 
+        settings = context.scene.soulstruct_settings
         export_settings = context.scene.flver_export_settings
 
-        flver_material = Material(
-            name=name,
-            flags=self.flags,
-            mat_def_path=self.mat_def_path,
-            unk_x18=self.unk_x18,
-            gx_items=self.gx_items,  # list-creating property
-        )
+        uses_flver0 = settings.game_config.uses_flver0
+        if uses_flver0:
+            flver_material = Material0(
+                name=name,
+                mat_def_path=self.mat_def_path,
+            )
+        else:
+            flver_material = Material(
+                name=name,
+                flags=self.flags,
+                mat_def_path=self.mat_def_path,
+                unk_x18=self.unk_x18,
+                gx_items=self.gx_items,  # list-creating property
+            )
 
         # FLVER material texture path extension doesn't actually matter, but we try to be faithful.
         settings = operator.settings(context)
@@ -385,12 +404,14 @@ class BlenderFLVERMaterial:
                         f"enable 'Allow Missing Textures' in FLVER export options."
                     )
 
-            flver_material.textures.append(
-                Texture(
-                    path=(texture_stem + path_ext) if texture_stem else "",
-                    texture_type=sampler_name,
-                )
-            )
+            texture_path = (texture_stem + path_ext) if texture_stem else ""
+            if uses_flver0:
+                texture = Texture0(path=texture_path, texture_type=sampler_name)
+            else:
+                # TODO: Unknowns all ignored.
+                texture = Texture(path=texture_path, texture_type=sampler_name)
+
+            flver_material.textures.append(texture)
 
         for node_name, node in texture_nodes.items():
             # Some texture nodes were not used, as they do not match sampler names/aliases.
@@ -406,12 +427,14 @@ class BlenderFLVERMaterial:
                     f"to the FLVER material as this texture type."
                 )
                 texture_stem = Path(node.image.name).stem
-                flver_material.textures.append(
-                    Texture(
-                        path=(texture_stem + path_ext) if node.image else "",
-                        texture_type=node_name,
-                    )
-                )
+                texture_path = (texture_stem + path_ext) if node.image else ""
+                if uses_flver0:
+                    texture = Texture0(path=texture_path, texture_type=node_name)
+                else:
+                    # TODO: Unknowns all ignored.
+                    texture = Texture(path=texture_path, texture_type=node_name)
+
+                flver_material.textures.append(texture)
 
         return flver_material
 

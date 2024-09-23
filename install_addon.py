@@ -76,6 +76,7 @@ def copy_addon(addons_dir: str | Path, copy_soulstruct_module=True, copy_third_p
     if copy_third_party_modules:
         # NOTE: Blender already comes with `numpy`.
         copy_site_package("colorama", dest_io_soulstruct_lib_dir / "colorama")
+        copy_site_package("constrata", dest_io_soulstruct_lib_dir / "constrata")
         copy_site_package("scipy", dest_io_soulstruct_lib_dir / "scipy")
         copy_site_package("scipy.libs", dest_io_soulstruct_lib_dir / "scipy.libs")
 
@@ -110,6 +111,7 @@ def copy_site_package(dir_name: str, destination_dir: Path):
     package_dir = PY_SITE_PACKAGES / dir_name
     if not package_dir.is_dir():
         raise FileNotFoundError(f"Could not find site-package directory: {package_dir}.")
+    print(f"# Copying site-package '{dir_name}'...")
     shutil.copytree(
         package_dir,
         destination_dir,

@@ -4,21 +4,17 @@ __all__ = [
     "BlenderMSBPlayerStart",
 ]
 
-import traceback
-
 import bpy
 from io_soulstruct.exceptions import FLVERImportError, MissingPartModelError
-from io_soulstruct.flver.image.image_import_manager import ImageImportManager
-from io_soulstruct.flver.models import BlenderFLVER
-from io_soulstruct.flver.utilities import get_flvers_from_binder
 from io_soulstruct.msb.properties import MSBPartSubtype, MSBPlayerStartProps
 from io_soulstruct.msb.utilities import find_flver_model, batch_import_flver_models
 from io_soulstruct.types import *
-from io_soulstruct.utilities import LoggingOperator, get_or_create_collection
+from io_soulstruct.utilities import LoggingOperator
 from soulstruct.containers import Binder
 from soulstruct.darksouls1ptde.maps.models import MSBCharacterModel
 from soulstruct.darksouls1ptde.maps.parts import MSBPlayerStart
 from .msb_part import BlenderMSBPart
+from .msb_character import BlenderMSBCharacter
 
 
 class BlenderMSBPlayerStart(BlenderMSBPart[MSBPlayerStart, MSBPlayerStartProps]):
@@ -55,43 +51,7 @@ class BlenderMSBPlayerStart(BlenderMSBPart[MSBPlayerStart, MSBPlayerStartProps])
         map_stem: str = "",  # not used
         model_collection: bpy.types.Collection = None,
     ) -> bpy.types.MeshObject:
-        settings = operator.settings(context)
-        import_settings = context.scene.flver_import_settings
-        chrbnd_path = settings.get_import_file_path(f"chr/{model_name}.chrbnd")
-
-        operator.info(f"Importing Player Start (character) FLVER from: {chrbnd_path.name}")
-
-        image_import_manager = ImageImportManager(operator, context) if import_settings.import_textures else None
-
-        chrbnd = Binder.from_path(chrbnd_path)
-        binder_flvers = get_flvers_from_binder(chrbnd, chrbnd_path, allow_multiple=False)
-        if image_import_manager:
-            image_import_manager.find_flver_textures(chrbnd_path, chrbnd)
-        flver = binder_flvers[0]
-
-        if not model_collection:
-            # Player Start parts use Character models (even if MSB model is a 'Player' model).
-            model_collection = get_or_create_collection(
-                context.scene.collection,
-                "Character Models",
-                hide_viewport=context.scene.msb_import_settings.hide_model_collections,
-            )
-
-        try:
-            bl_flver = BlenderFLVER.new_from_soulstruct_obj(
-                operator,
-                context,
-                flver,
-                model_name,
-                image_import_manager,
-                collection=model_collection,
-                force_bone_data_type=BlenderFLVER.BoneDataType.EDIT,
-            )
-        except Exception as ex:
-            traceback.print_exc()  # for inspection in Blender console
-            raise FLVERImportError(f"Cannot import MSB Player Start FLVER from CHRBND: {chrbnd_path.name}. Error: {ex}")
-
-        return bl_flver.mesh
+        return BlenderMSBCharacter.import_model_mesh(operator, context, model_name, map_stem, model_collection)
 
     @classmethod
     def batch_import_models(

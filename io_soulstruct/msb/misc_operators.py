@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 __all__ = [
+    "EnableAllImportModels",
+    "DisableAllImportModels",
     "EnableSelectedNames",
     "DisableSelectedNames",
     "CreateMSBPart",
@@ -17,6 +19,38 @@ from io_soulstruct.msb.operator_config import BLENDER_MSB_PART_TYPES
 from io_soulstruct.types import SoulstructType
 from io_soulstruct.utilities import *
 from .properties import MSBPartSubtype
+
+
+class EnableAllImportModels(LoggingOperator):
+
+    bl_idname = "object.msb_enable_all_import_models"
+    bl_label = "Enable All Import Models"
+    bl_description = "Enable all MSB model import options"
+
+    def execute(self, context):
+        import_settings = context.scene.msb_import_settings
+        import_settings.import_map_piece_models = True
+        import_settings.import_collision_models = True
+        import_settings.import_navmesh_models = True
+        import_settings.import_object_models = True
+        import_settings.import_character_models = True
+        return {"FINISHED"}
+
+
+class DisableAllImportModels(LoggingOperator):
+
+    bl_idname = "object.msb_disable_all_import_models"
+    bl_label = "Disable All Import Models"
+    bl_description = "Disable all MSB model import options"
+
+    def execute(self, context):
+        import_settings = context.scene.msb_import_settings
+        import_settings.import_map_piece_models = False
+        import_settings.import_collision_models = False
+        import_settings.import_navmesh_models = False
+        import_settings.import_object_models = False
+        import_settings.import_character_models = False
+        return {"FINISHED"}
 
 
 class EnableSelectedNames(LoggingOperator):

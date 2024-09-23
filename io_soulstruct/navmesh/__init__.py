@@ -17,9 +17,9 @@ __all__ = [
     "ImportAllDLCOverworldNVMHKTs",
     "NVMHKTImportSettings",
 
-    "NavmeshDS1ImportPanel",
-    "NavmeshDS1ExportPanel",
-    "NavmeshDS1ToolsPanel",
+    "NVMNavmeshImportPanel",
+    "NVMNavmeshExportPanel",
+    "NVMNavmeshToolsPanel",
     "NavmeshERImportPanel",
 
     "NavmeshFaceSettings",
@@ -31,6 +31,8 @@ __all__ = [
     "NVMProps",
     "NVMEventEntityProps",
 ]
+
+from soulstruct.games import DEMONS_SOULS, DARK_SOULS_PTDE, DARK_SOULS_DSR
 
 import bmesh
 import bpy
@@ -45,9 +47,9 @@ from .nvm.utilities import set_face_material
 from .nvmhkt import *
 
 
-class NavmeshDS1ImportPanel(bpy.types.Panel):
-    bl_label = "DS1 Navmesh Import"
-    bl_idname = "NVM_PT_ds1_navmesh_import"
+class NVMNavmeshImportPanel(bpy.types.Panel):
+    bl_label = "NVM Navmesh Import"
+    bl_idname = "NVM_PT_nvm_navmesh_import"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "Navmesh"
@@ -56,8 +58,8 @@ class NavmeshDS1ImportPanel(bpy.types.Panel):
     # noinspection PyUnusedLocal
     def draw(self, context):
         settings = context.scene.soulstruct_settings
-        if not settings.is_game_ds1():
-            self.layout.label(text="DS1 (PTDE or DSR) only.")
+        if not settings.is_game(DEMONS_SOULS, DARK_SOULS_PTDE, DARK_SOULS_DSR):
+            self.layout.label(text="Unsupported game.")
             return
 
         layout = self.layout
@@ -70,9 +72,9 @@ class NavmeshDS1ImportPanel(bpy.types.Panel):
         layout.operator(ImportNVM.bl_idname, text="Import Any NVM")
 
 
-class NavmeshDS1ExportPanel(bpy.types.Panel):
-    bl_label = "DS1 Navmesh Export"
-    bl_idname = "NVM_PT_ds1_navmesh_export"
+class NVMNavmeshExportPanel(bpy.types.Panel):
+    bl_label = "NVM Navmesh Export"
+    bl_idname = "NVM_PT_nvm_navmesh_export"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "Navmesh"
@@ -81,8 +83,8 @@ class NavmeshDS1ExportPanel(bpy.types.Panel):
     # noinspection PyUnusedLocal
     def draw(self, context):
         settings = context.scene.soulstruct_settings
-        if not settings.is_game_ds1():
-            self.layout.label(text="DS1 (PTDE or DSR) only.")
+        if not settings.is_game(DEMONS_SOULS, DARK_SOULS_PTDE, DARK_SOULS_DSR):
+            self.layout.label(text="Unsupported game.")
             return
 
         try:
@@ -102,15 +104,14 @@ class NavmeshDS1ExportPanel(bpy.types.Panel):
         layout.operator(ExportNVMIntoBinder.bl_idname)
 
 
-class NavmeshDS1ToolsPanel(bpy.types.Panel):
-    bl_label = "DS1 Navmesh Tools"
-    bl_idname = "NVM_PT_ds1_navmesh_tools"
+class NVMNavmeshToolsPanel(bpy.types.Panel):
+    bl_label = "NVM Navmesh Tools"
+    bl_idname = "NVM_PT_nvm_navmesh_tools"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "Navmesh"
     bl_options = {"DEFAULT_CLOSED"}
 
-    # noinspection PyUnusedLocal
     def draw(self, context):
         """Still shown if game is not DSR."""
 

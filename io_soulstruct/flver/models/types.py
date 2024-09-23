@@ -17,8 +17,10 @@ import bpy
 import numpy as np
 from mathutils import Matrix, Vector
 
-from soulstruct.base.models.flver import FLVER, FLVERBone, Material, Dummy, Version, FLVERBoneUsageFlags
-from soulstruct.base.models.flver.mesh_tools import MergedMesh, SplitSubmeshDef
+from soulstruct.base.models.base import BaseFLVER, FLVERBone, Dummy, FLVERVersion, FLVERBoneUsageFlags
+from soulstruct.base.models.base.mesh_tools import BaseMergedMesh, SplitSubmeshDef
+from soulstruct.base.models.flver import FLVER, MergedMesh as FLVERMergedMesh
+from soulstruct.base.models.flver0 import FLVER0, MergedMesh as FLVER0MergedMesh
 from soulstruct.base.models.shaders import MatDef, MatDefError
 from soulstruct.containers.tpf import TPFTexture
 from soulstruct.utilities.maths import Vector3, Matrix3
@@ -26,6 +28,7 @@ from soulstruct.utilities.text import natural_keys
 
 from io_soulstruct.exceptions import *
 from io_soulstruct.flver.material.types import BlenderFLVERMaterial
+from io_soulstruct.general.enums import BlenderImageFormat
 from io_soulstruct.flver.image.import_operators import *
 from io_soulstruct.flver.image.image_import_manager import ImageImportManager
 from io_soulstruct.flver.image.types import DDSTexture, DDSTextureCollection
@@ -110,6 +113,7 @@ class BlenderFLVERDummy(SoulstructObject[Dummy, FLVERDummyProps]):
         if armature is None:
             raise FLVERImportError("Cannot create Blender Dummy without an Armature object.")
 
+        # noinspection PyTypeChecker
         bl_dummy = cls.new(name, data=None, collection=collection)  # type: BlenderFLVERDummy
         bl_dummy.parent = armature
         bl_dummy.obj.empty_display_type = "ARROWS"  # best display type/size I've found (single arrow not sufficient)
@@ -317,8 +321,8 @@ class BlenderFLVERDummy(SoulstructObject[Dummy, FLVERDummyProps]):
 BlenderFLVERDummy.add_auto_type_props(*BlenderFLVERDummy.AUTO_DUMMY_PROPS)
 
 
-class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
-    """Wrapper for a Blender object hierarchy that represents a `FLVER` model.
+class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
+    """Wrapper for a Blender object hierarchy that represents a `FLVER` or `FLVER0` model.
 
     Exposes convenience methods that access and/or modify different FLVER attributes.
 
@@ -358,21 +362,33 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         "big_endian",
         "version",
         "unicode",
-        "unk_x4a",
-        "unk_x4c",
-        "unk_x5c",
-        "unk_x5d",
-        "unk_x68",
+        "f2_unk_x4a",
+        "f2_unk_x4c",
+        "f2_unk_x5c",
+        "f2_unk_x5d",
+        "f2_unk_x68",
+        "f0_unk_x4a",
+        "f0_unk_x4b",
+        "f0_unk_x4c",
+        "f0_unk_x5c",
     ]
 
     big_endian: bool
     version: str  # `Version` enum name
     unicode: bool
-    unk_x4a: bool
-    unk_x4c: int
-    unk_x5c: int
-    unk_x5d: int
-    unk_x68: int
+
+    # `FLVER` unknowns:
+    f2_unk_x4a: bool
+    f2_unk_x4c: int
+    f2_unk_x5c: int
+    f2_unk_x5d: int
+    f2_unk_x68: int
+
+    # `FLVER0` unknowns:
+    f0_unk_x4a: int
+    f0_unk_x4b: int
+    f0_unk_x4c: int
+    f0_unk_x5c: int
 
     @property
     def submesh_vertices_merged(self) -> bool:
@@ -680,11 +696,11 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         cls,
         operator: LoggingOperator,
         context: bpy.types.Context,
-        flver: FLVER,
+        flver: BaseFLVER,
         name: str,
         image_import_manager: ImageImportManager | None = None,
         collection: bpy.types.Collection = None,
-        merged_mesh: MergedMesh = None,
+        merged_mesh: BaseMergedMesh = None,
         bl_materials: tp.Sequence[BlenderFLVERMaterial] = None,
         force_bone_data_type: BoneDataType = None,
     ) -> BlenderFLVER:
@@ -775,7 +791,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
             bl_materials = []
         elif merged_mesh:
             # Merged mesh already given. Implies that Blender materials are handled manually as well.
-            bl_vert_bone_weights, bl_vert_bone_indices = cls.create_bl_mesh(mesh_data, merged_mesh)
+            bl_vert_bone_weights, bl_vert_bone_indices = cls.create_bl_mesh(operator, mesh_data, merged_mesh)
             mesh = new_mesh_object(name, mesh_data, SoulstructType.FLVER)
             if armature:
                 cls.create_bone_vertex_groups(mesh, bl_bone_names, bl_vert_bone_weights, bl_vert_bone_indices)
@@ -791,6 +807,14 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
                     image_import_manager=image_import_manager,
                     # No cached MatDef materials to pass in.
                 )
+
+                if isinstance(flver, FLVER0):
+                    # We still use Blender material `is_bind_pose` to store bone data type.
+                    # This allows the FLVER exporter to read the correct bone data.
+                    # TODO: Probably just want a global 'is_rigged' `BlenderFLVER` bool.
+                    for bl_mat in bl_materials:
+                        bl_mat.is_bind_pose = write_bone_type == cls.BoneDataType.EDIT
+
             except MatDefError:
                 # No materials will be created! TODO: Surely not.
                 bl_materials = []
@@ -799,14 +823,13 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
 
             p = time.perf_counter()
             # Create merged mesh.
-            merged_mesh = MergedMesh.from_flver(
-                flver,
+            merged_mesh = flver.to_merged_mesh(
                 submesh_bl_material_indices,
                 material_uv_layer_names=bl_material_uv_layer_names,
                 merge_vertices=import_settings.merge_submesh_vertices,
             )
             operator.info(f"Merged FLVER submeshes in {time.perf_counter() - p} s")
-            bl_vert_bone_weights, bl_vert_bone_indices = cls.create_bl_mesh(mesh_data, merged_mesh)
+            bl_vert_bone_weights, bl_vert_bone_indices = cls.create_bl_mesh(operator, mesh_data, merged_mesh)
             mesh = new_mesh_object(name, mesh_data, SoulstructType.FLVER)
             if armature:
                 cls.create_bone_vertex_groups(mesh, bl_bone_names, bl_vert_bone_weights, bl_vert_bone_indices)
@@ -832,13 +855,22 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
 
         # Assign FLVER header properties.
         bl_flver.big_endian = flver.big_endian
-        bl_flver.version = flver.version.name
+        try:
+            bl_flver.version = flver.version.name
+        except TypeError:
+            operator.warning(f"FLVER version '{flver.version}' not recognised. Leaving as 'Selected Game'.")
         bl_flver.unicode = flver.unicode
-        bl_flver.unk_x4a = flver.unk_x4a
-        bl_flver.unk_x4c = flver.unk_x4c
-        bl_flver.unk_x5c = flver.unk_x5c
-        bl_flver.unk_x5d = flver.unk_x5d
-        bl_flver.unk_x68 = flver.unk_x68
+        if isinstance(flver, FLVER):
+            bl_flver.f2_unk_x4a = flver.unk_x4a
+            bl_flver.f2_unk_x4c = flver.unk_x4c
+            bl_flver.f2_unk_x5c = flver.unk_x5c
+            bl_flver.f2_unk_x5d = flver.unk_x5d
+            bl_flver.f2_unk_x68 = flver.unk_x68
+        elif isinstance(flver, FLVER0):
+            bl_flver.f0_unk_x4a = flver.unk_x4a
+            bl_flver.f0_unk_x4b = flver.unk_x4b
+            bl_flver.f0_unk_x4c = flver.unk_x4c
+            bl_flver.f0_unk_x5c = flver.unk_x5c
 
         bl_flver.submesh_vertices_merged = import_settings.merge_submesh_vertices
 
@@ -856,11 +888,11 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         cls,
         operator: LoggingOperator,
         context: bpy.types.Context,
-        flver: FLVER,
+        flver: BaseFLVER,
         model_name: str,
         material_blend_mode: str,
         image_import_manager: ImageImportManager | None = None,
-        bl_materials_by_matdef_name: dict[str, Material] = None,
+        bl_materials_by_matdef_name: dict[str, bpy.types.Material] = None,
     ) -> tuple[tuple[BlenderFLVERMaterial, ...], tuple[int, ...], tuple[tuple[str, ...], ...]]:
         """Create Blender materials needed for `flver`.
 
@@ -938,7 +970,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         new_materials = []
 
         for submesh, submesh_textures in zip(flver.submeshes, all_submesh_texture_stems, strict=True):
-            material = submesh.material  # type: Material
+            material = submesh.material
             material_hash = hash(material)  # NOTE: if there are duplicate FLVER materials, this will combine them
             vertex_color_count = len([f for f in submesh.vertices.dtype.names if "color" in f])
 
@@ -993,8 +1025,9 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
                 # NOTE: We do not care about enforcing any maximum submesh local bone count in Blender! The FLVER
                 # exporter will create additional split submeshes as necessary for that.
                 existing_bl_material = new_materials[existing_bl_material_index]
+                is_bind_pose = getattr(submesh, "is_bind_pose", existing_bl_material.is_bind_pose)
                 if (
-                    existing_bl_material.is_bind_pose == submesh.is_bind_pose
+                    existing_bl_material.is_bind_pose == is_bind_pose
                     and existing_bl_material.default_bone_index == submesh.default_bone_index
                     and existing_bl_material.face_set_count == len(submesh.face_sets)
                     and existing_bl_material.use_backface_culling == submesh.use_backface_culling
@@ -1014,8 +1047,9 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
             first_material = new_materials[existing_variant_bl_indices[0]]
             variant_name = first_material.name + f" <V{variant_index}>"  # may be replaced below
 
+            is_bind_pose = getattr(submesh, "is_bind_pose", first_material.is_bind_pose)
             if (
-                first_material.is_bind_pose == submesh.is_bind_pose
+                first_material.is_bind_pose == is_bind_pose
                 and first_material.default_bone_index == submesh.default_bone_index
                 and first_material.face_set_count == len(submesh.face_sets)
                 and first_material.use_backface_culling != submesh.use_backface_culling
@@ -1055,7 +1089,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
 
     @staticmethod
     def get_submesh_flver_textures(
-        flver: FLVER,
+        flver: BaseFLVER,
         matbinbnd: MATBINBND | None,
     ) -> list[dict[str, str]]:
         """For each submesh, get a dictionary mapping sampler names (e.g. 'g_Diffuse') to texture path names (e.g.
@@ -1083,62 +1117,11 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         return all_submesh_texture_names
 
     @classmethod
-    def _create_bl_mesh_bm(
-        cls,
-        mesh_data: bpy.types.Mesh,
-        face_vertex_indices: np.ndarray,
-    ):
-        """Use `BMesh` to create mesh faces/loops."""
-        bm = bmesh.new()
-        bm.from_mesh(mesh_data)
-        bm.verts.ensure_lookup_table()
-
-        # Create faces.
-        for i, face in enumerate(face_vertex_indices):
-            try:
-                bm.faces.new([bm.verts[j] for j in face])
-            except ValueError as ex:
-                if "used multiple times" in str(ex):
-                    # Ignore degenerate face.
-                    raise ValueError(f"Degenerate face in FLVER MergedMesh with duplicate vertices: {face}")
-                raise
-
-        bm.to_mesh(mesh_data)
-        bm.free()
-        del bm
-
-        mesh_data.update()
-
-    @classmethod
-    def _create_bl_mesh_nonbm(
-        cls,
-        mesh_data: bpy.types.Mesh,
-        merged_mesh: MergedMesh,
-        face_count: int,
-        face_vertex_indices: np.ndarray,
-    ):
-        # return merged_mesh.vertex_data["bone_weights"], merged_mesh.vertex_data["bone_indices"]
-
-        # Directly assign face corner (loop) vertex indices.
-        mesh_data.loops.add(face_vertex_indices.size)
-        mesh_data.loops.foreach_set("vertex_index", face_vertex_indices.ravel())
-
-        # Create triangle polygons.
-        # Blender polygons are defined by loop start and count (total), which is entirely on-rails here for triangles.
-        loop_starts = np.arange(0, face_count * 3, 3, dtype=np.int32)  # just [0, 3, 6, ...]
-        loop_totals = np.full(face_count, 3, dtype=np.int32)  # all triangles (3)
-        mesh_data.polygons.add(face_count)
-        mesh_data.polygons.foreach_set("loop_start", loop_starts)
-        mesh_data.polygons.foreach_set("loop_total", loop_totals)
-        mesh_data.polygons.foreach_set("material_index", merged_mesh.faces[:, 3])
-
-        mesh_data.update(calc_edges=True)
-
-    @classmethod
     def create_bl_mesh(
         cls,
+        operator: LoggingOperator,
         mesh_data: bpy.types.Mesh,
-        merged_mesh: MergedMesh,
+        merged_mesh: BaseMergedMesh,
     ) -> tuple[np.ndarray, np.ndarray]:
         """Create Blender Mesh with plenty of efficient `foreach_set()` calls to raveled `MergedMesh` arrays.
 
@@ -1166,14 +1149,29 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
 
         # Drop faces that don't use three unique vertex indices.
         # TODO: Try a vectorized approach that calculates the difference between each pair of the three columns, then
-        #  takes the minimum of those differences. Any row that ends up with zero is degenerate.
+        #  takes the product of those differences. Any row that ends up with zero is degenerate.
         unique_mask = np.apply_along_axis(lambda row: len(np.unique(row)) == 3, 1, face_vertex_indices)
         valid_face_vertex_indices = face_vertex_indices[unique_mask]
-        print(f"Removed {face_vertex_indices.shape[0] - valid_face_vertex_indices.shape[0]} degenerate faces.")
-        face_count = valid_face_vertex_indices.shape[0]
 
-        # cls._create_bl_mesh_bm(mesh_data, valid_face_vertex_indices)
-        cls._create_bl_mesh_nonbm(mesh_data, merged_mesh, face_count, valid_face_vertex_indices)
+        face_count = valid_face_vertex_indices.shape[0]
+        invalid_count = face_vertex_indices.shape[0] - face_count
+        if invalid_count > 0:
+            operator.info(f"Removed {invalid_count} invalid/degenerate mesh faces from {mesh_data.name}.")
+
+        # Directly assign face corner (loop) vertex indices.
+        mesh_data.loops.add(face_vertex_indices.size)
+        mesh_data.loops.foreach_set("vertex_index", face_vertex_indices.ravel())
+
+        # Create triangle polygons.
+        # Blender polygons are defined by loop start and count (total), which is entirely on-rails here for triangles.
+        loop_starts = np.arange(0, face_count * 3, 3, dtype=np.int32)  # just [0, 3, 6, ...]
+        loop_totals = np.full(face_count, 3, dtype=np.int32)  # all triangles (3)
+        mesh_data.polygons.add(face_count)
+        mesh_data.polygons.foreach_set("loop_start", loop_starts)
+        mesh_data.polygons.foreach_set("loop_total", loop_totals)
+        mesh_data.polygons.foreach_set("material_index", merged_mesh.faces[:, 3])
+
+        mesh_data.update(calc_edges=True)
 
         # self.operator.info(f"Created Blender mesh in {time.perf_counter() - p} s")
 
@@ -1248,7 +1246,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         cls,
         operator: LoggingOperator,
         context: bpy.types.Context,
-        flver: FLVER,
+        flver: BaseFLVER,
         armature: bpy.types.ArmatureObject,
         bl_bone_names: list[str],
         base_edit_bone_length: float,
@@ -1286,48 +1284,14 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         """
 
         if not write_bone_type:
-            write_bone_type = cls.BoneDataType.NONE
-            warn_partial_bind_pose = False
-            for mesh in flver.submeshes:
-                if mesh.is_bind_pose:  # characters, objects, parts
-                    if not write_bone_type:
-                        write_bone_type = cls.BoneDataType.EDIT  # write bone transforms to EditBones
-                    elif write_bone_type == cls.BoneDataType.POSE:
-                        warn_partial_bind_pose = True
-                        write_bone_type = cls.BoneDataType.EDIT
-                        break
-                else:  # map pieces
-                    if not write_bone_type:
-                        write_bone_type = cls.BoneDataType.POSE  # write bone transforms to PoseBones
-                    elif write_bone_type == cls.BoneDataType.EDIT:
-                        warn_partial_bind_pose = True
-                        break  # keep EDIT default
-
-            if write_bone_type == cls.BoneDataType.NONE:
-                # Default to EditBones. Happens often enough (plenty of empty Meshes) that I've disabled the warning.
-                # Note that Map Pieces (PoseBones mode) should never really be empty.
-                # operator.warning("FLVER has no submeshes. Bones written to EditBones.")
-                write_bone_type = cls.BoneDataType.EDIT
-
-            if warn_partial_bind_pose:
-                operator.warning(
-                    "Some meshes in FLVER use `is_bind_pose` (bone data written to EditBones) and some do not "
-                    "(bone data written to PoseBones). Writing all bone data to EditBones."
-                )
-
-        # TODO: Theoretically, we could handled mixed bind pose/non-bind pose meshes IF AND ONLY IF they did not use the
-        #  same bones. The bind pose bones could have their data written to EditBones, and the non-bind pose bones could
-        #  have their data written to PoseBones. The 'is_bind_pose' custom property of each mesh can likewise be used on
-        #  export, once it's confirmed that the same bone does not appear in both types of mesh.
+            write_bone_type = cls.BoneDataType.EDIT if flver.guess_rigged() else cls.BoneDataType.POSE
 
         # We need edit mode to create `EditBones` below.
         context.view_layer.objects.active = armature
         operator.to_edit_mode()
 
-        # noinspection PyTypeChecker
-        armature_data = armature.data  # type: bpy.types.Armature
         # Create all edit bones. Head/tail are not set yet (depends on `write_bone_type` below).
-        edit_bones = cls.create_edit_bones(armature_data, flver, bl_bone_names)
+        edit_bones = cls.create_edit_bones(armature.data, flver, bl_bone_names)
 
         # NOTE: Bones that have no vertices weighted to them are left as 'unused' root bones in the FLVER skeleton.
         # They may be animated by HKX animations (and will affect their children appropriately) but will not actually
@@ -1350,7 +1314,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
     @staticmethod
     def create_edit_bones(
         armature_data: bpy.types.Armature,
-        flver: FLVER,
+        flver: BaseFLVER,
         bl_bone_names: list[str],
     ) -> list[bpy.types.EditBone]:
         """Create all edit bones from FLVER bones in `bl_armature`."""
@@ -1379,7 +1343,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
     @staticmethod
     def write_data_to_edit_bones(
         operator: LoggingOperator,
-        flver: FLVER,
+        flver: BaseFLVER,
         edit_bones: list[bpy.types.EditBone],
         base_edit_bone_length: float,
     ):
@@ -1424,7 +1388,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
     @staticmethod
     def write_data_to_pose_bones(
         operator: LoggingOperator,
-        flver: FLVER,
+        flver: BaseFLVER,
         armature: bpy.types.ArmatureObject,
         edit_bones: list[bpy.types.EditBone],
         base_edit_bone_length: float,
@@ -1502,11 +1466,16 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
             for texture_stem in tpf_textures_to_load:
                 operator.info(f"Loading texture into Blender: {texture_stem}")
             t = time.perf_counter()
-            image_format = settings.image_cache_format
-            if image_format == "TGA":
-                all_image_data = batch_get_tpf_texture_tga_data(list(tpf_textures_to_load.values()))
-            elif image_format == "PNG":
-                all_image_data = batch_get_tpf_texture_png_data(list(tpf_textures_to_load.values()))
+            image_format = settings.bl_image_format
+            deswizzle_platform = settings.game_config.swizzle_platform
+            if image_format == BlenderImageFormat.TARGA:
+                all_image_data = batch_get_tpf_texture_tga_data(
+                    list(tpf_textures_to_load.values()), deswizzle_platform
+                )
+            elif image_format == BlenderImageFormat.PNG:
+                all_image_data = batch_get_tpf_texture_png_data(
+                    list(tpf_textures_to_load.values()), deswizzle_platform, fmt="rgba"
+                )
             else:
                 raise ValueError(f"Unsupported image format for DDS conversion: {image_format}")
 
@@ -1537,34 +1506,43 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
 
     # region Export
 
-    def _get_empty_flver(self, settings: SoulstructSettings) -> FLVER:
+    def _get_empty_flver(self, settings: SoulstructSettings) -> BaseFLVER:
 
         if self.version == "DEFAULT":
             # Default is game-dependent.
-            game = settings.game
             try:
-                version = GAME_CONFIG[game].flver_default_version
+                version = settings.game_config.flver_default_version
             except KeyError:
                 raise ValueError(
-                    f"Do not know default FLVER Version for game {game}. You must set 'Version' yourself on FLVER "
-                    f"object '{self.name}' before exporting."
+                    f"Do not know default FLVER Version for game {settings.game}. You must set 'Version' yourself on "
+                    f"FLVER object '{self.name}' before exporting."
                 )
         else:
             try:
-                version = Version[self.version]
+                version = FLVERVersion[self.version]
             except KeyError:
                 raise ValueError(f"Invalid FLVER Version: '{self.version}'. Please report this bug to Grimrukh!")
 
-        # TODO: Any other guessable game fields?
+        if settings.game_config.uses_flver0:
+            return FLVER0(
+                big_endian=self.big_endian,
+                version=version,
+                unicode=self.unicode,
+                unk_x4a=self.f0_unk_x4a,
+                unk_x4b=self.f0_unk_x4b,
+                unk_x4c=self.f0_unk_x4c,
+                unk_x5c=self.f0_unk_x5c,
+            )
+
         return FLVER(
             big_endian=self.big_endian,
             version=version,
             unicode=self.unicode,
-            unk_x4a=self.unk_x4a,
-            unk_x4c=self.unk_x4c,
-            unk_x5c=self.unk_x5c,
-            unk_x5d=self.unk_x5d,
-            unk_x68=self.unk_x68,
+            unk_x4a=self.f2_unk_x4a,
+            unk_x4c=self.f2_unk_x4c,
+            unk_x5c=self.f2_unk_x5c,
+            unk_x5d=self.f2_unk_x5d,
+            unk_x68=self.f2_unk_x68,
         )
 
     def to_soulstruct_obj(
@@ -1572,7 +1550,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         operator: LoggingOperator,
         context: bpy.types.Context,
         texture_collection: DDSTextureCollection = None,
-    ) -> FLVER:
+    ) -> BaseFLVER:
         """Wraps actual method with temp FLVER management."""
         self.clear_temp_flver()
         try:
@@ -1585,7 +1563,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         operator: LoggingOperator,
         context: bpy.types.Context,
         texture_collection: DDSTextureCollection = None,
-    ) -> FLVER:
+    ) -> BaseFLVER:
         """`FLVER` exporter. By far the most complicated function in the add-on!"""
 
         # This is passed all the way through to the node inspection in FLVER materials to map texture stems to Images.
@@ -1593,7 +1571,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
             texture_collection = DDSTextureCollection()
 
         settings = operator.settings(context)
-        flver = self._get_empty_flver(settings)
+        flver = self._get_empty_flver(settings)  # could be `FLVER` or `FLVER0`
 
         export_settings = context.scene.flver_export_settings
         mtdbnd = get_cached_mtdbnd(operator, settings) if not GAME_CONFIG[settings.game].uses_matbin else None
@@ -1694,7 +1672,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         self,
         operator: LoggingOperator,
         context: bpy.types.Context,
-        flver: FLVER,
+        flver: BaseFLVER,
         bl_bone_names: list[str],
         use_chr_layout: bool,
         normal_tangent_dot_max: float,
@@ -1866,10 +1844,11 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
 
         operator.info(f"Constructed combined vertex array in {time.perf_counter() - p} s.")
 
-        # TODO: Again, due to the unfortunate need to access Python attributes one by one, we need a `for` loop.
         # NOTE: We now iterate over the faces of the triangulated copy. Material index has been properly triangulated.
         p = time.perf_counter()
         faces = np.empty((len(tri_mesh_data.polygons), 4), dtype=np.int32)
+        # TODO: Again, due to the unfortunate need to access Python attributes one by one, we need a `for` loop.
+        #  ...But, `foreach_get()` doesn't work for `loop_indices` and `material_index`?
         for i, face in enumerate(tri_mesh_data.polygons):
             # Since we've triangulated the mesh, no need to check face loop count here.
             faces[i] = [*face.loop_indices, face.material_index]
@@ -1979,7 +1958,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
 
         operator.info(f"Constructed combined loop array in {time.perf_counter() - p} s.")
 
-        merged_mesh = MergedMesh(
+        merged_mesh_kwargs = dict(
             vertex_data=vertex_data,
             loop_vertex_indices=loop_vertex_indices,
             vertices_merged=True,
@@ -1991,6 +1970,11 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
             loop_uvs=loop_uv_array_dict,
             faces=faces,
         )
+
+        if settings.game_config.uses_flver0:
+            merged_mesh = FLVER0MergedMesh(**merged_mesh_kwargs)
+        else:
+            merged_mesh = FLVERMergedMesh(**merged_mesh_kwargs)
 
         # Apply Blender -> FromSoft transformations.
         merged_mesh.swap_vertex_yz(tangents=True, bitangents=True)

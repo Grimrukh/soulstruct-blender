@@ -6,12 +6,18 @@ __all__ = [
 
 from pathlib import Path
 
-from soulstruct import Binder, FLVER
+from soulstruct.containers import Binder
+from soulstruct.base.models import BaseFLVER, FLVER, FLVER0
 
 from io_soulstruct.exceptions import *
 
 
-def get_flvers_from_binder(binder: Binder, file_path: Path, allow_multiple=False) -> list[FLVER]:
+def get_flvers_from_binder(
+    binder: Binder,
+    file_path: Path,
+    uses_flver0: bool,
+    allow_multiple=False,
+) -> list[BaseFLVER]:
     """Find all FLVER files (with or without DCX) in `binder`.
 
     By default, only one FLVER file is allowed. If `allow_multiple` is True, multiple FLVER files will be returned.
@@ -21,4 +27,6 @@ def get_flvers_from_binder(binder: Binder, file_path: Path, allow_multiple=False
         raise FLVERImportError(f"Cannot find a FLVER file in binder {file_path}.")
     elif not allow_multiple and len(flver_entries) > 1:
         raise FLVERImportError(f"Found multiple FLVER files in binder {file_path}.")
-    return [entry.to_binary_file(FLVER) for entry in flver_entries]
+    return [
+        entry.to_binary_file(FLVER0 if uses_flver0 else FLVER) for entry in flver_entries
+    ]

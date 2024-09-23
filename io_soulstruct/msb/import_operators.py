@@ -17,9 +17,10 @@ from pathlib import Path
 import bpy
 from soulstruct.darksouls1ptde.maps import MSB as PTDE_MSB
 from soulstruct.darksouls1r.maps import MSB as DSR_MSB
+from soulstruct.demonssouls.maps import MSB as DES_MSB
 
 from io_soulstruct.exceptions import BatchOperationUnsupportedError, UnsupportedGameTypeError, MissingPartModelError
-from io_soulstruct.msb import darksouls1ptde, darksouls1r
+from io_soulstruct.msb import darksouls1ptde, darksouls1r, demonssouls
 from io_soulstruct.general.cached import get_cached_file
 from io_soulstruct.utilities import *
 from io_soulstruct.utilities.operators import LoggingOperator, LoggingImportOperator
@@ -39,6 +40,7 @@ _IMPORT_MODEL_BOOLS = {
     "Character": "import_character_models",
     "PlayerStart": "import_character_models",  # same
     "Collision": "import_collision_models",
+    "Protoboss": "import_character_models",  # same
     "Navmesh": "import_navmesh_models",
     "DummyObject": "import_object_models",
     "DummyCharacter": "import_character_models",
@@ -58,6 +60,7 @@ PART_SUBTYPE_ORDER = (
     "Asset",
     "Character",
     "PlayerStart",
+    "Protoboss",
     "DummyObject",
     # TODO: "DummyAsset",
     "DummyCharacter",
@@ -76,6 +79,8 @@ def _import_msb(
         blender_types_module = darksouls1ptde
     elif settings.is_game(DARK_SOULS_DSR):
         blender_types_module = darksouls1r
+    elif settings.is_game(DEMONS_SOULS):
+        blender_types_module = demonssouls
     else:
         return operator.error(f"Unsupported game for MSB import/export: {settings.game.name}")
 
@@ -232,8 +237,8 @@ class ImportMapMSB(LoggingOperator):
     @classmethod
     def poll(cls, context):
         settings = cls.settings(context)
-        if not settings.is_game_ds1():
-            return False
+        if not settings.game_config.msb_class:
+            return False  # unsupported
         try:
             settings.get_import_msb_path()
         except FileNotFoundError:
@@ -276,8 +281,8 @@ class ImportAnyMSB(LoggingImportOperator):
     @classmethod
     def poll(cls, context):
         settings = cls.settings(context)
-        if not settings.is_game_ds1():
-            return False
+        if not settings.game_config.msb_class:
+            return False  # unsupported
         return True
 
     def execute(self, context):
@@ -287,6 +292,8 @@ class ImportAnyMSB(LoggingImportOperator):
             msb_class = PTDE_MSB
         elif settings.is_game("DARK_SOULS_DSR"):
             msb_class = DSR_MSB
+        elif settings.is_game("DEMONS_SOULS"):
+            msb_class = DES_MSB
         else:
             return self.error(f"Unsupported game for MSB import/export: {settings.game.name}")
 

@@ -3,6 +3,8 @@ __all__ = []  # no star import
 
 import typing as tp
 
+from soulstruct.games import DEMONS_SOULS
+
 if tp.TYPE_CHECKING:
 
     from soulstruct.base.maps.msb.parts import BaseMSBPart
@@ -66,15 +68,17 @@ if tp.TYPE_CHECKING:
     from soulstruct.eldenring.maps.regions import MSBRegion as ER_MSBRegion
     MSB_REGION_TYPING = tp.Union[BaseMSBRegion, PTDE_MSBRegion, DS1R_MSBRegion, BB_MSBRegion, ER_MSBRegion]
 
+    from soulstruct.demonssouls.models import CHRBND as DES_CHRBND, OBJBND as DES_OBJBND, PARTSBND as DES_PARTSBND
     from soulstruct.darksouls1ptde.models import CHRBND as PTDE_CHRBND, OBJBND as PTDE_OBJBND, PARTSBND as PTDE_PARTSBND
     from soulstruct.darksouls1r.models import CHRBND as DS1R_CHRBND, OBJBND as DS1R_OBJBND, PARTSBND as DS1R_PARTSBND
     from soulstruct.bloodborne.models import CHRBND as BB_CHRBND, OBJBND as BB_OBJBND, PARTSBND as BB_PARTSBND
-    CHRBND_TYPING = tp.Union[PTDE_CHRBND, DS1R_CHRBND, BB_CHRBND]
-    OBJBND_TYPING = tp.Union[PTDE_OBJBND, DS1R_OBJBND, BB_OBJBND]
-    PARTSBND_TYPING = tp.Union[PTDE_PARTSBND, DS1R_PARTSBND, BB_PARTSBND]
+    CHRBND_TYPING = tp.Union[DES_CHRBND, PTDE_CHRBND, DS1R_CHRBND, BB_CHRBND]
+    OBJBND_TYPING = tp.Union[DES_OBJBND, PTDE_OBJBND, DS1R_OBJBND, BB_OBJBND]
+    PARTSBND_TYPING = tp.Union[DES_PARTSBND, PTDE_PARTSBND, DS1R_PARTSBND, BB_PARTSBND]
 
+    from soulstruct.demonssouls.models.shaders import MatDef as DES_MatDef
     from soulstruct.darksouls1ptde.models.shaders import MatDef as PTDE_MatDef
     from soulstruct.darksouls1r.models.shaders import MatDef as DS1R_MatDef
     from soulstruct.bloodborne.models.shaders import MatDef as BB_MatDef
     from soulstruct.eldenring.models.shaders import MatDef as ER_MatDef
-    MATDEF_TYPING = tp.Union[PTDE_MatDef, DS1R_MatDef, BB_MatDef, ER_MatDef]
+    MATDEF_TYPING = tp.Union[DES_MatDef, PTDE_MatDef, DS1R_MatDef, BB_MatDef, ER_MatDef]

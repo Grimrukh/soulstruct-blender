@@ -86,3 +86,12 @@ class FLVERMaterialPropsPanel(bpy.types.Panel):
             else:
                 # Standard public property.
                 layout.prop(props, prop)
+
+        label_done = False
+        for key, value in material.items():
+            if key.startswith("Path["):
+                if not label_done:
+                    layout.label(text="Texture Overrides:")
+                    label_done = True
+                key = key[5:-1]
+                layout.label(text=f"{key}: {value}")

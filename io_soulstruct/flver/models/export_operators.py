@@ -17,7 +17,7 @@ import bpy
 from bpy.props import StringProperty, BoolProperty, IntProperty
 from bpy_extras.io_utils import ExportHelper
 
-from soulstruct.base.models.flver import FLVER
+from soulstruct.base.models.base import BaseFLVER
 from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
 from soulstruct.dcx import DCXType
 from soulstruct.games import *
@@ -100,7 +100,7 @@ class ExportLooseFLVER(LoggingOperator, ExportHelper):
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Cannot write exported FLVER. Error: {ex}")
-        self.info(f"Exported FLVER to: {written_path[0]}")
+        self.info(f"Exported FLVER to: {str(written_path[0])}")
 
         return {"FINISHED"}
 
@@ -329,7 +329,7 @@ class BaseGameFLVERBinderExportOperator(LoggingOperator):
         settings: SoulstructSettings,
         binder_path_callback: tp.Callable[[BlenderFLVER], Path],
         binder_class: type[CHRBND_TYPING | OBJBND_TYPING | PARTSBND_TYPING],
-    ) -> tuple[str, CHRBND_TYPING | OBJBND_TYPING | PARTSBND_TYPING, FLVER, DDSTextureCollection]:
+    ) -> tuple[str, CHRBND_TYPING | OBJBND_TYPING | PARTSBND_TYPING, BaseFLVER, DDSTextureCollection]:
         bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
         cls_name = binder_class.__name__
 

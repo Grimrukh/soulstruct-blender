@@ -168,6 +168,7 @@ CLASSES = (
     BakeLightmapSettings,
     BakeLightmapTextures,
     TextureExportSettings,
+    DDSTexturePanel,
 
     FLVERPropsPanel,
     FLVERDummyPropsPanel,
@@ -257,9 +258,9 @@ CLASSES = (
     ImportAllDLCOverworldNVMHKTs,
     NVMHKTImportSettings,
 
-    NavmeshDS1ImportPanel,
-    NavmeshDS1ExportPanel,
-    NavmeshDS1ToolsPanel,
+    NVMNavmeshImportPanel,
+    NVMNavmeshExportPanel,
+    NVMNavmeshToolsPanel,
     NavmeshERImportPanel,
     NavmeshFaceSettings,
     AddNVMFaceFlags,
@@ -308,10 +309,13 @@ CLASSES = (
     # region MSB
     GlobalSettingsPanel_MSBView,
     ImportMapMSB,
+    ImportAnyMSB,
     ExportMapMSB,
 
     RegionDrawSettings,
 
+    EnableAllImportModels,
+    DisableAllImportModels,
     EnableSelectedNames,
     DisableSelectedNames,
     CreateMSBPart,

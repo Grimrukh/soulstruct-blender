@@ -30,12 +30,12 @@ class BlenderMSBMessageEvent(BlenderMSBEvent[MSBMessageEvent, MSBMessageEventPro
         self.subtype_properties.text_id = value
 
     @property
-    def unk_x02_x04(self) -> int:
-        return self.subtype_properties.unk_x02_x04
+    def unk_x02(self) -> int:
+        return self.subtype_properties.unk_x02
 
-    @unk_x02_x04.setter
-    def unk_x02_x04(self, value: int):
-        self.subtype_properties.unk_x02_x04 = value
+    @unk_x02.setter
+    def unk_x02(self, value: int):
+        self.subtype_properties.unk_x02 = value
 
     @property
     def is_hidden(self) -> bool:
@@ -57,7 +57,7 @@ class BlenderMSBMessageEvent(BlenderMSBEvent[MSBMessageEvent, MSBMessageEventPro
     ) -> tp.Self:
         bl_event = super().new_from_soulstruct_obj(operator, context, soulstruct_obj, name, collection, map_stem)
         bl_event.text_id = soulstruct_obj.text_id
-        bl_event.unk_x02_x04 = soulstruct_obj.unk_x02_x04
+        bl_event.unk_x02 = soulstruct_obj.unk_x02
         bl_event.is_hidden = soulstruct_obj.is_hidden
         return bl_event
 

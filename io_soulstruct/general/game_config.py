@@ -10,8 +10,9 @@ from types import ModuleType
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from soulstruct.base.models.flver import Version
+from soulstruct.base.models.base import FLVERVersion
 from soulstruct.base.maps.msb import MSB as BaseMSB
+from soulstruct.containers.tpf import TPFPlatform
 from soulstruct.games import *
 from soulstruct.bloodborne.maps import constants as bb_constants
 from soulstruct.bloodborne.maps import MSB as bb_MSB
@@ -21,6 +22,8 @@ from soulstruct.darksouls1r.maps import constants as ds1r_constants
 from soulstruct.darksouls1r.maps import MSB as ds1r_MSB
 from soulstruct.darksouls3.maps import constants as ds3_constants
 # from soulstruct.darksouls3.maps import MSB as ds3_MSB
+from soulstruct.demonssouls.maps import constants as des_constants
+from soulstruct.demonssouls.maps import MSB as des_MSB
 from soulstruct.eldenring.maps import constants as er_constants
 from soulstruct.eldenring.maps import MSB as er_MSB
 
@@ -29,12 +32,14 @@ from soulstruct.eldenring.maps import MSB as er_MSB
 class GameConfig:
 
     uses_matbin: bool
-    flver_default_version: Version
+    flver_default_version: FLVERVersion
     # True from Bloodborne (DS2?) onwards, where Map Piece FLVER vertices store their singular bone indices in the
     # fourth 8-bit component of the 'normal_w' vertex array, rather than having a full useless four-bone `bone_indices`
     # field like real rigged FLVERs.
     map_pieces_use_normal_w_bones: bool
 
+    uses_flver0: bool = False
+    swizzle_platform: TPFPlatform | None = None  # overrides `TPF.platform` for de/swizzling
     msb_class: type[BaseMSB] | None = None
 
     # Redirect files that do and do not use the latest version of map files (e.g. to handle Darkroot Garden in DS1).
@@ -62,9 +67,18 @@ class GameConfig:
 
 
 GAME_CONFIG = {
+    DEMONS_SOULS: GameConfig(
+        uses_matbin=False,
+        flver_default_version=FLVERVersion.DemonsSouls,
+        uses_flver0=True,
+        swizzle_platform=TPFPlatform.PC,  # no swizzling despite being a PS3 exclusive
+        map_pieces_use_normal_w_bones=False,
+        msb_class=des_MSB,
+        map_constants=des_constants,
+    ),
     DARK_SOULS_PTDE: GameConfig(
         uses_matbin=False,
-        flver_default_version=Version.DarkSouls_A,
+        flver_default_version=FLVERVersion.DarkSouls_A,
         map_pieces_use_normal_w_bones=False,
         msb_class=ds1ptde_MSB,
         new_to_old_map={
@@ -79,7 +93,7 @@ GAME_CONFIG = {
     ),
     DARK_SOULS_DSR: GameConfig(
         uses_matbin=False,
-        flver_default_version=Version.DarkSouls_A,
+        flver_default_version=FLVERVersion.DarkSouls_A,
         map_pieces_use_normal_w_bones=False,
         msb_class=ds1r_MSB,
         new_to_old_map={
@@ -94,25 +108,25 @@ GAME_CONFIG = {
     ),
     BLOODBORNE: GameConfig(
         uses_matbin=False,
-        flver_default_version=Version.Bloodborne_DS3_A,
+        flver_default_version=FLVERVersion.Bloodborne_DS3_A,
         map_pieces_use_normal_w_bones=True,
         msb_class=bb_MSB,
         map_constants=bb_constants,
     ),
     DARK_SOULS_3: GameConfig(
         uses_matbin=False,
-        flver_default_version=Version.Bloodborne_DS3_A,
+        flver_default_version=FLVERVersion.Bloodborne_DS3_A,
         map_pieces_use_normal_w_bones=True,
         map_constants=ds3_constants,
     ),
     SEKIRO: GameConfig(
         uses_matbin=False,
-        flver_default_version=Version.Sekiro_EldenRing,
+        flver_default_version=FLVERVersion.Sekiro_EldenRing,
         map_pieces_use_normal_w_bones=True,
     ),
     ELDEN_RING: GameConfig(
         uses_matbin=True,
-        flver_default_version=Version.Sekiro_EldenRing,
+        flver_default_version=FLVERVersion.Sekiro_EldenRing,
         map_pieces_use_normal_w_bones=True,
         msb_class=er_MSB,
         map_constants=er_constants,

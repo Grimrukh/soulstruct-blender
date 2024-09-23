@@ -16,17 +16,18 @@ class DDSTextureProps(bpy.types.PropertyGroup):
 
     dds_format: bpy.props.EnumProperty(
         name="DDS Format",
-        description="DDS compression format for this texture. 'NONE' means no export and 'SAME' means preserve",
+        description="DDS compression format for this texture. 'NONE' means DDS cannot export and 'SAME' (default) "
+                    "means format will match existing DDS texture that is about to be overwritten",
         items=[
             (BlenderDDSFormat.NONE, "None", "Do not export this texture type"),
-            (BlenderDDSFormat.SAME, "Same", "Use same format as original texture (which must exist)"),
+            (BlenderDDSFormat.SAME, "Same", "Use same format as overwritten texture (which must exist)"),
             (BlenderDDSFormat.DXT1, "DXT1", "DXT1 (no alpha)"),
             (BlenderDDSFormat.DXT3, "DXT3", "DXT3 (sharp alpha)"),
             (BlenderDDSFormat.DXT5, "DXT5", "DXT5 (smooth alpha)"),
             (BlenderDDSFormat.BC5_UNORM, "BC5", "BC5 (normal map)"),
             (BlenderDDSFormat.BC7_UNORM, "BC7", "BC7 (high quality)"),
         ],
-        default=BlenderDDSFormat.NONE,
+        default=BlenderDDSFormat.SAME,
     )
 
     tpf_platform: bpy.props.EnumProperty(
@@ -46,6 +47,8 @@ class DDSTextureProps(bpy.types.PropertyGroup):
         name="Mipmap Count",
         description="Number of mipmaps to generate in DDS texture (0 = all mipmaps)",
         default=0,
+        min=0,
+        max=16,
     )
 
 
@@ -54,8 +57,10 @@ class TextureExportSettings(bpy.types.PropertyGroup):
 
     overwrite_existing_map_textures: bpy.props.BoolProperty(
         name="Overwrite Existing Map Textures",
-        description="Overwrite existing map TPF textures with the same name as exported textures. Other FLVER types "
-                    "that bundle their own textures will always be overwritten with a complete new set",
+        description="Overwrite existing map TPF textures with the same name as exported textures. If False, an error "
+                    "will be raised if the texture already exists in the map (to protect you from affecting other Map "
+                    "Piece FLVERs). Other FLVER types that bundle their own textures will always be overwritten with "
+                    "a complete new texture set. Texture names are not case-sensitive",
         default=True,
     )
 
@@ -68,7 +73,7 @@ class TextureExportSettings(bpy.types.PropertyGroup):
 
     max_chrbnd_tpf_size: bpy.props.IntProperty(
         name="Max CHRBND TPF Size (kB)",
-        description="Maximum size (in kB) of TPF bundled with CHRBND. Characters with total texture size beyond this "
+        description="Maximum size (in kB) of TPF bundled inside CHRBND. Characters with total texture size beyond this "
                     "will have their texture data placed in individual TPFs in an adjacent folder (PTDE) or split "
                     "CHRTPFBDT (DSR)",
         default=5000,

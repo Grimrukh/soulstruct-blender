@@ -12,7 +12,7 @@ import typing as tp
 from pathlib import Path
 
 from soulstruct.containers import Binder
-from soulstruct.utilities.binary import get_blake2b_hash
+from soulstruct.utilities.files import get_blake2b_hash
 
 if tp.TYPE_CHECKING:
     from soulstruct.games import Game

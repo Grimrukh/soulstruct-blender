@@ -16,7 +16,9 @@ import bpy
 from io_soulstruct.utilities.operators import LoggingImportOperator
 from soulstruct.base.textures.dds import DDS
 from soulstruct.base.textures.texconv import texconv
-from soulstruct.containers.tpf import TPF, batch_get_tpf_texture_png_data, batch_get_tpf_texture_tga_data
+from soulstruct.containers.tpf import TPF, batch_get_tpf_texture_png_data, batch_get_tpf_texture_tga_data, TPFPlatform
+
+from io_soulstruct.general.enums import BlenderImageFormat
 from .types import *
 
 
@@ -103,17 +105,18 @@ class ImportTextures(LoggingImportOperator):
 
         # TODO: Respect general image cache settings, including optional data pack.
         settings = context.scene.soulstruct_settings
+        deswizzle_platform = settings.game_config.swizzle_platform
 
         texture_collection = DDSTextureCollection()
 
         for file_path in self.file_paths:
 
             if TPF_RE.match(file_path.name):
-                texture_collection |= self.import_tpf(file_path, settings.image_cache_format)
+                texture_collection |= self.import_tpf(file_path, settings.bl_image_format, deswizzle_platform)
             elif file_path.suffix == ".dds":
-                # Loose DDS file.
+                # Loose DDS file. (Must already be deswizzled and headerized.)
                 try:
-                    texture_collection |= self.import_dds(file_path, settings.image_cache_format)
+                    texture_collection |= self.import_dds(file_path, settings.bl_image_format)
                 except Exception as ex:
                     self.warning(f"Could not import DDS file into Blender: {ex}")
             else:
@@ -227,7 +230,12 @@ class ImportTextures(LoggingImportOperator):
 
         return {"FINISHED"}
 
-    def import_tpf(self, tpf_path: Path, image_format: str) -> dict[str, DDSTexture]:
+    def import_tpf(
+        self,
+        tpf_path: Path,
+        image_format: BlenderImageFormat,
+        deswizzle_platform: TPFPlatform,
+    ) -> dict[str, DDSTexture]:
         tpf = TPF.from_path(tpf_path)
         if self.image_node_assignment_mode == "SIMPLE_TEXTURE" and len(tpf.textures) > 1:
             self.info(
@@ -235,28 +243,35 @@ class ImportTextures(LoggingImportOperator):
             )
             return {}
 
-        if image_format == "TGA":
-            textures_image_data = batch_get_tpf_texture_tga_data(tpf.textures)
-        elif image_format == "PNG":
-            textures_image_data = batch_get_tpf_texture_png_data(tpf.textures)
+        if image_format == BlenderImageFormat.TARGA:
+            textures_image_data = batch_get_tpf_texture_tga_data(tpf.textures, deswizzle_platform)
+        elif image_format == BlenderImageFormat.PNG:
+            textures_image_data = batch_get_tpf_texture_png_data(tpf.textures, deswizzle_platform, fmt="rgba")
         else:
             raise ValueError(f"Unsupported image format: {image_format}")
         self.info(f"Loaded {len(textures_image_data)} texture(s) from TPF: {tpf_path.name}")
+
         texture_images = {}
         for texture, image_data in zip(tpf.textures, textures_image_data):
             if image_data is None:
                 continue  # failed to convert this texture
             try:
                 bl_image = DDSTexture.new_from_image_data(
-                    self, texture.name.lower(), image_format, image_data, replace_existing=self.overwrite_existing
+                    self, texture.stem.lower(), image_format, image_data, replace_existing=self.overwrite_existing
                 )
             except Exception as ex:
-                self.warning(f"Could not create Blender image from TPF texture '{texture.name}': {ex}")
+                self.warning(f"Could not create Blender image from TPF texture '{texture.stem}': {ex}")
                 continue
-            texture_images[texture.name.lower()] = bl_image
+            texture_images[texture.stem.lower()] = bl_image
+
         return texture_images
 
-    def import_dds(self, dds_path: Path, image_format: str) -> dict[str, DDSTexture]:
+    def import_dds(
+        self,
+        dds_path: Path,
+        image_format: BlenderImageFormat,
+    ) -> dict[str, DDSTexture]:
+        """NOTE: Written DDS must already be deswizzled and headerized."""
         with tempfile.TemporaryDirectory() as temp_dir:
 
             # Check DDS format for logging.
@@ -265,24 +280,25 @@ class ImportTextures(LoggingImportOperator):
 
             temp_dds_path = Path(temp_dir, dds_path.name)
             temp_dds_path.write_bytes(dds_path.read_bytes())  # write temporary DDS copy
-            if image_format == "TGA":
+            if image_format == BlenderImageFormat.TARGA:
                 texconv_result = texconv("-o", temp_dir, "-ft", "tga", "-f", "RGBA", "-nologo", temp_dds_path)
-            elif image_format == "PNG":
+            elif image_format == BlenderImageFormat.PNG:
                 texconv_result = texconv("-o", temp_dir, "-ft", "png", "-f", "RGBA", "-nologo", temp_dds_path)
             else:
                 raise ValueError(f"Unsupported image format: {image_format}")
-            image_name = f"{dds_path.stem}.{image_format}".lower()  # Blender Image names kept lower-case
+
+            image_name = f"{dds_path.stem}{image_format.get_suffix()}".lower()  # Blender Image names kept lower-case
             image_path = Path(temp_dir, dds_path.with_name(image_name))
             if image_path.is_file():
                 bl_image = bpy.data.images.load(str(image_path))
                 bl_image.pack()  # embed image in `.blend` file
-                self.info(f"Loaded '{dds_format}' DDS file as {image_format}: {dds_path.name}")
+                self.info(f"Loaded '{dds_format}' DDS file as {image_format.name}: {dds_path.name}")
                 dds_texture = DDSTexture(bl_image)
                 return {image_path.stem: dds_texture}
 
             # Conversion failed.
             stdout = texconv_result.stdout.decode()
-            self.warning(f"Could not convert texture DDS to {image_format}:\n    {stdout}")
+            self.warning(f"Could not convert texture DDS to {image_format.name}:\n    {stdout}")
             return {}
 
     def import_native(self, image_path: Path) -> dict[str, bpy.types.Image]:

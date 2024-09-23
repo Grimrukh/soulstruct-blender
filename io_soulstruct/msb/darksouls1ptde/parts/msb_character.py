@@ -104,7 +104,7 @@ class BlenderMSBCharacter(BlenderMSBPart[MSBCharacter, MSBCharacterProps]):
     ) -> tp.Self:
         bl_character = super().new_from_soulstruct_obj(
             operator, context, soulstruct_obj, name, collection, map_stem, try_import_model, model_collection
-        )  # type: BlenderMSBCharacter
+        )
 
         missing_collection_name = f"{map_stem} Missing MSB References".lstrip()
 
@@ -133,8 +133,8 @@ class BlenderMSBCharacter(BlenderMSBPart[MSBCharacter, MSBCharacterProps]):
             setattr(bl_character, name, getattr(soulstruct_obj, name))
 
         bl_character.subtype_properties.is_dummy = isinstance(soulstruct_obj, MSBDummyCharacter)
-        if bl_character.subtype_properties.is_dummy and context.scene.msb_import_settings.hide_dummy_entries:
-            bl_character.obj.hide_viewport = True
+        # if bl_character.subtype_properties.is_dummy and context.scene.msb_import_settings.hide_dummy_entries:
+        #     bl_character.obj.hide_viewport = True
 
         return bl_character
 
@@ -178,6 +178,7 @@ class BlenderMSBCharacter(BlenderMSBPart[MSBCharacter, MSBCharacterProps]):
     ) -> bpy.types.MeshObject:
         """Import the model of the given name into a collection in the current scene."""
         settings = operator.settings(context)
+        uses_flver0 = settings.game_config.uses_flver0
 
         import_settings = context.scene.flver_import_settings
         image_import_manager = ImageImportManager(operator, context) if import_settings.import_textures else None
@@ -185,7 +186,7 @@ class BlenderMSBCharacter(BlenderMSBPart[MSBCharacter, MSBCharacterProps]):
         chrbnd_path = settings.get_import_file_path(f"chr/{model_name}.chrbnd")
         operator.info(f"Importing character FLVER from: {chrbnd_path.name}")
         chrbnd = Binder.from_path(chrbnd_path)
-        binder_flvers = get_flvers_from_binder(chrbnd, chrbnd_path, allow_multiple=False)
+        binder_flvers = get_flvers_from_binder(chrbnd, chrbnd_path, uses_flver0, allow_multiple=False)
         if image_import_manager:
             image_import_manager.find_flver_textures(chrbnd_path, chrbnd)
         flver = binder_flvers[0]

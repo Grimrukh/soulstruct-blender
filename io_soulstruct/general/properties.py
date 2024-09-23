@@ -21,6 +21,7 @@ from io_soulstruct.exceptions import *
 from io_soulstruct.utilities import *
 from .game_config import GAME_CONFIG, GameConfig
 from .game_structure import GameStructure
+from .enums import BlenderImageFormat
 
 if tp.TYPE_CHECKING:
     from soulstruct.base.models.shaders import MatDef
@@ -32,6 +33,7 @@ _SETTINGS_PATH = Path(__file__).parent.parent / "SoulstructSettings.json"
 
 # Global holder for games that front-end users can currently select (or have auto-detected) for the `game` enum.
 SUPPORTED_GAMES = [
+    DEMONS_SOULS,
     DARK_SOULS_PTDE,
     DARK_SOULS_DSR,
     BLOODBORNE,
@@ -60,6 +62,23 @@ class SoulstructSettings(bpy.types.PropertyGroup):
     # retrieved dynamically.
 
     # region Game/Project Directories
+    demonssouls_game_root_str: bpy.props.StringProperty(
+        name="DeS Game Root",
+        description="Root (containing BIN) of game directory to import files from when they are missing from the "
+                    "project directory, and optionally export to if 'Also Export to Game' is enabled. DeS files should "
+                    "already be unpacked",
+        default="",
+        subtype="DIR_PATH",
+    )
+
+    demonssouls_project_root_str: bpy.props.StringProperty(
+        name="DS1:PTDE Project Root",
+        description="Project root directory with game-like structure to export to. Files for import and Binders needed "
+                    "for exporting new entries will also be sourced here first if they exist",
+        default="",
+        subtype="DIR_PATH",
+    )
+
     darksouls1ptde_game_root_str: bpy.props.StringProperty(
         name="DS1:PTDE Game Root",
         description="Root (containing EXE) of game directory to import files from when they are missing from the "
@@ -213,11 +232,15 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         name="Image Cache Format",
         description="Format of cached image textures. Both lossless; PNG files take up less space but load slower",
         items=[
-            ("TGA", "TGA", "TGA format"),
+            ("TARGA", "TGA", "TGA format (TARGA)"),
             ("PNG", "PNG", "PNG format"),
         ],
-        default="TGA",
+        default="TARGA",
     )
+
+    @property
+    def bl_image_format(self):
+        return BlenderImageFormat(self.image_cache_format)
 
     read_cached_images: bpy.props.BoolProperty(
         name="Read Cached Images",
@@ -543,7 +566,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         """Get the path to a cached image file in the image cache directory."""
         if not self.str_image_cache_directory:
             raise NotADirectoryError("No image cache directory set.")
-        return self.image_cache_directory / f"{image_stem}.{self.image_cache_format.lower()}"
+        return self.image_cache_directory / f"{image_stem}{self.bl_image_format.get_suffix()}"
 
     # endregion
 

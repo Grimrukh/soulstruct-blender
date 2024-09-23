@@ -31,8 +31,10 @@ from io_soulstruct.types import SoulstructType
 from io_soulstruct.utilities import *
 from soulstruct.containers import Binder, BinderEntry
 from soulstruct.base.maps.msb import MSB, MSBEntry  # must not be imported under `TYPE_CHECKING` guard
+from soulstruct.base.models.flver0 import FLVER0
+from soulstruct.base.models.flver0.mesh_tools import MergedMesh as FLVER0MergedMesh
 from soulstruct.base.models.flver import FLVER
-from soulstruct.base.models.flver.mesh_tools import MergedMesh
+from soulstruct.base.models.flver.mesh_tools import MergedMesh as FLVERMergedMesh
 
 
 def find_flver_model(model_name: str) -> BlenderFLVER:
@@ -187,6 +189,7 @@ def batch_import_flver_models(
     flver_sources: dict[str, BinderEntry | Path],
     map_stem: str,
     part_subtype_title: str,
+    uses_flver0=False,
     flver_source_binders: dict[str, Binder] = None,
     image_import_callback: tp.Callable[[ImageImportManager, FLVER], None] = None,
 ):
@@ -196,11 +199,13 @@ def batch_import_flver_models(
     operator.info(f"Importing {len(flver_sources)} {part_subtype_title} FLVERs in parallel.")
 
     p = time.perf_counter()
+    flver_class = FLVER0 if uses_flver0 else FLVER
+    merged_mesh_class = FLVER0MergedMesh if uses_flver0 else FLVERMergedMesh
 
     if all(isinstance(data, Path) for data in flver_sources.values()):
-        flvers_list = FLVER.from_path_batch(list(flver_sources.values()))
+        flvers_list = flver_class.from_path_batch(list(flver_sources.values()))
     elif all(isinstance(data, BinderEntry) for data in flver_sources.values()):
-        flvers_list = FLVER.from_binder_entry_batch(list(flver_sources.values()))
+        flvers_list = flver_class.from_binder_entry_batch(list(flver_sources.values()))
     else:
         raise ValueError("All FLVER model data for batch importing must be either `BinderEntry` or `Path` objects.")
     # Drop failed FLVERs immediately.
@@ -261,7 +266,7 @@ def batch_import_flver_models(
     p = time.perf_counter()
 
     # Merge meshes in parallel. Empty meshes will be `None`.
-    flver_merged_meshes_list = MergedMesh.from_flver_batch(flvers_to_merge, flver_merged_mesh_args)
+    flver_merged_meshes_list = merged_mesh_class.from_flver_batch(flvers_to_merge, flver_merged_mesh_args)
     flver_merged_meshes = {  # nothing dropped
         model_name: merged_mesh
         for model_name, merged_mesh in zip(flver_names_to_merge, flver_merged_meshes_list)

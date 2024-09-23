@@ -583,7 +583,7 @@ class FindMissingTexturesInImageCache(LoggingOperator):
             return self.error(str(ex))
 
         checked_image_names = set()  # to avoid looking for the same image twice
-        image_suffix = f".{settings.image_cache_format.lower()}"
+        image_suffix = settings.bl_image_format.get_suffix()
 
         for bl_flver in bl_flvers:
             for bl_material in bl_flver.get_materials():
@@ -603,8 +603,9 @@ class FindMissingTexturesInImageCache(LoggingOperator):
                     checked_image_names.add(image_name)
                     image_path = settings.image_cache_directory / image_name
                     if image_path.is_file():
+                        # NOTE: We can't update the DDS Texture settings of the image.
                         image.filepath = str(image_path)
-                        image.file_format = settings.image_cache_format
+                        image.file_format = settings.bl_image_format
                         image.source = "FILE"
                         image.reload()
                         self.info(f"Found and linked texture file '{image_name}' in image cache.")

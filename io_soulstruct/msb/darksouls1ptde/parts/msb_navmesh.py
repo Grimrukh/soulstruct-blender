@@ -4,6 +4,7 @@ __all__ = [
     "BlenderMSBNavmesh",
 ]
 
+import re
 import traceback
 import typing as tp
 
@@ -118,7 +119,7 @@ class BlenderMSBNavmesh(BlenderMSBPart[MSBNavmesh, MSBNavmeshProps]):
         nvm_entry_name = model_name + ".nvm"  # no DCX in DSR
         nvmbnd = Binder.from_path(nvmbnd_path)
         try:
-            nvm_entry = nvmbnd.find_entry_name(nvm_entry_name)
+            nvm_entry = nvmbnd.find_entry_matching_name(nvm_entry_name, flags=re.IGNORECASE, escape=True)
         except EntryNotFoundError:
             raise NVMImportError(f"Could not find NVM entry '{nvm_entry_name}' in NVMBND file '{nvmbnd_path.name}'.")
 

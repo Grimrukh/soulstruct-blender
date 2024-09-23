@@ -31,12 +31,12 @@ class BlenderMSBWindEvent(BlenderMSBEvent[MSBWindEvent, MSBWindEventProps]):
         self.subtype_properties.wind_vector_min = value
 
     @property
-    def unk_x04_x08(self) -> float:
-        return self.subtype_properties.unk_x04_x08
+    def unk_x0c(self) -> float:
+        return self.subtype_properties.unk_x0c
 
-    @unk_x04_x08.setter
-    def unk_x04_x08(self, value: float):
-        self.subtype_properties.unk_x04_x08 = value
+    @unk_x0c.setter
+    def unk_x0c(self, value: float):
+        self.subtype_properties.unk_x0c = value
 
     @property
     def wind_vector_max(self) -> Vector:
@@ -47,12 +47,12 @@ class BlenderMSBWindEvent(BlenderMSBEvent[MSBWindEvent, MSBWindEventProps]):
         self.subtype_properties.wind_vector_max = value
 
     @property
-    def unk_x0c_x10(self) -> float:
-        return self.subtype_properties.unk_x0c_x10
+    def unk_x1c(self) -> float:
+        return self.subtype_properties.unk_x1c
 
-    @unk_x0c_x10.setter
-    def unk_x0c_x10(self, value: float):
-        self.subtype_properties.unk_x0c_x10 = value
+    @unk_x1c.setter
+    def unk_x1c(self, value: float):
+        self.subtype_properties.unk_x1c = value
 
     @property
     def wind_swing_cycles(self) -> Vector:
@@ -88,9 +88,9 @@ class BlenderMSBWindEvent(BlenderMSBEvent[MSBWindEvent, MSBWindEventProps]):
             operator, context, soulstruct_obj, name, collection, map_stem
         )  # type: BlenderMSBWindEvent
         bl_event.wind_vector_min = Vector(soulstruct_obj.wind_vector_min)
-        bl_event.unk_x04_x08 = soulstruct_obj.unk_x04_x08
+        bl_event.unk_x0c = soulstruct_obj.unk_x0c
         bl_event.wind_vector_max = Vector(soulstruct_obj.wind_vector_max)
-        bl_event.unk_x0c_x10 = soulstruct_obj.unk_x0c_x10
+        bl_event.unk_x1c = soulstruct_obj.unk_x1c
         bl_event.wind_swing_cycles = Vector(soulstruct_obj.wind_swing_cycles)
         bl_event.wind_swing_powers = Vector(soulstruct_obj.wind_swing_powers)
         return bl_event
@@ -104,9 +104,9 @@ class BlenderMSBWindEvent(BlenderMSBEvent[MSBWindEvent, MSBWindEventProps]):
     ) -> MSBWindEvent:
         wind_event = super().to_soulstruct_obj(operator, context, map_stem, msb)
         wind_event.wind_vector_min = list(self.wind_vector_min)
-        wind_event.unk_x04_x08 = self.unk_x04_x08
+        wind_event.unk_x0c = self.unk_x0c
         wind_event.wind_vector_max = list(self.wind_vector_max)
-        wind_event.unk_x0c_x10 = self.unk_x0c_x10
+        wind_event.unk_x1c = self.unk_x1c
         wind_event.wind_swing_cycles = list(self.wind_swing_cycles)
         wind_event.wind_swing_powers = list(self.wind_swing_powers)
         return wind_event
