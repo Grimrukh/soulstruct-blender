@@ -275,6 +275,8 @@ class BlenderMapCollision(SoulstructObject[MapCollisionModel, MapCollisionProps]
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Concatenate all vertices and faces from a list of meshes by offsetting the face indices.
 
+        TODO: Currently discards the fourth columns of vertices and faces. The latter may contain data.
+
         Also returns array of face material indices for use with `foreach_set()` by simply coping the corresponding
         `bl_material_indices` element to all faces.
         """
@@ -285,8 +287,8 @@ class BlenderMapCollision(SoulstructObject[MapCollisionModel, MapCollisionProps]
         face_materials = []
         offset = initial_offset
         for mesh, bl_material_index in zip(collision.meshes, bl_material_indices, strict=True):
-            face_stack.append(mesh.faces + offset)
-            vert_stack.append(mesh.vertices)
+            face_stack.append(mesh.faces[:, :3] + offset)
+            vert_stack.append(mesh.vertices[:, :3])
             face_materials.extend([bl_material_index] * mesh.face_count)
             offset += mesh.vertex_count
         vertices = np.vstack(vert_stack)

@@ -31,12 +31,20 @@ from soulstruct.eldenring.maps import MSB as er_MSB
 @dataclass(slots=True)
 class GameConfig:
 
-    uses_matbin: bool
-    flver_default_version: FLVERVersion
+    # File format support.
+    supports_flver: bool = False
+    supports_nvm: bool = False
+    supports_collision_model: bool = False
+    supports_animation: bool = False
+    supports_msb: bool = False
+    supports_cutscenes: bool = False
+
+    uses_matbin: bool = False
+    flver_default_version: FLVERVersion = FLVERVersion.DarkSouls_A
     # True from Bloodborne (DS2?) onwards, where Map Piece FLVER vertices store their singular bone indices in the
     # fourth 8-bit component of the 'normal_w' vertex array, rather than having a full useless four-bone `bone_indices`
     # field like real rigged FLVERs.
-    map_pieces_use_normal_w_bones: bool
+    map_pieces_use_normal_w_bones: bool = False
 
     uses_flver0: bool = False
     swizzle_platform: TPFPlatform | None = None  # overrides `TPF.platform` for de/swizzling
@@ -68,6 +76,11 @@ class GameConfig:
 
 GAME_CONFIG = {
     DEMONS_SOULS: GameConfig(
+        supports_flver=True,
+        supports_nvm=True,
+        supports_collision_model=True,
+        supports_animation=False,  # TODO: support anims
+        supports_msb=True,
         uses_matbin=False,
         flver_default_version=FLVERVersion.DemonsSouls,
         uses_flver0=True,
@@ -77,6 +90,11 @@ GAME_CONFIG = {
         map_constants=des_constants,
     ),
     DARK_SOULS_PTDE: GameConfig(
+        supports_flver=True,
+        supports_nvm=True,
+        supports_collision_model=True,
+        supports_animation=True,
+        supports_msb=True,
         uses_matbin=False,
         flver_default_version=FLVERVersion.DarkSouls_A,
         map_pieces_use_normal_w_bones=False,
@@ -92,6 +110,11 @@ GAME_CONFIG = {
         map_constants=ds1ptde_constants,
     ),
     DARK_SOULS_DSR: GameConfig(
+        supports_flver=True,
+        supports_nvm=True,
+        supports_collision_model=True,
+        supports_animation=True,
+        supports_msb=True,
         uses_matbin=False,
         flver_default_version=FLVERVersion.DarkSouls_A,
         map_pieces_use_normal_w_bones=False,
@@ -107,6 +130,11 @@ GAME_CONFIG = {
         map_constants=ds1r_constants,
     ),
     BLOODBORNE: GameConfig(
+        supports_flver=True,
+        supports_nvm=False,  # TODO: used?
+        supports_collision_model=False,  # TODO: could at least read hknp meshes
+        supports_animation=True,
+        supports_msb=False,  # TODO
         uses_matbin=False,
         flver_default_version=FLVERVersion.Bloodborne_DS3_A,
         map_pieces_use_normal_w_bones=True,
@@ -114,17 +142,32 @@ GAME_CONFIG = {
         map_constants=bb_constants,
     ),
     DARK_SOULS_3: GameConfig(
+        supports_flver=True,
+        supports_nvm=False,  # not used
+        supports_collision_model=False,  # TODO: could at least read hknp meshes
+        supports_animation=True,
+        supports_msb=False,  # TODO: not supported by Soulstruct
         uses_matbin=False,
         flver_default_version=FLVERVersion.Bloodborne_DS3_A,
         map_pieces_use_normal_w_bones=True,
         map_constants=ds3_constants,
     ),
     SEKIRO: GameConfig(
+        supports_flver=True,
+        supports_nvm=False,
+        supports_collision_model=False,
+        supports_animation=False,  # TODO: probably easy
+        supports_msb=False,
         uses_matbin=False,
         flver_default_version=FLVERVersion.Sekiro_EldenRing,
         map_pieces_use_normal_w_bones=True,
     ),
     ELDEN_RING: GameConfig(
+        supports_flver=True,
+        supports_nvm=False,
+        supports_collision_model=False,
+        supports_animation=True,
+        supports_msb=False,
         uses_matbin=True,
         flver_default_version=FLVERVersion.Sekiro_EldenRing,
         map_pieces_use_normal_w_bones=True,

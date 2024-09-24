@@ -430,7 +430,7 @@ class DDSTextureCollection(dict[str, DDSTexture]):
             entry_path_parent += "\\"
 
         settings = operator.settings(context)
-        if settings.is_game_ds1():
+        if settings.is_game("DARK_SOULS_DSR"):
             tpfbxf = Binder.empty_bxf3()
         else:
             raise UnsupportedGameError(f"Cannot yet export TPFBHDs for game {settings.game.name}.")

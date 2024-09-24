@@ -25,6 +25,7 @@ from pathlib import Path
 import bpy
 from bpy_extras.io_utils import ImportHelper
 from soulstruct.containers import BinderEntry, EntryNotFoundError
+from soulstruct.games import DARK_SOULS_PTDE, DEMONS_SOULS
 from soulstruct_havok.wrappers.shared import MapCollisionModel, BothResHKXBHD
 from io_soulstruct.exceptions import MapCollisionImportError
 from io_soulstruct.utilities import *
@@ -298,7 +299,7 @@ class ImportSelectedMapHKXMapCollision(LoggingOperator):
     def poll(cls, context):
         settings = cls.settings(context)
         map_stem = settings.get_oldest_map_stem_version()  # collision uses oldest
-        if not settings.is_game_ds1():
+        if not settings.game_config.supports_collision_model:
             return False
         # Either loose HKX files in map directory (PTDE) or a pair of resolution HKXBHDs (DSR).
         try:
@@ -319,13 +320,12 @@ class ImportSelectedMapHKXMapCollision(LoggingOperator):
 
     def invoke(self, context, event):
         """Unpack valid Binder entry choices to temp directory for user to select from."""
-        print("INVOKE")
         if self.temp_directory:
             shutil.rmtree(self.temp_directory, ignore_errors=True)
             self.temp_directory = ""
 
         settings = self.settings(context)
-        if settings.is_game("DARK_SOULS_PTDE"):
+        if settings.is_game(DEMONS_SOULS, DARK_SOULS_PTDE):
             # HKX files are already loose. Just use map folder (oldest).
             try:
                 map_dir = settings.get_import_map_dir_path(map_stem=settings.get_oldest_map_stem_version())
@@ -361,8 +361,8 @@ class ImportSelectedMapHKXMapCollision(LoggingOperator):
         collision_pairs = []  # type: list[tuple[MapCollisionModel, MapCollisionModel]]
         settings = self.settings(context)
 
-        if settings.is_game("DARK_SOULS_PTDE"):
-            # Dark Souls: PTDE reads loose HKX files from map folder.
+        if settings.is_game(DEMONS_SOULS, DARK_SOULS_PTDE):
+            # DeS and PTDE read loose HKX files from map folder.
             file_paths = [Path(self.directory, file.name) for file in self.files]
             for path in file_paths:
                 if path.name.startswith("h"):
@@ -418,7 +418,7 @@ class ImportSelectedMapHKXMapCollision(LoggingOperator):
 
     def execute(self, context):
         try:
-            hkx_pairs = self.get_selected_collision_pairs(context)  # genuine loose files (PTDE) or temp directory (DSR)
+            hkx_pairs = self.get_selected_collision_pairs(context)  # temp directory (DSR) or genuine loose files
             if not hkx_pairs:
                 return {"CANCELLED"}  # relevant error already reported
             for hi_collision, lo_collision in hkx_pairs:

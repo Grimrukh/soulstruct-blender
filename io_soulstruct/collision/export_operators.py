@@ -3,7 +3,7 @@ from __future__ import annotations
 __all__ = [
     "ExportLooseHKXMapCollision",
     "ExportHKXMapCollisionIntoBinder",
-    "ExportHKXMapCollisionIntoHKXBHD",
+    "ExportHKXMapCollisionToMap",
 ]
 
 import re
@@ -14,7 +14,7 @@ import bpy
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 
 from soulstruct.dcx import DCXType
-from soulstruct.games import DARK_SOULS_PTDE, DARK_SOULS_DSR
+from soulstruct.games import DARK_SOULS_PTDE, DARK_SOULS_DSR, DEMONS_SOULS
 from soulstruct.utilities.files import create_bak
 
 from soulstruct_havok.wrappers.shared import BothResHKXBHD
@@ -24,8 +24,16 @@ from io_soulstruct.utilities import *
 from .types import *
 
 
-LOOSE_HKX_COLLISION_STEM_RE = re.compile(r"^([hl])(\w{6})A(\d\d)$")  # game-readable model name; no extensions
-NUMERIC_HKX_COLLISION_STEM_RE = re.compile(r"^([hl])(\d{4})B(\d)A(\d\d)$")  # standard map model name; no extensions
+LOOSE_HKX_COLLISION_STEM_RE = {  # game-readable model name; no extensions
+    DEMONS_SOULS: re.compile(r"^([hl])(\w{6})$"),
+    DARK_SOULS_PTDE: re.compile(r"^([hl])(\w{6})A(\d\d)$"),
+    DARK_SOULS_DSR: re.compile(r"^([hl])(\w{6})A(\d\d)$"),
+}
+NUMERIC_HKX_COLLISION_STEM_RE = {  # standard map model name; no extensions
+    DEMONS_SOULS: re.compile(r"^([hl])(\d{4})[Bb](\d)$"),
+    DARK_SOULS_PTDE: re.compile(r"^([hl])(\d{4})B(\d)A(\d\d)$"),
+    DARK_SOULS_DSR: re.compile(r"^([hl])(\d{4})B(\d)A(\d\d)$"),
+}
 
 
 class ExportLooseHKXMapCollision(LoggingOperator, ExportHelper):
@@ -55,8 +63,8 @@ class ExportLooseHKXMapCollision(LoggingOperator, ExportHelper):
     def poll(cls, context):
         """Must select a single mesh."""
         settings = cls.settings(context)
-        if not settings.is_game(DARK_SOULS_DSR):
-            return False  # TODO: DS1R only.
+        if not settings.is_game(DEMONS_SOULS, DARK_SOULS_PTDE, DARK_SOULS_DSR):
+            return False
         if not context.active_object:
             return False
         if context.active_object.soulstruct_type != SoulstructType.COLLISION:
@@ -82,15 +90,13 @@ class ExportLooseHKXMapCollision(LoggingOperator, ExportHelper):
         # noinspection PyTypeChecker
         hkx_model = context.active_object  # type: bpy.types.MeshObject
         settings = self.settings(context)
-        if settings.is_game(DARK_SOULS_PTDE):
-            bl_map_collision = BlenderMapCollision(hkx_model)
-        elif settings.is_game(DARK_SOULS_DSR):
+        if settings.is_game(DEMONS_SOULS, DARK_SOULS_PTDE, DARK_SOULS_DSR):
             bl_map_collision = BlenderMapCollision(hkx_model)
         else:
-            return self.error("This operator only supports Dark Souls 1 (PTDE and DSR).")
+            return self.error("This operator only supports Dark Souls 1 (PTDE and DSR) and Demon's Souls.")
 
         hkx_path = Path(self.filepath)
-        if not LOOSE_HKX_COLLISION_STEM_RE.match(hkx_path.name) is None:
+        if not LOOSE_HKX_COLLISION_STEM_RE[settings.game].match(hkx_path.name) is None:
             return self.warning(
                 f"HKX file name '{hkx_path.name}' does not match the expected name pattern for "
                 f"a HKX collision parent object and will not function in-game: 'h......A..' or 'l......A..'"
@@ -186,8 +192,8 @@ class ExportHKXMapCollisionIntoBinder(LoggingOperator, ImportHelper):
         """Must select a single mesh."""
         # TODO: Why not all selected models at once?
         settings = cls.settings(context)
-        if not settings.is_game(DARK_SOULS_DSR):
-            return False  # TODO: DS1R only.
+        if not settings.is_game(DEMONS_SOULS, DARK_SOULS_PTDE, DARK_SOULS_DSR):
+            return False
         if not context.active_object:
             return False
         if context.active_object.soulstruct_type != SoulstructType.COLLISION:
@@ -198,12 +204,14 @@ class ExportHKXMapCollisionIntoBinder(LoggingOperator, ImportHelper):
         if not self.poll(context):
             return self.error("Cannot use operator at this time. Try selected a single HKX mesh model.")
 
+        settings = self.settings(context)
+
         # noinspection PyTypeChecker
         hkx_model = context.active_object  # type: bpy.types.MeshObject
         bl_map_collision = BlenderMapCollision(hkx_model)
 
         model_name = bl_map_collision.export_name
-        if not LOOSE_HKX_COLLISION_STEM_RE.match(model_name):
+        if not LOOSE_HKX_COLLISION_STEM_RE[settings.game].match(model_name):
             self.warning(
                 f"HKX map collision model name '{model_name}' should generally be 'h....B.A..' or 'l....B.A..'."
             )
@@ -253,24 +261,21 @@ class ExportHKXMapCollisionIntoBinder(LoggingOperator, ImportHelper):
         return {"FINISHED"}
 
 
-class ExportHKXMapCollisionIntoHKXBHD(LoggingOperator):
-    """Export a HKX collision file into a FromSoftware DSR map directory BHD."""
-    bl_idname = "export_scene_map.hkx_map_collision_entry"
+class ExportHKXMapCollisionToMap(LoggingOperator):
+    """Export a HKX collision file to detected map in appropriate format (loose or HKXBHD)."""
+    bl_idname = "export_scene_map.hkx_map_collision"
     bl_label = "Export Map Collision"
     bl_description = (
-        "Export HKX map collisions into HKXBHD binder in appropriate game map (DS1R only)"
+        "Export HKX map collisions to detected map in appropriate format (loose or HKXBHD)"
     )
 
     @classmethod
     def poll(cls, context):
-        """Must select at least one mesh.
-
-        TODO: Also currently for DS1R only.
-        """
+        """Must select at least one mesh."""
         settings = cls.settings(context)
         if not settings.can_auto_export:
             return False
-        if not settings.is_game(DARK_SOULS_DSR):
+        if not settings.is_game(DEMONS_SOULS, DARK_SOULS_PTDE, DARK_SOULS_DSR):
             return False
         if not context.selected_objects:
             return False
@@ -284,7 +289,13 @@ class ExportHKXMapCollisionIntoHKXBHD(LoggingOperator):
             return self.error("Must select at least one mesh.")
 
         settings = self.settings(context)
-        dcx_type = DCXType.DS1_DS2  # DS1R (inside HKXBHD)
+        if settings.is_game(DARK_SOULS_DSR):
+            dcx_type = DCXType.DS1_DS2  # inside HKXBHD
+        elif settings.is_game(DEMONS_SOULS, DARK_SOULS_PTDE):
+            dcx_type = DCXType.Null  # loose HKX
+        else:
+            return self.error("This operator only supports Dark Souls 1 (PTDE and DSR) and Demon's Souls.")
+
         bl_map_collisions = BlenderMapCollision.from_selected_objects(context)  # type: list[BlenderMapCollision]
 
         opened_both_res_hkxbhds = {}  # type: dict[str, BothResHKXBHD]  # keys are map stems
@@ -301,23 +312,23 @@ class ExportHKXMapCollisionIntoHKXBHD(LoggingOperator):
             map_stem = settings.get_map_stem_for_export(bl_map_collision.obj, oldest=True)
 
             model_name = bl_map_collision.export_name
-            if not LOOSE_HKX_COLLISION_STEM_RE.match(model_name):
+            if not LOOSE_HKX_COLLISION_STEM_RE[settings.game].match(model_name):
                 return self.error(
                     f"Model name '{model_name}' detected from selected mesh '{bl_map_collision.name}' does not match "
-                    f"the required name pattern for a DS1 HKX collision model: 'h......A..' or 'l......A..'"
+                    f"the required name pattern for this game's collision models."
                 )
             # If HKX name is standard, check that it matches the selected map stem and warn user if not.
-            numeric_match = NUMERIC_HKX_COLLISION_STEM_RE.match(model_name)
+            numeric_match = NUMERIC_HKX_COLLISION_STEM_RE[settings.game].match(model_name)
             if numeric_match is None:
                 self.warning(
                     f"Model name '{model_name}' detected from selected mesh '{bl_map_collision.name}' does not match "
-                    f"the standard name pattern for a DS1 HKX collision model: 'h####B#A##' or 'l####B#A##'. Exporting "
-                    f"anyway."
+                    f"the standard name pattern for this game's HKX collision model. Exporting anyway."
                 )
-            else:
+            elif not settings.is_game(DEMONS_SOULS):
+                # From Dark Souls onwards, we can check the expected area from the collision name suffix.
                 block, area = int(numeric_match.group(3)), int(numeric_match.group(4))
-                expected_map_stem = f"m{area:02d}_{block:02d}_00_00"
-                if expected_map_stem != map_stem:
+                expected_map_stem_aabb = f"m{area:02d}_{block:02d}_"
+                if not map_stem.startswith(expected_map_stem_aabb):
                     self.warning(
                         f"Map area and/or block in name of detected model name '{model_name}' of selected mesh "
                         f"'{bl_map_collision.name}' does not match the export destination map '{map_stem}'. Exporting "
@@ -333,27 +344,35 @@ class ExportHKXMapCollisionIntoHKXBHD(LoggingOperator):
             hi_hkx.dcx_type = dcx_type
             lo_hkx.dcx_type = dcx_type
 
-            if map_stem not in opened_both_res_hkxbhds:
-                for res in ("h", "l"):
-                    for suffix in ("hkxbhd", "hkxbdt"):
-                        relative_path = Path(f"map/{map_stem}/{res}{map_stem[1:]}.{suffix}")
-                        try:
-                            settings.prepare_project_file(relative_path, must_exist=True)
-                        except FileNotFoundError as ex:
-                            return self.error(
-                                f"Could not find file '{relative_path}' for map '{map_stem}'. Error: {ex}"
-                            )
+            if settings.is_game(DEMONS_SOULS):
+                # Loose, immediate HKX export. TODO: Do the whole 'don't write lo if hi fails' thing from above.
+                relative_dir = Path(f"map/{map_stem}")
+                return_strings |= settings.export_file(self, hi_hkx, Path(relative_dir, f"{hi_hkx.path_stem}.hkx"))
+                return_strings |= settings.export_file(self, lo_hkx, Path(relative_dir, f"{lo_hkx.path_stem}.hkx"))
+                self.info(f"Exported loose hi-res and lo-res HKX for {model_name} to map directory {map_stem}.")
+            else:
+                if map_stem not in opened_both_res_hkxbhds:
+                    for res in ("h", "l"):
+                        for suffix in ("hkxbhd", "hkxbdt"):
+                            relative_path = Path(f"map/{map_stem}/{res}{map_stem[1:]}.{suffix}")
+                            try:
+                                settings.prepare_project_file(relative_path, must_exist=True)
+                            except FileNotFoundError as ex:
+                                return self.error(
+                                    f"Could not find file '{relative_path}' for map '{map_stem}'. Error: {ex}"
+                                )
 
-                try:
-                    map_dir = settings.get_import_map_dir_path(map_stem=map_stem)
-                except NotADirectoryError:
-                    return self.error(f"Could not find map data directory for map '{map_stem}'.")
-                opened_both_res_hkxbhds[map_stem] = BothResHKXBHD.from_map_path(map_dir)
+                    try:
+                        map_dir = settings.get_import_map_dir_path(map_stem=map_stem)
+                    except NotADirectoryError:
+                        return self.error(f"Could not find map data directory for map '{map_stem}'.")
+                    opened_both_res_hkxbhds[map_stem] = BothResHKXBHD.from_map_path(map_dir)
 
-            opened_both_res_hkxbhds[map_stem].hi_res.set_hkx(hi_hkx.path_stem, hi_hkx)
-            opened_both_res_hkxbhds[map_stem].lo_res.set_hkx(lo_hkx.path_stem, lo_hkx)
-            self.info(f"Added hi-res and lo-res HKX for {model_name} to {map_stem} HKXBHDs.")
+                opened_both_res_hkxbhds[map_stem].hi_res.set_hkx(hi_hkx.path_stem, hi_hkx)
+                opened_both_res_hkxbhds[map_stem].lo_res.set_hkx(lo_hkx.path_stem, lo_hkx)
+                self.info(f"Added hi-res and lo-res HKX for {model_name} to {map_stem} HKXBHDs.")
 
+        # Will be empty for Demon's Souls.
         for map_stem, both_res_hkxbhd in opened_both_res_hkxbhds.items():
             return_strings |= settings.export_file(
                 self, both_res_hkxbhd.hi_res, Path(f"map/{map_stem}/h{map_stem[1:]}.hkxbhd")

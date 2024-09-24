@@ -214,7 +214,7 @@ CLASSES = (
 
     ExportLooseHKXMapCollision,
     ExportHKXMapCollisionIntoBinder,
-    ExportHKXMapCollisionIntoHKXBHD,
+    ExportHKXMapCollisionToMap,
     MapCollisionImportExportPanel,
     MapCollisionToolsPanel,
 
