@@ -14,7 +14,11 @@ from bpy_extras.io_utils import ImportHelper, ExportHelper
 
 from soulstruct.containers import Binder, BinderEntry
 from soulstruct.dcx import DCXType
-from soulstruct.darksouls1r.maps.navmesh import NVMBND
+from soulstruct.base.maps.navmesh import BaseNVMBND
+from soulstruct.darksouls1r.maps.navmesh import NVMBND as NVMBND_DSR
+from soulstruct.darksouls1ptde.maps.navmesh import NVMBND as NVMBND_PTDE
+from soulstruct.demonssouls.maps.navmesh import NVMBND as NVMBND_DES
+from soulstruct.games import DARK_SOULS_PTDE, DARK_SOULS_DSR, DEMONS_SOULS
 
 from io_soulstruct.exceptions import SoulstructTypeError
 from io_soulstruct.types import SoulstructType
@@ -226,14 +230,23 @@ class ExportNVMIntoSelectedMap(LoggingOperator):
 
         settings = self.settings(context)
         if not settings.is_game_ds1():
-            return self.error("NVM export is only supported for Dark Souls 1 (PTDE or DSR).")
+            return self.error("NVM export is only supported for Demon's Souls and Dark Souls 1 (PTDE or DSR).")
 
         if not settings.map_stem and not settings.detect_map_from_collection:
             return self.error(
                 "No game map directory specified in Soulstruct settings and `Detect Map from Collection` is disabled."
             )
 
-        opened_nvmbnds = {}  # type: dict[Path, NVMBND]
+        if settings.is_game(DARK_SOULS_PTDE):
+            nvmbnd_class = NVMBND_PTDE
+        elif settings.is_game(DARK_SOULS_DSR):
+            nvmbnd_class = NVMBND_DSR
+        elif settings.is_game(DEMONS_SOULS):
+            nvmbnd_class = NVMBND_DES
+        else:
+            return self.error(f"Unsupported game: {settings.game}")
+
+        opened_nvmbnds = {}  # type: dict[Path, BaseNVMBND]
         bl_nvms = BlenderNVM.from_selected_objects(context)  # type: list[BlenderNVM]
 
         for bl_nvm in bl_nvms:
@@ -249,7 +262,7 @@ class ExportNVMIntoSelectedMap(LoggingOperator):
                     self.error(f"Cannot find NVMBND: {relative_nvmbnd_path}. Error: {ex}")
                     continue
                 try:
-                    nvmbnd = opened_nvmbnds[relative_nvmbnd_path] = NVMBND.from_path(nvmbnd_path)
+                    nvmbnd = opened_nvmbnds[relative_nvmbnd_path] = nvmbnd_class.from_path(nvmbnd_path)
                 except Exception as ex:
                     self.error(f"Could not load NVMBND for map '{map_stem}'. Error: {ex}")
                     continue

@@ -13,7 +13,7 @@ import re
 
 import bpy
 from io_soulstruct.utilities.materials import hsv_color, create_basic_material
-from soulstruct.darksouls1r.maps.navmesh import NavmeshFlag
+from soulstruct.base.maps.navmesh import NavmeshFlag
 
 ANY_NVM_NAME_RE = re.compile(r"^(?P<stem>.*)\.nvm(?P<dcx>\.dcx)?$")
 STANDARD_NVM_STEM_RE = re.compile(r"^n(\d{4})B(?P<B>\d)A(?P<A>\d{2})$")  # no extensions

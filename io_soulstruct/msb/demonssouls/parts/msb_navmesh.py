@@ -16,7 +16,7 @@ from io_soulstruct.types import *
 from io_soulstruct.utilities import *
 from soulstruct.base.maps.msb.utils import GroupBitSet128
 from soulstruct.containers import Binder, EntryNotFoundError
-from soulstruct.darksouls1r.maps.navmesh.nvm import NVM  # TODO: share with `demonssouls`
+from soulstruct.base.maps.navmesh.nvm import NVM
 from soulstruct.demonssouls.maps.models import MSBNavmeshModel
 from soulstruct.demonssouls.maps.parts import MSBNavmesh
 from .msb_part import BlenderMSBPart

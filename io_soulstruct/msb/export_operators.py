@@ -16,9 +16,14 @@ from io_soulstruct.navmesh.nvm.types import BlenderNVM
 from io_soulstruct.types import SoulstructType
 from io_soulstruct.utilities.operators import LoggingOperator
 from soulstruct.darksouls1ptde.maps.msb import MSB as MSB_PTDE
+from soulstruct.darksouls1ptde.maps.navmesh import NVMBND as NVMBND_PTDE
 from soulstruct.darksouls1r.maps.msb import MSB as MSB_DSR
-from soulstruct.darksouls1r.maps.navmesh import NVMBND
+from soulstruct.darksouls1r.maps.navmesh import NVMBND as NVMBND_DSR
+from soulstruct.demonssouls.maps.msb import MSB as MSB_PTDE
+from soulstruct.demonssouls.maps.msb import MSB as MSB_DES
+from soulstruct.demonssouls.maps.navmesh import NVMBND as NVMBND_DES
 from soulstruct.dcx import DCXType
+from soulstruct.games import *
 from soulstruct.utilities.text import natural_keys
 from soulstruct_havok.wrappers.shared import HKXBHD, BothResHKXBHD
 from .operator_config import *
@@ -72,7 +77,7 @@ class ExportMapMSB(LoggingOperator):
         settings = self.settings(context)
         export_settings = context.scene.msb_export_settings
 
-        msb_class = GAME_CONFIG[settings.game].msb_class
+        msb_class = settings.game_config.msb_class
         if not msb_class:
             return self.error(f"MSB class not found for game '{settings.game}'.")
 
@@ -122,7 +127,7 @@ class ExportMapMSB(LoggingOperator):
         self.to_object_mode()
 
         # Create new MSB. TODO: Type-hinting DS1 for now for my own convenience.
-        msb = msb_class()  # type: MSB_PTDE | MSB_DSR
+        msb = msb_class()  # type: MSB_PTDE | MSB_DSR | MSB_DES
 
         # We add Regions first, then Parts (in careful subtype order), then Events.
         region_classes = BLENDER_MSB_REGION_TYPES[settings.game]
@@ -206,21 +211,67 @@ class ExportMapMSB(LoggingOperator):
             settings.export_text_file(self, nvmdump, relative_nvmdump_path)
             self.info(f"Exported NVMDUMP file next to NVMBND: {relative_nvmdump_path.name}")
 
-        if export_settings.export_navmesh_models and settings.is_game_ds1():
+        if export_settings.export_navmesh_models:
             bl_navmesh_type = part_classes[MSBPartSubtype.Navmesh]
             bl_navmesh_parts = [
                 bl_navmesh_type(obj) for obj in bl_parts if obj.MSB_PART.part_subtype == MSBPartSubtype.Navmesh
             ]
-            self.export_nvmbnd(context, map_stem, bl_navmesh_parts)
+            # NOTE: All these games use NVMBNDs.
+            if settings.is_game(DEMONS_SOULS, DARK_SOULS_PTDE, DARK_SOULS_DSR):
+                self.export_nvmbnd(context, map_stem, bl_navmesh_parts)
+            else:
+                self.warning(f"Navmesh model export not supported for game '{settings.game}'.")
 
-        if export_settings.export_collision_models and settings.is_game("DARK_SOULS_DSR"):
+        if export_settings.export_collision_models:
             bl_collision_type = part_classes[MSBPartSubtype.Collision]
             bl_collision_parts = [
                 bl_collision_type(obj) for obj in bl_parts if obj.MSB_PART.part_subtype == MSBPartSubtype.Collision
             ]
-            self.export_hkxbhds(context, map_stem, bl_collision_parts)
+            if settings.is_game(DEMONS_SOULS, DARK_SOULS_PTDE):
+                self.export_loose_hkxs(context, map_stem, bl_collision_parts)
+            elif settings.is_game(DARK_SOULS_DSR):
+                self.export_hkxbhds(context, map_stem, bl_collision_parts)
+            else:
+                self.warning(f"Collision model export not supported for game '{settings.game}'.")
 
         # NOTE: There is no option to export FLVER models, as this is slow and better done individually by user.
+
+        return {"FINISHED"}
+
+    def export_loose_nvms(
+        self, context: bpy.types.Context, map_stem: str, bl_navmeshes: list[IBlenderMSBPart]
+    ) -> set[str]:
+        """Collect and export all NVMs for all MSB Navmesh models."""
+        settings = context.scene.soulstruct_settings
+
+        relative_map_dir = Path(f"map/{map_stem}")
+        added_models = set()
+        for bl_navmesh in bl_navmeshes:
+            if not bl_navmesh.model:
+                # Log error (should never happen in any valid MSB), but continue.
+                self.error(f"Blender MSB Navmesh '{bl_navmesh.name}' has no model assigned to export.")
+                continue
+            model_stem = bl_navmesh.export_name
+            if model_stem in added_models:
+                self.warning(
+                    f"MSB {map_stem} has duplicate MSB Navmesh models ('{model_stem}'), which is extremely unusual."
+                )
+                continue
+            added_models.add(model_stem)
+            try:
+                nvm = BlenderNVM(bl_navmesh.model).to_soulstruct_obj(self, context)
+            except Exception as ex:
+                traceback.print_exc()
+                self.error(f"Could not export NVM navmesh model. Error: {ex}")
+                continue
+            else:
+                nvm.dcx_type = DCXType.Null  # no DCX compression inside DS1 NVMBND
+
+            settings.export_file(self, nvm, relative_map_dir / f"{model_stem}.nvm")
+
+        if not added_models:
+            self.warning(f"No Navmesh models found to export in MSB {map_stem}. No NVMs written.")
+            return {"CANCELLED"}
 
         return {"FINISHED"}
 
@@ -229,7 +280,15 @@ class ExportMapMSB(LoggingOperator):
         settings = context.scene.soulstruct_settings
 
         relative_nvmbnd_path = Path(f"map/{map_stem}/{map_stem}.nvmbnd")
-        nvmbnd = NVMBND(map_stem=map_stem)  # brand new empty NVMBND
+        if settings.is_game(DEMONS_SOULS):
+            nvmbnd = NVMBND_DES(map_stem=map_stem)
+        elif settings.is_game(DARK_SOULS_PTDE):
+            nvmbnd = NVMBND_PTDE(map_stem=map_stem)
+        elif settings.is_game(DARK_SOULS_DSR):
+            nvmbnd = NVMBND_DSR(map_stem=map_stem)
+        else:
+            return self.error(f"NVMBND export not supported for game '{settings.game}'.")
+
         added_models = set()
         for bl_navmesh in bl_navmeshes:
             if not bl_navmesh.model:
@@ -265,13 +324,61 @@ class ExportMapMSB(LoggingOperator):
 
         return {"FINISHED"}
 
+    def export_loose_hkxs(
+        self, context: bpy.types.Context, map_stem: str, bl_collisions: list[IBlenderMSBPart]
+    ) -> set[str]:
+        """Collect and export all both-res loose HKXs for all MSB Collision models."""
+        settings = context.scene.soulstruct_settings
+        dcx_type = settings.game.get_dcx_type("hkx")  # probably no DCX
+        py_havok_module = settings.game_config.py_havok_module
+        if not py_havok_module:
+            return self.error(f"Cannot export Collision models for game '{settings.game}' without PyHavok module.")
+
+        relative_map_dir = Path(f"map/{map_stem}")
+        added_models = set()
+        for bl_collision in bl_collisions:
+            if not bl_collision.model:
+                # Log error (should never happen in any valid MSB), but continue.
+                self.error(f"Blender MSB Collision '{bl_collision.name}' has no model assigned to export.")
+                continue
+            model_stem = bl_collision.export_name
+            if model_stem in added_models:
+                # Acceptable, unlike navmeshes (e.g. kill planes or shifted dupes of some other kind).
+                continue
+            added_models.add(model_stem)
+
+            bl_collision_model = BlenderMapCollision(bl_collision.model)
+            try:
+                hi_hkx, lo_hkx = bl_collision_model.to_hkx_pair(
+                    self, py_havok_module, require_hi=True, use_hi_if_missing_lo=True
+                )
+            except Exception as ex:
+                self.error(f"Cannot get exported hi/lo HKX for '{bl_collision.model.name}'. Error: {ex}")
+                continue
+            hi_hkx.dcx_type = dcx_type
+            lo_hkx.dcx_type = dcx_type
+
+            # TODO: Don't export lo if hi fails.
+            settings.export_file(self, hi_hkx, relative_map_dir / f"{hi_hkx.path_stem}.hkx")
+            settings.export_file(self, lo_hkx, relative_map_dir / f"{lo_hkx.path_stem}.hkx")
+
+        if not added_models:
+            self.warning(f"No Collision models found to export in MSB {map_stem}. No HKX files written.")
+            return {"CANCELLED"}
+
+        return {"FINISHED"}
+
     def export_hkxbhds(
         self, context: bpy.types.Context, map_stem: str, bl_collisions: list[IBlenderMSBPart]
     ) -> set[str]:
         """Collect and export brand new both-res HKXBHDs containing all MSB Collision models."""
         settings = context.scene.soulstruct_settings
         dcx_type = settings.game.get_dcx_type("hkx")  # will have DCX inside HKXBHD
+        py_havok_module = settings.game_config.py_havok_module
+        if not py_havok_module:
+            return self.error(f"Cannot export Collision models for game '{settings.game}' without PyHavok module.")
 
+        # The `BothResHKXBHD` class is already DSR-specific.
         both_res_hkxbhd = BothResHKXBHD(
             hi_res=HKXBHD(map_stem=map_stem, path=Path(f"map/{map_stem}/h{map_stem[1:]}.hkxbhd")),
             lo_res=HKXBHD(map_stem=map_stem, path=Path(f"map/{map_stem}/l{map_stem[1:]}.hkxbhd")),
@@ -292,7 +399,9 @@ class ExportMapMSB(LoggingOperator):
 
             bl_collision_model = BlenderMapCollision(bl_collision.model)
             try:
-                hi_hkx, lo_hkx = bl_collision_model.to_hkx_pair(self, require_hi=True, use_hi_if_missing_lo=True)
+                hi_hkx, lo_hkx = bl_collision_model.to_hkx_pair(
+                    self, py_havok_module, require_hi=True, use_hi_if_missing_lo=True
+                )
             except Exception as ex:
                 self.error(f"Cannot get exported hi/lo HKX for '{bl_collision.model.name}'. Error: {ex}")
                 continue

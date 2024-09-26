@@ -9,7 +9,7 @@ import bpy
 from bpy_extras.io_utils import ExportHelper
 from io_soulstruct.utilities import *
 from soulstruct.darksouls1r.maps import MSB
-from soulstruct.darksouls1r.maps.navmesh.mcp import MCP
+from soulstruct.base.maps.navmesh.mcp import MCP
 from soulstruct.dcx import DCXType
 from soulstruct.games import DARK_SOULS_DSR
 from .types import BlenderMCG

@@ -12,8 +12,8 @@ import bpy
 from io_soulstruct.exceptions import *
 from io_soulstruct.types import *
 from io_soulstruct.utilities import *
-from soulstruct.darksouls1r.maps.navmesh import MCG, MCGNode
-from soulstruct.darksouls1r.maps.navmesh import MCGEdge
+from soulstruct.base.maps.navmesh import MCG, MCGNode
+from soulstruct.base.maps.navmesh import MCGEdge
 from soulstruct.utilities.text import natural_keys
 from .properties import *
 
@@ -364,7 +364,7 @@ class BlenderMCGNode(SoulstructObject[MCGNode, MCGNodeProps]):
         name: str,
         collection: bpy.types.Collection = None,
         navmesh_part_names: list[str] = None,
-        triangle_indices: dict[str, list[int]] = None,
+        triangle_indices: dict[str, None | tuple[int, list[int]]] = None,
     ) -> BlenderMCGNode:
         if not navmesh_part_names:
             raise ValueError("`navmesh_part_names` must be provided.")
@@ -511,7 +511,7 @@ class BlenderMCGEdge(SoulstructObject[MCGEdge, MCGEdgeProps]):
         node_a: bpy.types.Object = None,
         node_b: bpy.types.Object = None,
     ) -> BlenderMCGEdge:
-        bl_edge = cls.new(name, data=None, collection=collection)
+        bl_edge = cls.new(name, data=None, collection=collection)  # type: BlenderMCGEdge
         bl_edge.obj.empty_display_type = "PLAIN_AXES"
         bl_edge.obj.location = (node_a.location + node_b.location) / 2.0
         # Point empty arrow in direction of edge.

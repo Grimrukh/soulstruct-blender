@@ -11,7 +11,7 @@ import bmesh
 import bpy
 from mathutils import Vector
 
-from soulstruct.darksouls1r.maps.navmesh.nvm import *
+from soulstruct.base.maps.navmesh.nvm import *
 from io_soulstruct.exceptions import NVMExportError
 from io_soulstruct.types import *
 from io_soulstruct.utilities import *

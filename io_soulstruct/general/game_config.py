@@ -27,6 +27,8 @@ from soulstruct.demonssouls.maps import MSB as des_MSB
 from soulstruct.eldenring.maps import constants as er_constants
 from soulstruct.eldenring.maps import MSB as er_MSB
 
+from soulstruct_havok.core import PyHavokModule
+
 
 @dataclass(slots=True)
 class GameConfig:
@@ -49,6 +51,8 @@ class GameConfig:
     uses_flver0: bool = False
     swizzle_platform: TPFPlatform | None = None  # overrides `TPF.platform` for de/swizzling
     msb_class: type[BaseMSB] | None = None
+
+    py_havok_module: PyHavokModule | None = None
 
     # Redirect files that do and do not use the latest version of map files (e.g. to handle Darkroot Garden in DS1).
     new_to_old_map: dict[str, str] = field(default_factory=dict)
@@ -88,6 +92,7 @@ GAME_CONFIG = {
         map_pieces_use_normal_w_bones=False,
         msb_class=des_MSB,
         map_constants=des_constants,
+        py_havok_module=PyHavokModule.hk550,
     ),
     DARK_SOULS_PTDE: GameConfig(
         supports_flver=True,
@@ -108,6 +113,7 @@ GAME_CONFIG = {
         use_new_map=(".msb", ".nvmbnd", ".mcg", ".mcp"),
         use_old_map=(".flver", ".hkxbhd", ".hkxbdt"),
         map_constants=ds1ptde_constants,
+        py_havok_module=PyHavokModule.hk2010,
     ),
     DARK_SOULS_DSR: GameConfig(
         supports_flver=True,
@@ -128,6 +134,7 @@ GAME_CONFIG = {
         use_new_map=(".msb", ".nvmbnd", ".mcg", ".mcp"),
         use_old_map=(".flver", ".hkxbhd", ".hkxbdt"),
         map_constants=ds1r_constants,
+        py_havok_module=PyHavokModule.hk2015,
     ),
     BLOODBORNE: GameConfig(
         supports_flver=True,
@@ -140,6 +147,7 @@ GAME_CONFIG = {
         map_pieces_use_normal_w_bones=True,
         msb_class=bb_MSB,
         map_constants=bb_constants,
+        py_havok_module=PyHavokModule.hk2014,
     ),
     DARK_SOULS_3: GameConfig(
         supports_flver=True,
@@ -151,6 +159,7 @@ GAME_CONFIG = {
         flver_default_version=FLVERVersion.Bloodborne_DS3_A,
         map_pieces_use_normal_w_bones=True,
         map_constants=ds3_constants,
+        py_havok_module=PyHavokModule.hk2014,
     ),
     SEKIRO: GameConfig(
         supports_flver=True,
@@ -161,6 +170,7 @@ GAME_CONFIG = {
         uses_matbin=False,
         flver_default_version=FLVERVersion.Sekiro_EldenRing,
         map_pieces_use_normal_w_bones=True,
+        py_havok_module=None,
     ),
     ELDEN_RING: GameConfig(
         supports_flver=True,
@@ -173,5 +183,6 @@ GAME_CONFIG = {
         map_pieces_use_normal_w_bones=True,
         msb_class=er_MSB,
         map_constants=er_constants,
+        py_havok_module=PyHavokModule.hk2018,
     ),
 }

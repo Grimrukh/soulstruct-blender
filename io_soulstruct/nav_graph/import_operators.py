@@ -16,15 +16,18 @@ __all__ = [
 ]
 
 import traceback
+import typing as tp
 from pathlib import Path
 
 import bpy
 from bpy_extras.io_utils import ImportHelper
 from io_soulstruct.exceptions import NavGraphMissingNavmeshError
 from io_soulstruct.utilities import *
-from soulstruct.darksouls1r.maps import MSB
-from soulstruct.darksouls1r.maps.navmesh import MCG, MCP, NavmeshAABB
+from soulstruct.base.maps.navmesh import MCG, MCP, NavmeshAABB
 from .types import BlenderMCG
+
+if tp.TYPE_CHECKING:
+    from io_soulstruct.type_checking import *
 
 
 class ImportMCG(LoggingOperator, ImportHelper):
@@ -52,7 +55,11 @@ class ImportMCG(LoggingOperator, ImportHelper):
     def execute(self, context):
         self.info("Executing MCG import...")
 
+        settings = self.settings(context)
         file_paths = [Path(self.directory, file.name) for file in self.files]
+        msb_class = settings.game_config.msb_class  # type: type[MSB_TYPING]
+        if msb_class is None:
+            return self.error("Game MSB class not known. Cannot import MCG files.")
 
         if not self.custom_msb_path:
             directory_path = Path(self.directory)
@@ -62,7 +69,7 @@ class ImportMCG(LoggingOperator, ImportHelper):
         if not msb_path.is_file():
             return self.error(f"Could not find MSB file '{msb_path}'.")
         try:
-            msb = MSB.from_path(msb_path)
+            msb = msb_class.from_path(msb_path)
         except Exception as ex:
             return self.error(f"Could not load MSB file '{msb_path}'. Error: {ex}")
 
@@ -110,6 +117,9 @@ class ImportSelectedMapMCG(LoggingOperator):
     def execute(self, context):
 
         settings = self.settings(context)
+        msb_class = settings.game_config.msb_class  # type: type[MSB_TYPING]
+        if msb_class is None:
+            return self.error("Game MSB class not known. Cannot import MCG files.")
         map_stem = settings.get_latest_map_stem_version()  # MCG uses latest
         if not map_stem:
             return
@@ -122,7 +132,7 @@ class ImportSelectedMapMCG(LoggingOperator):
         except FileNotFoundError:
             return self.error(f"Could not find MSB file for selected map {map_stem}.")
         try:
-            msb = MSB.from_path(msb_path)
+            msb = msb_class.from_path(msb_path)
         except Exception as ex:
             return self.error(f"Could not load MSB file '{msb_path}'. Error: {ex}")
 

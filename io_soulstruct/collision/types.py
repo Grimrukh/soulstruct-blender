@@ -123,19 +123,17 @@ class BlenderMapCollision(SoulstructObject[MapCollisionModel, MapCollisionProps]
     def to_hkx_pair(
         self,
         operator: LoggingOperator,
+        py_havok_module: PyHavokModule,
         require_hi=True,
         use_hi_if_missing_lo=False,
         hi_name="",
         lo_name="",
-        py_havok_module=PyHavokModule.hk2015,
     ) -> tuple[MapCollisionModel | None, MapCollisionModel | None]:
         """Create 'hi' and/or 'lo' HKX files by splitting given `hkx_model` into submeshes by material, or (if empty),
         directly from child submesh Mesh objects.
 
         `hi_name` and `lo_name` are required to set internally to the HKX file (though it probably doesn't impact
         gameplay). If passed explicitly as `None`, those submeshes will be ignored -- but they cannot BOTH be `None`.
-
-        TODO: Currently only supported for DS1R (Havok 2015).
         """
         if not self.obj.material_slots:
             raise ValueError(f"HKX model mesh '{self.name}' has no materials for submesh detection.")
@@ -212,7 +210,7 @@ class BlenderMapCollision(SoulstructObject[MapCollisionModel, MapCollisionProps]
                         hkx_vert_index = vertex_map[vert_index] = len(hkx_verts_list)
                         vert = tri_mesh_data.vertices[vert_index]
                         hkx_verts_list.append(
-                            [vert.co.x, vert.co.z, vert.co.y]  # may as well swap Y and Z coordinates here
+                            [vert.co.x, vert.co.z, vert.co.y, 0.0]  # may as well swap Y and Z coordinates here
                         )
                     else:
                         # Vertex has already been used by this submesh.
@@ -223,7 +221,7 @@ class BlenderMapCollision(SoulstructObject[MapCollisionModel, MapCollisionProps]
             meshes = hi_hkx_meshes if res == "h" else lo_hkx_meshes
             mesh = MapCollisionModelMesh(
                 vertices=np.array(hkx_verts_list, dtype=np.float32),
-                faces=np.array(hkx_faces_list, dtype=np.uint32),  # TODO: why not native uint16?
+                faces=np.array(hkx_faces_list, dtype=np.uint16),
                 material_index=hkx_material_index,
             )
             meshes.append(mesh)
