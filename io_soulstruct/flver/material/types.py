@@ -478,7 +478,6 @@ class BlenderFLVERMaterial:
         else:
             submesh_kwargs |= {
                 "is_bind_pose": self.is_bind_pose,
-                "unk_x18"
                 "uses_bounding_box": True,  # TODO: assumption (DS1 and likely all later games)
             }
 
