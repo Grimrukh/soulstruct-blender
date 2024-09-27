@@ -170,6 +170,8 @@ class BlenderFLVERMaterial:
         # Submesh properties:
         material.use_backface_culling = submesh.use_backface_culling  # wraps `face_set[0].use_backface_culling`
         if isinstance(submesh, Submesh):
+            # NOTE: For `FLVER0`, this property is set after the fact based on `flver0.guess_rigged()`, which determines
+            # whether FLVER0 bone data is written to Edit or Pose bones.
             material.is_bind_pose = submesh.is_bind_pose
 
         # NOTE: Texture path prefixes not stored, as they aren't actually needed in the TPFBHDs.
@@ -462,20 +464,33 @@ class BlenderFLVERMaterial:
         # viable in older games with low-res meshes, but those same games don't even really need LODs anyway.)
         face_set_count = self.face_set_count if create_lod_face_sets else 1
         submesh_kwargs = {
-            "is_bind_pose": self.is_bind_pose,
             "default_bone_index": self.default_bone_index,
             "use_backface_culling": self.use_backface_culling,
-            "uses_bounding_box": True,  # TODO: assumption (DS1 and likely all later games)
             "face_set_count": face_set_count,
         }
+
+        if operator.settings(context).game_config.uses_flver0:
+            # TODO: Not varying these yet, but reminding myself here that they are fields in `FLVER0.Submesh`.
+            submesh_kwargs |= {
+                "dynamic": 0,
+                "unk_x46": 0,
+            }
+        else:
+            submesh_kwargs |= {
+                "is_bind_pose": self.is_bind_pose,
+                "unk_x18"
+                "uses_bounding_box": True,  # TODO: assumption (DS1 and likely all later games)
+            }
+
         used_uv_layer_names = [layer.name for layer in matdef.get_used_uv_layers()]
         operator.info(f"Created FLVER material '{flver_material.name}' with UV layers: {used_uv_layer_names}")
 
         return SplitSubmeshDef(
             flver_material,
             array_layout,
-            submesh_kwargs,
-            used_uv_layer_names,
+            is_rigged=self.is_bind_pose,  # still used by `FLVER0` to track Blender bone data source
+            kwargs=submesh_kwargs,
+            uv_layer_names=used_uv_layer_names,
         )
 
     def get_image_texture_nodes(self, with_image_only=False) -> list[bpy.types.ShaderNodeTexImage]:

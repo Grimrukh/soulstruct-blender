@@ -812,8 +812,9 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
                     # We still use Blender material `is_bind_pose` to store bone data type.
                     # This allows the FLVER exporter to read the correct bone data.
                     # TODO: Probably just want a global 'is_rigged' `BlenderFLVER` bool.
+                    is_bind_pose = write_bone_type == cls.BoneDataType.EDIT
                     for bl_mat in bl_materials:
-                        bl_mat.is_bind_pose = write_bone_type == cls.BoneDataType.EDIT
+                        bl_mat.is_bind_pose = is_bind_pose
 
             except MatDefError:
                 # No materials will be created! TODO: Surely not.
@@ -829,6 +830,14 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
                 merge_vertices=import_settings.merge_submesh_vertices,
             )
             operator.info(f"Merged FLVER submeshes in {time.perf_counter() - p} s")
+            if import_settings.merge_submesh_vertices:
+                # Report vertex reduction.
+                total_vertices = sum(len(submesh.vertices) for submesh in flver.submeshes)
+                total_merged_vertices = merged_mesh.vertex_data.shape[0]
+                operator.info(
+                    f"Merging reduced {total_vertices} vertices to {total_merged_vertices} "
+                    f"({100 - 100 * total_merged_vertices / total_vertices:.2f}% reduction)"
+                )
             bl_vert_bone_weights, bl_vert_bone_indices = cls.create_bl_mesh(operator, mesh_data, merged_mesh)
             mesh = new_mesh_object(name, mesh_data, SoulstructType.FLVER)
             if armature:
@@ -855,10 +864,20 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
 
         # Assign FLVER header properties.
         bl_flver.big_endian = flver.big_endian
-        try:
-            bl_flver.version = flver.version.name
-        except TypeError:
-            operator.warning(f"FLVER version '{flver.version}' not recognised. Leaving as 'Selected Game'.")
+
+        if flver.version in {FLVERVersion.DemonsSouls_0x10, FLVERVersion.DemonsSouls_0x14}:
+            # We convert this to "DemonsSouls", since we can't export non-strip triangles for old versions (AFAIK).
+            # Obviously, Demon's Souls can handle the newer version and you probably want it anyway.
+            bl_flver.version = FLVERVersion.DemonsSouls.name
+            operator.warning(
+                f"Upgrading FLVER version {flver.version} to standard Demon's Souls version (0x15)."
+            )
+        else:
+            try:
+                bl_flver.version = flver.version.name
+            except TypeError:
+                operator.warning(f"FLVER version '{flver.version}' not recognized. Leaving as 'Selected Game'.")
+
         bl_flver.unicode = flver.unicode
         if isinstance(flver, FLVER):
             bl_flver.f2_unk_x4a = flver.unk_x4a

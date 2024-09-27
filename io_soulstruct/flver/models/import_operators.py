@@ -37,12 +37,14 @@ import bpy.ops
 from soulstruct.base.models import FLVERVersion, BaseFLVER, FLVER, FLVER0
 from soulstruct.containers import Binder
 from soulstruct.darksouls1ptde.constants import CHARACTER_MODELS as DS1_CHARACTER_MODELS
+from soulstruct.demonssouls.constants import CHARACTER_MODELS as DES_CHARACTER_MODELS
 
 from io_soulstruct.flver.image.image_import_manager import ImageImportManager
 from io_soulstruct.flver.utilities import *
 from io_soulstruct.general import SoulstructSettings
 from io_soulstruct.utilities import *
 from .types import BlenderFLVER
+from .properties import FLVERImportSettings
 
 
 FLVER_BINDER_RE = re.compile(r"^.*?\.(.*bnd)(\.dcx)?$")
@@ -114,7 +116,7 @@ class BaseFLVERImportOperator(LoggingImportOperator):
                 traceback.print_exc()  # for inspection in Blender console
                 return self.error(f"Cannot import FLVER: {bl_name}. Error: {ex}")
 
-            self.post_process_flver(context, settings, bl_flver)
+            self.post_process_flver(context, settings, import_settings, bl_flver)
 
         self.info(f"Imported {len(flvers)} FLVER(s) in {time.perf_counter() - start_time:.3f} seconds.")
 
@@ -125,7 +127,12 @@ class BaseFLVERImportOperator(LoggingImportOperator):
 
         return {"FINISHED"}
 
-    def post_process_flver(self, context: bpy.types.Context, settings: SoulstructSettings, bl_flver: BlenderFLVER):
+    def post_process_flver(
+        self, context: bpy.types.Context,
+        settings: SoulstructSettings,
+        import_settings: FLVERImportSettings,
+        bl_flver: BlenderFLVER,
+    ):
         """Can be overridden to modify new FLVER model."""
         pass
 
@@ -261,15 +268,34 @@ class ImportCharacterFLVER(BaseFLVERImportOperator):
 
     # Base `execute` method is fine.
 
-    def post_process_flver(self, context: bpy.types.Context, settings: SoulstructSettings, bl_flver: BlenderFLVER):
-        if settings.is_game_ds1():
-            # Add character description to model name.
-            try:
-                model_id = int(bl_flver.name[1:5])
-                model_desc = DS1_CHARACTER_MODELS[model_id]
-                bl_flver.name += f" <{model_desc}>"
-            except (ValueError, KeyError):
-                pass
+    def post_process_flver(
+        self,
+        context: bpy.types.Context,
+        settings: SoulstructSettings,
+        import_settings: FLVERImportSettings,
+        bl_flver: BlenderFLVER,
+    ):
+        if import_settings.add_name_suffix:
+            if settings.is_game_ds1():
+                # Add character description to model name.
+                try:
+                    model_id = int(bl_flver.name[1:5])
+                    model_desc = DS1_CHARACTER_MODELS[model_id]
+                    # Don't trigger full rename.
+                    bl_flver.obj.name += f" <{model_desc}>"
+                    bl_flver.armature.name += f" <{model_desc}>"
+                except (ValueError, KeyError):
+                    pass
+            elif settings.is_game("DEMONS_SOULS"):
+                # Add character description to model name.
+                try:
+                    model_id = int(bl_flver.name[1:5])
+                    model_desc = DES_CHARACTER_MODELS[model_id]
+                    # Don't trigger full rename.
+                    bl_flver.obj.name += f" <{model_desc}>"
+                    bl_flver.armature.name += f" <{model_desc}>"
+                except (ValueError, KeyError):
+                    pass
 
     def get_collection(self, context: bpy.types.Context, file_directory_name: str):
         return get_or_create_collection(context.scene.collection, "Character Models")

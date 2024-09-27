@@ -377,12 +377,19 @@ class SoulstructSettings(bpy.types.PropertyGroup):
 
     def get_game_split_mesh_kwargs(self) -> dict[str, int | bool]:
         """TODO: Need to check/handle all games correctly here."""
-        if self.is_game_ds1():  # TODO: and probably DeS?
+        if self.is_game_ds1():
             return dict(
                 use_submesh_bone_indices=True,
                 max_bones_per_submesh=38,
-                max_submesh_vertex_count=65535,  # faces use 16-bit vertex indices
+                max_submesh_vertex_count=65535,  # TODO: not sure if 32-bit vertex indices are possible in DS1
             )
+        elif self.is_game("DEMONS_SOULS"):
+            return dict(
+                use_submesh_bone_indices=True,
+                max_bones_per_submesh=28,  # hard-coded count for `FLVER0` submeshes
+                max_submesh_vertex_count=65535,  # faces MUST use 16-bit vertex indices
+            )
+
         return dict(
             use_submesh_bone_indices=False,
             max_submesh_vertex_count=4294967295,  # faces use 32-bit vertex indices

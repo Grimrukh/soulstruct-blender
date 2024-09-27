@@ -10,7 +10,7 @@ __all__ = [
 
 import bpy
 
-from soulstruct.base.models.base.bone import FLVERBoneUsageFlags
+from soulstruct.base.models.base import FLVERBoneUsageFlags, FLVERVersion
 
 
 class FLVERProps(bpy.types.PropertyGroup):
@@ -30,17 +30,19 @@ class FLVERProps(bpy.types.PropertyGroup):
         description="Name of version enum for FLVER",
         items=[
             ("DEFAULT", "Selected Game", "Use default version of currently selected game in Blender"),
-            ("DemonsSouls", "DemonsSouls", "Standard DeS version"),
-            ("DarkSouls2_Armor9320", "DarkSouls2_Armor9320", "Rare DS2 version"),
-            ("DarkSouls_PS3_o0700_o0701", "DarkSouls_PS3_o0700_o0701", "Rare DS1 version for PS3"),
-            ("DarkSouls_A", "DarkSouls_A", "Standard DS1 version (PTDE and DSR)"),
-            ("DarkSouls_B", "DarkSouls_B", "Rare DS1 version"),
-            ("DarkSouls2_NT", "DarkSouls2_NT", "DS2 network test version"),
-            ("DarkSouls2", "DarkSouls2", "Standard DS2 version"),
-            ("Bloodborne_DS3_A", "Bloodborne_DS3_A", "Standard Bloodborne/DS3 version (A)"),
-            ("Bloodborne_DS3_B", "Bloodborne_DS3_B", "Standard Bloodborne/DS3 version (B)"),
-            ("Sekiro_TestChr", "Sekiro_TestChr", "Sekiro test version"),
-            ("Sekiro_EldenRing", "Sekiro_EldenRing", "Standard Sekiro/Elden Ring version"),
+            # NOTE: Old "DemonSouls_B" version is not supported, and will be converted to "DemonsSouls" on import.
+            (FLVERVersion.DemonsSouls.name, "Demon's Souls", "Standard DeS version"),
+            (FLVERVersion.DarkSouls2_Armor9320.name, "Dark Souls 2 (Armor 9320)", "Rare DS2 version"),
+            (FLVERVersion.DarkSouls_PS3_o0700_o0701.name, "Dark Souls (PS3 o0700/o0701)", "Rare DS1 version for PS3"),
+            (FLVERVersion.DarkSouls_A.name, "Dark Souls 1 (PTDE/DSR)", "DS1 version (PTDE and DSR)"),
+            (FLVERVersion.DarkSouls_B.name, "Dark Souls 1 (Alt.)", "Rare DS1 version"),
+            (FLVERVersion.DarkSouls2_NT.name, "Dark Souls 2 (NT)", "DS2 network test version"),
+            (FLVERVersion.DarkSouls2.name, "Dark Souls 2", "Standard DS2 version"),
+            (FLVERVersion.Bloodborne_DS3_A.name, "Bloodborne/DS3 (A)", "Standard Bloodborne/DS3 version (A)"),
+            (FLVERVersion.Bloodborne_DS3_B.name, "Bloodborne/DS3 (B)", "Standard Bloodborne/DS3 version (B)"),
+            (FLVERVersion.Sekiro_TestChr.name, "Sekiro (Test)", "Sekiro test version"),
+            (FLVERVersion.Sekiro_EldenRing.name, "Sekiro/Elden Ring", "Standard Sekiro/Elden Ring version"),
+            (FLVERVersion.ArmoredCore6.name, "Armored Core 6", "Standard Sekiro/Elden Ring version"),
         ],
         default="DEFAULT",  # detected from active game
     )
@@ -220,6 +222,12 @@ class FLVERImportSettings(bpy.types.PropertyGroup):
         name="Omit Default Bone",
         description="If imported FLVER has a single default bone (e.g. standard Map Pieces), do not create an "
                     "Armature parent object for the FLVER Mesh (default bone will be created again on export)",
+        default=True,
+    )
+
+    add_name_suffix: bpy.props.BoolProperty(
+        name="Add Model Description Suffix",
+        description="Add '<Description>' (if known) to the object name (e.g. character model names)",
         default=True,
     )
 
