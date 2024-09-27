@@ -1,12 +1,6 @@
 # Soulstruct for Blender
 
-This Blender add-on enables you to import and export a large number of different FromSoftware file formats:
-- FLVER model files (e.g. Map Pieces, Characters, Objects, Parts/Equipment)
-- Map collision HKX model files (Dark Souls 1 only; DSR export only)
-- Navmesh NVM (Dark Souls 1) and NVMHKT (Elden Ring; import only) model files
-- MCG navigation graph files (Dark Souls 1 only)
-- HKX animation files for Characters and Objects
-- MSB map placement files (Dark Souls 1 only)
+This Blender add-on enables you to import and export a large number of different FromSoftware file formats.
 
 It's powered by [Soulstruct](https://github.com/Grimrukh/soulstruct), my giant Python library of FromSoftware formats, and Soulstruct Havok, an 
 experimental expansion library.
@@ -18,24 +12,61 @@ some time to polish and release them. I hope they serve you well and anticipate 
 have the bandwidth or inclination to support any longer in Soulstruct. Surface vertex normal handling was also greatly
 improved in Blender 4.1, making FLVER import/export significantly easier.
 
-(Older releases (1.9.3 and earlier) are still available in the Releases section, which support Blender versions all the
-way back to 3.7, but lack many features and are no longer updated.)
+Older releases (1.9.3 and earlier) are still available in the Releases section, which support Blender versions all the
+way back to 3.7, but lack many features and are no longer updated.
 
 ## Table of Contents
 
+- [Game Support](#game-support)
+  - [Other Features](#other-features)
 - [Installation](#installation)
 - [Basic Usage](#basic-usage)
-- [FLVER Models](#flver-models)
-- [Map Collision Models (HKX)](#map-collision-models-hkx)
-- [Navmesh Models (NVM)](#navmesh-models-nvm)
-- [Navmesh Models (NVMHKT)](#navmesh-models-nvmhkt)
-- [Navigation Graph (MCG)](#navigation-graph-mcg)
-- [Animations (HKX)](#animations-hkx)
-- [Map Placement Files (MSB)](#map-placement-files-msb)
-- [Upcoming Features and Known Issues](#upcoming-features-and-known-issues)
+- [Format Information](#format-information)
+  - [FLVER Models](#flver-models)
+  - [Map Collision Models (HKX)](#map-collision-models-hkx)
+  - [Navmesh Models (NVM)](#navmesh-models-nvm)
+  - [Navmesh Models (NVMHKT)](#navmesh-models-nvmhkt)
+  - [Navigation Graph (MCG)](#navigation-graph-mcg)
+  - [Animations (HKX)](#animations-hkx)
+  - [Map Placement Files (MSB)](#map-placement-files-msb)
+- [Known Issues](#known-issues)
 - [Bug Reporting](#bug-reporting)
 
-## Installation
+# Game Support
+
+- ✔️ Full: **Import and export** support.
+- ⚠️ Partial: **Partial** support (e.g. import only, poor material handling, or untested).
+- ❌ None: **No support** (yet).
+
+| Game              | FLVER | Collision | Navmesh | Animation | MSB |
+|-------------------|-------|-----------|---------|-----------|-----|
+| Demon's Souls     | ✔️    | ✔️        | ✔️      | ❌         | ✔️  |
+| Dark Souls (PTDE) | ✔️    | ✔️        | ✔️      | ✔️        | ✔️  |
+| Dark Souls (Rem.) | ✔️    | ✔️        | ✔️      | ✔️        | ✔️  |
+| Dark Souls 2      | ✔️    | ❌         | ❌       | ❌         | ❌   |
+| Bloodborne        | ✔️    | ❌         | ❌       | ⚠️        | ❌   |
+| Dark Souls 3      | ✔️    | ❌         | ❌       | ⚠️        | ❌   |
+| Sekiro            | ✔️    | ❌         | ❌       | ⚠️        | ❌   |
+| Elden Ring        | ✔️    | ❌         | ⚠️      | ⚠️        | ❌   |
+
+### Other Features
+
+- **MCG graph files** from Demon's Souls and Dark Souls can be imported as **Navigation Graph** Collections and
+can even by *fully generated from scratch* using the loaded MSB Navmesh parts and models from an MSB.
+  - **MCP navmesh box files** that go along with these MCGs are automatically generated when the MSB is exported, as
+  their contents must match the MSB Navmesh parts and bake in their transforms.
+- **NVMHKT Havok navigation mesh files** can be imported and viewed for Elden Ring, but not exported.
+
+I hope to eventually turn most remaining ⚠️ and ❌ symbols in the above table into ✔️ symbols, but it's hard work --
+especially support for huge modern MSB files and Havok formats. If there's one feature that you want to see soon, I'm
+happy to consider it as a commission (which is how Demon's Souls support was added).
+
+However, before you ask, it's **unlikely that Collision export support will expand much further**. Havok's collision
+physics system changed radically in 2014 (Bloodborne onwards) and I don't have the tools (or expensive Havok SDK) to be
+able to regenerate the bounding volume tree structures in these newer files (`hkcd` and `hknp` Havok classes). I may
+eventually add import support so you can at least view the collision meshes in Blender, though.
+
+# Installation
 
 This is an experimental add-on that is not yet published to Blender. To install the add-on manually, follow these steps:
 
@@ -71,7 +102,7 @@ Add-ons directory (you may have other add-ons and files here, like I do):
 Add-ons tab in Blender Preferences, after searching for 'Soulstruct':
 ![addons_tab.png](images/addons_tab.png)
 
-## Basic Usage
+# Basic Usage
 
 The add-on implements many different operators for importing and exporting supported file types. These can be accessed
 in the new menus on the right of the 3D View.
@@ -107,6 +138,8 @@ directory, if `Also Export to Game` is enabled). Some of these operators also re
 should have format `m??_??_??_??` and correspond precisely to a folder inside the `'map'` subdirectory of the 
 Game/Project directory. You can edit the name of this map directory, or use one of the buttons provided to choose an
 existing folder name from the Game or Project.
+
+# Format Information
 
 ### FLVER Models
 
@@ -200,8 +233,6 @@ Soulstruct itself will e.g. add known Character names inside angular brackets fo
 
 ### Map Collision Models (HKX)
 
-Supported for Dark Souls 1 (either version) only, with export currently only available for Dark Souls: Remastered.
-
 Collision meshes are Havok mesh files (`.hkx`) that are placed in maps to define physical boundaries, killplanes, and
 more. The HKX file is complicated, but ultimately is just a collection of one or more simple meshes, each with a
 material index that determines its physical material, sound effects, and so on (wood, stone, metal, grass, ...). Each
@@ -213,13 +244,17 @@ first space and/or dot** (whichever comes first) will be used as the model name.
 collision HKX files will both be created, with the appropriate subparts (by Blender `Material`) saved to each. It
 doesn't matter whether the model name itself starts with an 'h' or 'l'.
 
+**Demon's Souls users**: If you are importing collisions from the unused map `m07_00_00_00`, note that these collisions
+do not have FromSoft's custom material data attached. Soulstruct will initialize the entire mesh with default material 0
+but you will want to assign materials yourself before exporting. (Exporting will automatically use the proper format.)
+
 ### Navmesh Models (NVM)
 
-Supported for Dark Souls 1 (either version) only. These are just meshes that define the walkable areas of a map. They
-are tightly connected to the MCG 'navigation graph'. Each face can have one or more flags attached to it (typically just
-zero or one), which is represented by a Blender `Material` (but not *stored* in that `Material`, unlike collision 
-materials above). The flags can be modified through the `DS1 Navmesh Tools` Panel under the `Navmesh` tab, as can the 
-`Obstacle Count` of each face. The material will be updated in Blender automatically when the flags are changed.
+These are just meshes that define the walkable areas of a map. They are tightly connected to the MCG 'navigation graph'. 
+Each face can have one or more flags attached to it (typically just zero or one), which is represented by a Blender 
+`Material` (but not *stored* in that `Material`, unlike collision materials above). The flags can be modified through 
+the `NVM Navmesh Tools` Panel under the `Navmesh` tab, as can the `Obstacle Count` of each face. The material will be 
+updated in Blender automatically when the flags are changed.
 
 ![navmesh_flags.png](images/navmesh_flags.png)
 
@@ -271,7 +306,7 @@ effects of any differences).
 that goes with it, which is a simple collection of connected AABBs that correspond to the list of MSB Navmesh parts and
 their MCG connections.*
 
-## Animations (HKX)
+### Animations (HKX)
 
 Animation files (HKX) that animate FLVER skeletons are supported for import and export. These animations are stored in
 `ANIBND` Binders for Characters and Objects/Assets (nested inside `OBJBND`/`GEOMBND` Binders for the latter). If you
@@ -297,16 +332,15 @@ the keyframes that define the animation.
 
 ## Map Placement Files (MSB)
 
-**New in Soulstruct for Blender 2.0!**
+Soulstruct now supports **full MSB import and export for Demon's Souls and Dark Souls 1 (either version)**. 
 
-Soulstruct now supports **full MSB import and export for Dark Souls 1 (either version)**. All Parts, Regions, and Events
-are imported. Part models can be imported as desired by type (and/or glob pattern), as FLVER import in particular is
-quite slow (especially for a high number of unique Map Pieces) and you may not need to edit or even see all models. Any
-models that aren't imported (whether it's because they were disabled or the file was missing) will be represented by a
-low-poly icosphere in a Collection called `Placeholder Models`. Character and Object models are kept in a Collection
-called `Game Models`, as they are game-wide, and Map Piece, Collision, and Navmesh models are kept in sub-Collections in
-a parent Collection called `{MapStem} Models`. **You may wish to turn off visibility for the Model Collections after
-import if you only care about the MSB.**
+All Parts, Regions, and Events are imported. Part models can be imported as desired by type (and/or glob pattern), as
+FLVER import in particular is quite slow (especially for a high number of unique Map Pieces) and you may not need to
+edit or even see all models. Any models that aren't imported (whether it's because they were disabled or the file was
+missing) will be represented by a low-poly icosphere in a Collection called `Placeholder Models`. Character and Object
+models are kept in a Collection called `Game Models`, as they are game-wide, and Map Piece, Collision, and Navmesh
+models are kept in sub-Collections in a parent Collection called `{MapStem} Models`. **You may wish to turn off 
+visibility for the Model Collections after import if you only care about the MSB.**
 
 Parts are instantiated by sharing the mesh data of their Model (FLVER, Collision, or Navmesh). **Parts are a separate
 Soulstruct types to their models, and only expose their MSB properties.** You can edit base Part properties in the 
@@ -379,15 +413,15 @@ and setting Wire Color to `Object` will allow you to see any custom MSB Event co
 doing any real rendering. This can be useful for quickly checking that textures are assigned and mapped correctly. Use
 the `Material Preview` Viewport Shading mode to see more accurate rendered FLVER textures.
 
-## Upcoming Features and Known Issues
+## Known Issues
 
-- I have done no testing with **Dark Souls III**. FLVER files can probably be imported and exported, but material
-shaders may not be handled well or at all.
+- I have done exactly zero testing with **Dark Souls III**. FLVER files can probably be imported and exported, but 
+material shaders may not be handled well or at all.
 - Support for at least Dark Souls 2 FLVER models is likely to come.
 - More comprehensive documentation and video tutorials to come.
 
 ## Bug Reporting
 
-If you come across any problems or bugs, please file a Git bug report to help Grimrukh improve the add-on.
+If you come across any problems or bugs, please file a Git bug report to help me improve the add-on.
 
 Version 2.0 was a signifificant overhaul, so bare with me if any new bugs have appeared.
