@@ -57,7 +57,7 @@ from io_soulstruct.types import SoulstructType
 bl_info = {
     "name": "Soulstruct",
     "author": "Scott Mooney (Grimrukh)",
-    "version": (2, 1, 1),
+    "version": (2, 1, 3),
     "blender": (4, 2, 0),
     "location": "File > Import-Export",
     "description": "Import, manipulate, and export FromSoftware/Havok assets",
