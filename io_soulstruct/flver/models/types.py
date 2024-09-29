@@ -1172,20 +1172,20 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
         unique_mask = np.apply_along_axis(lambda row: len(np.unique(row)) == 3, 1, face_vertex_indices)
         valid_face_vertex_indices = face_vertex_indices[unique_mask]
 
-        face_count = valid_face_vertex_indices.shape[0]
-        invalid_count = face_vertex_indices.shape[0] - face_count
-        if invalid_count > 0:
-            operator.info(f"Removed {invalid_count} invalid/degenerate mesh faces from {mesh_data.name}.")
+        valid_face_count = valid_face_vertex_indices.shape[0]
+        invalid_face_count = face_vertex_indices.shape[0] - valid_face_count
+        if invalid_face_count > 0:
+            operator.info(f"Removed {invalid_face_count} invalid/degenerate mesh faces from {mesh_data.name}.")
 
         # Directly assign face corner (loop) vertex indices.
-        mesh_data.loops.add(face_vertex_indices.size)
-        mesh_data.loops.foreach_set("vertex_index", face_vertex_indices.ravel())
+        mesh_data.loops.add(valid_face_vertex_indices.size)
+        mesh_data.loops.foreach_set("vertex_index", valid_face_vertex_indices.ravel())
 
         # Create triangle polygons.
         # Blender polygons are defined by loop start and count (total), which is entirely on-rails here for triangles.
-        loop_starts = np.arange(0, face_count * 3, 3, dtype=np.int32)  # just [0, 3, 6, ...]
-        loop_totals = np.full(face_count, 3, dtype=np.int32)  # all triangles (3)
-        mesh_data.polygons.add(face_count)
+        loop_starts = np.arange(0, valid_face_count * 3, 3, dtype=np.int32)  # just [0, 3, 6, ...]
+        loop_totals = np.full(valid_face_count, 3, dtype=np.int32)  # all triangles (3)
+        mesh_data.polygons.add(valid_face_count)
         mesh_data.polygons.foreach_set("loop_start", loop_starts)
         mesh_data.polygons.foreach_set("loop_total", loop_totals)
         mesh_data.polygons.foreach_set("material_index", merged_mesh.faces[:, 3])
