@@ -16,7 +16,7 @@ import numpy as np
 from pathlib import Path
 from soulstruct_havok.core import HKX
 from soulstruct_havok.utilities.maths import TRSTransform
-from soulstruct_havok.wrappers import hkx2015, hkx2016, hkx2018
+from soulstruct_havok.wrappers import hkx2010, hkx2015, hkx2016, hkx2018
 from soulstruct_havok.wrappers.hkx2015 import AnimationHKX, SkeletonHKX, ANIBND
 from soulstruct.containers import BinderEntry
 from io_soulstruct.exceptions import UnsupportedGameError
@@ -35,6 +35,8 @@ def read_animation_hkx_entry(hkx_entry: BinderEntry, compendium: HKX = None) -> 
         hkx = hkx2015.AnimationHKX.from_bytes(data, compendium=compendium)
     elif version == b"20160100":  # non-From
         hkx = hkx2016.AnimationHKX.from_bytes(data, compendium=compendium)
+    elif data[0x28:0x36] == b"hk_2010.2.0-r1":
+        hkx = hkx2010.AnimationHKX.from_bytes(data, compendium=compendium)
     else:
         raise UnsupportedGameError(
             f"Cannot support this HKX animation file version in Soulstruct and/or Blender: {version}"
@@ -53,6 +55,8 @@ def read_skeleton_hkx_entry(hkx_entry: BinderEntry, compendium: HKX = None) -> S
         hkx = hkx2015.SkeletonHKX.from_bytes(data, compendium=compendium)
     elif version == b"20160100":  # non-From
         hkx = hkx2016.SkeletonHKX.from_bytes(data, compendium=compendium)
+    elif data[0x28:0x36] == b"hk_2010.2.0-r1":
+        hkx = hkx2010.SkeletonHKX.from_bytes(data, compendium=compendium)
     else:
         raise UnsupportedGameError(
             f"Cannot support this HKX skeleton file version in Soulstruct and/or Blender: {version}"
