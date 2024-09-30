@@ -22,7 +22,7 @@ class AnimationImportExportPanel(bpy.types.Panel):
     # noinspection PyUnusedLocal
     def draw(self, context):
         settings = context.scene.soulstruct_settings
-        if not settings.is_game("DARK_SOULS_DSR", "ELDEN_RING"):
+        if not settings.is_game("DARK_SOULS_PTDE", "DARK_SOULS_DSR", "ELDEN_RING"):
             self.layout.label(text="Import/Export for DSR and ER only.")
             return
 
