@@ -69,21 +69,6 @@ def read_skeleton_hkx_entry(hkx_entry: BinderEntry, compendium: HKX = None) -> S
     return hkx
 
 
-def get_armature_frames(
-    animation_hkx: BaseAnimationHKX, skeleton_hkx: BaseSkeletonHKX, track_bone_names: list[str]
-) -> list[dict[str, TRSTransform]]:
-    """Get a list of animation frame dictionaries, which each map bone names to armature-space transforms that frame."""
-
-    # Get frames as standard nested lists of transforms.
-    interleaved_frames = animation_hkx.animation_container.get_interleaved_data_in_armature_space(skeleton_hkx.skeleton)
-    # Convert to dictionary using given `track_bone_names` list.
-    arma_frame_dicts = [
-        {bone_name: transform for bone_name, transform in zip(track_bone_names, frame)}
-        for frame in interleaved_frames
-    ]
-    return arma_frame_dicts
-
-
 def get_root_motion(animation_hkx: BaseAnimationHKX, swap_yz=True) -> np.ndarray | None:
     try:
         root_motion = animation_hkx.animation_container.get_reference_frame_samples()
@@ -94,6 +79,26 @@ def get_root_motion(animation_hkx: BaseAnimationHKX, swap_yz=True) -> np.ndarray
         # Swap Y and Z axes and negate rotation (now around Z axis). Array is read-only, so we construct a new one.
         root_motion = np.c_[root_motion[:, 0], root_motion[:, 2], root_motion[:, 1], -root_motion[:, 3]]
     return root_motion
+
+
+def get_armature_frames(
+    animation_hkx: BaseAnimationHKX, skeleton_hkx: BaseSkeletonHKX
+) -> list[dict[str, TRSTransform]]:
+    """Get a list of animation frame dictionaries, which each map bone names to armature-space transforms that frame."""
+
+    # Get track bone names.
+    track_bone_indices = animation_hkx.animation_container.animation_binding.transformTrackToBoneIndices
+    track_bone_names = [skeleton_hkx.skeleton.bones[i].name for i in track_bone_indices]
+
+    # Get frames as standard nested lists of transforms.
+    interleaved_frames = animation_hkx.animation_container.get_interleaved_data_in_armature_space(skeleton_hkx.skeleton)
+
+    # Convert to dictionary using given `track_bone_names` list.
+    arma_frame_dicts = [
+        {bone_name: transform for bone_name, transform in zip(track_bone_names, frame)}
+        for frame in interleaved_frames
+    ]
+    return arma_frame_dicts
 
 
 def get_animation_name(animation_id: int, template: str, prefix="a"):

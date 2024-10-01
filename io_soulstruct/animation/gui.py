@@ -22,8 +22,8 @@ class AnimationImportExportPanel(bpy.types.Panel):
     # noinspection PyUnusedLocal
     def draw(self, context):
         settings = context.scene.soulstruct_settings
-        if not settings.is_game("DARK_SOULS_DSR", "ELDEN_RING"):
-            self.layout.label(text="Import/Export for DSR and ER only.")
+        if not settings.game_config.supports_animation:
+            self.layout.label(text="Not supported for game.")
             return
 
         header, panel = self.layout.panel("Import", default_closed=False)
@@ -44,15 +44,12 @@ class AnimationImportExportPanel(bpy.types.Panel):
         header, panel = self.layout.panel("Export", default_closed=False)
         header.label(text="Export")
         if panel:
-            if settings.game_variable_name not in {"DARK_SOULS_DSR"}:
-                panel.label(text="Export for DSR only.")
-            else:
-                panel.label(text="Export to Project/Game")
-                panel.operator(ExportCharacterHKXAnimation.bl_idname)
-                panel.operator(ExportObjectHKXAnimation.bl_idname)
-                panel.label(text="Generic Export:")
-                panel.operator(ExportLooseHKXAnimation.bl_idname)
-                panel.operator(ExportHKXAnimationIntoBinder.bl_idname)
+            panel.label(text="Export to Project/Game")
+            panel.operator(ExportCharacterHKXAnimation.bl_idname)
+            panel.operator(ExportObjectHKXAnimation.bl_idname)
+            panel.label(text="Generic Export:")
+            panel.operator(ExportLooseHKXAnimation.bl_idname)
+            panel.operator(ExportHKXAnimationIntoBinder.bl_idname)
 
 
 class AnimationToolsPanel(bpy.types.Panel):

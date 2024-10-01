@@ -91,21 +91,28 @@ class SoulstructAnimation:
 
         operator.info(f"Importing HKX animation for {armature.name}: '{name}'")
 
+        # We cannot rely on track annotations for bone names in later games (e.g. Elden Ring).
+        # Here, we just check that all animated bones are present in Blender Armature.
+        hk_bone_names = [b.name for b in skeleton_hkx.skeleton.bones]
+        track_bone_indices = animation_hkx.animation_container.animation_binding.transformTrackToBoneIndices
+        track_bone_names = [hk_bone_names[i] for i in track_bone_indices]
+
+        bl_bone_names = [b.name for b in armature.data.bones]
+        for bone_name in track_bone_names:
+            if bone_name not in bl_bone_names:
+                if bone_name == "TwistRoot":
+                    raise AnimationImportError(
+                        f"Animated bone name '{bone_name}' is missing from Armature. This problem is known for this "
+                        f"specific bone, which is absent from the FLVER, but has not yet been resolved in Soulstruct."
+                    )
+                raise AnimationImportError(f"Animated bone name '{bone_name}' is missing from Armature.")
+
         p = time.perf_counter()
         animation_hkx.animation_container.spline_to_interleaved()
         operator.info(f"Converted spline animation to interleaved in {time.perf_counter() - p:.4f} seconds.")
 
-        # We look up track bone names from annotations. TODO: Should just use `skeleton_hkx`?
-        track_bone_names = [
-            annotation.trackName for annotation in animation_hkx.animation_container.animation.annotationTracks
-        ]
-        bl_bone_names = [b.name for b in armature.data.bones]
-        for bone_name in track_bone_names:
-            if bone_name not in bl_bone_names:
-                raise AnimationImportError(f"Animation bone name '{bone_name}' is missing from Armature.")
-
         p = time.perf_counter()
-        arma_frames = get_armature_frames(animation_hkx, skeleton_hkx, track_bone_names)
+        arma_frames = get_armature_frames(animation_hkx, skeleton_hkx)
         root_motion = get_root_motion(animation_hkx)
         operator.info(f"Constructed armature animation frames in {time.perf_counter() - p:.4f} seconds.")
 
