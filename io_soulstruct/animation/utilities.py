@@ -32,18 +32,21 @@ SKELETON_TYPING = tp.Union[
 def read_animation_hkx_entry(hkx_entry: BinderEntry, compendium: HKX = None) -> ANIMATION_TYPING:
     """Read animation HKX file from a Binder entry and return the appropriate `AnimationHKX` subclass instance."""
     data = hkx_entry.get_uncompressed_data()
-    version = data[0x10:0x18]
-    if version == b"hk_2010.2.0-r1":  # PTDE
+    packfile_version = data[0x28:0x38]
+    tagfile_version = data[0x10:0x18]
+    if packfile_version.startswith(b"hk_2010.2.0-r1"):  # PTDE
         hkx = darksouls1ptde.AnimationHKX.from_bytes(data, compendium=compendium)
-    elif version == b"20150100":  # DSR
+    elif tagfile_version == b"20150100":  # DSR
         hkx = darksouls1r.AnimationHKX.from_bytes(data, compendium=compendium)
-    elif version == b"hk_2014.1.0-r1":  # BB
+    elif packfile_version.startswith(b"hk_2014.1.0-r1"):  # BB
         hkx = bloodborne.AnimationHKX.from_bytes(data, compendium=compendium)
-    elif version == b"20180100":  # ER
+    elif tagfile_version == b"20180100":  # ER
         hkx = eldenring.AnimationHKX.from_bytes(data, compendium=compendium)
     else:
         raise UnsupportedGameError(
-            f"Cannot support this HKX animation file version in Soulstruct and/or Blender: {version}"
+            f"Cannot support this HKX skeleton file version in Soulstruct and/or Blender.\n"
+            f"   Possible packfile version: {packfile_version}\n"
+            f"   Possible tagfile version: {tagfile_version}"
         )
     hkx.path = Path(hkx_entry.name)
     return hkx
@@ -52,18 +55,21 @@ def read_animation_hkx_entry(hkx_entry: BinderEntry, compendium: HKX = None) -> 
 def read_skeleton_hkx_entry(hkx_entry: BinderEntry, compendium: HKX = None) -> SKELETON_TYPING:
     """Read skeleton HKX file from a Binder entry and return the appropriate `SkeletonHKX` subclass instance."""
     data = hkx_entry.get_uncompressed_data()
-    version = data[0x10:0x18]
-    if version == b"hk_2010.2.0-r1":  # PTDE
+    packfile_version = data[0x28:0x38]
+    tagfile_version = data[0x10:0x18]
+    if packfile_version.startswith(b"hk_2010.2.0-r1"):  # PTDE
         hkx = darksouls1ptde.SkeletonHKX.from_bytes(data, compendium=compendium)
-    elif version == b"20150100":  # DSR
+    elif tagfile_version == b"20150100":  # DSR
         hkx = darksouls1r.SkeletonHKX.from_bytes(data, compendium=compendium)
-    elif version == b"hk_2014.1.0-r1":  # BB
+    elif packfile_version.startswith(b"hk_2014.1.0-r1"):  # BB
         hkx = bloodborne.SkeletonHKX.from_bytes(data, compendium=compendium)
-    elif version == b"20180100":  # ER
+    elif tagfile_version == b"20180100":  # ER
         hkx = eldenring.SkeletonHKX.from_bytes(data, compendium=compendium)
     else:
         raise UnsupportedGameError(
-            f"Cannot support this HKX skeleton file version in Soulstruct and/or Blender: {version}"
+            f"Cannot support this HKX skeleton file version in Soulstruct and/or Blender.\n"
+            f"   Possible packfile version: {packfile_version}\n"
+            f"   Possible tagfile version: {tagfile_version}"
         )
     hkx.path = Path(hkx_entry.name)
     return hkx
