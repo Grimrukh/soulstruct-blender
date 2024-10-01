@@ -44,8 +44,8 @@ way back to 3.7, but lack many features and are no longer updated.
 | Dark Souls (PTDE) | ✔️    | ✔️        | ✔️      | ✔️        | ✔️  |
 | Dark Souls (Rem.) | ✔️    | ✔️        | ✔️      | ✔️        | ✔️  |
 | Dark Souls 2      | ✔️    | ❌         | ❌       | ❌         | ❌   |
-| Bloodborne        | ✔️    | ❌         | ❌       | ⚠️        | ❌   |
-| Dark Souls 3      | ✔️    | ❌         | ❌       | ⚠️        | ❌   |
+| Bloodborne        | ✔️    | ❌         | ❌       | ❌         | ❌   |
+| Dark Souls 3      | ✔️    | ❌         | ❌       | ❌         | ❌   |
 | Sekiro            | ✔️    | ❌         | ❌       | ⚠️        | ❌   |
 | Elden Ring        | ✔️    | ❌         | ⚠️      | ⚠️        | ❌   |
 
