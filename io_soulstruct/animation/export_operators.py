@@ -16,8 +16,8 @@ from bpy_extras.io_utils import ImportHelper, ExportHelper
 
 from soulstruct.containers import Binder, EntryNotFoundError
 from soulstruct.dcx import DCXType
-from soulstruct.games import DARK_SOULS_DSR
-from soulstruct_havok.wrappers.hkx2015 import SkeletonHKX
+from soulstruct.games import *
+from soulstruct_havok.fromsoft.base import BaseSkeletonHKX, BaseAnimationHKX
 
 from io_soulstruct.exceptions import *
 from io_soulstruct.flver.models import BlenderFLVER
@@ -56,6 +56,8 @@ class ExportLooseHKXAnimation(LoggingOperator, ExportHelper):
     def poll(cls, context):
         if not context.active_object:
             return False
+        if not context.scene.soulstruct_settings.game_config.supports_animation:
+            return False
         try:
             bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
         except SoulstructTypeError:
@@ -77,6 +79,13 @@ class ExportLooseHKXAnimation(LoggingOperator, ExportHelper):
         bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
         bl_animation = SoulstructAnimation.from_armature_animation_data(bl_flver.armature)
 
+        skeleton_hkx_class = settings.game_config.skeleton_hkx  # type: type[BaseSkeletonHKX]
+        if skeleton_hkx_class is None:
+            return self.error(f"No skeleton HKX class defined for game {settings.game.name}.")
+        animation_hkx_class = settings.game_config.animation_hkx  # type: type[BaseAnimationHKX]
+        if animation_hkx_class is None:
+            return self.error(f"No animation HKX class defined for game {settings.game.name}.")
+
         animation_file_path = Path(self.filepath)
 
         skeleton_path = Path(self.hkx_skeleton_path)
@@ -84,7 +93,7 @@ class ExportLooseHKXAnimation(LoggingOperator, ExportHelper):
             return self.error(f"Invalid HKX skeleton path: {skeleton_path}")
 
         if skeleton_path.name.endswith(".hkx") or skeleton_path.name.endswith(".hkx.dcx"):
-            skeleton_hkx = SkeletonHKX.from_path(skeleton_path)
+            skeleton_hkx = skeleton_hkx_class.from_path(skeleton_path)
         else:
             try:
                 skeleton_binder = Binder.from_path(skeleton_path)
@@ -94,11 +103,16 @@ class ExportLooseHKXAnimation(LoggingOperator, ExportHelper):
                 skeleton_entry = skeleton_binder[SKELETON_ENTRY_RE]
             except EntryNotFoundError:
                 return self.error(f"Could not find `skeleton.hkx` (case-insensitive) in binder: '{skeleton_path}'")
-            skeleton_hkx = SkeletonHKX.from_binder_entry(skeleton_entry)
+            skeleton_hkx = skeleton_hkx_class.from_binder_entry(skeleton_entry)
 
         current_frame = context.scene.frame_current  # store for resetting after export
         try:
-            animation_hkx = bl_animation.to_animation_hkx(context, bl_flver.armature, skeleton_hkx)
+            animation_hkx = bl_animation.to_animation_hkx(
+                context,
+                bl_flver.armature,
+                skeleton_hkx,
+                animation_hkx_class,
+            )
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Failed to create animation HKX: {ex}")
@@ -162,11 +176,23 @@ class ExportHKXAnimationIntoBinder(LoggingOperator, ImportHelper):
 
     @classmethod
     def poll(cls, context):
-        return len(context.selected_objects) == 1 and context.selected_objects[0].type == "ARMATURE"
+        return (
+            context.scene.soulstruct_settings.game_config.supports_animation
+            and len(context.selected_objects) == 1
+            and context.selected_objects[0].type == "ARMATURE"
+        )
 
     def execute(self, context):
+        settings = self.settings(context)
         bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
         bl_animation = SoulstructAnimation.from_armature_animation_data(bl_flver.armature)
+
+        skeleton_hkx_class = settings.game_config.skeleton_hkx  # type: type[BaseSkeletonHKX]
+        if skeleton_hkx_class is None:
+            return self.error(f"No skeleton HKX class defined for game {settings.game.name}.")
+        animation_hkx_class = settings.game_config.animation_hkx  # type: type[BaseAnimationHKX]
+        if animation_hkx_class is None:
+            return self.error(f"No animation HKX class defined for game {settings.game.name}.")
 
         binder_path = Path(self.filepath)
         binder = Binder.from_path(binder_path)
@@ -177,14 +203,16 @@ class ExportHKXAnimationIntoBinder(LoggingOperator, ImportHelper):
         skeleton_entry = binder.find_entry_matching_name(r"skeleton\.hkx", re.IGNORECASE)
         if skeleton_entry is None:
             return self.error("Could not find 'skeleton.hkx' in binder.")
-        skeleton_hkx = SkeletonHKX.from_binder_entry(skeleton_entry)
+        skeleton_hkx = skeleton_hkx_class.from_binder_entry(skeleton_entry)
 
         animation_name = get_animation_name(self.animation_id, self.name_template[1:], prefix=self.name_template[0])
         self.info(f"Exporting animation '{animation_name}' into binder {binder_path.name}...")
 
         current_frame = context.scene.frame_current
         try:
-            animation_hkx = bl_animation.to_animation_hkx(context, bl_flver.armature, skeleton_hkx)
+            animation_hkx = bl_animation.to_animation_hkx(
+                context, bl_flver.armature, skeleton_hkx, animation_hkx_class
+            )
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Failed to create animation HKX: {ex}")
@@ -208,7 +236,7 @@ class BaseExportTypedHKXAnimation(LoggingOperator):
     @classmethod
     def poll(cls, context):
         settings = cls.settings(context)
-        if not settings.is_game(DARK_SOULS_DSR):
+        if not settings.game_config.supports_animation:
             return False
         if not settings.can_auto_export:
             return False
@@ -228,10 +256,24 @@ class ExportCharacterHKXAnimation(BaseExportTypedHKXAnimation):
     bl_label = "Export Character Anim"
     bl_description = "Export active Action into its character's ANIBND"
 
-    # TODO: Hard-coding defaults for DSR (only supported game for now).
-    ANIMATION_STEM_TEMPLATE = "##_####"
-    HKX_ENTRY_PATH = "N:\\FRPG\\data\\Model\\chr\\{character_name}\\hkxx64\\{animation_stem}.hkx"
-    HKX_DCX_TYPE = DCXType.Null
+    DEFAULTS = {
+        DARK_SOULS_PTDE: {
+            "stem_template": "##_####",
+            "hkx_entry_path": "N:\\FRPG\\data\\Model\\chr\\{character_name}\\hkxx64\\{animation_stem}.hkx",
+            "dcx_type": DCXType.Null,
+        },
+        DARK_SOULS_DSR: {
+            "stem_template": "##_####",
+            "hkx_entry_path": "N:\\FRPG\\data\\Model\\chr\\{character_name}\\hkxx64\\{animation_stem}.hkx",
+            "dcx_type": DCXType.Null,
+        },
+        BLOODBORNE: {
+            "stem_template": "###_######",
+            "hkx_entry_path": "N:\\SPRJ\\data\\INTERROOT_ps4\\chr\\{character_name}\\hkx\\{animation_stem}.hkx",
+            "dcx_type": DCXType.Null,
+        },
+        # TODO: For Elden Ring, need to choose appropriate 'divXX' ANIBND.
+    }
 
     @classmethod
     def poll(cls, context):
@@ -244,6 +286,17 @@ class ExportCharacterHKXAnimation(BaseExportTypedHKXAnimation):
         settings = self.settings(context)
         bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
         bl_animation = SoulstructAnimation.from_armature_animation_data(bl_flver.armature)
+
+        if settings.game not in self.DEFAULTS:
+            return self.error(f"Automatic ANIBND export is not yet supported for game {settings.game.name}.")
+        defaults = self.DEFAULTS[settings.game]
+
+        skeleton_hkx_class = settings.game_config.skeleton_hkx  # type: type[BaseSkeletonHKX]
+        if skeleton_hkx_class is None:
+            return self.error(f"No skeleton HKX class defined for game {settings.game.name}.")
+        animation_hkx_class = settings.game_config.animation_hkx  # type: type[BaseAnimationHKX]
+        if animation_hkx_class is None:
+            return self.error(f"No animation HKX class defined for game {settings.game.name}.")
 
         model_name = bl_flver.export_name
         if model_name == "c0000":
@@ -263,16 +316,16 @@ class ExportCharacterHKXAnimation(BaseExportTypedHKXAnimation):
             skeleton_entry = skeleton_anibnd[SKELETON_ENTRY_RE]
         except EntryNotFoundError:
             return self.error("Could not find 'skeleton.hkx' (case-insensitive) in ANIBND.")
-        skeleton_hkx = SkeletonHKX.from_binder_entry(skeleton_entry)
+        skeleton_hkx = skeleton_hkx_class.from_binder_entry(skeleton_entry)
 
         # Get animation stem from action name. We will re-format its ID in the selected game's known format (e.g. to
         # support cross-game conversion).
         animation_id = bl_animation.animation_id
 
         try:
-            animation_name = get_animation_name(animation_id, self.ANIMATION_STEM_TEMPLATE, prefix="a")
+            animation_name = get_animation_name(animation_id, defaults["stem_template"], prefix="a")
         except ValueError:
-            max_digits = self.ANIMATION_STEM_TEMPLATE.count("#")
+            max_digits = defaults["stem_template"].count("#")
             return self.error(
                 f"Animation ID {animation_id} is too large for game {settings.game}. Max is {'9' * max_digits}."
             )
@@ -281,16 +334,18 @@ class ExportCharacterHKXAnimation(BaseExportTypedHKXAnimation):
 
         current_frame = context.scene.frame_current
         try:
-            animation_hkx = bl_animation.to_animation_hkx(context, bl_flver.armature, skeleton_hkx)
+            animation_hkx = bl_animation.to_animation_hkx(
+                context, bl_flver.armature, skeleton_hkx, animation_hkx_class
+            )
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Failed to create animation HKX. Error: {ex}")
         finally:
             context.scene.frame_set(current_frame)
 
-        animation_hkx.dcx_type = self.HKX_DCX_TYPE
+        animation_hkx.dcx_type = defaults["dcx_type"]  # no DCX inside ANIBND
         entry_path = animation_hkx.dcx_type.process_path(
-            self.HKX_ENTRY_PATH.format(character_name=model_name, animation_stem=animation_name)
+            defaults["hkx_entry_path"].format(character_name=model_name, animation_stem=animation_name)
         )
 
         # Update or create binder entry.
@@ -307,10 +362,18 @@ class ExportObjectHKXAnimation(BaseExportTypedHKXAnimation):
     bl_label = "Export Object Anim"
     bl_description = "Export active Action into its object's OBJBND"
 
-    # TODO: Hard-coding defaults for DSR (only supported game for now).
-    ANIMATION_STEM_TEMPLATE = "##_####"
-    HKX_ENTRY_PATH = "N:\\FRPG\\data\\Model\\chr\\{character_name}\\hkxx64\\{animation_stem}.hkx"
-    HKX_DCX_TYPE = DCXType.Null
+    DEFAULTS = {
+        DARK_SOULS_PTDE: {
+            "stem_template": "##_####",
+            "hkx_entry_path": "N:\\FRPG\\data\\Model\\obj\\{object_name}\\hkxx64\\{animation_stem}.hkx",
+            "dcx_type": DCXType.Null,
+        },
+        DARK_SOULS_DSR: {
+            "stem_template": "##_####",
+            "hkx_entry_path": "N:\\FRPG\\data\\Model\\obj\\{object_name}\\hkxx64\\{animation_stem}.hkx",
+            "dcx_type": DCXType.Null,
+        },
+    }
 
     @classmethod
     def poll(cls, context):
@@ -322,6 +385,17 @@ class ExportObjectHKXAnimation(BaseExportTypedHKXAnimation):
         bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
         bl_animation = SoulstructAnimation.from_armature_animation_data(bl_flver.armature)
         model_name = bl_flver.export_name
+
+        if settings.game not in self.DEFAULTS:
+            return self.error(f"Automatic OBJBND + ANIBND export is not yet supported for game {settings.game.name}.")
+        defaults = self.DEFAULTS[settings.game]
+
+        skeleton_hkx_class = settings.game_config.skeleton_hkx  # type: type[BaseSkeletonHKX]
+        if skeleton_hkx_class is None:
+            return self.error(f"No skeleton HKX class defined for game {settings.game.name}.")
+        animation_hkx_class = settings.game_config.animation_hkx  # type: type[BaseAnimationHKX]
+        if animation_hkx_class is None:
+            return self.error(f"No animation HKX class defined for game {settings.game.name}.")
 
         # Get OBJBND to modify from project (preferred) or game directory.
         relative_objbnd_path = Path(f"obj/{model_name}.objbnd")
@@ -343,7 +417,7 @@ class ExportObjectHKXAnimation(BaseExportTypedHKXAnimation):
             skeleton_entry = skeleton_anibnd[SKELETON_ENTRY_RE]
         except EntryNotFoundError:
             return self.error("Could not find 'skeleton.hkx' (case-insensitive) in ANIBND inside OBJBND.")
-        skeleton_hkx = SkeletonHKX.from_binder_entry(skeleton_entry)
+        skeleton_hkx = skeleton_hkx_class.from_binder_entry(skeleton_entry)
 
         # Get animation stem from action name. We will re-format its ID in the selected game's known format (e.g. to
         # support cross-game conversion).
@@ -355,9 +429,9 @@ class ExportObjectHKXAnimation(BaseExportTypedHKXAnimation):
             return self.error(f"Could not parse animation ID from action name '{bl_animation.name}'.")
 
         try:
-            animation_name = get_animation_name(animation_id, self.ANIMATION_STEM_TEMPLATE, prefix="a")
+            animation_name = get_animation_name(animation_id, defaults["stem_template"], prefix="a")
         except ValueError:
-            max_digits = self.ANIMATION_STEM_TEMPLATE.count("#")
+            max_digits = defaults["stem_template"].count("#")
             return self.error(
                 f"Animation ID {animation_id} is too large for game {settings.game}. Max is {'9' * max_digits}."
             )
@@ -366,7 +440,9 @@ class ExportObjectHKXAnimation(BaseExportTypedHKXAnimation):
 
         current_frame = context.scene.frame_current
         try:
-            animation_hkx = bl_animation.to_animation_hkx(context, bl_flver.armature, skeleton_hkx)
+            animation_hkx = bl_animation.to_animation_hkx(
+                context, bl_flver.armature, skeleton_hkx, animation_hkx_class
+            )
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Failed to create animation HKX. Error: {ex}")
@@ -375,7 +451,7 @@ class ExportObjectHKXAnimation(BaseExportTypedHKXAnimation):
 
         animation_hkx.dcx_type = DCXType.Null  # no DCX inside OBJBND/ANIBND
         entry_path = animation_hkx.dcx_type.process_path(
-            self.HKX_ENTRY_PATH.format(object_name=model_name, animation_stem=animation_name)
+            defaults["hkx_entry_path"].format(object_name=model_name, animation_stem=animation_name)
         )
 
         # Update or create binder entry.

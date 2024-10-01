@@ -17,7 +17,7 @@ from soulstruct.dcx import DCXType
 from soulstruct.games import DARK_SOULS_PTDE, DARK_SOULS_DSR, DEMONS_SOULS
 from soulstruct.utilities.files import create_bak
 
-from soulstruct_havok.wrappers.shared import BothResHKXBHD
+from soulstruct_havok.fromsoft.shared import BothResHKXBHD
 
 from io_soulstruct.types import SoulstructType
 from io_soulstruct.utilities import *

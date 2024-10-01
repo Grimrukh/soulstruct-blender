@@ -17,7 +17,7 @@ from soulstruct.base.animations.sibcam import CameraFrameTransform, FoVKeyframe
 from soulstruct.darksouls1r.maps import MapStudioDirectory
 from soulstruct.darksouls1r.maps.parts import *
 from soulstruct_havok.utilities.maths import TRSTransform
-from soulstruct_havok.wrappers.hkx2015 import RemoBND
+from soulstruct_havok.fromsoft.darksouls1r import RemoBND
 
 REMOBND_RE = re.compile(r"^.*?\.remobnd(\.dcx)?$")
 

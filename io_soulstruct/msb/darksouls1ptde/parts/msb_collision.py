@@ -17,7 +17,7 @@ from soulstruct.base.maps.msb.utils import GroupBitSet128
 from soulstruct.darksouls1ptde.maps.enums import CollisionHitFilter
 from soulstruct.darksouls1ptde.maps.models import MSBCollisionModel
 from soulstruct.darksouls1ptde.maps.parts import MSBCollision
-from soulstruct_havok.wrappers.shared import MapCollisionModel, BothResHKXBHD
+from soulstruct_havok.fromsoft.shared import MapCollisionModel, BothResHKXBHD
 from .msb_part import BlenderMSBPart
 
 if tp.TYPE_CHECKING:

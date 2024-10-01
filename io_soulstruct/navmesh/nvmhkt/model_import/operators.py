@@ -16,12 +16,11 @@ __all__ = [
 
 import re
 import traceback
-import typing
 import typing as tp
 from pathlib import Path
 
 import time
-from soulstruct_havok.wrappers.hkx2018.file_types import NavmeshHKX
+from soulstruct_havok.fromsoft.eldenring.file_types import NavmeshHKX
 
 import bpy
 from bpy_extras.io_utils import ImportHelper

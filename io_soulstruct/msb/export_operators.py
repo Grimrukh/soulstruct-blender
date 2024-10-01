@@ -25,7 +25,7 @@ from soulstruct.demonssouls.maps.navmesh import NVMBND as NVMBND_DES
 from soulstruct.dcx import DCXType
 from soulstruct.games import *
 from soulstruct.utilities.text import natural_keys
-from soulstruct_havok.wrappers.shared import HKXBHD, BothResHKXBHD
+from soulstruct_havok.fromsoft.shared import HKXBHD, BothResHKXBHD
 from .operator_config import *
 from .properties import MSBPartSubtype
 

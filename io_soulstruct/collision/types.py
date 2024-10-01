@@ -15,7 +15,7 @@ from io_soulstruct.types import *
 from io_soulstruct.utilities import *
 
 from soulstruct_havok.enums import PyHavokModule
-from soulstruct_havok.wrappers.shared.map_collision import *
+from soulstruct_havok.fromsoft.shared.map_collision import *
 
 from .properties import MapCollisionProps
 from .utilities import HKX_MATERIAL_NAME_RE

@@ -42,6 +42,8 @@ class BaseImportHKXAnimation(LoggingOperator):
     def poll(cls, context: bpy.types.Context):
         if not context.active_object:
             return False
+        if not context.scene.soulstruct_settings.game_config.supports_animation:
+            return False
         try:
             bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
         except SoulstructTypeError:

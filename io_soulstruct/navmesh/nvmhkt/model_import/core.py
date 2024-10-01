@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 
 import bpy
 
-from soulstruct_havok.wrappers.hkx2018.file_types import NavmeshHKX
+from soulstruct_havok.fromsoft.eldenring import NavmeshHKX
 
 from io_soulstruct.utilities import *
 

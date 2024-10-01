@@ -2,24 +2,19 @@ from __future__ import annotations
 
 import time
 import traceback
-import typing as tp
+
+import numpy as np
 
 import bpy
 from mathutils import Matrix, Quaternion as BlenderQuaternion
 
-from soulstruct_havok.wrappers import hkx2015, hkx2016, hkx2018
+from soulstruct_havok.fromsoft.base import BaseSkeletonHKX, BaseAnimationHKX
+from soulstruct_havok.utilities.maths import TRSTransform
 
 from io_soulstruct.exceptions import *
 from io_soulstruct.flver.models import BlenderFLVER
 from io_soulstruct.utilities import *
 from .utilities import *
-
-if tp.TYPE_CHECKING:
-    import numpy as np
-    from soulstruct_havok.utilities.maths import TRSTransform
-
-SKELETON_TYPING = tp.Union[hkx2015.SkeletonHKX, hkx2016.SkeletonHKX, hkx2018.SkeletonHKX]
-ANIMATION_TYPING = tp.Union[hkx2015.AnimationHKX, hkx2016.AnimationHKX, hkx2018.AnimationHKX]
 
 
 class SoulstructAnimation:
@@ -411,27 +406,20 @@ class SoulstructAnimation:
         self,
         context: Context,
         armature: bpy.types.ArmatureObject,
-        skeleton_hkx: SKELETON_TYPING,
+        skeleton_hkx: BaseSkeletonHKX,
+        animation_hkx_class: type[BaseAnimationHKX],
     ) -> ANIMATION_TYPING:
         """Animation data is easier to export from Blender than import, as we can just read the bone transforms on each
-        frame in Armature space directly (contrasted with needing to resolve each basis Matrix when importing).
+        frame in Armature space directly (rather than needing to compute each basis Matrix when importing).
 
         We still need this action to determine the name and start/end times for the animation.
 
         The `skeleton_hkx` Havok type version is used to determine the returned `AnimationHKX` Havok type version.
         """
-        export_settings = context.scene.animation_export_settings
+        if animation_hkx_class.get_version_string().startswith("Havok_"):
+            raise NotImplementedError("Cannot export Demon's Souls animations.")
 
-        if skeleton_hkx.hk_version.startswith("2015"):
-            animation_hkx_type = hkx2015.AnimationHKX
-        elif skeleton_hkx.hk_version.startswith("2016"):
-            animation_hkx_type = hkx2016.AnimationHKX
-        elif skeleton_hkx.hk_version.startswith("2018"):
-            animation_hkx_type = hkx2018.AnimationHKX
-        else:
-            raise UnsupportedGameError(
-                f"Cannot export animation with HKX version '{skeleton_hkx.hk_version}'. Only 2015 is supported (DSR)."
-            )
+        export_settings = context.scene.animation_export_settings
 
         # TODO: Technically, animation export only needs a start/end frame range, since it samples location/bone pose
         #  on every single frame anyway and does NOT need to actually use the action FCurves!
@@ -500,19 +488,28 @@ class SoulstructAnimation:
 
         if has_root_motion:
             root_motion = np.array(root_motion_samples, dtype=np.float32)
-            # Swap translate Y/Z and negate rotation Z (soon to be Y).
+            # Swap translate Y/Z and negate rotation Z (now Y).
             root_motion = np.c_[root_motion[:, 0], root_motion[:, 2], root_motion[:, 1], -root_motion[:, 3]]
         else:
             root_motion = None
 
-        animation_hkx = animation_hkx_type.from_dsr_interleaved_template(
-            skeleton_hkx=skeleton_hkx,
-            interleaved_data=armature_space_frames,
-            transform_track_to_bone_indices=track_bone_mapping,
-            root_motion=root_motion,
-            is_armature_space=True,
+        interleaved_animation_hkx = animation_hkx_class.from_minimal_data_interleaved(
+            frame_transforms=armature_space_frames,
+            track_names=[bone.name for bone in skeleton_hkx.skeleton.bones],
+            transform_track_bone_indices=track_bone_mapping,
+            root_motion_array=root_motion,
+            original_skeleton_name=skeleton_hkx.skeleton.skeleton.name,
+            frame_rate=30.0,
+            skeleton_for_armature_to_local=skeleton_hkx,
         )
 
-        return animation_hkx
+        try:
+            spline_animation_hkx = interleaved_animation_hkx.get_spline_hkx()
+        except NotImplementedError:
+            raise UnsupportedGameError(
+                f"Animation export not yet possible for game {context.scene.soulstruct_settings.game}."
+            )
+
+        return spline_animation_hkx
 
     # endregion

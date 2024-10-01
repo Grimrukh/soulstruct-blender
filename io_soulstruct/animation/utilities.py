@@ -16,25 +16,31 @@ import numpy as np
 from pathlib import Path
 from soulstruct_havok.core import HKX
 from soulstruct_havok.utilities.maths import TRSTransform
-from soulstruct_havok.wrappers import hkx2015, hkx2016, hkx2018
-from soulstruct_havok.wrappers.hkx2015 import AnimationHKX, SkeletonHKX, ANIBND
+from soulstruct_havok.fromsoft.base import BaseAnimationHKX, BaseSkeletonHKX
+from soulstruct_havok.fromsoft import darksouls1ptde, darksouls1r, bloodborne, eldenring
 from soulstruct.containers import BinderEntry
 from io_soulstruct.exceptions import UnsupportedGameError
 
-ANIMATION_TYPING = tp.Union[hkx2015.AnimationHKX, hkx2016.AnimationHKX, hkx2018.AnimationHKX]
-SKELETON_TYPING = tp.Union[hkx2015.SkeletonHKX, hkx2016.SkeletonHKX, hkx2018.SkeletonHKX]
+ANIMATION_TYPING = tp.Union[
+    darksouls1ptde.AnimationHKX, darksouls1r.AnimationHKX, bloodborne.AnimationHKX, eldenring.AnimationHKX
+]
+SKELETON_TYPING = tp.Union[
+    darksouls1ptde.SkeletonHKX, darksouls1r.SkeletonHKX, bloodborne.SkeletonHKX, eldenring.SkeletonHKX
+]
 
 
 def read_animation_hkx_entry(hkx_entry: BinderEntry, compendium: HKX = None) -> ANIMATION_TYPING:
     """Read animation HKX file from a Binder entry and return the appropriate `AnimationHKX` subclass instance."""
     data = hkx_entry.get_uncompressed_data()
     version = data[0x10:0x18]
-    if version == b"20180100":  # ER
-        hkx = hkx2018.AnimationHKX.from_bytes(data, compendium=compendium)
+    if version == b"hk_2010.2.0-r1":  # PTDE
+        hkx = darksouls1ptde.AnimationHKX.from_bytes(data, compendium=compendium)
     elif version == b"20150100":  # DSR
-        hkx = hkx2015.AnimationHKX.from_bytes(data, compendium=compendium)
-    elif version == b"20160100":  # non-From
-        hkx = hkx2016.AnimationHKX.from_bytes(data, compendium=compendium)
+        hkx = darksouls1r.AnimationHKX.from_bytes(data, compendium=compendium)
+    elif version == b"hk_2014.1.0-r1":  # BB
+        hkx = bloodborne.AnimationHKX.from_bytes(data, compendium=compendium)
+    elif version == b"20180100":  # ER
+        hkx = eldenring.AnimationHKX.from_bytes(data, compendium=compendium)
     else:
         raise UnsupportedGameError(
             f"Cannot support this HKX animation file version in Soulstruct and/or Blender: {version}"
@@ -47,12 +53,14 @@ def read_skeleton_hkx_entry(hkx_entry: BinderEntry, compendium: HKX = None) -> S
     """Read skeleton HKX file from a Binder entry and return the appropriate `SkeletonHKX` subclass instance."""
     data = hkx_entry.get_uncompressed_data()
     version = data[0x10:0x18]
-    if version == b"20180100":  # ER
-        hkx = hkx2018.SkeletonHKX.from_bytes(data, compendium=compendium)
+    if version == b"hk_2010.2.0-r1":  # PTDE
+        hkx = darksouls1ptde.SkeletonHKX.from_bytes(data, compendium=compendium)
     elif version == b"20150100":  # DSR
-        hkx = hkx2015.SkeletonHKX.from_bytes(data, compendium=compendium)
-    elif version == b"20160100":  # non-From
-        hkx = hkx2016.SkeletonHKX.from_bytes(data, compendium=compendium)
+        hkx = darksouls1r.SkeletonHKX.from_bytes(data, compendium=compendium)
+    elif version == b"hk_2014.1.0-r1":  # BB
+        hkx = bloodborne.SkeletonHKX.from_bytes(data, compendium=compendium)
+    elif version == b"20180100":  # ER
+        hkx = eldenring.SkeletonHKX.from_bytes(data, compendium=compendium)
     else:
         raise UnsupportedGameError(
             f"Cannot support this HKX skeleton file version in Soulstruct and/or Blender: {version}"
@@ -62,25 +70,21 @@ def read_skeleton_hkx_entry(hkx_entry: BinderEntry, compendium: HKX = None) -> S
 
 
 def get_armature_frames(
-    animation_hkx: AnimationHKX, skeleton_hkx: SkeletonHKX, track_bone_names: list[str]
+    animation_hkx: BaseAnimationHKX, skeleton_hkx: BaseSkeletonHKX, track_bone_names: list[str]
 ) -> list[dict[str, TRSTransform]]:
     """Get a list of animation frame dictionaries, which each map bone names to armature-space transforms that frame."""
 
-    # Create ANIBND with just this animation (always using dummy/default ID 0) to get advanced method access.
-    anibnd = ANIBND(skeleton_hkx=skeleton_hkx, animations_hkx={0: animation_hkx}, default_anim_id=0)
-    arma_frames = []
-    for frame_index in range(len(anibnd[0].interleaved_data)):
-        track_transforms = anibnd.get_all_armature_space_transforms_in_frame(frame_index)
-        # Get dictionary mapping Blender bone names to (game) armature space transforms this frame.
-        frame_dict = {}
-        for track_index, transform in enumerate(track_transforms):
-            bone_name = track_bone_names[track_index]
-            frame_dict[bone_name] = transform
-        arma_frames.append(frame_dict)
-    return arma_frames
+    # Get frames as standard nested lists of transforms.
+    interleaved_frames = animation_hkx.animation_container.get_interleaved_data_in_armature_space(skeleton_hkx.skeleton)
+    # Convert to dictionary using given `track_bone_names` list.
+    arma_frame_dicts = [
+        {bone_name: transform for bone_name, transform in zip(track_bone_names, frame)}
+        for frame in interleaved_frames
+    ]
+    return arma_frame_dicts
 
 
-def get_root_motion(animation_hkx: AnimationHKX, swap_yz=True) -> np.ndarray | None:
+def get_root_motion(animation_hkx: BaseAnimationHKX, swap_yz=True) -> np.ndarray | None:
     try:
         root_motion = animation_hkx.animation_container.get_reference_frame_samples()
     except (ValueError, TypeError):

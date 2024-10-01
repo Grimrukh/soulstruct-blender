@@ -26,7 +26,7 @@ import bpy
 from bpy_extras.io_utils import ImportHelper
 from soulstruct.containers import BinderEntry, EntryNotFoundError
 from soulstruct.games import DARK_SOULS_PTDE, DEMONS_SOULS
-from soulstruct_havok.wrappers.shared import MapCollisionModel, BothResHKXBHD
+from soulstruct_havok.fromsoft.shared import MapCollisionModel, BothResHKXBHD
 from io_soulstruct.exceptions import MapCollisionImportError
 from io_soulstruct.utilities import *
 from .types import BlenderMapCollision
