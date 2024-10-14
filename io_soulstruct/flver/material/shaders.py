@@ -201,6 +201,7 @@ class NodeTreeBuilder:
         self.link(normal_node.outputs["Color"], normal_map_node.inputs["Color"])
         self.link(normal_map_node.outputs["Normal"], glass.inputs["Normal"])
         self.link(self.vertex_colors_nodes[0].outputs["Alpha"], water_mix.inputs["Fac"])
+        self.link_to_output_surface(water_mix.outputs[0])
         return True
 
     def build_snow_shader(self):
