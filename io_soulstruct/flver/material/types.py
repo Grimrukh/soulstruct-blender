@@ -387,6 +387,7 @@ class BlenderFLVERMaterial:
                             if len(node_image.pixels) > 4:
                                 texture_collection.add(DDSTexture(node_image))
                         sampler_found = True
+                        break  # don't check the other key
 
             if texture_stem and texture_stem == sampler.matbin_texture_stem:
                 # Texture path in shader is the same as the MATBIN texture path -- that is, it was imported for

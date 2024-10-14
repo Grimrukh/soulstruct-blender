@@ -12,7 +12,7 @@ some time to polish and release them. I hope they serve you well and anticipate 
 have the bandwidth or inclination to support any longer in Soulstruct. Surface vertex normal handling was also greatly
 improved in Blender 4.1, making FLVER import/export significantly easier.
 
-Older releases (1.9.3 and earlier) are still available in the Releases section, which support Blender versions all the
+Older releases (<=1.9.3) are still available in the Releases section, which support Blender versions all the
 way back to 3.7, but lack many features and are no longer updated.
 
 ## Table of Contents
@@ -35,7 +35,7 @@ way back to 3.7, but lack many features and are no longer updated.
 # Game Support
 
 - ✔️ Full: **Import and export** support.
-- ⚠️ Partial: **Partial** support (e.g. import only, poor material handling, or untested).
+- ⚠️ Partial: **Partial** support (e.g. import only, worse material handling, or untested).
 - ❌ None: **No support** (yet).
 
 | Game              | FLVER | Collision | Navmesh | Animation | MSB |
@@ -52,7 +52,7 @@ way back to 3.7, but lack many features and are no longer updated.
 ### Other Features
 
 - **MCG graph files** from Demon's Souls and Dark Souls can be imported as **Navigation Graph** Collections and
-can even by *fully generated from scratch* using the loaded MSB Navmesh parts and models from an MSB.
+can even be *fully generated from scratch* using the loaded MSB Navmesh parts and models from an MSB.
   - **MCP navmesh box files** that go along with these MCGs are automatically generated when the MSB is exported, as
   their contents must match the MSB Navmesh parts and bake in their transforms.
 - **NVMHKT Havok navigation mesh files** can be imported and viewed for Elden Ring, but not exported.

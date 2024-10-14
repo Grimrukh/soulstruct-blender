@@ -304,7 +304,7 @@ class ExportMapPieceFLVERs(LoggingOperator):
             except Exception as ex:
                 traceback.print_exc()
                 return self.error(
-                    f"Cannot export Map Piece FLVER '{bl_flver.export_name}' from '{bl_flver.name}. Error: {ex}"
+                    f"Cannot export Map Piece FLVER '{bl_flver.export_name}' from '{bl_flver.name}'. Error: {ex}"
                 )
 
             flver.dcx_type = flver_dcx_type

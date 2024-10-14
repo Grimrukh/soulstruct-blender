@@ -38,7 +38,7 @@ class NodeTreeBuilder:
     vertex_colors_nodes: list[bpy.types.Node] = field(default_factory=list)
     # Maps UV global layer names (e.g. 'UVTexture0') to Nodes.
     uv_nodes: dict[str, bpy.types.Node] = field(default_factory=dict)
-    # Maps common, non-game-specific sampler type (e.g. 'ALBEDO_0') to Nodes.
+    # Maps common, non-game-specific sampler type (e.g. 'Main 0 Albedo') to Nodes.
     tex_image_nodes: dict[str, bpy.types.Node] = field(default_factory=dict)
 
     tree: bpy.types.NodeTree = field(init=False)
@@ -208,12 +208,11 @@ class NodeTreeBuilder:
         """
         Sketch for DS1R snow shader:
          - Mix a standard Principled BSDF (main texture, e.g. ground) and a Diffuse BSDF shader for snow.
-         - Use 'ALBEDO_0' and 'METALLIC_0' as usual for Principled.
-             - Mix 'LIGHTMAP' as overlay if present.
-         - Snow diffuse uses both 'NORMAL_0' (which is sometimes a diffuse snow texture!) and 'NORMAL_1' as
+         - Use 'Main 0 Albedo' and 'Main 0 Specular' as usual for Principled.
+             - Mix 'Lightmap' as overlay if present.
+         - Snow diffuse uses both 'Main 0 Normal' (which is sometimes a diffuse snow texture!) and 'Main 1 Normal' as
            its BSDF normal input (mapped with UVTexture0). We mix these two textures 50/50 if given.
-         - 'NORMAL_2' is actually the normal map for the Principled BSDF, but only appears in DS1R! Not PTDE.
-          TODO: Double check that it's not *NORMAL_1* (detailed bumpmap) that is missing in PTDE.
+         - 'Main 2 Normal' is actually the normal map for the Principled BSDF, but only appears in DS1R! Not PTDE.
          - Mix shader nodes using vertex color alpha, raised with a Math node to the power of 4.0, which seems to
            capture the snow effect best in my tuning.
          - Create a Mix Shader for the standard textures and new Diffuse snow BSDF. Plug into material output.
@@ -231,9 +230,9 @@ class NodeTreeBuilder:
         self.link(bsdf_node.outputs["BSDF"], mix_node.inputs[1])
         self.link(diffuse_bsdf_node.outputs["BSDF"], mix_node.inputs[2])
 
-        # Raise vertex alpha to the power of 4.0 and use as mix Fac.
+        # Raise vertex alpha to the power of 2.0 and use as mix Fac.
         vertex_alpha_power = self.new(
-            "ShaderNodeMath", location=(self.BSDF_X, self.mix_y), operation="POWER", input_defaults={1: 4.0}
+            "ShaderNodeMath", location=(self.BSDF_X, self.mix_y), operation="POWER", input_defaults={1: 2.0}
         )
         self.link(self.vertex_colors_nodes[0].outputs["Alpha"], vertex_alpha_power.inputs[0])
         self.link(vertex_alpha_power.outputs[0], mix_node.inputs["Fac"])
