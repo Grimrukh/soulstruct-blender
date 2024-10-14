@@ -3,18 +3,18 @@ from __future__ import annotations
 __all__ = ["ExportHKXCutscene"]
 
 from bpy.props import StringProperty
-from bpy_extras.io_utils import ExportHelper
-from io_soulstruct.utilities import *
+
 from soulstruct.dcx import DCXType
 
+from io_soulstruct.utilities import *
 
-class ExportHKXCutscene(LoggingOperator, ExportHelper):
+
+class ExportHKXCutscene(LoggingExportOperator):
     """Export RemoBND cutscene animation from Actions attached to all selected FLVER armatures."""
     bl_idname = "export_scene.hkx_cutscene"
     bl_label = "Export HKX Cutscene"
     bl_description = "Export all selected armatures' Blender actions to a RemoBND cutscene file"
 
-    # ExportHelper mixin class uses this
     filename_ext = ".remobnd"
 
     filter_glob: StringProperty(

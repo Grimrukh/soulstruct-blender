@@ -14,10 +14,9 @@ import typing as tp
 from pathlib import Path
 
 import bpy
-from bpy_extras.io_utils import ImportHelper
 
 from io_soulstruct.general.game_config import GAME_CONFIG
-from io_soulstruct.utilities import LoggingOperator
+from io_soulstruct.utilities import *
 
 if tp.TYPE_CHECKING:
     from .game_structure import GameStructure
@@ -232,13 +231,12 @@ class SelectImageCacheDirectory(LoggingOperator):
         return {"FINISHED"}
 
 
-class SelectCustomMTDBNDFile(LoggingOperator, ImportHelper):
+class SelectCustomMTDBNDFile(LoggingImportOperator):
     """Browse for custom MTDBND file."""
     bl_idname = "soulstruct.select_custom_mtdbnd_file"
     bl_label = "Select Custom MTDBND File"
     bl_description = "Select custom MTDBND file with browser"
 
-    filename_ext = ".mtdbnd"
     filter_glob: bpy.props.StringProperty(default="*.mtdbnd;*.mtdbnd.dcx", options={"HIDDEN"})
 
     def execute(self, context):
@@ -249,13 +247,12 @@ class SelectCustomMTDBNDFile(LoggingOperator, ImportHelper):
         return {"FINISHED"}
 
 
-class SelectCustomMATBINBNDFile(LoggingOperator, ImportHelper):
+class SelectCustomMATBINBNDFile(LoggingImportOperator):
     """Browse for custom MATBINBND file."""
     bl_idname = "soulstruct.select_custom_matbinbnd_file"
     bl_label = "Select Custom MATBINBND File"
     bl_description = "Select custom MATBINBND file with browser"
 
-    filename_ext = ".matbinbnd"
     filter_glob: bpy.props.StringProperty(default="*.matbinbnd;*.matbinbnd.dcx", options={"HIDDEN"})
 
     def execute(self, context):
@@ -266,7 +263,7 @@ class SelectCustomMATBINBNDFile(LoggingOperator, ImportHelper):
         return {"FINISHED"}
 
 
-class LoadCollectionsFromBlend(LoggingOperator, ImportHelper):
+class LoadCollectionsFromBlend(LoggingImportOperator):
     """Load collections and objects from a '.blend' file by linking its root-level collections to this scene.
 
     Works best with Blend files created using `io_export_blend`, and also works best when all objects in the Blend are
@@ -275,8 +272,6 @@ class LoadCollectionsFromBlend(LoggingOperator, ImportHelper):
     bl_idname = "soulstruct.load_collections_from_blend"
     bl_label = "Load Collections from Blend"
     bl_description = "Load collections from a .blend file"
-
-    filename_ext = ".blend"
 
     filter_glob: bpy.props.StringProperty(
         default="*.blend",

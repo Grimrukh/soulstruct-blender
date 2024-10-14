@@ -11,7 +11,6 @@ import traceback
 from pathlib import Path
 
 import bpy
-from bpy_extras.io_utils import ImportHelper, ExportHelper
 
 from soulstruct.dcx import DCXType
 from soulstruct.games import DARK_SOULS_PTDE, DARK_SOULS_DSR, DEMONS_SOULS
@@ -36,13 +35,12 @@ NUMERIC_HKX_COLLISION_STEM_RE = {  # standard map model name; no extensions
 }
 
 
-class ExportLooseHKXMapCollision(LoggingOperator, ExportHelper):
+class ExportLooseHKXMapCollision(LoggingExportOperator):
     """Export 'hi' and/or 'lo' HKX from a selection of Blender meshes."""
     bl_idname = "export_scene.hkx_map_collision"
     bl_label = "Export Loose Map Collision"
     bl_description = "Export child meshes of selected Blender empty parent to a HKX collision file"
 
-    # ExportHelper mixin class uses this
     filename_ext = ".hkx"
 
     filter_glob: bpy.props.StringProperty(
@@ -176,13 +174,10 @@ class ExportLooseHKXMapCollision(LoggingOperator, ExportHelper):
         return {"FINISHED"}
 
 
-class ExportHKXMapCollisionIntoBinder(LoggingOperator, ImportHelper):
+class ExportHKXMapCollisionIntoBinder(LoggingImportOperator):
     bl_idname = "export_scene.hkx_map_collision_binder"
     bl_label = "Export Map Collision Into Binder"
     bl_description = "Export a HKX collision file into a FromSoftware Binder (BND/BHD)"
-
-    # ImportHelper mixin class uses this
-    filename_ext = ".hkxbhd"
 
     filter_glob: bpy.props.StringProperty(
         default="*.hkxbhd;*.hkxbhd.dcx",

@@ -10,7 +10,6 @@ import traceback
 from pathlib import Path
 
 import bpy
-from bpy_extras.io_utils import ImportHelper, ExportHelper
 
 from soulstruct.containers import Binder, BinderEntry
 from soulstruct.dcx import DCXType
@@ -22,12 +21,13 @@ from soulstruct.games import DARK_SOULS_PTDE, DARK_SOULS_DSR, DEMONS_SOULS
 
 from io_soulstruct.exceptions import SoulstructTypeError
 from io_soulstruct.types import SoulstructType
-from io_soulstruct.utilities.operators import LoggingOperator, get_dcx_enum_property
+from io_soulstruct.utilities.operators import LoggingOperator, LoggingExportOperator, get_dcx_enum_property
 from io_soulstruct.utilities.misc import *
 from .types import *
+from ...utilities import LoggingImportOperator
 
 
-class ExportLooseNVM(LoggingOperator, ExportHelper):
+class ExportLooseNVM(LoggingExportOperator):
     """Export loose NVM file from a Blender mesh.
 
     Mesh faces should be using materials named `Navmesh Flag {type}`
@@ -87,12 +87,10 @@ class ExportLooseNVM(LoggingOperator, ExportHelper):
         return {"FINISHED"}
 
 
-class ExportNVMIntoBinder(LoggingOperator, ImportHelper):
+class ExportNVMIntoBinder(LoggingImportOperator):
     bl_idname = "export_scene.nvm_binder"
     bl_label = "Export NVM Into Binder"
     bl_description = "Export NVM navmesh files into a FromSoftware Binder (BND/BHD)"
-
-    filename_ext = ".nvmbnd"
 
     filter_glob: bpy.props.StringProperty(
         default="*.nvmbnd;*.nvmbnd.dcx",

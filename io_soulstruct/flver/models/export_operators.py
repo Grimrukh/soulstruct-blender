@@ -15,7 +15,6 @@ from pathlib import Path
 
 import bpy
 from bpy.props import StringProperty, BoolProperty, IntProperty
-from bpy_extras.io_utils import ExportHelper
 
 from soulstruct.base.models.base import BaseFLVER
 from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
@@ -35,7 +34,7 @@ if tp.TYPE_CHECKING:
 
 # region Generic Exporters
 
-class ExportLooseFLVER(LoggingOperator, ExportHelper):
+class ExportLooseFLVER(LoggingExportOperator):
     """Export one FLVER model from a Blender Armature parent to a file using a browser window."""
     bl_idname = "export_scene.flver"
     bl_label = "Export FLVER"
@@ -102,10 +101,19 @@ class ExportLooseFLVER(LoggingOperator, ExportHelper):
             return self.error(f"Cannot write exported FLVER. Error: {ex}")
         self.info(f"Exported FLVER to: {str(written_path[0])}")
 
+        if (
+            settings.is_game(DEMONS_SOULS)
+            and not written_path[0].name.endswith(".dcx")
+            and settings.des_flver_export_mode == "BOTH"
+        ):
+            # Non-DCX FLVER was exported above (see `SoulstructSettings.resolve_dcx_type()`). We want DCX too.
+            dcx_path = settings.create_dcx_file(written_path[0], DCXType.DCX_EDGE)
+            self.info(f"Also exported DCX-compressed FLVER to: {str(dcx_path)}")
+
         return {"FINISHED"}
 
 
-class ExportFLVERIntoBinder(LoggingOperator, ExportHelper):
+class ExportFLVERIntoBinder(LoggingImportOperator):
     """Export a single FLVER model from a Blender mesh into a chosen game binder (BND/BHD).
 
     TODO: Does not support multiple FLVERs yet, but some Binders (e.g. OBJBNDs) can have more than one.
@@ -114,14 +122,13 @@ class ExportFLVERIntoBinder(LoggingOperator, ExportHelper):
     bl_label = "Export FLVER Into Binder"
     bl_description = "Export a FLVER model file into a FromSoftware Binder (BND/BHD)"
 
-    filename_ext = ".chrbnd"
-
     filter_glob: StringProperty(
-        default="*.chrbnd;*.chrbnd.dcx;*.objbnd;*.objbnd.dcx;*.partsbnd;*.partsbnd.dcx",
+        default="*.chrbnd;*.chrbnd.dcx;*.objbnd;*.objbnd.dcx;*.geombnd;*.geombnd.dcx;*.partsbnd;*.partsbnd.dcx",
         options={'HIDDEN'},
         maxlen=255,
     )
 
+    # DCX type to apply to entries, not Binder.
     dcx_type: get_dcx_enum_property(default=DCXType.Null)
 
     overwrite_existing: BoolProperty(
@@ -274,7 +281,7 @@ class ExportMapPieceFLVERs(LoggingOperator):
             )
 
         flver_export_settings = context.scene.flver_export_settings
-        flver_dcx_type = settings.game.get_dcx_type("flver")
+        flver_dcx_type = settings.resolve_dcx_type("AUTO", "flver")
 
         self.to_object_mode()
         active_object = context.active_object  # to restore later
@@ -301,13 +308,23 @@ class ExportMapPieceFLVERs(LoggingOperator):
                 )
 
             flver.dcx_type = flver_dcx_type
-            settings.export_file(self, flver, relative_map_path / f"{bl_flver.export_name}.flver")
+            relative_flver_path = relative_map_path / f"{bl_flver.export_name}.flver"
+            settings.export_file(self, flver, relative_flver_path)
 
             if flver_export_settings.export_textures:
                 # Collect all Blender images for batched map area export.
                 area = settings.map_stem[:3]
                 area_textures = map_area_textures.setdefault(area, DDSTextureCollection())
                 area_textures |= texture_collection
+
+            if (
+                settings.is_game(DEMONS_SOULS)
+                and not relative_flver_path.name.endswith(".dcx")
+                and settings.des_flver_export_mode == "BOTH"
+            ):
+                # Non-DCX FLVER was exported above (see `SoulstructSettings.resolve_dcx_type()`). We want DCX too.
+                dcx_path = settings.create_dcx_file(relative_flver_path, DCXType.DCX_EDGE)
+                self.info(f"Also exported DCX-compressed Map Piece FLVER to: {str(dcx_path)}")
 
         if map_area_textures:  # only non-empty if texture export enabled
             for map_area, texture_collection in map_area_textures.items():
@@ -323,18 +340,21 @@ class ExportMapPieceFLVERs(LoggingOperator):
 class BaseGameFLVERBinderExportOperator(LoggingOperator):
     """Base class for operator that exports a FLVER directly into game Binder (CHRBND, OBJBND, PARTSBND)."""
 
+    @staticmethod
+    def _get_binder_path(settings: SoulstructSettings, model_stem: str) -> Path:
+        raise NotImplementedError
+
     def get_binder_and_flver(
         self,
         context: bpy.types.Context,
         settings: SoulstructSettings,
-        binder_path_callback: tp.Callable[[BlenderFLVER], Path],
         binder_class: type[CHRBND_TYPING | OBJBND_TYPING | PARTSBND_TYPING],
     ) -> tuple[str, CHRBND_TYPING | OBJBND_TYPING | PARTSBND_TYPING, BaseFLVER, DDSTextureCollection]:
         bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
         cls_name = binder_class.__name__
 
         # We prepare and retrieve the binder to be exported into.
-        relative_binder_path = binder_path_callback(bl_flver)
+        relative_binder_path = self._get_binder_path(settings, bl_flver.export_name)
         try:
             binder_path = settings.prepare_project_file(relative_binder_path, must_exist=True)
         except FileNotFoundError as ex:
@@ -385,6 +405,14 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
     bl_label = "Export Character"
     bl_description = "Export a FLVER model file into same-named game CHRBND (which must exist)"
 
+    @staticmethod
+    def _get_binder_path(settings: SoulstructSettings, model_stem: str) -> Path:
+        if settings.is_game(DEMONS_SOULS):
+            # Nested inside character subfolder.
+            return Path(f"chr/{model_stem}/{model_stem}.chrbnd")
+        # Not in subfolder.
+        return Path(f"chr/{model_stem}.chrbnd")
+
     @classmethod
     def poll(cls, context):
         """Must have an Armature parent for a character FLVER. No chance of a default skeleton!
@@ -409,16 +437,20 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
             model_stem, chrbnd, flver, textures = self.get_binder_and_flver(
                 context,
                 settings,
-                lambda bl_flver: Path(f"chr/{bl_flver.export_name}.chrbnd"),
                 settings.game.from_game_submodule_import("models.chrbnd", "CHRBND"),
             )
         except FLVERExportError as ex:
             return self.error(str(ex))
+
         chrbnd.flvers[model_stem] = flver
 
         flver_export_settings = context.scene.flver_export_settings
         if not flver_export_settings.export_textures:
             # Export CHRBND now with FLVER.
+            if settings.is_game(DEMONS_SOULS):
+                # Nested inside character subfolder.
+                return settings.export_file(self, chrbnd, Path(f"chr/{model_stem}/{model_stem}.chrbnd"))
+            # Not in subfolder.
             return settings.export_file(self, chrbnd, Path(f"chr/{model_stem}.chrbnd"))
 
         # Export textures. This may or may not involve file(s) outside the CHRBND, depending on the game.
@@ -580,6 +612,11 @@ class ExportObjectFLVER(BaseGameFLVERBinderExportOperator):
     bl_label = "Export Object"
     bl_description = "Export a FLVER model file into same-named game OBJBND (which must exist)"
 
+    @staticmethod
+    def _get_binder_path(settings: SoulstructSettings, model_stem: str) -> Path:
+        # TODO: Subfolder in DeS?
+        return Path(f"obj/{model_stem}.objbnd")
+
     @classmethod
     def poll(cls, context):
         """Name of model must also start with 'o'.
@@ -601,7 +638,6 @@ class ExportObjectFLVER(BaseGameFLVERBinderExportOperator):
             model_stem, objbnd, flver, textures = self.get_binder_and_flver(
                 context,
                 settings,
-                lambda bl_flver: Path(f"obj/{bl_flver.export_name}.objbnd"),
                 settings.game.from_game_submodule_import("models.objbnd", "OBJBND"),
             )
         except FLVERExportError as ex:
@@ -623,9 +659,13 @@ class ExportAssetFLVER(BaseGameFLVERBinderExportOperator):
     bl_label = "Export Asset"
     bl_description = "Export a FLVER model file into same-named game GEOMBND (which must exist)"
 
+    @staticmethod
+    def _get_binder_path(settings: SoulstructSettings, model_stem: str) -> Path:
+        return Path(f"asset/{model_stem[:6]}/{model_stem}.geombnd")
+
     @classmethod
     def poll(cls, context):
-        """Name of model must also start with 'aeg.
+        """Name of model must also start with 'aeg' (not case-sensitive).
 
         NOTE: Armature is NOT required. Could easily have Map Piece-like, non-animated Assets.
         """
@@ -644,7 +684,6 @@ class ExportAssetFLVER(BaseGameFLVERBinderExportOperator):
             model_stem, geombnd, flver, exporter = self.get_binder_and_flver(
                 context,
                 settings,
-                lambda bl_flver: Path(f"asset/{bl_flver.export_name[:6]}/{bl_flver.export_name}.geombnd"),
                 settings.game.from_game_submodule_import("models.geombnd", "GEOMBND"),
             )
         except FLVERExportError as ex:
@@ -663,6 +702,11 @@ class ExportEquipmentFLVER(BaseGameFLVERBinderExportOperator):
     bl_idname = "export_scene.equipment_flver"
     bl_label = "Export Equipment"
     bl_description = "Export a FLVER equipment model file into appropriate game PARTSBND"
+
+    @staticmethod
+    def _get_binder_path(settings: SoulstructSettings, model_stem: str) -> Path:
+        # TODO: Subfolder in DeS?
+        return Path(f"parts/{model_stem}.partsbnd")
 
     @classmethod
     def poll(cls, context):
@@ -685,7 +729,6 @@ class ExportEquipmentFLVER(BaseGameFLVERBinderExportOperator):
             model_stem, partsbnd, flver, textures = self.get_binder_and_flver(
                 context,
                 settings,
-                lambda bl_flver: Path(f"parts/{bl_flver.export_name}.partsbnd"),
                 settings.game.from_game_submodule_import("models.partsbnd", "PARTSBND"),
             )
         except FLVERExportError as ex:

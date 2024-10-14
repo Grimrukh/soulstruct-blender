@@ -155,8 +155,6 @@ class ImportFLVER(BaseFLVERImportOperator):
     bl_label = "Import FLVER"
     bl_description = "Import a FromSoftware FLVER model file. Can import from BNDs and supports DCX-compressed files."
 
-    filename_ext = ".flver"
-
     filter_glob: bpy.props.StringProperty(
         default="*.flver;*.flver.dcx;*.chrbnd;*.chrbnd.dcx;*.objbnd;*.objbnd.dcx;"
                 "*.partsbnd;*.partsbnd.dcx;*.mapbnd;*.mapbnd.dcx;*.geombnd;*.geombnd.dcx",
@@ -184,8 +182,6 @@ class ImportMapPieceFLVER(BaseFLVERImportOperator):
     bl_idname = "import_scene.map_piece_flver"
     bl_label = "Import Map Piece"
     bl_description = "Import a Map Piece FLVER from selected game map directory"
-
-    filename_ext = ".flver"
 
     filter_glob: bpy.props.StringProperty(
         default="*.flver;*.flver.dcx;*.mapbnd;*.mapbnd.dcx",
@@ -241,8 +237,6 @@ class ImportCharacterFLVER(BaseFLVERImportOperator):
     bl_idname = "import_scene.character_flver"
     bl_label = "Import Character"
     bl_description = "Import character FLVER from a CHRBND in selected game 'chr' directory"
-
-    filename_ext = ".chrbnd"
 
     filter_glob: bpy.props.StringProperty(
         default="*.chrbnd;*.chrbnd.dcx;*.chrbnd.bak;*.chrbnd.dcx.bak;",
@@ -307,8 +301,6 @@ class ImportObjectFLVER(BaseFLVERImportOperator):
     bl_label = "Import Object"
     bl_description = "Import object FLVER from an OBJBND in selected game 'obj' directory"
 
-    filename_ext = ".objbnd"
-
     filter_glob: bpy.props.StringProperty(
         default="*.objbnd;*.objbnd.dcx;",
         options={'HIDDEN'},
@@ -344,8 +336,6 @@ class ImportAssetFLVER(BaseFLVERImportOperator):
     bl_idname = "import_scene.asset_flver"
     bl_label = "Import Asset"
     bl_description = "Import asset FLVER from a GEOMBND in selected game 'asset' directory"
-
-    filename_ext = ".geombnd"
 
     filter_glob: bpy.props.StringProperty(
         default="*.geombnd;*.geombnd.dcx;",
@@ -390,8 +380,6 @@ class ImportEquipmentFLVER(BaseFLVERImportOperator):
     bl_idname = "import_scene.equipment_flver"
     bl_label = "Import Equipment"
     bl_description = "Import equipment FLVER from a PARTSBND in selected game 'parts' directory"
-
-    filename_ext = ".partsbnd"
 
     filter_glob: bpy.props.StringProperty(
         default="*.partsbnd;*.partsbnd.dcx;",

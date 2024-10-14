@@ -86,9 +86,6 @@ class ExportTexturesIntoBinderOrTPF(LoggingImportOperator):
         "(BND/BHD)"
     )
 
-    # ImportHelper mixin class uses this
-    filename_ext = ".chrbnd"
-
     filter_glob: bpy.props.StringProperty(
         default="*.tpf;*.tpf.dcx;*.tpfbhd;*.chrbnd;*.chrbnd.dcx;*.objbnd;*.objbnd.dcx;*.partsbnd;*.partsbnd.dcx",
         options={'HIDDEN'},

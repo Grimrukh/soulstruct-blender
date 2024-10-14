@@ -142,7 +142,42 @@ class SoulstructAnimation:
         arma_frames: list[dict[str, TRSTransform]],
         root_motion: np.ndarray,
     ) -> SoulstructAnimation:
-        """Import single animation HKX."""
+        """Import single animation HKX.
+
+        `arma_frames` is a list of dictionaries mapping bone names to `TRSTransform` objects that represent transforms
+        in armature space. It is necessary to use the computed armature space transforms, rather than the raw local
+        HKX frame transforms given in the parent bone's space, because the FLVER skeleton that we are animating here
+        may NOT have the same hierarchy as the HKX skeleton used by the animation.
+
+        Once we have converted the 'HKX local' bone transforms to 'armature space' transforms (passed in here), we then
+        convert those to 'FLVER local' 'bone basis' transforms, i.e. the `pose_bone.matrix_basis` property of PoseBones.
+        This is the same transform actually shown in the PoseBone Properties GUI (rather than the `matrix` property,
+        which is the final transform of the bone in armature space, but is 'output only' and cannot be animated/driven).
+
+        CALCULATING THE BASIS MATRIX:
+
+            The `matrix_basis` is aptly named because it is the rightmost matrix in the Matrix multiplication sequence
+            that determines its final armature-space `matrix`:
+
+                pose_bone.matrix =
+                    parent_pose_bone.matrix
+                    @ parent_bone.matrix_local.inverted()
+                    @ bone.matrix_local
+                    @ pose_bone.matrix_basis
+
+            This final `pose_bone.matrix`, of course, is then left-multiplied by `armature_object.matrix_world` to get
+            the final bone position in world space (though in practice, the bones are used to deform the local mesh,
+            which is then transformed from object to world space).
+
+            The two matrices in the middle, `parent_bone.matrix_local.inverted()` and `bone.matrix_local`, are
+            the least intuitive to understand here, but it's actually straightforward when we remember that these
+            `Bone.matrix_local` matrices are actually *already in armature space*, which is slightly non-obvious from
+            the name. That means that the matrix product `parent_bone.matrix_local.inverted() @ bone.matrix_local` is
+            just a way of getting the 'rest pose' of `bone` in its parent space (originally set using transient
+            `EditBone` instances), which is the correct matrix to use for left-multipling the `matrix_basis` to get the
+            parent-relative pose matrix, which we then left-multiply by the parent's similarly-computed pose matrix to
+            get the armature-space pose matrix.
+        """
 
         # TODO: Assumes source is 30 FPS, which is probably always true with FromSoft?
         to_60_fps = context.scene.animation_import_settings.to_60_fps
@@ -415,7 +450,7 @@ class SoulstructAnimation:
         armature: bpy.types.ArmatureObject,
         skeleton_hkx: BaseSkeletonHKX,
         animation_hkx_class: type[BaseAnimationHKX],
-    ) -> ANIMATION_TYPING:
+    ) -> ANIMATION_TYPING | BaseAnimationHKX:
         """Animation data is easier to export from Blender than import, as we can just read the bone transforms on each
         frame in Armature space directly (rather than needing to compute each basis Matrix when importing).
 

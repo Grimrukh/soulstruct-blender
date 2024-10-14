@@ -136,8 +136,7 @@ class FLVERExportPanel(bpy.types.Panel):
             if settings.map_stem:
                 layout.operator(ExportMapPieceFLVERs.bl_idname)
             else:
-                layout.label(text="No game map selected.")
-                layout.label(text="Cannot export Map Pieces.")
+                layout.label(text="Select map to export Map Pieces.")
             layout.operator(ExportCharacterFLVER.bl_idname)
             layout.operator(ExportObjectFLVER.bl_idname)
             layout.operator(ExportEquipmentFLVER.bl_idname)

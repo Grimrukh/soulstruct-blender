@@ -6,16 +6,17 @@ import traceback
 from pathlib import Path
 
 import bpy
-from bpy_extras.io_utils import ExportHelper
-from io_soulstruct.utilities import *
+
 from soulstruct.darksouls1r.maps import MSB
 from soulstruct.base.maps.navmesh.mcp import MCP
 from soulstruct.dcx import DCXType
 from soulstruct.games import DARK_SOULS_DSR
+
+from io_soulstruct.utilities import *
 from .types import BlenderMCG
 
 
-class ExportMCG(LoggingOperator, ExportHelper):
+class ExportMCG(LoggingExportOperator):
     """Export MCG from a Blender object containing a Nodes parent and an Edges parent.
 
     Can optionally use MSB and NVMBND to auto-generate MCP file as well, as MCP connectivity is inferred from MCG nodes.

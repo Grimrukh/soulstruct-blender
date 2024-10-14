@@ -268,8 +268,6 @@ class ImportAnyMSB(LoggingImportOperator):
     bl_options = {"REGISTER", "UNDO"}
     bl_description = "Import all Parts, Regions, and Events from selected MSB or JSON, with selected Model meshes"
 
-    filename_ext = ".msb"
-
     filter_glob: bpy.props.StringProperty(
         default="*.msb;*.msb.dcx;*.json",
         options={'HIDDEN'},

@@ -254,7 +254,9 @@ class BlenderTransform:
 def get_armature_matrix(armature: bpy.types.ArmatureObject, bone_name: str, basis=None) -> Matrix:
     """Demonstrates how Blender calculates `pose_bone.matrix` (armature matrix) for `bone_name`.
 
-    TODO: Likely needed at export to convert the curve keyframes (in basis space) back to armature space.
+    This function is not used by Soulstruct (as `pose_bone.matrix` can simply be read directly), but it is informative
+    and assisted with the actually-required `get_basis_matrix()` function below, which is the inverse of this function
+    and is used for HKX animation import.
 
     Inverse of `get_basis_matrix()`.
     """
@@ -281,9 +283,10 @@ def get_basis_matrix(
     armature_inv_matrices: dict[str, Matrix],
     cached_local_inv_matrices: dict[str, Matrix],
 ):
-    """Get `pose_bone.matrix_basis` from `armature_matrix` by inverting Blender's process.
+    """Get the appropriate matrix to assign to `pose_bone.matrix_basis` from `armature_matrix` by inverting Blender's
+    process (see `get_armature_matrix()`).
 
-    Accepts `local_inv_matrix` and `armature_inv_matrices`, both indexed by bone name, to avoid recalculating the
+    Uses `armature_inv_matrices` and `cached_local_inv_matrix`, both indexed by bone name, to avoid recalculating the
     inverted matrices of multi-child bones.
 
     Inverse of `get_armature_matrix()`.

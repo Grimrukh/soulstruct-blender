@@ -8,27 +8,25 @@ import typing as tp
 from pathlib import Path
 
 import bpy
-from bpy_extras.io_utils import ImportHelper
-from io_soulstruct.animation.types import SoulstructAnimation
-from io_soulstruct.exceptions import SoulstructTypeError, CutsceneImportError
-from io_soulstruct.msb.darksouls1r import *
-from io_soulstruct.utilities import *
+
 from soulstruct.base.animations.sibcam import CameraFrameTransform, FoVKeyframe
 from soulstruct.darksouls1r.maps import MapStudioDirectory
 from soulstruct.darksouls1r.maps.parts import *
 from soulstruct_havok.utilities.maths import TRSTransform
 from soulstruct_havok.fromsoft.darksouls1r import RemoBND
 
+from io_soulstruct.animation.types import SoulstructAnimation
+from io_soulstruct.exceptions import SoulstructTypeError, CutsceneImportError
+from io_soulstruct.msb.darksouls1r import *
+from io_soulstruct.utilities import *
+
 REMOBND_RE = re.compile(r"^.*?\.remobnd(\.dcx)?$")
 
 
-class ImportHKXCutscene(LoggingOperator, ImportHelper):
+class ImportHKXCutscene(LoggingImportOperator):
     bl_idname = "import_scene.hkx_cutscene"
     bl_label = "Import HKX Cutscene"
     bl_description = "Import a HKX cutscene file from a RemoBND"
-
-    # ImportHelper mixin class uses this
-    filename_ext = ".remobnd"
 
     filter_glob: bpy.props.StringProperty(
         default="*.remobnd;*.remobnd.dcx",

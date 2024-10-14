@@ -1347,9 +1347,8 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
             edit_bone.FLVER_BONE.is_unused = bool(game_bone.usage_flags & FLVERBoneUsageFlags.UNUSED)
 
             # If this is `False`, then a bone's rest pose rotation will NOT affect its relative pose basis translation.
-            # That is, pose basis translation will be interpreted as being in parent space (or object for root bones)
-            # rather than in the 'rest pose space' of this bone. We don't want such behavior, particularly for FLVER
-            # root bones like 'Pelvis'.
+            # That is, a standard TRS transform becomes an 'RTS' transform instead. We don't want such behavior,
+            # particularly for FLVER root bones like 'Pelvis'.
             edit_bone.use_local_location = True
 
             # FLVER bones never inherit scale.

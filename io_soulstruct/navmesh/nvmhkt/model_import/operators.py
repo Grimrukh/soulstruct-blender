@@ -15,16 +15,15 @@ __all__ = [
 ]
 
 import re
+import time
 import traceback
 import typing as tp
 from pathlib import Path
 
-import time
-from soulstruct_havok.fromsoft.eldenring.file_types import NavmeshHKX
-
 import bpy
-from bpy_extras.io_utils import ImportHelper
 from mathutils import Vector
+
+from soulstruct_havok.fromsoft.eldenring.file_types import NavmeshHKX
 
 from io_soulstruct.exceptions import NVMHKTImportError
 from io_soulstruct.navmesh.nvmhkt.utilities import get_dungeons_to_overworld_dict
@@ -43,7 +42,7 @@ class NVMHKTImportChoiceInfo(tp.NamedTuple):
     entries: list[BinderEntry]  # entries from which user must choose
 
 
-class ImportNVMHKTMixin:
+class BaseImportNVMHKT(LoggingImportOperator):
 
     # Type hints for `LoggingOperator`.
     error: tp.Callable[[str], set[str]]
@@ -112,12 +111,10 @@ class ImportNVMHKTMixin:
         return entry_model_id == self.navmesh_model_id
 
 
-class ImportNVMHKT(LoggingOperator, ImportHelper, ImportNVMHKTMixin):
+class ImportNVMHKT(BaseImportNVMHKT):
     bl_idname = "import_scene.nvmhkt"
     bl_label = "Import NVMHKT"
     bl_description = "Import a HKX Havok navmesh file. Can import from NVMHKTBNDs and supports DCX-compressed files"
-
-    filename_ext = ".hkx"
 
     filter_glob: bpy.props.StringProperty(
         default="*.hkx;*.hkx.dcx;*.nvmhktbnd;*.nvmhktbnd.dcx",

@@ -12,7 +12,6 @@ import traceback
 from pathlib import Path
 
 import bpy
-from bpy_extras.io_utils import ImportHelper, ExportHelper
 
 from soulstruct.containers import Binder, EntryNotFoundError
 from soulstruct.dcx import DCXType
@@ -29,13 +28,12 @@ from .types import SoulstructAnimation
 SKELETON_ENTRY_RE = re.compile(r"skeleton\.hkx", re.IGNORECASE)
 
 
-class ExportLooseHKXAnimation(LoggingOperator, ExportHelper):
+class ExportLooseHKXAnimation(LoggingExportOperator):
     """Export loose HKX animation file from an Action attached to active FLVER Armature."""
     bl_idname = "export_scene.hkx_animation"
     bl_label = "Export Loose HKX Anim"
     bl_description = "Export a Blender action to a standalone HKX animation file with manual HKX skeleton source"
 
-    # ExportHelper mixin class uses this
     filename_ext = ".hkx"
 
     filter_glob: bpy.props.StringProperty(
@@ -126,14 +124,11 @@ class ExportLooseHKXAnimation(LoggingOperator, ExportHelper):
         return {"FINISHED"}
 
 
-class ExportHKXAnimationIntoBinder(LoggingOperator, ImportHelper):
+class ExportHKXAnimationIntoBinder(LoggingImportOperator):
     """Export HKX animation from an Action attached to a FLVER armature, into an existing BND."""
     bl_idname = "export_scene.hkx_animation_binder"
     bl_label = "Export HKX Anim Into Binder"
     bl_description = "Export a Blender action to a HKX animation file inside a FromSoftware Binder (BND/BHD)"
-
-    # ImportHelper mixin class uses this
-    filename_ext = ".anibnd"
 
     filter_glob: bpy.props.StringProperty(
         default="*.anibnd;*.anibnd.dcx;*.objbnd;*.objbnd.dcx",

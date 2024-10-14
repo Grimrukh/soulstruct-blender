@@ -20,22 +20,21 @@ import typing as tp
 from pathlib import Path
 
 import bpy
-from bpy_extras.io_utils import ImportHelper
+
+from soulstruct.base.maps.navmesh import MCG, MCP, NavmeshAABB
+
 from io_soulstruct.exceptions import NavGraphMissingNavmeshError
 from io_soulstruct.utilities import *
-from soulstruct.base.maps.navmesh import MCG, MCP, NavmeshAABB
 from .types import BlenderMCG
 
 if tp.TYPE_CHECKING:
     from io_soulstruct.type_checking import *
 
 
-class ImportMCG(LoggingOperator, ImportHelper):
+class ImportMCG(LoggingImportOperator):
     bl_idname = "import_scene.mcg"
     bl_label = "Import MCG"
     bl_description = "Import an MCG navmesh node/edge graph file. Supports DCX-compressed files"
-
-    filename_ext = ".mcg"
 
     filter_glob: bpy.props.StringProperty(
         default="*.mcg;*.mcg.dcx",
@@ -166,12 +165,10 @@ class ImportSelectedMapMCG(LoggingOperator):
         return {"FINISHED"}
 
 
-class ImportMCP(LoggingOperator, ImportHelper):
+class ImportMCP(LoggingImportOperator):
     bl_idname = "import_scene.mcp"
     bl_label = "Import MCP"
     bl_description = "Import an MCP file containing MSB navmesh AABBs and connections. Supports DCX-compressed files"
-
-    filename_ext = ".mcp"
 
     filter_glob: bpy.props.StringProperty(
         default="*.mcp;*.mcp.dcx",

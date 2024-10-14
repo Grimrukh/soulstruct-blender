@@ -42,8 +42,6 @@ class ImportTextures(LoggingImportOperator):
         "optionally set it to selected shader Image Texture nodes. Does not save any files to disk"
     )
 
-    filename_ext = ".dds"
-
     filter_glob: bpy.props.StringProperty(
         default="*.png;*.tif;*.tiff;*.bmp;*.jpg;*.jpeg;*.tga;*.dds;*.tpf;*.tpf.dcx",
         options={'HIDDEN'},

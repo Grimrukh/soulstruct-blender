@@ -23,10 +23,11 @@ import typing as tp
 from pathlib import Path
 
 import bpy
-from bpy_extras.io_utils import ImportHelper
+
 from soulstruct.containers import BinderEntry, EntryNotFoundError
 from soulstruct.games import DARK_SOULS_PTDE, DEMONS_SOULS
 from soulstruct_havok.fromsoft.shared import MapCollisionModel, BothResHKXBHD
+
 from io_soulstruct.exceptions import MapCollisionImportError
 from io_soulstruct.utilities import *
 from .types import BlenderMapCollision
@@ -42,14 +43,12 @@ class HKXImportInfo(tp.NamedTuple):
     lo_collision: MapCollisionModel
 
 
-class ImportHKXMapCollision(LoggingOperator, ImportHelper):
+class ImportHKXMapCollision(LoggingImportOperator):
     """Most generic importer. Loads standalone HKX files or HKX entries from a HKXBHD Binder (one/all)."""
 
     bl_idname = "import_scene.hkx_map_collision"
     bl_label = "Import Map Collision"
     bl_description = "Import a HKX map collision file. Can import from HKXBHD split Binders and handles DCX compression"
-
-    filename_ext = ".hkx"
 
     filter_glob: bpy.props.StringProperty(
         default="*.hkx;*.hkx.dcx;*.hkxbhd",

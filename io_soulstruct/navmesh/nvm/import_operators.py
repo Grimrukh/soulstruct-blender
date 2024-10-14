@@ -21,7 +21,6 @@ import typing as tp
 from pathlib import Path
 
 import bpy
-from bpy_extras.io_utils import ImportHelper
 
 from soulstruct.containers import Binder, BinderEntry
 from soulstruct.base.maps.navmesh.nvm import NVM
@@ -38,7 +37,7 @@ class NVMImportChoiceInfo(tp.NamedTuple):
     entries: list[BinderEntry]  # entries from which user must choose
 
 
-class ImportNVMMixin:
+class BaseImportNVM(LoggingImportOperator):
 
     # Type hints for `LoggingOperator`.
     error: tp.Callable[[str], set[str]]
@@ -105,12 +104,10 @@ class ImportNVMMixin:
         return entry_model_id == self.navmesh_model_id
 
 
-class ImportNVM(LoggingOperator, ImportHelper, ImportNVMMixin):
+class ImportNVM(BaseImportNVM):
     bl_idname = "import_scene.nvm"
     bl_label = "Import NVM"
     bl_description = "Import a NVM navmesh file. Can import from BNDs and supports DCX-compressed files"
-
-    filename_ext = ".nvm"
 
     filter_glob: bpy.props.StringProperty(
         default="*.nvm;*.nvm.dcx;*.nvmbnd;*.nvmbnd.dcx",

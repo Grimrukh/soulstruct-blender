@@ -16,13 +16,14 @@ import typing as tp
 from pathlib import Path
 
 import bpy
-from bpy_extras.io_utils import ImportHelper
-from io_soulstruct.exceptions import SoulstructTypeError, AnimationImportError
-from io_soulstruct.flver.models import BlenderFLVER
-from io_soulstruct.utilities import *
+
 from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
 from soulstruct.eldenring.containers import DivBinder
 from soulstruct_havok.core import HKX
+
+from io_soulstruct.exceptions import SoulstructTypeError, AnimationImportError
+from io_soulstruct.flver.models import BlenderFLVER
+from io_soulstruct.utilities import *
 from .types import SoulstructAnimation
 from .utilities import *
 
@@ -35,6 +36,7 @@ SKELETON_ENTRY_RE = re.compile(r"skeleton\.hkx(\.dcx)?", flags=re.IGNORECASE)
 
 
 class BaseImportHKXAnimation(LoggingOperator):
+    """NOTE: Not all subclasses are `ImportHelper` operators."""
 
     import_all_animations: bool
 
@@ -154,12 +156,10 @@ class BaseImportHKXAnimation(LoggingOperator):
         return read_skeleton_hkx_entry(skeleton_entry, compendium)
 
 
-class ImportHKXAnimation(BaseImportHKXAnimation, ImportHelper):
+class ImportHKXAnimation(BaseImportHKXAnimation, LoggingImportOperator):
     bl_idname = "import_scene.hkx_animation"
     bl_label = "Import HKX Anim"
     bl_description = "Import a HKX animation file. Can import from ANIBNDs/OBJBNDs and supports DCX-compressed files"
-
-    filename_ext = ".hkx"
 
     filter_glob: bpy.props.StringProperty(
         default="*.hkx;*.hkx.dcx;*.anibnd;*.anibnd.dcx;*.objbnd;*.objbnd.dcx",

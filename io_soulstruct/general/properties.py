@@ -11,12 +11,14 @@ import typing as tp
 from pathlib import Path
 
 import bpy
+
 from soulstruct.base.base_binary_file import BaseBinaryFile
 from soulstruct.base.models.matbin import MATBINBND
 from soulstruct.base.models.mtd import MTDBND
-from soulstruct.dcx import DCXType
+from soulstruct.dcx import DCXType, compress
 from soulstruct.games import *
 from soulstruct.utilities.files import read_json, write_json, create_bak
+
 from io_soulstruct.exceptions import *
 from io_soulstruct.utilities import *
 from .game_config import GAME_CONFIG, GameConfig
@@ -285,6 +287,18 @@ class SoulstructSettings(bpy.types.PropertyGroup):
                     "is the correct way to handle files for Darkroot Garden in DS1. Selecting map m12_00_00_00 vs. "
                     "m12_00_00_01 in the dropdown will therefore have no effect on auto-import/export",
         default=True,
+    )
+
+    des_flver_export_mode: bpy.props.EnumProperty(
+        name="Demon's Souls FLVER Export Mode",
+        description="Whether to export loose Demon's Souls FLVER files as DCX, non-DCX, or both (default) when using "
+                    "exporters without file selection or the 'Auto' DCX option",
+        items=[
+            ("BOTH", "Both", "Export both DCX and non-DCX FLVER files"),
+            ("DCX", "DCX", "Export only DCX FLVER files"),
+            ("NON_DCX", "Non-DCX", "Export only non-DCX FLVER files"),
+        ],
+        default="BOTH",
     )
 
     # Generic enough to place here. Only used by certain operators.
@@ -853,12 +867,21 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         NOTE: Those should generally only be called for loose files or files inside uncompressed split BHD binders
         (usually TPFs). Files inside compressed BND binders never use DCX, as far as I'm aware.
 
-        If `dcx_type_name` is not "AUTO", it is returned directly.
+        If `dcx_type_name` is not "AUTO", it is returned directly. For Demon's Souls FLVER files, which have both DCX
+        and non-DCX versions in dumped (debug) files (but actually load the non-DCX), the `des_flver_export_mode` is
+        checked to determine which file(s) are written.
         """
-
         if dcx_type_name != "AUTO":
             # Manual DCX type given.
             return DCXType[dcx_type_name]
+
+        if self.is_game(DEMONS_SOULS) and dcx_type_name == "AUTO" and class_name == "flver":
+            # Special settings-dependent case for Demon's Souls FLVER files. The caller should handle the 'BOTH' case
+            # by writing the DCX file in addition to this non-DCX one.
+            if self.des_flver_export_mode != "DCX":
+                return DCXType.Null
+            return DCXType.DCX_EDGE  # Demon's Souls DCX
+
         return self.game.get_dcx_type(class_name)
 
     def get_game_msb_class(self) -> type[MSB_TYPING]:
@@ -1014,5 +1037,29 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         return self.game.process_dcx_path(
             Path(self.game.default_file_paths["MapStudioDirectory"], f"{map_stem}.msb")
         )
+
+    # endregion
+
+    # region Other Utilities
+
+    @staticmethod
+    def create_dcx_file(non_dcx_path: Path, dcx_type: DCXType) -> Path:
+        """Create a DCX version of a file at `non_dcx_path` with the given `dcx_type`."""
+        if dcx_type == DCXType.Null:
+            return non_dcx_path  # already created
+        if non_dcx_path.name.endswith(".dcx"):
+            raise ValueError(f"Cannot create DCX version of already-DCX file: {non_dcx_path}")
+
+        if not non_dcx_path.is_file():
+            raise FileNotFoundError(f"Cannot create DCX version of non-existent file: {non_dcx_path}")
+
+        non_dcx_bytes = non_dcx_path.read_bytes()
+        dcx_bytes = compress(non_dcx_bytes, dcx_type=dcx_type)
+        dcx_path = non_dcx_path.with_name(f"{non_dcx_path.name}.dcx")  # always extra suffix
+        if dcx_path.is_file():
+            # Create '.bak' first.
+            create_bak(dcx_path)
+        dcx_path.write_bytes(dcx_bytes)
+        return dcx_path
 
     # endregion

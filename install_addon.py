@@ -13,7 +13,7 @@ from soulstruct.utilities.files import PACKAGE_PATH
 from soulstruct_havok.utilities.files import HAVOK_PACKAGE_PATH
 
 
-PY_SITE_PACKAGES = Path(__file__).parent / "venv-blender311/Lib/site-packages"
+PY_SITE_PACKAGES = Path(sys.executable).parent / "../Lib/site-packages"
 
 
 def copy_addon(addons_dir: str | Path, copy_soulstruct_module=True, copy_third_party_modules=True, clear_settings=True):
