@@ -960,7 +960,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):
             if not root:
                 continue
             for matbinbnd_name in matbinbnd_names:
-                dir_matbinbnd_path = root.get_file_path(f"matbin/{matbinbnd_name}")
+                dir_matbinbnd_path = root.get_file_path(f"material/{matbinbnd_name}")
                 if dir_matbinbnd_path.is_file():
                     operator.info(
                         f"Found MATBINBND '{dir_matbinbnd_path.name}' in {label} directory: {dir_matbinbnd_path}"
