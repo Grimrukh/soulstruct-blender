@@ -444,14 +444,11 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
 
         chrbnd.flvers[model_stem] = flver
 
+        relative_chrbnd_path = self._get_binder_path(settings, model_stem)
         flver_export_settings = context.scene.flver_export_settings
         if not flver_export_settings.export_textures:
             # Export CHRBND now with FLVER.
-            if settings.is_game(DEMONS_SOULS):
-                # Nested inside character subfolder.
-                return settings.export_file(self, chrbnd, Path(f"chr/{model_stem}/{model_stem}.chrbnd"))
-            # Not in subfolder.
-            return settings.export_file(self, chrbnd, Path(f"chr/{model_stem}.chrbnd"))
+            return settings.export_file(self, chrbnd, relative_chrbnd_path)
 
         # Export textures. This may or may not involve file(s) outside the CHRBND, depending on the game.
         post_export_action = self.get_export_textures_action(
@@ -461,7 +458,7 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
             model_stem,
             textures,
         )
-        result = settings.export_file(self, chrbnd, Path(f"chr/{model_stem}.chrbnd"))
+        result = settings.export_file(self, chrbnd, relative_chrbnd_path)
         if result == {"FINISHED"} and post_export_action:
             # Only do this if CHRBND export was successful, as it may create/delete adjacent files/folders.
             post_export_action()
@@ -614,7 +611,6 @@ class ExportObjectFLVER(BaseGameFLVERBinderExportOperator):
 
     @staticmethod
     def _get_binder_path(settings: SoulstructSettings, model_stem: str) -> Path:
-        # TODO: Subfolder in DeS?
         return Path(f"obj/{model_stem}.objbnd")
 
     @classmethod
@@ -705,7 +701,6 @@ class ExportEquipmentFLVER(BaseGameFLVERBinderExportOperator):
 
     @staticmethod
     def _get_binder_path(settings: SoulstructSettings, model_stem: str) -> Path:
-        # TODO: Subfolder in DeS?
         return Path(f"parts/{model_stem}.partsbnd")
 
     @classmethod
