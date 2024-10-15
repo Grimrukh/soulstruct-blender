@@ -284,6 +284,7 @@ class BlenderFLVERMaterial:
         context: bpy.types.Context,
         matdef: MatDef,
         texture_collection: DDSTextureCollection = None,
+        path_prefix="",
     ) -> Material:
         """Create a FLVER material from Blender material custom properties and texture nodes.
 
@@ -319,6 +320,8 @@ class BlenderFLVERMaterial:
         In all of these cases, an empty texture path will be written for that texture in the FLVER material. Empty
         texture paths are always permitted if the sampler name is found. Note that the FLVER material importer will
         always create empty Image Texture nodes or empty string properties for samplers with no texture path.
+
+        If `path_prefix` is given, it will be prepended to the texture paths (e.g. in Demon's Souls).
         """
         if texture_collection is None:
             texture_collection = DDSTextureCollection()
@@ -407,7 +410,7 @@ class BlenderFLVERMaterial:
                         f"enable 'Allow Missing Textures' in FLVER export options."
                     )
 
-            texture_path = (texture_stem + path_ext) if texture_stem else ""
+            texture_path = (path_prefix + texture_stem + path_ext) if texture_stem else ""
             if uses_flver0:
                 texture = Texture0(path=texture_path, texture_type=sampler_name)
             else:
@@ -449,13 +452,14 @@ class BlenderFLVERMaterial:
         matdef: MatDef,
         use_chr_layout: bool,
         texture_collection: DDSTextureCollection = None,
+        texture_path_prefix="",
     ) -> SplitSubmeshDef:
         """Use given `matdef` to create a `SplitSubmeshDef` for the given Blender material with either a character
         layout or a map piece layout, depending on `use_chr_layout`."""
 
         # Some Blender materials may be variants representing distinct Submesh/FaceSet properties; these will be
         # mapped to the same FLVER `Material`/`VertexArrayLayout` combo (created here).
-        flver_material = self.to_flver_material(operator, context, matdef, texture_collection)
+        flver_material = self.to_flver_material(operator, context, matdef, texture_collection, texture_path_prefix)
         if use_chr_layout:
             array_layout = matdef.get_character_layout()
         else:

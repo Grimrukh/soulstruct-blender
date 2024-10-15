@@ -23,6 +23,7 @@ from soulstruct.base.models.flver import FLVER, MergedMesh as FLVERMergedMesh
 from soulstruct.base.models.flver0 import FLVER0, MergedMesh as FLVER0MergedMesh
 from soulstruct.base.models.shaders import MatDef, MatDefError
 from soulstruct.containers.tpf import TPFTexture
+from soulstruct.games import DEMONS_SOULS
 from soulstruct.utilities.maths import Vector3, Matrix3
 from soulstruct.utilities.text import natural_keys
 
@@ -1673,9 +1674,9 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
         # TODO: Bone bounding box space seems to be always local to the bone for characters and always in armature space
         #  for map pieces. Not sure about objects, could be some of each (haven't found any non-origin bones that any
         #  vertices are weighted to with `is_bind_pose=True`). This is my temporary hack since we are already using
-        #  'read_bone_type == POSE' as a marker for map pieces.
+        #  'read_bone_type == self.BoneDataType.POSE' as a marker for map pieces.
         # TODO: Better heuristic is likely to use the bone weights themselves (missing or all zero -> armature space).
-        flver.refresh_bone_bounding_boxes(in_local_space=read_bone_type == "EDIT")
+        flver.refresh_bone_bounding_boxes(in_local_space=self.BoneDataType.EDIT)
 
         # Refresh `Submesh` and FLVER-wide bounding boxes.
         # TODO: Partially redundant since splitter does this for submeshes automatically. Only need FLVER-wide bounds.
@@ -1715,6 +1716,13 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
 
         bl_materials = self.get_materials()
 
+        if settings.is_game(DEMONS_SOULS):
+            # Use absolute texture path prefix, featuring model stem.
+            texture_path_prefix = f"N:\\DemonsSoul\\data\\Model\\chr\\{self.export_name}\\tex\\"
+        else:
+            # Paths in later games are just naked file names.
+            texture_path_prefix = ""
+
         for matdef, bl_material in zip(matdefs, bl_materials, strict=True):
             bl_material: BlenderFLVERMaterial
             split_submesh_def = bl_material.to_split_submesh_def(
@@ -1724,6 +1732,7 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
                 matdef,
                 use_chr_layout,
                 texture_collection,
+                texture_path_prefix,
             )
             split_submesh_defs.append(split_submesh_def)
 
