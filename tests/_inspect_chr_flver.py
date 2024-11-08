@@ -26,7 +26,7 @@ def test_model(model_id):
     chrbnd_path = ER_PATH / f"chr/c{model_id:04d}.chrbnd.dcx"
     flver = FLVER.from_binder_path(chrbnd_path, f"c{model_id:04d}.flver")
 
-    for submesh in flver.submeshes:
+    for submesh in flver.meshes:
 
         print(f"\nMATDEF: {submesh.material.mat_def_name}")
         matbin = matbinbnd.get_matbin(submesh.material.mat_def_name)

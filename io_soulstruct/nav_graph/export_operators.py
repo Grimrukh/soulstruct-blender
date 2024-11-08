@@ -239,10 +239,10 @@ class ExportMCGMCPToMap(LoggingOperator):
         else:
             mcg.dcx_type = DCXType.Null
 
-        mcg_result = settings.export_file(self, mcg, relative_mcg_path)
-        if mcg_result == {"CANCELLED"}:
+        exported_paths = settings.export_file(self, mcg, relative_mcg_path)
+        if not exported_paths:
             # MCG export failed. Don't bother trying to write MCP.
-            return mcg_result
+            return {"CANCELLED"}
 
         # Any error here will not affect MCG write (already done above).
 

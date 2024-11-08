@@ -10,6 +10,7 @@ __all__ = [
 import bpy
 from io_soulstruct.general.gui import map_stem_box
 from io_soulstruct.types import SoulstructType
+from soulstruct.base.models import FLVERVersion
 from .import_operators import *
 from .export_operators import *
 from .types import BlenderFLVER, BlenderFLVERDummy
@@ -30,14 +31,14 @@ class FLVERPropsPanel(bpy.types.Panel):
         return BlenderFLVER.test_obj(context.active_object)
 
     def draw(self, context):
-        uses_flver0 = context.scene.soulstruct_settings.game_config.uses_flver0
         bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
+        is_flver0 = FLVERVersion[bl_flver.version].is_flver0()
         props = bl_flver.type_properties
         for prop in props.__annotations__:
-            if uses_flver0 and prop.startswith("f2_"):
-                continue  # do not show `FLVER` property for this game
-            elif not uses_flver0 and prop.startswith("f0_"):
-                continue  # do not show `FLVER0` property for this game
+            if is_flver0 and prop.startswith("f2_"):
+                continue  # do not show FLVER2 property for this version
+            elif not is_flver0 and prop.startswith("f0_"):
+                continue  # do not show FLVER0 property for this version
             self.layout.prop(props, prop)
 
 

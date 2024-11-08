@@ -17,10 +17,7 @@ import bpy
 import numpy as np
 from mathutils import Matrix, Vector
 
-from soulstruct.base.models.base import BaseFLVER, FLVERBone, Dummy, FLVERVersion, FLVERBoneUsageFlags
-from soulstruct.base.models.base.mesh_tools import BaseMergedMesh, SplitSubmeshDef
-from soulstruct.base.models.flver import FLVER, MergedMesh as FLVERMergedMesh
-from soulstruct.base.models.flver0 import FLVER0, MergedMesh as FLVER0MergedMesh
+from soulstruct.base.models.flver import *
 from soulstruct.base.models.shaders import MatDef, MatDefError
 from soulstruct.containers.tpf import TPFTexture
 from soulstruct.games import DEMONS_SOULS
@@ -322,7 +319,7 @@ class BlenderFLVERDummy(SoulstructObject[Dummy, FLVERDummyProps]):
 BlenderFLVERDummy.add_auto_type_props(*BlenderFLVERDummy.AUTO_DUMMY_PROPS)
 
 
-class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
+class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
     """Wrapper for a Blender object hierarchy that represents a `FLVER` or `FLVER0` model.
 
     Exposes convenience methods that access and/or modify different FLVER attributes.
@@ -392,12 +389,12 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
     f0_unk_x5c: int
 
     @property
-    def submesh_vertices_merged(self) -> bool:
-        return self.type_properties.submesh_vertices_merged
+    def mesh_vertices_merged(self) -> bool:
+        return self.type_properties.mesh_vertices_merged
 
-    @submesh_vertices_merged.setter
-    def submesh_vertices_merged(self, value: bool):
-        self.type_properties.submesh_vertices_merged = value
+    @mesh_vertices_merged.setter
+    def mesh_vertices_merged(self, value: bool):
+        self.type_properties.mesh_vertices_merged = value
 
     @property
     def bone_data_type(self) -> BoneDataType:
@@ -697,11 +694,11 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
         cls,
         operator: LoggingOperator,
         context: bpy.types.Context,
-        flver: BaseFLVER,
+        flver: FLVER,
         name: str,
         image_import_manager: ImageImportManager | None = None,
         collection: bpy.types.Collection = None,
-        merged_mesh: BaseMergedMesh = None,
+        merged_mesh: MergedMesh = None,
         bl_materials: tp.Sequence[BlenderFLVERMaterial] = None,
         force_bone_data_type: BoneDataType = None,
     ) -> BlenderFLVER:
@@ -715,11 +712,11 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
         arguments anyway.
 
         NOTE: FLVER (for DS1 at least) supports a maximum of 38 bones per sub-mesh. When this maximum is reached, a new
-        FLVER submesh is created. All of these sub-meshes are unified in Blender under the same material slot, and will
+        FLVER mesh is created. All of these sub-meshes are unified in Blender under the same material slot, and will
         be split again on export as needed.
 
-        Some FLVER submeshes also use the same material, but have different `Mesh` or `FaceSet` properties such as
-        `use_backface_culling`. Backface culling is a material option in Blender, so these submeshes will use different
+        Some FLVER meshes also use the same material, but have different `Mesh` or `FaceSet` properties such as
+        `use_backface_culling`. Backface culling is a material option in Blender, so these meshes will use different
         Blender material 'variants' even though they use the same FLVER material. The FLVER exporter will start by
         creating a FLVER material for every Blender material slot, then unify any identical FLVER material instances and
         redirect any differences like `use_backface_culling` or `is_bind_pose` to the FLVER mesh.
@@ -728,7 +725,7 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
             - Blender stores POSITION, BONE WEIGHTS, and BONE INDICES on vertices. Any differences here will require
             genuine vertex duplication in Blender. (Of course, vertices at the same position in the same sub-mesh should
             essentially ALWAYS have the same bone weights and indices.)
-            - Blender stores MATERIAL SLOT INDEX on faces. This is how different FLVER submeshes are represented.
+            - Blender stores MATERIAL SLOT INDEX on faces. This is how different FLVER meshes are represented.
             - Blender stores UV COORDINATES, VERTEX COLORS, and NORMALS on face loops ('vertex instances'). This gels
             with what FLVER meshes want to do.
             - Blender does not import tangents or bitangents. These are calculated on export.
@@ -782,12 +779,12 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
 
         mesh_data = bpy.data.meshes.new(name=name)
 
-        if not flver.submeshes:
+        if not flver.meshes:
             # FLVER has no meshes (e.g. c0000). Leave empty.
             mesh = new_mesh_object(f"{name} <EMPTY>", mesh_data, SoulstructType.FLVER)
             bl_materials = []
-        elif any(mesh.invalid_layout for mesh in flver.submeshes):
-            # Corrupted submeshes (e.g. some DS1R map pieces) that couldn't be fixed by `FLVER` class. Leave empty.
+        elif any(mesh.invalid_layout for mesh in flver.meshes):
+            # Corrupted meshes (e.g. some DS1R map pieces) that couldn't be fixed by `FLVER` class. Leave empty.
             mesh = new_mesh_object(f"{name} <INVALID>", mesh_data, SoulstructType.FLVER)
             bl_materials = []
         elif merged_mesh:
@@ -799,7 +796,7 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
         else:
             # Create materials and `MergedMesh` now.
             try:
-                bl_materials, submesh_bl_material_indices, bl_material_uv_layer_names = cls.create_materials(
+                bl_materials, mesh_bl_material_indices, bl_material_uv_layer_names = cls.create_materials(
                     operator,
                     context,
                     flver,
@@ -809,31 +806,23 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
                     # No cached MatDef materials to pass in.
                 )
 
-                if isinstance(flver, FLVER0):
-                    # We still use Blender material `is_bind_pose` to store bone data type.
-                    # This allows the FLVER exporter to read the correct bone data.
-                    # TODO: Probably just want a global 'is_rigged' `BlenderFLVER` bool.
-                    is_bind_pose = write_bone_type == cls.BoneDataType.EDIT
-                    for bl_mat in bl_materials:
-                        bl_mat.is_bind_pose = is_bind_pose
-
             except MatDefError:
                 # No materials will be created! TODO: Surely not.
                 bl_materials = []
-                submesh_bl_material_indices = ()
+                mesh_bl_material_indices = ()
                 bl_material_uv_layer_names = ()
 
             p = time.perf_counter()
             # Create merged mesh.
             merged_mesh = flver.to_merged_mesh(
-                submesh_bl_material_indices,
+                mesh_bl_material_indices,
                 material_uv_layer_names=bl_material_uv_layer_names,
-                merge_vertices=import_settings.merge_submesh_vertices,
+                merge_vertices=import_settings.merge_mesh_vertices,
             )
-            operator.info(f"Merged FLVER submeshes in {time.perf_counter() - p} s")
-            if import_settings.merge_submesh_vertices:
+            operator.info(f"Merged FLVER meshes in {time.perf_counter() - p} s")
+            if import_settings.merge_mesh_vertices:
                 # Report vertex reduction.
-                total_vertices = sum(len(submesh.vertices) for submesh in flver.submeshes)
+                total_vertices = sum(len(mesh.vertices) for mesh in flver.meshes)
                 total_merged_vertices = merged_mesh.vertex_data.shape[0]
                 operator.info(
                     f"Merging reduced {total_vertices} vertices to {total_merged_vertices} "
@@ -880,19 +869,19 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
                 operator.warning(f"FLVER version '{flver.version}' not recognized. Leaving as 'Selected Game'.")
 
         bl_flver.unicode = flver.unicode
-        if isinstance(flver, FLVER):
-            bl_flver.f2_unk_x4a = flver.unk_x4a
-            bl_flver.f2_unk_x4c = flver.unk_x4c
-            bl_flver.f2_unk_x5c = flver.unk_x5c
-            bl_flver.f2_unk_x5d = flver.unk_x5d
-            bl_flver.f2_unk_x68 = flver.unk_x68
-        elif isinstance(flver, FLVER0):
-            bl_flver.f0_unk_x4a = flver.unk_x4a
-            bl_flver.f0_unk_x4b = flver.unk_x4b
-            bl_flver.f0_unk_x4c = flver.unk_x4c
-            bl_flver.f0_unk_x5c = flver.unk_x5c
 
-        bl_flver.submesh_vertices_merged = import_settings.merge_submesh_vertices
+        bl_flver.f0_unk_x4a = flver.f0_unk_x4a
+        bl_flver.f0_unk_x4b = flver.f0_unk_x4b
+        bl_flver.f0_unk_x4c = flver.f0_unk_x4c
+        bl_flver.f0_unk_x5c = flver.f0_unk_x5c
+
+        bl_flver.f2_unk_x4a = flver.f2_unk_x4a
+        bl_flver.f2_unk_x4c = flver.f2_unk_x4c
+        bl_flver.f2_unk_x5c = flver.f2_unk_x5c
+        bl_flver.f2_unk_x5d = flver.f2_unk_x5d
+        bl_flver.f2_unk_x68 = flver.f2_unk_x68
+
+        bl_flver.mesh_vertices_merged = import_settings.merge_mesh_vertices
 
         return bl_flver  # might be used by other importers
 
@@ -908,7 +897,7 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
         cls,
         operator: LoggingOperator,
         context: bpy.types.Context,
-        flver: BaseFLVER,
+        flver: FLVER,
         model_name: str,
         material_blend_mode: str,
         image_import_manager: ImageImportManager | None = None,
@@ -916,18 +905,18 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
     ) -> tuple[tuple[BlenderFLVERMaterial, ...], tuple[int, ...], tuple[tuple[str, ...], ...]]:
         """Create Blender materials needed for `flver`.
 
-        We need to scan the FLVER to actually parse which unique combinations of Material/Submesh properties exist.
+        We need to scan the FLVER to actually parse which unique combinations of Material/Mesh properties exist.
 
-        Returns a list of Blender material indices for each submesh, and a list of UV layer names for each Blender
-        material (NOT each submesh).
+        Returns a list of Blender material indices for each mesh, and a list of UV layer names for each Blender
+        material (NOT each mesh).
         """
 
-        # Submesh-matched list of dictionaries mapping sample/texture type to texture path (only name matters).
+        # Mesh-matched list of dictionaries mapping sample/texture type to texture path (only name matters).
         settings = operator.settings(context)
         import_settings = context.scene.flver_import_settings
         mtdbnd = get_cached_mtdbnd(operator, settings) if not GAME_CONFIG[settings.game].uses_matbin else None
         matbinbnd = get_cached_matbinbnd(operator, settings) if GAME_CONFIG[settings.game].uses_matbin else None
-        all_submesh_texture_stems = cls.get_submesh_flver_textures(flver, matbinbnd)
+        all_mesh_texture_stems = cls.get_mesh_flver_textures(flver, matbinbnd)
         bl_materials_by_matdef_name = bl_materials_by_matdef_name or {}  # still worthwhile within one FLVER
 
         if import_settings.import_textures:
@@ -935,8 +924,8 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
                 p = time.perf_counter()
                 all_texture_stems = {
                     v
-                    for submesh_textures in all_submesh_texture_stems
-                    for v in submesh_textures.values()
+                    for mesh_textures in all_mesh_texture_stems
+                    for v in mesh_textures.values()
                     if v  # obviously ignore empty texture paths
                 }
                 texture_collection = cls.load_texture_images(
@@ -947,25 +936,25 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
             else:
                 operator.info("No imported textures or PNG cache folder given. No textures loaded for FLVER.")
 
-        # Maps FLVER submeshes to their Blender material index to store per-face in the merged mesh.
-        # Submeshes that originally indexed the same FLVER material may have different Blender 'variant' materials that
-        # hold certain Submesh/FaceSet properties like `use_backface_culling`.
-        # Conversely, Submeshes that only serve to handle per-submesh bone maximums (e.g. 38 in DS1) will use the same
+        # Maps FLVER meshes to their Blender material index to store per-face in the merged mesh.
+        # Meshes that originally indexed the same FLVER material may have different Blender 'variant' materials that
+        # hold certain Mesh/FaceSet properties like `use_backface_culling`.
+        # Conversely, Meshes that only serve to handle per-mesh bone maximums (e.g. 38 in DS1) will use the same
         # Blender material and be split again automatically on export (but likely not in an indentical way!).
-        submesh_bl_material_indices = []
-        # UV layer names used by each Blender material index (NOT each FLVER submesh).
+        mesh_bl_material_indices = []
+        # UV layer names used by each Blender material index (NOT each FLVER mesh).
         bl_material_uv_layer_names = []  # type: list[tuple[str, ...]]
 
         # Map FLVER material hashes to the indices of variant Blender materials sourced from them, which hold distinct
-        # Submesh/FaceSet properties.
+        # Mesh/FaceSet properties.
         flver_material_hash_variants = {}
 
         # Map FLVER material hashes to their generated `MatDef` instances.
         flver_matdefs = {}  # type: dict[int, MatDef | None]
-        for submesh in flver.submeshes:
-            material_hash = hash(submesh.material)  # TODO: should hash ignore material name?
+        for mesh in flver.meshes:
+            material_hash = hash(mesh.material)  # TODO: should hash ignore material name?
             if material_hash in flver_matdefs:
-                continue  # material already created (used by a previous submesh)
+                continue  # material already created (used by a previous mesh)
 
             # Try to look up material info from MTD or MATBIN (Elden Ring).
             try:
@@ -975,24 +964,24 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
                 matdef = None
             except MatDefError as ex:
                 operator.warning(
-                    f"Could not create `MatDef` for game material '{submesh.material.mat_def_name}'. Error:\n"
+                    f"Could not create `MatDef` for game material '{mesh.material.mat_def_name}'. Error:\n"
                     f"    {ex}"
                 )
                 matdef = None
             else:
                 if GAME_CONFIG[settings.game].uses_matbin:
-                    matdef = matdef_class.from_matbinbnd_or_name(submesh.material.mat_def_name, matbinbnd)
+                    matdef = matdef_class.from_matbinbnd_or_name(mesh.material.mat_def_name, matbinbnd)
                 else:
-                    matdef = matdef_class.from_mtdbnd_or_name(submesh.material.mat_def_name, mtdbnd)
+                    matdef = matdef_class.from_mtdbnd_or_name(mesh.material.mat_def_name, mtdbnd)
 
             flver_matdefs[material_hash] = matdef
 
         new_materials = []
 
-        for submesh, submesh_textures in zip(flver.submeshes, all_submesh_texture_stems, strict=True):
-            material = submesh.material
+        for mesh, mesh_textures in zip(flver.meshes, all_mesh_texture_stems, strict=True):
+            material = mesh.material
             material_hash = hash(material)  # NOTE: if there are duplicate FLVER materials, this will combine them
-            vertex_color_count = len([f for f in submesh.vertices.dtype.names if "color" in f])
+            vertex_color_count = len([f for f in mesh.vertices.dtype.names if "color" in f])
 
             if material_hash not in flver_material_hash_variants:
                 # First time this FLVER material has been encountered. Create it in Blender now.
@@ -1014,17 +1003,17 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
                     operator,
                     context,
                     material,
-                    flver_sampler_texture_stems=submesh_textures,
+                    flver_sampler_texture_stems=mesh_textures,
                     material_name=bl_material_name,
                     matdef=matdef,
-                    submesh=submesh,
+                    mesh=mesh,
                     vertex_color_count=vertex_color_count,
                     blend_mode=material_blend_mode,
                     warn_missing_textures=image_import_manager is not None,
                     bl_materials_by_matdef_name=bl_materials_by_matdef_name,
                 )
 
-                submesh_bl_material_indices.append(bl_material_index)
+                mesh_bl_material_indices.append(bl_material_index)
                 flver_material_hash_variants[material_hash] = [bl_material_index]
 
                 new_materials.append(bl_material)
@@ -1042,37 +1031,35 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
             # Check if Blender material needs to be duplicated as a variant with different Mesh properties.
             found_existing_material = False
             for existing_bl_material_index in existing_variant_bl_indices:
-                # NOTE: We do not care about enforcing any maximum submesh local bone count in Blender! The FLVER
-                # exporter will create additional split submeshes as necessary for that.
+                # NOTE: We do not care about enforcing any maximum mesh local bone count in Blender! The FLVER
+                # exporter will create additional split meshes as necessary for that.
                 existing_bl_material = new_materials[existing_bl_material_index]
-                is_bind_pose = getattr(submesh, "is_bind_pose", existing_bl_material.is_bind_pose)
                 if (
-                    existing_bl_material.is_bind_pose == is_bind_pose
-                    and existing_bl_material.default_bone_index == submesh.default_bone_index
-                    and existing_bl_material.face_set_count == len(submesh.face_sets)
-                    and existing_bl_material.use_backface_culling == submesh.use_backface_culling
+                    existing_bl_material.is_bind_pose == mesh.is_bind_pose
+                    and existing_bl_material.default_bone_index == mesh.default_bone_index
+                    and existing_bl_material.face_set_count == len(mesh.face_sets)
+                    and existing_bl_material.use_backface_culling == mesh.use_backface_culling
                 ):
                     # Blender material already exists with the same Mesh properties. No new variant neeed.
-                    submesh_bl_material_indices.append(existing_bl_material_index)
+                    mesh_bl_material_indices.append(existing_bl_material_index)
                     found_existing_material = True
                     break
 
             if found_existing_material:
                 continue
 
-            # No match found. New Blender material variant is needed to hold unique submesh data.
+            # No match found. New Blender material variant is needed to hold unique mesh data.
             # Since the most common cause of a variant is backface culling being enabled vs. disabled, that difference
             # gets its own prefix: we add ' <BC>' to the end of whichever variant has backface culling enabled.
             variant_index = len(existing_variant_bl_indices)
             first_material = new_materials[existing_variant_bl_indices[0]]
             variant_name = first_material.name + f" <V{variant_index}>"  # may be replaced below
 
-            is_bind_pose = getattr(submesh, "is_bind_pose", first_material.is_bind_pose)
             if (
-                first_material.is_bind_pose == is_bind_pose
-                and first_material.default_bone_index == submesh.default_bone_index
-                and first_material.face_set_count == len(submesh.face_sets)
-                and first_material.use_backface_culling != submesh.use_backface_culling
+                first_material.is_bind_pose == mesh.is_bind_pose
+                and first_material.default_bone_index == mesh.default_bone_index
+                and first_material.face_set_count == len(mesh.face_sets)
+                and first_material.use_backface_culling != mesh.use_backface_culling
             ):
                 # Only difference is backface culling. We mark 'BC' on the one that has it enabled.
                 if first_material.use_backface_culling:
@@ -1085,17 +1072,17 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
                 operator,
                 context,
                 material,
-                submesh_textures,
+                mesh_textures,
                 material_name=variant_name,
                 matdef=flver_matdefs[material_hash],
-                submesh=submesh,
+                mesh=mesh,
                 vertex_color_count=vertex_color_count,
                 blend_mode=material_blend_mode,
                 bl_materials_by_matdef_name=bl_materials_by_matdef_name,
             )
 
             new_bl_material_index = len(new_materials)
-            submesh_bl_material_indices.append(new_bl_material_index)
+            mesh_bl_material_indices.append(new_bl_material_index)
             flver_material_hash_variants[material_hash].append(new_bl_material_index)
             new_materials.append(bl_material)
             if flver_matdefs[material_hash] is not None:
@@ -1105,43 +1092,43 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
             else:
                 bl_material_uv_layer_names.append(())
 
-        return tuple(new_materials), tuple(submesh_bl_material_indices), tuple(bl_material_uv_layer_names)
+        return tuple(new_materials), tuple(mesh_bl_material_indices), tuple(bl_material_uv_layer_names)
 
     @staticmethod
-    def get_submesh_flver_textures(
-        flver: BaseFLVER,
+    def get_mesh_flver_textures(
+        flver: FLVER,
         matbinbnd: MATBINBND | None,
     ) -> list[dict[str, str]]:
-        """For each submesh, get a dictionary mapping sampler names (e.g. 'g_Diffuse') to texture path names (e.g.
+        """For each mesh, get a dictionary mapping sampler names (e.g. 'g_Diffuse') to texture path names (e.g.
         'c2000_fur'). The texture path names are always lower-case.
 
         These paths may come from the FLVER material (older games) or MATBIN (newer games). In the latter case, FLVER
         material paths are usually empty, but will be accepted as overrides if given.
         """
-        all_submesh_texture_names = []
-        for submesh in flver.submeshes:
-            submesh_texture_stems = {}
+        all_mesh_texture_names = []
+        for mesh in flver.meshes:
+            mesh_texture_stems = {}
             if matbinbnd:
                 try:
-                    matbin = matbinbnd.get_matbin(submesh.material.mat_def_name)
+                    matbin = matbinbnd.get_matbin(mesh.material.mat_def_name)
                 except KeyError:
                     pass  # missing
                 else:
-                    submesh_texture_stems |= matbin.get_all_sampler_stems(lower=True)
-            for texture in submesh.material.textures:
+                    mesh_texture_stems |= matbin.get_all_sampler_stems(lower=True)
+            for texture in mesh.material.textures:
                 if texture.path:
                     # FLVER texture path can also override MATBIN path.
-                    submesh_texture_stems[texture.texture_type] = texture.stem.lower()
-            all_submesh_texture_names.append(submesh_texture_stems)
+                    mesh_texture_stems[texture.texture_type] = texture.stem.lower()
+            all_mesh_texture_names.append(mesh_texture_stems)
 
-        return all_submesh_texture_names
+        return all_mesh_texture_names
 
     @classmethod
     def create_bl_mesh(
         cls,
         operator: LoggingOperator,
         mesh_data: bpy.types.Mesh,
-        merged_mesh: BaseMergedMesh,
+        merged_mesh: MergedMesh,
     ) -> tuple[np.ndarray, np.ndarray]:
         """Create Blender Mesh with plenty of efficient `foreach_set()` calls to raveled `MergedMesh` arrays.
 
@@ -1266,7 +1253,7 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
         cls,
         operator: LoggingOperator,
         context: bpy.types.Context,
-        flver: BaseFLVER,
+        flver: FLVER,
         armature: bpy.types.ArmatureObject,
         bl_bone_names: list[str],
         base_edit_bone_length: float,
@@ -1304,7 +1291,7 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
         """
 
         if not write_bone_type:
-            write_bone_type = cls.BoneDataType.EDIT if flver.guess_rigged() else cls.BoneDataType.POSE
+            write_bone_type = cls.BoneDataType.EDIT if flver.any_bind_pose() else cls.BoneDataType.POSE
 
         # We need edit mode to create `EditBones` below.
         context.view_layer.objects.active = armature
@@ -1334,7 +1321,7 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
     @staticmethod
     def create_edit_bones(
         armature_data: bpy.types.Armature,
-        flver: BaseFLVER,
+        flver: FLVER,
         bl_bone_names: list[str],
     ) -> list[bpy.types.EditBone]:
         """Create all edit bones from FLVER bones in `bl_armature`."""
@@ -1362,7 +1349,7 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
     @staticmethod
     def write_data_to_edit_bones(
         operator: LoggingOperator,
-        flver: BaseFLVER,
+        flver: FLVER,
         edit_bones: list[bpy.types.EditBone],
         base_edit_bone_length: float,
     ):
@@ -1407,7 +1394,7 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
     @staticmethod
     def write_data_to_pose_bones(
         operator: LoggingOperator,
-        flver: BaseFLVER,
+        flver: FLVER,
         armature: bpy.types.ArmatureObject,
         edit_bones: list[bpy.types.EditBone],
         base_edit_bone_length: float,
@@ -1525,7 +1512,7 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
 
     # region Export
 
-    def _get_empty_flver(self, settings: SoulstructSettings) -> BaseFLVER:
+    def _get_empty_flver(self, settings: SoulstructSettings) -> FLVER:
 
         if self.version == "DEFAULT":
             # Default is game-dependent.
@@ -1542,26 +1529,26 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
             except KeyError:
                 raise ValueError(f"Invalid FLVER Version: '{self.version}'. Please report this bug to Grimrukh!")
 
-        if settings.game_config.uses_flver0:
-            return FLVER0(
+        if version <= 0xFFFF:
+            return FLVER(
                 big_endian=self.big_endian,
                 version=version,
                 unicode=self.unicode,
-                unk_x4a=self.f0_unk_x4a,
-                unk_x4b=self.f0_unk_x4b,
-                unk_x4c=self.f0_unk_x4c,
-                unk_x5c=self.f0_unk_x5c,
+                f0_unk_x4a=self.f0_unk_x4a,
+                f0_unk_x4b=self.f0_unk_x4b,
+                f0_unk_x4c=self.f0_unk_x4c,
+                f0_unk_x5c=self.f0_unk_x5c,
             )
 
         return FLVER(
             big_endian=self.big_endian,
             version=version,
             unicode=self.unicode,
-            unk_x4a=self.f2_unk_x4a,
-            unk_x4c=self.f2_unk_x4c,
-            unk_x5c=self.f2_unk_x5c,
-            unk_x5d=self.f2_unk_x5d,
-            unk_x68=self.f2_unk_x68,
+            f2_unk_x4a=self.f2_unk_x4a,
+            f2_unk_x4c=self.f2_unk_x4c,
+            f2_unk_x5c=self.f2_unk_x5c,
+            f2_unk_x5d=self.f2_unk_x5d,
+            f2_unk_x68=self.f2_unk_x68,
         )
 
     def to_soulstruct_obj(
@@ -1569,7 +1556,7 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
         operator: LoggingOperator,
         context: bpy.types.Context,
         texture_collection: DDSTextureCollection = None,
-    ) -> BaseFLVER:
+    ) -> FLVER:
         """Wraps actual method with temp FLVER management."""
         self.clear_temp_flver()
         try:
@@ -1582,7 +1569,7 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
         operator: LoggingOperator,
         context: bpy.types.Context,
         texture_collection: DDSTextureCollection = None,
-    ) -> BaseFLVER:
+    ) -> FLVER:
         """`FLVER` exporter. By far the most complicated function in the add-on!"""
 
         # This is passed all the way through to the node inspection in FLVER materials to map texture stems to Images.
@@ -1650,7 +1637,7 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
             matdefs.append(matdef)
 
         if not self.mesh.data.vertices:
-            # No submeshes in FLVER (e.g. c0000). We also leave all bounding boxes as their default max/min values.
+            # No meshes in FLVER (e.g. c0000). We also leave all bounding boxes as their default max/min values.
             # We don't warn for expected empty FLVERs c0000 and c1000.
             if self.name[:5] not in {"c0000", "c1000"}:
                 operator.warning(f"Exporting non-c0000/c1000 FLVER '{self.name}' with no mesh data.")
@@ -1658,7 +1645,7 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
 
         # TODO: Current choosing default vertex buffer layout (CHR vs. MAP PIECE) based on read bone type, which in
         #  turn depends on `mesh.is_bind_pose` at FLVER import. All a bit messily wired together...
-        self.export_submeshes(
+        self.export_flver_meshes(
             operator,
             context,
             flver,
@@ -1678,8 +1665,8 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
         # TODO: Better heuristic is likely to use the bone weights themselves (missing or all zero -> armature space).
         flver.refresh_bone_bounding_boxes(in_local_space=self.BoneDataType.EDIT)
 
-        # Refresh `Submesh` and FLVER-wide bounding boxes.
-        # TODO: Partially redundant since splitter does this for submeshes automatically. Only need FLVER-wide bounds.
+        # Refresh `FLVERMesh` and FLVER-wide bounding boxes.
+        # TODO: Partially redundant since splitter does this for meshes automatically. Only need FLVER-wide bounds.
         flver.refresh_bounding_boxes()
 
         # Should be called in `finally` block by caller anyway.
@@ -1687,11 +1674,11 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
 
         return flver
 
-    def export_submeshes(
+    def export_flver_meshes(
         self,
         operator: LoggingOperator,
         context: bpy.types.Context,
-        flver: BaseFLVER,
+        flver: FLVER,
         bl_bone_names: list[str],
         use_chr_layout: bool,
         normal_tangent_dot_max: float,
@@ -1702,17 +1689,17 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
     ):
         """
         Construct a `MergedMesh` from Blender data, in a straightforward way (unfortunately using `for` loops over
-        vertices, faces, and loops), then split it into `Submesh` instances based on Blender materials.
+        vertices, faces, and loops), then split it into `FLVERMesh` instances based on Blender materials.
 
         Also creates `Material` and `VertexArrayLayout` instances for each Blender material, and assigns them to the
-        appropriate `Submesh` instances. Any duplicate instances here will be merged when FLVER is packed.
+        appropriate `FLVERMesh` instances. Any duplicate instances here will be merged when FLVER is packed.
         """
         settings = operator.settings(context)
 
-        # 1. Create per-submesh info. Note that every Blender material index is guaranteed to be mapped to AT LEAST ONE
-        #    split `Submesh` in the exported FLVER (more if submesh bone maximum is exceeded). This allows the user to
-        #    also split their submeshes manually in Blender, if they wish.
-        split_submesh_defs = []  # type: list[SplitSubmeshDef]
+        # 1. Create per-mesh info. Note that every Blender material index is guaranteed to be mapped to AT LEAST ONE
+        #    split `FLVERMesh` in the exported FLVER (more if mesh bone maximum is exceeded). This allows the user to
+        #    also split their meshes manually in Blender, if they wish.
+        split_mesh_defs = []  # type: list[SplitMeshDef]
 
         bl_materials = self.get_materials()
 
@@ -1725,7 +1712,7 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
 
         for matdef, bl_material in zip(matdefs, bl_materials, strict=True):
             bl_material: BlenderFLVERMaterial
-            split_submesh_def = bl_material.to_split_submesh_def(
+            split_mesh_def = bl_material.to_split_mesh_def(
                 operator,
                 context,
                 create_lod_face_sets,
@@ -1734,7 +1721,7 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
                 texture_collection,
                 texture_path_prefix,
             )
-            split_submesh_defs.append(split_submesh_def)
+            split_mesh_defs.append(split_mesh_def)
 
         # 2. Validate UV layers: ensure all required material UV layer names are present, and warn if any unexpected
         #    Blender UV layers are present.
@@ -1802,7 +1789,7 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
         # We iterate over the original, non-triangulated mesh, as the vertices should be the same and these vertices
         # have their bone vertex groups (which cannot easily be transferred to the triangulated copy).
         for i, vertex in enumerate(self.mesh.data.vertices):
-            bone_indices = []  # global (splitter will make them local to submesh if appropriate)
+            bone_indices = []  # global (splitter will make them local to mesh if appropriate)
             bone_weights = []
             for vertex_group in vertex.groups:  # only one for Map Pieces; max of 4 for other FLVER types
                 mesh_group = vertex_groups_dict[vertex_group.group]
@@ -1899,7 +1886,7 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
         # Retrieve vertex colors.
         # NOTE: Like UVs, it's extremely unlikely -- and probably untrue in any vanilla FLVER -- that NO FLVER material
         #  uses even one vertex color. In this case, though, the default black color generated here will simply never
-        #  make it to any of the `MatDef`-based submesh array layouts after this.
+        #  make it to any of the `MatDef`-based mesh array layouts after this.
         loop_color_arrays = []
         try:
             colors_layer_0 = tri_mesh_data.vertex_colors["VertexColors0"]
@@ -1916,7 +1903,7 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
         try:
             colors_layer_1 = tri_mesh_data.vertex_colors["VertexColors1"]
         except KeyError:
-            # Fine. This submesh only uses one colors layer.
+            # Fine. This mesh only uses one colors layer.
             colors_layer_1 = None
         else:
             # Prepare for loop filling.
@@ -1998,23 +1985,20 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
             faces=faces,
         )
 
-        if settings.game_config.uses_flver0:
-            merged_mesh = FLVER0MergedMesh(**merged_mesh_kwargs)
-        else:
-            merged_mesh = FLVERMergedMesh(**merged_mesh_kwargs)
+        merged_mesh = MergedMesh(**merged_mesh_kwargs)
 
         # Apply Blender -> FromSoft transformations.
         merged_mesh.swap_vertex_yz(tangents=True, bitangents=True)
         merged_mesh.invert_vertex_uv(invert_u=False, invert_v=True)
 
         p = time.perf_counter()
-        flver.submeshes = merged_mesh.split_mesh(
-            split_submesh_defs,
+        flver.meshes = merged_mesh.split_mesh(
+            split_mesh_defs,
             unused_bone_indices_are_minus_one=True,  # saves some time within the splitter (no ambiguous zeroes)
             normal_tangent_dot_threshold=normal_tangent_dot_max,
             **settings.get_game_split_mesh_kwargs(),
         )
-        operator.info(f"Split mesh into {len(flver.submeshes)} submeshes in {time.perf_counter() - p} s.")
+        operator.info(f"Split Blender mesh into {len(flver.meshes)} FLVER meshes in {time.perf_counter() - p} s.")
 
     @classmethod
     def get_tangents_for_uv_layer(
@@ -2226,9 +2210,10 @@ class BlenderFLVER(SoulstructObject[BaseFLVER, FLVERProps]):
     def guess_read_bone_type(self, operator: LoggingOperator = None) -> BoneDataType:
         """Detect whether bone data should be read from EditBones or PoseBones.
 
-        TODO: Best hack I can come up with, currently. I'm still not 100% sure if it's safe to assume that Submesh
-         `is_bind_pose` is consistent (or SHOULD be consistent) across all submeshes in a single FLVER. Objects in
-         particular could possibly lie somewhere between map pieces (False) and characters (True).
+        TODO: Best hack I can come up with, currently. I'm still not 100% sure if it's safe to assume that Mesh
+         `is_bind_pose` is consistent (or SHOULD be consistent) across all meshes in a single FLVER. Objects in
+         particular could possibly lie somewhere between map pieces (False) and characters (True). This would only be
+         possible to represent in Blender if such meshes do NOT share any bones (and still a pain then).
         """
         read_bone_type = self.BoneDataType.NONE
         warn_partial_bind_pose = False

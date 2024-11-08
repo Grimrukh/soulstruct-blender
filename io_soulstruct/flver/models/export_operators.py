@@ -16,7 +16,7 @@ from pathlib import Path
 import bpy
 from bpy.props import StringProperty, BoolProperty, IntProperty
 
-from soulstruct.base.models.base import BaseFLVER
+from soulstruct.base.models.flver import FLVER
 from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
 from soulstruct.dcx import DCXType
 from soulstruct.games import *
@@ -288,6 +288,8 @@ class ExportMapPieceFLVERs(LoggingOperator):
 
         map_area_textures = {}  # maps area stems 'mAA' to dictionaries of Blender images to export
 
+        all_exported_paths = []
+
         for bl_flver in bl_flvers:
 
             map_stem = settings.get_map_stem_for_export(bl_flver.mesh, oldest=True)
@@ -309,7 +311,8 @@ class ExportMapPieceFLVERs(LoggingOperator):
 
             flver.dcx_type = flver_dcx_type
             relative_flver_path = relative_map_path / f"{bl_flver.export_name}.flver"
-            settings.export_file(self, flver, relative_flver_path)
+            exported_paths = settings.export_file(self, flver, relative_flver_path)
+            all_exported_paths += exported_paths
 
             if flver_export_settings.export_textures:
                 # Collect all Blender images for batched map area export.
@@ -323,18 +326,20 @@ class ExportMapPieceFLVERs(LoggingOperator):
                 and settings.des_flver_export_mode == "BOTH"
             ):
                 # Non-DCX FLVER was exported above (see `SoulstructSettings.resolve_dcx_type()`). We want DCX too.
-                dcx_path = settings.create_dcx_file(relative_flver_path, DCXType.DCX_EDGE)
-                self.info(f"Also exported DCX-compressed Map Piece FLVER to: {str(dcx_path)}")
+                for export_path in exported_paths:
+                    dcx_path = settings.create_dcx_file(export_path, DCXType.DCX_EDGE)
+                    all_exported_paths.append(dcx_path)
+                    self.info(f"Also exported DCX-compressed Map Piece FLVER to: {str(dcx_path)}")
 
         if map_area_textures:  # only non-empty if texture export enabled
             for map_area, texture_collection in map_area_textures.items():
-                export_map_area_textures(self, context, map_area, texture_collection)
+                all_exported_paths += export_map_area_textures(self, context, map_area, texture_collection)
 
         # Select original active object.
         if active_object:
             context.view_layer.objects.active = active_object
 
-        return {"FINISHED"}
+        return {"FINISHED" if all_exported_paths else "CANCELLED"}
 
 
 class BaseGameFLVERBinderExportOperator(LoggingOperator):
@@ -349,7 +354,7 @@ class BaseGameFLVERBinderExportOperator(LoggingOperator):
         context: bpy.types.Context,
         settings: SoulstructSettings,
         binder_class: type[CHRBND_TYPING | OBJBND_TYPING | PARTSBND_TYPING],
-    ) -> tuple[str, CHRBND_TYPING | OBJBND_TYPING | PARTSBND_TYPING, BaseFLVER, DDSTextureCollection]:
+    ) -> tuple[str, CHRBND_TYPING | OBJBND_TYPING | PARTSBND_TYPING, FLVER, DDSTextureCollection]:
         bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
         cls_name = binder_class.__name__
 
@@ -359,9 +364,10 @@ class BaseGameFLVERBinderExportOperator(LoggingOperator):
             binder_path = settings.prepare_project_file(relative_binder_path, must_exist=True)
         except FileNotFoundError as ex:
             raise FLVERExportError(
-                f"Cannot find {cls_name} binder for {bl_flver.name}: {relative_binder_path}. Error: {ex}"
+                f"Cannot find {cls_name} binder for {bl_flver.name}: '{relative_binder_path}'. Error: {ex}"
             )
 
+        # NOTE: FLVER entries are not loaded automatically (and we don't need them to be).
         binder = binder_class.from_path(binder_path)
 
         self.to_object_mode()
@@ -442,13 +448,16 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
         except FLVERExportError as ex:
             return self.error(str(ex))
 
-        chrbnd.flvers[model_stem] = flver
+        chrbnd.set_flver(model_stem, flver)
 
         relative_chrbnd_path = self._get_binder_path(settings, model_stem)
         flver_export_settings = context.scene.flver_export_settings
         if not flver_export_settings.export_textures:
             # Export CHRBND now with FLVER.
-            return settings.export_file(self, chrbnd, relative_chrbnd_path)
+            exported_paths = settings.export_file(self, chrbnd, relative_chrbnd_path)
+            return {"FINISHED" if exported_paths else "CANCELLED"}
+
+        print("Exporting textures into CHRBND...")
 
         # Export textures. This may or may not involve file(s) outside the CHRBND, depending on the game.
         post_export_action = self.get_export_textures_action(
@@ -458,11 +467,11 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
             model_stem,
             textures,
         )
-        result = settings.export_file(self, chrbnd, relative_chrbnd_path)
-        if result == {"FINISHED"} and post_export_action:
+        exported_paths = settings.export_file(self, chrbnd, relative_chrbnd_path)
+        if exported_paths and post_export_action:
             # Only do this if CHRBND export was successful, as it may create/delete adjacent files/folders.
             post_export_action()
-        return result
+        return {"FINISHED" if exported_paths else "CANCELLED"}
 
     def get_export_textures_action(
         self,
@@ -639,14 +648,15 @@ class ExportObjectFLVER(BaseGameFLVERBinderExportOperator):
         except FLVERExportError as ex:
             return self.error(str(ex))
 
-        objbnd.flvers[model_stem] = flver
+        objbnd.set_flver(model_stem, flver)
 
         flver_export_settings = context.scene.flver_export_settings
         if flver_export_settings.export_textures:
             # TPF always added to OBJBND.
             self.export_textures_to_binder_tpf(context, objbnd, textures)
 
-        return settings.export_file(self, objbnd, Path(f"obj/{model_stem}.objbnd"))
+        exported_paths = settings.export_file(self, objbnd, Path(f"obj/{model_stem}.objbnd"))
+        return {"FINISHED" if exported_paths else "CANCELLED"}
 
 
 class ExportAssetFLVER(BaseGameFLVERBinderExportOperator):
@@ -685,12 +695,13 @@ class ExportAssetFLVER(BaseGameFLVERBinderExportOperator):
         except FLVERExportError as ex:
             return self.error(str(ex))
 
-        geombnd.flvers[model_stem] = flver
+        geombnd.set_flver(model_stem, flver)
 
         # GEOMBND does not contain textures.
         # TODO: Could try to export textures to AET.
 
-        return settings.export_file(self, geombnd, Path(f"asset/{model_stem[:6]}/{model_stem}.geombnd"))
+        exported_paths = settings.export_file(self, geombnd, Path(f"asset/{model_stem[:6]}/{model_stem}.geombnd"))
+        return {"FINISHED" if exported_paths else "CANCELLED"}
 
 
 class ExportEquipmentFLVER(BaseGameFLVERBinderExportOperator):
@@ -729,7 +740,7 @@ class ExportEquipmentFLVER(BaseGameFLVERBinderExportOperator):
         except FLVERExportError as ex:
             return self.error(str(ex))
 
-        partsbnd.flvers[model_stem] = flver
+        partsbnd.set_flver(model_stem, flver)
 
         flver_export_settings = context.scene.flver_export_settings
         if flver_export_settings.export_textures:
@@ -737,11 +748,11 @@ class ExportEquipmentFLVER(BaseGameFLVERBinderExportOperator):
             self.export_textures_to_binder_tpf(context, partsbnd, textures)
 
         try:
-            settings.export_file(self, partsbnd, Path(f"parts/{model_stem}.partsbnd"))
+            exported_paths = settings.export_file(self, partsbnd, Path(f"parts/{model_stem}.partsbnd"))
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Cannot write PARTSBND with new FLVER '{model_stem}'. Error: {ex}")
 
-        return {"FINISHED"}
+        return {"FINISHED" if exported_paths else "CANCELLED"}
 
 # endregion

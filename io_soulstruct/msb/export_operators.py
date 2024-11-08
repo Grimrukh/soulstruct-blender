@@ -336,6 +336,8 @@ class ExportMapMSB(LoggingOperator):
 
         relative_map_dir = Path(f"map/{map_stem}")
         added_models = set()
+        exported_paths = []
+
         for bl_collision in bl_collisions:
             if not bl_collision.model:
                 # Log error (should never happen in any valid MSB), but continue.
@@ -358,13 +360,23 @@ class ExportMapMSB(LoggingOperator):
             hi_hkx.dcx_type = dcx_type
             lo_hkx.dcx_type = dcx_type
 
-            # TODO: Don't export lo if hi fails.
-            settings.export_file(self, hi_hkx, relative_map_dir / f"{hi_hkx.path_stem}.hkx")
-            settings.export_file(self, lo_hkx, relative_map_dir / f"{lo_hkx.path_stem}.hkx")
+            try:
+                exported_paths += settings.export_file(self, hi_hkx, relative_map_dir / f"{hi_hkx.path_stem}.hkx")
+            except Exception as ex:
+                self.error(f"Could not export hi HKX for '{bl_collision.model.name}'. Error: {ex}")
+                continue
+            try:
+                exported_paths += settings.export_file(self, lo_hkx, relative_map_dir / f"{lo_hkx.path_stem}.hkx")
+            except Exception as ex:
+                # TODO: Delete hi HKX...
+                self.error(f"Hi HKX exported, but could not export lo HKX for '{bl_collision.model.name}'. Error: {ex}")
+                continue
 
         if not added_models:
             self.warning(f"No Collision models found to export in MSB {map_stem}. No HKX files written.")
             return {"CANCELLED"}
+        if not exported_paths:
+            return self.error(f"Collision models were found in MSB {map_stem}, but no HKX files could be written.")
 
         return {"FINISHED"}
 

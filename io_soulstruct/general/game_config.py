@@ -10,7 +10,7 @@ from types import ModuleType
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from soulstruct.base.models.base import FLVERVersion
+from soulstruct.base.models.flver import FLVERVersion
 from soulstruct.base.maps.msb import MSB as BaseMSB
 from soulstruct.containers.tpf import TPFPlatform
 from soulstruct.games import *
@@ -50,7 +50,6 @@ class GameConfig:
     # field like real rigged FLVERs.
     map_pieces_use_normal_w_bones: bool = False
 
-    uses_flver0: bool = False
     swizzle_platform: TPFPlatform | None = None  # overrides `TPF.platform` for de/swizzling
     msb_class: type[BaseMSB] | None = None
 
@@ -92,7 +91,6 @@ GAME_CONFIG = {
         supports_msb=True,
         uses_matbin=False,
         flver_default_version=FLVERVersion.DemonsSouls,
-        uses_flver0=True,
         swizzle_platform=TPFPlatform.PC,  # no swizzling despite being a PS3 exclusive
         map_pieces_use_normal_w_bones=False,
         msb_class=des_MSB,

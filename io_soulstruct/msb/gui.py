@@ -109,12 +109,13 @@ class MSBImportExportPanel(bpy.types.Panel):
                 panel.prop(msb_export_settings, prop_name)
 
         if settings.map_stem:
-            layout.label(text=f"From/To {settings.map_stem}:")
+            layout.label(text=f"Map {settings.map_stem}:")
             layout.operator(ImportMapMSB.bl_idname)
             layout.operator(ExportMapMSB.bl_idname)
         else:
             layout.label(text="No game map selected.")
 
+        layout.label(text="Generic Import:")
         layout.operator(ImportAnyMSB.bl_idname, text="Import Any MSB")
 
 

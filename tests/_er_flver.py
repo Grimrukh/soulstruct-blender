@@ -48,7 +48,7 @@ def see_textures():
     stormveil = Path(ELDEN_RING_PATH + "/map/m10/m10_00_00_00/")
     for mapbnd_path in stormveil.glob("*.mapbnd.dcx"):
         flver = FLVER.from_binder_path(mapbnd_path)
-        for submesh in flver.submeshes:
+        for submesh in flver.meshes:
             print(submesh.material.mat_def_path, submesh.material.textures)
         return
 
@@ -76,7 +76,7 @@ def main():
         # print(flver.to_string())
 
         print(f"\nFLVER {mapbnd_path.name}")
-        for submesh in flver.submeshes:
+        for submesh in flver.meshes:
             mat_printed = False
             for gx_item in submesh.material.gx_items:
                 if not gx_item.data:
@@ -100,7 +100,7 @@ def main():
                     print("   ", struct.unpack(f"<{int_count}i", gx_item.data))
                     print("   ", struct.unpack(f"<{int_count}f", gx_item.data))
 
-    # for submesh in flver.submeshes:
+    # for submesh in flver.meshes:
     #     vertex_min = submesh.vertices["position"].min(axis=0)
     #     vertex_max = submesh.vertices["position"].max(axis=0)
     #     vertex_mean = submesh.vertices["position"].mean(axis=0)

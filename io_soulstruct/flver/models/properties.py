@@ -10,7 +10,7 @@ __all__ = [
 
 import bpy
 
-from soulstruct.base.models.base import FLVERBoneUsageFlags, FLVERVersion
+from soulstruct.base.models.flver import FLVERBoneUsageFlags, FLVERVersion
 
 
 class FLVERProps(bpy.types.PropertyGroup):
@@ -30,7 +30,7 @@ class FLVERProps(bpy.types.PropertyGroup):
         description="Name of version enum for FLVER",
         items=[
             ("DEFAULT", "Selected Game", "Use default version of currently selected game in Blender"),
-            # NOTE: Old "DemonSouls_B" version is not supported, and will be converted to "DemonsSouls" on import.
+            # NOTE: Old Demon's Souls versions are not supported, and will be converted to "DemonsSouls" on import.
             (FLVERVersion.DemonsSouls.name, "Demon's Souls", "Standard DeS version"),
             (FLVERVersion.DarkSouls2_Armor9320.name, "Dark Souls 2 (Armor 9320)", "Rare DS2 version"),
             (FLVERVersion.DarkSouls_PS3_o0700_o0701.name, "Dark Souls (PS3 o0700/o0701)", "Rare DS1 version for PS3"),
@@ -54,50 +54,50 @@ class FLVERProps(bpy.types.PropertyGroup):
 
     # Modern `FLVER` unknowns:
     f2_unk_x4a: bpy.props.BoolProperty(
-        name="Unk x4a",
-        description="Unknown bool at FLVER header offset 0x4a",
+        name="FLVER2 Unk x4a",
+        description="Unknown bool at FLVER2 header offset 0x4a",
         default=False,
     )
     f2_unk_x4c: bpy.props.IntProperty(
-        name="Unk x4c",
-        description="Unknown integer at FLVER header offset x4c",
+        name="FLVER2 Unk x4c",
+        description="Unknown integer at FLVER2 header offset 0x4c",
         default=0,
     )
     f2_unk_x5c: bpy.props.IntProperty(
-        name="Unk x5c",
-        description="Unknown integer at FLVER header offset x5c",
+        name="FLVER2 Unk x5c",
+        description="Unknown integer at FLVER2 header offset 0x5c",
         default=0,
     )
     f2_unk_x5d: bpy.props.IntProperty(
-        name="Unk x5d",
-        description="Unknown integer at FLVER header offset x5d",
+        name="FLVER2 Unk x5d",
+        description="Unknown integer at FLVER2 header offset 0x5d",
         default=0,
     )
     f2_unk_x68: bpy.props.IntProperty(
-        name="Unk x68",
-        description="Unknown integer at FLVER header offset x68",
+        name="FLVER2 Unk x68",
+        description="Unknown integer at FLVER2 header offset 0x68",
         default=0,
     )
 
     # Old `FLVER0` unknowns:
     f0_unk_x4a: bpy.props.IntProperty(
-        name="Unk x4a (FLVER0)",
-        description="Unknown integer at FLVER0 header offset x4a",
+        name="FLVER0 Unk x4a",
+        description="Unknown integer at FLVER0 header offset 0x4a",
         default=1,
     )
     f0_unk_x4b: bpy.props.IntProperty(
-        name="Unk x4b (FLVER0)",
-        description="Unknown integer at FLVER0 header offset x4b",
+        name="FLVER0 Unk x4b",
+        description="Unknown integer at FLVER0 header offset 0x4b",
         default=0,
     )
     f0_unk_x4c: bpy.props.IntProperty(
-        name="Unk x4c (FLVER0)",
-        description="Unknown integer at FLVER0 header offset x4c",
+        name="FLVER0 Unk x4c",
+        description="Unknown integer at FLVER0 header offset 0x4c",
         default=65535,
     )
     f0_unk_x5c: bpy.props.IntProperty(
-        name="Unk x5c (FLVER0)",
-        description="Unknown integer at FLVER0 header offset x5c",
+        name="FLVER0 Unk x5c",
+        description="Unknown integer at FLVER0 header offset 0x5c",
         default=0,
     )
 
@@ -114,10 +114,10 @@ class FLVERProps(bpy.types.PropertyGroup):
         default="EditBone",
     )
 
-    submesh_vertices_merged: bpy.props.BoolProperty(
-        name="Submesh Vertices Merged",
-        description="If disabled, submesh (material) vertices were NOT merged on import (faster but harder to edit). "
-                    "For import posterity only; does not affect export",
+    mesh_vertices_merged: bpy.props.BoolProperty(
+        name="Mesh Vertices Merged",
+        description="If disabled, FLVER mesh (material) vertices were NOT merged on import (faster but harder to "
+                    "edit). For import posterity only; does not affect export",
         default=False,
     )
 
@@ -204,11 +204,11 @@ class FLVERBoneProps(bpy.types.PropertyGroup):
 class FLVERImportSettings(bpy.types.PropertyGroup):
     """Common FLVER import settings. Drawn manually in operator browser windows."""
 
-    merge_submesh_vertices: bpy.props.BoolProperty(
-        name="Merge Submesh Vertices",
-        description="Carefully merge FLVER submesh (material) vertices into a single mesh for easier editing. If "
-                    "disabled, submeshes will still be merged into a single mesh, but their faces will not be joined "
-                    "at any edges or vertices, making them painful to edit (but faster to import)",
+    merge_mesh_vertices: bpy.props.BoolProperty(
+        name="Merge Mesh Vertices",
+        description="Carefully merge FLVER mesh (material) vertices into a single mesh for easier editing. If "
+                    "disabled, FLVER meshes will still be merged into a single mesh, but their faces will not be "
+                    "joined at any edges or vertices, making them painful to edit (but faster to import)",
         default=True,
     )
 

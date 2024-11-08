@@ -348,7 +348,8 @@ class ExportCharacterHKXAnimation(BaseExportTypedHKXAnimation):
         self.info(f"Successfully exported animation '{animation_name}' into ANIBND {anibnd_path.name}.")
 
         # Write modified ANIBND.
-        return settings.export_file(self, anibnd, Path(f"chr/{anibnd_path.name}"))
+        exported_paths = settings.export_file(self, anibnd, Path(f"chr/{anibnd_path.name}"))
+        return {"FINISHED" if exported_paths else "CANCELLED"}
 
 
 class ExportObjectHKXAnimation(BaseExportTypedHKXAnimation):
@@ -456,7 +457,8 @@ class ExportObjectHKXAnimation(BaseExportTypedHKXAnimation):
         anibnd_entry.set_from_binary_file(anibnd)
 
         # Export modified OBJBND.
-        return settings.export_file(self, objbnd, Path(f"obj/{objbnd_path.name}"))
+        exported_paths = settings.export_file(self, objbnd, Path(f"obj/{objbnd_path.name}"))
+        return {"FINISHED" if exported_paths else "CANCELLED"}
 
 
 # TODO: Export Asset animation. Requires general ER support, obviously.

@@ -393,20 +393,20 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         """TODO: Need to check/handle all games correctly here."""
         if self.is_game_ds1():
             return dict(
-                use_submesh_bone_indices=True,
-                max_bones_per_submesh=38,
-                max_submesh_vertex_count=65535,  # TODO: not sure if 32-bit vertex indices are possible in DS1
+                use_mesh_bone_indices=True,
+                max_bones_per_mesh=38,
+                max_mesh_vertex_count=65535,  # TODO: not sure if 32-bit vertex indices are possible in DS1
             )
         elif self.is_game("DEMONS_SOULS"):
             return dict(
-                use_submesh_bone_indices=True,
-                max_bones_per_submesh=28,  # hard-coded count for `FLVER0` submeshes
-                max_submesh_vertex_count=65535,  # faces MUST use 16-bit vertex indices
+                use_mesh_bone_indices=True,
+                max_bones_per_mesh=28,  # hard-coded count for `FLVER0` meshes
+                max_mesh_vertex_count=65535,  # faces MUST use 16-bit vertex indices
             )
 
         return dict(
-            use_submesh_bone_indices=False,
-            max_submesh_vertex_count=4294967295,  # faces use 32-bit vertex indices
+            use_mesh_bone_indices=False,
+            max_mesh_vertex_count=4294967295,  # faces use 32-bit vertex indices
         )
 
     def get_game_root_prop_name(self):
@@ -605,36 +605,40 @@ class SoulstructSettings(bpy.types.PropertyGroup):
 
     def export_file(
         self, operator: LoggingOperator, file: BaseBinaryFile, relative_path: Path, class_name=""
-    ) -> set[str]:
+    ) -> list[Path]:
         """Write `file` to `relative_path` in project directory (if given) and optionally also to game directory if
         `also_export_to_game` is enabled.
 
         `class_name` is used for logging and will be automatically detected from `file` if not given.
+
+        Returns a list of absolute file paths exported.
         """
         if relative_path.is_absolute():
             # Indicates a mistake in an operator.
             raise ValueError(f"Relative path for export must be relative to game root, not absolute: {relative_path}")
         try:
-            self._export_file(operator, file, relative_path, class_name)
+            return self._export_file(operator, file, relative_path, class_name)
         except Exception as e:
             traceback.print_exc()
             operator.report({"ERROR"}, f"Failed to export {class_name if class_name else '<unknown>'} file: {e}")
-            return {"CANCELLED"}
+            return []  # TODO: possible that project file is written, but not game file?
 
-        return {"FINISHED"}
-
-    def _export_file(self, operator: LoggingOperator, file: BaseBinaryFile, relative_path: Path, class_name=""):
+    def _export_file(
+        self, operator: LoggingOperator, file: BaseBinaryFile, relative_path: Path, class_name=""
+    ) -> list[Path]:
         if not class_name:
             class_name = file.cls_name
 
         project_root = self.project_root
         game_root = self.game_root
+        exported_paths = []
 
         if project_root:
             project_path = project_root.get_file_path(relative_path)
             project_path.parent.mkdir(parents=True, exist_ok=True)
             written = file.write(project_path)  # will create '.bak' if appropriate
             operator.info(f"Exported {class_name} to: {written}")
+            exported_paths += written
             if game_root and self.also_export_to_game:
                 # Copy all written files to game directory, rather than re-exporting.
                 for written_path in written:
@@ -646,11 +650,13 @@ class SoulstructSettings(bpy.types.PropertyGroup):
                     else:
                         game_path.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(written_path, game_path)
+                    exported_paths.append(game_path)
                     operator.info(f"Copied exported {class_name} file to game directory: {game_path}")
         elif game_root and self.also_export_to_game:
             game_path = game_root.get_file_path(relative_path)
             game_path.parent.mkdir(parents=True, exist_ok=True)
             written = file.write(game_path)
+            exported_paths += written
             operator.info(f"Exported {class_name} to game directory only: {written}")
         else:
             operator.warning(
@@ -658,26 +664,29 @@ class SoulstructSettings(bpy.types.PropertyGroup):
                 f"set or 'Also Export to Game' is disabled."
             )
 
+        return exported_paths
+
     def export_file_data(
         self, operator: LoggingOperator, data: bytes, relative_path: Path, class_name: str
-    ) -> set[str]:
+    ) -> list[Path]:
         """Version of `export_file` that takes raw `bytes` data instead of a `BaseBinaryFile` to export.
 
         `class_name` must be given for logging in this case because it cannot be automatically detected.
         """
         try:
-            self._export_file_data(operator, data, relative_path, class_name)
+            return self._export_file_data(operator, data, relative_path, class_name)
         except Exception as e:
             traceback.print_exc()
             operator.report({"ERROR"}, f"Failed to export {class_name} file: {e}")
-            return {"CANCELLED"}
+            return []
 
-        return {"FINISHED"}
-
-    def _export_file_data(self, operator: LoggingOperator, data: bytes, relative_path: Path, class_name: str):
+    def _export_file_data(
+        self, operator: LoggingOperator, data: bytes, relative_path: Path, class_name: str
+    ) -> list[Path]:
 
         project_root = self.project_root
         game_root = self.game_root
+        exported_paths = []
 
         if project_root:
             project_path = project_root.get_file_path(relative_path)
@@ -687,6 +696,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):
             else:
                 project_path.parent.mkdir(parents=True, exist_ok=True)
             project_path.write_bytes(data)
+            exported_paths.append(project_path)
             operator.info(f"Exported {class_name} to: {project_path}")
             if game_root and self.also_export_to_game:
                 # Copy to game directory.
@@ -697,6 +707,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):
                 else:
                     game_path.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(project_path, game_path)
+                exported_paths.append(game_path)
                 operator.info(f"Copied exported {class_name} to game directory: {game_path}")
         elif game_root and self.also_export_to_game:
             game_path = game_root.get_file_path(relative_path)
@@ -706,6 +717,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):
             else:
                 game_path.parent.mkdir(parents=True, exist_ok=True)
             game_path.write_bytes(data)
+            exported_paths.append(game_path)
             operator.info(f"Exported {class_name} to game directory only: {game_path}")
         else:
             operator.warning(
@@ -713,7 +725,11 @@ class SoulstructSettings(bpy.types.PropertyGroup):
                 f"set or 'Also Export to Game' is disabled."
             )
 
-    def export_text_file(self, operator: LoggingOperator, text: str, relative_path: Path, encoding="utf-8") -> set[str]:
+        return exported_paths
+
+    def export_text_file(
+        self, operator: LoggingOperator, text: str, relative_path: Path, encoding="utf-8"
+    ) -> list[Path]:
         """Write `text` string to `relative_path` in project directory (if given) and optionally also to game directory
         if `also_export_to_game` is enabled.
         """
@@ -721,18 +737,17 @@ class SoulstructSettings(bpy.types.PropertyGroup):
             # Indicates a mistake in an operator.
             raise ValueError(f"Relative path for export must be relative to game root, not absolute: {relative_path}")
         try:
-            self._export_text_file(operator, text, relative_path, encoding)
+            return self._export_text_file(operator, text, relative_path, encoding)
         except Exception as e:
             traceback.print_exc()
             operator.report({"ERROR"}, f"Failed to export text file: {e}")
-            return {"CANCELLED"}
+            return []
 
-        return {"FINISHED"}
-
-    def _export_text_file(self, operator: LoggingOperator, text: str, relative_path: Path, encoding: str):
+    def _export_text_file(self, operator: LoggingOperator, text: str, relative_path: Path, encoding: str) -> list[Path]:
 
         project_root = self.project_root
         game_root = self.game_root
+        exported_paths = []
 
         if project_root:
             project_path = project_root.get_file_path(relative_path, dcx_type=DCXType.Null)
@@ -810,7 +825,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         if not is_path_and_file(game_path) and not is_path_and_file(project_path):
             # Neither file exists.
             if must_exist:
-                raise FileNotFoundError(f"File does not exist in project or game directory: {relative_path}")
+                raise FileNotFoundError(f"File does not exist in project OR game directory: {relative_path}")
             return None
 
         if project_path is None:

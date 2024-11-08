@@ -34,7 +34,7 @@ from pathlib import Path
 import bpy
 import bpy.ops
 
-from soulstruct.base.models import FLVERVersion, BaseFLVER, FLVER, FLVER0
+from soulstruct.base.models.flver import FLVERVersion, FLVER
 from soulstruct.containers import Binder
 from soulstruct.darksouls1ptde.constants import CHARACTER_MODELS as DS1_CHARACTER_MODELS
 from soulstruct.demonssouls.constants import CHARACTER_MODELS as DES_CHARACTER_MODELS
@@ -62,9 +62,8 @@ class BaseFLVERImportOperator(LoggingImportOperator):
 
         start_time = time.perf_counter()
 
-        flvers = []  # type: list[tuple[str, BaseFLVER]]  # holds `(bl_name, flver)` pairs
+        flvers = []  # type: list[tuple[str, FLVER]]  # holds `(bl_name, flver)` pairs
         image_import_manager = ImageImportManager(self, context)
-        uses_flver0 = context.scene.soulstruct_settings.game_config.uses_flver0
 
         import_settings = context.scene.flver_import_settings
         use_matbinbnd = False  # auto-set if first FLVER is from Sekiro/Elden Ring
@@ -74,7 +73,7 @@ class BaseFLVERImportOperator(LoggingImportOperator):
             if FLVER_BINDER_RE.match(source_path.name):
                 # NOTE: Will always import all FLVERs found in Binder.
                 binder = Binder.from_path(source_path)
-                binder_flvers = get_flvers_from_binder(binder, source_path, uses_flver0, allow_multiple=True)
+                binder_flvers = get_flvers_from_binder(binder, source_path, allow_multiple=True)
                 if import_settings.import_textures:
                     image_import_manager.find_flver_textures(source_path, binder)
                     for flver in binder_flvers:
@@ -85,7 +84,7 @@ class BaseFLVERImportOperator(LoggingImportOperator):
                         use_matbinbnd = True
                     flvers.append((flver.path_minimal_stem, flver))
             else:  # e.g. loose Map Piece FLVER
-                flver = FLVER0.from_path(source_path) if uses_flver0 else FLVER.from_path(source_path)
+                flver = FLVER.from_path(source_path)
                 if import_settings.import_textures:
                     image_import_manager.find_flver_textures(source_path)
                     self.find_extra_textures(source_path, flver, image_import_manager)
@@ -140,7 +139,7 @@ class BaseFLVERImportOperator(LoggingImportOperator):
         """Get collection to add imported FLVER to. Defaults to scene view layer collection."""
         return context.view_layer.active_layer_collection.collection
 
-    def find_extra_textures(self, flver_source_path: Path, flver: BaseFLVER, image_import_manager: ImageImportManager):
+    def find_extra_textures(self, flver_source_path: Path, flver: FLVER, image_import_manager: ImageImportManager):
         """Can be overridden by importers for specific FLVER model types that know where their textures are."""
         pass
 
@@ -219,7 +218,7 @@ class ImportMapPieceFLVER(BaseFLVERImportOperator):
             context.scene.collection, f"{file_directory_name} Models", f"{file_directory_name} Map Piece Models"
         )
 
-    def find_extra_textures(self, flver_source_path: Path, flver: BaseFLVER, image_import_manager: ImageImportManager):
+    def find_extra_textures(self, flver_source_path: Path, flver: FLVER, image_import_manager: ImageImportManager):
         """Check all textures in FLVER for specific map 'mAA_' prefix textures and register TPFBHDs in those maps."""
         area_re = re.compile(r"^m\d\d_")
         texture_map_areas = {

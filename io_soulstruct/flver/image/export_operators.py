@@ -20,7 +20,7 @@ def export_map_area_textures(
     context: bpy.types.Context,
     map_area: str,
     dds_textures: DDSTextureCollection,
-):
+) -> list[Path]:
     """Create and write map area TPFBHDs for all map stem keys and `DDSTexture` collections in `map_area_textures`.
 
     TODO: When to use 'mAA_9999.tpf.dcx'? Never?
@@ -28,7 +28,7 @@ def export_map_area_textures(
     settings = operator.settings(context)
     if not settings.is_game("DARK_SOULS_DSR"):
         operator.error("Map textures not exported: only supported for Dark Souls: Remastered.")
-        return
+        return []
 
     import_area_dir = settings.game_root and settings.game_root.get_dir_path(f"map/{map_area}")
     export_area_dir = settings.project_root and settings.project_root.get_dir_path(f"map/{map_area}")
@@ -36,7 +36,7 @@ def export_map_area_textures(
         # Should be caught by `settings.can_export` check in poll, but making extra sure here that any sort
         # of TPFBHD export is possible before the expensive DDS conversion call below.
         operator.error("Map textures not exported: game export path not set and export-to-import disabled.")
-        return  # no point checking other areas
+        return []  # no point checking other areas
     if not (import_area_dir and import_area_dir.is_dir()) and not (
         export_area_dir and export_area_dir.is_dir()
     ):
@@ -44,7 +44,7 @@ def export_map_area_textures(
             f"Textures not written. Cannot find map texture Binders to modify from either export "
             f"(preferred) or import (backup) map area directory: 'map/{map_area}"
         )
-        return
+        return []
     if export_area_dir and import_area_dir and import_area_dir.is_dir():
         # Copy initial TPFBHDs/BDTs from import directory (will not overwrite existing).
         # Will raise a `FileNotFoundError` if import file does not exist.
@@ -64,11 +64,13 @@ def export_map_area_textures(
             f"Textures not written. Cannot load map texture Binders from missing map area directory: "
             f"{map_area_dir}"
         )
-        return
+        return []
     map_tpfbhds = dds_textures.into_map_area_tpfbhds(operator, context, map_area_dir)
+    exported_paths = []
     for tpfbhd in map_tpfbhds:
         relative_tpfbhd_path = Path(f"map/{map_area}/{tpfbhd.path.name}")
-        settings.export_file(operator, tpfbhd, relative_tpfbhd_path)
+        exported_paths += settings.export_file(operator, tpfbhd, relative_tpfbhd_path)
+    return exported_paths
 
 
 class ExportTexturesIntoBinderOrTPF(LoggingImportOperator):

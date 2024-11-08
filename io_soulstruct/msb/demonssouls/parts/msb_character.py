@@ -183,7 +183,6 @@ class BlenderMSBCharacter(BlenderMSBPart[MSBCharacter, MSBCharacterProps]):
     ) -> bpy.types.MeshObject:
         """Import the model of the given name into a collection in the current scene."""
         settings = operator.settings(context)
-        uses_flver0 = settings.game_config.uses_flver0
 
         import_settings = context.scene.flver_import_settings
         image_import_manager = ImageImportManager(operator, context) if import_settings.import_textures else None
@@ -191,7 +190,7 @@ class BlenderMSBCharacter(BlenderMSBPart[MSBCharacter, MSBCharacterProps]):
         chrbnd_path = settings.get_import_file_path(f"chr/{model_name}/{model_name}.chrbnd")
         operator.info(f"Importing character FLVER from: {chrbnd_path.name}")
         chrbnd = Binder.from_path(chrbnd_path)
-        binder_flvers = get_flvers_from_binder(chrbnd, chrbnd_path, uses_flver0, allow_multiple=False)
+        binder_flvers = get_flvers_from_binder(chrbnd, chrbnd_path, allow_multiple=False)
         if image_import_manager:
             image_import_manager.find_flver_textures(chrbnd_path, chrbnd)
         flver = binder_flvers[0]
@@ -263,7 +262,6 @@ class BlenderMSBCharacter(BlenderMSBPart[MSBCharacter, MSBCharacterProps]):
             model_datas,
             map_stem,
             cls.PART_SUBTYPE.get_nice_name(),
-            uses_flver0=True,
             flver_source_binders=model_chrbnds,
         )
 

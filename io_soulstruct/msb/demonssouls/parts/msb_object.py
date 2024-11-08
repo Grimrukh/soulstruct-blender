@@ -117,7 +117,6 @@ class BlenderMSBObject(BlenderMSBPart[MSBObject, MSBObjectProps]):
     ) -> bpy.types.MeshObject:
         """Import the model of the given name into a collection in the current scene."""
         settings = operator.settings(context)
-        uses_flver0 = settings.game_config.uses_flver0
 
         import_settings = context.scene.flver_import_settings
         objbnd_path = settings.get_import_file_path(f"obj/{model_name}.objbnd")
@@ -127,7 +126,7 @@ class BlenderMSBObject(BlenderMSBPart[MSBObject, MSBObjectProps]):
         image_import_manager = ImageImportManager(operator, context) if import_settings.import_textures else None
 
         objbnd = Binder.from_path(objbnd_path)
-        binder_flvers = get_flvers_from_binder(objbnd, objbnd_path, uses_flver0, allow_multiple=True)
+        binder_flvers = get_flvers_from_binder(objbnd, objbnd_path, allow_multiple=True)
         if image_import_manager:
             image_import_manager.find_flver_textures(objbnd_path, objbnd)
         flver = binder_flvers[0]  # TODO: ignoring secondary Object FLVERs for now
@@ -199,7 +198,6 @@ class BlenderMSBObject(BlenderMSBPart[MSBObject, MSBObjectProps]):
             model_datas,
             map_stem,
             cls.PART_SUBTYPE.get_nice_name(),
-            uses_flver0=True,
             flver_source_binders=model_objbnds,
         )
 

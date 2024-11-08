@@ -89,13 +89,13 @@ class FLVERGXItemProps(bpy.types.PropertyGroup):
 class FLVERMaterialProps(bpy.types.PropertyGroup):
     """Extension properties for Blender materials that represent FLVER materials.
 
-    In Blender, materials also store desired FLVER submesh settings -- that is, there may be multiple materials that are
-    identical except for FLVER submesh/face set settings like backface culling. These settings are stored here.
+    In Blender, materials also store desired FLVER mesh settings -- that is, there may be multiple materials that are
+    identical except for FLVER mesh/face set settings like backface culling. These settings are stored here.
     """
 
     flags: bpy.props.IntProperty(
         name="Flags",
-        description="Material flags",
+        description="Material flags (ignored in Demon's Souls)",
         default=0,
     )
     mat_def_path: bpy.props.StringProperty(
@@ -104,26 +104,26 @@ class FLVERMaterialProps(bpy.types.PropertyGroup):
                     "by the game and always replaced with '.matbin' (Elden Ring) or '.mtd' (before Elden Ring)",
         default="",
     )
-    unk_x18: bpy.props.IntProperty(
-        name="Unk x18",
-        description="Unknown integer at material offset 0x18",
+    f2_unk_x18: bpy.props.IntProperty(
+        name="FLVER2 Unk x18",
+        description="Unknown integer at material offset 0x18 (ignored in Demon's Souls)",
         default=0,
     )
     is_bind_pose: bpy.props.BoolProperty(
-        name="Is Bind Pose [Submesh]",
-        description="If enabled, submesh using this material is a rigged submesh. Typically disabled for Map Piece "
+        name="Is Bind Pose [Mesh]",
+        description="If enabled, mesh using this material is a rigged mesh. Typically disabled for Map Piece "
                     "FLVERs and enabled for everything else",
         default=False,
     )
     default_bone_index: bpy.props.IntProperty(
-        name="Default Bone Index [Submesh]",
-        description="Index of default bone for this submesh (if applicable). Sometimes junk in vanilla FLVERs",
+        name="Default Bone Index [Mesh]",
+        description="Index of default bone for this mesh (if applicable). Sometimes junk in vanilla FLVERs",
         default=-1,
     )
     face_set_count: bpy.props.IntProperty(
-        name="Face Set Count [Submesh]",
-        description="Number of face sets in submesh using this material. This is NOT a real FLVER property, but tells "
-                    "Blender how many duplicate FLVER face sets to make for this submesh. Typically used only for Map "
+        name="Face Set Count [Mesh]",
+        description="Number of face sets in mesh using this material. This is NOT a real FLVER property, but tells "
+                    "Blender how many duplicate FLVER face sets to make for this mesh. Typically used only for Map "
                     "Piece level of detail. Soulstruct cannot yet auto-generate simplified/decimated LoD face sets",
         default=0,
     )

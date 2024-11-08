@@ -355,8 +355,9 @@ class ExportHKXMapCollisionToMap(LoggingOperator):
             if settings.is_game(DEMONS_SOULS):
                 # Loose, immediate HKX export. TODO: Do the whole 'don't write lo if hi fails' thing from above.
                 relative_dir = Path(f"map/{map_stem}")
-                return_strings |= settings.export_file(self, hi_hkx, Path(relative_dir, f"{hi_hkx.path_stem}.hkx"))
-                return_strings |= settings.export_file(self, lo_hkx, Path(relative_dir, f"{lo_hkx.path_stem}.hkx"))
+                exported_paths = settings.export_file(self, hi_hkx, Path(relative_dir, f"{hi_hkx.path_stem}.hkx"))
+                exported_paths += settings.export_file(self, lo_hkx, Path(relative_dir, f"{lo_hkx.path_stem}.hkx"))
+                return_strings |= {"FINISHED" if exported_paths else "CANCELLED"}
                 self.info(f"Exported loose hi-res and lo-res HKX for {model_name} to map directory {map_stem}.")
             else:
                 if map_stem not in opened_both_res_hkxbhds:
@@ -382,11 +383,12 @@ class ExportHKXMapCollisionToMap(LoggingOperator):
 
         # Will be empty for Demon's Souls.
         for map_stem, both_res_hkxbhd in opened_both_res_hkxbhds.items():
-            return_strings |= settings.export_file(
+            exported_paths = settings.export_file(
                 self, both_res_hkxbhd.hi_res, Path(f"map/{map_stem}/h{map_stem[1:]}.hkxbhd")
             )
-            return_strings |= settings.export_file(
+            exported_paths += settings.export_file(
                 self, both_res_hkxbhd.lo_res, Path(f"map/{map_stem}/l{map_stem[1:]}.hkxbhd")
             )
+            return_strings |= {"FINISHED" if exported_paths else "CANCELLED"}
 
         return {"FINISHED"} if "FINISHED" in return_strings else {"CANCELLED"}  # at least one success

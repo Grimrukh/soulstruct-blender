@@ -185,7 +185,6 @@ class BlenderMSBMapPiece(BlenderMSBPart[MSBMapPiece, MSBMapPieceProps]):
             model_datas,
             map_stem,
             cls.PART_SUBTYPE.get_nice_name(),
-            uses_flver0=True,
             flver_source_binders=None,
             image_import_callback=image_import_callback,
         )

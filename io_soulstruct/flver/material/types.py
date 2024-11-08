@@ -9,13 +9,10 @@ from pathlib import Path
 
 import bpy
 
+from soulstruct.base.models.flver import *
+
 from io_soulstruct.exceptions import MaterialImportError, FLVERExportError
 from io_soulstruct.utilities import LoggingOperator, get_bl_custom_prop
-from soulstruct.base.models.base.mesh_tools import SplitSubmeshDef
-from soulstruct.base.models.base.material import BaseMaterial
-from soulstruct.base.models.base.submesh import BaseSubmesh
-from soulstruct.base.models.flver import Material, Texture, GXItem, Submesh
-from soulstruct.base.models.flver0 import Material as Material0, Texture as Texture0
 from io_soulstruct.flver.image import DDSTexture, DDSTextureCollection
 from .shaders import NodeTreeBuilder
 
@@ -56,23 +53,23 @@ class BlenderFLVERMaterial:
     AUTO_MATERIAL_PROPS = [
         "flags",
         "mat_def_path",
-        "unk_x18",
+        "f2_unk_x18",
         "is_bind_pose",
         "default_bone_index",
         "face_set_count",
         "sampler_prefix",
     ]
 
+    is_bind_pose: bool
     mat_def_path: str
     default_bone_index: int
     face_set_count: int
 
-    # `FLVER` only:
+    # FLVER2 only:
     flags: int
-    unk_x18: int
-    is_bind_pose: bool
+    f2_unk_x18: int
 
-    # No `FLVER0`-only properties.
+    # No FLVER0-only properties.
 
     sampler_prefix: str  # for sampler truncation; not a real imported/exported FLVER Material property
 
@@ -91,13 +88,13 @@ class BlenderFLVERMaterial:
             gx_item_props.to_gx_item()
             for gx_item_props in self.type_properties.gx_items
             if len(gx_item_props.category) == 4
-        ] + [GXItem.new_dummy()]  # TODO: are these dummy values suitable for all games/FLVERs?
+        ] + [GXItem.new_terminator()]  # TODO: are these dummy values suitable for all games/FLVERs?
 
     @gx_items.setter
     def gx_items(self, value: list[GXItem]):
         self.type_properties.gx_items.clear()
         for gx_item in value:
-            if gx_item.is_dummy:
+            if gx_item.is_terminator:
                 continue  # final dummy items not saved in Blender
             gx_item_prop = self.type_properties.gx_items.add()  # type: FLVERGXItemProps
             gx_item_prop.from_gx_item(gx_item)
@@ -111,11 +108,11 @@ class BlenderFLVERMaterial:
         cls,
         operator: LoggingOperator,
         context: bpy.types.Context,
-        flver_material: BaseMaterial,
+        flver_material: Material,
         flver_sampler_texture_stems: dict[str, str],
         material_name: str,
         matdef: MatDef | None,
-        submesh: BaseSubmesh,
+        mesh: FLVERMesh,
         vertex_color_count: int,
         blend_mode="HASHED",
         warn_missing_textures=True,
@@ -156,23 +153,20 @@ class BlenderFLVERMaterial:
 
         material = cls(bl_material)
         # Real Material properties:
-        material.default_bone_index = submesh.default_bone_index
+        material.default_bone_index = mesh.default_bone_index
 
         material.mat_def_path = flver_material.mat_def_path  # str
         if isinstance(flver_material, Material):
             material.flags = flver_material.flags  # int
-            material.unk_x18 = flver_material.unk_x18  # int
-            material.gx_items = flver_material.get_non_dummy_gx_items()  # final dummy `GXItem` not held in Blender
+            material.f2_unk_x18 = flver_material.f2_unk_x18  # int
+            material.gx_items = flver_material.get_non_terminator_gx_items()  # final dummy `GXItem` not held in Blender
             # TODO: Currently, main face set is simply copied to all additional face sets on export. This is fine for
             #  early games, but probably not for, say, Elden Ring map pieces. Some kind of auto-decimator is in order.
-            material.face_set_count = len(submesh.face_sets)
+            material.face_set_count = len(mesh.face_sets)
 
-        # Submesh properties:
-        material.use_backface_culling = submesh.use_backface_culling  # wraps `face_set[0].use_backface_culling`
-        if isinstance(submesh, Submesh):
-            # NOTE: For `FLVER0`, this property is set after the fact based on `flver0.guess_rigged()`, which determines
-            # whether FLVER0 bone data is written to Edit or Pose bones.
-            material.is_bind_pose = submesh.is_bind_pose
+        # Mesh properties:
+        material.use_backface_culling = mesh.use_backface_culling  # wraps `face_set[0].use_backface_culling`
+        material.is_bind_pose = mesh.is_bind_pose
 
         # NOTE: Texture path prefixes not stored, as they aren't actually needed in the TPFBHDs.
         # NOTE: This index is sometimes invalid for vanilla map FLVERs (e.g., 1 when there is only one bone).
@@ -327,23 +321,15 @@ class BlenderFLVERMaterial:
             texture_collection = DDSTextureCollection()
         name = self.tight_name
 
-        settings = context.scene.soulstruct_settings
         export_settings = context.scene.flver_export_settings
 
-        uses_flver0 = settings.game_config.uses_flver0
-        if uses_flver0:
-            flver_material = Material0(
-                name=name,
-                mat_def_path=self.mat_def_path,
-            )
-        else:
-            flver_material = Material(
-                name=name,
-                flags=self.flags,
-                mat_def_path=self.mat_def_path,
-                unk_x18=self.unk_x18,
-                gx_items=self.gx_items,  # list-creating property
-            )
+        flver_material = Material(
+            name=name,
+            mat_def_path=self.mat_def_path,
+            flags=self.flags,
+            f2_unk_x18=self.f2_unk_x18,
+            gx_items=self.gx_items,  # list-creating property
+        )
 
         # FLVER material texture path extension doesn't actually matter, but we try to be faithful.
         settings = operator.settings(context)
@@ -411,11 +397,8 @@ class BlenderFLVERMaterial:
                     )
 
             texture_path = (path_prefix + texture_stem + path_ext) if texture_stem else ""
-            if uses_flver0:
-                texture = Texture0(path=texture_path, texture_type=sampler_name)
-            else:
-                # TODO: Unknowns all ignored.
-                texture = Texture(path=texture_path, texture_type=sampler_name)
+            # TODO: Unknowns currently all ignored.
+            texture = Texture(path=texture_path, texture_type=sampler_name)
 
             flver_material.textures.append(texture)
 
@@ -434,17 +417,14 @@ class BlenderFLVERMaterial:
                 )
                 texture_stem = Path(node.image.name).stem
                 texture_path = (texture_stem + path_ext) if node.image else ""
-                if uses_flver0:
-                    texture = Texture0(path=texture_path, texture_type=node_name)
-                else:
-                    # TODO: Unknowns all ignored.
-                    texture = Texture(path=texture_path, texture_type=node_name)
+                # TODO: Unknowns currently all ignored.
+                texture = Texture(path=texture_path, texture_type=node_name)
 
                 flver_material.textures.append(texture)
 
         return flver_material
 
-    def to_split_submesh_def(
+    def to_split_mesh_def(
         self,
         operator: LoggingOperator,
         context: bpy.types.Context,
@@ -453,11 +433,11 @@ class BlenderFLVERMaterial:
         use_chr_layout: bool,
         texture_collection: DDSTextureCollection = None,
         texture_path_prefix="",
-    ) -> SplitSubmeshDef:
-        """Use given `matdef` to create a `SplitSubmeshDef` for the given Blender material with either a character
+    ) -> SplitMeshDef:
+        """Use given `matdef` to create a `SplitMeshDef` for the given Blender material with either a character
         layout or a map piece layout, depending on `use_chr_layout`."""
 
-        # Some Blender materials may be variants representing distinct Submesh/FaceSet properties; these will be
+        # Some Blender materials may be variants representing distinct Mesh/FaceSet properties; these will be
         # mapped to the same FLVER `Material`/`VertexArrayLayout` combo (created here).
         flver_material = self.to_flver_material(operator, context, matdef, texture_collection, texture_path_prefix)
         if use_chr_layout:
@@ -468,32 +448,23 @@ class BlenderFLVERMaterial:
         # We only respect 'Face Set Count' if requested in export options. (Duplicating the main face set is only
         # viable in older games with low-res meshes, but those same games don't even really need LODs anyway.)
         face_set_count = self.face_set_count if create_lod_face_sets else 1
-        submesh_kwargs = {
+        mesh_kwargs = {
+            "is_bind_pose": self.is_bind_pose,
             "default_bone_index": self.default_bone_index,
             "use_backface_culling": self.use_backface_culling,
             "face_set_count": face_set_count,
+            "f0_unk_x46": 0,  # TODO: not sure what this is yet and haven't seen non-zero
+            "uses_bounding_boxes": True,  # enabled even for FLVER0 versions
         }
-
-        if operator.settings(context).game_config.uses_flver0:
-            # TODO: Not varying these yet, but reminding myself here that they are fields in `FLVER0.Submesh`.
-            submesh_kwargs |= {
-                "dynamic": 0,
-                "unk_x46": 0,
-            }
-        else:
-            submesh_kwargs |= {
-                "is_bind_pose": self.is_bind_pose,
-                "uses_bounding_box": True,  # TODO: assumption (DS1 and likely all later games)
-            }
 
         used_uv_layer_names = [layer.name for layer in matdef.get_used_uv_layers()]
         operator.info(f"Created FLVER material '{flver_material.name}' with UV layers: {used_uv_layer_names}")
 
-        return SplitSubmeshDef(
+        return SplitMeshDef(
             flver_material,
             array_layout,
-            is_rigged=self.is_bind_pose,  # still used by `FLVER0` to track Blender bone data source
-            kwargs=submesh_kwargs,
+            is_bind_pose=self.is_bind_pose,
+            kwargs=mesh_kwargs,
             uv_layer_names=used_uv_layer_names,
         )
 

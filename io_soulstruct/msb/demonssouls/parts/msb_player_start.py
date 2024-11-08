@@ -99,7 +99,6 @@ class BlenderMSBPlayerStart(BlenderMSBPart[MSBPlayerStart, MSBPlayerStartProps])
             model_datas,
             map_stem,
             cls.PART_SUBTYPE.get_nice_name(),
-            uses_flver0=True,
             flver_source_binders=model_chrbnds,
         )
 

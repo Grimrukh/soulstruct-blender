@@ -741,7 +741,7 @@ def scan_chr_layouts():
         chrbnd = Binder.from_path(chrbnd_path)
         print(f"Reading FLVER in {chrbnd_path.name}...")
         flver = chrbnd[200].to_binary_file(FLVER)
-        for submesh in flver.submeshes:
+        for submesh in flver.meshes:
             material = submesh.material
             if material.mat_def_name not in mtd_and_layout:
                 mtd_and_layout[material.mat_def_name] = set()
@@ -770,7 +770,7 @@ def scan_chr():
         chrbnd = Binder.from_path(chrbnd_path)
         print(f"Reading FLVER in {chrbnd_path.name}...")
         flver = chrbnd[200].to_binary_file(FLVER)
-        for submesh in flver.submeshes:
+        for submesh in flver.meshes:
             texture_types = [tex.texture_type for tex in submesh.material.textures]
             mtd_and_texture_types.append((Path(submesh.material.mat_def_path).stem, texture_types))
 
@@ -787,7 +787,7 @@ def scan_map():
                 continue  # skip duplicate DLC directory (models are still read from _00 folder)
             print(f"Reading FLVER {flver_path.name}...")
             flver = FLVER.from_path(flver_path)
-            for submesh in flver.submeshes:
+            for submesh in flver.meshes:
                 texture_types = [tex.texture_type for tex in submesh.material.textures]
                 f.write(f"    ('{Path(submesh.material.mat_def_path).stem}', {texture_types}),\n")
         f.write("}\n")
@@ -802,7 +802,7 @@ def scan_map_layouts():
             continue  # skip duplicate DLC directory (models are still read from _00 folder)
         print(f"Reading FLVER {flver_path.name}...")
         flver = FLVER.from_path(flver_path)
-        for submesh in flver.submeshes:
+        for submesh in flver.meshes:
             material = submesh.material
             if material.mat_def_name not in mtd_and_layout:
                 mtd_and_layout[material.mat_def_name] = set()
