@@ -214,8 +214,10 @@ class ExportNVMIntoSelectedMap(LoggingOperator):
     @classmethod
     def poll(cls, context):
         """One or more 'n*' Meshes selected."""
-        if not cls.settings(context).is_game_ds1():
+        settings = cls.settings(context)
+        if not settings.game_config.supports_nvm:
             return False
+        # Map stem may be unselected if detected from collision.
         try:
             BlenderNVM.from_selected_objects(context)
         except SoulstructTypeError:
@@ -224,11 +226,9 @@ class ExportNVMIntoSelectedMap(LoggingOperator):
 
     def execute(self, context):
         if not self.poll(context):
-            return self.error("No valid 'n' meshes selected for NVM export.")
+            return self.error("No valid 'n' meshes selected for NVM export (or game does not support NVM export).")
 
         settings = self.settings(context)
-        if not settings.is_game_ds1():
-            return self.error("NVM export is only supported for Demon's Souls and Dark Souls 1 (PTDE or DSR).")
 
         if not settings.map_stem and not settings.detect_map_from_collection:
             return self.error(
@@ -278,7 +278,7 @@ class ExportNVMIntoSelectedMap(LoggingOperator):
             else:
                 nvm.dcx_type = DCXType.Null  # no DCX compression inside NVMBND
 
-            nvmbnd.nvms[model_stem] = nvm  # no extension needed
+            nvmbnd.set_nvm(model_stem, nvm)  # no extension needed
 
         for relative_nvmbnd_path, nvmbnd in opened_nvmbnds.items():
             nvmbnd.entries = list(sorted(nvmbnd.entries, key=lambda e: e.name))

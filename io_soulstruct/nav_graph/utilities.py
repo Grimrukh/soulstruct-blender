@@ -16,7 +16,8 @@ import bpy
 import bmesh
 from bmesh.types import BMesh, BMFace
 from mathutils import Vector
-from soulstruct.base.maps.navmesh import NavmeshFlag
+
+from soulstruct.base.events.enums import NavmeshFlag
 
 
 def get_neighbors(face: BMFace) -> list[BMFace]:

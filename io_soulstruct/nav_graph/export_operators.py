@@ -7,7 +7,6 @@ from pathlib import Path
 
 import bpy
 
-from soulstruct.darksouls1r.maps import MSB
 from soulstruct.base.maps.navmesh.mcp import MCP
 from soulstruct.dcx import DCXType
 from soulstruct.games import DARK_SOULS_DSR
@@ -89,6 +88,8 @@ class ExportMCG(LoggingExportOperator):
         mcg_path = Path(self.filepath)
         bl_mcg = BlenderMCG(selected_objs[0])
 
+        msb_class = self.settings(context).game_config.msb_class
+
         if not self.custom_msb_path:
             msb_path = mcg_path.parent.parent / "MapStudio" / f"{mcg_path.name.split('.')[0]}.msb"
         else:
@@ -96,7 +97,7 @@ class ExportMCG(LoggingExportOperator):
         if not msb_path.is_file():
             return self.error(f"Could not find MSB file '{msb_path}'.")
         try:
-            msb = MSB.from_path(msb_path)
+            msb = msb_class.from_path(msb_path)
         except Exception as ex:
             return self.error(f"Could not load MSB file '{msb_path}'. Error: {ex}")
 
@@ -130,7 +131,7 @@ class ExportMCG(LoggingExportOperator):
                 nvmbnd_path = Path(self.custom_nvmbnd_path)
             try:
                 mcp_path = mcg_path.with_name(mcg_path.name.replace(".mcg", ".mcp"))
-                mcp = MCP.from_msb_mcg_nvm_paths(mcp_path, msb_path, mcg_path, nvmbnd_path)
+                mcp = MCP.from_msb_mcg_nvm_paths(msb_class, mcp_path, msb_path, mcg_path, nvmbnd_path)
                 mcp.write(mcp_path)
             except Exception as ex:
                 traceback.print_exc()
@@ -219,9 +220,10 @@ class ExportMCGMCPToMap(LoggingOperator):
             )
 
         bl_mcg = BlenderMCG(mcg_parent)
+        msb_class = settings.game_config.msb_class
 
         try:
-            msb = MSB.from_path(msb_path)
+            msb = msb_class.from_path(msb_path)
         except Exception as ex:
             return self.error(f"Could not load MSB file '{msb_path}'. Error: {ex}")
 
@@ -257,7 +259,7 @@ class ExportMCGMCPToMap(LoggingOperator):
 
         try:
             relative_mcp_path = Path(f"map/{map_stem}/{map_stem}.mcp")
-            mcp = MCP.from_msb_mcg_nvm_paths(relative_mcp_path, msb_path, mcg_path, nvmbnd_path)
+            mcp = MCP.from_msb_mcg_nvm_paths(msb_class, relative_mcp_path, msb_path, mcg_path, nvmbnd_path)
             settings.export_file(self, mcp, relative_mcp_path)
         except Exception as ex:
             traceback.print_exc()

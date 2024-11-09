@@ -11,8 +11,10 @@ __all__ = [
 
 import bmesh
 import bpy
+
+from soulstruct.base.events.enums import NavmeshFlag
+
 from io_soulstruct.utilities import LoggingOperator
-from soulstruct.darksouls1r.events.enums import NavmeshFlag
 from .utilities import set_face_material
 
 # Get all non-default `NavmeshFlag` values for Blender `EnumProperty`.
@@ -24,7 +26,7 @@ _navmesh_flag_items = [
 
 class NavmeshFaceSettings(bpy.types.PropertyGroup):
 
-    flag_type: bpy.props.EnumProperty(
+    navmesh_flag: bpy.props.EnumProperty(
         name="Flag",
         items=_navmesh_flag_items,
         default="1",  # Disable
@@ -64,18 +66,19 @@ class AddNVMFaceFlags(LoggingOperator):
         # noinspection PyTypeChecker
         obj = context.edit_object
         if obj is None or obj.type != "MESH":
-            return {"CANCELLED"}
+            return self.error("No Mesh selected.")
 
         obj: bpy.types.MeshObject
         bm = bmesh.from_edit_mesh(obj.data)
 
         props = context.scene.navmesh_face_settings
+        navmesh_flag = int(props.navmesh_flag)
 
         flags_layer = bm.faces.layers.int.get("nvm_face_flags")
         if flags_layer:
             selected_faces = [face for face in bm.faces if face.select]
             for face in selected_faces:
-                face[flags_layer] |= int(props.flag_type)
+                face[flags_layer] |= navmesh_flag
                 set_face_material(bl_mesh=obj.data, bl_face=face, face_flags=face[flags_layer])
 
             bmesh.update_edit_mesh(obj.data)
@@ -99,18 +102,19 @@ class RemoveNVMFaceFlags(LoggingOperator):
         # noinspection PyTypeChecker
         obj = context.edit_object
         if obj is None or obj.type != "MESH":
-            return {"CANCELLED"}
+            return self.error("No Mesh selected.")
 
         obj: bpy.types.MeshObject
         bm = bmesh.from_edit_mesh(obj.data)
 
         props = context.scene.navmesh_face_settings
+        navmesh_flag = int(props.navmesh_flag)
 
         flags_layer = bm.faces.layers.int.get("nvm_face_flags")
         if flags_layer:
             selected_faces = [face for face in bm.faces if face.select]
             for face in selected_faces:
-                face[flags_layer] &= ~int(props.flag_type)
+                face[flags_layer] &= ~navmesh_flag
                 set_face_material(bl_mesh=obj.data, bl_face=face, face_flags=face[flags_layer])
 
             bmesh.update_edit_mesh(obj.data)
@@ -193,4 +197,3 @@ class ResetNVMFaceInfo(LoggingOperator):
         bmesh.update_edit_mesh(obj.data)
 
         return {"FINISHED"}
-

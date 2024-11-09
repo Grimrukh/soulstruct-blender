@@ -14,16 +14,22 @@ from soulstruct.base.models.flver import FLVERVersion
 from soulstruct.base.maps.msb import MSB as BaseMSB
 from soulstruct.containers.tpf import TPFPlatform
 from soulstruct.games import *
-from soulstruct.bloodborne.maps import constants as bb_constants
-from soulstruct.bloodborne.maps import MSB as bb_MSB
-from soulstruct.darksouls1ptde.maps import constants as ds1ptde_constants
-from soulstruct.darksouls1ptde.maps import MSB as ds1ptde_MSB
-from soulstruct.darksouls1r.maps import constants as ds1r_constants
-from soulstruct.darksouls1r.maps import MSB as ds1r_MSB
-from soulstruct.darksouls3.maps import constants as ds3_constants
-# from soulstruct.darksouls3.maps import MSB as ds3_MSB
+
 from soulstruct.demonssouls.maps import constants as des_constants
 from soulstruct.demonssouls.maps import MSB as des_MSB
+
+from soulstruct.darksouls1ptde.maps import constants as ds1ptde_constants
+from soulstruct.darksouls1ptde.maps import MSB as ds1ptde_MSB
+
+from soulstruct.darksouls1r.maps import constants as ds1r_constants
+from soulstruct.darksouls1r.maps import MSB as ds1r_MSB
+
+from soulstruct.bloodborne.maps import constants as bb_constants
+from soulstruct.bloodborne.maps import MSB as bb_MSB
+
+from soulstruct.darksouls3.maps import constants as ds3_constants
+# from soulstruct.darksouls3.maps import MSB as ds3_MSB
+
 from soulstruct.eldenring.maps import constants as er_constants
 from soulstruct.eldenring.maps import MSB as er_MSB
 

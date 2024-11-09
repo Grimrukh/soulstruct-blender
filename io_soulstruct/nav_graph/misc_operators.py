@@ -18,7 +18,7 @@ import bmesh
 import bpy
 from mathutils import Vector
 
-from soulstruct.darksouls1r.events.enums import NavmeshFlag
+from soulstruct.base.events.enums import NavmeshFlag
 
 from io_soulstruct.exceptions import SoulstructTypeError, MCGEdgeCreationError
 from io_soulstruct.msb.darksouls1r import BlenderMSBNavmesh

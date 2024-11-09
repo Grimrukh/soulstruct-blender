@@ -32,12 +32,11 @@ __all__ = [
     "NVMEventEntityProps",
 ]
 
-from soulstruct.games import DEMONS_SOULS, DARK_SOULS_PTDE, DARK_SOULS_DSR
-
 import bmesh
 import bpy
 
-from soulstruct.darksouls1r.events.enums import NavmeshFlag
+from soulstruct.base.events.enums import NavmeshFlag
+from soulstruct.games import DEMONS_SOULS, DARK_SOULS_PTDE, DARK_SOULS_DSR
 
 from io_soulstruct.exceptions import SoulstructTypeError
 from io_soulstruct.general.gui import map_stem_box
@@ -99,7 +98,7 @@ class NVMNavmeshExportPanel(bpy.types.Panel):
         layout.prop(context.scene.soulstruct_settings, "detect_map_from_collection")
         layout.operator(ExportNVMIntoSelectedMap.bl_idname)
 
-        layout.label("Generic Export:")
+        layout.label(text="Generic Export:")
         layout.operator(ExportLooseNVM.bl_idname)
         layout.operator(ExportNVMIntoBinder.bl_idname)
 

@@ -311,7 +311,7 @@ class ExportMapMSB(LoggingOperator):
             else:
                 nvm.dcx_type = DCXType.Null  # no DCX compression inside DS1 NVMBND
 
-            nvmbnd.nvms[model_stem] = nvm  # no file suffix needed in `NVMBND` keys
+            nvmbnd.set_nvm(model_stem, nvm)
 
         if not added_models:
             self.warning(f"No Navmesh models found to export in MSB {map_stem}. NVMBND not written.")

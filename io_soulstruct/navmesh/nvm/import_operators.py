@@ -308,8 +308,11 @@ class ImportSelectedMapNVM(BinderEntrySelectOperator):
     @classmethod
     def poll(cls, context):
         settings = cls.settings(context)
-        if settings.is_game("DARK_SOULS_DSR"):
+        if not settings.game_config.supports_nvm:
             return False
+        if not settings.map_stem:
+            return False
+        return True
 
     @classmethod
     def filter_binder_entry(cls, context, entry: BinderEntry) -> bool:
