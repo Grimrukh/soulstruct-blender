@@ -77,10 +77,10 @@ class ExportLooseHKXAnimation(LoggingExportOperator):
         bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
         bl_animation = SoulstructAnimation.from_armature_animation_data(bl_flver.armature)
 
-        skeleton_hkx_class = settings.game_config.skeleton_hkx  # type: type[BaseSkeletonHKX]
+        skeleton_hkx_class = settings.game_config.skeleton_hkx_class  # type: type[BaseSkeletonHKX]
         if skeleton_hkx_class is None:
             return self.error(f"No skeleton HKX class defined for game {settings.game.name}.")
-        animation_hkx_class = settings.game_config.animation_hkx  # type: type[BaseAnimationHKX]
+        animation_hkx_class = settings.game_config.animation_hkx_class  # type: type[BaseAnimationHKX]
         if animation_hkx_class is None:
             return self.error(f"No animation HKX class defined for game {settings.game.name}.")
 
@@ -182,10 +182,10 @@ class ExportHKXAnimationIntoBinder(LoggingImportOperator):
         bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
         bl_animation = SoulstructAnimation.from_armature_animation_data(bl_flver.armature)
 
-        skeleton_hkx_class = settings.game_config.skeleton_hkx  # type: type[BaseSkeletonHKX]
+        skeleton_hkx_class = settings.game_config.skeleton_hkx_class  # type: type[BaseSkeletonHKX]
         if skeleton_hkx_class is None:
             return self.error(f"No skeleton HKX class defined for game {settings.game.name}.")
-        animation_hkx_class = settings.game_config.animation_hkx  # type: type[BaseAnimationHKX]
+        animation_hkx_class = settings.game_config.animation_hkx_class  # type: type[BaseAnimationHKX]
         if animation_hkx_class is None:
             return self.error(f"No animation HKX class defined for game {settings.game.name}.")
 
@@ -286,10 +286,10 @@ class ExportCharacterHKXAnimation(BaseExportTypedHKXAnimation):
             return self.error(f"Automatic ANIBND export is not yet supported for game {settings.game.name}.")
         defaults = self.DEFAULTS[settings.game]
 
-        skeleton_hkx_class = settings.game_config.skeleton_hkx  # type: type[BaseSkeletonHKX]
+        skeleton_hkx_class = settings.game_config.skeleton_hkx_class  # type: type[BaseSkeletonHKX]
         if skeleton_hkx_class is None:
             return self.error(f"No skeleton HKX class defined for game {settings.game.name}.")
-        animation_hkx_class = settings.game_config.animation_hkx  # type: type[BaseAnimationHKX]
+        animation_hkx_class = settings.game_config.animation_hkx_class  # type: type[BaseAnimationHKX]
         if animation_hkx_class is None:
             return self.error(f"No animation HKX class defined for game {settings.game.name}.")
 
@@ -299,7 +299,8 @@ class ExportCharacterHKXAnimation(BaseExportTypedHKXAnimation):
 
         relative_anibnd_path = Path(f"chr/{model_name}.anibnd")
         try:
-            anibnd_path = settings.prepare_project_file(relative_anibnd_path, must_exist=True)
+            # We never overwrite project ANIBND as it may contain other exported animations.
+            anibnd_path = settings.prepare_project_file(self, relative_anibnd_path, overwrite_existing=False)
         except FileNotFoundError as ex:
             return self.error(f"Cannot find ANIBND for character {model_name}: {ex}")
 
@@ -386,17 +387,22 @@ class ExportObjectHKXAnimation(BaseExportTypedHKXAnimation):
             return self.error(f"Automatic OBJBND + ANIBND export is not yet supported for game {settings.game.name}.")
         defaults = self.DEFAULTS[settings.game]
 
-        skeleton_hkx_class = settings.game_config.skeleton_hkx  # type: type[BaseSkeletonHKX]
+        skeleton_hkx_class = settings.game_config.skeleton_hkx_class  # type: type[BaseSkeletonHKX]
         if skeleton_hkx_class is None:
             return self.error(f"No skeleton HKX class defined for game {settings.game.name}.")
-        animation_hkx_class = settings.game_config.animation_hkx  # type: type[BaseAnimationHKX]
+        animation_hkx_class = settings.game_config.animation_hkx_class  # type: type[BaseAnimationHKX]
         if animation_hkx_class is None:
             return self.error(f"No animation HKX class defined for game {settings.game.name}.")
 
         # Get OBJBND to modify from project (preferred) or game directory.
         relative_objbnd_path = Path(f"obj/{model_name}.objbnd")
         try:
-            objbnd_path = settings.prepare_project_file(relative_objbnd_path, must_exist=True)
+            # We only overwrite project OBJBND if 'Prefer Import from Project' is disabled, which implies the user wants
+            # to import any initial OBJBND data (textures, etc.) from the game rather than using existing modified
+            # Binder entries.
+            objbnd_path = settings.prepare_project_file(
+                self, relative_objbnd_path, overwrite_existing=not settings.prefer_import_from_project
+            )
         except FileNotFoundError:
             return self.error(f"Cannot find OBJBND for object {model_name}.")
         objbnd = Binder.from_path(objbnd_path)

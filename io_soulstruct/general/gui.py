@@ -13,6 +13,7 @@ __all__ = [
 ]
 
 import bpy
+from soulstruct.games import DEMONS_SOULS
 
 from .operators import *
 from .properties import SoulstructSettings
@@ -44,6 +45,8 @@ class _GlobalSettingsPanel_ViewMixin:
             panel.prop(settings, "prefer_import_from_project")
             panel.prop(settings, "also_export_to_game")
             panel.prop(settings, "smart_map_version_handling")
+            if settings.is_game(DEMONS_SOULS):
+                panel.prop(settings, "export_des_debug_files")
             panel.label(text="Soulstruct GUI Project Path:")
             panel.prop(settings, "soulstruct_project_root_str", text="")
 

@@ -1,5 +1,6 @@
 __all__ = [
     "SoulstructBlenderError",
+    "InternalSoulstructBlenderError",
     "UnsupportedGameError",
     "UnsupportedGameTypeError",
     "SoulstructTypeError",
@@ -33,6 +34,11 @@ from soulstruct.exceptions import SoulstructError
 
 class SoulstructBlenderError(SoulstructError):
     """Base error for Blender operations."""
+    pass
+
+
+class InternalSoulstructBlenderError(SoulstructBlenderError):
+    """Raised when an internal error (author's fault) occurs in the Blender plugin."""
     pass
 
 

@@ -1755,7 +1755,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         # Slow part number 1: iterating over every Blender vertex to retrieve its position and bone weights/indices.
         # We at least know the size of the array in advance.
         vertex_count = len(tri_mesh_data.vertices)
-        if not use_chr_layout and settings.game_config.map_pieces_use_normal_w_bones:
+        if not use_chr_layout and flver.version.map_pieces_use_normal_w_bones():
             # Bone weights/indices not in array. `normal_w` is used for single Map Piece bone.
             vertex_data_dtype = [
                 ("position", "f", 3),

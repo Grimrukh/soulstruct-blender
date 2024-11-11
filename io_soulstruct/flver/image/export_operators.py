@@ -46,12 +46,14 @@ def export_map_area_textures(
         )
         return []
     if export_area_dir and import_area_dir and import_area_dir.is_dir():
-        # Copy initial TPFBHDs/BDTs from import directory (will not overwrite existing).
-        # Will raise a `FileNotFoundError` if import file does not exist.
+        # Prepare initial TPFBHDs/BDTs in project if absent. We never overwrite existing project TPFBHD/BDTs as they
+        # may contain other custom textures.
         for tpfbhd_path in import_area_dir.glob("*.tpfbhd"):
-            settings.prepare_project_file(Path(f"map/{map_area}/{tpfbhd_path.name}"), False, True)
+            relative_tpfbhd_path = Path(f"map/{map_area}/{tpfbhd_path.name}")
+            settings.prepare_project_file(operator, relative_tpfbhd_path, overwrite_existing=False)
         for tpfbdt_path in import_area_dir.glob("*.tpfbdt"):
-            settings.prepare_project_file(Path(f"map/{map_area}/{tpfbdt_path.name}"), False, True)
+            relative_tpfbdt_path = Path(f"map/{map_area}/{tpfbdt_path.name}")
+            settings.prepare_project_file(operator, relative_tpfbdt_path, overwrite_existing=False)
 
     # We prefer to start with the TPFBHDs from the export directory (potentially just copied from import).
     if export_area_dir and export_area_dir.is_dir():

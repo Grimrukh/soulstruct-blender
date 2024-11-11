@@ -365,7 +365,8 @@ class ExportHKXMapCollisionToMap(LoggingOperator):
                         for suffix in ("hkxbhd", "hkxbdt"):
                             relative_path = Path(f"map/{map_stem}/{res}{map_stem[1:]}.{suffix}")
                             try:
-                                settings.prepare_project_file(relative_path, must_exist=True)
+                                # We never overwrite existing project HKXBHD/BDT as it may contain custom collisions.
+                                settings.prepare_project_file(self, relative_path, overwrite_existing=False)
                             except FileNotFoundError as ex:
                                 return self.error(
                                     f"Could not find file '{relative_path}' for map '{map_stem}'. Error: {ex}"

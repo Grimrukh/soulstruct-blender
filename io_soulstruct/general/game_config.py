@@ -12,66 +12,47 @@ from pathlib import Path
 
 from soulstruct.base.models.flver import FLVERVersion
 from soulstruct.base.maps.msb import MSB as BaseMSB
+from soulstruct.base.maps.navmesh import BaseNVMBND
 from soulstruct.containers.tpf import TPFPlatform
 from soulstruct.games import *
 
-from soulstruct.demonssouls.maps import constants as des_constants
-from soulstruct.demonssouls.maps import MSB as des_MSB
-
-from soulstruct.darksouls1ptde.maps import constants as ds1ptde_constants
-from soulstruct.darksouls1ptde.maps import MSB as ds1ptde_MSB
-
-from soulstruct.darksouls1r.maps import constants as ds1r_constants
-from soulstruct.darksouls1r.maps import MSB as ds1r_MSB
-
-from soulstruct.bloodborne.maps import constants as bb_constants
-from soulstruct.bloodborne.maps import MSB as bb_MSB
-
-from soulstruct.darksouls3.maps import constants as ds3_constants
-# from soulstruct.darksouls3.maps import MSB as ds3_MSB
-
-from soulstruct.eldenring.maps import constants as er_constants
-from soulstruct.eldenring.maps import MSB as er_MSB
+from soulstruct import demonssouls, darksouls1ptde, darksouls1r, bloodborne, darksouls3, eldenring
 
 from soulstruct_havok.core import PyHavokModule
-from soulstruct_havok.fromsoft import darksouls1ptde, darksouls1r, bloodborne, sekiro, eldenring
+from soulstruct_havok import fromsoft as hk_fromsoft
 from soulstruct_havok.fromsoft.base import BaseSkeletonHKX, BaseAnimationHKX
 
 
-@dataclass(slots=True)
+@dataclass(slots=True, kw_only=True)
 class GameConfig:
+    """Fixed configuration data and game-specific classes for a specific game."""
 
-    # File format support.
-    supports_flver: bool = False
-    supports_nvm: bool = False
-    supports_collision_model: bool = False
-    supports_animation: bool = False
-    supports_msb: bool = False
-    supports_cutscenes: bool = False
-
-    uses_matbin: bool = False
-    flver_default_version: FLVERVersion = FLVERVersion.DarkSouls_A
-    # True from Bloodborne (DS2?) onwards, where Map Piece FLVER vertices store their singular bone indices in the
-    # fourth 8-bit component of the 'normal_w' vertex array, rather than having a full useless four-bone `bone_indices`
-    # field like real rigged FLVERs.
-    map_pieces_use_normal_w_bones: bool = False
-
+    # FLVER CONFIG
+    flver_default_version: FLVERVersion | None = None  # `None` implies no FLVER support
     swizzle_platform: TPFPlatform | None = None  # overrides `TPF.platform` for de/swizzling
+    uses_matbin: bool = False
+
+    # MSB CONFIG
     msb_class: type[BaseMSB] | None = None
+    map_constants: ModuleType = None
 
-    # HAVOK
+    # NAVMESH CONFIG
+    nvmbnd_class: type[BaseNVMBND] | None = None
+
+    # HAVOK CONFIG
     py_havok_module: PyHavokModule | None = None
-    skeleton_hkx: type[BaseSkeletonHKX] | None = None
-    animation_hkx: type[BaseAnimationHKX] | None = None
+    skeleton_hkx_class: type[BaseSkeletonHKX] | None = None
+    animation_hkx_class: type[BaseAnimationHKX] | None = None
+    supports_collision_model: bool = False  # `MapCollisionModel` support
+    supports_cutscenes: bool = False  # `RemoBND` support
 
+    # MISC CONFIG
     # Redirect files that do and do not use the latest version of map files (e.g. to handle Darkroot Garden in DS1).
     new_to_old_map: dict[str, str] = field(default_factory=dict)
     old_to_new_map: dict[str, str] = field(default_factory=dict)
     # Indicates which file types prefer OLD versions of the map, and which prefer NEW.
     use_new_map: tuple[str, ...] = ()
     use_old_map: tuple[str, ...] = ()
-
-    map_constants: ModuleType = None
 
     def process_file_map_stem_version(self, map_stem: str, *parts: str | Path) -> str:
         if not parts:
@@ -87,60 +68,57 @@ class GameConfig:
             return self.new_to_old_map[map_stem]
         return map_stem
 
+    @property
+    def supports_flver(self) -> bool:
+        return self.flver_default_version is not None
+
+    @property
+    def supports_msb(self) -> bool:
+        return self.msb_class is not None
+
+    @property
+    def supports_nvm(self) -> bool:
+        return self.nvmbnd_class is not None
+
+    @property
+    def supports_animation(self) -> bool:
+        return (
+            self.py_havok_module is not None
+            and self.skeleton_hkx_class is not None
+            and self.animation_hkx_class is not None
+        )
+
 
 GAME_CONFIG = {
     DEMONS_SOULS: GameConfig(
-        supports_flver=True,
-        supports_nvm=True,
-        supports_collision_model=True,
-        supports_animation=False,  # TODO: wavelet compression support?
-        supports_msb=True,
-        uses_matbin=False,
         flver_default_version=FLVERVersion.DemonsSouls,
         swizzle_platform=TPFPlatform.PC,  # no swizzling despite being a PS3 exclusive
-        map_pieces_use_normal_w_bones=False,
-        msb_class=des_MSB,
-        map_constants=des_constants,
+
+        msb_class=demonssouls.maps.MSB,
+        map_constants=demonssouls.maps.constants,
+
+        # TODO: No idea why PyCharm is complaining about type here. Can't seem to detect 'type[BaseNVMBND] hint above.
+        nvmbnd_class=demonssouls.maps.navmesh.NVMBND,
 
         py_havok_module=PyHavokModule.hk550,
+        supports_collision_model=True,
         # Animation not yet supported (uses wavelet compression).
-        skeleton_hkx=None,
-        animation_hkx=None,
+        skeleton_hkx_class=None,
+        animation_hkx_class=None,
     ),
     DARK_SOULS_PTDE: GameConfig(
-        supports_flver=True,
-        supports_nvm=True,
-        supports_collision_model=True,
-        supports_animation=True,
-        supports_msb=True,
-        uses_matbin=False,
         flver_default_version=FLVERVersion.DarkSouls_A,
-        map_pieces_use_normal_w_bones=False,
-        msb_class=ds1ptde_MSB,
-        new_to_old_map={
-            "m12_00_00_01": "m12_00_00_00",
-        },
-        old_to_new_map={
-            "m12_00_00_00": "m12_00_00_01",
-        },
-        use_new_map=(".msb", ".nvmbnd", ".mcg", ".mcp"),
-        use_old_map=(".flver", ".hkxbhd", ".hkxbdt"),
-        map_constants=ds1ptde_constants,
+
+        msb_class=darksouls1ptde.maps.MSB,
+        map_constants=darksouls1ptde.constants,
+
+        nvmbnd_class=darksouls1ptde.maps.navmesh.NVMBND,
 
         py_havok_module=PyHavokModule.hk2010,
-        skeleton_hkx=darksouls1ptde.SkeletonHKX,
-        animation_hkx=darksouls1ptde.AnimationHKX,
-    ),
-    DARK_SOULS_DSR: GameConfig(
-        supports_flver=True,
-        supports_nvm=True,
+        skeleton_hkx_class=hk_fromsoft.darksouls1ptde.SkeletonHKX,
+        animation_hkx_class=hk_fromsoft.darksouls1ptde.AnimationHKX,
         supports_collision_model=True,
-        supports_animation=True,
-        supports_msb=True,
-        uses_matbin=False,
-        flver_default_version=FLVERVersion.DarkSouls_A,
-        map_pieces_use_normal_w_bones=False,
-        msb_class=ds1r_MSB,
+
         new_to_old_map={
             "m12_00_00_01": "m12_00_00_00",
         },
@@ -149,72 +127,74 @@ GAME_CONFIG = {
         },
         use_new_map=(".msb", ".nvmbnd", ".mcg", ".mcp"),
         use_old_map=(".flver", ".hkxbhd", ".hkxbdt"),
-        map_constants=ds1r_constants,
+    ),
+    DARK_SOULS_DSR: GameConfig(
+        flver_default_version=FLVERVersion.DarkSouls_A,
+
+        msb_class=darksouls1r.maps.MSB,
+        map_constants=darksouls1r.maps.constants,
+
+        nvmbnd_class=darksouls1r.maps.navmesh.NVMBND,
 
         py_havok_module=PyHavokModule.hk2015,
-        skeleton_hkx=darksouls1r.SkeletonHKX,
-        animation_hkx=darksouls1r.AnimationHKX,
+        skeleton_hkx_class=hk_fromsoft.darksouls1r.SkeletonHKX,
+        animation_hkx_class=hk_fromsoft.darksouls1r.AnimationHKX,
+        supports_collision_model=True,
+
+        new_to_old_map={
+            "m12_00_00_01": "m12_00_00_00",
+        },
+        old_to_new_map={
+            "m12_00_00_00": "m12_00_00_01",
+        },
+        use_new_map=(".msb", ".nvmbnd", ".mcg", ".mcp"),
+        use_old_map=(".flver", ".hkxbhd", ".hkxbdt"),
     ),
     BLOODBORNE: GameConfig(
-        supports_flver=True,
-        supports_nvm=False,  # TODO: used?
-        supports_collision_model=False,  # TODO: could at least read hknp meshes
-        supports_animation=True,
-        supports_msb=False,  # TODO
-        uses_matbin=False,
         flver_default_version=FLVERVersion.Bloodborne_DS3_A,
-        map_pieces_use_normal_w_bones=True,
-        msb_class=bb_MSB,
-        map_constants=bb_constants,
+
+        msb_class=None,  # TODO: need Blender wrappers
+        map_constants=bloodborne.maps.constants,
+
+        # NOTE: Bloodborne and onwards use Havok `NVMHKT` for navmeshes, not `NVM`.
 
         py_havok_module=PyHavokModule.hk2014,
-        skeleton_hkx=bloodborne.SkeletonHKX,
-        animation_hkx=bloodborne.AnimationHKX,
+        skeleton_hkx_class=hk_fromsoft.bloodborne.SkeletonHKX,
+        animation_hkx_class=hk_fromsoft.bloodborne.AnimationHKX,
+        supports_collision_model=False,  # TODO: could at least read hknp meshes
     ),
     DARK_SOULS_3: GameConfig(
-        supports_flver=True,
-        supports_nvm=False,  # not used
-        supports_collision_model=False,  # TODO: could at least read hknp meshes
-        supports_animation=True,
-        supports_msb=False,  # TODO: not supported by Soulstruct
-        uses_matbin=False,
         flver_default_version=FLVERVersion.Bloodborne_DS3_A,
-        map_pieces_use_normal_w_bones=True,
-        map_constants=ds3_constants,
+
+        msb_class=None,  # TODO: not in Soulstruct yet
+        map_constants=darksouls3.maps.constants,
 
         py_havok_module=PyHavokModule.hk2014,
         # TODO: Not yet supported, but doable.
-        skeleton_hkx=None,
-        animation_hkx=None,
+        skeleton_hkx_class=None,
+        animation_hkx_class=None,
+        supports_collision_model=False,  # TODO: could at least read hknp meshes
     ),
     SEKIRO: GameConfig(
-        supports_flver=True,
-        supports_nvm=False,
-        supports_collision_model=False,
-        supports_animation=False,  # TODO: probably easy
-        supports_msb=False,
-        uses_matbin=False,
         flver_default_version=FLVERVersion.Sekiro_EldenRing,
-        map_pieces_use_normal_w_bones=True,
+
+        msb_class=None,  # TODO: not in Soulstruct yet
 
         py_havok_module=PyHavokModule.hk2016,
-        skeleton_hkx=sekiro.SkeletonHKX,
-        animation_hkx=sekiro.AnimationHKX,
+        skeleton_hkx_class=hk_fromsoft.sekiro.SkeletonHKX,
+        animation_hkx_class=hk_fromsoft.sekiro.AnimationHKX,
+        supports_collision_model=False,
     ),
     ELDEN_RING: GameConfig(
-        supports_flver=True,
-        supports_nvm=False,
-        supports_collision_model=False,
-        supports_animation=True,
-        supports_msb=False,
-        uses_matbin=True,
         flver_default_version=FLVERVersion.Sekiro_EldenRing,
-        map_pieces_use_normal_w_bones=True,
-        msb_class=er_MSB,
-        map_constants=er_constants,
+        uses_matbin=True,  # first game to use MATBIN rather than MTD
+
+        msb_class=eldenring.maps.MSB,
+        map_constants=eldenring.maps.constants,
 
         py_havok_module=PyHavokModule.hk2018,
-        skeleton_hkx=eldenring.SkeletonHKX,
-        animation_hkx=eldenring.AnimationHKX,
+        skeleton_hkx_class=hk_fromsoft.eldenring.SkeletonHKX,
+        animation_hkx_class=hk_fromsoft.eldenring.AnimationHKX,
+        supports_collision_model=False,
     ),
 }

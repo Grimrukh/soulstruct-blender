@@ -15,7 +15,7 @@ import bpy
 from soulstruct.base.base_binary_file import BaseBinaryFile
 from soulstruct.base.models.matbin import MATBINBND
 from soulstruct.base.models.mtd import MTDBND
-from soulstruct.dcx import DCXType, compress
+from soulstruct.dcx import DCXType, compress, decompress
 from soulstruct.games import *
 from soulstruct.utilities.files import read_json, write_json, create_bak
 
@@ -170,6 +170,12 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         default=False,
     )
 
+    export_des_debug_files: bpy.props.BoolProperty(
+        name="Export Demon's Souls Debug Files",
+        description="Export non-DCX and/or loose files for Demon's Souls debug mode, depending on file type",
+        default=True,
+    )
+
     er_map_filter_mode: bpy.props.EnumProperty(
         name="Elden Ring Map Filter",
         description="Filter mode for Map Stem dropdown. Only used by Elden Ring",
@@ -287,18 +293,6 @@ class SoulstructSettings(bpy.types.PropertyGroup):
                     "is the correct way to handle files for Darkroot Garden in DS1. Selecting map m12_00_00_00 vs. "
                     "m12_00_00_01 in the dropdown will therefore have no effect on auto-import/export",
         default=True,
-    )
-
-    des_flver_export_mode: bpy.props.EnumProperty(
-        name="Demon's Souls FLVER Export Mode",
-        description="Whether to export loose Demon's Souls FLVER files as DCX, non-DCX, or both (default) when using "
-                    "exporters without file selection or the 'Auto' DCX option",
-        items=[
-            ("BOTH", "Both", "Export both DCX and non-DCX FLVER files"),
-            ("DCX", "DCX", "Export only DCX FLVER files"),
-            ("NON_DCX", "Non-DCX", "Export only non-DCX FLVER files"),
-        ],
-        default="BOTH",
     )
 
     # Generic enough to place here. Only used by certain operators.
@@ -611,11 +605,14 @@ class SoulstructSettings(bpy.types.PropertyGroup):
 
         `class_name` is used for logging and will be automatically detected from `file` if not given.
 
-        Returns a list of absolute file paths exported.
+        Returns a list of file paths exported.
         """
+        class_name = class_name or file.cls_name
         if relative_path.is_absolute():
             # Indicates a mistake in an operator.
-            raise ValueError(f"Relative path for export must be relative to game root, not absolute: {relative_path}")
+            raise InternalSoulstructBlenderError(
+                f"Path for `{class_name}` file export must be relative to game root, not absolute: {relative_path}"
+            )
         try:
             return self._export_file(operator, file, relative_path, class_name)
         except Exception as e:
@@ -624,55 +621,59 @@ class SoulstructSettings(bpy.types.PropertyGroup):
             return []  # TODO: possible that project file is written, but not game file?
 
     def _export_file(
-        self, operator: LoggingOperator, file: BaseBinaryFile, relative_path: Path, class_name=""
+        self, operator: LoggingOperator, file: BaseBinaryFile, relative_path: Path, class_name: str
     ) -> list[Path]:
-        if not class_name:
-            class_name = file.cls_name
-
         project_root = self.project_root
         game_root = self.game_root
-        exported_paths = []
 
         if project_root:
             project_path = project_root.get_file_path(relative_path)
             project_path.parent.mkdir(parents=True, exist_ok=True)
-            written = file.write(project_path)  # will create '.bak' if appropriate
-            operator.info(f"Exported {class_name} to: {written}")
-            exported_paths += written
+            exported_project_paths = file.write(project_path)  # will create '.bak' if appropriate
+            operator.info(f"Exported {class_name} to project: {exported_project_paths}")
+            exported_game_paths = []
             if game_root and self.also_export_to_game:
                 # Copy all written files to game directory, rather than re-exporting.
-                for written_path in written:
-                    written_relative_path = written_path.relative_to(self.project_root_path)
-                    game_path = game_root.get_file_path(written_relative_path)
+                for exported_project_path in exported_project_paths:
+                    exported_relative_path = exported_project_path.relative_to(self.project_root_path)
+                    game_path = game_root.get_file_path(exported_relative_path)
                     if game_path.is_file():
                         create_bak(game_path)  # we may be about to replace it
                         operator.info(f"Created backup file in game directory: {game_path}")
                     else:
                         game_path.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(written_path, game_path)
-                    exported_paths.append(game_path)
+                    shutil.copy2(exported_project_path, game_path)
+                    exported_game_paths.append(game_path)
                     operator.info(f"Copied exported {class_name} file to game directory: {game_path}")
-        elif game_root and self.also_export_to_game:
+            return exported_project_paths + exported_game_paths
+
+        if game_root and self.also_export_to_game:
             game_path = game_root.get_file_path(relative_path)
             game_path.parent.mkdir(parents=True, exist_ok=True)
-            written = file.write(game_path)
-            exported_paths += written
-            operator.info(f"Exported {class_name} to game directory only: {written}")
-        else:
-            operator.warning(
-                f"Cannot export {class_name} file. Project directory is not set and game directory is either not "
-                f"set or 'Also Export to Game' is disabled."
-            )
+            exported_game_paths = file.write(game_path)
+            operator.info(f"Exported {class_name} to game directory only: {exported_game_paths}")
+            return exported_game_paths
 
-        return exported_paths
+        operator.warning(
+            f"Cannot export `{class_name}` file. Project directory is not set and game directory is either not "
+            f"set or 'Also Export to Game' is disabled."
+        )
+        return []
 
     def export_file_data(
         self, operator: LoggingOperator, data: bytes, relative_path: Path, class_name: str
     ) -> list[Path]:
         """Version of `export_file` that takes raw `bytes` data instead of a `BaseBinaryFile` to export.
 
-        `class_name` must be given for logging in this case because it cannot be automatically detected.
+        `class_name` must be given for logging in this case because it cannot be automatically detected from raw `data`.
+
+        Returns a list of file paths exported.
         """
+        if relative_path.is_absolute():
+            # Indicates a mistake in an operator.
+            raise InternalSoulstructBlenderError(
+                f"Path for file data export must be relative to game root, not absolute: {relative_path}"
+            )
         try:
             return self._export_file_data(operator, data, relative_path, class_name)
         except Exception as e:
@@ -686,7 +687,6 @@ class SoulstructSettings(bpy.types.PropertyGroup):
 
         project_root = self.project_root
         game_root = self.game_root
-        exported_paths = []
 
         if project_root:
             project_path = project_root.get_file_path(relative_path)
@@ -696,7 +696,6 @@ class SoulstructSettings(bpy.types.PropertyGroup):
             else:
                 project_path.parent.mkdir(parents=True, exist_ok=True)
             project_path.write_bytes(data)
-            exported_paths.append(project_path)
             operator.info(f"Exported {class_name} to: {project_path}")
             if game_root and self.also_export_to_game:
                 # Copy to game directory.
@@ -707,9 +706,11 @@ class SoulstructSettings(bpy.types.PropertyGroup):
                 else:
                     game_path.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(project_path, game_path)
-                exported_paths.append(game_path)
                 operator.info(f"Copied exported {class_name} to game directory: {game_path}")
-        elif game_root and self.also_export_to_game:
+                return [project_path, game_path]
+            return [project_path]
+
+        if game_root and self.also_export_to_game:
             game_path = game_root.get_file_path(relative_path)
             if game_path.is_file():
                 create_bak(game_path)
@@ -717,25 +718,28 @@ class SoulstructSettings(bpy.types.PropertyGroup):
             else:
                 game_path.parent.mkdir(parents=True, exist_ok=True)
             game_path.write_bytes(data)
-            exported_paths.append(game_path)
             operator.info(f"Exported {class_name} to game directory only: {game_path}")
-        else:
-            operator.warning(
-                f"Cannot export {class_name} file. Project directory is not set and game directory is either not "
-                f"set or 'Also Export to Game' is disabled."
-            )
+            return [game_path]
 
-        return exported_paths
+        operator.warning(
+            f"Cannot export `{class_name}` file data. Project directory is not set and game directory is either not "
+            f"set or 'Also Export to Game' is disabled."
+        )
+        return []
 
     def export_text_file(
         self, operator: LoggingOperator, text: str, relative_path: Path, encoding="utf-8"
     ) -> list[Path]:
         """Write `text` string to `relative_path` in project directory (if given) and optionally also to game directory
         if `also_export_to_game` is enabled.
+
+        Returns a list of file paths exported.
         """
         if relative_path.is_absolute():
             # Indicates a mistake in an operator.
-            raise ValueError(f"Relative path for export must be relative to game root, not absolute: {relative_path}")
+            raise InternalSoulstructBlenderError(
+                f"Path for text file export must be relative to game root, not absolute: {relative_path}"
+            )
         try:
             return self._export_text_file(operator, text, relative_path, encoding)
         except Exception as e:
@@ -743,11 +747,12 @@ class SoulstructSettings(bpy.types.PropertyGroup):
             operator.report({"ERROR"}, f"Failed to export text file: {e}")
             return []
 
-    def _export_text_file(self, operator: LoggingOperator, text: str, relative_path: Path, encoding: str) -> list[Path]:
+    def _export_text_file(
+        self, operator: LoggingOperator, text: str, relative_path: Path, encoding: str
+    ) -> list[Path]:
 
         project_root = self.project_root
         game_root = self.game_root
-        exported_paths = []
 
         if project_root:
             project_path = project_root.get_file_path(relative_path, dcx_type=DCXType.Null)
@@ -768,88 +773,98 @@ class SoulstructSettings(bpy.types.PropertyGroup):
                     game_path.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(project_path, game_path)
                 operator.info(f"Copied exported text file to game directory: {game_path}")
-        elif game_root and self.also_export_to_game:
+                return [project_path, game_path]
+            return [project_path]
+
+        if game_root and self.also_export_to_game:
             game_path = game_root.get_file_path(relative_path, dcx_type=DCXType.Null)
             game_path.parent.mkdir(parents=True, exist_ok=True)
             with game_path.open("w", encoding=encoding) as f:
                 f.write(text)
             operator.info(f"Exported text file to game directory only: {game_path}")
-        else:
-            operator.warning(
-                f"Cannot export text file: {relative_path}. Project directory is not set and game directory is either "
-                f"not set or 'Also Export to Game' is disabled."
-            )
+            return [game_path]
+
+        operator.warning(
+            f"Cannot export text file: {relative_path}. Project directory is not set and game directory is either "
+            f"not set or 'Also Export to Game' is disabled."
+        )
+        return []
 
     def prepare_project_file(
         self,
+        operator: LoggingOperator,
         relative_path: Path,
-        overwrite_existing: bool = None,
-        must_exist=False,
-        dcx_type: DCXType = None,
+        overwrite_existing=False,
     ) -> Path | None:
-        """Copy file from game directory to project directory, if both are set.
+        """Guarantee the existence of `relative_path` in project directory by copying it from the game directory if it
+        does not already exist in the project.
 
-        Useful for creating initial Binders and MSBs in project directory that are only being partially modified with
-        new exported entries.
+        Useful for creating initial Binders in project directory that are only being partially modified with new
+        exported entries. If project directory is not set, just raises an error if `relative_path` does not exist in the
+        game directory, which implies imminent export failure.
 
-        Does nothing if project directory is not set, in which case you are either exporting to the game directory only
-        or will likely hit an exception later on.
+        Note that the caller's protocol for `overwrite_existing` should largely depend on whether the file being
+        prepared is a true 'multi-asset' file, such as a NVMBND, HKXBXF, or TPFBXF Binder (in which case we will NEVER
+        want to overwrite an existing project Binder, as it may contain other exported assets), or a 'single asset' file
+        such as a CHRBND (in which case the caller can set it to `not settings.prefer_import_from_project` so that any,
+        e.g., modified TPFs inside the existing project Binder are only kept if 'Prefer Import from Project' is enabled.
+        It's hard to perfectly handle all usage cases of this, but this is the best I've come up with.
 
-        Never creates a `.bak` backup file.
+        Only creates a `.bak` backup file (if absent) in the project if `overwrite_existing == True` and an existing
+        project file is overwritten.
 
-        Returns the project file path.
+        Returns the project file path that already exists or is created. Returns `None` if and only if the project
+        directory is not set but the game file does exist, which suggests imminent export will work (to game only).
 
         Args:
+            operator: Calling operator, for logging.
             relative_path: Path relative to game root directory.
-            overwrite_existing: If `False`, the file will not be copied if it already exists in the project directory.
-                If `True`, the file will always be copied, overwriting any existing project file.
-                If `None` (default), the file will be copied if and only if `prefer_import_from_project = False`, so
-                that the initial file used comes from the game.
-            must_exist: If `True`, the file must already exist in the project directory or successfully be copied from
-                the game directory (assuming the project directory is set).
-            dcx_type: If given, will manually override the file type's DCX type.
+            overwrite_existing: Determines behavior when `relative_path` already exists in the project and the game
+                directory does exist. Options:
+                    False: The file will NOT be copied from the game if it already exists in the project directory.
+                     True: The file will always be copied from the game, overwriting any existing project file.
+                     None: The file will be copied if and only if `prefer_import_from_project == False`,
+                Soulstruct settings, so that the initial file used comes from the game.
         """
-        if overwrite_existing is None:
-            overwrite_existing = not self.prefer_import_from_project
+        if self.game_root_path is None and self.project_root_path is None:
+            # Export is impossible. (Generally already checked.)
+            raise SoulstructBlenderError(
+                f"Neither project not game directory is set. Cannot prepare file: {relative_path}"
+            )
 
-        if self.game_root_path:
-            game_path = self.game_root.get_file_path(relative_path, dcx_type=dcx_type)
-        else:
-            game_path = None
-
-        if self.project_root_path:
-            project_path = self.project_root.get_file_path(relative_path, dcx_type=dcx_type)
-        else:
-            project_path = None
+        # We don't pass in `if_exist=True` so we can distinguish between non-set directories and missing files below.
+        game_path = self.game_root.get_file_path(relative_path) if self.game_root_path else None
+        project_path = self.project_root.get_file_path(relative_path) if self.project_root_path else None
 
         if not is_path_and_file(game_path) and not is_path_and_file(project_path):
             # Neither file exists.
-            if must_exist:
-                raise FileNotFoundError(f"File does not exist in project OR game directory: {relative_path}")
-            return None
+            raise FileNotFoundError(f"Required file does not exist in project OR game directory: {relative_path}")
 
-        if project_path is None:
+        if self.project_root_path is None:
             # Project directory not set. No chance of copying anything.
-            if game_path.is_file():
-                return game_path
-            elif must_exist:
-                raise FileNotFoundError(
-                    f"Project directory is not set and file does not exist in game directory: {relative_path}"
+            if game_path.is_file():  # cannot be `None` or first check above would fail
+                return None  # only case of `None` being returned
+            # Game file does not exist and project directory is not set, which is a fail case.
+            raise FileNotFoundError(
+                f"Project directory is not set and required file does not exist in game directory: {relative_path}"
+            )
+
+        if project_path.is_file():
+            if not game_path.is_file():
+                # Cannot copy from game, but project file exists. We use it even if `overwrite_existing=True`.
+                operator.warning(
+                    f"Required file '{relative_path}' already exists in project directory and will be used, but this "
+                    f"file does not exist in the set game directory, which is unusual."
                 )
-            return None  # no project directory and game file does not exist
-
-        if is_path_and_file(project_path) and not overwrite_existing:
-            return project_path  # already exists
-
-        if not is_path_and_file(game_path):
-            # Game file is missing. Project file either already exists or doesn't exist (possible exception).
-            if project_path.is_file():  # already known not to be `None`
                 return project_path
-            elif must_exist:
-                raise FileNotFoundError(f"File does not exist in game or project directory: {relative_path}")
-            return None  # nothing to copy (may or may not already exist in project)
+            if not overwrite_existing:
+                return project_path  # easy case
 
-        # Copy game file to project directory and use new project file path.
+            # Overwrite existing project file below. Create a backup now if absent.
+            create_bak(project_path)
+
+        # Project file does not exist (but game file does as per previous check). Copy game file to project directory,
+        # ovewriting it if it already exists ('.bak' created above).
         try:
             project_path.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(game_path, project_path)
@@ -882,21 +897,13 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         NOTE: Those should generally only be called for loose files or files inside uncompressed split BHD binders
         (usually TPFs). Files inside compressed BND binders never use DCX, as far as I'm aware.
 
-        If `dcx_type_name` is not "AUTO", it is returned directly. For Demon's Souls FLVER files, which have both DCX
-        and non-DCX versions in dumped (debug) files (but actually load the non-DCX), the `des_flver_export_mode` is
-        checked to determine which file(s) are written.
+        If `dcx_type_name` is not "AUTO", its corresponding `DCXType` is returned directly.
         """
         if dcx_type_name != "AUTO":
-            # Manual DCX type given.
+            # Manual DCX type given. Easy resolve.
             return DCXType[dcx_type_name]
 
-        if self.is_game(DEMONS_SOULS) and dcx_type_name == "AUTO" and class_name == "flver":
-            # Special settings-dependent case for Demon's Souls FLVER files. The caller should handle the 'BOTH' case
-            # by writing the DCX file in addition to this non-DCX one.
-            if self.des_flver_export_mode != "DCX":
-                return DCXType.Null
-            return DCXType.DCX_EDGE  # Demon's Souls DCX
-
+        # Look up DCX type based on selected game and class name.
         return self.game.get_dcx_type(class_name)
 
     def get_game_msb_class(self) -> type[MSB_TYPING]:
@@ -1059,7 +1066,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):
 
     @staticmethod
     def create_dcx_file(non_dcx_path: Path, dcx_type: DCXType) -> Path:
-        """Create a DCX version of a file at `non_dcx_path` with the given `dcx_type`."""
+        """Create a DCX version of file at `non_dcx_path` with the given `dcx_type`."""
         if dcx_type == DCXType.Null:
             return non_dcx_path  # already created
         if non_dcx_path.name.endswith(".dcx"):
@@ -1076,5 +1083,23 @@ class SoulstructSettings(bpy.types.PropertyGroup):
             create_bak(dcx_path)
         dcx_path.write_bytes(dcx_bytes)
         return dcx_path
+
+    @staticmethod
+    def create_non_dcx_file(dcx_path: Path) -> Path:
+        """Create a non-DCX version of file at `dcx_path`."""
+        if not dcx_path.name.endswith(".dcx"):
+            raise ValueError(f"Cannot create non-DCX version of file without '.dcx' extension: {dcx_path}")
+
+        if not dcx_path.is_file():
+            raise FileNotFoundError(f"Cannot create DCX version of non-existent file: {dcx_path}")
+
+        dcx_bytes = dcx_path.read_bytes()
+        dcx_bytes, _ = decompress(dcx_bytes)  # `dcx_type` discarded
+        non_dcx_path = dcx_path.with_name(f"{dcx_path.stem}")  # confirmed above that '.dcx' is last suffix
+        if non_dcx_path.is_file():
+            # Create '.bak' first.
+            create_bak(non_dcx_path)
+        non_dcx_path.write_bytes(dcx_bytes)
+        return non_dcx_path
 
     # endregion

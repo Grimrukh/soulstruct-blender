@@ -11,9 +11,9 @@ from pathlib import Path
 
 import bpy
 
+from soulstruct.base.maps.navmesh import NVM, BaseNVMBND
 from soulstruct.containers import Binder, BinderEntry
 from soulstruct.dcx import DCXType
-from soulstruct.base.maps.navmesh import BaseNVMBND
 from soulstruct.darksouls1r.maps.navmesh import NVMBND as NVMBND_DSR
 from soulstruct.darksouls1ptde.maps.navmesh import NVMBND as NVMBND_PTDE
 from soulstruct.demonssouls.maps.navmesh import NVMBND as NVMBND_DES
@@ -21,10 +21,9 @@ from soulstruct.games import DARK_SOULS_PTDE, DARK_SOULS_DSR, DEMONS_SOULS
 
 from io_soulstruct.exceptions import SoulstructTypeError
 from io_soulstruct.types import SoulstructType
-from io_soulstruct.utilities.operators import LoggingOperator, LoggingExportOperator, get_dcx_enum_property
+from io_soulstruct.utilities.operators import *
 from io_soulstruct.utilities.misc import *
 from .types import *
-from ...utilities import LoggingImportOperator
 
 
 class ExportLooseNVM(LoggingExportOperator):
@@ -247,6 +246,9 @@ class ExportNVMIntoSelectedMap(LoggingOperator):
         opened_nvmbnds = {}  # type: dict[Path, BaseNVMBND]
         bl_nvms = BlenderNVM.from_selected_objects(context)  # type: list[BlenderNVM]
 
+        export_loose_des_nvms = settings.is_game(DEMONS_SOULS) and settings.export_des_debug_files
+        loose_nvms_to_export = []  # type: list[tuple[NVM, Path]]
+
         for bl_nvm in bl_nvms:
             # NVMBND files come from latest 'map' folder version.
             map_stem = settings.get_map_stem_for_export(bl_nvm.obj, latest=True)
@@ -255,7 +257,8 @@ class ExportNVMIntoSelectedMap(LoggingOperator):
             if relative_nvmbnd_path not in opened_nvmbnds:
                 # Open new NVMBND. We start with the game NVMBND unless `Prefer Import from Project` is enabled.
                 try:
-                    nvmbnd_path = settings.prepare_project_file(relative_nvmbnd_path, must_exist=True)
+                    # We never overwrite existing project NVMBNDs as they may contain other custom NVMs.
+                    nvmbnd_path = settings.prepare_project_file(self, relative_nvmbnd_path, overwrite_existing=False)
                 except FileNotFoundError as ex:
                     self.error(f"Cannot find NVMBND: {relative_nvmbnd_path}. Error: {ex}")
                     continue
@@ -280,10 +283,20 @@ class ExportNVMIntoSelectedMap(LoggingOperator):
 
             nvmbnd.set_nvm(model_stem, nvm)  # no extension needed
 
+            if export_loose_des_nvms:
+                # Note that the loose debug NVMs always have lower-case model stems.
+                loose_nvms_to_export.append((nvm, Path(f"map/{map_stem}/{model_stem.lower()}.nvm")))
+
+        exported_paths = []
         for relative_nvmbnd_path, nvmbnd in opened_nvmbnds.items():
             nvmbnd.entries = list(sorted(nvmbnd.entries, key=lambda e: e.name))
             for i, entry in enumerate(nvmbnd.entries):
                 entry.entry_id = i
-            settings.export_file(self, nvmbnd, relative_nvmbnd_path)
+            exported_paths += settings.export_file(self, nvmbnd, relative_nvmbnd_path)
 
-        return {"FINISHED"}
+        if settings.is_game(DEMONS_SOULS) and settings.export_des_debug_files and loose_nvms_to_export:
+            # Export loose NVMs next to NVMBND.
+            for nvm, relative_nvm_path in loose_nvms_to_export:
+                exported_paths += settings.export_file(self, nvm, relative_nvm_path)
+
+        return {"FINISHED" if exported_paths else "CANCELLED"}
