@@ -17,6 +17,7 @@ class ArmatureActionChoiceOperator(LoggingOperator):
     bl_label = "Select Animation Enum"
 
     bl_armature = None
+    bl_mesh = None
     enum_options: list[tuple[tp.Any, str, str]] = []
 
     choices_enum: bpy.props.EnumProperty(items=get_armature_action_choices)
@@ -51,12 +52,14 @@ class ArmatureActionChoiceOperator(LoggingOperator):
     def run(
         cls,
         bl_armature,
+        bl_mesh
     ):
         cls.bl_armature = bl_armature
+        cls.bl_mesh = bl_mesh
         cls.enum_options = []
         for action in bpy.data.actions:
-            if action.name.startswith(f"{bl_armature.name}|"):
-                action_name = action.name.removeprefix(f"{bl_armature.name}|")
+            if action.name.startswith(f"{bl_mesh.name}|"):
+                action_name = action.name.removeprefix(f"{bl_mesh.name}|")
                 cls.enum_options.append((action.name, action_name, ""))
         # noinspection PyUnresolvedReferences
         bpy.ops.wm.armature_action_choice_operator("INVOKE_DEFAULT")
@@ -76,10 +79,26 @@ class SelectArmatureActionOperator(LoggingOperator):
     def poll(cls, context):
         """Animation's rigged armature must be selected (to extract bone names)."""
         try:
-            return context.selected_objects[0] and context.selected_objects[0].soulstruct_type == SoulstructType.FLVER
+            if context.selected_objects[0] and context.object:
+                if context.object.type == 'ARMATURE':
+                    sel = context.object
+                    for child in sel.children: #! should be O(1) in most cases
+                        if child.type == 'MESH':
+                            return child.soulstruct_type == SoulstructType.FLVER
+                elif context.object.type == 'MESH':
+                    return context.object.soulstruct_type == SoulstructType.FLVER
+            return False
         except IndexError:
             return False
 
     def execute(self, context):
-        ArmatureActionChoiceOperator.run(context.selected_objects[0])
+        if context.object.type == 'ARMATURE':
+            armature = context.object
+            for child in armature.children:
+                if child.type == 'MESH':
+                    mesh = child; break
+        elif context.object.type == 'MESH':
+            armature = context.object.parent
+            mesh = context.object
+        ArmatureActionChoiceOperator.run(armature, mesh)
         return {"FINISHED"}
