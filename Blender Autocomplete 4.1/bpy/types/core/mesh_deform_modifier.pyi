@@ -1,0 +1,74 @@
+import typing
+import collections.abc
+import mathutils
+from .struct import Struct
+from .bpy_struct import bpy_struct
+from .object import Object
+from .modifier import Modifier
+
+GenericType1 = typing.TypeVar("GenericType1")
+GenericType2 = typing.TypeVar("GenericType2")
+
+
+class MeshDeformModifier(Modifier, bpy_struct):
+    """Mesh deformation modifier to deform with other meshes"""
+
+    invert_vertex_group: bool
+    """ Invert vertex group influence
+
+    :type: bool
+    """
+
+    is_bound: bool
+    """ Whether geometry has been bound to control cage
+
+    :type: bool
+    """
+
+    object: Object
+    """ Mesh object to deform with
+
+    :type: Object
+    """
+
+    precision: int
+    """ The grid size for binding
+
+    :type: int
+    """
+
+    use_dynamic_bind: bool
+    """ Recompute binding dynamically on top of other deformers (slower and more memory consuming)
+
+    :type: bool
+    """
+
+    vertex_group: str
+    """ Vertex group name
+
+    :type: str
+    """
+
+    @classmethod
+    def bl_rna_get_subclass(cls, id: str | None, default=None) -> Struct:
+        """
+
+        :param id: The RNA type identifier.
+        :type id: str | None
+        :param default:
+        :return: The RNA type or default when not found.
+        :rtype: Struct
+        """
+        ...
+
+    @classmethod
+    def bl_rna_get_subclass_py(cls, id: str | None, default=None) -> typing.Any:
+        """
+
+        :param id: The RNA type identifier.
+        :type id: str | None
+        :param default:
+        :return: The class or default when not found.
+        :rtype: typing.Any
+        """
+        ...
