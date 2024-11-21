@@ -8,7 +8,7 @@ import traceback
 import typing as tp
 
 import bpy
-from io_soulstruct.exceptions import MissingPartModelError, MapCollisionImportError
+from io_soulstruct.exceptions import MissingPartModelError, MapCollisionImportError, BatchOperationUnsupportedError
 from io_soulstruct.collision.types import BlenderMapCollision
 from io_soulstruct.msb.properties import MSBPartSubtype, MSBCollisionProps
 from io_soulstruct.types import *
@@ -220,6 +220,7 @@ class BlenderMSBCollision(BlenderMSBPart[MSBCollision, MSBCollisionProps]):
             # NOTE: Hi and lo-res binders could end up being found in different import folders (project vs. game).
             try:
                 hi_res_hkxbhd_path = settings.get_import_map_file_path(f"h{map_stem[1:]}.hkxbhd")
+                print(hi_res_hkxbhd_path)
             except FileNotFoundError:
                 raise FileNotFoundError(f"Cannot find hi-res HKXBHD for map {map_stem}.")
             try:
@@ -247,6 +248,76 @@ class BlenderMSBCollision(BlenderMSBPart[MSBCollision, MSBCollisionProps]):
             )
 
         return bl_map_collision.obj
+
+    @classmethod
+    def batch_import_models(
+        cls,
+        operator: LoggingOperator,
+        context: bpy.types.Context,
+        parts: list[MSBCollision],
+        map_stem: str,
+    ):
+        """Import all models for a batch of MSB Collisions, as needed, in parallel as much as possible.
+
+        Quite simple, but means we only need to read the HKXBHD once.
+        """
+        settings = operator.settings(context)
+
+        model_collection = get_or_create_collection(
+            context.scene.collection,
+            f"{map_stem} Models",
+            f"{map_stem} Collision Models",
+            hide_viewport=context.scene.msb_import_settings.hide_model_collections,
+        )
+
+        if settings.is_game("DARK_SOULS_PTDE"):
+            # No HKX binders; hi and lo-res models are loose HKX files in map directory.
+            # We can just recur on the standalone import method.
+            for part in parts:
+                model_name = part.model.get_model_file_stem(map_stem)
+                # TODO: try/except?
+                cls.import_model_mesh(operator, context, model_name, map_stem, model_collection=model_collection)
+            return
+
+        if settings.is_game("DARK_SOULS_DSR"):
+            # NOTE: Hi and lo-res binders could end up being found in different import folders (project vs. game).
+            try:
+                hi_res_hkxbhd_path = settings.get_import_map_file_path(f"h{map_stem[1:]}.hkxbhd")
+                print(hi_res_hkxbhd_path)
+            except FileNotFoundError:
+                raise FileNotFoundError(f"Cannot find hi-res HKXBHD for map {map_stem}.")
+            try:
+                lo_res_hkxbhd_path = settings.get_import_map_file_path(f"l{map_stem[1:]}.hkxbhd")
+            except FileNotFoundError:
+                raise FileNotFoundError(f"Cannot find lo-res HKXBHD for map {map_stem}.")
+
+            both_res_hkxbhd = BothResHKXBHD.from_both_paths(hi_res_hkxbhd_path, lo_res_hkxbhd_path)
+
+            for part in parts:
+                model_name = part.model.get_model_file_stem(map_stem)
+                hi_collision, lo_collision = both_res_hkxbhd.get_both_hkx(model_name)
+
+                try:
+                    BlenderMapCollision.new_from_soulstruct_obj(
+                        operator,
+                        context,
+                        hi_collision,
+                        model_name,
+                        collection=model_collection,
+                        lo_collision=lo_collision,
+                    )
+                except Exception as ex:
+                    traceback.print_exc()  # for inspection in Blender console
+                    raise MapCollisionImportError(
+                        f"Cannot import HKX '{model_name}' from HKXBHDs in map {map_stem}. Error: {ex}"
+                    )
+
+            return
+
+        # Probably not specific to batch import, but we'll catch that later.
+        raise BatchOperationUnsupportedError(
+            f"Cannot yet batch import HKX Collision models for game {settings.game.name} (only DS1)."
+        )
 
 
 BlenderMSBCollision.add_auto_subtype_props(*BlenderMSBCollision.AUTO_COLLISION_PROPS)

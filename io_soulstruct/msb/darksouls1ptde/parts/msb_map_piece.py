@@ -30,6 +30,7 @@ class BlenderMSBMapPiece(BlenderMSBPart[MSBMapPiece, MSBMapPieceProps]):
     SOULSTRUCT_MODEL_CLASS = MSBMapPieceModel
     PART_SUBTYPE = MSBPartSubtype.MapPiece
     MODEL_SUBTYPES = ["map_piece_models"]
+    DUPLICATE_MODEL_ARMATURE = True
 
     __slots__ = []
 
@@ -107,38 +108,18 @@ class BlenderMSBMapPiece(BlenderMSBPart[MSBMapPiece, MSBMapPieceProps]):
         # Return only the mesh for MSB Part instances.
         return bl_flver.mesh
 
-    @classmethod
-    def new_from_soulstruct_obj(
-        cls,
-        operator: LoggingOperator,
-        context: bpy.types.Context,
-        soulstruct_obj: MSBMapPiece,
-        name: str,
-        collection: bpy.types.Collection = None,
-        map_stem="",
-        try_import_model=True,
-        model_collection: bpy.types.Collection = None,
-    ) -> tp.Self:
-        """Map Pieces sometimes use bones to place vertex subsets, which look like nonsense without that positioning.
+    # Don't need to override `new_from_soulstruct_obj()`.
 
-        So if the Map Piece FLVER model has an Armature, we copy it to this Part, including current pose data. It will
-        never be used during Part export. (Cutscenes may also use it, though I don't think Map Pieces are "animated".)
-        """
-        bl_map_piece = super().new_from_soulstruct_obj(
-            operator, context, soulstruct_obj, name, collection, map_stem, try_import_model, model_collection
-        )  # type: BlenderMSBMapPiece
-
-        if bl_map_piece.model and not bl_map_piece.model.get("MSB_MODEL_PLACEHOLDER", False):
-            bl_flver = BlenderFLVER(bl_map_piece.model)
+    def duplicate_model_armature_if_needed(self, context: bpy.types.Context, name: str):
+        if self.model and not self.model.get("MSB_MODEL_PLACEHOLDER", False):
+            bl_flver = BlenderFLVER(self.model)
             if bl_flver.armature:
-                # This handles parenting, rigging, etc.
-                bl_flver.duplicate_armature(context, bl_map_piece.obj, copy_pose=True)
+                # This handles parenting, rigging, etc. TODO: Datablock won't have a unique name (just '.00X' suffix).
+                armature_obj = bl_flver.duplicate_armature(context, self.obj, copy_pose=True)
                 # Rename Part Armature object.
-                bl_map_piece.armature.name = f"{name} Armature"
+                armature_obj.name = f"{name} Armature"
                 # Rename modifier for clarity.
-                bl_map_piece.obj.modifiers["FLVER Armature"].name = "Part Armature"
-
-        return bl_map_piece
+                self.obj.modifiers["FLVER Armature"].name = "Part Armature"
 
     @classmethod
     def batch_import_models(
@@ -186,7 +167,7 @@ class BlenderMSBMapPiece(BlenderMSBPart[MSBMapPiece, MSBMapPieceProps]):
             context,
             model_datas,
             map_stem,
-            cls.PART_SUBTYPE.get_nice_name(),
+            part_subtype_title=cls.PART_SUBTYPE.get_nice_name(),
             flver_source_binders=None,
             image_import_callback=image_import_callback,
         )

@@ -54,12 +54,9 @@ class GameConfig:
     use_new_map: tuple[str, ...] = ()
     use_old_map: tuple[str, ...] = ()
 
-    def process_file_map_stem_version(self, map_stem: str, *parts: str | Path) -> str:
-        if not parts:
-            return map_stem
-
-        # Check if an older or newer version of the map exists to redirect to, depending on file type.
-        last_part = str(parts[-1]).lower().removesuffix(".dcx")
+    def process_file_map_stem_version(self, map_stem: str, file_name: str) -> str:
+        """Check if an older or newer version of the map exists to redirect to, depending on file type."""
+        last_part = file_name.lower().removesuffix(".dcx")
         if self.old_to_new_map and map_stem in self.old_to_new_map and last_part.endswith(self.use_new_map):
             # Redirect to NEW map version.
             return self.old_to_new_map[map_stem]

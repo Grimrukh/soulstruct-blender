@@ -135,16 +135,20 @@ def _import_msb(
         else:
             continue  # ignore Part with found model
 
-        parts = batched_parts_with_models.setdefault(part.SUBTYPE_ENUM, IDList())
+        if part.SUBTYPE_ENUM in batched_parts_with_models:
+            parts = batched_parts_with_models[part.SUBTYPE_ENUM][1]
+        else:
+            parts = IDList()
+            batched_parts_with_models[part.SUBTYPE_ENUM] = (bl_part_type, parts)
         parts.append(part)
 
     # 2. Try to batch-import all queued Part models.
-    for part_subtype, parts in tuple(batched_parts_with_models.items()):
-        bl_part_type = get_bl_part_type(parts[0])
+    for part_subtype, (bl_part_type, parts) in tuple(batched_parts_with_models.items()):
         map_dir_stem = msb_stem if bl_part_type.MODEL_USES_LATEST_MAP else oldest_map_stem
 
         try:
             # Import models for this Part subtype in parallel, as much as possible.
+            operator.info(f"Importing {bl_part_type.PART_SUBTYPE.get_nice_name()} models in parallel.")
             bl_part_type.batch_import_models(operator, context, parts, map_stem=map_dir_stem)
         except BatchOperationUnsupportedError:
             # Import models for this Part subtype one by one below.

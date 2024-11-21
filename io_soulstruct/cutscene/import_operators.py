@@ -132,9 +132,10 @@ class ImportHKXCutscene(LoggingImportOperator):
 
             bl_part = bl_cutscene_parts[part_name]  # type: BlenderMSBPart
 
-            # We need to add an Armature to the Part, if it doesn't already have one.
+            # We need to add an Armature to the Part, if it doesn't already have one (including default Armatures).
+            # TODO: Do we actually need the Map Pieces to have default Armatures...?
             if not bl_part.armature:
-                bl_part.duplicate_flver_model_armature(context)
+                bl_part.duplicate_flver_model_armature(context, create_default_armature=True)
 
             # Get bone names from first cut that includes this part.
             first_cut_frames = next(iter(remo_part.cut_arma_frames.values()))

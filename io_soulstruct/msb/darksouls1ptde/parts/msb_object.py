@@ -40,15 +40,15 @@ class BlenderMSBObject(BlenderMSBPart[MSBObject, MSBObjectProps]):
         "break_term",
         "net_sync_type",
         "default_animation",
-        "unk_x0e_x10",
-        "unk_x10_x14",
+        "unk_x0e",
+        "unk_x10",
     ]
 
     break_term: int
     net_sync_type: int
     default_animation: int
-    unk_x0e_x10: int
-    unk_x10_x14: int
+    unk_x0e: int
+    unk_x10: int
 
     @property
     def armature(self) -> bpy.types.ArmatureObject | None:

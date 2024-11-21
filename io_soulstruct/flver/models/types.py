@@ -663,7 +663,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         model_name: str,
         mesh_child_obj: bpy.types.MeshObject = None,
     ) -> bpy.types.ArmatureObject:
-        """Create a default Blender Armature for this FLVER with a single default, origin, eponymous bone.
+        """Create a default Blender Armature for `mesh_child_obj` with a single default, origin, eponymous bone.
 
         This isn't needed for export, as the same Armature will be created for exported FLVER automatically.
 

@@ -466,14 +466,12 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         return None
 
     @staticmethod
-    def get_first_existing_map_dir_path(
-        *parts: str | Path, roots: tp.Sequence[GameStructure], map_stem: str = None
-    ) -> Path | None:
+    def get_first_existing_map_dir_path(roots: tp.Sequence[GameStructure], map_stem: str = None) -> Path | None:
         """Check ordered `roots` for 'map' dir path, returning first that exists."""
         for root in roots:
             if not root:
                 continue
-            path = root.get_map_dir_path(*parts, if_exist=True, map_stem=map_stem)
+            path = root.get_map_dir_path(if_exist=True, map_stem=map_stem)
             if path:
                 return path
         return None
@@ -555,16 +553,14 @@ class SoulstructSettings(bpy.types.PropertyGroup):
             raise FileNotFoundError(f"Map file not found in project or game directory with parts: {parts}")
         return path
 
-    def get_import_map_dir_path(self, *parts: str | Path, map_stem: str = None) -> Path:
+    def get_import_map_dir_path(self, map_stem: str = None) -> Path:
         """Get the 'map/{map_stem}' directory path, and optionally further, in the preferred directory.
 
         Directory must exist, or a `NotADirectoryError` will be raised.
         """
-        path = self.get_first_existing_map_dir_path(*parts, roots=self.import_roots, map_stem=map_stem)
+        path = self.get_first_existing_map_dir_path(roots=self.import_roots, map_stem=map_stem)
         if not path:
-            if parts:
-                raise NotADirectoryError(f"Map subdirectory not found in project or game directory with parts: {parts}")
-            raise NotADirectoryError(f"Map directory not found in project or game directory.")
+            raise NotADirectoryError(f"Map directory for map {map_stem} not found in project or game directory.")
         return path
 
     def get_import_msb_path(self, map_stem: str = None) -> Path:
@@ -1038,27 +1034,24 @@ class SoulstructSettings(bpy.types.PropertyGroup):
 
     # region Internal Methods
 
-    def process_file_map_stem_version(self, map_stem: str, *parts: str | Path) -> str:
+    def process_file_map_stem_version(self, map_stem: str, file_name: str) -> str:
         """If `smart_map_version_handling` is enabled, this will redirect to the version of the given map stem
         (DD part) that is appropriate for the file type given in `parts` (if given)."""
-        if not self.smart_map_version_handling or not parts:
+        if not self.smart_map_version_handling:
             # Nothing to process.
             return map_stem
-        return GAME_CONFIG[self.game].process_file_map_stem_version(map_stem, *parts)
+        return GAME_CONFIG[self.game].process_file_map_stem_version(map_stem, file_name)
 
     def get_relative_msb_path(self, map_stem: str = None) -> Path | None:
         """Get relative MSB path of given `map_stem` (or selected by default) for selected game.
 
         If `smart_map_version_handling` is enabled, this will redirect to the latest version of the MSB.
         """
-        if map_stem is None:
-            map_stem = self.map_stem
+        map_stem = map_stem or self.map_stem
         if not map_stem:
             return None
         map_stem = self.process_file_map_stem_version(map_stem, f"{map_stem}.msb")
-        return self.game.process_dcx_path(
-            Path(self.game.default_file_paths["MapStudioDirectory"], f"{map_stem}.msb")
-        )
+        return self.game.process_dcx_path(Path(self.game.default_file_paths["MapStudioDirectory"], f"{map_stem}.msb"))
 
     # endregion
 

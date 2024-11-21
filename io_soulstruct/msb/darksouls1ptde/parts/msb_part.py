@@ -31,6 +31,9 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
 
     FLVER model Armatures and Dummies are NOT instantiated for FLVER parts -- strictly Meshes (or Empties for Player
     Starts).
+
+    However, by necessity, if the part has a FLVER model with an Armature, the Armature will be duplicated to the part
+    so that the part can be posed (especially important for Map Pieces).
     """
 
     TYPE = SoulstructType.MSB_PART
@@ -42,6 +45,7 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
     PART_SUBTYPE: tp.ClassVar[MSBPartSubtype]
     MODEL_SUBTYPES: tp.ClassVar[list[str]]  # for `MSB` model search on export
     MODEL_USES_LATEST_MAP: tp.ClassVar[bool] = False  # which map version folder to look for model in
+    DUPLICATE_MODEL_ARMATURE: tp.ClassVar[bool] = False  # only needed for Map Pieces so their 'static pose' is shown
 
     __slots__ = []
     obj: bpy.types.MeshObject
@@ -90,7 +94,10 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
 
     @property
     def armature(self) -> bpy.types.ArmatureObject | None:
-        """Detect parent Armature of wrapped Mesh object. Rarely present for Parts. Must be overridden to enable."""
+        """Detect parent Armature of wrapped Mesh object. Rarely present for Parts. Must be overridden to enable.
+
+        Note that MSB translate, rotate, and scale are written to and read from the Armature if present.
+        """
         raise TypeError(f"MSB {self.PART_SUBTYPE} parts cannot have Armatures.")
 
     @property
@@ -142,12 +149,29 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
 
     def set_bl_obj_transform(self, part: MSBPart):
         game_transform = Transform.from_msb_entry(part)
-        self.obj.location = game_transform.bl_translate
-        self.obj.rotation_euler = game_transform.bl_rotate
-        self.obj.scale = game_transform.bl_scale
+
+        # Set transform to Armature if present and valid for this part type, or just this Mesh.
+        try:
+            armature = self.armature
+        except TypeError:
+            armature = None
+        obj = armature or self.obj
+
+        obj.location = game_transform.bl_translate
+        obj.rotation_euler = game_transform.bl_rotate
+        obj.scale = game_transform.bl_scale
 
     def set_part_transform(self, part: MSBPart, use_world_transform=False):
-        bl_transform = BlenderTransform.from_bl_obj(self.obj, use_world_transform)
+
+        # Get transform from Armature if present and valid for this part type, or just this Mesh.
+        try:
+            armature = self.armature
+        except TypeError:
+            armature = None
+        obj = armature or self.obj
+
+        bl_transform = BlenderTransform.from_bl_obj(obj, use_world_transform)
+
         part.translate = bl_transform.game_translate
         part.rotate = bl_transform.game_rotate_deg
         part.scale = bl_transform.game_scale
@@ -333,23 +357,35 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
         )
         model_mesh = model.data if model else bpy.data.meshes.new(name)
         bl_part = cls.new(name, model_mesh, collection)  # type: tp.Self
-        bl_part.set_bl_obj_transform(soulstruct_obj)
         bl_part.model = model
         bl_part.draw_groups = soulstruct_obj.draw_groups
         bl_part.display_groups = soulstruct_obj.display_groups
-        for name in cls.AUTO_PART_PROPS:
-            setattr(bl_part, name, getattr(soulstruct_obj, name))
+        for prop_name in cls.AUTO_PART_PROPS:
+            setattr(bl_part, prop_name, getattr(soulstruct_obj, prop_name))
+
+        # Create a duplicated parent Armature for the Part if needed. This is mainly for Map Piece parts to be posed.
+        if cls.DUPLICATE_MODEL_ARMATURE and bl_part.model and not bl_part.model.get("MSB_MODEL_PLACEHOLDER", False):
+            # This will return `None` if the FLVER has no Armature (default, most Map Pieces).
+            armature_obj = bl_part.duplicate_flver_model_armature(context, create_default_armature=False)
+            if armature_obj:
+                armature_obj.name = f"{name} Armature"
+
+        # Now we can set the Blender transform, which will go to the Armature if present.
+        bl_part.set_bl_obj_transform(soulstruct_obj)
 
         return bl_part
 
-    def duplicate_flver_model_armature(self, context: bpy.types.Context):
+    def duplicate_flver_model_armature(
+        self, context: bpy.types.Context, create_default_armature=False
+    ) -> bpy.types.ArmatureObject | None:
         """Duplicate FLVER model's Armature parent to being the parent of this part Mesh.
 
         Only works for FLVER-based Parts, obviously (Map Pieces, Objects, Assets, Characters). Those classes will also
         expose an `armature` property to retrieve the Mesh parent.
 
-        If the model parent does not have an Armature, the implicit default one will be created for the Part, though
-        this is unlikely to be useful for such models (i.e., static Map Pieces).
+        If the model parent does not have an Armature, the implicit default one will be created for the Part if
+        `create_default_armature` is True, though this is unlikely to be useful for such models (i.e., static Map
+        Pieces). This is used for REMOBND cutscenes.
         """
         if not self.model:
             raise ValueError("Cannot duplicate model armature for MSB Part without a model.")
@@ -358,13 +394,20 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
         bl_flver = BlenderFLVER(self.model)
         if not bl_flver.armature:
             # This FLVER model doesn't have an Armature, implying the FLVER has only one default bone. We create that
-            # for this Part, without assigning it to the FLVER.
-            BlenderFLVER.create_default_armature_parent(context, self.export_name, self.obj)
+            # for this Part if requested, without assigning it to the FLVER.
+            if create_default_armature:
+                armature_obj = BlenderFLVER.create_default_armature_parent(context, self.export_name, self.obj)
+            else:
+                armature_obj = None
         else:
             # Duplicate model's Armature. This handles parenting, rigging, etc. We only copy pose for Map Pieces.
-            bl_flver.duplicate_armature(context, self.obj, copy_pose=self.PART_SUBTYPE == MSBPartSubtype.MapPiece)
+            armature_obj = bl_flver.duplicate_armature(
+                context, self.obj, copy_pose=self.PART_SUBTYPE == MSBPartSubtype.MapPiece
+            )
             # Rename new modifier for clarity.
             self.obj.modifiers["FLVER Armature"].name = "Part Armature"
+
+        return armature_obj
 
     def _create_soulstruct_obj(self) -> SOULSTRUCT_T:
         """Create a new MSB Part instance of the appropriate subtype. Args are supplied automatically."""
