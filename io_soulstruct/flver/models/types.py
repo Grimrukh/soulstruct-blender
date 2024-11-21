@@ -996,7 +996,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
                 # Create a relatively informative material name. We use material index, mat def, and model name as a
                 # suffix to maximize the chances of a unique Blender name.
                 bl_material_name = (
-                    f"{material.name} [{flver_material_index} | {material.mat_def_stem}) | {model_name}]"
+                    f"{material.name} [{flver_material_index} | {material.mat_def_stem} | {model_name}]"
                 )
 
                 bl_material = BlenderFLVERMaterial.new_from_flver_material(
