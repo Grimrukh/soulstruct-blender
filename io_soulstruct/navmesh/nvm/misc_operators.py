@@ -7,6 +7,8 @@ __all__ = [
     "RemoveNVMFaceFlags",
     "SetNVMFaceObstacleCount",
     "ResetNVMFaceInfo",
+    "AddNVMEventEntityTriangleIndex",
+    "RemoveNVMEventEntityTriangleIndex",
 ]
 
 import bmesh
@@ -14,6 +16,7 @@ import bpy
 
 from soulstruct.base.events.enums import NavmeshFlag
 
+from io_soulstruct.types import SoulstructType
 from io_soulstruct.utilities import LoggingOperator
 from .utilities import set_face_material
 
@@ -197,3 +200,37 @@ class ResetNVMFaceInfo(LoggingOperator):
         bmesh.update_edit_mesh(obj.data)
 
         return {"FINISHED"}
+
+
+class AddNVMEventEntityTriangleIndex(bpy.types.Operator):
+    bl_idname = "nvm_event_entity.add_triangle_index"
+    bl_label = "Add Triangle"
+
+    @classmethod
+    def poll(cls, context: bpy.types.Context):
+        return context.active_object and context.active_object.soulstruct_type == SoulstructType.NVM_EVENT_ENTITY
+
+    def execute(self, context):
+        nvm_event_entity = context.active_object
+        nvm_event_entity.NVM_EVENT_ENTITY.triangle_indices.add()
+        return {'FINISHED'}
+
+
+class RemoveNVMEventEntityTriangleIndex(bpy.types.Operator):
+    bl_idname = "nvm_event_entity.remove_triangle_index"
+    bl_label = "Remove Triangle"
+
+    @classmethod
+    def poll(cls, context):
+        return (
+            context.active_object
+            and context.active_object.soulstruct_type == SoulstructType.NVM_EVENT_ENTITY
+            and len(context.active_object.NVM_EVENT_ENTITY.triangle_indices) > 0
+        )
+
+    def execute(self, context):
+        obj = context.active_object
+        index = obj.NVM_EVENT_ENTITY.triangle_index
+        obj.NVM_EVENT_ENTITY.triangle_indices.remove(index)
+        obj.NVM_EVENT_ENTITY.triangle_index = max(0, index - 1)
+        return {'FINISHED'}

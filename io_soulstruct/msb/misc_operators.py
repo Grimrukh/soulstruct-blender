@@ -7,13 +7,16 @@ __all__ = [
     "DisableSelectedNames",
     "CreateMSBPart",
     "DuplicateMSBPartModel",
+    "ApplyPartTransformToModel",
     "FindEntityID",
     "ColorMSBEvents",
 ]
 
 import bpy
+from mathutils import Matrix
 
 from io_soulstruct.exceptions import FLVERError
+from io_soulstruct.general import SoulstructSettings
 from io_soulstruct.flver.models import BlenderFLVER
 from io_soulstruct.msb.operator_config import BLENDER_MSB_PART_TYPES
 from io_soulstruct.types import SoulstructType
@@ -167,28 +170,58 @@ class DuplicateMSBPartModel(LoggingOperator):
 
     @classmethod
     def poll(cls, context):
-        if context.mode != "OBJECT" or not context.active_object:
+        """Select at least one MSB Part."""
+        if not context.selected_objects:
             return False
-        return context.active_object.soulstruct_type == SoulstructType.MSB_PART
+        if not all(obj.soulstruct_type == SoulstructType.MSB_PART for obj in context.selected_objects):
+            return False
+        return True
 
     def execute(self, context):
         if not self.poll(context):
             return self.error("Must select an MSB Part in Object Mode.")
 
-        settings = self.settings(context)
-        part = context.active_object
+        # Basic validation of selected objects:
+        for obj in context.selected_objects:
+            if obj.soulstruct_type != SoulstructType.MSB_PART:
+                return self.error(f"Selected object '{obj.name}' is not an MSB Part. No models created.")
+            if obj.MSB_PART.model is None:
+                return self.error(
+                    f"Selected MSB Part '{obj.name}' does not have a model object reference. No models created."
+                )
+            # Any other errors occur during duplication. We ignore them individually.
 
-        old_model = part.MSB_PART.model
-        if old_model is None:
-            return self.error("Active MSB Part does not have a model object reference.")
+        success_count = 0
+        for obj in context.selected_objects:
+            try:
+                self._duplicate_part_model(context, obj)
+            except Exception as ex:
+                self.error(f"Failed to duplicate model of MSB Part '{obj.name}': {ex}")
+            else:
+                success_count += 1
+
+        if success_count == 0:
+            return self.error("Failed to duplicate any models of selected MSB Parts.")
+
+        self.info(
+            f"Duplicated models of {success_count} / {len(context.selected_objects)} "
+            f"MSB Part{'s' if success_count > 1 else ''}."
+        )
+        return {"FINISHED"}
+
+    def _duplicate_part_model(self, context, part: bpy.types.Object):
+        settings = self.settings(context)
+
+        old_model = part.MSB_PART.model  # already validated
+        # Find all collections containing source model.
+        source_collections = old_model.users_collection
 
         part_subtype = part.MSB_PART.part_subtype
         old_part_name = part.name
 
         if not settings.new_model_name:
-            new_model_name = old_part_name.split("_")[0]
+            new_model_name = self.get_auto_name(part, settings)
             rename_part = False
-            self.info(f"No name for new model specified. Using current prefix of Part name: '{new_model_name}'")
         else:
             new_model_name = settings.new_model_name
             rename_part = True
@@ -200,34 +233,50 @@ class DuplicateMSBPartModel(LoggingOperator):
                 f"model."
             )
 
-        # Find all collections containing source model.
-        source_collections = old_model.users_collection
-
         if part_subtype in {
             MSBPartSubtype.MapPiece, MSBPartSubtype.Object, MSBPartSubtype.Character, MSBPartSubtype.Asset
         }:
             # Model is a FLVER.
             old_bl_flver = BlenderFLVER(old_model)
             old_model_name = old_bl_flver.name  # get from root object
-            # TODO: Move below to a `BlenderFLVER.duplicate()` method.
-            #  Then add methods for Collision and Navmeshes (easy, just Mesh data).
             self.info(f"Duplicating FLVER model '{old_bl_flver.name}' to '{new_model_name}'.")
             new_bl_flver = old_bl_flver.duplicate(
                 new_model_name,
                 collections=source_collections,
                 copy_pose=part_subtype == MSBPartSubtype.MapPiece,
             )
-            new_bl_flver.rename(new_model_name)
+            # Do a deep renaming of FLVER.
+            new_bl_flver.deep_rename(new_model_name)
             new_model = new_bl_flver.mesh
         elif part_subtype == MSBPartSubtype.Collision:
+            # TODO: Add as Collision `duplicate()` method.
             old_model_name = old_model.name
             new_model = new_mesh_object(new_model_name, old_model.data.copy())
-            copy_obj_property_group(old_model, new_model, "hkx_map_collision")
+            new_model.soulstruct_type = SoulstructType.COLLISION
+            new_model.data.name = new_model_name
+            copy_obj_property_group(old_model, new_model, "COLLISION")
+            for collection in source_collections:
+                collection.objects.link(new_model)
         elif part_subtype == MSBPartSubtype.Navmesh:
+            # TODO: Add as NVM `duplicate()` method.
             old_model_name = old_model.name
             new_model = new_mesh_object(new_model_name, old_model.data.copy())
-            copy_obj_property_group(old_model, new_model, "nvm")
+            new_model.soulstruct_type = SoulstructType.NAVMESH
+            new_model.data.name = new_model_name
+            # No NVM properties to copy.
+            for collection in source_collections:
+                collection.objects.link(new_model)
+
+            # Copy any NVM Event Entity children of old model.
+            for child in old_model.children:
+                if child.soulstruct_type == SoulstructType.NVM_EVENT_ENTITY:
+                    new_child = child.copy()  # empty object, no data to copy
+                    new_child.name = child.name.replace(old_model_name, new_model_name)  # usually a prefix
+                    new_child.parent = new_model
+                    for collection in source_collections:
+                        collection.objects.link(new_child)
         else:
+            # No early game types left here.
             return self.error(f"Cannot yet duplicate model of MSB Part subtype: {part_subtype}")
 
         # Update MSB Part model reference. (`model.update` will update Part data-block.)
@@ -243,9 +292,87 @@ class DuplicateMSBPartModel(LoggingOperator):
                     new_part_suffix = old_part_name[i:]  # keep old Part suffix ('_0000', '_CASTLE', whatever).
                     part.name = f"{new_part_prefix}{new_part_suffix}"
                     break
-            # No need for `else` because part name cannot have been identical to model name in Blender!
+            # No need for `else` because part name cannot have been identical to model name in Blender! And if we
+            # exhausted one of the strings (probably the old model name) without finding a difference, the new Part
+            # name will be identical anyway.
 
         return {"FINISHED"}
+
+    def get_auto_name(self, part: bpy.types.Object, settings: SoulstructSettings) -> str:
+        new_model_name = part.name.split("_")[0]
+
+        if settings.is_game_ds1() and len(new_model_name) == 7:
+            # Add 'A##' area suffix automatically, for convenience.
+            try:
+                map_stem = get_collection_map_stem(part)
+            except ValueError:
+                self.info(f"Automatic new model name (failed to detect 'A##' area suffix): '{new_model_name}'")
+            else:
+                new_model_name += f"A{map_stem[1:3]}"
+                self.info(f"Automatic new model name with detected 'A##' area suffix: '{new_model_name}'")
+        else:
+            self.info(f"Automatic new model name: '{new_model_name}'")
+
+        return new_model_name
+
+
+class ApplyPartTransformToModel(LoggingOperator):
+
+    bl_idname = "object.apply_part_transform_to_model"
+    bl_label = "Apply Part Transform to Model"
+    bl_description = ("For each selected Part, apply its local (NOT world) transform to its model data, then reset the "
+                      "Part's transform to identity. This will cause the model to move to the Part's current location "
+                      "unless any further parent transforms are being applied to the Part. Only useable for geometry "
+                      "Parts (Map Pieces, Collisions, Navmeshes, Connect Collisions), for safety.")
+
+    @classmethod
+    def poll(cls, context):
+        """Select at least one MSB Part."""
+        if not context.selected_objects:
+            return False
+        valid_subtypes = {
+            MSBPartSubtype.MapPiece,
+            MSBPartSubtype.Collision,
+            MSBPartSubtype.Navmesh,
+            MSBPartSubtype.ConnectCollision,
+        }
+        if not all(
+            obj.type == "MESH" and obj.soulstruct_type == SoulstructType.MSB_PART
+            and obj.MSB_PART.part_subtype in valid_subtypes
+            for obj in context.selected_objects
+        ):
+            return False
+        return True
+
+    def execute(self, context):
+        if not self.poll(context):
+            return self.error("Must select an MSB Part in Object Mode.")
+
+        success_count = 0
+        for obj in context.selected_objects:
+            obj: bpy.types.MeshObject
+            try:
+                self._apply_part_transform(obj)
+            except Exception as ex:
+                self.error(f"Failed to apply transform of MSB Part '{obj.name}' to model: {ex}")
+            else:
+                success_count += 1
+
+        if success_count == 0:
+            return self.error("Failed to apply transform to any models of selected MSB Parts.")
+
+        self.info(
+            f"Applied transform to {success_count} / {len(context.selected_objects)} "
+            f"MSB Part{'s' if success_count > 1 else ''}."
+        )
+        return {"FINISHED"}
+
+    @staticmethod
+    def _apply_part_transform(part: bpy.types.MeshObject):
+        mesh = part.data
+        local_transform = part.matrix_local.copy()
+        mesh.transform(local_transform)  # applies to mesh data
+        part.matrix_local = Matrix.Identity(4)  # reset to identity
 
 
 class FindEntityID(LoggingOperator):

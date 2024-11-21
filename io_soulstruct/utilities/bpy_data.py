@@ -97,7 +97,7 @@ def copy_obj_property_group(source_obj: bpy.types.Object, dest_obj: bpy.types.Ob
     """Use annotations of `source_obj.props_name` to copy properties to `dest_obj.props_name`."""
     source_props = getattr(source_obj, props_name)
     dest_props = getattr(dest_obj, props_name)
-    for prop_name in source_props.__annotations__:
+    for prop_name in source_props.__class__.__annotations__:
         setattr(dest_props, prop_name, getattr(source_props, prop_name))
 
 

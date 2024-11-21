@@ -60,7 +60,7 @@ class CopyToNewFLVER(LoggingOperator):
             make_materials_single_user=True,
             copy_pose=True,
         )
-        new_bl_flver.rename(settings.new_model_name or f"{bl_flver.name}_Copy")
+        new_bl_flver.deep_rename(settings.new_model_name or f"{bl_flver.name}_Copy")
 
         return {"FINISHED"}
 
@@ -87,7 +87,7 @@ class RenameFLVER(LoggingOperator):
             return self.error("No new model name specified.")
 
         bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
-        bl_flver.rename(settings.new_model_name)
+        bl_flver.deep_rename(settings.new_model_name)
 
         return {"FINISHED"}
 

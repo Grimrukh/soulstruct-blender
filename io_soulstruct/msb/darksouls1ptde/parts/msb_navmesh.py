@@ -152,3 +152,58 @@ class BlenderMSBNavmesh(BlenderMSBPart[MSBNavmesh, MSBNavmeshProps]):
         # operator.info(f"Imported NVM model {import_info.model_file_stem} as '{import_info.bl_name}'.")
 
         return bl_nvm.obj
+
+    @classmethod
+    def batch_import_models(
+        cls,
+        operator: LoggingOperator,
+        context: bpy.types.Context,
+        parts: list[MSBNavmesh],
+        map_stem: str,
+    ):
+        """Import all models for a batch of MSB Navmeshes, as needed, in parallel as much as possible.
+
+        Quite simple, but means we only need to read the NVMBND once.
+        """
+        settings = operator.settings(context)
+
+        model_collection = get_or_create_collection(
+            context.scene.collection,
+            f"{map_stem} Models",
+            f"{map_stem} Navmesh Models",
+            hide_viewport=context.scene.msb_import_settings.hide_model_collections,
+        )
+
+        imported_model_names = set()
+
+        try:
+            nvmbnd_path = settings.get_import_map_file_path(f"{map_stem}.nvmbnd")
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Cannot find NVMBND for map {map_stem}.")
+
+        nvmbnd_class = settings.game_config.nvmbnd_class
+
+        nvmbnd = nvmbnd_class.from_path(nvmbnd_path)
+
+        for part in parts:
+            model_name = part.model.get_model_file_stem(map_stem)
+
+            if model_name in imported_model_names:
+                continue
+            imported_model_names.add(model_name)
+
+            nvm = nvmbnd.get_nvm(model_name)
+
+            try:
+                BlenderNVM.new_from_soulstruct_obj(
+                    operator,
+                    context,
+                    nvm,
+                    model_name,
+                    collection=model_collection,
+                )
+            except Exception as ex:
+                traceback.print_exc()  # for inspection in Blender console
+                raise NVMImportError(
+                    f"Cannot import NVM '{model_name}' from NVMBND in map {map_stem}. Error: {ex}"
+                )

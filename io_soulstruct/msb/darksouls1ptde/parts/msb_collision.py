@@ -270,11 +270,16 @@ class BlenderMSBCollision(BlenderMSBPart[MSBCollision, MSBCollisionProps]):
             hide_viewport=context.scene.msb_import_settings.hide_model_collections,
         )
 
+        imported_model_names = set()
+
         if settings.is_game("DARK_SOULS_PTDE"):
             # No HKX binders; hi and lo-res models are loose HKX files in map directory.
             # We can just recur on the standalone import method.
             for part in parts:
                 model_name = part.model.get_model_file_stem(map_stem)
+                if model_name in imported_model_names:
+                    continue
+                imported_model_names.add(model_name)
                 # TODO: try/except?
                 cls.import_model_mesh(operator, context, model_name, map_stem, model_collection=model_collection)
             return
@@ -283,7 +288,6 @@ class BlenderMSBCollision(BlenderMSBPart[MSBCollision, MSBCollisionProps]):
             # NOTE: Hi and lo-res binders could end up being found in different import folders (project vs. game).
             try:
                 hi_res_hkxbhd_path = settings.get_import_map_file_path(f"h{map_stem[1:]}.hkxbhd")
-                print(hi_res_hkxbhd_path)
             except FileNotFoundError:
                 raise FileNotFoundError(f"Cannot find hi-res HKXBHD for map {map_stem}.")
             try:
@@ -295,6 +299,11 @@ class BlenderMSBCollision(BlenderMSBPart[MSBCollision, MSBCollisionProps]):
 
             for part in parts:
                 model_name = part.model.get_model_file_stem(map_stem)
+
+                if model_name in imported_model_names:
+                    continue
+                imported_model_names.add(model_name)
+
                 hi_collision, lo_collision = both_res_hkxbhd.get_both_hkx(model_name)
 
                 try:
@@ -314,7 +323,7 @@ class BlenderMSBCollision(BlenderMSBPart[MSBCollision, MSBCollisionProps]):
 
             return
 
-        # Probably not specific to batch import, but we'll catch that later.
+        # Shouldn't be reachable (this class is already for DS1).
         raise BatchOperationUnsupportedError(
             f"Cannot yet batch import HKX Collision models for game {settings.game.name} (only DS1)."
         )

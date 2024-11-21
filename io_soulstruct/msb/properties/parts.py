@@ -60,7 +60,7 @@ class MSBPartSubtype(StrEnum):
 
 
 # noinspection PyUnusedLocal
-def _update_part_model(self, context):
+def _update_part_model(self: MSBPartProps, context):
     """Set the data-block of this (Mesh) object to `model.data`."""
     if self.model:
         if (
@@ -73,9 +73,11 @@ def _update_part_model(self, context):
             )
         ):
             # Valid or placeholder model has been set. Link mesh data.
-            self.data = self.model.data
+            self.id_data.data = self.model.data
+            print(f"INFO: Assigned data of model '{self.model}' to Part mesh '{self.id_data.name}'.")
         else:
             # Reject model.
+            print(f"INFO: Rejected assignment of model '{self.model}' to Part mesh '{self.id_data.name}'.")
             self.model = None  # will not cause this `if` block to recur
 
 
@@ -964,6 +966,7 @@ class MSBNavmeshProps(bpy.types.PropertyGroup):
             self.navmesh_groups_3,
         ]
 
+    # noinspection PyUnusedLocal
     def get_game_props(self, game: Game) -> list[str]:
         return list(self.__annotations__)
 
@@ -1004,5 +1007,6 @@ class MSBConnectCollisionProps(bpy.types.PropertyGroup):
         max=99,
     )
 
+    # noinspection PyUnusedLocal
     def get_game_props(self, game: Game) -> list[str]:
         return list(self.__annotations__)

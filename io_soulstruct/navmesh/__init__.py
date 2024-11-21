@@ -21,16 +21,23 @@ __all__ = [
     "NVMNavmeshExportPanel",
     "NVMNavmeshToolsPanel",
     "NavmeshERImportPanel",
+    "NVMEventEntityPanel",
+    "OBJECT_UL_nvm_event_entity_triangle",
 
     "NavmeshFaceSettings",
     "AddNVMFaceFlags",
     "RemoveNVMFaceFlags",
     "SetNVMFaceObstacleCount",
     "ResetNVMFaceInfo",
+    "AddNVMEventEntityTriangleIndex",
+    "RemoveNVMEventEntityTriangleIndex",
 
     "NVMProps",
     "NVMEventEntityProps",
+
 ]
+
+import typing as tp
 
 import bmesh
 import bpy
@@ -166,7 +173,7 @@ def layout_selected_faces(bm: bmesh.types.BMesh, layout, context, selected_faces
         props = context.scene.navmesh_face_settings
         flag_box = layout.box()
         row = flag_box.row()
-        row.prop(props, "flag_type")
+        row.prop(props, "navmesh_flag")
         row = flag_box.row()
         row.operator(AddNVMFaceFlags.bl_idname, text="Add Flag")
         row.operator(RemoveNVMFaceFlags.bl_idname, text="Remove Flag")
@@ -219,3 +226,70 @@ class NavmeshERImportPanel(bpy.types.Panel):
         quick_box.operator(ImportAllNVMHKTsFromNVMHKTBND.bl_idname)
         quick_box.operator(ImportAllOverworldNVMHKTs.bl_idname)
         quick_box.operator(ImportAllDLCOverworldNVMHKTs.bl_idname)
+
+
+class OBJECT_UL_nvm_event_entity_triangle(bpy.types.UIList):
+    """Draws a list of items."""
+    PROP_NAME: tp.ClassVar[str] = "index"
+
+    def draw_item(
+        self,
+        context,
+        layout,
+        data,
+        item,
+        icon,
+        active_data,
+        active_property,
+        index=0,
+        flt_flag=0,
+    ):
+        if self.layout_type in {'DEFAULT', 'COMPACT'}:
+            row = layout.row()
+            row.label(text=f"Triangle {index}:")
+            row.prop(item, self.PROP_NAME, text="", emboss=False)
+        elif self.layout_type == 'GRID':
+            layout.alignment = 'CENTER'
+            layout.label(text=f"Triangle {index}:")
+            layout.prop(item, self.PROP_NAME, text="", emboss=False)
+
+
+class NVMEventEntityPanel(bpy.types.Panel):
+    """Draw a Panel in the Object properties window exposing NVM Event Entity properties for active object."""
+    bl_label = "NVM Event Entity Settings"
+    bl_idname = "OBJECT_PT_nvm_event_entity"
+    bl_space_type = 'PROPERTIES'
+    bl_region_type = 'WINDOW'
+    bl_context = "object"
+
+    @classmethod
+    def poll(cls, context):
+        return context.active_object and context.active_object.soulstruct_type == SoulstructType.NVM_EVENT_ENTITY
+
+    def draw(self, context):
+        layout = self.layout
+
+        obj = context.active_object
+        if obj is None:
+            # Should already fail Panel poll.
+            layout.label(text="No active NVM Event Entity.")
+            return
+
+        props = obj.NVM_EVENT_ENTITY
+        layout.prop(props, "entity_id")
+
+        layout.label(text="Triangles:")
+        row = layout.row()
+        row.template_list(
+            listtype_name=OBJECT_UL_nvm_event_entity_triangle.__name__,
+            list_id="",
+            dataptr=props,
+            propname="triangle_indices",
+            active_dataptr=props,
+            active_propname="triangle_index",
+        )
+        col = row.column(align=True)
+        col.operator(AddNVMEventEntityTriangleIndex.bl_idname, icon='ADD', text="")
+        col.operator(RemoveNVMEventEntityTriangleIndex.bl_idname, icon='REMOVE', text="")
+
+        layout.prop(props, "triangle_indices")

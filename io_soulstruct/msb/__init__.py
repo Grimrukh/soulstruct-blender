@@ -14,6 +14,7 @@ __all__ = [
     "DisableSelectedNames",
     "CreateMSBPart",
     "DuplicateMSBPartModel",
+    "ApplyPartTransformToModel",
     "FindEntityID",
     "ColorMSBEvents",
 

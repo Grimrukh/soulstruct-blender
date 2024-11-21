@@ -262,11 +262,15 @@ CLASSES = (
     NVMNavmeshExportPanel,
     NVMNavmeshToolsPanel,
     NavmeshERImportPanel,
+    NVMEventEntityPanel,
+    OBJECT_UL_nvm_event_entity_triangle,
     NavmeshFaceSettings,
     AddNVMFaceFlags,
     RemoveNVMFaceFlags,
     SetNVMFaceObstacleCount,
     ResetNVMFaceInfo,
+    AddNVMEventEntityTriangleIndex,
+    RemoveNVMEventEntityTriangleIndex,
     # endregion
 
     # region Nav Graph (MCG)
@@ -320,6 +324,7 @@ CLASSES = (
     DisableSelectedNames,
     CreateMSBPart,
     DuplicateMSBPartModel,
+    ApplyPartTransformToModel,
     FindEntityID,
     ColorMSBEvents,
 
@@ -431,6 +436,7 @@ OBJECT_POINTERS = dict(
 
     COLLISION=MapCollisionProps,
 
+    # NOTE: There are no NVM properties at the moment.
     NVM_EVENT_ENTITY=NVMEventEntityProps,
     MCG=MCGProps,
     MCG_NODE=MCGNodeProps,

@@ -430,8 +430,8 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
 
     @name.setter
     def name(self, new_name: str):
-        """Calls full `rename()` on all dummies, materials, bones, etc."""
-        self.rename(new_name)
+        """Calls full `deep_rename()` on all dummies, materials, bones, etc."""
+        self.deep_rename(new_name)
 
     def get_dummies(self, operator: LoggingOperator | None = None) -> list[BlenderFLVERDummy]:
         """Find all FLVER Dummy (empty children of root object with expected name).
@@ -458,7 +458,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
 
     # region Utility Methods
 
-    def rename(self, new_name: str, old_name=""):
+    def deep_rename(self, new_name: str, old_name=""):
         """Rename all components of given FLVER object (Armature, Mesh, materials, bones, dummies):
 
         The FLVER model name appears in numerous places in different ways throughout the object hierarchy. By default,

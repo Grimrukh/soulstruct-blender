@@ -16,6 +16,8 @@ __all__ = [
     "RemoveNVMFaceFlags",
     "SetNVMFaceObstacleCount",
     "ResetNVMFaceInfo",
+    "AddNVMEventEntityTriangleIndex",
+    "RemoveNVMEventEntityTriangleIndex",
 
     "BlenderNVM",
     "BlenderNVMEventEntity",

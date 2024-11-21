@@ -332,9 +332,7 @@ class Mesh(ID, bpy_struct):
 
     def transform(
         self,
-        matrix: collections.abc.Sequence[collections.abc.Sequence[float]]
-        | mathutils.Matrix
-        | None,
+        matrix: collections.abc.Sequence[collections.abc.Sequence[float]] | mathutils.Matrix | None,
         shape_keys: bool | typing.Any | None = False,
     ):
         """Transform mesh vertices by a matrix (Warning: inverts normals if matrix is negative)

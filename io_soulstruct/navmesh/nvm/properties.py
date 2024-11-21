@@ -37,3 +37,10 @@ class NVMEventEntityProps(bpy.types.PropertyGroup):
         type=NVMFaceIndex,
         description="Triangle indices in the Navmesh that this event affects",
     )
+
+    # Internal for GUI only:
+    triangle_index: bpy.props.IntProperty(
+        name="Triangle Index",
+        default=0,
+        description="Index of the currently selected triangle",
+    )
