@@ -91,8 +91,6 @@ class GameStructure:
             # We do this to catch 'nAA_BB_CC_DD', 'hAA_BB_CC_DD', etc.
             relative_file_path = Path(str(relative_file_path).replace(map_stem[1:], true_map_stem[1:]))
 
-        print(f"File path: {relative_file_path}")
-
         file_path = Path(self.root, relative_file_path)
         file_path = self._process_file_dcx_path(file_path, dcx_type)
         if if_exist and not file_path.is_file():
