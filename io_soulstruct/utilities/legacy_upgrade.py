@@ -120,6 +120,9 @@ def inject_old_flver_mesh(old_flver_obj: bpy.types.MeshObject, new_bl_flver: bpy
     print("    Remapped material indices.")
 
     if copy_vertex_groups:
+        # Remove old vertex groups.
+        new_bl_flver.vertex_groups.clear()
+
         # Copy vertex groups.
         # TODO: Could probably be faster, as I do at FLVER import (batch add calls by weight).
         #  Not bothering to optimize because I'm not expecting to inject into many Map Pieces with Armatures.
