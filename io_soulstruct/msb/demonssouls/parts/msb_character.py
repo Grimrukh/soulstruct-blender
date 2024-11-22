@@ -27,9 +27,9 @@ if tp.TYPE_CHECKING:
 
 class BlenderMSBCharacter(BlenderMSBPart[MSBCharacter, MSBCharacterProps]):
 
-    OBJ_DATA_TYPE = SoulstructDataType.MESH
     SOULSTRUCT_CLASS = MSBCharacter
     SOULSTRUCT_MODEL_CLASS = MSBCharacterModel
+    BLENDER_MODEL_TYPE = SoulstructType.FLVER
     PART_SUBTYPE = MSBPartSubtype.Character
     MODEL_SUBTYPES = ["character_models"]
 
@@ -85,14 +85,6 @@ class BlenderMSBCharacter(BlenderMSBPart[MSBCharacter, MSBCharacterProps]):
                 setattr(self.subtype_properties, f"patrol_regions_{i}", value[i])
             else:
                 setattr(self.subtype_properties, f"patrol_regions_{i}", None)
-
-    @property
-    def armature(self) -> bpy.types.ArmatureObject | None:
-        """Detect parent Armature of wrapped Mesh object. Rarely present for Parts."""
-        if self.obj.parent and self.obj.parent.type == "ARMATURE":
-            # noinspection PyTypeChecker
-            return self.obj.parent
-        return None
 
     @classmethod
     def new_from_soulstruct_obj(

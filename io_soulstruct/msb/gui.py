@@ -136,6 +136,7 @@ class MSBToolsPanel(bpy.types.Panel):
         layout.operator(CreateMSBPart.bl_idname, icon='MESH_CUBE')
         layout.operator(DuplicateMSBPartModel.bl_idname, icon='DUPLICATE')
         layout.operator(ApplyPartTransformToModel.bl_idname, icon='MODIFIER')
+        layout.operator(CreateConnectCollision.bl_idname, icon='MODIFIER')
 
         event_box = layout.box()
         event_box.label(text="Event Coloring:")
@@ -332,36 +333,37 @@ class MSBCharacterPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
 
         header, panel = layout.panel("Basic Settings", default_closed=False)
         header.label(text="Basic Settings")
-        if panel:
-            for prop_name in obj.MSB_CHARACTER.BASIC_SETTINGS:
-                if prop_name not in prop_names:
-                    continue
+        for prop_name in obj.MSB_CHARACTER.BASIC_SETTINGS:
+            if prop_name not in prop_names:
+                continue
+            prop_names.remove(prop_name)
+            if panel:
                 panel.prop(props, prop_name)
-                prop_names.remove(prop_name)
 
         header, panel = layout.panel("Patrol Settings", default_closed=True)
         header.label(text="Patrol Settings")
-        if panel:
-            for prop_name in obj.MSB_CHARACTER.PATROL_SETTINGS:
-                if prop_name not in prop_names:
-                    continue
+        for prop_name in obj.MSB_CHARACTER.PATROL_SETTINGS:
+            if prop_name not in prop_names:
+                continue
+            prop_names.remove(prop_name)
+            if panel:
                 panel.prop(props, prop_name)
-                prop_names.remove(prop_name)
 
         header, panel = layout.panel("Advanced Settings", default_closed=True)
         header.label(text="Advanced Settings")
-        if panel:
-            for prop_name in obj.MSB_CHARACTER.ADVANCED_SETTINGS:
-                if prop_name not in prop_names:
-                    continue
+        for prop_name in obj.MSB_CHARACTER.ADVANCED_SETTINGS:
+            if prop_name not in prop_names:
+                continue
+            prop_names.remove(prop_name)
+            if panel:
                 panel.prop(props, prop_name)
-                prop_names.remove(prop_name)
 
         # Leftover:
         header, panel = layout.panel("Other Settings", default_closed=True)
         header.label(text="Other Settings")
-        for prop in prop_names:
-            layout.prop(props, prop)
+        if panel:
+            for prop in prop_names:
+                panel.prop(props, prop)
 
 
 class MSBPlayerStartPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):

@@ -28,12 +28,11 @@ if tp.TYPE_CHECKING:
 class BlenderMSBNavmesh(BlenderMSBPart[MSBNavmesh, MSBNavmeshProps]):
     """Not FLVER-based."""
 
-    OBJ_DATA_TYPE = SoulstructDataType.MESH
     SOULSTRUCT_CLASS = MSBNavmesh
     SOULSTRUCT_MODEL_CLASS = MSBNavmeshModel
+    BLENDER_MODEL_TYPE = SoulstructType.NAVMESH
     PART_SUBTYPE = MSBPartSubtype.Navmesh
     MODEL_SUBTYPES = ["navmesh_models"]
-    MODEL_USES_LATEST_MAP = True  # only DS1 map asset to use latest map version for model import
 
     __slots__ = []
     data: bpy.types.Mesh

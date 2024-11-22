@@ -18,25 +18,17 @@ from .msb_character import BlenderMSBCharacter
 
 
 class BlenderMSBPlayerStart(BlenderMSBPart[MSBPlayerStart, MSBPlayerStartProps]):
-    """Always references 'c0000', but we don't assume anything here, and import that FLVER as required."""
+    """Always references model 'c0000', but we don't assume anything here, and import that FLVER as required."""
 
-    OBJ_DATA_TYPE = SoulstructDataType.MESH
     SOULSTRUCT_CLASS = MSBPlayerStart
     SOULSTRUCT_MODEL_CLASS = MSBCharacterModel  # or `MSBPlayerStartModel` but we don't need that here
+    BLENDER_MODEL_TYPE = SoulstructType.FLVER
     PART_SUBTYPE = MSBPartSubtype.PlayerStart
     MODEL_SUBTYPES = ["player_models", "character_models"]
 
     __slots__ = []
 
     # No additional Player Start properties.
-
-    @property
-    def armature(self) -> bpy.types.ArmatureObject | None:
-        """Detect parent Armature of wrapped Mesh object. Rarely present for Parts."""
-        if self.obj.parent and self.obj.parent.type == "ARMATURE":
-            # noinspection PyTypeChecker
-            return self.obj.parent
-        return None
 
     @classmethod
     def find_model_mesh(cls, model_name: str, map_stem="") -> bpy.types.MeshObject:

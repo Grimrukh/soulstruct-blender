@@ -15,6 +15,7 @@ __all__ = [
     "CreateMSBPart",
     "DuplicateMSBPartModel",
     "ApplyPartTransformToModel",
+    "CreateConnectCollision",
     "FindEntityID",
     "ColorMSBEvents",
 

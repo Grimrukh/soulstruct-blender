@@ -4,7 +4,10 @@ __all__ = [
     "BlenderMSBRegion",
 ]
 
+import typing as tp
+
 import bpy
+
 from io_soulstruct.exceptions import MSBRegionImportError, SoulstructTypeError
 from io_soulstruct.msb.properties import MSBRegionProps, MSBRegionSubtype
 from io_soulstruct.msb.utilities import *
@@ -122,40 +125,40 @@ class BlenderMSBRegion(SoulstructObject[MSBRegion, MSBRegionProps]):
             # like any of Blender's Empty display modes for this, but still want something easily clickable.
             mesh = bpy.data.meshes.new(name)
             primitive_three_axes(mesh)
-            bl_region = cls.new(name, mesh, collection)  # type: BlenderMSBRegion
+            bl_region = cls.new(name, mesh, collection)  # type: tp.Self
             bl_region.shape_type = RegionShapeType.Point
             # Points also have axes enabled.
             bl_region.obj.show_axis = True
         elif isinstance(soulstruct_obj.shape, CircleShape):
             mesh = bpy.data.meshes.new(name)
             primitive_circle(mesh)
-            bl_region = cls.new(name, mesh, collection)  # type: BlenderMSBRegion
+            bl_region = cls.new(name, mesh, collection)  # type: tp.Self
             bl_region.shape_type = RegionShapeType.Circle
             bl_region.radius = soulstruct_obj.shape.radius
         elif isinstance(soulstruct_obj.shape, SphereShape):
             mesh = bpy.data.meshes.new(name)
             primitive_cube(mesh)
-            bl_region = cls.new(name, mesh, collection)  # type: BlenderMSBRegion
+            bl_region = cls.new(name, mesh, collection)  # type: tp.Self
             bl_region.shape_type = RegionShapeType.Sphere
             bl_region.radius = soulstruct_obj.shape.radius
         elif isinstance(soulstruct_obj.shape, CylinderShape):
             mesh = bpy.data.meshes.new(name)
             primitive_cube(mesh)
-            bl_region = cls.new(name, mesh, collection)  # type: BlenderMSBRegion
+            bl_region = cls.new(name, mesh, collection)  # type: tp.Self
             bl_region.shape_type = RegionShapeType.Cylinder
             bl_region.radius = soulstruct_obj.shape.radius
             bl_region.height = soulstruct_obj.shape.height
         elif isinstance(soulstruct_obj.shape, RectShape):
             mesh = bpy.data.meshes.new(name)
             primitive_rect(mesh)
-            bl_region = cls.new(name, mesh, collection)  # type: BlenderMSBRegion
+            bl_region = cls.new(name, mesh, collection)  # type: tp.Self
             bl_region.shape_type = RegionShapeType.Rect
             bl_region.width = soulstruct_obj.shape.width
             bl_region.depth = soulstruct_obj.shape.depth
         elif isinstance(soulstruct_obj.shape, BoxShape):
             mesh = bpy.data.meshes.new(name)
             primitive_cube(mesh)
-            bl_region = cls.new(name, mesh, collection)  # type: BlenderMSBRegion
+            bl_region = cls.new(name, mesh, collection)  # type: tp.Self
             bl_region.shape_type = RegionShapeType.Box
             bl_region.width = soulstruct_obj.shape.width
             bl_region.depth = soulstruct_obj.shape.depth

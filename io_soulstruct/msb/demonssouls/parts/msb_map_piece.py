@@ -25,21 +25,13 @@ from .msb_part import BlenderMSBPart
 
 class BlenderMSBMapPiece(BlenderMSBPart[MSBMapPiece, MSBMapPieceProps]):
 
-    OBJ_DATA_TYPE = SoulstructDataType.MESH
     SOULSTRUCT_CLASS = MSBMapPiece
     SOULSTRUCT_MODEL_CLASS = MSBMapPieceModel
+    BLENDER_MODEL_TYPE = SoulstructType.FLVER
     PART_SUBTYPE = MSBPartSubtype.MapPiece
     MODEL_SUBTYPES = ["map_piece_models"]
 
     __slots__ = []
-
-    @property
-    def armature(self) -> bpy.types.ArmatureObject | None:
-        """Detect parent Armature of wrapped Mesh object. Rarely present for Parts."""
-        if self.obj.parent and self.obj.parent.type == "ARMATURE":
-            # noinspection PyTypeChecker
-            return self.obj.parent
-        return None
 
     @classmethod
     def find_model_mesh(cls, model_name: str, map_stem: str) -> bpy.types.MeshObject:
@@ -117,26 +109,33 @@ class BlenderMSBMapPiece(BlenderMSBPart[MSBMapPiece, MSBMapPieceProps]):
         try_import_model=True,
         model_collection: bpy.types.Collection = None,
     ) -> tp.Self:
-        """Map Pieces sometimes use bones to place vertex subsets, which look like nonsense without that positioning.
+        """Create a fully-represented MSB Part linked to a source model in Blender.
 
-        So if the Map Piece FLVER model has an Armature, we copy it to this Part, including current pose data. It will
-        never be used during Part export. (Cutscenes may also use it, though I don't think Map Pieces are "animated".)
+        Map Piece creates Armature parent if needed before setting transform, so that it can be redirected to the new
+        Armature if present.
         """
-        bl_map_piece = super().new_from_soulstruct_obj(
-            operator, context, soulstruct_obj, name, collection, map_stem, try_import_model, model_collection
-        )  # type: BlenderMSBMapPiece
+        model = cls.model_ref_to_bl_obj(
+            operator, context, soulstruct_obj, map_stem, try_import_model, model_collection
+        )
+        model_mesh = model.data if model else bpy.data.meshes.new(name)
+        bl_part = cls.new(name, model_mesh, collection)  # type: tp.Self
+        bl_part.model = model
+        bl_part.draw_groups = soulstruct_obj.draw_groups
+        bl_part.display_groups = soulstruct_obj.display_groups
+        for prop_name in cls.AUTO_PART_PROPS:
+            setattr(bl_part, prop_name, getattr(soulstruct_obj, prop_name))
 
-        if bl_map_piece.model and not bl_map_piece.model.get("MSB_MODEL_PLACEHOLDER", False):
-            bl_flver = BlenderFLVER(bl_map_piece.model)
-            if bl_flver.armature:
-                # This handles parenting, rigging, etc.
-                bl_flver.duplicate_armature(context, bl_map_piece.obj, copy_pose=True)
-                # Rename Part Armature object.
-                bl_map_piece.armature.name = f"{name} Armature"
-                # Rename modifier for clarity.
-                bl_map_piece.obj.modifiers["FLVER Armature"].name = "Part Armature"
+        # Create a duplicated parent Armature for the Part if present, so Map Piece static posing is visible.
+        if model and not model.get("MSB_MODEL_PLACEHOLDER", False):
+            # This will return `None` if the FLVER has no Armature (default, most Map Pieces).
+            if armature_obj := bl_part.duplicate_flver_model_armature(context, create_default_armature=False):
+                # Rename Armature (obj and data) to match Part name.
+                armature_obj.name = armature_obj.data.name = f"{name} Armature"
 
-        return bl_map_piece
+        # Now we can set the Blender transform, which will go to the Armature if present.
+        bl_part.set_bl_obj_transform(soulstruct_obj)
+
+        return bl_part
 
     @classmethod
     def batch_import_models(

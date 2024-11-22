@@ -15,7 +15,7 @@ from io_soulstruct.utilities import *
 
 @dataclass(slots=True)
 class NVMHKTImporter:
-    """Manages imports for a batch of NVM files imported simultaneously."""
+    """Manages imports for a batch of NVMHKT files imported simultaneously."""
 
     operator: LoggingOperator
     context: bpy.types.Context

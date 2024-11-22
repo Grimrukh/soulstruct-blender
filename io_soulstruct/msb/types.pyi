@@ -21,17 +21,18 @@ from soulstruct.base.maps.msb.region_shapes import RegionShapeType
 from .properties import MSBPartSubtype, MSBRegionSubtype, MSBEventSubtype
 
 
-# TODO: These should be Protocols.
+# TODO: These should be Protocols, except that Protocols can't inherit from non-Protocols.
 
 
 class IBlenderMSBPart(SoulstructObject, abc.ABC):
     TYPE = SoulstructType.MSB_PART
-    # OBJ_DATA_TYPE is subtype-dependent.
+    OBJ_DATA_TYPE = SoulstructDataType.MESH
     SOULSTRUCT_CLASS: tp.ClassVar[type[MSB_PART_TYPING]]
-    EXPORT_TIGHT_NAME: tp.ClassVar[bool]
+    EXPORT_TIGHT_NAME = True
+
     PART_SUBTYPE: tp.ClassVar[MSBPartSubtype]
     MODEL_SUBTYPES: tp.ClassVar[list[str]]  # for `MSB` model search on export
-    MODEL_USES_LATEST_MAP: tp.ClassVar[bool] = False  # which map version folder to look for model in
+    MODEL_USES_OLDEST_MAP_VERSION: tp.ClassVar[bool] = False
 
     obj: bpy.types.MeshObject
     data: bpy.types.Mesh
@@ -49,6 +50,11 @@ class IBlenderMSBPart(SoulstructObject, abc.ABC):
         cls, operator: LoggingOperator, context: bpy.types.Context, parts: list[BaseMSBPart], map_stem: str
     ):
         """Import all models for this part type in the current scene."""
+        ...
+
+    @classmethod
+    def new(cls, name: str, data: bpy.types.Mesh, collection: bpy.types.Collection = None) -> tp.Self:
+        """Create a Part instance directly from Mesh model `data`."""
         ...
 
     @classmethod
@@ -73,6 +79,18 @@ class IBlenderMSBPart(SoulstructObject, abc.ABC):
         msb: BaseMSB = None,
     ) -> BaseMSBPart:
         ...
+
+    def set_bl_obj_transform(self, part: BaseMSBPart):
+        """Set Blender object transform to match the given MSB Part. Could set to Armature parent instead of Mesh."""
+        ...
+
+    def set_part_transform(self, part: BaseMSBPart, use_world_transform=False):
+        """Set MSB Part transform to match the given Blender object. Could get from Armature parent instead of Mesh."""
+        ...
+
+    @property
+    def armature(self) -> bpy.types.ArmatureObject | None:
+        """Detect parent Armature of wrapped Mesh object. FLVER models only; generally only for Map Pieces."""
 
 
 class IBlenderMSBRegion(SoulstructObject, abc.ABC):

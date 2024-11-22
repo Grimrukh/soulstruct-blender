@@ -55,6 +55,13 @@ class FLVERMaterialPropsPanel(bpy.types.Panel):
     bl_region_type = 'WINDOW'
     bl_context = "material"
 
+    @classmethod
+    def poll(cls, context):
+        obj = context.active_object
+        if obj is None or obj.type != "MESH":
+            return False
+        return obj.active_material is not None
+
     def draw(self, context):
         layout = self.layout
 

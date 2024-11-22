@@ -139,6 +139,7 @@ class FLVERMaterialToolsPanel(bpy.types.Panel):
         header, panel = layout.panel("Material Tools", default_closed=True)
         header.label(text="Material Tools")
         if panel:
+            panel.operator(MergeObjectMaterials.bl_idname)
             active_object = context.active_object
             if active_object and active_object.active_material:
                 panel.label(text=active_object.active_material.name)

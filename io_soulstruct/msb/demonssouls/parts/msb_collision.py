@@ -30,7 +30,6 @@ class BlenderMSBCollision(BlenderMSBPart[MSBCollision, MSBCollisionProps]):
     NOTE: `environment_event` circular reference is not represented in Blender. It is found on MSB export.
     """
 
-    OBJ_DATA_TYPE = SoulstructDataType.MESH
     SOULSTRUCT_CLASS = MSBCollision
     SOULSTRUCT_MODEL_CLASS = MSBCollisionModel
     BLENDER_MODEL_TYPE = SoulstructType.COLLISION

@@ -475,6 +475,16 @@ class BlenderFLVERMaterial:
             if node.type == "TEX_IMAGE" and (not with_image_only or node.image is not None)
         ]
 
+    def get_texture_name_dict(self) -> dict[str, str]:
+        """Get a dictionary mapping texture node names (game-specific samplers) to the textures they use.
+
+        If no Image is set to a node, the value will be an empty string.
+        """
+        return {
+            node.name: node.image.name if node.image else ""
+            for node in self.get_image_texture_nodes(with_image_only=False)
+        }
+
     @classmethod
     def add_auto_type_props(cls, *names):
         for prop_name in names:

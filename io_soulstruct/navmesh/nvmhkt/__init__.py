@@ -11,7 +11,10 @@ __all__ = [
     # "ExportLooseNVMHKT",
     # "ExportNVMHKTIntoBinder",
     # "ExportNVMHKTIntoNVMHKTBND",
+
+    "NVMHKTImportPanel",
 ]
 
 from .model_import import *
 from .properties import *
+from .gui import *

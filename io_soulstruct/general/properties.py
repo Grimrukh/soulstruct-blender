@@ -836,7 +836,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):
             # Neither file exists.
             raise FileNotFoundError(f"Required file does not exist in project OR game directory: {relative_path}")
 
-        if self.project_root_path is None:
+        if project_path is None:
             # Project directory not set. No chance of copying anything.
             if game_path.is_file():  # cannot be `None` or first check above would fail
                 return None  # only case of `None` being returned
@@ -846,6 +846,9 @@ class SoulstructSettings(bpy.types.PropertyGroup):
             )
 
         if project_path.is_file():
+            if game_path is None:
+                # Game directory not set. Nothing to check.
+                return project_path
             if not game_path.is_file():
                 # Cannot copy from game, but project file exists. We use it even if `overwrite_existing=True`.
                 operator.warning(

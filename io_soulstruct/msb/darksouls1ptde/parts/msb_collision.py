@@ -30,12 +30,12 @@ class BlenderMSBCollision(BlenderMSBPart[MSBCollision, MSBCollisionProps]):
     NOTE: `environment_event` circular reference is not represented in Blender. It is found on MSB export.
     """
 
-    OBJ_DATA_TYPE = SoulstructDataType.MESH
     SOULSTRUCT_CLASS = MSBCollision
     SOULSTRUCT_MODEL_CLASS = MSBCollisionModel
     BLENDER_MODEL_TYPE = SoulstructType.COLLISION
     PART_SUBTYPE = MSBPartSubtype.Collision
     MODEL_SUBTYPES = ["collision_models"]
+    MODEL_USES_OLDEST_MAP_VERSION = True
 
     __slots__ = []
 
@@ -109,7 +109,7 @@ class BlenderMSBCollision(BlenderMSBPart[MSBCollision, MSBCollisionProps]):
 
         bl_collision = super().new_from_soulstruct_obj(
             operator, context, soulstruct_obj, name, collection, map_stem, try_import_model, model_collection
-        )  # type: tp.Self
+        )
 
         bl_collision.navmesh_groups = soulstruct_obj.navmesh_groups
         bl_collision.vagrant_entity_ids = soulstruct_obj.vagrant_entity_ids

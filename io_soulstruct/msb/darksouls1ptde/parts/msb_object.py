@@ -28,9 +28,9 @@ if tp.TYPE_CHECKING:
 class BlenderMSBObject(BlenderMSBPart[MSBObject, MSBObjectProps]):
     """Also used for 'Dummy' (Unused) MSB Objects."""
 
-    OBJ_DATA_TYPE = SoulstructDataType.MESH
     SOULSTRUCT_CLASS = MSBObject
     SOULSTRUCT_MODEL_CLASS = MSBObjectModel
+    BLENDER_MODEL_TYPE = SoulstructType.FLVER
     PART_SUBTYPE = MSBPartSubtype.Object
     MODEL_SUBTYPES = ["object_models"]
 
@@ -49,14 +49,6 @@ class BlenderMSBObject(BlenderMSBPart[MSBObject, MSBObjectProps]):
     default_animation: int
     unk_x0e: int
     unk_x10: int
-
-    @property
-    def armature(self) -> bpy.types.ArmatureObject | None:
-        """Detect parent Armature of wrapped Mesh object. Rarely present for Parts."""
-        if self.obj.parent and self.obj.parent.type == "ARMATURE":
-            # noinspection PyTypeChecker
-            return self.obj.parent
-        return None
 
     @property
     def draw_parent(self) -> bpy.types.Object | None:
@@ -80,7 +72,7 @@ class BlenderMSBObject(BlenderMSBPart[MSBObject, MSBObjectProps]):
     ) -> tp.Self:
         bl_obj = super().new_from_soulstruct_obj(
             operator, context, soulstruct_obj, name, collection, map_stem, try_import_model, model_collection
-        )  # type: tp.Self
+        )
 
         bl_obj.draw_parent = cls.entry_ref_to_bl_obj(
             operator,

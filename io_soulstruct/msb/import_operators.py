@@ -126,7 +126,7 @@ def _import_msb(
             continue  # manually excluded
 
         bl_part_type = get_bl_part_type(part)
-        map_dir_stem = msb_stem if bl_part_type.MODEL_USES_LATEST_MAP else oldest_map_stem
+        map_dir_stem = oldest_map_stem if bl_part_type.MODEL_USES_OLDEST_MAP_VERSION else msb_stem
 
         try:
             bl_part_type.find_model_mesh(part.model.name, map_dir_stem)
@@ -144,7 +144,7 @@ def _import_msb(
 
     # 2. Try to batch-import all queued Part models.
     for part_subtype, (bl_part_type, parts) in tuple(batched_parts_with_models.items()):
-        map_dir_stem = msb_stem if bl_part_type.MODEL_USES_LATEST_MAP else oldest_map_stem
+        map_dir_stem = oldest_map_stem if bl_part_type.MODEL_USES_OLDEST_MAP_VERSION else msb_stem
 
         try:
             # Import models for this Part subtype in parallel, as much as possible.

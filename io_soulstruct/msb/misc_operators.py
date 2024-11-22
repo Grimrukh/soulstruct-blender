@@ -8,12 +8,17 @@ __all__ = [
     "CreateMSBPart",
     "DuplicateMSBPartModel",
     "ApplyPartTransformToModel",
+    "CreateConnectCollision",
     "FindEntityID",
     "ColorMSBEvents",
 ]
 
+import typing as tp
+
 import bpy
 from mathutils import Matrix
+
+from soulstruct.games import DEMONS_SOULS, DARK_SOULS_PTDE, DARK_SOULS_DSR
 
 from io_soulstruct.exceptions import FLVERError
 from io_soulstruct.general import SoulstructSettings
@@ -22,6 +27,9 @@ from io_soulstruct.msb.operator_config import BLENDER_MSB_PART_TYPES
 from io_soulstruct.types import SoulstructType
 from io_soulstruct.utilities import *
 from .properties import MSBPartSubtype
+
+if tp.TYPE_CHECKING:
+    from .types import IBlenderMSBPart
 
 
 class EnableAllImportModels(LoggingOperator):
@@ -109,10 +117,14 @@ class CreateMSBPart(LoggingOperator):
 
         settings = self.settings(context)
 
-        obj = context.active_object
-        if obj.soulstruct_type == SoulstructType.FLVER:
-            # Use name to detect Part subtype.
-            name = obj.name.lower()
+        # noinspection PyTypeChecker
+        model_obj = context.active_object  # type: bpy.types.MeshObject
+        if model_obj.type != "MESH":
+            return self.error("Selected object must be a Mesh object (FLVER, Collision, or Navmesh model).")
+
+        if model_obj.soulstruct_type == SoulstructType.FLVER:
+            # Use start of name to detect Part subtype.
+            name = model_obj.name.lower()
             if name[0] == "m":
                 part_subtype = MSBPartSubtype.MapPiece
             elif name[0] == "o":
@@ -125,36 +137,42 @@ class CreateMSBPart(LoggingOperator):
                 return self.error(
                     f"Cannot guess MSB Part subtype (Map Piece, Object/Asset, or Character) from FLVER name '{name}'."
                 )
-        elif obj.soulstruct_type == SoulstructType.COLLISION:
+        elif model_obj.soulstruct_type == SoulstructType.COLLISION:
             # TODO: Another operator to create Connect Collision parts from Collision parts.
             part_subtype = MSBPartSubtype.Collision
-        elif obj.soulstruct_type == SoulstructType.NAVMESH:
+        elif model_obj.soulstruct_type == SoulstructType.NAVMESH:
             part_subtype = MSBPartSubtype.Navmesh
         else:
-            return self.error(f"Cannot create MSB Part from model object with Soulstruct type '{obj.soulstruct_type}'.")
+            return self.error(
+                f"Cannot create MSB Part from Blender object with Soulstruct type '{model_obj.soulstruct_type}'. "
+                f"Must be a FLVER, Collision, or Navmesh model object."
+            )
 
         try:
-            bl_part_type = BLENDER_MSB_PART_TYPES[settings.game][part_subtype]
+            bl_part_type = BLENDER_MSB_PART_TYPES[settings.game][part_subtype]  # type: type[IBlenderMSBPart]
         except KeyError:
             return self.error(
                 f"Cannot import MSB Part subtype `{part_subtype.value}` for game {settings.game.name}."
             )
 
-        model_stem = get_bl_obj_tight_name(obj)
+        model_stem = get_bl_obj_tight_name(model_obj)
         part_collection = get_or_create_collection(
             context.scene.collection,
-            f"{settings.map_stem} Parts"
-            f"{settings.map_stem} {part_subtype.get_nice_name()} Parts"
+            f"{settings.map_stem} MSB",
+            f"{settings.map_stem} Parts",
+            f"{settings.map_stem} {part_subtype.get_nice_name()} Parts",
         )
 
         try:
-            bl_part = bl_part_type.new_from_model_mesh(obj, f"{model_stem} Part", part_collection)
+            # TODO: Won't create Armature parent for Parts that require it (Map Pieces).
+            bl_part = bl_part_type.new(f"{model_stem} Part", model_obj.data, collection=part_collection)
             # No properties (other than `model`) are changed from defaults.
         except FLVERError as ex:
-            return self.error(f"Could not create `{part_subtype}` MSB Part from model object '{obj.name}': {ex}")
+            return self.error(f"Could not create `{part_subtype}` MSB Part from model object '{model_obj.name}': {ex}")
 
-        # Set location to cursor.
-        bl_part.obj.location = context.scene.cursor.location
+        # Set location to cursor (Armature parent if present).
+        obj = bl_part.armature or bl_part.obj
+        obj.location = context.scene.cursor.location
 
         return {"FINISHED"}
 
@@ -243,10 +261,11 @@ class DuplicateMSBPartModel(LoggingOperator):
             new_bl_flver = old_bl_flver.duplicate(
                 new_model_name,
                 collections=source_collections,
+                make_materials_single_user=True,
                 copy_pose=part_subtype == MSBPartSubtype.MapPiece,
             )
             # Do a deep renaming of FLVER.
-            new_bl_flver.deep_rename(new_model_name)
+            new_bl_flver.deep_rename(new_model_name, old_model_name)
             new_model = new_bl_flver.mesh
         elif part_subtype == MSBPartSubtype.Collision:
             # TODO: Add as Collision `duplicate()` method.
@@ -373,6 +392,67 @@ class ApplyPartTransformToModel(LoggingOperator):
         local_transform = part.matrix_local.copy()
         mesh.transform(local_transform)  # applies to mesh data
         part.matrix_local = Matrix.Identity(4)  # reset to identity
+
+
+class CreateConnectCollision(LoggingOperator):
+    bl_idname = "object.create_connect_collision"
+    bl_label = "Create Connect Collision"
+    bl_description = ("Create a new Connect Collision instance from the selected MSB Collision part and adds it to the "
+                      "Connect Collisions collection in the same MSB. Connects to map m00_00_00_00 initially.")
+
+    @classmethod
+    def poll(cls, context):
+        settings = cls.settings(context)
+        if not settings.is_game(DEMONS_SOULS, DARK_SOULS_PTDE, DARK_SOULS_DSR):
+            return False
+        obj = context.active_object
+        if not obj:
+            return False
+        return obj.soulstruct_type == SoulstructType.MSB_PART and obj.MSB_PART.part_subtype == MSBPartSubtype.Collision
+
+    def execute(self, context):
+        # noinspection PyTypeChecker
+        obj = context.active_object  # type: bpy.types.MeshObject
+
+        settings = self.settings(context)
+        if settings.is_game_ds1():
+            from .darksouls1ptde.parts.msb_connect_collision import BlenderMSBConnectCollision
+        elif settings.is_game(DEMONS_SOULS):
+            from .demonssouls.parts.msb_connect_collision import BlenderMSBConnectCollision
+        else:
+            return self.error(f"Connect Collision creation not supported for game {settings.game.name}.")
+
+        map_stem = get_collection_map_stem(obj)
+
+        collection = get_or_create_collection(
+            context.scene.collection,
+            f"{map_stem} MSB",
+            f"{map_stem} Parts",
+            f"{map_stem} Connect Collision Parts"
+        )
+
+        if "_" in obj.name:
+            prefix, suffix = obj.name.split("_", maxsplit=1)
+            connect_collision_name = f"{prefix}_[00_00]_{suffix}"
+        else:
+            connect_collision_name = f"{obj.name}_[00_00]"
+
+        bl_connect_collision = BlenderMSBConnectCollision.new(
+            name=connect_collision_name,
+            data=obj.data,
+            collection=collection,
+        )
+        bl_connect_collision.collision = obj
+        bl_connect_collision.model = obj.MSB_PART.model
+
+        self.info(f"Created Connect Collision '{connect_collision_name}'.")
+
+        # Select and view new object.
+        context.view_layer.objects.active = bl_connect_collision.obj
+        bl_connect_collision.obj.select_set(True)
+        bpy.ops.view3d.view_selected()
+
+        return {"FINISHED"}
 
 
 class FindEntityID(LoggingOperator):

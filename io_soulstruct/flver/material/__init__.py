@@ -2,6 +2,7 @@ __all__ = [
     "MaterialToolSettings",
     "SetMaterialTexture0",
     "SetMaterialTexture1",
+    "MergeObjectMaterials",
     "AddMaterialGXItem",
     "RemoveMaterialGXItem",
 

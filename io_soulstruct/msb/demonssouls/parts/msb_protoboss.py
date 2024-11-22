@@ -24,9 +24,9 @@ if tp.TYPE_CHECKING:
 
 class BlenderMSBProtoboss(BlenderMSBPart[MSBProtoboss, MSBProtobossProps]):
 
-    OBJ_DATA_TYPE = SoulstructDataType.MESH
     SOULSTRUCT_CLASS = MSBProtoboss
     SOULSTRUCT_MODEL_CLASS = MSBCharacterModel
+    BLENDER_MODEL_TYPE = SoulstructType.FLVER
     PART_SUBTYPE = MSBPartSubtype.Character
     MODEL_SUBTYPES = ["character_models"]
 
@@ -61,14 +61,6 @@ class BlenderMSBProtoboss(BlenderMSBPart[MSBProtoboss, MSBProtobossProps]):
     unk_x28: float
     unk_x2c: int
     unk_x30: int
-
-    @property
-    def armature(self) -> bpy.types.ArmatureObject | None:
-        """Detect parent Armature of wrapped Mesh object. Rarely present for Parts."""
-        if self.obj.parent and self.obj.parent.type == "ARMATURE":
-            # noinspection PyTypeChecker
-            return self.obj.parent
-        return None
 
     @classmethod
     def new_from_soulstruct_obj(

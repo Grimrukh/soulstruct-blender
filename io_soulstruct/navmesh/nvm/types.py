@@ -106,7 +106,7 @@ class BlenderNVM(SoulstructObject[NVM, NVMProps]):
         for face in mesh_data.polygons:
             if len(face.vertices) != 3:
                 raise NVMExportError(
-                    f"Found a non-triangle mesh face in NVM (face {face.index}). You must triangulate it first."
+                    f"Found a non-triangle mesh face in NVM {self.name} (face {face.index}). You must triangulate it."
                 )
             # noinspection PyTypeChecker
             vertices = tuple(face.vertices)  # type: tuple[int, int, int]

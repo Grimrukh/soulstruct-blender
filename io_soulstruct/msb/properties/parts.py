@@ -74,10 +74,10 @@ def _update_part_model(self: MSBPartProps, context):
         ):
             # Valid or placeholder model has been set. Link mesh data.
             self.id_data.data = self.model.data
-            print(f"INFO: Assigned data of model '{self.model}' to Part mesh '{self.id_data.name}'.")
+            # print(f"INFO: Assigned data of model '{self.model.name}' to Part mesh '{self.id_data.name}'.")
         else:
             # Reject model.
-            print(f"INFO: Rejected assignment of model '{self.model}' to Part mesh '{self.id_data.name}'.")
+            # print(f"INFO: Rejected assignment of model '{self.model.name}' to Part mesh '{self.id_data.name}'.")
             self.model = None  # will not cause this `if` block to recur
 
 
@@ -98,6 +98,13 @@ def _is_collision(_, obj: bpy.types.Object):
 
 def _is_region(_, obj: bpy.types.Object):
     return obj.soulstruct_type == SoulstructType.MSB_REGION
+
+
+def _is_model(_, obj: bpy.types.Object):
+    """Only allow models that are FLVER, COLLISION, or NAVMESH Mesh objects."""
+    return obj.type == "MESH" and obj.soulstruct_type in {
+        SoulstructType.FLVER, SoulstructType.COLLISION, SoulstructType.NAVMESH
+    }
 
 
 class MSBPartProps(bpy.types.PropertyGroup):
@@ -130,11 +137,7 @@ class MSBPartProps(bpy.types.PropertyGroup):
         name="Model",
         type=bpy.types.Object,  # could be Armature or Mesh
         description="Source model of this MSB Part instance",
-
-        # Only Mesh objects are supported as models.
-        poll=lambda self, obj: obj.type == "MESH",
-
-        # On update, validate Soulstruct type and set the data-block of this (Mesh) object to `model.data`.
+        poll=_is_model,
         update=_update_part_model,
     )
 
@@ -348,6 +351,7 @@ class MSBObjectProps(bpy.types.PropertyGroup):
     draw_parent: bpy.props.PointerProperty(
         name="Draw Parent",
         type=bpy.types.Object,
+        poll=_is_part,
     )
     break_term: bpy.props.IntProperty(
         name="Break Term",
@@ -390,6 +394,7 @@ class MSBAssetProps(bpy.types.PropertyGroup):
     draw_parent: bpy.props.PointerProperty(
         name="Draw Parent",
         type=bpy.types.Object,
+        poll=_is_part,
     )
     # TODO: Elden Ring Asset properties.
 
@@ -404,6 +409,7 @@ class MSBCharacterProps(bpy.types.PropertyGroup):
     draw_parent: bpy.props.PointerProperty(
         name="Draw Parent",
         type=bpy.types.Object,
+        poll=_is_part,
     )
     ai_id: bpy.props.IntProperty(
         name="AI (NpcThinkParam) ID",
@@ -435,41 +441,49 @@ class MSBCharacterProps(bpy.types.PropertyGroup):
         type=bpy.types.Object,
         name="Patrol Region 0",
         description="Patrol region 0 for character",
+        poll=_is_region,
     )
     patrol_regions_1: bpy.props.PointerProperty(
         type=bpy.types.Object,
         name="Patrol Region 1",
         description="Patrol region 1 for character",
+        poll=_is_region,
     )
     patrol_regions_2: bpy.props.PointerProperty(
         type=bpy.types.Object,
         name="Patrol Region 2",
         description="Patrol region 2 for character",
+        poll=_is_region,
     )
     patrol_regions_3: bpy.props.PointerProperty(
         type=bpy.types.Object,
         name="Patrol Region 3",
         description="Patrol region 3 for character",
+        poll=_is_region,
     )
     patrol_regions_4: bpy.props.PointerProperty(
         type=bpy.types.Object,
         name="Patrol Region 4",
         description="Patrol region 4 for character",
+        poll=_is_region,
     )
     patrol_regions_5: bpy.props.PointerProperty(
         type=bpy.types.Object,
         name="Patrol Region 5",
         description="Patrol region 5 for character",
+        poll=_is_region,
     )
     patrol_regions_6: bpy.props.PointerProperty(
         type=bpy.types.Object,
         name="Patrol Region 6",
         description="Patrol region 6 for character",
+        poll=_is_region,
     )
     patrol_regions_7: bpy.props.PointerProperty(
         type=bpy.types.Object,
         name="Patrol Region 7",
         description="Patrol region 7 for character",
+        poll=_is_region,
     )
 
     def get_patrol_regions(self) -> list[bpy.types.Object | None]:

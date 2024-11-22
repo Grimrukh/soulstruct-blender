@@ -34,14 +34,15 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
     """
 
     TYPE = SoulstructType.MSB_PART
-    # OBJ_DATA_TYPE is subtype-dependent.
+    OBJ_DATA_TYPE = SoulstructDataType.MESH  # true for all subtypes
     SOULSTRUCT_CLASS: tp.ClassVar[type[MSBPart]]
+    EXPORT_TIGHT_NAME: tp.ClassVar[bool] = True  # MSB Parts always use tight names (unlike Regions/Events)
+
     SOULSTRUCT_MODEL_CLASS: tp.ClassVar[type[MSBModel]]
-    BLENDER_MODEL_TYPE: SoulstructType
-    EXPORT_TIGHT_NAME: tp.ClassVar[bool] = True  # for MSB parts, we always use tight names
+    BLENDER_MODEL_TYPE: tp.ClassVar[SoulstructType]
     PART_SUBTYPE: tp.ClassVar[MSBPartSubtype]
     MODEL_SUBTYPES: tp.ClassVar[list[str]]  # for `MSB` model search on export
-    MODEL_USES_LATEST_MAP: tp.ClassVar[bool] = False  # which map version folder to look for model in
+    MODEL_USES_OLDEST_MAP_VERSION: tp.ClassVar[bool] = False  # no DLC/versioning for Demon's Souls, so never `True`
 
     __slots__ = []
     obj: bpy.types.MeshObject
@@ -89,11 +90,6 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
     disable_point_light_effect: bool
 
     @property
-    def armature(self) -> bpy.types.ArmatureObject | None:
-        """Detect parent Armature of wrapped Mesh object. Rarely present for Parts. Must be overridden to enable."""
-        raise TypeError(f"MSB {self.PART_SUBTYPE} parts cannot have Armatures.")
-
-    @property
     def subtype_properties(self) -> SUBTYPE_PROPS_T:
         return getattr(self.obj, self.PART_SUBTYPE)
 
@@ -104,6 +100,17 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
     @model.setter
     def model(self, value: bpy.types.MeshObject | None):
         self.type_properties.model = value
+
+    @property
+    def armature(self) -> bpy.types.ArmatureObject | None:
+        """Parts with FLVER models may have an Armature parent, which is useful for posing Map Pieces and for Cutscenes
+        to animate individual characters, objects, etc."""
+        if self.BLENDER_MODEL_TYPE != SoulstructType.FLVER:
+            return None  # may still have a parent, but that is not a functional aspect of the managed Part
+        if self.obj.parent and self.obj.parent.type == "ARMATURE":
+            # noinspection PyTypeChecker
+            return self.obj.parent
+        return None
 
     @staticmethod
     def _get_groups_bit_set(props: list[bpy.props.BoolVectorProperty]):
@@ -141,13 +148,17 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
         self._set_groups_bit_set(self.type_properties.get_display_groups_props_128(), value)
 
     def set_bl_obj_transform(self, part: MSBPart):
+        """Redirect transform to Armature parent if present."""
         game_transform = Transform.from_msb_entry(part)
-        self.obj.location = game_transform.bl_translate
-        self.obj.rotation_euler = game_transform.bl_rotate
-        self.obj.scale = game_transform.bl_scale
+        obj = self.armature or self.obj
+        obj.location = game_transform.bl_translate
+        obj.rotation_euler = game_transform.bl_rotate
+        obj.scale = game_transform.bl_scale
 
     def set_part_transform(self, part: MSBPart, use_world_transform=False):
-        bl_transform = BlenderTransform.from_bl_obj(self.obj, use_world_transform)
+        """Get transform from Armature parent if present."""
+        obj = self.armature or self.obj
+        bl_transform = BlenderTransform.from_bl_obj(obj, use_world_transform)
         part.translate = bl_transform.game_translate
         part.rotate = bl_transform.game_rotate_deg
         part.scale = bl_transform.game_scale
@@ -268,9 +279,13 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
     def new(
         cls,
         name: str,
-        data: bpy.types.Mesh | None,
+        data: bpy.types.Mesh,
         collection: bpy.types.Collection = None,
     ) -> tp.Self:
+        """Create a new instance of this MSB Part subtype with the given Mesh `data` as its model.
+
+        `data` must be a Mesh for all MSB Part subtypes (enforced in parent method by `cls.OBJ_DATA_TYPE`).
+        """
         bl_part = super().new(name, data, collection)  # type: tp.Self
         bl_part.obj.MSB_PART.part_subtype = cls.PART_SUBTYPE
         return bl_part
@@ -333,38 +348,50 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
         )
         model_mesh = model.data if model else bpy.data.meshes.new(name)
         bl_part = cls.new(name, model_mesh, collection)  # type: tp.Self
-        bl_part.set_bl_obj_transform(soulstruct_obj)
         bl_part.model = model
         bl_part.draw_groups = soulstruct_obj.draw_groups
         bl_part.display_groups = soulstruct_obj.display_groups
-        for name in cls.AUTO_PART_PROPS:
-            setattr(bl_part, name, getattr(soulstruct_obj, name))
-
+        for prop_name in cls.AUTO_PART_PROPS:
+            setattr(bl_part, prop_name, getattr(soulstruct_obj, prop_name))
+        bl_part.set_bl_obj_transform(soulstruct_obj)
         return bl_part
 
-    def duplicate_flver_model_armature(self, context: bpy.types.Context):
+    def duplicate_flver_model_armature(
+        self, context: bpy.types.Context, create_default_armature=False
+    ) -> bpy.types.ArmatureObject | None:
         """Duplicate FLVER model's Armature parent to being the parent of this part Mesh.
 
         Only works for FLVER-based Parts, obviously (Map Pieces, Objects, Assets, Characters). Those classes will also
         expose an `armature` property to retrieve the Mesh parent.
 
-        If the model parent does not have an Armature, the implicit default one will be created for the Part, though
-        this is unlikely to be useful for such models (i.e., static Map Pieces).
+        If the model parent does not have an Armature, the implicit default one will be created for the Part if
+        `create_default_armature` is True, though this is unlikely to be useful for such models (i.e., static Map
+        Pieces). This is used for REMOBND cutscenes.
+
+        Note that this is only called on Map Piece part creation, typically. The other use case is for Cutscenes, which
+        animate parts individually (e.g. characters) and need those parts to have their own Armature copies.
         """
         if not self.model:
-            raise ValueError("Cannot duplicate model armature for MSB Part without a model.")
+            raise ValueError("Cannot duplicate model armature for MSB Map Piece part without a model.")
         if not self.model.soulstruct_type == SoulstructType.FLVER:
             raise TypeError(f"MSB {self.PART_SUBTYPE} parts do not have FLVER model armatures to duplicate.")
         bl_flver = BlenderFLVER(self.model)
         if not bl_flver.armature:
             # This FLVER model doesn't have an Armature, implying the FLVER has only one default bone. We create that
-            # for this Part, without assigning it to the FLVER.
-            BlenderFLVER.create_default_armature_parent(context, self.export_name, self.obj)
+            # for this Part if requested, without assigning it to the FLVER.
+            if create_default_armature:
+                armature_obj = BlenderFLVER.create_default_armature_parent(context, self.export_name, self.obj)
+            else:
+                armature_obj = None
         else:
             # Duplicate model's Armature. This handles parenting, rigging, etc. We only copy pose for Map Pieces.
-            bl_flver.duplicate_armature(context, self.obj, copy_pose=self.PART_SUBTYPE == MSBPartSubtype.MapPiece)
+            armature_obj = bl_flver.duplicate_armature(
+                context, self.obj, copy_pose=self.PART_SUBTYPE == MSBPartSubtype.MapPiece
+            )
             # Rename new modifier for clarity.
             self.obj.modifiers["FLVER Armature"].name = "Part Armature"
+
+        return armature_obj
 
     def _create_soulstruct_obj(self) -> SOULSTRUCT_T:
         """Create a new MSB Part instance of the appropriate subtype. Args are supplied automatically."""

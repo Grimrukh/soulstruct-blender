@@ -21,12 +21,12 @@ from .msb_part import BlenderMSBPart
 class BlenderMSBConnectCollision(BlenderMSBPart[MSBConnectCollision, MSBConnectCollisionProps]):
     """Not FLVER-based."""
 
-    OBJ_DATA_TYPE = SoulstructDataType.MESH
     SOULSTRUCT_CLASS = MSBConnectCollision
     SOULSTRUCT_MODEL_CLASS = MSBCollisionModel
     BLENDER_MODEL_TYPE = SoulstructType.COLLISION
     PART_SUBTYPE = MSBPartSubtype.ConnectCollision
     MODEL_SUBTYPES = ["collision_models"]
+    MODEL_USES_OLDEST_MAP_VERSION = True
 
     __slots__ = []
     collision: bpy.types.Object | None
@@ -70,7 +70,7 @@ class BlenderMSBConnectCollision(BlenderMSBPart[MSBConnectCollision, MSBConnectC
 
         bl_connect_collision = super().new_from_soulstruct_obj(
             operator, context, soulstruct_obj, name, collection, map_stem, try_import_model, model_collection
-        )  # type: BlenderMSBConnectCollision
+        )
 
         bl_connect_collision.collision = cls.entry_ref_to_bl_obj(
             operator,

@@ -593,7 +593,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         # noinspection PyTypeChecker
         new_mesh_obj = new_mesh_object(self.mesh.name, self.mesh.data.copy())
         new_mesh_obj.soulstruct_type = SoulstructType.FLVER
-        copy_obj_property_group(self.mesh, new_mesh_obj, "flver")
+        copy_obj_property_group(self.mesh, new_mesh_obj, "FLVER")
         for collection in collections:
             collection.objects.link(new_mesh_obj)
 

@@ -21,7 +21,6 @@ from .msb_part import BlenderMSBPart
 class BlenderMSBConnectCollision(BlenderMSBPart[MSBConnectCollision, MSBConnectCollisionProps]):
     """Not FLVER-based."""
 
-    OBJ_DATA_TYPE = SoulstructDataType.MESH
     SOULSTRUCT_CLASS = MSBConnectCollision
     SOULSTRUCT_MODEL_CLASS = MSBCollisionModel
     BLENDER_MODEL_TYPE = SoulstructType.COLLISION

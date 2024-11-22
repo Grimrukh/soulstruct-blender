@@ -160,6 +160,7 @@ CLASSES = (
     MaterialToolSettings,
     SetMaterialTexture0,
     SetMaterialTexture1,
+    MergeObjectMaterials,
     AddMaterialGXItem,
     RemoveMaterialGXItem,
 
@@ -261,7 +262,7 @@ CLASSES = (
     NVMNavmeshImportPanel,
     NVMNavmeshExportPanel,
     NVMNavmeshToolsPanel,
-    NavmeshERImportPanel,
+    NVMHKTImportPanel,
     NVMEventEntityPanel,
     OBJECT_UL_nvm_event_entity_triangle,
     NavmeshFaceSettings,
@@ -325,6 +326,7 @@ CLASSES = (
     CreateMSBPart,
     DuplicateMSBPartModel,
     ApplyPartTransformToModel,
+    CreateConnectCollision,
     FindEntityID,
     ColorMSBEvents,
 
