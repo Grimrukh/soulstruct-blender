@@ -32,14 +32,15 @@ class FLVERPropsPanel(bpy.types.Panel):
 
     def draw(self, context):
         bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
-        is_flver0 = FLVERVersion[bl_flver.version].is_flver0()
-        props = bl_flver.type_properties
-        for prop in props.__annotations__:
-            if is_flver0 and prop.startswith("f2_"):
-                continue  # do not show FLVER2 property for this version
-            elif not is_flver0 and prop.startswith("f0_"):
-                continue  # do not show FLVER0 property for this version
-            self.layout.prop(props, prop)
+        prop_names = bl_flver.type_properties.__annotations__
+        if bl_flver.version == "DEFAULT":
+            pass  # show all properties
+        elif FLVERVersion[bl_flver.version].is_flver0():
+            prop_names = [prop for prop in prop_names if not prop.startswith("f2_")]
+        else:
+            prop_names = [prop for prop in prop_names if not prop.startswith("f0_")]
+        for prop in prop_names:
+            self.layout.prop(bl_flver.type_properties, prop)
 
 
 class FLVERDummyPropsPanel(bpy.types.Panel):

@@ -13,6 +13,8 @@ __all__ = [
     "ActivateUVTexture1",
     "ActiveUVLightmap",
     "FastUVUnwrap",
+    "RotateUVMapClockwise90",
+    "RotateUVMapCounterClockwise90",
     "FindMissingTexturesInImageCache",
     "SelectMeshChildren",
     "draw_dummy_ids",
@@ -21,6 +23,7 @@ __all__ = [
     "PrintGameTransform",
 ]
 
+import math
 import typing as tp
 
 import bpy
@@ -549,6 +552,106 @@ class FastUVUnwrap(LoggingOperator):
         for face in [face for face in bm.faces if face.select]:
             for loop in face.loops:
                 loop[uv_layer].uv *= tool_settings.uv_scale
+
+        bmesh.update_edit_mesh(edit_mesh)
+        del bm
+
+        return {"FINISHED"}
+
+
+class RotateUVMapClockwise90(LoggingOperator):
+
+    bl_idname = "mesh.rotate_uv_map_clockwise_90"
+    bl_label = "Rotate UVs CW 90°"
+    bl_description = "Rotate the UV map of selected faces clockwise by 90°"
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == "EDIT_MESH"
+
+    def execute(self, context):
+        if context.mode != "EDIT_MESH":
+            return self.error("Please enter Edit Mode to use this operator.")
+
+        # Get all selected face loops (of edit object).
+        # noinspection PyTypeChecker
+        edit_mesh = context.edit_object.data  # type: bpy.types.Mesh
+        bm = bmesh.from_edit_mesh(edit_mesh)
+        uv_layer = bm.loops.layers.uv.active
+        if not uv_layer:
+            return self.error("No active UV layer to rotate.")
+
+        # Collect all selected UV coordinates
+        selected_uvs = []
+        for face in bm.faces:
+            if face.select:
+                for loop in face.loops:
+                    uv = loop[uv_layer].uv
+                    selected_uvs.append(uv)
+
+        if not selected_uvs:
+            print("No UVs selected.")
+            return
+
+        # Calculate the center of all selected UVs
+        uv_center = sum(selected_uvs, Vector((0.0, 0.0))) / len(selected_uvs)
+
+        # Rotation matrix for -90 degrees
+        rotation_matrix = Matrix.Rotation(-math.pi / 2.0, 2)  # 2D rotation matrix
+
+        # Rotate all selected UVs around the center
+        for uv in selected_uvs:
+            uv.xy = uv_center + rotation_matrix @ (uv.xy - uv_center)
+
+        bmesh.update_edit_mesh(edit_mesh)
+        del bm
+
+        return {"FINISHED"}
+
+
+class RotateUVMapCounterClockwise90(LoggingOperator):
+
+    bl_idname = "mesh.rotate_uv_map_counter_clockwise_90"
+    bl_label = "Rotate UVs CCW 90°"
+    bl_description = "Rotate the UV map of selected faces counter-clockwise by 90°"
+
+    @classmethod
+    def poll(cls, context):
+        return context.mode == "EDIT_MESH"
+
+    def execute(self, context):
+        if context.mode != "EDIT_MESH":
+            return self.error("Please enter Edit Mode to use this operator.")
+
+        # Get all selected face loops (of edit object).
+        # noinspection PyTypeChecker
+        edit_mesh = context.edit_object.data  # type: bpy.types.Mesh
+        bm = bmesh.from_edit_mesh(edit_mesh)
+        uv_layer = bm.loops.layers.uv.active
+        if not uv_layer:
+            return self.error("No active UV layer to rotate.")
+
+        # Collect all selected UV coordinates
+        selected_uvs = []
+        for face in bm.faces:
+            if face.select:
+                for loop in face.loops:
+                    uv = loop[uv_layer].uv
+                    selected_uvs.append(uv)
+
+        if not selected_uvs:
+            print("No UVs selected.")
+            return
+
+        # Calculate the center of all selected UVs
+        uv_center = sum(selected_uvs, Vector((0.0, 0.0))) / len(selected_uvs)
+
+        # Rotation matrix for 90 degrees
+        rotation_matrix = Matrix.Rotation(math.pi / 2.0, 2)  # 2D rotation matrix
+
+        # Rotate all selected UVs around the center
+        for uv in selected_uvs:
+            uv.xy = uv_center + rotation_matrix @ (uv.xy - uv_center)
 
         bmesh.update_edit_mesh(edit_mesh)
         del bm

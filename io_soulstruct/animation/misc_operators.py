@@ -8,8 +8,10 @@ import typing as tp
 
 import bpy
 
+from io_soulstruct.flver.models.types import BlenderFLVER
 from io_soulstruct.types import SoulstructType
 from io_soulstruct.utilities.operators import LoggingOperator
+from .types import SoulstructAnimation
 
 
 class ArmatureActionChoiceOperator(LoggingOperator):
@@ -37,6 +39,7 @@ class ArmatureActionChoiceOperator(LoggingOperator):
         full_action_name = self.choices_enum
         self.info(f"Setting action for armature {self.bl_armature.name} to: {full_action_name}")
         action = bpy.data.actions[full_action_name]
+        ss_animation = SoulstructAnimation(action)
         self.bl_armature.animation_data.action = action
 
         if action:
@@ -50,14 +53,16 @@ class ArmatureActionChoiceOperator(LoggingOperator):
     @classmethod
     def run(
         cls,
-        bl_armature,
+        bl_flver: BlenderFLVER,
     ):
-        cls.bl_armature = bl_armature
+        if not bl_flver.armature:
+            raise ValueError("Cannot select animation for FLVER without an armature.")
+        cls.bl_armature = bl_flver.armature
         cls.enum_options = []
         for action in bpy.data.actions:
-            if action.name.startswith(f"{bl_armature.name}|"):
-                action_name = action.name.removeprefix(f"{bl_armature.name}|")
-                cls.enum_options.append((action.name, action_name, ""))
+            ss_animation = SoulstructAnimation(action)
+            if ss_animation.model_stem == bl_flver.tight_name:
+                cls.enum_options.append((action.name, ss_animation.animation_stem, ""))
         # noinspection PyUnresolvedReferences
         bpy.ops.wm.armature_action_choice_operator("INVOKE_DEFAULT")
 
@@ -75,11 +80,11 @@ class SelectArmatureActionOperator(LoggingOperator):
     @classmethod
     def poll(cls, context):
         """Animation's rigged armature must be selected (to extract bone names)."""
-        try:
-            return context.selected_objects[0] and context.selected_objects[0].soulstruct_type == SoulstructType.FLVER
-        except IndexError:
+        if not context.selected_objects:
             return False
+        obj = context.selected_objects[0]
+        return obj.soulstruct_type == SoulstructType.FLVER and obj.parent and obj.parent.type == "ARMATURE"
 
     def execute(self, context):
-        ArmatureActionChoiceOperator.run(context.selected_objects[0])
+        ArmatureActionChoiceOperator.run(BlenderFLVER(context.selected_objects[0]))
         return {"FINISHED"}

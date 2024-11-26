@@ -24,7 +24,7 @@ class IDMaterials(bpy_prop_collection[Material], bpy_struct):
     def pop(self, index: typing.Any | None = -1) -> Material:
         """Remove a material from the data-block
 
-        :param index: Index of material to remove
+        :param index: Index of material to remove. Must be a keyword argument
         :type index: typing.Any | None
         :return: Material to remove
         :rtype: Material

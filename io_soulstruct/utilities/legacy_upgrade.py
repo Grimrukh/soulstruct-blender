@@ -136,3 +136,4 @@ def inject_old_flver_mesh(old_flver_obj: bpy.types.MeshObject, new_bl_flver: bpy
         print("    Copied vertex groups.")
     else:
         print("    Discarding single source FLVER vertex group (target FLVER has an implicit skeleton).")
+        new_bl_flver.vertex_groups.clear()

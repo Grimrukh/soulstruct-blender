@@ -37,6 +37,20 @@ class SoulstructAnimation:
         self.action.name = value
 
     @property
+    def model_stem(self):
+        """Try to extract the model stem from the action name.
+
+        Action name should be in the format `{model_name}}|{anim_name}` and may have a Blender dupe suffix. If there is
+        no pipe in the name, we return an empty string.
+
+        Example:
+            'c1234|a00_0000.001' -> 'c1234'
+        """
+        if "|" not in self.action.name:
+            return ""
+        return self.action.name.split("|")[0]
+
+    @property
     def animation_stem(self):
         """Try to extract the animation stem from the action name.
 

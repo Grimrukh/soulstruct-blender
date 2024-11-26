@@ -639,7 +639,9 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
 
         # Mesh is already added to same collections as this one, but also add to those manually specified (or scene).
         for collection in self.mesh.users_collection:
-            collection.objects.link(new_mesh_obj)
+            # We'll get an error if we try to add to an existing collection, so check first.
+            if collection not in new_mesh_obj.users_collection:
+                collection.objects.link(new_mesh_obj)
 
         if make_materials_single_user:
             # Duplicate materials.

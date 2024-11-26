@@ -128,8 +128,10 @@ class BaseImportHKXAnimation(LoggingOperator):
                     compendium=compendium,
                 )
                 continue
-            anim_name = file_path.name.split(".")[0]
+            hkx_or_entries: ANIMATION_TYPING
+            anim_name = hkx_or_entries.path_minimal_stem
             try:
+                print(f"Creating animation '{anim_name}'")
                 bl_animation = SoulstructAnimation.new_from_hkx_animation(
                     self,
                     context,
@@ -180,14 +182,16 @@ class ImportHKXAnimation(BaseImportHKXAnimation, LoggingImportOperator):
 
     def invoke(self, context, _event):
         """Set the initial directory based on Global Settings."""
-        game_directory = self.settings(context).game_root_path
-        game_chr_directory = game_directory / "chr"
-        for directory in (game_chr_directory, game_directory):
-            if directory and directory.is_dir():
-                self.directory = str(directory)
-                context.window_manager.fileselect_add(self)
-                return {"RUNNING_MODAL"}
-        return super().invoke(context, _event)
+        settings = self.settings(context)
+        try:
+            chr_path = settings.get_import_dir_path("chr")
+        except NotADirectoryError:
+            return super().invoke(context, _event)
+
+        # Start in 'chr' directory.
+        self.directory = str(chr_path)
+        context.window_manager.fileselect_add(self)
+        return {"RUNNING_MODAL"}
 
     def execute(self, context):
 
@@ -291,6 +295,7 @@ class ImportHKXAnimationWithBinderChoice(BaseImportHKXAnimation):
 
         anim_name = entry.name.split(".")[0]
         try:
+            print(f"Creating animation '{anim_name}'")
             SoulstructAnimation.new_from_hkx_animation(
                 self,
                 context,

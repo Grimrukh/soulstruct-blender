@@ -9,7 +9,7 @@ import bpy
 
 from io_soulstruct.exceptions import SoulstructTypeError
 from io_soulstruct.general.gui import map_stem_box
-from io_soulstruct.misc_operators import CopyMeshSelectionOperator, CutMeshSelectionOperator
+from io_soulstruct.misc_operators import *
 from .import_operators import *
 from .export_operators import *
 from .misc_operators import *
@@ -85,3 +85,4 @@ class MapCollisionToolsPanel(bpy.types.Panel):
         layout.prop(context.scene.mesh_move_settings, "new_material_index")
         layout.operator(CopyMeshSelectionOperator.bl_idname)
         layout.operator(CutMeshSelectionOperator.bl_idname)
+        layout.operator(BooleanMeshCut.bl_idname)

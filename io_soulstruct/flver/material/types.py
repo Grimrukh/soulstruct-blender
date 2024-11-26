@@ -42,9 +42,9 @@ class BlenderFLVERMaterial:
         self.material.name = value
 
     @property
-    def tight_name(self):
-        """Removes everything after first '[' bracket and strips spaces."""
-        return self.material.name.split("[")[0].rstrip()
+    def tight_name(self) -> str:
+        """Removes everything after first '[' bracket and/or first '<' bracket, and strips spaces."""
+        return self.material.name.split("[")[0].split("<")[0].strip()
 
     @property
     def node_tree(self):
@@ -484,6 +484,21 @@ class BlenderFLVERMaterial:
             node.name: node.image.name if node.image else ""
             for node in self.get_image_texture_nodes(with_image_only=False)
         }
+
+    def get_hash(self, include_face_set_count=True, is_flver0=False) :
+        """Hash based on all FLVER material properties, with `face_set_count` optional (used by default)."""
+        hashed = [self.is_bind_pose, self.mat_def_path, self.default_bone_index]
+        if not is_flver0:
+            hashed.extend([self.flags, self.f2_unk_x18])
+        if include_face_set_count:
+            hashed.append(self.face_set_count)
+
+        texture_name_dict = self.get_texture_name_dict()
+        for sampler_name in sorted(texture_name_dict.keys()):
+            texture_name = self.sampler_prefix + texture_name_dict[sampler_name]
+            hashed.append((sampler_name, texture_name))
+
+        return hash(tuple(hashed))
 
     @classmethod
     def add_auto_type_props(cls, *names):

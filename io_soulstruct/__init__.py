@@ -112,6 +112,7 @@ CLASSES = (
     MeshMoveSettings,
     CopyMeshSelectionOperator,
     CutMeshSelectionOperator,
+    BooleanMeshCut,
     # endregion
 
     # region FLVER / Materials / Textures
@@ -154,12 +155,15 @@ CLASSES = (
     ActivateUVTexture1,
     ActiveUVLightmap,
     FastUVUnwrap,
+    RotateUVMapClockwise90,
+    RotateUVMapCounterClockwise90,
     FindMissingTexturesInImageCache,
     SelectMeshChildren,
 
     MaterialToolSettings,
     SetMaterialTexture0,
     SetMaterialTexture1,
+    AutoRenameMaterials,
     MergeObjectMaterials,
     AddMaterialGXItem,
     RemoveMaterialGXItem,

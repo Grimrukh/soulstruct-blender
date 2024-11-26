@@ -9,7 +9,7 @@ __all__ = [
 
 import bpy
 from io_soulstruct.exceptions import SoulstructTypeError
-from io_soulstruct.misc_operators import CopyMeshSelectionOperator, CutMeshSelectionOperator
+from io_soulstruct.misc_operators import *
 from .image import *
 from .lightmaps import *
 from .material import *
@@ -59,6 +59,10 @@ class FLVERModelToolsPanel(bpy.types.Panel):
             mask_box.prop(flver_tool_settings, "display_mask_id", text="")
             mask_box.operator(SelectDisplayMaskID.bl_idname)
 
+            modify_box = panel.box()
+            modify_box.label(text="Modify Mesh:")
+            modify_box.operator(BooleanMeshCut.bl_idname)
+
             polish_box = panel.box()
             polish_box.label(text="Select/Polish Mesh:")
             polish_box.operator(SelectMeshChildren.bl_idname)
@@ -96,6 +100,8 @@ class FLVERModelToolsPanel(bpy.types.Panel):
         if panel:
             panel.prop(context.scene.flver_tool_settings, "uv_scale")
             panel.operator(FastUVUnwrap.bl_idname)
+            panel.operator(RotateUVMapClockwise90.bl_idname)
+            panel.operator(RotateUVMapCounterClockwise90.bl_idname)
 
         header, panel = layout.panel("Vertex Color Tools", default_closed=True)
         header.label(text="Vertex Color Tools")
@@ -139,11 +145,16 @@ class FLVERMaterialToolsPanel(bpy.types.Panel):
         header, panel = layout.panel("Material Tools", default_closed=True)
         header.label(text="Material Tools")
         if panel:
+            material_tool_settings = context.scene.material_tool_settings
+            panel.prop(material_tool_settings, "use_model_stem_in_material_name")
+            panel.prop(material_tool_settings, "clean_up_identical")
+            panel.prop(material_tool_settings, "clean_up_ignores_face_set_count")
+            panel.operator(AutoRenameMaterials.bl_idname)
             panel.operator(MergeObjectMaterials.bl_idname)
             active_object = context.active_object
             if active_object and active_object.active_material:
                 panel.label(text=active_object.active_material.name)
-                panel.prop(context.scene.material_tool_settings, "albedo_image")
+                panel.prop(material_tool_settings, "albedo_image")
                 panel.operator(SetMaterialTexture0.bl_idname)
                 panel.operator(SetMaterialTexture1.bl_idname)
             else:

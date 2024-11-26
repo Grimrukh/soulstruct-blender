@@ -443,7 +443,10 @@ class SoulstructSettings(bpy.types.PropertyGroup):
 
     @staticmethod
     def get_first_existing_dir_path(*parts: str | Path, roots: tp.Sequence[GameStructure]) -> Path | None:
-        """Check ordered `roots` for file path, returning first that exists."""
+        """Check ordered `roots` for file path, returning first that exists.
+
+        Returns `None` if no existing directory is found.
+        """
         for root in roots:
             if not root:
                 continue
@@ -456,7 +459,10 @@ class SoulstructSettings(bpy.types.PropertyGroup):
     def get_first_existing_map_file_path(
         *parts: str | Path, roots: tp.Sequence[GameStructure], dcx_type: DCXType = None, map_stem: str = None
     ) -> Path | None:
-        """Check ordered `roots` for 'map' file path, returning first that exists."""
+        """Check ordered `roots` for 'map' file path, returning first that exists.
+
+        Returns `None` if no existing map file is found.
+        """
         for root in roots:
             if not root:
                 continue
@@ -467,7 +473,10 @@ class SoulstructSettings(bpy.types.PropertyGroup):
 
     @staticmethod
     def get_first_existing_map_dir_path(roots: tp.Sequence[GameStructure], map_stem: str = None) -> Path | None:
-        """Check ordered `roots` for 'map' dir path, returning first that exists."""
+        """Check ordered `roots` for 'map' dir path, returning first that exists.
+
+        Returns `None` if no existing map directory is found.
+        """
         for root in roots:
             if not root:
                 continue
@@ -478,7 +487,10 @@ class SoulstructSettings(bpy.types.PropertyGroup):
 
     @staticmethod
     def get_first_existing_msb_path(roots: tp.Sequence[GameStructure], map_stem: str = None) -> Path | None:
-        """Check ordered `roots` for MSB file path, returning first that exists."""
+        """Check ordered `roots` for MSB file path, returning first that exists.
+
+        Returns `None` if no existing MSB file is found.
+        """
         for root in roots:
             if not root:
                 continue
