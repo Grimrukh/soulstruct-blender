@@ -28,6 +28,9 @@ if tp.TYPE_CHECKING:
 
 class LoggingOperator(bpy.types.Operator):
 
+    # Has REGISTER and UNDO by default.
+    bl_options = {"REGISTER", "UNDO"}
+
     # TODO: Move into `cancel()`.
     cleanup_callback: tp.Callable = None
 

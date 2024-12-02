@@ -374,7 +374,10 @@ class ImportCharacterHKXAnimation(BaseImportTypedHKXAnimation):
 
     def get_anibnd_skeleton_compendium(self, context: bpy.types.Context, model_name: str):
         settings = self.settings(context)
-        anibnd_path = settings.get_import_file_path(f"chr/{model_name}.anibnd")
+        if settings.is_game("DEMONS_SOULS"):
+            anibnd_path = settings.get_import_file_path(f"chr/{model_name}/{model_name}.anibnd")
+        else:
+            anibnd_path = settings.get_import_file_path(f"chr/{model_name}.anibnd")
         if not anibnd_path or not anibnd_path.is_file():
             return self.error(f"Cannot find ANIBND for character '{model_name}' in game directory.")
 

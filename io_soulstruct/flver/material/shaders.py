@@ -116,6 +116,10 @@ class NodeTreeBuilder:
         current_sampler_group = self.matdef.samplers[0].sampler_group
         for sampler in self.matdef.samplers:
 
+            # NOTE: We create UV texture nodes even for samplers with `is_uv_unused = True`, just so the material is
+            # properly represented as it exists in the MTD/MATBIN. The FLVER exporter checks the MTD/MATBIN again and
+            # does not care if these nodes are present.
+
             uv_layer_name = sampler.uv_layer_name
             # We assign the sampler alias to the node label, but preserve the game-specific sampler name in the node
             # name for inspection. The alias label is useful for porting this FLVER with its material to other games.

@@ -727,10 +727,12 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
             - Blender stores POSITION, BONE WEIGHTS, and BONE INDICES on vertices. Any differences here will require
             genuine vertex duplication in Blender. (Of course, vertices at the same position in the same sub-mesh should
             essentially ALWAYS have the same bone weights and indices.)
-            - Blender stores MATERIAL SLOT INDEX on faces. This is how different FLVER meshes are represented.
-            - Blender stores UV COORDINATES, VERTEX COLORS, and NORMALS on face loops ('vertex instances'). This gels
-            with what FLVER meshes want to do.
-            - Blender does not import tangents or bitangents. These are calculated on export.
+            - Blender stores MATERIAL SLOT INDEX on faces. This is how different to FLVER meshes are represented; in
+            a FLVER, faces that use different materials have already been split up into different meshes for rendering.
+            - Blender stores UV COORDINATES, VERTEX COLORS, and NORMALS on face loops (corners, or 'vertex instances').
+            This gels with what FLVER meshes want to do.
+            - Blender does NOT import vertex tangents. These are calculated on export from the normals and UVs, with
+            face UV sign taken into account (e.g. mirrored parts of a model will have mirrored tangents).
         """
         if merged_mesh and not bl_materials:
             raise ValueError("If `merged_mesh` is given, `bl_materials` must also be given.")
@@ -1199,9 +1201,13 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
             loop_color_data = merged_color_array[valid_face_loop_indices].ravel()
             color_layer.data.foreach_set("color", loop_color_data)
 
-        # NOTE: `Mesh.create_normals_split()` removed in Blender 4.1, and I no longer support older versions than that.
-        # New versions of Blender automatically create the `mesh.corner_normals` collection.
-        # We also don't need to enable `use_auto_smooth` or call `calc_normals_split()` anymore.
+        # Some FLVERs (e.g. c2120, 'Shadowlurker' in Demon's Souls) have materials that reference UV layers (with real
+        # included textures) that are not actually used by any Mesh. The game's `MatDef` will handle these special cases
+        # and ensure that Blender doesn't look for them on export, even if they appear in the shader's node tree.
+
+        # NOTE: `Mesh.create_normals_split()` was removed in Blender 4.1, and I no longer support older versions than
+        # that. New versions of Blender automatically create the `mesh.corner_normals` collection. We also don't need to
+        # enable `use_auto_smooth` or call `calc_normals_split()` anymore.
 
         loop_normal_data = merged_mesh.loop_normals[valid_face_loop_indices]  # NOT raveled
         mesh_data.normals_split_custom_set(loop_normal_data)  # one normal per loop

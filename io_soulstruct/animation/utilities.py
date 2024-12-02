@@ -17,15 +17,23 @@ from pathlib import Path
 from soulstruct_havok.core import HKX
 from soulstruct_havok.utilities.maths import TRSTransform
 from soulstruct_havok.fromsoft.base import BaseAnimationHKX, BaseSkeletonHKX
-from soulstruct_havok.fromsoft import darksouls1ptde, darksouls1r, bloodborne, eldenring
+from soulstruct_havok.fromsoft import demonssouls, darksouls1ptde, darksouls1r, bloodborne, eldenring
 from soulstruct.containers import BinderEntry
 from io_soulstruct.exceptions import UnsupportedGameError
 
 ANIMATION_TYPING = tp.Union[
-    darksouls1ptde.AnimationHKX, darksouls1r.AnimationHKX, bloodborne.AnimationHKX, eldenring.AnimationHKX
+    demonssouls.AnimationHKX,
+    darksouls1ptde.AnimationHKX,
+    darksouls1r.AnimationHKX,
+    bloodborne.AnimationHKX,
+    eldenring.AnimationHKX,
 ]
 SKELETON_TYPING = tp.Union[
-    darksouls1ptde.SkeletonHKX, darksouls1r.SkeletonHKX, bloodborne.SkeletonHKX, eldenring.SkeletonHKX
+    demonssouls.SkeletonHKX,
+    darksouls1ptde.SkeletonHKX,
+    darksouls1r.SkeletonHKX,
+    bloodborne.SkeletonHKX,
+    eldenring.SkeletonHKX,
 ]
 
 
@@ -34,7 +42,9 @@ def read_animation_hkx_entry(hkx_entry: BinderEntry, compendium: HKX = None) -> 
     data = hkx_entry.get_uncompressed_data()
     packfile_version = data[0x28:0x38]
     tagfile_version = data[0x10:0x18]
-    if packfile_version.startswith(b"hk_2010.2.0-r1"):  # PTDE
+    if packfile_version.startswith(b"Havok-5.5.0-r1"):  # DeS
+        hkx = demonssouls.AnimationHKX.from_bytes(data, compendium=compendium)
+    elif packfile_version.startswith(b"hk_2010.2.0-r1"):  # PTDE
         hkx = darksouls1ptde.AnimationHKX.from_bytes(data, compendium=compendium)
     elif tagfile_version == b"20150100":  # DSR
         hkx = darksouls1r.AnimationHKX.from_bytes(data, compendium=compendium)
@@ -57,7 +67,9 @@ def read_skeleton_hkx_entry(hkx_entry: BinderEntry, compendium: HKX = None) -> S
     data = hkx_entry.get_uncompressed_data()
     packfile_version = data[0x28:0x38]
     tagfile_version = data[0x10:0x18]
-    if packfile_version.startswith(b"hk_2010.2.0-r1"):  # PTDE
+    if packfile_version.startswith(b"Havok-5.5.0-r1"):  # DeS
+        hkx = demonssouls.SkeletonHKX.from_bytes(data, compendium=compendium)
+    elif packfile_version.startswith(b"hk_2010.2.0-r1"):  # PTDE
         hkx = darksouls1ptde.SkeletonHKX.from_bytes(data, compendium=compendium)
     elif tagfile_version == b"20150100":  # DSR
         hkx = darksouls1r.SkeletonHKX.from_bytes(data, compendium=compendium)
@@ -93,7 +105,7 @@ def get_armature_frames(
     """Get a list of animation frame dictionaries, which each map bone names to armature-space transforms that frame."""
 
     # Get track bone names.
-    track_bone_indices = animation_hkx.animation_container.animation_binding.transformTrackToBoneIndices
+    track_bone_indices = animation_hkx.animation_container.get_track_bone_indices()
     track_bone_names = [skeleton_hkx.skeleton.bones[i].name for i in track_bone_indices]
 
     # Get frames as standard nested lists of transforms.

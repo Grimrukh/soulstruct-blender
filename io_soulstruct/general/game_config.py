@@ -8,7 +8,6 @@ __all__ = [
 
 from types import ModuleType
 from dataclasses import dataclass, field
-from pathlib import Path
 
 from soulstruct.base.models.flver import FLVERVersion
 from soulstruct.base.maps.msb import MSB as BaseMSB
@@ -99,9 +98,8 @@ GAME_CONFIG = {
 
         py_havok_module=PyHavokModule.hk550,
         supports_collision_model=True,
-        # Animation not yet supported (uses wavelet compression).
-        skeleton_hkx_class=None,
-        animation_hkx_class=None,
+        skeleton_hkx_class=hk_fromsoft.demonssouls.SkeletonHKX,
+        animation_hkx_class=hk_fromsoft.demonssouls.AnimationHKX,
     ),
     DARK_SOULS_PTDE: GameConfig(
         flver_default_version=FLVERVersion.DarkSouls_A,
