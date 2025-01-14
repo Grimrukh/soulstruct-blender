@@ -40,7 +40,7 @@ way back to 3.7, but lack many features and are no longer updated.
 
 | Game              | FLVER | Collision | Navmesh | Animation | MSB |
 |-------------------|-------|-----------|---------|-----------|-----|
-| Demon's Souls     | ✔️    | ✔️        | ✔️      | ❌         | ✔️  |
+| Demon's Souls     | ✔️    | ✔️        | ✔️      | ✔️        | ✔️  |
 | Dark Souls (PTDE) | ✔️    | ✔️        | ✔️      | ✔️        | ✔️  |
 | Dark Souls (Rem.) | ✔️    | ✔️        | ✔️      | ✔️        | ✔️  |
 | Dark Souls 2      | ✔️    | ❌         | ❌       | ❌         | ❌   |
