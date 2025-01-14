@@ -14,9 +14,10 @@ from io_soulstruct.msb.properties import MSBPartSubtype, MSBCollisionProps
 from io_soulstruct.types import *
 from io_soulstruct.utilities import *
 from soulstruct.base.maps.msb.utils import GroupBitSet128
+from soulstruct.containers import EntryNotFoundError
 from soulstruct.darksouls1ptde.maps.enums import CollisionHitFilter
 from soulstruct.darksouls1ptde.maps.models import MSBCollisionModel
-from soulstruct.darksouls1ptde.maps.parts import MSBCollision
+from soulstruct.darksouls1ptde.maps.parts import MSBCollision, MSBPart
 from soulstruct_havok.fromsoft.shared import MapCollisionModel, BothResHKXBHD
 from .msb_part import BlenderMSBPart
 
@@ -94,6 +95,19 @@ class BlenderMSBCollision(BlenderMSBPart[MSBCollision, MSBCollisionProps]):
         for i in range(3):
             setattr(self.subtype_properties, f"vagrant_entity_ids_{i}", value[i])
 
+    @property
+    def environment_event(self) -> bpy.types.Object | None:
+        return self.subtype_properties.environment_event
+
+    @environment_event.setter
+    def environment_event(self, value: bpy.types.Object | None):
+        """Property validator will enforce that this is an MSB Environment Event.
+
+        NOTE: This is NOT set on initial object creation, as MSB Events are created after MSB Parts. It is set once all
+        MSB Events have been created.
+        """
+        self.subtype_properties.environment_event = value
+
     @classmethod
     def new_from_soulstruct_obj(
         cls,
@@ -141,11 +155,34 @@ class BlenderMSBCollision(BlenderMSBPart[MSBCollision, MSBCollisionProps]):
         msb_collision.navmesh_groups = self.navmesh_groups
         msb_collision.hit_filter_id = self.hit_filter.value
         msb_collision.vagrant_entity_ids = self.vagrant_entity_ids
+        # NOTE: We can't set `environment_event` yet, as Events will not have been added to the MSB. Deferred (below).
 
         for name in self.AUTO_COLLISION_PROPS:
             setattr(msb_collision, name, getattr(self, name))
 
         return msb_collision
+
+    def to_soulstruct_obj_deferred(
+        self,
+        operator: LoggingOperator,
+        context: bpy.types.Context,
+        map_stem: str,
+        msb: MSB,
+        msb_part: MSBPart,
+    ):
+        """Set `environment_event` reference on MSB Collision after all MSB Events have been created.
+
+        Note that this is the ONLY time (in DS1) that an MSB Event is referenced by another entry. We do a lazy import
+        of `BlenderMSBEnvironmentEvent` so we can determine the appropriate MSB entry name (i.e. without dupe suffix
+        or '<Environment>' suffix).
+        """
+        if self.environment_event is None:
+            return
+        from ..events import BlenderMSBEnvironmentEvent
+        event_name = BlenderMSBEnvironmentEvent(self.environment_event).tight_name
+        msb_part.environment_event = self.bl_obj_to_entry_ref(
+            msb, "environment_event", self.environment_event, msb_part, entry_name=event_name
+        )
 
     @classmethod
     def find_model_mesh(cls, model_name: str, map_stem: str) -> bpy.types.MeshObject:
@@ -285,6 +322,12 @@ class BlenderMSBCollision(BlenderMSBPart[MSBCollision, MSBCollisionProps]):
             return
 
         if settings.is_game("DARK_SOULS_DSR"):
+            # SPECIAL NOTE: In m12_00_00_00 (Darkroot Garden), in DSR only, there is a new Collision model h0125B0 with
+            # corresponding MSB entry h0125B0_0000. This is a new model that is not present in PTDE, and it is only
+            # present in the m12_00_00_01 (new) HKXBHD binders - and because of that, it *does not load* in-game. In
+            # other words, this is a botch job or remnant of QLOC. The guilty model will be correctly reported as
+            # missing here too.
+
             # NOTE: Hi and lo-res binders could end up being found in different import folders (project vs. game).
             try:
                 hi_res_hkxbhd_path = settings.get_import_map_file_path(f"h{map_stem[1:]}.hkxbhd")
@@ -304,7 +347,23 @@ class BlenderMSBCollision(BlenderMSBPart[MSBCollision, MSBCollisionProps]):
                     continue
                 imported_model_names.add(model_name)
 
-                hi_collision, lo_collision = both_res_hkxbhd.get_both_hkx(model_name)
+                try:
+                    hi_collision, lo_collision = both_res_hkxbhd.get_both_hkx(model_name)
+                except EntryNotFoundError:
+                    if map_stem == "m12_00_00_00" and part.name == "h0125B0_0000":
+                        # This is the special case of the new model in DSR Darkroot Garden.
+                        operator.warning(
+                            f"Ignoring known missing model in vanilla DS1R: h0125B0 in m12_00_00_00. This model file "
+                            f"(a copy of h0017B0 with new groups) only appears in the unused m12_00_00_01 HKXBHDs."
+                        )
+                    else:
+                        operator.warning(f"MSB Collision model '{model_name}' not found in HKXBHDs.")
+                    continue
+                except Exception as ex:
+                    operator.error(
+                        f"Cannot load HKX '{model_name}' from HKXBHDs in map {map_stem}. Error: {ex}"
+                    )
+                    continue
 
                 try:
                     BlenderMapCollision.new_from_soulstruct_obj(

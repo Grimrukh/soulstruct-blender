@@ -2,13 +2,17 @@ from __future__ import annotations
 
 import time
 import traceback
+import typing as tp
 
 import numpy as np
 
 import bpy
 from mathutils import Matrix, Quaternion as BlenderQuaternion
 
+from soulstruct.dcx import DCXType
+from soulstruct.games import *
 from soulstruct_havok.fromsoft.base import BaseSkeletonHKX, BaseAnimationHKX
+from soulstruct_havok.fromsoft.demonssouls import AnimationHKX as DES_AnimationHKX, SkeletonHKX as DES_SkeletonHKX
 from soulstruct_havok.utilities.maths import TRSTransform
 
 from io_soulstruct.exceptions import *
@@ -17,7 +21,71 @@ from io_soulstruct.utilities import *
 from .utilities import *
 
 
+class GameAnimationInfo(tp.NamedTuple):
+    # TODO: Probably want an `ANIBND` class in Soulstruct that is simpler (or extended by) the Soulstruct Havok one.
+    relative_binder_path: str  # with `model_name` format argument
+    stem_template: str
+    hkx_entry_path: str  # with `model_name` and `animation_stem` format arguments
+    dcx_type: DCXType
+
+
 class SoulstructAnimation:
+
+    GAME_ANIMATION_INFO_CHR = {
+        DEMONS_SOULS: GameAnimationInfo(
+            relative_binder_path="chr/{model_name}/{model_name}.anibnd",  # additional nested folder
+            stem_template="##_####",
+            hkx_entry_path="N:\\DemonsSoul\\data\\Model\\chr\\{model_name}\\hkx\\{animation_stem}.hkx",
+            dcx_type=DCXType.Null,
+        ),
+        DARK_SOULS_PTDE: GameAnimationInfo(
+            relative_binder_path="chr/{model_name}.anibnd",
+            stem_template="##_####",
+            hkx_entry_path="N:\\FRPG\\data\\Model\\chr\\{model_name}\\hkxwin32\\{animation_stem}.hkx",
+            dcx_type=DCXType.Null,
+        ),
+        DARK_SOULS_DSR: GameAnimationInfo(
+            relative_binder_path="chr/{model_name}.anibnd",
+            stem_template="##_####",
+            hkx_entry_path="N:\\FRPG\\data\\Model\\chr\\{model_name}\\hkxx64\\{animation_stem}.hkx",
+            dcx_type=DCXType.Null,
+        ),
+        BLOODBORNE: GameAnimationInfo(
+            relative_binder_path="chr/{model_name}.anibnd",
+            stem_template="###_######",
+            hkx_entry_path="N:\\SPRJ\\data\\INTERROOT_ps4\\chr\\{model_name}\\hkx\\{animation_stem}.hkx",
+            dcx_type=DCXType.Null,
+        ),
+        # TODO: For Elden Ring, need to choose appropriate 'divXX' ANIBND.
+    }
+
+    GAME_ANIMATION_INFO_OBJ = {
+        DEMONS_SOULS: GameAnimationInfo(
+            relative_binder_path="obj/{model_name}.objbnd",  # no additional nested folder, unlike `chr`
+            stem_template="##_####",
+            hkx_entry_path="N:\\DemonsSoul\\data\\Model\\obj\\{model_name}\\hkx\\{animation_stem}.hkx",
+            dcx_type=DCXType.Null,
+        ),
+        DARK_SOULS_PTDE: GameAnimationInfo(
+            relative_binder_path="obj/{model_name}.objbnd",
+            stem_template="##_####",
+            hkx_entry_path="N:\\FRPG\\data\\Model\\obj\\{model_name}\\hkxwin32\\{animation_stem}.hkx",
+            dcx_type=DCXType.Null,
+        ),
+        DARK_SOULS_DSR: GameAnimationInfo(
+            relative_binder_path="obj/{model_name}.objbnd",
+            stem_template="##_####",
+            hkx_entry_path="N:\\FRPG\\data\\Model\\obj\\{model_name}\\hkxx64\\{animation_stem}.hkx",
+            dcx_type=DCXType.Null,
+        ),
+        BLOODBORNE: GameAnimationInfo(
+            relative_binder_path="obj/{model_name}.objbnd",
+            stem_template="###_######",
+            hkx_entry_path="N:\\SPRJ\\data\\INTERROOT_ps4\\obj\\{model_name}\\hkx\\{animation_stem}.hkx",
+            dcx_type=DCXType.Null,
+        ),
+        # TODO: Elden Ring? Any DivXX stuff?
+    }
 
     FAST = {"FAST"}
 
@@ -105,30 +173,42 @@ class SoulstructAnimation:
 
         operator.info(f"Importing HKX animation for {armature.name}: '{name}'")
 
-        # We cannot rely on track annotations for bone names in later games (e.g. Elden Ring).
+        # We cannot rely on track annotations for bone names in all games (e.g. Demon's Souls, Elden Ring).
         # Here, we just check that all animated bones are present in Blender Armature.
         hk_bone_names = [b.name for b in skeleton_hkx.skeleton.bones]
         track_bone_indices = animation_hkx.animation_container.hkx_binding.transformTrackToBoneIndices
         track_bone_names = [hk_bone_names[i] for i in track_bone_indices]
-
         bl_bone_names = [b.name for b in armature.data.bones]
-        for bone_name in track_bone_names:
-            if bone_name not in bl_bone_names:
-                if bone_name == "TwistRoot":
-                    raise AnimationImportError(
-                        f"Animated bone name '{bone_name}' is missing from Armature. This problem is known for this "
-                        f"specific bone, which is absent from the FLVER, but has not yet been resolved in Soulstruct."
-                    )
-                raise AnimationImportError(f"Animated bone name '{bone_name}' is missing from Armature.")
 
-        p = time.perf_counter()
-        interleaved_animation_hkx = animation_hkx.to_interleaved_hkx()
-        operator.info(f"Converted animation to interleaved in {time.perf_counter() - p:.4f} seconds.")
+        if not animation_hkx.animation_container.is_interleaved:
+            p = time.perf_counter()
+            interleaved_animation_hkx = animation_hkx.to_interleaved_hkx()
+            operator.info(f"Converted animation to interleaved in {time.perf_counter() - p:.4f} seconds.")
+        else:
+            # Already interleaved (fine for import).
+            interleaved_animation_hkx = animation_hkx
+            operator.info(f"Imported animation was already interleaved (uncompressed).")
 
         p = time.perf_counter()
         arma_frames = get_armature_frames(interleaved_animation_hkx, skeleton_hkx)
         root_motion = get_root_motion(interleaved_animation_hkx)
         operator.info(f"Constructed armature animation frames in {time.perf_counter() - p:.4f} seconds.")
+
+        for bone_name in track_bone_names:
+            if bone_name not in bl_bone_names:
+                # if bone_name == "TwistRoot":
+                #     raise AnimationImportError(
+                #         f"Animated bone name '{bone_name}' is missing from Armature. This problem is known for this "
+                #         f"specific bone, which is absent from the FLVER, but has not yet been resolved in Soulstruct."
+                #     )
+                # raise AnimationImportError(f"Animated bone name '{bone_name}' is missing from Armature.")
+                operator.warning(
+                    f"Animated bone name '{bone_name}' is missing from Armature. Animation data for this absent bone "
+                    f"will be discarded."
+                )
+                # Remove bone name from every Armature frame.
+                for frame in arma_frames:
+                    frame.pop(bone_name)
 
         # Import single animation HKX.
         p = time.perf_counter()
@@ -376,7 +456,7 @@ class SoulstructAnimation:
                 t, r, s = bl_basis_matrix.decompose()
 
                 if bone_name in last_frame_rotations:
-                    if last_frame_rotations[bone_name].dot(r) < 0:
+                    if last_frame_rotations[bone_name].dot(r) < 0.0:
                         r.negate()  # negate quaternion to avoid discontinuity (reverse direction of rotation)
 
                 for samples, sample_float in zip(basis_samples, [t.x, t.y, t.z, r.w, r.x, r.y, r.z, s.x, s.y, s.z]):
@@ -458,8 +538,9 @@ class SoulstructAnimation:
     
     # region Export
 
-    def to_animation_hkx(
+    def to_interleaved_animation_hkx(
         self,
+        operator: LoggingOperator,
         context: Context,
         armature: bpy.types.ArmatureObject,
         skeleton_hkx: BaseSkeletonHKX,
@@ -530,13 +611,23 @@ class SoulstructAnimation:
                 try:
                     bl_bone = bl_bones_by_name[bone.name]
                 except KeyError:
-                    raise AnimationExportError(f"Bone '{bone.name}' in HKX skeleton not found in Blender armature.")
-                armature_space_transform = BL_MATRIX_TO_GAME_TRS(bl_bone.matrix)
-                if i > 0:
-                    # Negate rotation quaternion if dot product with last rotation is negative (first frame ignored).
-                    dot = np.dot(armature_space_transform.rotation.data, last_bone_trs[bone.name].rotation.data)
-                    if dot < 0:
-                        armature_space_transform.rotation = -armature_space_transform.rotation
+                    # Ignore bone missing from FLVER Armature.
+                    if i == 0:
+                        # Only emit warning on first frame.
+                        operator.warning(
+                            f"Bone '{bone.name}' in HKX skeleton not found in Blender armature. Identity animation "
+                            f"data will exported for this HKX bone for all frames."
+                        )
+                    # raise AnimationExportError(f"Bone '{bone.name}' in HKX skeleton not found in Blender armature.")
+                    armature_space_transform = TRSTransform.identity()
+                else:
+                    armature_space_transform = BL_MATRIX_TO_GAME_TRS(bl_bone.matrix)
+                    if i > 0:
+                        # Negate rotation quaternion if dot with last rotation is negative (first frame ignored).
+                        dot = np.dot(armature_space_transform.rotation.data, last_bone_trs[bone.name].rotation.data)
+                        if dot < 0:
+                            armature_space_transform.rotation = -armature_space_transform.rotation
+
                 last_bone_trs[bone.name] = armature_space_transform
                 armature_space_frame.append(armature_space_transform)
 
@@ -549,7 +640,7 @@ class SoulstructAnimation:
         else:
             root_motion = None
 
-        interleaved_animation_hkx = animation_hkx_class.from_minimal_data_interleaved(
+        return animation_hkx_class.from_minimal_data_interleaved(
             frame_transforms=armature_space_frames,
             track_names=[bone.name for bone in skeleton_hkx.skeleton.bones],
             transform_track_bone_indices=track_bone_mapping,
@@ -559,13 +650,61 @@ class SoulstructAnimation:
             skeleton_for_armature_to_local=skeleton_hkx,
         )
 
-        try:
-            spline_animation_hkx = interleaved_animation_hkx.get_spline_hkx()
-        except NotImplementedError:
-            raise UnsupportedGameError(
-                f"Animation export not yet possible for game {context.scene.soulstruct_settings.game}."
-            )
+    def to_wavelet_animation(
+        self,
+        operator: LoggingOperator,
+        context: Context,
+        armature: bpy.types.ArmatureObject,
+        skeleton_hkx: DES_SkeletonHKX,
+        animation_hkx_class: type[DES_AnimationHKX],
+    ) -> DES_AnimationHKX:
+        """Convert to wavelet-compressed."""
+        interleaved_animation = self.to_interleaved_animation_hkx(
+            operator, context, armature, skeleton_hkx, animation_hkx_class
+        )
+        return interleaved_animation.to_wavelet_hkx()
 
-        return spline_animation_hkx
+    def to_spline_animation(
+        self,
+        operator: LoggingOperator,
+        context: Context,
+        armature: bpy.types.ArmatureObject,
+        skeleton_hkx: BaseSkeletonHKX,
+        animation_hkx_class: type[BaseAnimationHKX],
+    ) -> ANIMATION_TYPING:
+        interleaved_animation = self.to_interleaved_animation_hkx(
+            operator, context, armature, skeleton_hkx, animation_hkx_class
+        )
+        return interleaved_animation.to_spline_hkx()
+
+    def to_game_compressed_animation(
+        self,
+        operator: LoggingOperator,
+        context: Context,
+        game: Game,
+        armature: bpy.types.ArmatureObject,
+        skeleton_hkx: BaseSkeletonHKX,
+        animation_hkx_class: type[BaseAnimationHKX],
+        force_interleaved=False,
+    ) -> ANIMATION_TYPING:
+        """Detect appropriate wavelet or spline compression based on game."""
+
+        if force_interleaved:
+            animation_hkx = self.to_interleaved_animation_hkx(
+                operator, context, armature, skeleton_hkx, animation_hkx_class
+            )
+        elif game is DEMONS_SOULS:
+            assert isinstance(skeleton_hkx, DES_SkeletonHKX)
+            assert issubclass(animation_hkx_class, DES_AnimationHKX)
+            animation_hkx = self.to_wavelet_animation(operator, context, armature, skeleton_hkx, animation_hkx_class)
+        else:
+            # All other games use spline compression.
+            animation_hkx = self.to_spline_animation(operator, context, armature, skeleton_hkx, animation_hkx_class)
+
+        if game is DEMONS_SOULS:
+            # Demon's Souls HKX files must be big-endian.
+            animation_hkx.is_big_endian = True
+
+        return animation_hkx
 
     # endregion

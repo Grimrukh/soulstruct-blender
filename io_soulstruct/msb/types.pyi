@@ -80,6 +80,16 @@ class IBlenderMSBPart(SoulstructObject, abc.ABC):
     ) -> BaseMSBPart:
         ...
 
+    def to_soulstruct_obj_deferred(
+        self,
+        operator: LoggingOperator,
+        context: bpy.types.Context,
+        map_stem: str,
+        msb: BaseMSB,
+        msb_part: BaseMSBPart,
+    ) -> None:
+        ...
+
     def set_bl_obj_transform(self, part: BaseMSBPart):
         """Set Blender object transform to match the given MSB Part. Could set to Armature parent instead of Mesh."""
         ...

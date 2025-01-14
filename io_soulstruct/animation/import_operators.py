@@ -21,7 +21,7 @@ from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
 from soulstruct.eldenring.containers import DivBinder
 from soulstruct_havok.core import HKX
 
-from io_soulstruct.exceptions import SoulstructTypeError, AnimationImportError
+from io_soulstruct.exceptions import SoulstructTypeError, AnimationImportError, UnsupportedGameError
 from io_soulstruct.flver.models import BlenderFLVER
 from io_soulstruct.utilities import *
 from .types import SoulstructAnimation
@@ -73,30 +73,21 @@ class BaseImportHKXAnimation(LoggingOperator):
 
         Note that `file_path` is attached to each queue element for source information only.
         """
-        if len(anim_hkx_entries) > 1:
-            if self.import_all_animations:
-                # Read and queue up HKX animations for separate import.
-                hkxs_with_paths = []
-                for entry in anim_hkx_entries:
-                    try:
-                        animation_hkx = read_animation_hkx_entry(entry, compendium)
-                    except Exception as ex:
-                        self.warning(f"Error occurred while reading HKX Binder entry '{entry.name}': {ex}")
-                    else:
-                        hkxs_with_paths.append((file_path, skeleton_hkx, animation_hkx))
-                        print(animation_hkx, animation_hkx.path)
-                return hkxs_with_paths
+        if self.import_all_animations:
+            # Read and queue up HKX animations for separate import.
+            hkxs_with_paths = []
+            for entry in anim_hkx_entries:
+                try:
+                    animation_hkx = read_animation_hkx_entry(entry, compendium)
+                except Exception as ex:
+                    self.warning(f"Error occurred while reading HKX Binder entry '{entry.name}': {ex}")
+                else:
+                    hkxs_with_paths.append((file_path, skeleton_hkx, animation_hkx))
+                    print(animation_hkx, animation_hkx.path)
+            return hkxs_with_paths
 
-            # Queue up all Binder entries; user will be prompted to choose entry later.
-            return [(file_path, skeleton_hkx, anim_hkx_entries)]
-
-        try:
-            animation_hkx = read_animation_hkx_entry(anim_hkx_entries[0], compendium)
-        except Exception as ex:
-            self.warning(f"Error occurred while reading HKX Binder entry '{anim_hkx_entries[0].name}': {ex}")
-            return []
-
-        return [(file_path, skeleton_hkx, animation_hkx)]
+        # Queue up all Binder entries; user will be prompted to choose entry later (even if only one entry exists).
+        return [(file_path, skeleton_hkx, anim_hkx_entries)]
 
     def load_binder_compendium(self, binder: Binder) -> HKX | None:
         """Try to find compendium HKX. Div Binders may have multiple, but they should be identical, so we use first."""
@@ -131,7 +122,7 @@ class BaseImportHKXAnimation(LoggingOperator):
             hkx_or_entries: ANIMATION_TYPING
             anim_name = hkx_or_entries.path_minimal_stem
             try:
-                print(f"Creating animation '{anim_name}'")
+                self.info(f"Creating animation '{anim_name}' in Blender.")
                 bl_animation = SoulstructAnimation.new_from_hkx_animation(
                     self,
                     context,
@@ -295,7 +286,7 @@ class ImportHKXAnimationWithBinderChoice(BaseImportHKXAnimation):
 
         anim_name = entry.name.split(".")[0]
         try:
-            print(f"Creating animation '{anim_name}'")
+            self.info(f"Creating animation '{anim_name}' in Blender.")
             SoulstructAnimation.new_from_hkx_animation(
                 self,
                 context,
@@ -351,6 +342,9 @@ class BaseImportTypedHKXAnimation(BaseImportHKXAnimation):
             raise AnimationImportError(f"Cannot find any HKX animation files for FLVER '{model_name}'.")
 
         hkxs_with_paths = self.scan_entries(anim_hkx_entries, anibnd.path, skeleton_hkx, compendium)
+        print(self.import_all_animations)
+        for x in hkxs_with_paths:
+            print(x[0], isinstance(x[2], list))
         animations = self.import_all_entries(context, hkxs_with_paths, compendium, bl_flver)
         return {"FINISHED"} if animations else {"CANCELLED"}  # at least one successful import
 
@@ -372,14 +366,20 @@ class ImportCharacterHKXAnimation(BaseImportTypedHKXAnimation):
         """Character FLVER (not MSB Part) must be selected."""
         return super().poll(context) and context.active_object.name[0] == "c"
 
-    def get_anibnd_skeleton_compendium(self, context: bpy.types.Context, model_name: str):
+    def get_anibnd_skeleton_compendium(
+        self, context: bpy.types.Context, model_name: str
+    ) -> tuple[Binder, SKELETON_TYPING, HKX | None]:
         settings = self.settings(context)
-        if settings.is_game("DEMONS_SOULS"):
-            anibnd_path = settings.get_import_file_path(f"chr/{model_name}/{model_name}.anibnd")
-        else:
-            anibnd_path = settings.get_import_file_path(f"chr/{model_name}.anibnd")
+
+        try:
+            game_anim_info = SoulstructAnimation.GAME_ANIMATION_INFO_CHR.get(settings.game)
+        except KeyError:
+            raise AnimationImportError(f"Game '{settings.game}' is not supported for character animation import.")
+
+        relative_anibnd_path = Path(game_anim_info.relative_binder_path.format(model_name=model_name))
+        anibnd_path = settings.get_import_file_path(relative_anibnd_path)
         if not anibnd_path or not anibnd_path.is_file():
-            return self.error(f"Cannot find ANIBND for character '{model_name}' in game directory.")
+            raise FileNotFoundError(f"Cannot find ANIBND for character '{model_name}' in game directory.")
 
         skeleton_anibnd = anibnd = DivBinder.from_path(anibnd_path)
         # TODO: Support c0000 automatic import. Combine all sub-ANIBND entries into one big choice list?
@@ -411,7 +411,14 @@ class ImportObjectHKXAnimation(BaseImportTypedHKXAnimation):
         self, context: bpy.types.Context, model_name: str
     ) -> tuple[Binder, SKELETON_TYPING, HKX | None]:
         settings = self.settings(context)
-        objbnd_path = settings.get_import_file_path(f"obj/{model_name}.anibnd")
+
+        try:
+            game_anim_info = SoulstructAnimation.GAME_ANIMATION_INFO_OBJ.get(settings.game)
+        except KeyError:
+            raise UnsupportedGameError(f"Game '{settings.game}' is not supported for object animation import.")
+
+        relative_objbnd_path = Path(game_anim_info.relative_binder_path.format(model_name=model_name))
+        objbnd_path = settings.get_import_file_path(relative_objbnd_path)
         if not objbnd_path or not objbnd_path.is_file():
             raise AnimationImportError(f"Cannot find OBJBND for '{model_name}' in game directory.")
         objbnd = DivBinder.from_path(objbnd_path)

@@ -128,6 +128,7 @@ class ExportMapMSB(LoggingOperator):
 
         # Create new MSB. TODO: Type-hinting DS1 for now for my own convenience.
         msb = msb_class()  # type: MSB_PTDE | MSB_DSR | MSB_DES
+        msb.path = Path(f"map/{map_stem}/{map_stem}.msb")  # for internal usage
 
         # We add Regions first, then Parts (in careful subtype order), then Events.
         region_classes = BLENDER_MSB_REGION_TYPES[settings.game]
@@ -142,7 +143,7 @@ class ExportMapMSB(LoggingOperator):
 
         # We add Parts next, carefully by subtype.
         part_classes = BLENDER_MSB_PART_TYPES[settings.game]  # type: dict[str, type[IBlenderMSBPart]]
-        part_count = 0
+        bl_and_msb_parts = []
         for bl_part_subtype in self.PART_SUBTYPE_ORDER:
             try:
                 bl_part_type = part_classes[bl_part_subtype]
@@ -159,7 +160,7 @@ class ExportMapMSB(LoggingOperator):
                 bl_part = bl_part_type(bl_part_obj)  # type: IBlenderMSBPart
                 msb_part = bl_part.to_soulstruct_obj(self, context, map_stem, msb)  # will create and add MSB model
                 msb.add_entry(msb_part)
-                part_count += 1
+                bl_and_msb_parts.append((bl_part, msb_part))
                 # self.info(f"Added {bl_part_subtype} MSB Part: {msb_part.name}")
 
         # Sort all Models by name.
@@ -176,10 +177,12 @@ class ExportMapMSB(LoggingOperator):
             msb_event = bl_event.to_soulstruct_obj(self, context, map_stem, msb)  # type: BaseMSBEvent
             msb.add_entry(msb_event)
             event_count += 1
+            print(msb_event)
             # self.info(f"Added {bl_event_obj.MSB_EVENT.event_subtype_enum} MSB Event: {msb_event.name}")
 
-        # Finalize automatic references (e.g. Collision environments).
-        msb.set_auto_references()
+        # Resolve any deferred properties for Parts (e.g. Collision environment events).
+        for bl_part, msb_part in bl_and_msb_parts:
+            bl_part.to_soulstruct_obj_deferred(self, context, map_stem, msb, msb_part)
 
         # MSB is ready to write.
         relative_msb_path = settings.get_relative_msb_path(map_stem)  # will use latest MSB version
@@ -189,6 +192,8 @@ class ExportMapMSB(LoggingOperator):
         except Exception as ex:
             # Do not try to export NVMBND or NVMDUMP below.
             return self.error(f"Could not export MSB. Error: {ex}")
+
+        part_count = len(bl_and_msb_parts)
 
         self.info(
             f"Exported MSB {map_stem} successfully with {region_count} Regions, {event_count} Events, "

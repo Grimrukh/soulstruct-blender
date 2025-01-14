@@ -70,6 +70,6 @@ class BlenderMSBMessageEvent(BlenderMSBEvent[MSBMessageEvent, MSBMessageEventPro
     ) -> MSBMessageEvent:
         message_event = super().to_soulstruct_obj(operator, context, map_stem, msb)
         message_event.text_id = self.text_id
-        message_event.unk_x02_x04 = self.unk_x02_x04
+        message_event.unk_x02 = self.unk_x02
         message_event.is_hidden = self.is_hidden
         return message_event

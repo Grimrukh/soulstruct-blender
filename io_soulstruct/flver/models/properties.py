@@ -132,7 +132,7 @@ class FLVERDummyProps(bpy.types.PropertyGroup):
     )
     color_rgba: bpy.props.IntVectorProperty(
         name="Color RGBA",
-        description="Color of the Dummy object (8-bit channels)",
+        description="Color of the Dummy object (8-bit channels). Not used in-game but useful for model visualization",
         size=4,
         default=(255, 255, 255, 255),
         min=0,

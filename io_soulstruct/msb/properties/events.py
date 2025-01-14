@@ -398,7 +398,7 @@ class MSBSpawnerEventProps(bpy.types.PropertyGroup):
         min=0.0,
     )
 
-    max_interval = bpy.props.FloatProperty(
+    max_interval: bpy.props.FloatProperty(
         name="Maximum Interval",
         description="Maximum time between spawns",
         default=1.0,

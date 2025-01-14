@@ -134,6 +134,7 @@ class MSBToolsPanel(bpy.types.Panel):
         layout.operator(EnableSelectedNames.bl_idname, icon='HIDE_OFF')
         layout.operator(DisableSelectedNames.bl_idname, icon='HIDE_ON')
         layout.operator(CreateMSBPart.bl_idname, icon='MESH_CUBE')
+        layout.operator(CreateMSBRegion.bl_idname, icon='MESH_CUBE')
         layout.operator(DuplicateMSBPartModel.bl_idname, icon='DUPLICATE')
         layout.operator(ApplyPartTransformToModel.bl_idname, icon='MODIFIER')
         layout.operator(CreateConnectCollision.bl_idname, icon='MODIFIER')
@@ -579,7 +580,8 @@ class _MSBEventSubtypePanelMixin:
 
         # noinspection PyTypeChecker
         props = getattr(obj, self.event_subtype.value)
-        prop_names = props.get_game_props(context.scene.soulstruct_settings.game)
+        # prop_names = props.get_game_props(context.scene.soulstruct_settings.game)
+        prop_names = list(props.__annotations__)
         for prop in prop_names:
             layout.prop(props, prop)
 

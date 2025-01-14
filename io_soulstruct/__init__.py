@@ -34,9 +34,12 @@ def try_reload(_module_name: str):
 # Reload all Soulstruct modules, then all modules in this add-on (except this script).
 # NOTE: This is IMPORTANT when using 'Reload Scripts' in Blender, as it is otherwise prone to partial re-imports of
 # Soulstruct that duplicate classes and cause wild bugs with `isinstance`, object ID equality, etc.
-for module_name in list(sys.modules.keys()):
-    if "io_soulstruct" not in module_name and "soulstruct" in module_name.split(".")[0]:
-        try_reload(module_name)
+
+# TODO: `soulstruct` reload doesn't seem to be complete; `Vector has no attribute 'ndim'` appears.
+# for module_name in list(sys.modules.keys()):
+#     if "io_soulstruct" not in module_name and "soulstruct" in module_name.split(".")[0]:
+#         try_reload(module_name)
+
 for module_name in list(sys.modules.keys()):
     if module_name != "io_soulstruct" and "io_soulstruct" in module_name.split(".")[0]:  # don't reload THIS module
         try_reload(module_name)
@@ -57,7 +60,7 @@ from io_soulstruct.types import SoulstructType
 bl_info = {
     "name": "Soulstruct",
     "author": "Scott Mooney (Grimrukh)",
-    "version": (2, 1, 9),
+    "version": (2, 2, 0),
     "blender": (4, 2, 0),
     "location": "File > Import-Export",
     "description": "Import, manipulate, and export FromSoftware/Havok assets",
@@ -328,6 +331,7 @@ CLASSES = (
     EnableSelectedNames,
     DisableSelectedNames,
     CreateMSBPart,
+    CreateMSBRegion,
     DuplicateMSBPartModel,
     ApplyPartTransformToModel,
     CreateConnectCollision,

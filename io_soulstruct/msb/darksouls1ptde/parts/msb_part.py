@@ -197,7 +197,8 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
         prop_name: str,
         bl_obj: bpy.types.Object | None,
         part: MSBPart,
-        entry_subtype: str = None
+        entry_subtype: str = None,
+        entry_name="",  # taken from `bl_obj.name` (or tight name for Parts) by default
     ) -> MSBEntry | None:
 
         if not bl_obj:
@@ -209,18 +210,21 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
 
         try:
             if bl_obj.soulstruct_type == SoulstructType.MSB_PART:
-                msb_entry = msb.find_part_name(get_bl_obj_tight_name(bl_obj), subtypes=subtypes)
+                entry_name = entry_name or get_bl_obj_tight_name(bl_obj)
+                msb_entry = msb.find_part_name(entry_name, subtypes=subtypes)
             elif bl_obj.soulstruct_type == SoulstructType.MSB_REGION:
-                msb_entry = msb.find_region_name(bl_obj.name, subtypes=subtypes)  # full name
+                entry_name = entry_name or bl_obj.name
+                msb_entry = msb.find_region_name(entry_name, subtypes=subtypes)  # full name
             elif bl_obj.soulstruct_type == SoulstructType.MSB_EVENT:
-                msb_entry = msb.find_event_name(bl_obj.name, subtypes=subtypes)  # full name
+                entry_name = entry_name or bl_obj.name
+                msb_entry = msb.find_event_name(entry_name, subtypes=subtypes)  # full name
             else:
                 raise SoulstructTypeError(f"Blender object '{bl_obj.name}' is not an MSB Part, Region, or Event.")
             return msb_entry
         except KeyError:
             raise MissingMSBEntryError(
                 f"MSB entry '{bl_obj.name}' referenced in field '{prop_name}' of part '{part.name}' "
-                f"not found in MSB."
+                f"not found in MSB (under name '{entry_name}')."
             )
 
     @classmethod
@@ -424,6 +428,17 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
             setattr(part, name, getattr(self, name))
 
         return part
+
+    def to_soulstruct_obj_deferred(
+        self,
+        operator: LoggingOperator,
+        context: bpy.types.Context,
+        map_stem: str,
+        msb: MSB,
+        msb_part: MSBPart,
+    ):
+        """Can be overridden by Parts that require a deferred additional call after all MSB entries are created."""
+        pass
 
     @classmethod
     @abc.abstractmethod

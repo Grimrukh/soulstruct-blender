@@ -87,7 +87,7 @@ class BlenderFLVERDummy(SoulstructObject[Dummy, FLVERDummyProps]):
         else:
             raise TypeError(f"Parent bone must be a Bone or string, not {type(value)}.")
 
-    color_rgba: tuple[int, int, int, int]
+    color_rgba: tuple[int, int, int, int]  # must be immutable to convey that `bl_dummy.color_rgba.r = X` has no effect
     follows_attach_bone: bool
     use_upward_vector: bool
     unk_x30: int
@@ -117,7 +117,12 @@ class BlenderFLVERDummy(SoulstructObject[Dummy, FLVERDummyProps]):
         bl_dummy.obj.empty_display_type = "ARROWS"  # best display type/size I've found (single arrow not sufficient)
         bl_dummy.obj.empty_display_size = 0.05
 
-        bl_dummy.color_rgba = soulstruct_obj.color_rgba
+        bl_dummy.color_rgba = (
+            soulstruct_obj.color_rgba.r,
+            soulstruct_obj.color_rgba.g,
+            soulstruct_obj.color_rgba.b,
+            soulstruct_obj.color_rgba.a,
+        )
         bl_dummy.follows_attach_bone = soulstruct_obj.follows_attach_bone
         bl_dummy.use_upward_vector = soulstruct_obj.use_upward_vector
         bl_dummy.unk_x30 = soulstruct_obj.unk_x30
@@ -157,7 +162,7 @@ class BlenderFLVERDummy(SoulstructObject[Dummy, FLVERDummyProps]):
     def _create_soulstruct_obj(self) -> Dummy:
         return Dummy(
             reference_id=self.reference_id,  # stored in dummy name for editing convenience
-            color_rgba=list(self.color_rgba),
+            color_rgba=ColorRGBA(*self.color_rgba),
             follows_attach_bone=self.follows_attach_bone,
             use_upward_vector=self.use_upward_vector,
             unk_x30=self.unk_x30,
@@ -702,7 +707,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         collection: bpy.types.Collection = None,
         merged_mesh: MergedMesh = None,
         bl_materials: tp.Sequence[BlenderFLVERMaterial] = None,
-        force_bone_data_type: BoneDataType = None,
+        force_bone_data_type: BoneDataType | None = None,
     ) -> BlenderFLVER:
         """Read a FLVER into a managed Blender Armature/Mesh.
 

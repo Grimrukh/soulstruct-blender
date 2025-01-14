@@ -6,6 +6,7 @@ __all__ = [
     "EnableSelectedNames",
     "DisableSelectedNames",
     "CreateMSBPart",
+    "CreateMSBRegion",
     "DuplicateMSBPartModel",
     "ApplyPartTransformToModel",
     "CreateConnectCollision",
@@ -27,6 +28,7 @@ from io_soulstruct.msb.operator_config import BLENDER_MSB_PART_TYPES
 from io_soulstruct.types import SoulstructType
 from io_soulstruct.utilities import *
 from .properties import MSBPartSubtype
+from .utilities import primitive_cube
 
 if tp.TYPE_CHECKING:
     from .types import IBlenderMSBPart
@@ -173,6 +175,42 @@ class CreateMSBPart(LoggingOperator):
         # Set location to cursor (Armature parent if present).
         obj = bl_part.armature or bl_part.obj
         obj.location = context.scene.cursor.location
+
+        return {"FINISHED"}
+
+
+class CreateMSBRegion(LoggingOperator):
+
+    bl_idname = "object.create_msb_region"
+    bl_label = "Create MSB Region (Box)"
+    bl_description = "Create a new MSB Region instance with a box shape and set its location to the 3D cursor"
+
+    def execute(self, context):
+        settings = self.settings(context)
+        if settings.game not in {DEMONS_SOULS, DARK_SOULS_PTDE, DARK_SOULS_DSR}:
+            return self.error(f"Cannot create MSB Region for game {settings.game.name}.")
+
+        region_collection = get_or_create_collection(
+            context.scene.collection,
+            f"{settings.map_stem} MSB",
+            f"{settings.map_stem} Regions/Events",
+        )
+
+        region_mesh = bpy.data.meshes.new(f"{settings.map_stem}_Region")
+        primitive_cube(region_mesh)
+        region_obj = bpy.data.objects.new(f"{settings.map_stem}_Region", region_mesh)
+        region_obj.display_type = "WIRE"
+        region_obj.soulstruct_type = SoulstructType.MSB_REGION
+        region_obj.MSB_REGION.region_subtype = "ALL"
+        region_obj.MSB_REGION.shape_type = "Box"
+
+        region_obj.location = context.scene.cursor.location
+        region_collection.objects.link(region_obj)
+
+        # Set as active and only selected object.
+        context.view_layer.objects.active = region_obj
+        self.deselect_all()
+        region_obj.select_set(True)
 
         return {"FINISHED"}
 

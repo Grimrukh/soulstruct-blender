@@ -39,7 +39,7 @@ class GameConfig:
     nvmbnd_class: type[BaseNVMBND] | None = None
 
     # HAVOK CONFIG
-    py_havok_module: PyHavokModule | None = None
+    havok_module: PyHavokModule | None = None
     skeleton_hkx_class: type[BaseSkeletonHKX] | None = None
     animation_hkx_class: type[BaseAnimationHKX] | None = None
     supports_collision_model: bool = False  # `MapCollisionModel` support
@@ -79,7 +79,7 @@ class GameConfig:
     @property
     def supports_animation(self) -> bool:
         return (
-            self.py_havok_module is not None
+            self.havok_module is not None
             and self.skeleton_hkx_class is not None
             and self.animation_hkx_class is not None
         )
@@ -96,7 +96,7 @@ GAME_CONFIG = {
         # TODO: No idea why PyCharm is complaining about type here. Can't seem to detect 'type[BaseNVMBND] hint above.
         nvmbnd_class=demonssouls.maps.navmesh.NVMBND,
 
-        py_havok_module=PyHavokModule.hk550,
+        havok_module=PyHavokModule.hk550,
         supports_collision_model=True,
         skeleton_hkx_class=hk_fromsoft.demonssouls.SkeletonHKX,
         animation_hkx_class=hk_fromsoft.demonssouls.AnimationHKX,
@@ -109,7 +109,7 @@ GAME_CONFIG = {
 
         nvmbnd_class=darksouls1ptde.maps.navmesh.NVMBND,
 
-        py_havok_module=PyHavokModule.hk2010,
+        havok_module=PyHavokModule.hk2010,
         skeleton_hkx_class=hk_fromsoft.darksouls1ptde.SkeletonHKX,
         animation_hkx_class=hk_fromsoft.darksouls1ptde.AnimationHKX,
         supports_collision_model=True,
@@ -131,7 +131,7 @@ GAME_CONFIG = {
 
         nvmbnd_class=darksouls1r.maps.navmesh.NVMBND,
 
-        py_havok_module=PyHavokModule.hk2015,
+        havok_module=PyHavokModule.hk2015,
         skeleton_hkx_class=hk_fromsoft.darksouls1r.SkeletonHKX,
         animation_hkx_class=hk_fromsoft.darksouls1r.AnimationHKX,
         supports_collision_model=True,
@@ -153,7 +153,7 @@ GAME_CONFIG = {
 
         # NOTE: Bloodborne and onwards use Havok `NVMHKT` for navmeshes, not `NVM`.
 
-        py_havok_module=PyHavokModule.hk2014,
+        havok_module=PyHavokModule.hk2014,
         skeleton_hkx_class=hk_fromsoft.bloodborne.SkeletonHKX,
         animation_hkx_class=hk_fromsoft.bloodborne.AnimationHKX,
         supports_collision_model=False,  # TODO: could at least read hknp meshes
@@ -164,7 +164,7 @@ GAME_CONFIG = {
         msb_class=None,  # TODO: not in Soulstruct yet
         map_constants=darksouls3.maps.constants,
 
-        py_havok_module=PyHavokModule.hk2014,
+        havok_module=PyHavokModule.hk2014,
         # TODO: Not yet supported, but doable.
         skeleton_hkx_class=None,
         animation_hkx_class=None,
@@ -175,7 +175,7 @@ GAME_CONFIG = {
 
         msb_class=None,  # TODO: not in Soulstruct yet
 
-        py_havok_module=PyHavokModule.hk2016,
+        havok_module=PyHavokModule.hk2016,
         skeleton_hkx_class=hk_fromsoft.sekiro.SkeletonHKX,
         animation_hkx_class=hk_fromsoft.sekiro.AnimationHKX,
         supports_collision_model=False,
@@ -187,7 +187,7 @@ GAME_CONFIG = {
         msb_class=eldenring.maps.MSB,
         map_constants=eldenring.maps.constants,
 
-        py_havok_module=PyHavokModule.hk2018,
+        havok_module=PyHavokModule.hk2018,
         skeleton_hkx_class=hk_fromsoft.eldenring.SkeletonHKX,
         animation_hkx_class=hk_fromsoft.eldenring.AnimationHKX,
         supports_collision_model=False,

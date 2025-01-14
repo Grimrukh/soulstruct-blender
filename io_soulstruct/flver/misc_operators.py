@@ -35,6 +35,7 @@ from mathutils import Matrix, Vector, Quaternion
 from soulstruct.base.models.flver import Material
 
 from io_soulstruct.exceptions import SoulstructTypeError
+from io_soulstruct.types import SoulstructType
 from io_soulstruct.utilities import *
 from .models.types import BlenderFLVER
 
@@ -745,7 +746,10 @@ class SelectMeshChildren(LoggingOperator):
 
 
 def draw_dummy_ids():
-    """Draw the numeric reference IDs of all Dummy children of selected FLVER."""
+    """Draw the numeric reference IDs of all Dummy children of selected FLVER.
+
+    Uses each Dummy's `color_rgba` property to determine the color and transparency of the text.
+    """
     settings = bpy.context.scene.flver_tool_settings
     if not settings.dummy_id_draw_enabled:
         return
@@ -754,10 +758,18 @@ def draw_dummy_ids():
         return
 
     obj = bpy.context.selected_objects[0]
-    try:
-        bl_flver = BlenderFLVER.from_armature_or_mesh(obj)
-    except SoulstructTypeError:
-        return
+    # Check if object is a FLVER mesh, armature, or dummy.
+    if obj.soulstruct_type == SoulstructType.FLVER_DUMMY:
+        # FLVERs with dummies must have an Armature parent (Mesh is never used as parent).
+        try:
+            bl_flver = BlenderFLVER.from_armature_or_mesh(obj.parent)
+        except SoulstructTypeError:
+            return  # ignore, nothing to draw
+    else:
+        try:
+            bl_flver = BlenderFLVER.from_armature_or_mesh(obj)
+        except SoulstructTypeError:
+            return  # ignore, nothing to draw
 
     bl_dummies = bl_flver.get_dummies()
 
@@ -766,7 +778,6 @@ def draw_dummy_ids():
         blf.size(font_id, bpy.context.scene.flver_tool_settings.dummy_id_font_size)
     except AttributeError:
         blf.size(font_id, 16)  # default
-    blf.color(font_id, 1, 1, 1, 1)  # white
 
     for bl_dummy in bl_dummies:
         # Get world location of `dummy` object.
@@ -775,6 +786,9 @@ def draw_dummy_ids():
         if not label_position:
             continue  # dummy is not in view
         blf.position(font_id, label_position.x + 10, label_position.y + 10, 0.0)
+        # Set color for this dummy.
+        r, g, b, a = bl_dummy.color_rgba
+        blf.color(font_id, r / 255, g / 255, b / 255, a / 255)  # TODO: set a minimum alpha of 0.1?
         blf.draw(font_id, str(bl_dummy.reference_id))
 
 

@@ -52,6 +52,10 @@ FLVER_BINDER_RE = re.compile(r"^.*?\.(.*bnd)(\.dcx)?$")
 
 class BaseFLVERImportOperator(LoggingImportOperator):
 
+    # If defined, imported FLVER Armatures will use the forced data type: Pose (map pieces) vs. Edit (all other models).
+    # Otherwise, data type will be guessed from FLVER content.
+    FORCE_BONE_DATA_TYPE: BlenderFLVER.BoneDataType | None = None
+
     def draw(self, context):
         import_settings = context.scene.flver_import_settings
         for prop_name in import_settings.__annotations__:
@@ -109,6 +113,7 @@ class BaseFLVERImportOperator(LoggingImportOperator):
                     name=bl_name,
                     image_import_manager=image_import_manager,
                     collection=collection,
+                    force_bone_data_type=self.FORCE_BONE_DATA_TYPE,
                 )
             except Exception as ex:
                 # Delete any objects created prior to exception.
@@ -182,6 +187,8 @@ class ImportMapPieceFLVER(BaseFLVERImportOperator):
     bl_label = "Import Map Piece"
     bl_description = "Import a Map Piece FLVER from selected game map directory"
 
+    FORCE_BONE_DATA_TYPE = BlenderFLVER.BoneDataType.POSE
+
     filter_glob: bpy.props.StringProperty(
         default="*.flver;*.flver.dcx;*.mapbnd;*.mapbnd.dcx",
         options={'HIDDEN'},
@@ -237,6 +244,8 @@ class ImportCharacterFLVER(BaseFLVERImportOperator):
     bl_label = "Import Character"
     bl_description = "Import character FLVER from a CHRBND in selected game 'chr' directory"
 
+    FORCE_BONE_DATA_TYPE = BlenderFLVER.BoneDataType.EDIT
+
     filter_glob: bpy.props.StringProperty(
         default="*.chrbnd;*.chrbnd.dcx;*.chrbnd.bak;*.chrbnd.dcx.bak;",
         options={'HIDDEN'},
@@ -252,12 +261,34 @@ class ImportCharacterFLVER(BaseFLVERImportOperator):
 
     def invoke(self, context, _event):
         chr_dir = self.settings(context).get_import_dir_path("chr")
-        print(f"Character dir: {chr_dir} ({chr_dir.is_dir()})")
         if chr_dir and chr_dir.is_dir():
             self.directory = str(chr_dir)
             context.window_manager.fileselect_add(self)
             return {"RUNNING_MODAL"}
         return super().invoke(context, _event)
+
+    def draw(self, context):
+        """Draw name of selected model, if known."""
+        if isinstance(context.space_data, bpy.types.SpaceFileBrowser):
+            file_name = context.space_data.params.filename
+            try:
+                model_stem = int(file_name.split(".")[0][1:5])
+            except ValueError:
+                model_stem = None
+        else:
+            model_stem = None
+
+        model_name = "<N/A>"
+        if model_stem:
+            settings = self.settings(context)
+            if settings.is_game_ds1():
+                model_name = DS1_CHARACTER_MODELS.get(model_stem, "<Unknown>")
+            elif settings.is_game("DEMONS_SOULS"):
+                model_name = DES_CHARACTER_MODELS.get(model_stem, "<Unknown>")
+
+        self.layout.label(text=f"Character: {model_name}")
+        # Now draw standard properties for File Browser.
+        super().draw(context)
 
     # Base `execute` method is fine.
 
@@ -300,6 +331,8 @@ class ImportObjectFLVER(BaseFLVERImportOperator):
     bl_label = "Import Object"
     bl_description = "Import object FLVER from an OBJBND in selected game 'obj' directory"
 
+    FORCE_BONE_DATA_TYPE = BlenderFLVER.BoneDataType.EDIT
+
     filter_glob: bpy.props.StringProperty(
         default="*.objbnd;*.objbnd.dcx;",
         options={'HIDDEN'},
@@ -335,6 +368,8 @@ class ImportAssetFLVER(BaseFLVERImportOperator):
     bl_idname = "import_scene.asset_flver"
     bl_label = "Import Asset"
     bl_description = "Import asset FLVER from a GEOMBND in selected game 'asset' directory"
+
+    FORCE_BONE_DATA_TYPE = BlenderFLVER.BoneDataType.EDIT
 
     filter_glob: bpy.props.StringProperty(
         default="*.geombnd;*.geombnd.dcx;",
@@ -379,6 +414,8 @@ class ImportEquipmentFLVER(BaseFLVERImportOperator):
     bl_idname = "import_scene.equipment_flver"
     bl_label = "Import Equipment"
     bl_description = "Import equipment FLVER from a PARTSBND in selected game 'parts' directory"
+
+    FORCE_BONE_DATA_TYPE = BlenderFLVER.BoneDataType.EDIT
 
     filter_glob: bpy.props.StringProperty(
         default="*.partsbnd;*.partsbnd.dcx;",

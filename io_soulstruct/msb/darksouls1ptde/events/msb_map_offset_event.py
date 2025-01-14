@@ -25,7 +25,8 @@ class BlenderMSBMapOffsetEvent(BlenderMSBEvent[MSBMapOffsetEvent, MSBMapOffsetEv
 
     @property
     def translate(self) -> Vector:
-        return self.subtype_properties.translate
+        """Property is a `FloatVectorArray`."""
+        return Vector(self.subtype_properties.translate)
 
     @translate.setter
     def translate(self, value: Vector):

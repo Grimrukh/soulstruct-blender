@@ -33,6 +33,7 @@ from soulstruct.games import *
 
 import bpy
 from io_soulstruct.types import SoulstructType
+from .events import MSBEventSubtype
 
 
 class MSBPartSubtype(StrEnum):
@@ -98,6 +99,13 @@ def _is_collision(_, obj: bpy.types.Object):
 
 def _is_region(_, obj: bpy.types.Object):
     return obj.soulstruct_type == SoulstructType.MSB_REGION
+
+
+def _is_environment_event(_, obj: bpy.types.Object):
+    return (
+        obj.soulstruct_type == SoulstructType.MSB_EVENT
+        and obj.MSB_EVENT.event_subtype == MSBEventSubtype.Environment
+    )
 
 
 def _is_model(_, obj: bpy.types.Object):
@@ -698,7 +706,14 @@ class MSBCollisionProps(bpy.types.PropertyGroup):
         default=0,
         min=0,
     )
-    # NOTE: `environment_event` is not maintained in Blender. We just find the Environment event that references this.
+    # NOTE: This property is set AFTER full MSB import out of necessity.
+    environment_event: bpy.props.PointerProperty(
+        type=bpy.types.Object,
+        name="Environment Event",
+        description="Environment ('GI') event that describes the lighting cubemaps used on this collision. That "
+                    "same event will almost always be attached to this collision",
+        poll=_is_environment_event,
+    )
     reflect_plane_height: bpy.props.FloatProperty(
         name="Reflect Plane Height",
         description="Height of the reflection plane for this collision, used for water reflections",

@@ -13,6 +13,7 @@ __all__ = [
     "EnableSelectedNames",
     "DisableSelectedNames",
     "CreateMSBPart",
+    "CreateMSBRegion",
     "DuplicateMSBPartModel",
     "ApplyPartTransformToModel",
     "CreateConnectCollision",

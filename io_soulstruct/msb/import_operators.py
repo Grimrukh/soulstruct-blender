@@ -18,14 +18,15 @@ import bpy
 from soulstruct.darksouls1ptde.maps import MSB as PTDE_MSB
 from soulstruct.darksouls1r.maps import MSB as DSR_MSB
 from soulstruct.demonssouls.maps import MSB as DES_MSB
+from soulstruct.games import *
+from soulstruct.utilities.misc import IDList
 
 from io_soulstruct.exceptions import BatchOperationUnsupportedError, UnsupportedGameTypeError, MissingPartModelError
 from io_soulstruct.msb import darksouls1ptde, darksouls1r, demonssouls
+from io_soulstruct.msb.properties import MSBPartSubtype
 from io_soulstruct.general.cached import get_cached_file
 from io_soulstruct.utilities import *
 from io_soulstruct.utilities.operators import LoggingOperator, LoggingImportOperator
-from soulstruct.games import *
-from soulstruct.utilities.misc import IDList
 
 if tp.TYPE_CHECKING:
     from io_soulstruct.type_checking import *
@@ -168,7 +169,8 @@ def _import_msb(
         region_count += 1
 
     # 4. Import Parts in a particular order so references will exist. TODO: Currently DS1 subtypes only.
-    part_count = 0
+    # Note that Collision references to Environment Events are handled AFTER Event import below (only delayed case).
+    msb_and_bl_parts = []
     for part_subtype in PART_SUBTYPE_ORDER:
         try:
             part_list_name = msb.resolve_subtype_name(part_subtype)
@@ -185,7 +187,7 @@ def _import_msb(
                 # We only import the model here if models were requested for this part subtype and batch import for
                 # this subtype was unsupported above. Otherwise, an empty model will be created (with a warning).
                 try_import_model = part in all_parts_with_models
-                bl_part_type.new_from_soulstruct_obj(
+                bl_part = bl_part_type.new_from_soulstruct_obj(
                     operator,
                     context,
                     part,
@@ -198,10 +200,10 @@ def _import_msb(
                 # Fatal error.
                 traceback.print_exc()
                 return operator.error(f"Failed to import {part.cls_name} '{part.name}': {ex}")
-            part_count += 1
+            msb_and_bl_parts.append((part, bl_part))
 
     # 5. Import Events last, as they may reference Parts and Regions.
-    event_count = 0
+    msb_and_bl_events = []
     for event in msb.get_events():
         bl_event_type = get_bl_event_type(event)
         try:
@@ -217,7 +219,29 @@ def _import_msb(
             # Should exist in Blender among Parts or Regions imported above. If `None`, it's a harmless assignment.
             bl_event.parent = getattr(bl_event, bl_event.PARENT_PROP_NAME)
 
-        event_count += 1
+        msb_and_bl_events.append((event, bl_event))
+
+    # 6. Set Collision references to Environment Events.
+    collisions = [(msb_c, bl_c) for msb_c, bl_c in msb_and_bl_parts if bl_c.PART_SUBTYPE == MSBPartSubtype.Collision]
+    for msb_collision, bl_collision in collisions:
+        msb_collision: MSB_COLLISION_TYPING
+        bl_collision: darksouls1ptde.BlenderMSBCollision
+        if msb_collision.environment_event:
+            # Find environment event by searching through the list of events created above, NOT by name (as it MUST
+            # exist and MUST have been imported, and MSB event names may not be unique).
+            for msb_event, bl_event in msb_and_bl_events:
+                if msb_event is msb_collision.environment_event:  # by ID
+                    bl_collision.environment_event = bl_event.obj
+                    break
+            else:
+                operator.warning(
+                    f"Collision '{msb_collision.name}' references Environment Event "
+                    f"'{msb_collision.environment_event.name}', but the Environment Event was not found among imported "
+                    f"MSB Events in Blender. Left Collision -> Environment reference empty."
+                )
+
+    part_count = len(msb_and_bl_parts)
+    event_count = len(msb_and_bl_events)
 
     operator.info(
         f"Imported {part_count} Parts, {region_count} Regions, and {event_count} Events from MSB {msb_stem} "
