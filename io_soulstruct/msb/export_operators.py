@@ -177,7 +177,6 @@ class ExportMapMSB(LoggingOperator):
             msb_event = bl_event.to_soulstruct_obj(self, context, map_stem, msb)  # type: BaseMSBEvent
             msb.add_entry(msb_event)
             event_count += 1
-            print(msb_event)
             # self.info(f"Added {bl_event_obj.MSB_EVENT.event_subtype_enum} MSB Event: {msb_event.name}")
 
         # Resolve any deferred properties for Parts (e.g. Collision environment events).
