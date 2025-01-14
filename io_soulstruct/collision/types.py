@@ -14,7 +14,7 @@ from io_soulstruct.exceptions import MapCollisionExportError
 from io_soulstruct.types import *
 from io_soulstruct.utilities import *
 
-from soulstruct_havok.enums import PyHavokModule
+from soulstruct_havok.enums import HavokModule
 from soulstruct_havok.fromsoft.shared.map_collision import *
 
 from .properties import MapCollisionProps
@@ -123,7 +123,7 @@ class BlenderMapCollision(SoulstructObject[MapCollisionModel, MapCollisionProps]
     def to_hkx_pair(
         self,
         operator: LoggingOperator,
-        py_havok_module: PyHavokModule,
+        havok_module: HavokModule,
         require_hi=True,
         use_hi_if_missing_lo=False,
         hi_name="",
@@ -230,7 +230,7 @@ class BlenderMapCollision(SoulstructObject[MapCollisionModel, MapCollisionProps]
             hi_collision = self.SOULSTRUCT_CLASS(
                 name=hi_name,
                 meshes=hi_hkx_meshes,
-                py_havok_module=py_havok_module,
+                havok_module=havok_module,
             )
             hi_collision.path = Path(f"{hi_name}.hkx")
         else:
@@ -243,7 +243,7 @@ class BlenderMapCollision(SoulstructObject[MapCollisionModel, MapCollisionProps]
             lo_collision = self.SOULSTRUCT_CLASS(
                 name=lo_name,
                 meshes=lo_hkx_meshes,
-                py_havok_module=py_havok_module,
+                havok_module=havok_module,
             )
             lo_collision.path = Path(f"{lo_name}.hkx")
         elif use_hi_if_missing_lo:
@@ -251,7 +251,7 @@ class BlenderMapCollision(SoulstructObject[MapCollisionModel, MapCollisionProps]
             lo_collision = self.SOULSTRUCT_CLASS(
                 name=lo_name,
                 meshes=hi_hkx_meshes,
-                py_havok_module=py_havok_module,
+                havok_module=havok_module,
             )
         else:
             operator.warning(

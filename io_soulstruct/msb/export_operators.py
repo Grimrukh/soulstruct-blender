@@ -334,8 +334,8 @@ class ExportMapMSB(LoggingOperator):
         """Collect and export all both-res loose HKXs for all MSB Collision models."""
         settings = context.scene.soulstruct_settings
         dcx_type = settings.game.get_dcx_type("hkx")  # probably no DCX
-        py_havok_module = settings.game_config.py_havok_module
-        if not py_havok_module:
+        havok_module = settings.game_config.havok_module
+        if not havok_module:
             return self.error(f"Cannot export Collision models for game '{settings.game}' without PyHavok module.")
 
         relative_map_dir = Path(f"map/{map_stem}")
@@ -356,7 +356,7 @@ class ExportMapMSB(LoggingOperator):
             bl_collision_model = BlenderMapCollision(bl_collision.model)
             try:
                 hi_hkx, lo_hkx = bl_collision_model.to_hkx_pair(
-                    self, py_havok_module, require_hi=True, use_hi_if_missing_lo=True
+                    self, havok_module, require_hi=True, use_hi_if_missing_lo=True
                 )
             except Exception as ex:
                 self.error(f"Cannot get exported hi/lo HKX for '{bl_collision.model.name}'. Error: {ex}")
@@ -390,8 +390,8 @@ class ExportMapMSB(LoggingOperator):
         """Collect and export brand new both-res HKXBHDs containing all MSB Collision models."""
         settings = context.scene.soulstruct_settings
         dcx_type = settings.game.get_dcx_type("hkx")  # will have DCX inside HKXBHD
-        py_havok_module = settings.game_config.py_havok_module
-        if not py_havok_module:
+        havok_module = settings.game_config.havok_module
+        if not havok_module:
             return self.error(f"Cannot export Collision models for game '{settings.game}' without PyHavok module.")
 
         # The `BothResHKXBHD` class is already DSR-specific.
@@ -416,7 +416,7 @@ class ExportMapMSB(LoggingOperator):
             bl_collision_model = BlenderMapCollision(bl_collision.model)
             try:
                 hi_hkx, lo_hkx = bl_collision_model.to_hkx_pair(
-                    self, py_havok_module, require_hi=True, use_hi_if_missing_lo=True
+                    self, havok_module, require_hi=True, use_hi_if_missing_lo=True
                 )
             except Exception as ex:
                 self.error(f"Cannot get exported hi/lo HKX for '{bl_collision.model.name}'. Error: {ex}")

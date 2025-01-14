@@ -92,8 +92,8 @@ class ExportLooseHKXMapCollision(LoggingExportOperator):
             bl_map_collision = BlenderMapCollision(hkx_model)
         else:
             return self.error("This operator only supports Dark Souls 1 (PTDE and DSR) and Demon's Souls.")
-        py_havok_module = settings.game_config.py_havok_module
-        if py_havok_module is None:
+        havok_module = settings.game_config.havok_module
+        if havok_module is None:
             return self.error("This operator only supports games with Havok support.")
 
         hkx_path = Path(self.filepath)
@@ -128,7 +128,7 @@ class ExportLooseHKXMapCollision(LoggingExportOperator):
 
         try:
             hi_hkx, lo_hkx = bl_map_collision.to_hkx_pair(
-                self, py_havok_module, hkx_model, hi_name=hi_name, lo_name=lo_name
+                self, havok_module, hkx_model, hi_name=hi_name, lo_name=lo_name
             )
         except Exception as ex:
             traceback.print_exc()
@@ -205,8 +205,8 @@ class ExportHKXMapCollisionIntoBinder(LoggingImportOperator):
             return self.error("Cannot use operator at this time. Try selected a single HKX mesh model.")
 
         settings = self.settings(context)
-        py_havok_module = settings.game_config.py_havok_module
-        if py_havok_module is None:
+        havok_module = settings.game_config.havok_module
+        if havok_module is None:
             return self.error("This operator only supports games with Havok support.")
 
         # noinspection PyTypeChecker
@@ -225,7 +225,7 @@ class ExportHKXMapCollisionIntoBinder(LoggingImportOperator):
         both_res_hkxbhd = BothResHKXBHD.from_map_path(Path(self.filepath).parent)
 
         try:
-            hi_hkx, lo_hkx = bl_map_collision.to_hkx_pair(self, py_havok_module, hkx_model)
+            hi_hkx, lo_hkx = bl_map_collision.to_hkx_pair(self, havok_module, hkx_model)
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Cannot get exported HKX for '{hkx_model.name}'. Error: {ex}")
@@ -298,8 +298,8 @@ class ExportHKXMapCollisionToMap(LoggingOperator):
             dcx_type = DCXType.Null  # loose HKX
         else:
             return self.error("This operator only supports Dark Souls 1 (PTDE and DSR) and Demon's Souls.")
-        py_havok_module = settings.game_config.py_havok_module
-        if py_havok_module is None:
+        havok_module = settings.game_config.havok_module
+        if havok_module is None:
             return self.error("This operator only supports games with Havok support.")
 
         bl_map_collisions = BlenderMapCollision.from_selected_objects(context)  # type: list[BlenderMapCollision]
@@ -343,7 +343,7 @@ class ExportHKXMapCollisionToMap(LoggingOperator):
 
             try:
                 hi_hkx, lo_hkx = bl_map_collision.to_hkx_pair(
-                    self, py_havok_module, require_hi=True, use_hi_if_missing_lo=True
+                    self, havok_module, require_hi=True, use_hi_if_missing_lo=True
                 )
             except Exception as ex:
                 traceback.print_exc()
