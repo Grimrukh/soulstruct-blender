@@ -42,7 +42,9 @@ def read_animation_hkx_entry(hkx_entry: BinderEntry, compendium: HKX = None) -> 
     data = hkx_entry.get_uncompressed_data()
     packfile_version = data[0x28:0x38]
     tagfile_version = data[0x10:0x18]
-    if packfile_version.startswith(b"Havok-5.5.0-r1"):  # DeS
+    if packfile_version.startswith(b"Havok-4.5.0-r1"):  # DeS (c9900)
+        hkx = demonssouls.AnimationHKX.from_bytes(data, compendium=compendium)
+    elif packfile_version.startswith(b"Havok-5.5.0-r1"):  # DeS
         hkx = demonssouls.AnimationHKX.from_bytes(data, compendium=compendium)
     elif packfile_version.startswith(b"hk_2010.2.0-r1"):  # PTDE
         hkx = darksouls1ptde.AnimationHKX.from_bytes(data, compendium=compendium)
@@ -67,7 +69,9 @@ def read_skeleton_hkx_entry(hkx_entry: BinderEntry, compendium: HKX = None) -> S
     data = hkx_entry.get_uncompressed_data()
     packfile_version = data[0x28:0x38]
     tagfile_version = data[0x10:0x18]
-    if packfile_version.startswith(b"Havok-5.5.0-r1"):  # DeS
+    if packfile_version.startswith(b"Havok-4.5.0-r1"):  # DeS (c9900)
+        hkx = demonssouls.SkeletonHKX.from_bytes(data, compendium=compendium)
+    elif packfile_version.startswith(b"Havok-5.5.0-r1"):  # DeS
         hkx = demonssouls.SkeletonHKX.from_bytes(data, compendium=compendium)
     elif packfile_version.startswith(b"hk_2010.2.0-r1"):  # PTDE
         hkx = darksouls1ptde.SkeletonHKX.from_bytes(data, compendium=compendium)
