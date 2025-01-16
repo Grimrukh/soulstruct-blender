@@ -26,7 +26,7 @@ from io_soulstruct.general import *
 from io_soulstruct.utilities import *
 from io_soulstruct.flver.image import *
 from io_soulstruct.flver.image.export_operators import export_map_area_textures
-from .types import BlenderFLVER
+from .types import BlenderFLVER, FLVERModelType
 
 if tp.TYPE_CHECKING:
     from io_soulstruct.type_checking import CHRBND_TYPING, OBJBND_TYPING, PARTSBND_TYPING
@@ -86,8 +86,8 @@ class ExportLooseFLVER(LoggingExportOperator):
         self.to_object_mode()
 
         try:
-            # No textures collected.
-            flver = bl_flver.to_soulstruct_obj(self, context)
+            # No textures collected and FLVER model type unknown (will be guessed).
+            flver = bl_flver.to_soulstruct_obj(self, context, flver_model_type=FLVERModelType.Unknown)
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Cannot get exported FLVER. Error: {ex}")
@@ -209,7 +209,8 @@ class ExportFLVERIntoBinder(LoggingImportOperator):
                 flver_entry = flver_entries[0]
 
         try:
-            flver = bl_flver.to_soulstruct_obj(self, context)
+            # No texture collection and FLVER model type unknown (will be guessed).
+            flver = bl_flver.to_soulstruct_obj(self, context, flver_model_type=FLVERModelType.Unknown)
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Cannot create exported FLVER from Blender Mesh '{bl_flver.name}'. Error: {ex}")
@@ -293,6 +294,7 @@ class ExportMapPieceFLVERs(LoggingOperator):
                     self,
                     context,
                     texture_collection,
+                    flver_model_type=FLVERModelType.MapPiece,
                 )
             except Exception as ex:
                 traceback.print_exc()
@@ -345,6 +347,7 @@ class BaseGameFLVERBinderExportOperator(LoggingOperator):
         context: bpy.types.Context,
         settings: SoulstructSettings,
         binder_class: type[CHRBND_TYPING | OBJBND_TYPING | PARTSBND_TYPING],
+        flver_model_type: FLVERModelType,
     ) -> tuple[str, CHRBND_TYPING | OBJBND_TYPING | PARTSBND_TYPING, FLVER, DDSTextureCollection]:
         bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
         cls_name = binder_class.__name__
@@ -368,7 +371,12 @@ class BaseGameFLVERBinderExportOperator(LoggingOperator):
         self.to_object_mode()
         texture_collection = DDSTextureCollection()
         try:
-            flver = bl_flver.to_soulstruct_obj(self, context, texture_collection=texture_collection)
+            flver = bl_flver.to_soulstruct_obj(
+                self,
+                context,
+                texture_collection=texture_collection,
+                flver_model_type=flver_model_type,
+            )
         except Exception as ex:
             traceback.print_exc()
             raise FLVERExportError(
@@ -439,6 +447,7 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
                 context,
                 settings,
                 settings.game.from_game_submodule_import("models.chrbnd", "CHRBND"),
+                flver_model_type=FLVERModelType.Character,
             )
         except FLVERExportError as ex:
             return self.error(str(ex))
@@ -661,7 +670,8 @@ class ExportObjectFLVER(BaseGameFLVERBinderExportOperator):
 
     @staticmethod
     def _get_binder_path(settings: SoulstructSettings, model_stem: str) -> Path:
-        return Path(f"obj/{model_stem}.objbnd")
+        """We split on underscore, as OBJBNDs can contain multiple FLVERs with suffices like '_1'."""
+        return Path(f"obj/{model_stem.split('_')[0]}.objbnd")
 
     @classmethod
     def poll(cls, context):
@@ -685,10 +695,12 @@ class ExportObjectFLVER(BaseGameFLVERBinderExportOperator):
                 context,
                 settings,
                 settings.game.from_game_submodule_import("models.objbnd", "OBJBND"),
+                flver_model_type=FLVERModelType.Object,
             )
         except FLVERExportError as ex:
             return self.error(str(ex))
 
+        # NOTE: OBJBND stem ignores FLVER underscores (so `o1234_1` is found in `o1234.objbnd`).
         objbnd.set_flver(model_stem, flver)
 
         flver_export_settings = context.scene.flver_export_settings
@@ -696,7 +708,7 @@ class ExportObjectFLVER(BaseGameFLVERBinderExportOperator):
             # TPF always added into OBJBND, never loose/separate.
             self.export_textures_to_binder_tpf(context, objbnd, textures)
 
-        relative_objbnd_path = Path(f"obj/{model_stem}.objbnd")
+        relative_objbnd_path = self._get_binder_path(settings, model_stem)
         exported_paths = settings.export_file(self, objbnd, relative_objbnd_path)
 
         if (
@@ -744,6 +756,7 @@ class ExportAssetFLVER(BaseGameFLVERBinderExportOperator):
                 context,
                 settings,
                 settings.game.from_game_submodule_import("models.geombnd", "GEOMBND"),
+                flver_model_type=FLVERModelType.Object,
             )
         except FLVERExportError as ex:
             return self.error(str(ex))
@@ -753,7 +766,9 @@ class ExportAssetFLVER(BaseGameFLVERBinderExportOperator):
         # GEOMBND does not contain textures.
         # TODO: Could try to export textures to AET.
 
-        exported_paths = settings.export_file(self, geombnd, Path(f"asset/{model_stem[:6]}/{model_stem}.geombnd"))
+        relative_geombnd_path = self._get_binder_path(settings, model_stem)
+
+        exported_paths = settings.export_file(self, geombnd, relative_geombnd_path)
         return {"FINISHED" if exported_paths else "CANCELLED"}
 
 
@@ -789,6 +804,7 @@ class ExportEquipmentFLVER(BaseGameFLVERBinderExportOperator):
                 context,
                 settings,
                 settings.game.from_game_submodule_import("models.partsbnd", "PARTSBND"),
+                flver_model_type=FLVERModelType.Equipment,
             )
         except FLVERExportError as ex:
             return self.error(str(ex))
@@ -800,8 +816,10 @@ class ExportEquipmentFLVER(BaseGameFLVERBinderExportOperator):
             # TPF always added into PARTSBND, never loose/separate.
             self.export_textures_to_binder_tpf(context, partsbnd, textures)
 
+        relative_partsbnd_path = self._get_binder_path(settings, model_stem)
+
         try:
-            exported_paths = settings.export_file(self, partsbnd, Path(f"parts/{model_stem}.partsbnd"))
+            exported_paths = settings.export_file(self, partsbnd, relative_partsbnd_path)
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Cannot write PARTSBND with new FLVER '{model_stem}'. Error: {ex}")
@@ -812,8 +830,8 @@ class ExportEquipmentFLVER(BaseGameFLVERBinderExportOperator):
         ):
             if partsbnd.dcx_type != DCXType.Null:
                 # Export non-DCX PARTSBND too.
-                for exported_objbnd_path in exported_paths:
-                    non_dcx_path = settings.create_non_dcx_file(exported_objbnd_path)
+                for exported_partsbnd_path in exported_paths:
+                    non_dcx_path = settings.create_non_dcx_file(exported_partsbnd_path)
                     self.info(f"Also exported non-DCX PARTSBND to: {str(non_dcx_path)}")
 
         return {"FINISHED" if exported_paths else "CANCELLED"}

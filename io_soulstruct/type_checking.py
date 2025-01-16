@@ -21,7 +21,7 @@ if tp.TYPE_CHECKING:
     from soulstruct.darksouls1r.maps.parts import MSBPart as DS1R_MSBPart
     from soulstruct.bloodborne.maps.parts import MSBPart as BB_MSBPart
     from soulstruct.eldenring.maps.parts import MSBPart as ER_MSBPart
-    MSB_PART_TYPING = tp.Union[DES_MSBPart, BaseMSBPart, PTDE_MSBPart, DS1R_MSBPart, BB_MSBPart, ER_MSBPart]
+    MSB_PART_TYPING = tp.Union[BaseMSBPart, DES_MSBPart, PTDE_MSBPart, DS1R_MSBPart, BB_MSBPart, ER_MSBPart]
 
     from soulstruct.demonssouls.maps.parts import MSBMapPiece as DES_MSBMapPiece
     from soulstruct.darksouls1ptde.maps.parts import MSBMapPiece as PTDE_MSBMapPiece
@@ -29,7 +29,7 @@ if tp.TYPE_CHECKING:
     from soulstruct.bloodborne.maps.parts import MSBMapPiece as BB_MSBMapPiece
     from soulstruct.eldenring.maps.parts import MSBMapPiece as ER_MSBMapPiece
     MSB_MAPPIECE_TYPING = tp.Union[
-        DES_MSBMapPiece, BaseMSBPart, PTDE_MSBMapPiece, DS1R_MSBMapPiece, BB_MSBMapPiece, ER_MSBMapPiece
+        BaseMSBPart, DES_MSBMapPiece, PTDE_MSBMapPiece, DS1R_MSBMapPiece, BB_MSBMapPiece, ER_MSBMapPiece
     ]
 
     from soulstruct.demonssouls.maps.parts import MSBCollision as DES_MSBCollision
@@ -38,7 +38,7 @@ if tp.TYPE_CHECKING:
     from soulstruct.bloodborne.maps.parts import MSBCollision as BB_MSBCollision
     from soulstruct.eldenring.maps.parts import MSBCollision as ER_MSBCollision
     MSB_COLLISION_TYPING = tp.Union[
-        DES_MSBCollision, BaseMSBPart, PTDE_MSBCollision, DS1R_MSBCollision, BB_MSBCollision, ER_MSBCollision,
+        BaseMSBPart, DES_MSBCollision, PTDE_MSBCollision, DS1R_MSBCollision, BB_MSBCollision, ER_MSBCollision,
     ]
 
     from soulstruct.demonssouls.maps.parts import MSBNavmesh as DES_MSBNavmesh
@@ -47,7 +47,7 @@ if tp.TYPE_CHECKING:
     from soulstruct.bloodborne.maps.parts import MSBNavmesh as BB_MSBNavmesh
     # Elden Ring has no MSB navmeshes.
     MSB_NAVMESH_TYPING = tp.Union[
-        DES_MSBNavmesh, BaseMSBPart, PTDE_MSBNavmesh, DS1R_MSBNavmesh, BB_MSBNavmesh,
+        BaseMSBPart, DES_MSBNavmesh, PTDE_MSBNavmesh, DS1R_MSBNavmesh, BB_MSBNavmesh,
     ]
 
     from soulstruct.demonssouls.maps.parts import MSBCharacter as DES_MSBCharacter
@@ -56,7 +56,7 @@ if tp.TYPE_CHECKING:
     from soulstruct.bloodborne.maps.parts import MSBCharacter as BB_MSBCharacter
     from soulstruct.eldenring.maps.parts import MSBCharacter as ER_MSBCharacter
     MSB_CHARACTER_TYPING = tp.Union[
-        DES_MSBCharacter, BaseMSBPart, PTDE_MSBCharacter, DS1R_MSBCharacter, BB_MSBCharacter, ER_MSBCharacter,
+        BaseMSBPart, DES_MSBCharacter, PTDE_MSBCharacter, DS1R_MSBCharacter, BB_MSBCharacter, ER_MSBCharacter,
     ]
 
     from soulstruct.demonssouls.maps.parts import MSBObject as DES_MSBObject
@@ -65,7 +65,7 @@ if tp.TYPE_CHECKING:
     from soulstruct.bloodborne.maps.parts import MSBObject as BB_MSBObject
     # Elden Ring uses Assets.
     MSB_OBJECT_TYPING = tp.Union[
-        DES_MSBObject, BaseMSBPart, PTDE_MSBObject, DS1R_MSBObject, BB_MSBObject,
+        BaseMSBPart, DES_MSBObject, PTDE_MSBObject, DS1R_MSBObject, BB_MSBObject,
     ]
 
     from soulstruct.eldenring.maps.parts import MSBAsset as ER_MSBAsset
@@ -84,7 +84,7 @@ if tp.TYPE_CHECKING:
     from soulstruct.bloodborne.maps.regions import MSBRegion as BB_MSBRegion
     from soulstruct.eldenring.maps.regions import MSBRegion as ER_MSBRegion
     MSB_REGION_TYPING = tp.Union[
-        DES_MSBRegion, BaseMSBRegion, PTDE_MSBRegion, DS1R_MSBRegion, BB_MSBRegion, ER_MSBRegion
+        BaseMSBRegion, DES_MSBRegion, PTDE_MSBRegion, DS1R_MSBRegion, BB_MSBRegion, ER_MSBRegion
     ]
 
     from soulstruct.demonssouls.models import CHRBND as DES_CHRBND, OBJBND as DES_OBJBND, PARTSBND as DES_PARTSBND

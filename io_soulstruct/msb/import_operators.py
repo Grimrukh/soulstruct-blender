@@ -221,24 +221,27 @@ def _import_msb(
 
         msb_and_bl_events.append((event, bl_event))
 
-    # 6. Set Collision references to Environment Events.
-    collisions = [(msb_c, bl_c) for msb_c, bl_c in msb_and_bl_parts if bl_c.PART_SUBTYPE == MSBPartSubtype.Collision]
-    for msb_collision, bl_collision in collisions:
-        msb_collision: MSB_COLLISION_TYPING
-        bl_collision: darksouls1ptde.BlenderMSBCollision
-        if msb_collision.environment_event:
-            # Find environment event by searching through the list of events created above, NOT by name (as it MUST
-            # exist and MUST have been imported, and MSB event names may not be unique).
-            for msb_event, bl_event in msb_and_bl_events:
-                if msb_event is msb_collision.environment_event:  # by ID
-                    bl_collision.environment_event = bl_event.obj
-                    break
-            else:
-                operator.warning(
-                    f"Collision '{msb_collision.name}' references Environment Event "
-                    f"'{msb_collision.environment_event.name}', but the Environment Event was not found among imported "
-                    f"MSB Events in Blender. Left Collision -> Environment reference empty."
-                )
+    if settings.is_game_ds1():
+        # 6. Set Collision references to Environment Events. TODO: Bloodborne also?
+        collisions = [
+            (msb_c, bl_c) for msb_c, bl_c in msb_and_bl_parts if bl_c.PART_SUBTYPE == MSBPartSubtype.Collision
+        ]
+        for msb_collision, bl_collision in collisions:
+            msb_collision: MSB_COLLISION_TYPING
+            bl_collision: darksouls1ptde.BlenderMSBCollision
+            if msb_collision.environment_event:
+                # Find environment event by searching through the list of events created above, NOT by name (as it MUST
+                # exist and MUST have been imported, and MSB event names may not be unique).
+                for msb_event, bl_event in msb_and_bl_events:
+                    if msb_event is msb_collision.environment_event:  # by ID
+                        bl_collision.environment_event = bl_event.obj
+                        break
+                else:
+                    operator.warning(
+                        f"Collision '{msb_collision.name}' references Environment Event "
+                        f"'{msb_collision.environment_event.name}', but the Environment Event was not found among "
+                        f"imported MSB Events in Blender. Left Collision -> Environment reference empty."
+                    )
 
     part_count = len(msb_and_bl_parts)
     event_count = len(msb_and_bl_events)

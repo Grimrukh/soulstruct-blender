@@ -278,7 +278,7 @@ class BlenderFLVERMaterial:
         context: bpy.types.Context,
         matdef: MatDef,
         texture_collection: DDSTextureCollection = None,
-        path_prefix="",
+        get_texture_path_prefix: tp.Callable[[str], str] | None = None,
     ) -> Material:
         """Create a FLVER material from Blender material custom properties and texture nodes.
 
@@ -396,7 +396,13 @@ class BlenderFLVERMaterial:
                         f"enable 'Allow Missing Textures' in FLVER export options."
                     )
 
+            if get_texture_path_prefix:
+                path_prefix = get_texture_path_prefix(texture_stem)
+            else:
+                path_prefix = ""
+
             texture_path = (path_prefix + texture_stem + path_ext) if texture_stem else ""
+            print(f"Texture path: {texture_path}")
             # TODO: Unknowns currently all ignored.
             texture = Texture(path=texture_path, texture_type=sampler_name)
 
@@ -430,20 +436,20 @@ class BlenderFLVERMaterial:
         context: bpy.types.Context,
         create_lod_face_sets: bool,
         matdef: MatDef,
-        use_chr_layout: bool,
+        use_map_piece_layout: bool,
         texture_collection: DDSTextureCollection = None,
-        texture_path_prefix="",
+        get_texture_path_prefix: tp.Callable[[str], str] | None = None,
     ) -> SplitMeshDef:
         """Use given `matdef` to create a `SplitMeshDef` for the given Blender material with either a character
         layout or a map piece layout, depending on `use_chr_layout`."""
 
         # Some Blender materials may be variants representing distinct Mesh/FaceSet properties; these will be
         # mapped to the same FLVER `Material`/`VertexArrayLayout` combo (created here).
-        flver_material = self.to_flver_material(operator, context, matdef, texture_collection, texture_path_prefix)
-        if use_chr_layout:
-            array_layout = matdef.get_character_layout()
-        else:
+        flver_material = self.to_flver_material(operator, context, matdef, texture_collection, get_texture_path_prefix)
+        if use_map_piece_layout:
             array_layout = matdef.get_map_piece_layout()
+        else:
+            array_layout = matdef.get_non_map_piece_layout()
 
         # We only respect 'Face Set Count' if requested in export options. (Duplicating the main face set is only
         # viable in older games with low-res meshes, but those same games don't even really need LODs anyway.)

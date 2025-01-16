@@ -45,7 +45,7 @@ def test_model(model_id):
         for data_type in layout:
             print(f"        {data_type}")
         # Reconstruct layout and compare.
-        re_layout = matdef.get_character_layout()
+        re_layout = matdef.get_non_map_piece_layout()
         if re_layout == layout:
             print(f"    {Fore.GREEN}Reconstructed Character Layout:{Fore.RESET}")
         else:

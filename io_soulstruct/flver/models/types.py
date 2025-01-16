@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 __all__ = [
+    "FLVERModelType",
     "BlenderFLVER",
     "BlenderFLVERDummy",
 ]
@@ -9,7 +10,7 @@ import math
 import re
 import time
 import typing as tp
-from enum import StrEnum
+from enum import Enum, StrEnum
 from pathlib import Path
 
 import bmesh
@@ -39,6 +40,19 @@ from .properties import *
 if tp.TYPE_CHECKING:
     from soulstruct.base.models.matbin import MATBINBND
     from io_soulstruct.general import SoulstructSettings
+
+
+class FLVERModelType(Enum):
+    """Type of model represented by a FLVER object. Not stored on FLVERs, but passed in by type-specific operators.
+
+    Required for settings some defaults. For `Unknown`, these will be guessed.
+    """
+    Unknown = 0  # e.g. generic FLVER exporter used
+    MapPiece = 1
+    Character = 1
+    Object = 2  # includes Asset
+    Equipment = 3
+    Other = 4  # e.g. FFX (not yet used)
 
 
 class BlenderFLVERDummy(SoulstructObject[Dummy, FLVERDummyProps]):
@@ -1569,11 +1583,12 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         operator: LoggingOperator,
         context: bpy.types.Context,
         texture_collection: DDSTextureCollection = None,
+        flver_model_type=FLVERModelType.Unknown,
     ) -> FLVER:
         """Wraps actual method with temp FLVER management."""
         self.clear_temp_flver()
         try:
-            return self._to_soulstruct_obj(operator, context, texture_collection)
+            return self._to_soulstruct_obj(operator, context, texture_collection, flver_model_type)
         finally:
             self.clear_temp_flver()
 
@@ -1582,6 +1597,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         operator: LoggingOperator,
         context: bpy.types.Context,
         texture_collection: DDSTextureCollection = None,
+        flver_model_type=FLVERModelType.Unknown,
     ) -> FLVER:
         """`FLVER` exporter. By far the most complicated function in the add-on!"""
 
@@ -1590,7 +1606,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
             texture_collection = DDSTextureCollection()
 
         settings = operator.settings(context)
-        flver = self._get_empty_flver(settings)  # could be `FLVER` or `FLVER0`
+        flver = self._get_empty_flver(settings)  # initializes a FLVER0 or FLVER2
 
         export_settings = context.scene.flver_export_settings
         mtdbnd = get_cached_mtdbnd(operator, settings) if not GAME_CONFIG[settings.game].uses_matbin else None
@@ -1656,14 +1672,19 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
                 operator.warning(f"Exporting non-c0000/c1000 FLVER '{self.name}' with no mesh data.")
             return flver
 
-        # TODO: Current choosing default vertex buffer layout (CHR vs. MAP PIECE) based on read bone type, which in
-        #  turn depends on `mesh.is_bind_pose` at FLVER import. All a bit messily wired together...
+        if flver_model_type == FLVERModelType.Unknown:
+            # Guess model type based on bone data type.
+            use_map_piece_layout = read_bone_type != self.BoneDataType.EDIT  # POSE or NONE
+        else:
+            use_map_piece_layout = flver_model_type == FLVERModelType.MapPiece
+
         self.export_flver_meshes(
             operator,
             context,
             flver,
             bl_bone_names=bl_bone_names,
-            use_chr_layout=read_bone_type == self.BoneDataType.EDIT,
+            flver_model_type=flver_model_type,
+            use_map_piece_layout=use_map_piece_layout,
             normal_tangent_dot_max=export_settings.normal_tangent_dot_max,
             create_lod_face_sets=export_settings.create_lod_face_sets,
             matdefs=matdefs,
@@ -1693,7 +1714,8 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         context: bpy.types.Context,
         flver: FLVER,
         bl_bone_names: list[str],
-        use_chr_layout: bool,
+        flver_model_type: FLVERModelType,
+        use_map_piece_layout: bool,
         normal_tangent_dot_max: float,
         create_lod_face_sets: bool,
         matdefs: list[MatDef],
@@ -1717,11 +1739,12 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         bl_materials = self.get_materials()
 
         if settings.is_game(DEMONS_SOULS):
-            # Use absolute texture path prefix, featuring model stem.
-            texture_path_prefix = f"N:\\DemonsSoul\\data\\Model\\chr\\{self.export_name}\\tex\\"
+            # Use absolute texture path prefix, featuring model stem and other subdirectories.
+            # NOTE: Almost certainly doesn't actually matter in-game.
+            get_texture_path_prefix = self.get_des_texture_path_prefix_getter(flver_model_type)
         else:
             # Paths in later games are just naked file names.
-            texture_path_prefix = ""
+            get_texture_path_prefix = None
 
         for matdef, bl_material in zip(matdefs, bl_materials, strict=True):
             bl_material: BlenderFLVERMaterial
@@ -1730,9 +1753,9 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
                 context,
                 create_lod_face_sets,
                 matdef,
-                use_chr_layout,
+                use_map_piece_layout,
                 texture_collection,
-                texture_path_prefix,
+                get_texture_path_prefix,
             )
             split_mesh_defs.append(split_mesh_def)
 
@@ -1768,7 +1791,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         # Slow part number 1: iterating over every Blender vertex to retrieve its position and bone weights/indices.
         # We at least know the size of the array in advance.
         vertex_count = len(tri_mesh_data.vertices)
-        if not use_chr_layout and flver.version.map_pieces_use_normal_w_bones():
+        if use_map_piece_layout and flver.version.map_pieces_use_normal_w_bones():
             # Bone weights/indices not in array. `normal_w` is used for single Map Piece bone.
             vertex_data_dtype = [
                 ("position", "f", 3),
@@ -1813,7 +1836,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
                 bone_indices.append(bone_index)
                 used_bone_indices.add(bone_index)
                 # We don't waste time calling retrieval method `weight()` for map pieces.
-                if use_chr_layout:
+                if not use_map_piece_layout:
                     # TODO: `vertex_group` has `group` (int) and `weight` (float) on it already?
                     bone_weights.append(mesh_group.weight(i))
 
@@ -1822,7 +1845,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
                     f"Vertex {i} cannot be weighted to {len(bone_indices)} bones (max 1 for Map Pieces, 4 for others)."
                 )
             elif len(bone_indices) == 0:
-                if len(bl_bone_names) == 1 and not use_chr_layout:
+                if len(bl_bone_names) == 1 and use_map_piece_layout:
                     # Omitted bone indices can be assumed to be the only bone in the skeleton.
                     # We issue a warning (once) unless this FLVER export is using a default bone (no Armature), in which
                     # case we obviously don't expect any vertices to be weighted to anything.
@@ -1839,20 +1862,20 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
                     # Can't guess which bone to weight to. Raise error.
                     raise FLVERExportError("Vertex is not weighted to any bones (cannot guess from multiple bones).")
 
-            if use_chr_layout:
+            if use_map_piece_layout:
+                if len(bone_indices) == 1:
+                    # Duplicate single-element list to four-element list.
+                    # (This is done even for games that will write only a single Map Piece bone to `normal_w`.)
+                    bone_indices *= 4
+                else:
+                    raise FLVERExportError(f"Map Piece vertices must be weighted to exactly one bone (vertex {i}).")
+            else:
                 # Pad out bone weights and (unused) indices for rigged meshes.
                 while len(bone_weights) < 4:
                     bone_weights.append(0.0)
                 while len(bone_indices) < 4:
                     # NOTE: we use -1 here to optimize the mesh splitting process; it will be changed to 0 for write.
                     bone_indices.append(-1)
-            else:  # Map Pieces
-                if len(bone_indices) == 1:
-                    # Duplicate single-element list to four-element list.
-                    # (This is done even for games that will write only a single Map Piece bone to `normal_w`.)
-                    bone_indices *= 4
-                else:
-                    raise FLVERExportError(f"Non-CHR FLVER vertices must be weighted to exactly one bone (vertex {i}).")
 
             vertex_bone_indices[i] = bone_indices
             if bone_weights:  # rigged only
@@ -1951,15 +1974,15 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
                 raise FLVERExportError(f"UV layer {uv_layer.name} contains no data.")
             uv_layer.data.foreach_get("uv", loop_uv_array_dict[uv_layer_name].ravel())
 
-        # 5. Calculate individual tangent arrays for each 'UVTexture*' UV layer.
-        # TODO: Also need one for Bloodborne's 'UVBlood' layer.
-        #  Maybe make the NON-tangent UVs start with name 'UVData_'...
+        # 5. Calculate individual tangent arrays for each UV layer that starts with `UVTexture`.
+        #  We also need to manually include `UVBloodMaskOrLightmap` for non-Map Pieces (Bloodborne) as the same slot is
+        #  used for Lightmaps by Map Pieces. (No better solution for this yet.)
 
         loop_tangent_arrays = []
         uv_texture_layer_names = sorted([
             name for name in bl_uv_layer_names
             if name.startswith("UVTexture")
-            or use_chr_layout and name.startswith("UVBlood")
+            or (name == "UVBloodMaskOrLightmap" and not use_map_piece_layout)
         ])
         for uv_name in uv_texture_layer_names:
             loop_tangents = self.get_tangents_for_uv_layer(
@@ -2315,6 +2338,61 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
             bpy.data.meshes.remove(bpy.data.meshes["__TEMP_FLVER__"])
         except KeyError:
             pass
+
+    def get_des_texture_path_prefix_getter(self, flver_model_type: FLVERModelType) -> tp.Callable[[str], str]:
+        """We use the texture prefix ('mAA_', 'cXXXX_', 'oXXXX_') to determine the path prefix where possible,
+        and rely on the model type being exported for the default template."""
+
+        match flver_model_type:
+            case FLVERModelType.MapPiece:
+                # TODO: Kind of want access to map stem (for area), but we'll guess it from the texture name prefix.
+                #  (Can't guess it from export name in Demon's Souls because there's no 'AXX' model suffix.)
+                template = "N:\\DemonsSoul\\data\\Model\\map\\mAA\\tex\\"  # TODO: unknown area placeholder
+
+            case FLVERModelType.Character:
+                template = f"N:\\DemonsSoul\\data\\Model\\chr\\{self.export_name}\\tex\\"
+
+            case FLVERModelType.Object:
+                template = f"N:\\DemonsSoul\\data\\Model\\obj\\{self.export_name.split('_')[0]}\\tex\\"
+
+            case FLVERModelType.Equipment:
+
+                match self.export_name[:2]:
+                    case "AM":
+                        subdir = f"Arm\\{self.export_name.upper()}\\"
+                    case "BD":
+                        subdir = f"Body\\{self.export_name.upper()}\\"
+                    case "HD":
+                        subdir = f"Head\\{self.export_name.upper()}\\"
+                    case "HR":
+                        subdir = f"Hair\\{self.export_name.upper()}\\"
+                    case "LG":
+                        subdir = f"Leg\\{self.export_name.upper()}\\"
+                    case "WP":
+                        subdir = f"Weapon\\{self.export_name.upper()}\\"
+                    case _:
+                        subdir = ""
+
+                template = f"N:\\DemonsSoul\\data\\Model\\parts\\{subdir}tex\\"
+
+            case _:
+                template = ""
+
+        def get_prefix(texture_stem: str, default_template=template, model_type=flver_model_type):
+            if re.match(r"^m\d\d_.*", texture_stem):
+                return f"N:\\DemonsSoul\\data\\Model\\map\\{texture_stem[:3]}\\tex\\"
+            if re.match(r"^c\d\d\d\d(_|$).*", texture_stem):
+                return f"N:\\DemonsSoul\\data\\Model\\chr\\{texture_stem[:5]}\\tex\\"
+            if re.match(r"^o\d\d\d\d(_|$).*", texture_stem):
+                return f"N:\\DemonsSoul\\data\\Model\\obj\\{texture_stem[:5]}\\tex\\"
+            if model_type == FLVERModelType.Equipment:
+                if texture_stem.lower().startswith("ghost_") or "_body" in texture_stem:
+                    return "N:\\DemonsSoul\\data\\Model\\parts\\tex\\"
+            if default_template:
+                return default_template.format(texture_stem=texture_stem)
+            return ""  # no prefix
+
+        return get_prefix
 
     # endregion
 
