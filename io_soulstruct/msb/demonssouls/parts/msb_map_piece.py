@@ -159,8 +159,11 @@ class BlenderMSBMapPiece(BlenderMSBPart[MSBMapPiece, MSBMapPieceProps]):
                 cls.find_model_mesh(model_name, map_stem)
             except MissingPartModelError:
                 # Queue up path for batch import.
-                model_path = settings.get_import_map_file_path(f"{model_name}.flver", map_stem=map_stem)
-                if model_path.is_file():  # otherwise, we'll get a handled error later
+                try:
+                    model_path = settings.get_import_map_file_path(f"{model_name}.flver", map_stem=map_stem)
+                except FileNotFoundError:
+                    pass  # handled later with placeholder model
+                else:
                     model_datas[model_name] = model_path
 
         def image_import_callback(image_import_manager: ImageImportManager, flver: FLVER):

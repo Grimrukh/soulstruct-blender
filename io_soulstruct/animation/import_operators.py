@@ -329,7 +329,10 @@ class BaseImportTypedHKXAnimation(BaseImportHKXAnimation):
         bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
         model_name = bl_flver.export_name
         if model_name == "c0000":
-            return self.error("Automatic ANIBND import is not yet supported for character FLVER 'c0000' (Player).")
+            return self.error(
+                "Automatic ANIBND import is not yet supported for character FLVER 'c0000' (Player). Use "
+                "'Import Any Animation' and choose the sub-ANIBND you want to import from."
+            )
 
         # Find animation HKX entry/entries.
         try:
@@ -342,9 +345,6 @@ class BaseImportTypedHKXAnimation(BaseImportHKXAnimation):
             raise AnimationImportError(f"Cannot find any HKX animation files for FLVER '{model_name}'.")
 
         hkxs_with_paths = self.scan_entries(anim_hkx_entries, anibnd.path, skeleton_hkx, compendium)
-        print(self.import_all_animations)
-        for x in hkxs_with_paths:
-            print(x[0], isinstance(x[2], list))
         animations = self.import_all_entries(context, hkxs_with_paths, compendium, bl_flver)
         return {"FINISHED"} if animations else {"CANCELLED"}  # at least one successful import
 

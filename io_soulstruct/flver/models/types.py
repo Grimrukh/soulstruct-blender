@@ -49,10 +49,10 @@ class FLVERModelType(Enum):
     """
     Unknown = 0  # e.g. generic FLVER exporter used
     MapPiece = 1
-    Character = 1
-    Object = 2  # includes Asset
-    Equipment = 3
-    Other = 4  # e.g. FFX (not yet used)
+    Character = 2
+    Object = 3  # includes Asset
+    Equipment = 4
+    Other = 5  # e.g. FFX (not yet used)
 
 
 class BlenderFLVERDummy(SoulstructObject[Dummy, FLVERDummyProps]):
@@ -1588,9 +1588,10 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         """Wraps actual method with temp FLVER management."""
         self.clear_temp_flver()
         try:
-            return self._to_soulstruct_obj(operator, context, texture_collection, flver_model_type)
+            flver = self._to_soulstruct_obj(operator, context, texture_collection, flver_model_type)
         finally:
             self.clear_temp_flver()
+        return flver
 
     def _to_soulstruct_obj(
         self,
@@ -1677,6 +1678,8 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
             use_map_piece_layout = read_bone_type != self.BoneDataType.EDIT  # POSE or NONE
         else:
             use_map_piece_layout = flver_model_type == FLVERModelType.MapPiece
+
+        print(flver_model_type, use_map_piece_layout)
 
         self.export_flver_meshes(
             operator,

@@ -17,6 +17,7 @@ from soulstruct.dcx import DCXType
 from soulstruct.base.textures import *
 
 from io_soulstruct.exceptions import UnsupportedGameError, SoulstructTypeError, TextureExportError
+from io_soulstruct.general.enums import BlenderImageFormat
 from io_soulstruct.utilities import *
 from .enums import *
 from .properties import *
@@ -204,7 +205,7 @@ class DDSTexture:
             )
 
         temp_image_path = Path(f"~/AppData/Local/Temp/temp.{self.image.file_format.lower()}").expanduser()
-        self.image.filepath_raw = temp_image_path
+        self.image.filepath_raw = str(temp_image_path)
         self.image.save()  # TODO: sometimes fails with 'No error' (depending on how Blender is storing image data?)
         with tempfile.TemporaryDirectory() as output_dir:
             is_dx10 = self.dds_format[:3] in {"BC5", "BC7"}
@@ -464,12 +465,19 @@ class DDSTextureCollection(dict[str, DDSTexture]):
         context: bpy.types.Context,
         map_area_dir: Path,
     ) -> list[Binder]:
-        """Load all entries from all TPFBHDs in `map_area_dir`, export given `images` into them as single-DDS TPFs,
-        re-alphabetize the entries, split them into new TPFBHDs (enforcing maximum file-per-BHD limit), and return them
-        for the caller to save.
+        """Export all collected DDS textures into appropriate TPFBHDs in `map_area_dir` (may be project or game).
 
-        Does NOT save the TPFBHDs, to be consistent with the single-TPF and single-TPFBHD exporters above. Caller must
-        do that.
+        Does the follower using `MapAreaTextureManager`:
+            - Load all entries from all TPFBHDs in `map_area_dir` (could be game or project directory).
+            - Add all of collection's images into them as single-DDS TPFs.
+                - If texture export settings do not allow texture overwrite, a `ValueError` will be raised if the
+                  texture already exists in the TPFBHD. This is to protect you from affecting the textures of other
+                  Map Pieces (you must handle these cases with select TPFBHD editing or careful overwrite).
+                - If DDS format is set to 'SAME', try to find existing same-named textures to determine DDS format.
+            - Re-alphabetize all TPF entries and split them into new TPFBHDs (enforcing maximum file-per-Binder limit).
+
+        Returns new `TPFBHD` Binders for the caller to save. Does NOT save them here, to be consistent with the
+        single-TPF and single-TPFBHD exporters above, and give the caller control over the export directories.
         """
         if not self:
             operator.warning("No textures present to export to map area TPFBHDs.")

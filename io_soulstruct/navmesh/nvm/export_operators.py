@@ -74,7 +74,7 @@ class ExportLooseNVM(LoggingExportOperator):
             traceback.print_exc()
             return self.error(f"Cannot get exported NVM. Error: {ex}")
         else:
-            nvm.dcx_type = DCXType[self.dcx_type]
+            nvm.dcx_type = DCXType.from_member_name(self.dcx_type)
 
         try:
             # Will create a `.bak` file automatically if absent.
@@ -148,7 +148,7 @@ class ExportNVMIntoBinder(LoggingImportOperator):
                 traceback.print_exc()
                 return self.error(f"Cannot get exported NVM. Error: {ex}")
             else:
-                nvm.dcx_type = DCXType[self.dcx_type]  # most likely `Null` for file in `nvmbnd` Binder
+                nvm.dcx_type = DCXType.from_member_name(self.dcx_type)  # most likely `Null` for file in `nvmbnd` Binder
 
             matching_entries = binder.find_entries_matching_name(rf"{model_stem}\.nvm(\.dcx)?")
             if not matching_entries:
@@ -258,15 +258,11 @@ class ExportNVMIntoSelectedMap(LoggingOperator):
                 # Open new NVMBND. We start with the game NVMBND unless `Prefer Import from Project` is enabled.
                 try:
                     # We never overwrite existing project NVMBNDs as they may contain other custom NVMs.
-                    nvmbnd_path = settings.prepare_project_file(self, relative_nvmbnd_path, overwrite_existing=False)
-                except FileNotFoundError as ex:
-                    self.error(f"Cannot find NVMBND: {relative_nvmbnd_path}. Error: {ex}")
-                    continue
-                try:
-                    nvmbnd = opened_nvmbnds[relative_nvmbnd_path] = nvmbnd_class.from_path(nvmbnd_path)
+                    nvmbnd = settings.get_initial_binder(self, relative_nvmbnd_path, nvmbnd_class)
                 except Exception as ex:
-                    self.error(f"Could not load NVMBND for map '{map_stem}'. Error: {ex}")
+                    self.error(f"Cannot find/open NVMBND: {relative_nvmbnd_path}. Error: {ex}")
                     continue
+                opened_nvmbnds[relative_nvmbnd_path] = nvmbnd
             else:
                 nvmbnd = opened_nvmbnds[relative_nvmbnd_path]
 

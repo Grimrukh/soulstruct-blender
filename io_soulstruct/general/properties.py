@@ -15,6 +15,7 @@ import bpy
 from soulstruct.base.base_binary_file import BaseBinaryFile
 from soulstruct.base.models.matbin import MATBINBND
 from soulstruct.base.models.mtd import MTDBND
+from soulstruct.containers import Binder
 from soulstruct.dcx import DCXType, compress, decompress
 from soulstruct.games import *
 from soulstruct.utilities.files import read_json, write_json, create_bak
@@ -41,6 +42,9 @@ SUPPORTED_GAMES = [
     BLOODBORNE,
     ELDEN_RING,
 ]
+
+# Type variable for `get_initial_binder()` method.
+BINDER_T = tp.TypeVar("BINDER_T", bound=Binder)
 
 
 class SoulstructSettings(bpy.types.PropertyGroup):
@@ -160,7 +164,9 @@ class SoulstructSettings(bpy.types.PropertyGroup):
 
     prefer_import_from_project: bpy.props.BoolProperty(
         name="Prefer Import from Project",
-        description="When importing, prefer files/folders from project directory over game directory if they exist",
+        description="When importing, prefer files/folders from project directory over game directory if they exist. "
+                    "NOTE: When exporting new entries into Binders, an existing project Binder will always be "
+                    "preferred as the export target over the existing game Binder.",
         default=True,
     )
 
@@ -554,6 +560,8 @@ class SoulstructSettings(bpy.types.PropertyGroup):
 
         If `smart_map_version_handling` is enabled, this will redirect to the earliest or latest version of the map if
         the file is a known versioned type.
+
+        File must exist, or a `FileNotFoundError` will be raised.
         """
         if not parts:
             raise ValueError("Must provide at least one part to get a map file path.")
@@ -798,91 +806,92 @@ class SoulstructSettings(bpy.types.PropertyGroup):
         )
         return []
 
-    def prepare_project_file(
+    @tp.overload
+    def get_initial_binder(self, operator: LoggingOperator, binder_relative_path: Path) -> Binder:
+        """Overload for default `Binder` class type detection."""
+        ...
+
+    @tp.overload
+    def get_initial_binder(
         self,
         operator: LoggingOperator,
-        relative_path: Path,
-        overwrite_existing=False,
-    ) -> Path | None:
-        """Guarantee the existence of `relative_path` in project directory by copying it from the game directory if it
-        does not already exist in the project.
+        binder_relative_path: Path,
+        binder_class: type[BINDER_T] = None,
+    ) -> BINDER_T:
+        """Overload for custom `Binder` class type."""
+        ...
 
-        Useful for creating initial Binders in project directory that are only being partially modified with new
-        exported entries. If project directory is not set, just raises an error if `relative_path` does not exist in the
-        game directory, which implies imminent export failure.
+    def get_initial_binder(
+        self,
+        operator: LoggingOperator,
+        binder_relative_path: Path,
+        binder_class: type[BINDER_T] = None,
+    ) -> BINDER_T:
+        """Get the path to a Binder file whose contents are to be partially modified by an export operation.
 
-        Note that the caller's protocol for `overwrite_existing` should largely depend on whether the file being
-        prepared is a true 'multi-asset' file, such as a NVMBND, HKXBXF, or TPFBXF Binder (in which case we will NEVER
-        want to overwrite an existing project Binder, as it may contain other exported assets), or a 'single asset' file
-        such as a CHRBND (in which case the caller can set it to `not settings.prefer_import_from_project` so that any,
-        e.g., modified TPFs inside the existing project Binder are only kept if 'Prefer Import from Project' is enabled.
-        It's hard to perfectly handle all usage cases of this, but this is the best I've come up with.
-
-        Only creates a `.bak` backup file (if absent) in the project if `overwrite_existing == True` and an existing
-        project file is overwritten.
-
-        Returns the project file path that already exists or is created. Returns `None` if and only if the project
-        directory is not set but the game file does exist, which suggests imminent export will work (to game only).
+        Binder modding is complicated by the fact that we typically only want to modify one or a few of the entries
+        inside it, and leave the rest alone. When exporting to both the game and project directories, we also need to
+        choose which Binder to start with. This method finds and opens the appropriate Binder to modify with this logic:
+            - If the project directory is not set, we assert the existence of the Binder in the game directory and
+              return it.
+            - If the project directory is set:
+                - If the Binder exists in the project, we always return that Binder, even if `Prefer Import from
+                  Project` is disabled. Otherwise, we could lose other project modifications that have not been
+                  exported to the game directory. It does not matter if the game directory is set.
+                - If the Binder does not exist in the project, the game directory must be set, and the Binder must exist
+                  there. We return that Binder.
 
         Args:
             operator: Calling operator, for logging.
-            relative_path: Path relative to game root directory.
-            overwrite_existing: Determines behavior when `relative_path` already exists in the project and the game
-                directory does exist. Options:
-                    False: The file will NOT be copied from the game if it already exists in the project directory.
-                     True: The file will always be copied from the game, overwriting any existing project file.
-                     None: The file will be copied if and only if `prefer_import_from_project == False`,
-                Soulstruct settings, so that the initial file used comes from the game.
+            binder_relative_path: Path of Binder to be modified, relative to game root directory.
+            binder_class: Binder class to use for opening the Binder file. If `None`, defaults to base `Binder`.
         """
+        binder_class = binder_class or Binder
+
         if self.game_root_path is None and self.project_root_path is None:
-            # Export is impossible. (Generally already checked.)
+            # Obviously, no existing Binder is available. (Generally already checked.)
             raise SoulstructBlenderError(
-                f"Neither project not game directory is set. Cannot prepare file: {relative_path}"
+                f"Neither project nor game directory is set. Cannot get initial Binder file: {binder_relative_path}"
             )
 
-        # We don't pass in `if_exist=True` so we can distinguish between non-set directories and missing files below.
-        game_path = self.game_root.get_file_path(relative_path) if self.game_root_path else None
-        project_path = self.project_root.get_file_path(relative_path) if self.project_root_path else None
+        # We don't pass in `if_exist=True` so we can distinguish between non-set directories (`else None`) and missing
+        # files. (In other words, the paths returned here may not actually exist as files.)
+        game_path = self.game_root.get_file_path(binder_relative_path) if self.game_root_path else None
+        project_path = self.project_root.get_file_path(binder_relative_path) if self.project_root_path else None
 
         if not is_path_and_file(game_path) and not is_path_and_file(project_path):
-            # Neither file exists.
-            raise FileNotFoundError(f"Required file does not exist in project OR game directory: {relative_path}")
+            # Neither directory and/or file exists.
+            raise FileNotFoundError(f"Binder file does not exist in project OR game directory: {binder_relative_path}")
 
         if project_path is None:
-            # Project directory not set. No chance of copying anything.
+            # Project directory is not set. Game path must exist, or we raise an error.
             if game_path.is_file():  # cannot be `None` or first check above would fail
-                return None  # only case of `None` being returned
+                return binder_class.from_path(game_path)
+
             # Game file does not exist and project directory is not set, which is a fail case.
             raise FileNotFoundError(
-                f"Project directory is not set and required file does not exist in game directory: {relative_path}"
+                f"Project directory is not set and initial Binder file does not exist in game directory: "
+                f"{binder_relative_path}"
             )
 
+        # Project directory is set.
+
         if project_path.is_file():
-            if game_path is None:
-                # Game directory not set. Nothing to check.
-                return project_path
-            if not game_path.is_file():
-                # Cannot copy from game, but project file exists. We use it even if `overwrite_existing=True`.
+            if game_path is not None and not game_path.is_file():
+                # Unusual: game directory is set, yet the Binder relative path we are looking for ONLY exists in the
+                # project. We warn about this case, as it may indicate a faulty project path (or, obviously, an
+                # incomplete or non-unpacked game directory).
                 operator.warning(
-                    f"Required file '{relative_path}' already exists in project directory and will be used, but this "
-                    f"file does not exist in the set game directory, which is unusual."
+                    f"Initial Binder file '{binder_relative_path}' exists in project directory and will be used, but "
+                    f"this file does not exist in the set game directory '{self.game_root}'. This is unusual."
                 )
-                return project_path
-            if not overwrite_existing:
-                return project_path  # easy case
 
-            # Overwrite existing project file below. Create a backup now if absent.
-            create_bak(project_path)
+            # Open and return project version of Binder.
+            return binder_class.from_path(project_path)
 
-        # Project file does not exist (but game file does as per previous check). Copy game file to project directory,
-        # ovewriting it if it already exists ('.bak' created above).
-        try:
-            project_path.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(game_path, project_path)
-        except Exception as ex:
-            raise RuntimeError(f"Failed to copy file '{game_path.name}' from game directory to project directory: {ex}")
-
-        return project_path
+        # Project directory is set, project file does not exist, and game file does exist, as per logic above.
+        # We use the game file.
+        return binder_class.from_path(game_path)
 
     # endregion
 

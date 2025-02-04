@@ -185,11 +185,15 @@ class ExportHKXAnimationIntoBinder(LoggingImportOperator):
 
     @classmethod
     def poll(cls, context):
-        return (
-            context.scene.soulstruct_settings.game_config.supports_animation
-            and len(context.selected_objects) == 1
-            and context.selected_objects[0].type == "ARMATURE"
-        )
+        if not context.scene.soulstruct_settings.game_config.supports_animation:
+            return False
+        if not context.active_object:
+            return False
+        try:
+            bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
+        except SoulstructTypeError:
+            return False
+        return bool(bl_flver.armature and bl_flver.armature.animation_data and bl_flver.armature.animation_data.action)
 
     def execute(self, context):
         settings = self.settings(context)
@@ -234,7 +238,7 @@ class ExportHKXAnimationIntoBinder(LoggingImportOperator):
         finally:
             context.scene.frame_set(current_frame)
 
-        dcx_type = DCXType.Null if self.dcx_type == "AUTO" else DCXType[self.dcx_type]
+        dcx_type = DCXType.Null if self.dcx_type == "AUTO" else DCXType.from_member_name(self.dcx_type)
         animation_hkx.dcx_type = dcx_type
         entry_path = self.default_entry_path + animation_name + (".hkx" if dcx_type == DCXType.Null else ".hkx.dcx")
         # Update or create binder entry.
@@ -302,21 +306,21 @@ class ExportCharacterHKXAnimation(BaseExportTypedHKXAnimation):
             return self.error(f"No animation HKX class defined for game {settings.game.name}.")
 
         model_name = bl_flver.export_name
-        if model_name == "c0000":
-            return self.error("Automatic ANIBND import is not yet supported for c0000 (player model).")
+        if model_name == "c0000" and not settings.is_game("DARK_SOULS_DSR"):
+            return self.error(
+                "Automatic export of c0000 animations is currently only supported for DS1R. You can still export "
+                "manually into the correct c0000 sub-ANIBND of your choice."
+            )
 
         relative_anibnd_path = Path(game_anim_info.relative_binder_path.format(model_name=model_name))
         try:
-            # We never overwrite project ANIBND as it may contain other exported animations.
-            anibnd_path = settings.prepare_project_file(self, relative_anibnd_path, overwrite_existing=False)
+            # NOTE: We don't use the managed `ANIBND` class from `soulstruct-havok` here.
+            anibnd = settings.get_initial_binder(self, relative_anibnd_path)
         except FileNotFoundError as ex:
             return self.error(f"Cannot find ANIBND for character {model_name}: {ex}")
 
         # Skeleton is in ANIBND.
-        # NOTE: We don't use the managed `ANIBND` class from `soulstruct-havok` here.
-        skeleton_anibnd = anibnd = Binder.from_path(anibnd_path)
-        # TODO: Support c0000 automatic export. Choose ANIBND based on animation ID?
-
+        skeleton_anibnd = anibnd
         try:
             skeleton_entry = skeleton_anibnd[SKELETON_ENTRY_RE]
         except EntryNotFoundError:
@@ -327,6 +331,42 @@ class ExportCharacterHKXAnimation(BaseExportTypedHKXAnimation):
         # support cross-game conversion).
         animation_id = bl_animation.animation_id
 
+        if model_name == "c0000":
+            # Must be DSR as per above check.
+            sub_anibnd_stems = [entry.stem for entry in anibnd.find_entries_matching_name(r"c0000_.*\.txt")]
+            if not sub_anibnd_stems:
+                return self.error("Could not find any sub-ANIBND definitions (e.g. 'c0000_a0x.txt') in c0000 ANIBND.")
+            # For now, we keep it simple: load ALL sub-ANIBNDs, find the one with a matching animation ID to replace,
+            # and fall back to using either `c0000_dlc` or `c0000_a9x` if no existing animation is found.
+            for stem in sub_anibnd_stems:
+                relative_sub_anibnd_path = Path(game_anim_info.relative_binder_path.format(model_name=stem))
+                try:
+                    sub_anibnd = settings.get_initial_binder(self, relative_sub_anibnd_path)
+                except FileNotFoundError as ex:
+                    return self.error(f"Cannot find sub-ANIBND for c0000: '{relative_sub_anibnd_path}'. Error: {ex}")
+                if animation_id in sub_anibnd.get_entry_ids():
+                    # Found matching animation. We export our new animation into this sub ANIBND.
+                    self.info(f"Will replace existing animation ID {animation_id} in c0000 sub-ANIBND `{stem}`.")
+                    anibnd = sub_anibnd
+                    relative_anibnd_path = relative_sub_anibnd_path
+                    break
+            else:
+                # Could not find existing animation ID in any sub-ANIBND. Fall back to DLC or a9x.
+                for stem_option in ["c0000_dlc", "c0000_a9x"]:
+                    if stem_option not in sub_anibnd_stems:
+                        continue
+                    relative_sub_anibnd_path = Path(game_anim_info.relative_binder_path.format(model_name=stem_option))
+                    try:
+                        anibnd = settings.get_initial_binder(self, relative_sub_anibnd_path)
+                        relative_anibnd_path = relative_sub_anibnd_path
+                    except FileNotFoundError:
+                        continue  # try next option
+                else:
+                    return self.error(
+                        f"Could not find any sub-ANIBND with existing animation ID {animation_id} for c0000, and could "
+                        f"not find either backup sub-ANIBND 'c0000_dlc' or 'c0000_a9x' to export new ID into."
+                    )
+
         try:
             animation_name = get_animation_name(animation_id, game_anim_info.stem_template, prefix="a")
         except ValueError:
@@ -335,7 +375,7 @@ class ExportCharacterHKXAnimation(BaseExportTypedHKXAnimation):
                 f"Animation ID {animation_id} is too large for game {settings.game}. Max is {'9' * max_digits}."
             )
 
-        self.info(f"Exporting animation '{animation_name}' into ANIBND '{anibnd_path.name}'...")
+        self.info(f"Exporting animation '{animation_name}' into ANIBND '{anibnd.path_name}'...")
 
         current_frame = context.scene.frame_current
         try:
@@ -361,7 +401,7 @@ class ExportCharacterHKXAnimation(BaseExportTypedHKXAnimation):
 
         # Update or create binder entry.
         anibnd.set_default_entry(animation_id, new_path=entry_path).set_from_binary_file(animation_hkx)
-        self.info(f"Successfully exported animation '{animation_name}' into ANIBND {anibnd_path.name}.")
+        self.info(f"Successfully exported animation '{animation_name}' into ANIBND {anibnd.path_name}.")
 
         # Write modified ANIBND.
         exported_paths = settings.export_file(self, anibnd, relative_anibnd_path)
@@ -406,17 +446,11 @@ class ExportObjectHKXAnimation(BaseExportTypedHKXAnimation):
         # Get OBJBND to modify from project (preferred) or game directory.
         relative_objbnd_path = Path(game_anim_info.relative_binder_path.format(model_name=model_name))
         try:
-            # We only overwrite project OBJBND if 'Prefer Import from Project' is disabled, which implies the user wants
-            # to import any initial OBJBND data (textures, etc.) from the game rather than using existing modified
-            # Binder entries.
-            objbnd_path = settings.prepare_project_file(
-                self, relative_objbnd_path, overwrite_existing=not settings.prefer_import_from_project
-            )
+            objbnd = settings.get_initial_binder(self, relative_objbnd_path)  # don't need OBJBND class here
         except FileNotFoundError:
             return self.error(f"Cannot find OBJBND for object {model_name}.")
-        objbnd = Binder.from_path(objbnd_path)
 
-        # Find ANIBND entry.
+        # Find ANIBND entry inside OBJBND.
         try:
             anibnd_entry = objbnd[f"{model_name}.anibnd"]  # no DCX
         except EntryNotFoundError:
@@ -447,7 +481,7 @@ class ExportObjectHKXAnimation(BaseExportTypedHKXAnimation):
                 f"Animation ID {animation_id} is too large for game {settings.game}. Max is {'9' * max_digits}."
             )
 
-        self.info(f"Exporting animation {animation_name} into OBJBND {objbnd_path.name}...")
+        self.info(f"Exporting animation {animation_name} into OBJBND {objbnd.path_name}...")
 
         current_frame = context.scene.frame_current
         try:

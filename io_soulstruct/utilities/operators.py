@@ -10,6 +10,7 @@ __all__ = [
 ]
 
 import abc
+import logging
 import re
 import shutil
 import tempfile
@@ -24,6 +25,8 @@ from soulstruct.containers import Binder, BinderEntry
 
 if tp.TYPE_CHECKING:
     from io_soulstruct.general.properties import SoulstructSettings
+
+_LOGGER = logging.getLogger("soulstruct.io")
 
 
 class LoggingOperator(bpy.types.Operator):
@@ -42,22 +45,21 @@ class LoggingOperator(bpy.types.Operator):
         return _settings
 
     def info(self, msg: str):
-        print(f"# INFO: {msg}")
+        _LOGGER.info(msg)
         self.report({"INFO"}, msg)
 
     def warning(self, msg: str):
-        print(f"# WARNING: {msg}")
+        _LOGGER.warning(msg)
         self.report({"WARNING"}, msg)
 
     def error(self, msg: str) -> set[str]:
-        # print(f"# ERROR: {msg}")
         if self.cleanup_callback:
             try:
                 self.cleanup_callback()
             except Exception as ex:
-                print(f"# ERROR: Error occurred during cleanup callback: {ex}")
+                _LOGGER.error(f"Error occurred during cleanup callback: {ex}")
                 self.report({"ERROR"}, f"Error occurred during cleanup callback: {ex}")
-        print(f"# ERROR: {msg}")
+        _LOGGER.error(msg)
         self.report({"ERROR"}, msg)
         return {"CANCELLED"}
 

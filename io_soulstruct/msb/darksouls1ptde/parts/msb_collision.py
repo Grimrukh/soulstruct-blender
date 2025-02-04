@@ -257,7 +257,6 @@ class BlenderMSBCollision(BlenderMSBPart[MSBCollision, MSBCollisionProps]):
             # NOTE: Hi and lo-res binders could end up being found in different import folders (project vs. game).
             try:
                 hi_res_hkxbhd_path = settings.get_import_map_file_path(f"h{map_stem[1:]}.hkxbhd")
-                print(hi_res_hkxbhd_path)
             except FileNotFoundError:
                 raise FileNotFoundError(f"Cannot find hi-res HKXBHD for map {map_stem}.")
             try:

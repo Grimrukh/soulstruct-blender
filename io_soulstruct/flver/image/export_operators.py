@@ -30,43 +30,55 @@ def export_map_area_textures(
         operator.error("Map textures not exported: only supported for Dark Souls: Remastered.")
         return []
 
-    import_area_dir = settings.game_root and settings.game_root.get_dir_path(f"map/{map_area}")
-    export_area_dir = settings.project_root and settings.project_root.get_dir_path(f"map/{map_area}")
-    if not export_area_dir and not settings.also_export_to_game:
-        # Should be caught by `settings.can_export` check in poll, but making extra sure here that any sort
-        # of TPFBHD export is possible before the expensive DDS conversion call below.
-        operator.error("Map textures not exported: game export path not set and export-to-import disabled.")
+    # We don't pass `if_exist = True` to these calls. They will only be `None` if the corresponding root is `None`.
+    # The directory paths themselves may not exist in the corresponding root.
+    game_map_area_dir = settings.game_root and settings.game_root.get_dir_path(f"map/{map_area}")
+    project_map_area_dir = settings.project_root and settings.project_root.get_dir_path(f"map/{map_area}")
+    if not project_map_area_dir and not settings.also_export_to_game:
+        # No possible export location. Should be caught by `settings.can_export` check in opreator poll, but making
+        # extra sure here that any sort of TPFBHD export is possible before the expensive DDS conversion call below.
+        operator.error(
+            f"Map textures not exported for area {map_area}. "
+            f"Project directory is not set and 'Also Export to Game' is disabled."
+        )
         return []  # no point checking other areas
-    if not (import_area_dir and import_area_dir.is_dir()) and not (
-        export_area_dir and export_area_dir.is_dir()
-    ):
+
+    # Collect existing TPFBHD paths from project and/or game directories.
+    project_tpfbhd_paths = list(project_map_area_dir.glob("*.tpfbhd")) if is_path_and_dir(project_map_area_dir) else []
+    game_tpfbhd_paths = list(game_map_area_dir.glob("*.tpfbhd")) if is_path_and_dir(game_map_area_dir) else []
+
+    if not project_tpfbhd_paths and not game_tpfbhd_paths:
+        # One or both roots are set, but neither directory exists AND contains initial TPFBHDs.
         operator.error(
-            f"Textures not written. Cannot find map texture Binders to modify from either export "
-            f"(preferred) or import (backup) map area directory: 'map/{map_area}"
+            f"Map textures not exported for area {map_area}. "
+            f"No initial TPFBHD Binders could be found to modify."
         )
         return []
-    if export_area_dir and import_area_dir and import_area_dir.is_dir():
-        # Prepare initial TPFBHDs/BDTs in project if absent. We never overwrite existing project TPFBHD/BDTs as they
-        # may contain other custom textures.
-        for tpfbhd_path in import_area_dir.glob("*.tpfbhd"):
-            relative_tpfbhd_path = Path(f"map/{map_area}/{tpfbhd_path.name}")
-            settings.prepare_project_file(operator, relative_tpfbhd_path, overwrite_existing=False)
-        for tpfbdt_path in import_area_dir.glob("*.tpfbdt"):
-            relative_tpfbdt_path = Path(f"map/{map_area}/{tpfbdt_path.name}")
-            settings.prepare_project_file(operator, relative_tpfbdt_path, overwrite_existing=False)
 
-    # We prefer to start with the TPFBHDs from the export directory (potentially just copied from import).
-    if export_area_dir and export_area_dir.is_dir():
-        map_area_dir = export_area_dir
+    if is_path_and_dir(project_map_area_dir) and not project_tpfbhd_paths:
+        # Log a helpful warning about empty project directory for this map area.
+        operator.warning(
+            f"Project map area directory '{project_map_area_dir}' exists, but is empty. Initial TPFBHD Binders from "
+            f"game directory will be used."
+        )
+
+    # Logic from here is parallel to `SoulstructSettings.get_initial_binder()`, but for multiple TPFBHD Binders.
+
+    if not project_tpfbhd_paths:
+        # No project TPFBHDs. We use game TPFBHDs as initial Binders (they must exist, as per above check).
+        map_area_dir = game_map_area_dir
     else:
-        map_area_dir = import_area_dir
+        # We use the project TPFBHDs, but also log warnings if the game TPFBHDs are absent.
+        map_area_dir = project_map_area_dir
+        if not game_tpfbhd_paths:
+            operator.warning(
+                f"Project TPFBHDs ({len(project_tpfbhd_paths)} Binders) will be used as initial TPFBHDs for texture "
+                f"export for area {map_area}. However, the game directory does not contain any TPFBHD Binders for this "
+                f"area. This is unusual."
+            )
 
-    if not map_area_dir or not map_area_dir.is_dir():
-        operator.error(
-            f"Textures not written. Cannot load map texture Binders from missing map area directory: "
-            f"{map_area_dir}"
-        )
-        return []
+    # This call does NOT write any TPFBHDs. It reads all existing textures from `map_area_dir`, exports collected DDS
+    # textures into single-TPF entries, splits them into TPFBHDs, and returns those TPFBHDs for us to export.
     map_tpfbhds = dds_textures.into_map_area_tpfbhds(operator, context, map_area_dir)
     exported_paths = []
     for tpfbhd in map_tpfbhds:
@@ -119,10 +131,12 @@ class ExportTexturesIntoBinderOrTPF(LoggingImportOperator):
 
         # TODO: Should this operator really support export to multiple binders simultaneously (and they'd have to be in
         #  the same folder)?
+        # noinspection PyTypeChecker
         sel_tex_nodes = [
             node for node in context.active_object.active_material.node_tree.nodes
             if node.select and node.bl_idname == "ShaderNodeTexImage"
-        ]
+        ]  # type: bpy.types.ShaderNodeTexImage
+
         if not sel_tex_nodes:
             return self.error("No Image Texture material node selected.")
 
@@ -137,19 +151,19 @@ class ExportTexturesIntoBinderOrTPF(LoggingImportOperator):
         #   - a Binder with a single eponymous multi-texture TPF
         #   - a Binder with multiple single-texture TPFs
         try:
-            if self.filepath.endswith(".tpf") or self.filepath.endswith(".tpf.dcx"):
+            if path.name.endswith(".tpf") or path.name.endswith(".tpf.dcx"):
                 # Put texture into loose TPF.
-                tpf = TPF.from_path(self.filepath)
+                tpf = TPF.from_path(path)
                 binder = None
                 # No DCX.
             else:
                 tpf = None
-                binder = Binder.from_path(self.filepath)
+                binder = Binder.from_path(path)
                 if binder.dcx_type == DCXType.Null:
                     # Apply appropriate TPF compression inside uncompressed Binder.
                     dcx_type = settings.resolve_dcx_type(self.dcx_type, "tpf")
         except Exception as ex:
-            return self.error(f"Error occurred when trying to read '{self.filepath}' as a TPF or Binder:\n  {str(ex)}")
+            return self.error(f"Error occurred when trying to read '{path}' as a TPF or Binder:\n  {str(ex)}")
 
         for tex_node in sel_tex_nodes:
 

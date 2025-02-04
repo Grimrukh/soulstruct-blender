@@ -16,7 +16,7 @@ from soulstruct.dcx import DCXType
 from soulstruct.games import DARK_SOULS_PTDE, DARK_SOULS_DSR, DEMONS_SOULS
 from soulstruct.utilities.files import create_bak
 
-from soulstruct_havok.fromsoft.shared import BothResHKXBHD
+from soulstruct_havok.fromsoft.shared import BothResHKXBHD, HKXBHD
 
 from io_soulstruct.types import SoulstructType
 from io_soulstruct.utilities import *
@@ -144,7 +144,7 @@ class ExportLooseHKXMapCollision(LoggingExportOperator):
                 # Additional temporary backup.
                 hi_tempbak_path = hi_path.with_suffix(f"{hi_path.suffix}.tempbak")
                 hi_path.rename(hi_tempbak_path)
-            hi_hkx.dcx_type = DCXType[self.dcx_type]
+            hi_hkx.dcx_type = DCXType.from_member_name(self.dcx_type)
             try:
                 # Will also create a `.bak` file automatically if absent.
                 hi_hkx.write(hi_path)
@@ -154,7 +154,7 @@ class ExportLooseHKXMapCollision(LoggingExportOperator):
             else:
                 hi_written = True
         if lo_hkx:
-            lo_hkx.dcx_type = DCXType[self.dcx_type]
+            lo_hkx.dcx_type = DCXType.from_member_name(self.dcx_type)
             try:
                 # Will create a `.bak` file automatically if absent.
                 lo_hkx.write(lo_path)
@@ -230,10 +230,10 @@ class ExportHKXMapCollisionIntoBinder(LoggingImportOperator):
             traceback.print_exc()
             return self.error(f"Cannot get exported HKX for '{hkx_model.name}'. Error: {ex}")
         if hi_hkx:
-            hi_hkx.dcx_type = DCXType[self.dcx_type]
+            hi_hkx.dcx_type = DCXType.from_member_name(self.dcx_type)
             both_res_hkxbhd.hi_res.set_hkx(hi_hkx.path_stem, hi_hkx)
         if lo_hkx:
-            lo_hkx.dcx_type = DCXType[self.dcx_type]
+            lo_hkx.dcx_type = DCXType.from_member_name(self.dcx_type)
             both_res_hkxbhd.lo_res.set_hkx(lo_hkx.path_stem, lo_hkx)
 
         # We only write hi-res to a new temporary file until lo-res is confirmed to write.
@@ -361,22 +361,19 @@ class ExportHKXMapCollisionToMap(LoggingOperator):
                 self.info(f"Exported loose hi-res and lo-res HKX for {model_name} to map directory {map_stem}.")
             else:
                 if map_stem not in opened_both_res_hkxbhds:
+                    # Find and open initial `HKXBHD` Binders for this map.
+                    res_hkxbhds = []
                     for res in ("h", "l"):
-                        for suffix in ("hkxbhd", "hkxbdt"):
-                            relative_path = Path(f"map/{map_stem}/{res}{map_stem[1:]}.{suffix}")
-                            try:
-                                # We never overwrite existing project HKXBHD/BDT as it may contain custom collisions.
-                                settings.prepare_project_file(self, relative_path, overwrite_existing=False)
-                            except FileNotFoundError as ex:
-                                return self.error(
-                                    f"Could not find file '{relative_path}' for map '{map_stem}'. Error: {ex}"
-                                )
-
-                    try:
-                        map_dir = settings.get_import_map_dir_path(map_stem=map_stem)
-                    except NotADirectoryError:
-                        return self.error(f"Could not find map data directory for map '{map_stem}'.")
-                    opened_both_res_hkxbhds[map_stem] = BothResHKXBHD.from_map_path(map_dir)
+                        relative_bhd_path = Path(f"map/{map_stem}/{res}{map_stem[1:]}.hkxbhd")  # never has DCX
+                        try:
+                            hkxbhd = settings.get_initial_binder(self, relative_bhd_path, HKXBHD)
+                        except FileNotFoundError as ex:
+                            return self.error(
+                                f"Could not find HKXBHD file '{relative_bhd_path}' for map '{map_stem}': {ex}"
+                            )
+                        res_hkxbhds.append(hkxbhd)
+                    map_dir_path = res_hkxbhds[0].path.parent
+                    opened_both_res_hkxbhds[map_stem] = BothResHKXBHD(*res_hkxbhds, path=map_dir_path)
 
                 opened_both_res_hkxbhds[map_stem].hi_res.set_hkx(hi_hkx.path_stem, hi_hkx)
                 opened_both_res_hkxbhds[map_stem].lo_res.set_hkx(lo_hkx.path_stem, lo_hkx)

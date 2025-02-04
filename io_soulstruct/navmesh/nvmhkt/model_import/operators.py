@@ -422,8 +422,9 @@ class ImportAllNVMHKTsFromNVMHKTBND(ImportAllNVMHKTBase):
             return self.error("NVMHKT import from game NVMHKTBND is only available for Elden Ring.")
 
         map_stem = settings.map_stem
-        nvmhktbnd_path = settings.get_import_map_file_path(f"{map_stem}.nvmhktbnd.dcx")
-        if not nvmhktbnd_path:
+        try:
+            nvmhktbnd_path = settings.get_import_map_file_path(f"{map_stem}.nvmhktbnd.dcx")
+        except FileNotFoundError:
             return self.error(f"Could not find NVMHKTBND file for map '{map_stem}'.")
         small_tile_match = re.match(r"(m60|m61)_(\d\d)_(\d\d)_(\d)0", map_stem)
 

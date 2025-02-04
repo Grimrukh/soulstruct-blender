@@ -113,7 +113,7 @@ class ExportMCG(LoggingExportOperator):
             traceback.print_exc()
             return self.error(f"Cannot get exported MCG. Error: {ex}")
         else:
-            mcg.dcx_type = DCXType[self.dcx_type]
+            mcg.dcx_type = DCXType.from_member_name(self.dcx_type)
 
         try:
             # Will create a `.bak` file automatically if absent.

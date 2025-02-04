@@ -163,7 +163,7 @@ class ExportFLVERIntoBinder(LoggingImportOperator):
             return self.error(str(ex))
 
         # Automatic DCX for FLVERs in Binders is Null.
-        dcx_type = DCXType[self.dcx_type] if self.dcx_type != "AUTO" else DCXType.Null
+        dcx_type = DCXType.from_member_name(self.dcx_type) if self.dcx_type != "AUTO" else DCXType.Null
 
         self.to_object_mode()
         binder_file_path = Path(self.filepath)
@@ -349,24 +349,23 @@ class BaseGameFLVERBinderExportOperator(LoggingOperator):
         binder_class: type[CHRBND_TYPING | OBJBND_TYPING | PARTSBND_TYPING],
         flver_model_type: FLVERModelType,
     ) -> tuple[str, CHRBND_TYPING | OBJBND_TYPING | PARTSBND_TYPING, FLVER, DDSTextureCollection]:
+        """Export FLVER from Blender object and return Binder, FLVER, and texture collection.
+
+        NOTE: Returned Binder does not load FLVER entries automatically (and they typically aren't needed).
+        """
         bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
         cls_name = binder_class.__name__
 
-        # We prepare and retrieve the binder to be exported into.
+        # We prepare and retrieve the Binder to be exported into. If a project Binder already exists, it will be used
+        # as the initial Binder to modify. The user should delete this Binder if they, e.g., want to start fresh with
+        # the textures and other files from the game directory's Binder.
         relative_binder_path = self._get_binder_path(settings, bl_flver.export_name)
         try:
-            # As all of these operators export 'single asset' FLVER Binders, we overwrite an existing project Binder if
-            # 'Prefer Import from Project' is disabled, implying we want to start with game textures/skeletons/etc.
-            binder_path = settings.prepare_project_file(
-                self, relative_binder_path, overwrite_existing=not settings.prefer_import_from_project
-            )
-        except FileNotFoundError as ex:
+            binder = settings.get_initial_binder(self, relative_binder_path, binder_class)
+        except Exception as ex:
             raise FLVERExportError(
                 f"Cannot find {cls_name} binder for {bl_flver.name}: '{relative_binder_path}'. Error: {ex}"
             )
-
-        # NOTE: FLVER entries are not loaded automatically (and we don't need them to be).
-        binder = binder_class.from_path(binder_path)
 
         self.to_object_mode()
         texture_collection = DDSTextureCollection()

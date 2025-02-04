@@ -44,6 +44,8 @@ for module_name in list(sys.modules.keys()):
     if module_name != "io_soulstruct" and "io_soulstruct" in module_name.split(".")[0]:  # don't reload THIS module
         try_reload(module_name)
 
+import io_soulstruct._logging
+
 from io_soulstruct.general import *
 from io_soulstruct.misc_operators import *
 
@@ -60,7 +62,7 @@ from io_soulstruct.types import SoulstructType
 bl_info = {
     "name": "Soulstruct",
     "author": "Scott Mooney (Grimrukh)",
-    "version": (2, 2, 2),
+    "version": (2, 2, 3),
     "blender": (4, 2, 0),
     "location": "File > Import-Export",
     "description": "Import, manipulate, and export FromSoftware/Havok assets",

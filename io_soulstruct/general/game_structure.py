@@ -36,14 +36,16 @@ class GameStructure:
         return self.settings.map_stem
 
     def get_file_path(self, *parts: str | Path, if_exist=False, dcx_type: DCXType = None) -> Path | None:
-        """Get path of arbitrary file relative to this root. Does NOT check if the file actually exists.
+        """Get path of arbitrary file relative to this root.
 
-        At least one part must be given, as this is not permitted to return directories.
+        At least one `parts` argument must be given, as this is not permitted to return directories.
 
         If `dcx_type` is given (including `Null`), the path will be processed by that DCX type. Otherwise, the known
         game specific/default DCX type for the file type will be used.
 
         Will add `.bak` suffix to path if `import_bak_file` is enabled.
+
+        If `if_exist = True`, the path will only be returned if the file exists. Otherwise, `None` is returned.
         """
         if not parts:
             raise ValueError("Must provide at least one part to `get_file_path()`.")
