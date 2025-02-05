@@ -237,12 +237,16 @@ class BlenderMCG(SoulstructObject[MCG, MCGProps]):
         # Iterate over all nodes to build a dictionary of Nodes that ignores 'dead end' navmesh suffixes.
         node_dict = {}
         map_stem = f"m{map_id[0]:02d}_{map_id[1]:02d}_{map_id[2]:02d}_{map_id[3]:02d}"
-        node_prefix = f"{map_stem} Node "
+        node_prefix = f"{map_stem} Node "  # map-specific node prefix (multiple MCGs can exist with the same node names)
         bl_nodes = self.get_nodes()  # natural keys sorting
+
+        def get_node_tight_name(node_obj: bpy.types.Object) -> str:
+            """Strip '<DEAD END>' and any other '<' suffix from tight node name (and strip dupe suffix)."""
+            return node_obj.name.split(".")[0].split("<")[0].strip()
 
         for i, bl_node in enumerate(bl_nodes):
             if bl_node.name.startswith(node_prefix):
-                node_name = bl_node.name.split("<")[0].strip()  # ignore dead end suffix
+                node_name = get_node_tight_name(bl_node.obj)
                 node_dict[node_name] = i
             else:
                 raise NavGraphExportError(f"Node '{bl_node.name}' does not start with '{node_prefix}'.")
@@ -332,9 +336,9 @@ class BlenderMCGNode(SoulstructObject[MCGNode, MCGNodeProps]):
         return [t.index for t in self.type_properties.navmesh_a_triangles]
 
     @navmesh_a_triangles.setter
-    def navmesh_a_triangles(self, value: list[int]):
+    def navmesh_a_triangles(self, indices: list[int]):
         self.type_properties.navmesh_a_triangles.clear()
-        for index in value:
+        for index in indices:
             self.type_properties.navmesh_a_triangles.add().index = index
 
     @property
@@ -350,9 +354,9 @@ class BlenderMCGNode(SoulstructObject[MCGNode, MCGNodeProps]):
         return [t.index for t in self.type_properties.navmesh_b_triangles]
 
     @navmesh_b_triangles.setter
-    def navmesh_b_triangles(self, value: list[int]):
+    def navmesh_b_triangles(self, indices: list[int]):
         self.type_properties.navmesh_b_triangles.clear()
-        for index in value:
+        for index in indices:
             self.type_properties.navmesh_b_triangles.add().index = index
 
     @classmethod
@@ -538,7 +542,18 @@ class BlenderMCGEdge(SoulstructObject[MCGEdge, MCGEdgeProps]):
         nodes: list[MCGNode] = None,
         map_id: tuple[int, int, int, int] = None,
     ) -> MCGEdge:
-        """Lots of existing node/triangle data required here."""
+        """Lots of existing node/triangle data from full `MCG` export required here.
+
+        Args:
+            operator: Calling `LoggingOperator` for error/warning messages.
+            context: Operator's Blender context.
+            navmesh_part_indices: Mapping of navmesh part names to their indices in the MSB.
+            node_navmesh_triangles: List of dictionaries mapping node indices to navmesh part names to triangle indices.
+            node_indices: Mapping of node names to their indices in the MCG.
+                NOTE: '<DEAD END>' suffix (or any suffix after '<') has already been stripped from these keys.
+            nodes: List of all nodes in the MCG.
+            map_id: Tuple of four integers representing the map ID of the MCG.
+        """
         if not navmesh_part_indices:
             raise ValueError("`navmesh_part_indices` must be provided to export `MCGEdge`.")
         if not node_navmesh_triangles:
@@ -550,10 +565,7 @@ class BlenderMCGEdge(SoulstructObject[MCGEdge, MCGEdgeProps]):
         if not map_id:
             raise ValueError("`map_id` must be provided to export `MCGEdge`.")
 
-        edge = MCGEdge(
-            map_id=map_id,
-            cost=self.cost,
-        )
+        edge = MCGEdge(map_id=map_id, cost=self.cost)
         if not self.navmesh_part:
             raise NavGraphExportError(f"Edge '{self.name}' does not have a Navmesh Part set.")
         navmesh_part_name = get_bl_obj_tight_name(self.navmesh_part)
@@ -569,14 +581,25 @@ class BlenderMCGEdge(SoulstructObject[MCGEdge, MCGEdgeProps]):
             raise NavGraphExportError(f"Edge '{self.name}' does not have a Node A set.")
         if not self.node_b:
             raise NavGraphExportError(f"Edge '{self.name}' does not have a Node B set.")
+
+        # Strip down node names to match dictionary keys.
+        node_a_name = self.get_node_tight_name(self.node_a)
+        node_b_name = self.get_node_tight_name(self.node_b)
+
         try:
-            node_a_index = node_indices[self.node_a.name]
+            node_a_index = node_indices[node_a_name]
         except KeyError:
-            raise NavGraphExportError(f"Cannot get node index of '{self.name}' start node: '{self.node_a.name}'")
+            print(node_indices)
+            raise NavGraphExportError(
+                f"Cannot get node index of '{self.name}' start node: '{node_a_name}' (originally '{self.node_a.name}')."
+            )
         try:
-            node_b_index = node_indices[self.node_b.name]
+            node_b_index = node_indices[node_b_name]
         except KeyError:
-            raise NavGraphExportError(f"Cannot get node index of '{self.name}' end node: '{self.node_b.name}'")
+            print(node_indices)
+            raise NavGraphExportError(
+                f"Cannot get node index of '{self.name}' end node: '{node_b_name}' (originally '{self.node_b.name}')."
+            )
 
         node_a = nodes[node_a_index]
         node_b = nodes[node_b_index]
@@ -599,3 +622,8 @@ class BlenderMCGEdge(SoulstructObject[MCGEdge, MCGEdgeProps]):
                 )
 
         return edge
+
+    @staticmethod
+    def get_node_tight_name(node_obj: bpy.types.Object) -> str:
+        """Strip '<DEAD END>' and any other '<' suffix from tight node name (and strip dupe suffix)."""
+        return node_obj.name.split(".")[0].split("<")[0].strip()

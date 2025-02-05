@@ -49,6 +49,7 @@ class SoulstructDataType(StrEnum):
 
 SOULSTRUCT_T = tp.TypeVar("SOULSTRUCT_T", bound=object)  # does not have to be a `GameFile` (e.g. `MSBMapPiece`)
 SOULSTRUCT_PROPS_T = tp.TypeVar("SOULSTRUCT_PROPS_T", bound=bpy.types.PropertyGroup)  # corresponding to `SOULSTRUCT_T`
+SOULSTRUCT_OBJ_T = tp.TypeVar("SOULSTRUCT_OBJ_T", bound="SoulstructObject")  # replaces `tp.Self` due to PyCharm bug
 
 
 class SoulstructObject(abc.ABC, tp.Generic[SOULSTRUCT_T, SOULSTRUCT_PROPS_T]):
@@ -82,11 +83,11 @@ class SoulstructObject(abc.ABC, tp.Generic[SOULSTRUCT_T, SOULSTRUCT_PROPS_T]):
 
     @classmethod
     def new(
-        cls,
+        cls: type[SOULSTRUCT_OBJ_T],
         name: str,
         data: bpy.types.Mesh | None,
         collection: bpy.types.Collection = None,
-    ) -> tp.Self:
+    ) -> SOULSTRUCT_OBJ_T:
         match cls.OBJ_DATA_TYPE:
             case SoulstructDataType.EMPTY:
                 if data is not None:
@@ -106,13 +107,13 @@ class SoulstructObject(abc.ABC, tp.Generic[SOULSTRUCT_T, SOULSTRUCT_PROPS_T]):
     @classmethod
     @abc.abstractmethod
     def new_from_soulstruct_obj(
-        cls,
+        cls: type[SOULSTRUCT_OBJ_T],
         operator: LoggingOperator,
         context: bpy.types.Context,
         soulstruct_obj: SOULSTRUCT_T,
         name: str,
         collection: bpy.types.Collection = None,
-    ) -> tp.Self:
+    ) -> SOULSTRUCT_OBJ_T:
         """Create a new Blender object from Soulstruct object.
 
         Operator and context are both required for logging, global settings, and context management.
@@ -123,10 +124,10 @@ class SoulstructObject(abc.ABC, tp.Generic[SOULSTRUCT_T, SOULSTRUCT_PROPS_T]):
             raise TypeError(
                 f"Given `soulstruct_obj` is not of type {cls.SOULSTRUCT_CLASS.__name__}: {soulstruct_obj.cls_name}"
             )
-        return cls.new(name, data=None, collection=collection)  # type: tp.Self
+        return cls.new(name, data=None, collection=collection)
 
     @classmethod
-    def find_in_data(cls, name: str) -> tp.Self:
+    def find_in_data(cls: type[SOULSTRUCT_OBJ_T], name: str) -> SOULSTRUCT_OBJ_T:
         try:
             obj = bpy.data.objects[name]
         except KeyError:
@@ -215,7 +216,7 @@ class SoulstructObject(abc.ABC, tp.Generic[SOULSTRUCT_T, SOULSTRUCT_PROPS_T]):
         self.obj.__setitem__(key, value)
 
     @classmethod
-    def from_active_object(cls, context: bpy.types.Context) -> tp.Self:
+    def from_active_object(cls: type[SOULSTRUCT_OBJ_T], context: bpy.types.Context) -> SOULSTRUCT_OBJ_T:
         obj = context.active_object
         if obj is None:
             raise SoulstructTypeError(f"No active object to become a {cls.TYPE} Soulstruct object.")
@@ -224,7 +225,7 @@ class SoulstructObject(abc.ABC, tp.Generic[SOULSTRUCT_T, SOULSTRUCT_PROPS_T]):
         return cls(obj)
 
     @classmethod
-    def from_selected_object(cls, context: bpy.types.Context) -> tp.Self:
+    def from_selected_object(cls: type[SOULSTRUCT_OBJ_T], context: bpy.types.Context) -> SOULSTRUCT_OBJ_T:
         if not context.selected_objects:
             raise SoulstructTypeError(f"No selected object to become a {cls.TYPE} Soulstruct object.")
         if len(context.selected_objects) > 1:
@@ -235,7 +236,7 @@ class SoulstructObject(abc.ABC, tp.Generic[SOULSTRUCT_T, SOULSTRUCT_PROPS_T]):
         return cls(obj)
 
     @classmethod
-    def from_selected_objects(cls, context: bpy.types.Context) -> list[tp.Self]:
+    def from_selected_objects(cls: type[SOULSTRUCT_OBJ_T], context: bpy.types.Context) -> list[SOULSTRUCT_OBJ_T]:
         if not context.selected_objects:
             raise SoulstructTypeError(f"No selected objects to become {cls.TYPE} Soulstruct objects.")
         selfs = []
@@ -246,10 +247,16 @@ class SoulstructObject(abc.ABC, tp.Generic[SOULSTRUCT_T, SOULSTRUCT_PROPS_T]):
         return selfs
 
     @classmethod
-    def from_collection_objects(cls, collection: bpy.types.Collection) -> list[tp.Self]:
-        """NOTE: ALL objects in collection must be of given type. Not recursive."""
+    def from_collection_objects(
+        cls: type[SOULSTRUCT_OBJ_T], collection: bpy.types.Collection, sort_alphabetical=True
+    ) -> list[SOULSTRUCT_OBJ_T]:
+        """NOTE: ALL objects in collection must be of given type. Not recursive.
+
+        Raises a ValueError if there are no objects of this type in the collection.
+        """
         selfs = []
-        for obj in collection.objects:
+        objects = sorted(collection.objects, key=lambda o: o.name) if sort_alphabetical else collection.objects
+        for obj in objects:
             if obj.soulstruct_type != cls.TYPE:
                 raise SoulstructTypeError(f"Object '{obj}' in collection is not a {cls.TYPE} Soulstruct object.")
             selfs.append(cls(obj))

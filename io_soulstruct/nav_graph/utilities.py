@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 __all__ = [
-
     "get_neighbors",
     "a_star",
     "get_navmesh_step_cost",
@@ -10,6 +9,7 @@ __all__ = [
 ]
 
 import heapq
+import itertools
 import math
 
 import bpy
@@ -61,7 +61,8 @@ def a_star(
     end_centroid = get_centroid(end_face)
 
     open_set = []
-    heapq.heappush(open_set, (0, start_face))
+    counter = itertools.count()  # unique sequence count for heap ordering (prevent undefined `BMFace` comparison)
+    heapq.heappush(open_set, (0.0, next(counter), start_face))  # heap of `(f_score, counter, face)` tuples
 
     came_from = {}
     g_score = {face: float("inf") for face in bm.faces}
@@ -71,7 +72,7 @@ def a_star(
     f_score[start_face] = (start_centroid - end_centroid).length
 
     while open_set:
-        current_face = heapq.heappop(open_set)[1]
+        _, _, current_face = heapq.heappop(open_set)  # discard F-score and counter
 
         if current_face == end_face:
             # Path complete. Compute total cost.
@@ -103,7 +104,7 @@ def a_star(
                 came_from[neighbor] = current_face
                 g_score[neighbor] = tentative_g_score
                 f_score[neighbor] = tentative_g_score + (get_centroid(neighbor) - end_centroid).length
-                heapq.heappush(open_set, (f_score[neighbor], neighbor))
+                heapq.heappush(open_set, (f_score[neighbor], next(counter), neighbor))
 
     # No path found.
     if not all_faces_passable and try_all_faces_passable_fallback:
@@ -171,7 +172,9 @@ def get_best_cost(mesh: bpy.types.Mesh, start_face_i: int, end_face_i: int) -> f
         return backward_cost
 
 
-def get_edge_cost(mesh: bpy.types.Mesh, start_face_i: int, end_face_i: int) -> tuple[list, float, bool]:
+def get_edge_cost(
+    mesh: bpy.types.Mesh, start_face_i: int, end_face_i: int
+) -> tuple[list[BMFace] | None, float, bool]:
     bm = bmesh.new()
     bm.from_mesh(mesh)
     bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.001)
@@ -182,4 +185,3 @@ def get_edge_cost(mesh: bpy.types.Mesh, start_face_i: int, end_face_i: int) -> t
         return a_star(start_face, end_face, bm)
     finally:
         bm.free()
-        del bm
