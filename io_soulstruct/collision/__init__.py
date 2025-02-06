@@ -9,6 +9,8 @@ __all__ = [
     "ExportHKXMapCollisionIntoBinder",
     "ExportHKXMapCollisionToMap",
 
+    "RenameCollision",
+    "CreateFromSelectedFLVERFaces",
     "SelectHiResFaces",
     "SelectLoResFaces",
 

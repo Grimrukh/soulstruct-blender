@@ -31,7 +31,7 @@ class ExportHKXCutscene(LoggingExportOperator):
     #   - Export to RemoBND just like Animation export, by just recording transforms (and camera focal length).
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         # TODO: All selected objects must be armatures.
         try:
             return context.selected_objects[0].type == "ARMATURE"

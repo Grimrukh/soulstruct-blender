@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 __all__ = [
+    "MSB_COLLECTION_RE",
     "find_flver_model",
     "BaseMSBEntrySelectOperator",
     "batch_import_flver_models",
@@ -32,6 +33,9 @@ from io_soulstruct.utilities import *
 from soulstruct.containers import Binder, BinderEntry
 from soulstruct.base.maps.msb import MSB, MSBEntry  # must not be imported under `TYPE_CHECKING` guard
 from soulstruct.base.models.flver import FLVER, MergedMesh
+
+
+MSB_COLLECTION_RE = re.compile(r"^(m\d\d_\d\d_\d\d_\d\d) MSB$")
 
 
 def find_flver_model(model_name: str) -> BlenderFLVER:
@@ -84,7 +88,7 @@ class BaseMSBEntrySelectOperator(LoggingOperator):
         ...
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         settings = cls.settings(context)
         try:
             settings.get_import_msb_path()

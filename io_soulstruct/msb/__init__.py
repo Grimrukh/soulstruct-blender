@@ -55,7 +55,8 @@ __all__ = [
     "MSBExportSettings",
     "MSBToolSettings",
 
-    "MSBImportExportPanel",
+    "MSBImportPanel",
+    "MSBExportPanel",
     "MSBToolsPanel",
 
     "MSBPartPanel",

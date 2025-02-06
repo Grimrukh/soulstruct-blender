@@ -433,6 +433,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
 
     @classmethod
     def from_armature_or_mesh(cls, obj: bpy.types.Object) -> BlenderFLVER:
+        """FLVER models can be parsed from a Mesh obj or its optional Armature parent."""
         if not obj:
             raise SoulstructTypeError("No Object given.")
         _, mesh = cls.parse_flver_obj(obj)
@@ -1679,8 +1680,6 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         else:
             use_map_piece_layout = flver_model_type == FLVERModelType.MapPiece
 
-        print(flver_model_type, use_map_piece_layout)
-
         self.export_flver_meshes(
             operator,
             context,
@@ -2300,7 +2299,8 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         return flvers
 
     @classmethod
-    def test_obj(cls, obj: bpy.types.Object) -> bool:
+    def is_obj_type(cls, obj: bpy.types.Object) -> bool:
+        """For FLVER, Blender `obj` could be Mesh or Armature."""
         try:
             cls.from_armature_or_mesh(obj)
         except SoulstructTypeError:

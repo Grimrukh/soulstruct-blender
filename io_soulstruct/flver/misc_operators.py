@@ -47,11 +47,20 @@ class CopyToNewFLVER(LoggingOperator):
     bl_description = ("Copy selected vertices, edges, and/or faces, their materials, and all FLVER bones and custom "
                       "properties to a new FLVER model in the active collection. Must be in Edit Mode")
 
+    new_name: bpy.props.StringProperty(
+        name="New Model Name",
+        description="Name of the new FLVER model. If empty, will just add '_Copy' suffix to the original name",
+        default="",
+    )
+
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         if context.mode != "EDIT_MESH" or not context.active_object or context.active_object.type != "MESH":
             return False
-        return BlenderFLVER.test_obj(context.active_object)
+        return BlenderFLVER.is_obj_type(context.active_object)
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
 
     def execute(self, context):
         if not self.poll(context):
@@ -64,7 +73,7 @@ class CopyToNewFLVER(LoggingOperator):
             make_materials_single_user=True,
             copy_pose=True,
         )
-        new_bl_flver.deep_rename(settings.new_model_name or f"{bl_flver.name}_Copy")
+        new_bl_flver.deep_rename(self.new_name or f"{bl_flver.name}_Copy")
 
         return {"FINISHED"}
 
@@ -74,24 +83,73 @@ class RenameFLVER(LoggingOperator):
     bl_idname = "object.rename_flver"
     bl_label = "Rename FLVER"
     bl_description = (
-        "Rename all occurrences of model name in the selected FLVER model (text before first space and/or dot). "
-        "Automatically removes Blender duplicate name suffixes like '.001'. Must be in Object Mode"
+        "Do a 'deep rename' of all occurrences of model name in the selected FLVER model (text before first space "
+        "and/or dot). Automatically removes Blender duplicate name suffixes like '.001'. Must be in Object Mode. Can "
+        "optionally rename all MSB Map Piece parts that instance this model"
+    )
+
+    new_name: bpy.props.StringProperty(
+        name="New Name",
+        description="New name for the FLVER model",
+        default="",
+    )
+    rename_parts: bpy.props.BoolProperty(
+        name="Rename Parts",
+        description="Rename MSB Map Piece ('m*' models), Character ('c*' models), or Object ('o*' models) parts that "
+                    "instance this FLVER model",
+        default=True,
     )
 
     @classmethod
-    def poll(cls, context):
-        return context.mode == "OBJECT" and context.active_object and context.active_object.type in {"ARMATURE", "MESH"}
+    def poll(cls, context) -> bool:
+        if not context.mode == "OBJECT":
+            return False
+        return BlenderFLVER.is_obj_type(context.active_object)
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
 
     def execute(self, context):
-        if not self.poll(context):
-            return self.error("Must select a Mesh in Object Mode.")
-
-        settings = self.settings(context)
-        if not settings.new_model_name:
+        if not self.new_name:
             return self.error("No new model name specified.")
 
-        bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
-        bl_flver.deep_rename(settings.new_model_name)
+        flver_obj = context.active_object
+        bl_flver = BlenderFLVER.from_armature_or_mesh(flver_obj)
+        old_model_name = bl_flver.export_name
+        new_model_name = self.new_name
+        bl_flver.deep_rename(new_model_name)
+
+        if self.rename_parts:
+            if self.new_name[0] == "m":
+                part_subtype = "MSB_MAP_PIECE"
+            elif self.new_name[0] == "c":
+                part_subtype = "MSB_CHARACTER"
+            elif self.new_name[0] == "o":
+                part_subtype = "MSB_OBJECT"
+            else:
+                self.warning(f"Cannot determine part subtype from model name '{self.new_name}'. No parts were renamed.")
+                return {"FINISHED"}
+
+            part_count = 0
+            for obj in bpy.data.objects:
+                if (
+                    obj.soulstruct_type == SoulstructType.MSB_PART
+                    and obj.MSB_PART.part_subtype == part_subtype
+                    and obj is not flver_obj
+                    and obj.data == flver_obj.data
+                ):
+                    # Found a part to rename.
+                    part_count += 1
+                    old_part_name = obj.name
+                    for i, (a, b) in enumerate(zip(old_part_name, old_model_name)):
+                        if a != b:
+                            new_part_prefix = new_model_name[:i]  # take same length prefix from new model name
+                            new_part_suffix = old_part_name[i:]  # keep old Part suffix ('_0000', '_CASTLE', whatever).
+                            obj.name = f"{new_part_prefix}{new_part_suffix}"
+                            break
+                    # No need for an `else` check because Blender object names cannot be identical.
+
+            self.info(f"Renamed {part_count} parts that instance FLVER model '{old_model_name}' to '{new_model_name}'.")
 
         return {"FINISHED"}
 
@@ -103,7 +161,7 @@ class SelectDisplayMaskID(LoggingOperator):
     bl_description = "Select all faces with materials labelled with the given display mask ('#XX#')"
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         return context.mode == "EDIT_MESH"
 
     def execute(self, context):
@@ -156,7 +214,7 @@ class SetSmoothCustomNormals(LoggingOperator):
     )
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         if context.mode == "OBJECT":
             return context.active_object is not None and context.active_object.type == "MESH"
         return context.mode == "EDIT_MESH"
@@ -182,7 +240,7 @@ class SetVertexAlpha(LoggingOperator):
     bl_description = "Set the alpha value of all selected vertices to a value"
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         return context.mode == "EDIT_MESH"
 
     def execute(self, context):
@@ -227,7 +285,7 @@ class InvertVertexAlpha(LoggingOperator):
     bl_description = "Invert (subtract from 1) the alpha value of selected vertex color layer for all selected vertices"
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         return context.mode == "EDIT_MESH"
 
     def execute(self, context):
@@ -275,7 +333,7 @@ class BakeBonePoseToVertices(LoggingOperator):
     )
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         """Must select at least one bone in Armature of active object."""
         if context.mode == "OBJECT" and context.active_object:
             # noinspection PyTypeChecker
@@ -356,7 +414,7 @@ class ReboneVertices(LoggingOperator):
     )
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         return context.mode == "EDIT_MESH"
 
     def execute(self, context):
@@ -450,7 +508,7 @@ class ActivateUVMap(LoggingOperator):
     UV_LAYER_NAME: tp.ClassVar[str]
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         """Checks if the given `UV_LAYER_NAME` exists in material shader nodes."""
         obj = context.active_object
         if obj and obj.type == 'MESH' and obj.active_material:
@@ -531,7 +589,7 @@ class FastUVUnwrap(LoggingOperator):
     bl_description = "Unwrap selected faces using the 'UV Unwrap' operator, then scale their UVs using given value"
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         return context.mode == "EDIT_MESH"
 
     def execute(self, context):
@@ -567,7 +625,7 @@ class RotateUVMapClockwise90(LoggingOperator):
     bl_description = "Rotate the UV map of selected faces clockwise by 90°"
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         return context.mode == "EDIT_MESH"
 
     def execute(self, context):
@@ -617,7 +675,7 @@ class RotateUVMapCounterClockwise90(LoggingOperator):
     bl_description = "Rotate the UV map of selected faces counter-clockwise by 90°"
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         return context.mode == "EDIT_MESH"
 
     def execute(self, context):
@@ -674,7 +732,7 @@ class FindMissingTexturesInImageCache(LoggingOperator):
     bl_description = "Find missing texture names used by materials of selected FLVERs in image cache"
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         return context.active_object and context.active_object.type in {"ARMATURE", "MESH"}
 
     def execute(self, context):
@@ -727,7 +785,7 @@ class SelectMeshChildren(LoggingOperator):
     bl_description = "Select all immediate Mesh children of selected objects and deselect all non-Meshes"
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         return context.active_object and context.active_object.type in {"ARMATURE", "MESH"}
 
     def execute(self, context):
@@ -799,10 +857,10 @@ class HideAllDummiesOperator(LoggingOperator):
     bl_description = "Hide all dummy point children in the selected armature (Empties with 'Dummy' in name)"
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         if not context.active_object:
             return False
-        return BlenderFLVER.test_obj(context.active_object)
+        return BlenderFLVER.is_obj_type(context.active_object)
 
     def execute(self, context):
         bl_dummies = BlenderFLVER.from_armature_or_mesh(context.active_object).get_dummies(self)
@@ -819,10 +877,10 @@ class ShowAllDummiesOperator(LoggingOperator):
     bl_description = "Show all dummy point children in the selected armature (Empties with 'Dummy' in name)"
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         if not context.active_object:
             return False
-        return BlenderFLVER.test_obj(context.active_object)
+        return BlenderFLVER.is_obj_type(context.active_object)
 
     def execute(self, context):
         bl_dummies = BlenderFLVER.from_armature_or_mesh(context.active_object).get_dummies(self)
@@ -838,7 +896,7 @@ class PrintGameTransform(LoggingOperator):
     bl_description = "Print the selected object's transform in game coordinates to Blender console"
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         return context.object is not None
 
     # noinspection PyMethodMayBeStatic

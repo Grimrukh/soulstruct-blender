@@ -85,7 +85,7 @@ class CopyMeshSelectionOperator(LoggingOperator):
     bl_description = "Copy the selected vertices, edges, and faces from the edited mesh to the other selected mesh"
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         return (
             context.mode == "EDIT_MESH"
             and len(context.selected_objects) == 1
@@ -106,7 +106,7 @@ class CutMeshSelectionOperator(LoggingOperator):
     bl_description = "Move the selected vertices/edges/faces from a mesh being edited to another selected mesh"
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         return (
             context.mode == "EDIT_MESH"
             and len(context.selected_objects) == 1
@@ -130,7 +130,7 @@ class BooleanMeshCut(LoggingOperator):
     )
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         """Check that the active object is a mesh in Edit Mode and that exactly one other object is selected."""
         if (
             context.mode != "EDIT_MESH"

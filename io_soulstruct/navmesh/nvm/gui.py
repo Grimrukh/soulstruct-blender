@@ -94,6 +94,9 @@ class NVMNavmeshToolsPanel(bpy.types.Panel):
     def draw(self, context):
         """Still shown if game is not DSR."""
 
+        self.layout.label(text="Navmesh Creation:")
+        self.layout.operator(GenerateNavmeshFromCollision.bl_idname)
+
         self.layout.label(text="Selected Face Indices:")
         selected_faces_box = self.layout.box()
         # noinspection PyTypeChecker
@@ -200,7 +203,7 @@ class NVMEventEntityPanel(bpy.types.Panel):
     bl_context = "object"
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         return context.active_object and context.active_object.soulstruct_type == SoulstructType.NVM_EVENT_ENTITY
 
     def draw(self, context):

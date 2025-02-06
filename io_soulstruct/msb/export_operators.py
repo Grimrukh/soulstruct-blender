@@ -4,7 +4,6 @@ __all__ = [
     "ExportMapMSB",
 ]
 
-import re
 import traceback
 import typing as tp
 from pathlib import Path
@@ -28,13 +27,12 @@ from soulstruct.utilities.text import natural_keys
 from soulstruct_havok.fromsoft.shared import HKXBHD, BothResHKXBHD
 from .operator_config import *
 from .properties import MSBPartSubtype
+from .utilities import MSB_COLLECTION_RE
 
 if tp.TYPE_CHECKING:
     from io_soulstruct.msb.types import *
     from soulstruct.base.maps.msb.regions import BaseMSBRegion
     from soulstruct.base.maps.msb.events import BaseMSBEvent
-
-_MSB_COLLECTION_RE = re.compile(r"^(m\d\d_\d\d_\d\d_\d\d) MSB$")
 
 
 # TODO: `ExportAnyMSB` operator.
@@ -62,14 +60,14 @@ class ExportMapMSB(LoggingOperator):
     )
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         settings = cls.settings(context)
         if not GAME_CONFIG[settings.game].msb_class:
             return False  # unsupported
         if not context.collection:
             return False
         # TODO: Hack for now. Probably use an extension property for Collection marking it as an MSB.
-        if not _MSB_COLLECTION_RE.match(context.collection.name):
+        if not MSB_COLLECTION_RE.match(context.collection.name):
             return False
         return True
 
@@ -82,7 +80,7 @@ class ExportMapMSB(LoggingOperator):
             return self.error(f"MSB class not found for game '{settings.game}'.")
 
         if settings.detect_map_from_collection:
-            match = _MSB_COLLECTION_RE.match(context.collection.name)
+            match = MSB_COLLECTION_RE.match(context.collection.name)
             if not match:
                 return self.error(
                     f"Collection name '{context.collection.name}' does not match expected MSB collection name format. "

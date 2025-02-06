@@ -49,7 +49,7 @@ class RemoveMCGNodeNavmeshATriangleIndex(bpy.types.Operator):
     bl_label = "Remove Navmesh A Triangle"
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         return (
             context.active_object
             and context.active_object.soulstruct_type == SoulstructType.MCG_NODE
@@ -83,7 +83,7 @@ class RemoveMCGNodeNavmeshBTriangleIndex(bpy.types.Operator):
     bl_label = "Remove Navmesh B Triangle"
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         return (
             context.active_object
             and context.active_object.soulstruct_type == SoulstructType.MCG_NODE
@@ -106,7 +106,7 @@ class JoinMCGNodesThroughNavmesh(LoggingOperator):
                       "must be selected for drawing")
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         return (
             context.mode == "OBJECT"
             and len(context.selected_objects) == 3
@@ -197,7 +197,7 @@ class SetNodeNavmeshTriangles(LoggingOperator):
                       "be editing an MSB Navmesh part mesh that is already set as Navmesh A or B for selected node")
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         if context.mode != "EDIT_MESH" or not context.edit_object:
             return False
         # Have to account for the edited Mesh itself maybe not being selected. (We don't care.)
@@ -235,7 +235,7 @@ class RefreshMCGNames(LoggingOperator):
     bl_description = "Refresh all MCG node and edge names in the selected MCG hierarchy"
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         try:
             BlenderMCG.from_active_object(context)
         except SoulstructTypeError:
@@ -319,7 +319,7 @@ class RecomputeEdgeCost(LoggingOperator):
     bl_description = "Recompute costs of selected MCG edges and store in \"New Cost\" custom property"
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         if not context.mode == "OBJECT":
             return False
         try:
@@ -396,7 +396,7 @@ class FindCheapestPath(LoggingOperator):
                       "will be logged to the console")
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         """NOTE: Two faces must be selected, but would need to create a BMesh to check this."""
         return (
             context.edit_object is not None

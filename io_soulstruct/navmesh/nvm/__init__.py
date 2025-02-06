@@ -18,6 +18,7 @@ __all__ = [
     "ResetNVMFaceInfo",
     "AddNVMEventEntityTriangleIndex",
     "RemoveNVMEventEntityTriangleIndex",
+    "GenerateNavmeshFromCollision",
 
     "BlenderNVM",
     "BlenderNVMEventEntity",

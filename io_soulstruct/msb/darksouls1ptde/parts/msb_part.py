@@ -325,6 +325,7 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
                     cls.primitive_icosphere(mesh)
                     model = bpy.data.objects.new(model_name, mesh)
                     model["MSB_MODEL_PLACEHOLDER"] = True  # some models are genuinely empty, so we need a way to tell
+                    model.show_axis = True  # hard to tell orientation of placeholder icosphere otherwise
                     placeholder_model_collection = get_or_create_collection(
                         context.scene.collection,
                         "Placeholder Models",

@@ -199,7 +199,7 @@ class ImportMapPieceFLVER(BaseFLVERImportOperator):
     directory: bpy.props.StringProperty(options={'HIDDEN'})
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         try:
             cls.settings(context).get_import_map_dir_path()
             return True
@@ -256,7 +256,7 @@ class ImportCharacterFLVER(BaseFLVERImportOperator):
     directory: bpy.props.StringProperty(options={'HIDDEN'})
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         return cls.settings(context).has_import_dir_path("chr")
 
     def invoke(self, context, _event):
@@ -343,7 +343,7 @@ class ImportObjectFLVER(BaseFLVERImportOperator):
     directory: bpy.props.StringProperty(options={'HIDDEN'})
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         settings = cls.settings(context)
         if settings.game_variable_name == "ELDEN_RING":
             return False  # has 'assets' instead
@@ -381,7 +381,7 @@ class ImportAssetFLVER(BaseFLVERImportOperator):
     directory: bpy.props.StringProperty(options={'HIDDEN'})
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         settings = cls.settings(context)
         if settings.game_variable_name != "ELDEN_RING":
             return False  # only Elden Ring has 'assets'
@@ -427,7 +427,7 @@ class ImportEquipmentFLVER(BaseFLVERImportOperator):
     directory: bpy.props.StringProperty(options={'HIDDEN'})
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         return cls.settings(context).has_import_dir_path("parts")
 
     def invoke(self, context, _event):

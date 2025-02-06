@@ -228,6 +228,8 @@ CLASSES = (
     MapCollisionImportExportPanel,
     MapCollisionToolsPanel,
 
+    RenameCollision,
+    CreateFromSelectedFLVERFaces,
     SelectHiResFaces,
     SelectLoResFaces,
 
@@ -281,6 +283,7 @@ CLASSES = (
     ResetNVMFaceInfo,
     AddNVMEventEntityTriangleIndex,
     RemoveNVMEventEntityTriangleIndex,
+    GenerateNavmeshFromCollision,
     # endregion
 
     # region Nav Graph (MCG)
@@ -354,7 +357,8 @@ CLASSES = (
     MSBExportSettings,
     MSBToolSettings,
 
-    MSBImportExportPanel,
+    MSBImportPanel,
+    MSBExportPanel,
     MSBToolsPanel,
     MSBPartPanel,
 
@@ -446,9 +450,9 @@ OBJECT_POINTERS = dict(
     FLVER=FLVERProps,
     FLVER_DUMMY=FLVERDummyProps,
 
-    COLLISION=MapCollisionProps,
+    COLLISION=MapCollisionProps,  # currently empty
 
-    # NOTE: There are no NVM properties at the moment.
+    NVM=NVMProps,  # currently empty
     NVM_EVENT_ENTITY=NVMEventEntityProps,
     MCG=MCGProps,
     MCG_NODE=MCGNodeProps,

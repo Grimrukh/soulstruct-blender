@@ -51,7 +51,7 @@ class ExportLooseFLVER(LoggingExportOperator):
     dcx_type: get_dcx_enum_property()
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         """One FLVER Armature or Mesh object must be selected.
 
         If a Mesh is selected and it does not have an Armature parent object, a default FLVER skeleton with a single
@@ -59,7 +59,7 @@ class ExportLooseFLVER(LoggingExportOperator):
         """
         if not context.active_object:
             return False
-        return BlenderFLVER.test_obj(context.active_object)
+        return BlenderFLVER.is_obj_type(context.active_object)
 
     def invoke(self, context, _event):
         """Set default export name to name of object (before first space and without Blender dupe suffix)."""
@@ -150,11 +150,11 @@ class ExportFLVERIntoBinder(LoggingImportOperator):
     )
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         """At least one Blender mesh selected."""
         if not context.active_object:
             return False
-        return BlenderFLVER.test_obj(context.active_object)
+        return BlenderFLVER.is_obj_type(context.active_object)
 
     def execute(self, context):
         try:
@@ -247,12 +247,12 @@ class ExportMapPieceFLVERs(LoggingOperator):
     )
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         """One or more 'm*' Armatures or Meshes selected."""
         if not cls.settings(context).can_auto_export or not context.selected_objects:
             return False
         for obj in context.selected_objects:
-            if not BlenderFLVER.test_obj(obj):
+            if not BlenderFLVER.is_obj_type(obj):
                 return False
         return True
 
@@ -422,7 +422,7 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
         return Path(f"chr/{model_stem}.chrbnd")
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         """Must have an Armature parent for a character FLVER. No chance of a default skeleton!
 
         Name of character must also start with 'c'.
@@ -673,7 +673,7 @@ class ExportObjectFLVER(BaseGameFLVERBinderExportOperator):
         return Path(f"obj/{model_stem.split('_')[0]}.objbnd")
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         """Name of model must also start with 'o'.
 
         NOTE: Armature is NOT required. Could easily have Map Piece-like, non-animated Objects.

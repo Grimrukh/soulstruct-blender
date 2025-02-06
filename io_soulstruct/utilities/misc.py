@@ -157,6 +157,10 @@ def get_bl_obj_tight_name(obj: bpy.types.Object, new_ext="") -> str:
 
 
 def get_collection_map_stem(obj: bpy.types.Object) -> str:
+    """Get the map stem of the collection that the object is in.
+
+    Supports multiple containing collections as long as only one looks like a map stem.
+    """
     if not obj.users_collection:
         raise ValueError(f"Object '{obj.name}' is not in any Blender collection.")
     map_stem = None

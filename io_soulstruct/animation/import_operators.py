@@ -362,7 +362,7 @@ class ImportCharacterHKXAnimation(BaseImportTypedHKXAnimation):
     )
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         """Character FLVER (not MSB Part) must be selected."""
         return super().poll(context) and context.active_object.name[0] == "c"
 
@@ -403,7 +403,7 @@ class ImportObjectHKXAnimation(BaseImportTypedHKXAnimation):
     )
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         """Object FLVER (not MSB Part) must be selected."""
         return super().poll(context) and context.active_object.name[0] == "o"
 
@@ -444,7 +444,7 @@ class ImportAssetHKXAnimation(BaseImportTypedHKXAnimation):
     bl_description = "Import a HKX animation file from the selected asset's pre-loaded GEOMBND"
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         """Asset FLVER (not MSB Part) must be selected."""
         return super().poll(context) and context.active_object.name[:3].lower() == "aeg"
 

@@ -267,6 +267,22 @@ class BlenderMapCollision(SoulstructObject[MapCollisionModel, MapCollisionProps]
 
         return hi_collision, lo_collision
 
+    def duplicate(self, collections: tp.Sequence[bpy.types.Collection] = None) -> BlenderMapCollision:
+        """Duplicate Collision model to a new object. Does not rename (will just add duplicate suffix)."""
+        new_model = new_mesh_object(self.name, self.data.copy())
+        new_model.soulstruct_type = SoulstructType.COLLISION
+        # NOTE: There are currently no properties in the 'COLLISION' property group.
+        # The only non-mesh data in a Collision model is represented by HKX materials.
+        copy_obj_property_group(self.obj, new_model, "COLLISION")
+        for collection in collections:
+            collection.objects.link(new_model)
+        return self.__class__(new_model)
+
+    def rename(self, new_name: str):
+        """Just renames object and data."""
+        self.obj.name = new_name
+        self.data.name = new_name
+
     @staticmethod
     def join_collision_meshes(
         collision: MapCollisionModel, bl_material_indices: tp.Sequence[int], initial_offset=0

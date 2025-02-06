@@ -7,6 +7,7 @@ __all__ = [
     "NAVMESH_FLAG_COLORS",
     "NAVMESH_MULTIPLE_FLAG_COLOR",
     "set_face_material",
+    "get_navmesh_material",
 ]
 
 import re
@@ -68,28 +69,42 @@ def set_face_material(bl_mesh, bl_face, face_flags: int):
         bl_face.material_index = material_index
         return bl_mesh.materials[material_name]
 
-    # Try to get existing material from Blender.
+    bl_material = get_navmesh_material(flag)
+
+    # Add material to this mesh and this face.
+    bl_face.material_index = len(bl_mesh.materials)
+    bl_mesh.materials.append(bl_material)
+    return bl_material
+
+
+def get_navmesh_material(flag: int | NavmeshFlag) -> bpy.types.Material:
+    """Try to get existing material for navmesh `flag` from Blender, or create it."""
+
+    try:
+        navmesh_flag = NavmeshFlag(flag)
+        material_name = f"Navmesh Flag {navmesh_flag.name}"
+    except ValueError:  # multiple flags
+        navmesh_flag = None
+        material_name = "Navmesh Flag <Multiple>"
+
     try:
         bl_material = bpy.data.materials[material_name]
     except KeyError:
         # Create new material with color from dictionary.
-        if flag is None:
+        if navmesh_flag is None:
             color = NAVMESH_MULTIPLE_FLAG_COLOR
         else:
             try:
-                color = NAVMESH_FLAG_COLORS[flag.name]
+                color = NAVMESH_FLAG_COLORS[navmesh_flag.name]
             except (ValueError, KeyError):
                 # Unspecified flag color.
                 color = NAVMESH_UNKNOWN_FLAG_COLOR
         bl_material = create_basic_material(material_name, color, wireframe_pixel_width=2)
 
-    # Set viewport display diffuse color.
-    try:
-        bl_material.diffuse_color = bl_material.node_tree.nodes["Diffuse BSDF"].inputs["Color"].default_value
-    except (AttributeError, KeyError):
-        pass  # ignore
+        # Set viewport display diffuse color.
+        try:
+            bl_material.diffuse_color = bl_material.node_tree.nodes["Diffuse BSDF"].inputs["Color"].default_value
+        except (AttributeError, KeyError):
+            pass  # ignore
 
-    # Add material to this mesh and this face.
-    bl_face.material_index = len(bl_mesh.materials)
-    bl_mesh.materials.append(bl_material)
     return bl_material

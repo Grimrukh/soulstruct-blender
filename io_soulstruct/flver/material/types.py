@@ -402,7 +402,6 @@ class BlenderFLVERMaterial:
                 path_prefix = ""
 
             texture_path = (path_prefix + texture_stem + path_ext) if texture_stem else ""
-            print(f"Texture path: {texture_path}")
             # TODO: Unknowns currently all ignored.
             texture = Texture(path=texture_path, texture_type=sampler_name)
 

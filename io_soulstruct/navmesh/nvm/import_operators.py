@@ -306,7 +306,7 @@ class ImportSelectedMapNVM(BinderEntrySelectOperator):
     )
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         settings = cls.settings(context)
         if not settings.game_config.supports_nvm:
             return False

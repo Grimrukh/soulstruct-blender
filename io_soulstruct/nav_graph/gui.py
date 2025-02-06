@@ -30,7 +30,7 @@ class MCGPropsPanel(bpy.types.Panel):
     bl_context = "object"
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         if not context.active_object:
             return False
         return context.active_object.soulstruct_type == SoulstructType.MCG
@@ -77,7 +77,7 @@ class MCGNodePropsPanel(bpy.types.Panel):
     bl_context = "object"
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         if not context.active_object:
             return False
         return context.active_object.soulstruct_type == SoulstructType.MCG_NODE
@@ -129,7 +129,7 @@ class MCGEdgePropsPanel(bpy.types.Panel):
     bl_context = "object"
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         if not context.active_object:
             return False
         return context.active_object.soulstruct_type == SoulstructType.MCG_EDGE

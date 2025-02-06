@@ -96,6 +96,14 @@ class LoggingOperator(bpy.types.Operator):
         obj.select_set(True)
         bpy.context.view_layer.objects.active = obj
 
+    @staticmethod
+    def edit_object(context: Context, obj: bpy.types.Object):
+        """Enter Object mode, select and activate only `obj`, then enter Edit mode."""
+        bpy.ops.object.select_all(action="DESELECT")
+        obj.select_set(True)
+        context.view_layer.objects.active = obj
+        bpy.ops.object.mode_set(mode="EDIT")
+
 
 class LoggingImportOperator(LoggingOperator, ImportHelper):
     """Includes default `invoke()` class method that defaults to selected game directory."""

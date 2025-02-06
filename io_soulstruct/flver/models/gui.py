@@ -9,7 +9,6 @@ __all__ = [
 
 import bpy
 from io_soulstruct.general.gui import map_stem_box
-from io_soulstruct.types import SoulstructType
 from soulstruct.base.models import FLVERVersion
 from .import_operators import *
 from .export_operators import *
@@ -25,10 +24,10 @@ class FLVERPropsPanel(bpy.types.Panel):
     bl_context = "object"
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         if not context.active_object:
             return False
-        return BlenderFLVER.test_obj(context.active_object)
+        return BlenderFLVER.is_obj_type(context.active_object)
 
     def draw(self, context):
         bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
@@ -52,10 +51,8 @@ class FLVERDummyPropsPanel(bpy.types.Panel):
     bl_context = "object"
 
     @classmethod
-    def poll(cls, context):
-        if not context.active_object:
-            return False
-        return context.active_object.soulstruct_type == SoulstructType.FLVER_DUMMY
+    def poll(cls, context) -> bool:
+        return BlenderFLVERDummy.is_obj_type(context.active_object)
 
     def draw(self, context):
         bl_dummy = BlenderFLVERDummy.from_active_object(context)
@@ -126,7 +123,7 @@ class FLVERExportPanel(bpy.types.Panel):
             return
 
         for obj in context.selected_objects:
-            if not BlenderFLVER.test_obj(obj):
+            if not BlenderFLVER.is_obj_type(obj):
                 layout.label(text="Select some FLVER models.")
                 layout.label(text="MSB Parts cannot be selected.")
                 return

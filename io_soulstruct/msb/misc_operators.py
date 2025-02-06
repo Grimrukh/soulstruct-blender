@@ -23,8 +23,10 @@ from soulstruct.games import DEMONS_SOULS, DARK_SOULS_PTDE, DARK_SOULS_DSR
 
 from io_soulstruct.exceptions import FLVERError
 from io_soulstruct.general import SoulstructSettings
+from io_soulstruct.collision.types import BlenderMapCollision
 from io_soulstruct.flver.models import BlenderFLVER
 from io_soulstruct.msb.operator_config import BLENDER_MSB_PART_TYPES
+from io_soulstruct.navmesh.nvm.types import BlenderNVM
 from io_soulstruct.types import SoulstructType
 from io_soulstruct.utilities import *
 from .properties import MSBPartSubtype
@@ -73,7 +75,7 @@ class EnableSelectedNames(LoggingOperator):
     bl_description = "Enable name display for all selected objects"
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         return bool(context.selected_objects)
 
     def execute(self, context):
@@ -89,7 +91,7 @@ class DisableSelectedNames(LoggingOperator):
     bl_description = "Disable name display for all selected objects"
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         return bool(context.selected_objects)
 
     def execute(self, context):
@@ -106,7 +108,7 @@ class CreateMSBPart(LoggingOperator):
                       "and set its location to the 3D cursor")
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         return (
             context.mode == "OBJECT"
             and context.active_object
@@ -224,8 +226,14 @@ class DuplicateMSBPartModel(LoggingOperator):
         "name by default). Bone poses will also be copied if this is a Map Piece Part. Must be in Object Mode"
     )
 
+    new_model_name: bpy.props.StringProperty(
+        name="New Model Name",
+        description="Name for new model object. Leave blank to use text before first underscore in Part name",
+        default="",
+    )
+
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         """Select at least one MSB Part."""
         if not context.selected_objects:
             return False
@@ -234,8 +242,6 @@ class DuplicateMSBPartModel(LoggingOperator):
         return True
 
     def execute(self, context):
-        if not self.poll(context):
-            return self.error("Must select an MSB Part in Object Mode.")
 
         # Basic validation of selected objects:
         for obj in context.selected_objects:
@@ -268,18 +274,18 @@ class DuplicateMSBPartModel(LoggingOperator):
     def _duplicate_part_model(self, context, part: bpy.types.Object):
         settings = self.settings(context)
 
-        old_model = part.MSB_PART.model  # already validated
+        old_model = part.MSB_PART.model  # type: bpy.types.MeshObject  # already validated
         # Find all collections containing source model.
         source_collections = old_model.users_collection
 
         part_subtype = part.MSB_PART.part_subtype
         old_part_name = part.name
 
-        if not settings.new_model_name:
+        if not self.new_model_name:
             new_model_name = self.get_auto_name(part, settings)
             rename_part = False
         else:
-            new_model_name = settings.new_model_name
+            new_model_name = self.new_model_name
             rename_part = True
 
         # Check that name is available.
@@ -297,7 +303,7 @@ class DuplicateMSBPartModel(LoggingOperator):
             old_model_name = old_bl_flver.name  # get from root object
             self.info(f"Duplicating FLVER model '{old_bl_flver.name}' to '{new_model_name}'.")
             new_bl_flver = old_bl_flver.duplicate(
-                new_model_name,
+                context=context,
                 collections=source_collections,
                 make_materials_single_user=True,
                 copy_pose=part_subtype == MSBPartSubtype.MapPiece,
@@ -305,33 +311,23 @@ class DuplicateMSBPartModel(LoggingOperator):
             # Do a deep renaming of FLVER.
             new_bl_flver.deep_rename(new_model_name, old_model_name)
             new_model = new_bl_flver.mesh
-        elif part_subtype == MSBPartSubtype.Collision:
-            # TODO: Add as Collision `duplicate()` method.
-            old_model_name = old_model.name
-            new_model = new_mesh_object(new_model_name, old_model.data.copy())
-            new_model.soulstruct_type = SoulstructType.COLLISION
-            new_model.data.name = new_model_name
-            copy_obj_property_group(old_model, new_model, "COLLISION")
-            for collection in source_collections:
-                collection.objects.link(new_model)
-        elif part_subtype == MSBPartSubtype.Navmesh:
-            # TODO: Add as NVM `duplicate()` method.
-            old_model_name = old_model.name
-            new_model = new_mesh_object(new_model_name, old_model.data.copy())
-            new_model.soulstruct_type = SoulstructType.NAVMESH
-            new_model.data.name = new_model_name
-            # No NVM properties to copy.
-            for collection in source_collections:
-                collection.objects.link(new_model)
 
-            # Copy any NVM Event Entity children of old model.
-            for child in old_model.children:
-                if child.soulstruct_type == SoulstructType.NVM_EVENT_ENTITY:
-                    new_child = child.copy()  # empty object, no data to copy
-                    new_child.name = child.name.replace(old_model_name, new_model_name)  # usually a prefix
-                    new_child.parent = new_model
-                    for collection in source_collections:
-                        collection.objects.link(new_child)
+        elif part_subtype == MSBPartSubtype.Collision:
+            # Model is a Collision.
+            old_bl_collision = BlenderMapCollision(old_model)
+            new_bl_collision = old_bl_collision.duplicate(source_collections)
+            old_model_name = old_model.name
+            new_bl_collision.rename(new_model_name)
+            new_model = new_bl_collision.obj
+
+        elif part_subtype == MSBPartSubtype.Navmesh:
+            # Model is a Navmesh.
+            old_bl_nvm = BlenderNVM(old_model)
+            new_bl_nvm = old_bl_nvm.duplicate(source_collections)
+            old_model_name = old_model.name
+            new_bl_nvm.rename(new_model_name)
+            new_model = new_bl_nvm.obj
+
         else:
             # No early game types left here.
             return self.error(f"Cannot yet duplicate model of MSB Part subtype: {part_subtype}")
@@ -383,7 +379,7 @@ class ApplyPartTransformToModel(LoggingOperator):
                       "Parts (Map Pieces, Collisions, Navmeshes, Connect Collisions), for safety.")
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         """Select at least one MSB Part."""
         if not context.selected_objects:
             return False
@@ -439,7 +435,7 @@ class CreateConnectCollision(LoggingOperator):
                       "Connect Collisions collection in the same MSB. Connects to map m00_00_00_00 initially.")
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         settings = cls.settings(context)
         if not settings.is_game(DEMONS_SOULS, DARK_SOULS_PTDE, DARK_SOULS_DSR):
             return False

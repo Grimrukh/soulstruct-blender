@@ -18,7 +18,7 @@ class NVMHKTImportPanel(bpy.types.Panel):
     bl_options = {"DEFAULT_CLOSED"}
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         settings = context.scene.soulstruct_settings
         return settings.is_game("ELDEN_RING")
 

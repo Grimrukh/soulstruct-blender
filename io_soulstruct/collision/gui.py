@@ -74,6 +74,12 @@ class MapCollisionToolsPanel(bpy.types.Panel):
 
         layout = self.layout
 
+        layout.label(text="Creation Tools:")
+        layout.operator(CreateFromSelectedFLVERFaces.bl_idname)
+        layout.prop(context.scene.mesh_move_settings, "new_material_index")
+        layout.operator(CopyMeshSelectionOperator.bl_idname)
+        layout.operator(CutMeshSelectionOperator.bl_idname)
+
         layout.label(text="Display Tools:")
         layout.operator(SelectHiResFaces.bl_idname)
         layout.prop(context.scene.map_collision_tool_settings, "hi_alpha")
@@ -82,7 +88,5 @@ class MapCollisionToolsPanel(bpy.types.Panel):
 
         layout.label(text="Mesh Tools:")
         # Useful in particular for creating HKX map collisions (e.g. from FLVER or high <> low res).
-        layout.prop(context.scene.mesh_move_settings, "new_material_index")
-        layout.operator(CopyMeshSelectionOperator.bl_idname)
-        layout.operator(CutMeshSelectionOperator.bl_idname)
+        layout.operator(RenameCollision.bl_idname)
         layout.operator(BooleanMeshCut.bl_idname)

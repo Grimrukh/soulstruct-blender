@@ -77,6 +77,17 @@ class SoulstructObject(abc.ABC, tp.Generic[SOULSTRUCT_T, SOULSTRUCT_PROPS_T]):
             raise SoulstructTypeError(f"Object '{obj.name}' is not a {self.OBJ_DATA_TYPE} Blender object.")
         self.obj = obj
 
+    @classmethod
+    def is_obj_type(cls, obj: bpy.types.Object) -> bool:
+        """Tries to load this Blender `obj` as this `cls`. Returns `False` if it fails."""
+        if not obj:
+            return False
+        try:
+            cls(obj)
+        except SoulstructTypeError:
+            return False
+        return True
+
     @property
     def data(self) -> bpy.types.ID:
         return self.obj.data

@@ -58,7 +58,7 @@ class _SelectMapDirectory(LoggingOperator):
         ...
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         return cls.get_root(context) is not None
 
     @staticmethod

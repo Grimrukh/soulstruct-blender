@@ -293,7 +293,7 @@ class ImportNVMHKTFromNVMHKTBND(BinderEntrySelectOperator):
     )
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         if not cls.settings(context).is_game("ELDEN_RING"):
             return False
         settings = cls.settings(context)
@@ -403,7 +403,7 @@ class ImportAllNVMHKTsFromNVMHKTBND(ImportAllNVMHKTBase):
     # TODO: Need dictionary built from 'WorldMapLegacy
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         if not cls.settings(context).is_game("ELDEN_RING"):
             return False
         settings = cls.settings(context)
@@ -606,7 +606,7 @@ class ImportAllOverworldNVMHKTsBase(ImportAllNVMHKTBase):
     small_tile_width = 256.0
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         if not cls.settings(context).is_game("ELDEN_RING"):
             return False
         return True

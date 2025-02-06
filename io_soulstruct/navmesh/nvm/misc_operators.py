@@ -9,16 +9,18 @@ __all__ = [
     "ResetNVMFaceInfo",
     "AddNVMEventEntityTriangleIndex",
     "RemoveNVMEventEntityTriangleIndex",
+    "GenerateNavmeshFromCollision",
 ]
 
 import bmesh
 import bpy
+from mathutils import Vector
 
 from soulstruct.base.events.enums import NavmeshFlag
 
 from io_soulstruct.types import SoulstructType
 from io_soulstruct.utilities import LoggingOperator
-from .utilities import set_face_material
+from .utilities import set_face_material, get_navmesh_material
 
 # Get all non-default `NavmeshFlag` values for Blender `EnumProperty`.
 _navmesh_flag_items = [
@@ -61,7 +63,7 @@ class AddNVMFaceFlags(LoggingOperator):
     bl_description = "Add the selected NavmeshFlag bit flag to all selected faces"
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         return context.edit_object is not None and context.mode == "EDIT_MESH"
 
     # noinspection PyMethodMayBeStatic
@@ -97,7 +99,7 @@ class RemoveNVMFaceFlags(LoggingOperator):
     bl_description = "Remove the selected NavmeshFlag bit flag from all selected faces"
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         return context.edit_object is not None and context.mode == "EDIT_MESH"
 
     # noinspection PyMethodMayBeStatic
@@ -133,7 +135,7 @@ class SetNVMFaceObstacleCount(LoggingOperator):
     bl_description = "Set the obstacle count for all selected faces"
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         return context.edit_object is not None and context.mode == "EDIT_MESH"
 
     # noinspection PyMethodMayBeStatic
@@ -172,7 +174,7 @@ class ResetNVMFaceInfo(LoggingOperator):
     DEFAULT_OBSTACLE_COUNT = 0
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         return context.edit_object is not None and context.mode == "EDIT_MESH"
 
     # noinspection PyMethodMayBeStatic
@@ -221,7 +223,7 @@ class RemoveNVMEventEntityTriangleIndex(bpy.types.Operator):
     bl_label = "Remove Triangle"
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         return (
             context.active_object
             and context.active_object.soulstruct_type == SoulstructType.NVM_EVENT_ENTITY
@@ -233,4 +235,184 @@ class RemoveNVMEventEntityTriangleIndex(bpy.types.Operator):
         index = obj.NVM_EVENT_ENTITY.triangle_index
         obj.NVM_EVENT_ENTITY.triangle_indices.remove(index)
         obj.NVM_EVENT_ENTITY.triangle_index = max(0, index - 1)
+        return {'FINISHED'}
+
+
+def get_connected_component(face, visited):
+    """Flood-fill connected selected faces starting from `face`."""
+    island = set()
+    stack = [face]
+    while stack:
+        current = stack.pop()
+        if current in visited:
+            continue
+        visited.add(current)
+        island.add(current)
+        # Look at all faces sharing an edge with the current face.
+        for edge in current.edges:
+            for linked_face in edge.link_faces:
+                if linked_face.select and linked_face not in visited:
+                    stack.append(linked_face)
+    return island
+
+
+class GenerateNavmeshFromCollision(LoggingOperator):
+    bl_idname = "object.generate_navmesh_from_collision"
+    bl_label = "Generate Navmesh from Collision"
+    bl_description = (
+        "Generate a simplified navmesh from a collision mesh. "
+        "Walkable faces (those with normals nearly vertical) are duplicated into a new object, "
+        "triangulated, and then simplified via Limited Dissolve"
+    )
+
+    walkable_threshold: bpy.props.FloatProperty(
+        name="Walkable Threshold",
+        description="Minimum dot product of face normal with global up (0,0,1) for a face to be considered walkable",
+        default=0.95,
+        min=0.0, max=1.0
+    )
+    island_area_threshold: bpy.props.FloatProperty(
+        name="Island Area Threshold",
+        description="Minimum area (in Blender units²) of a connected group of walkable faces to keep",
+        default=0.1,
+        min=0.0
+    )
+    dissolve_angle_limit: bpy.props.FloatProperty(
+        name="Dissolve Angle Limit",
+        description="Angle limit (in degrees) for Limited Dissolve operator",
+        default=5.0,
+        min=0.0, max=180.0
+    )
+    min_walkable_faces: bpy.props.IntProperty(
+        name="Minimum Walkable Faces",
+        description="Minimum number of walkable faces required to generate a navmesh (or operator will abort)",
+        default=1,
+        min=1,
+    )
+    vertical_bump: bpy.props.FloatProperty(
+        name="Vertical Bump",
+        description="Amount to bump the navmesh up vertically after triangulation",
+        default=0.1,
+        min=0.0,
+    )
+
+    @classmethod
+    def poll(cls, context):
+        """Must select exactly one active Mesh object in OBJECT mode."""
+        if not context.mode == "OBJECT":
+            return False
+        if not len(context.selected_objects) == 1:
+            return False
+        obj = context.active_object
+        return obj is not None and obj.type == 'MESH'
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
+    def execute(self, context):
+        # Assume the active object is the collision mesh.
+        # noinspection PyTypeChecker
+        collision_obj = context.active_object  # type: bpy.types.MeshObject
+
+        # Ensure we are in Edit mode so we can use bmesh.
+        bpy.ops.object.mode_set(mode='EDIT')
+        bm = bmesh.from_edit_mesh(collision_obj.data)
+
+        # Deselect all faces first.
+        for face in bm.faces:
+            face.select = False
+
+        # Global up vector (world space).
+        up = Vector((0, 0, 1))
+        # For each face, transform its normal to world space and select if walkable.
+        # Note: if the collision object has a non-identity transform, we must transform the face normals.
+        # TODO: Can ignore world matrix, I think.
+        matrix = collision_obj.matrix_world.to_3x3()
+        for face in bm.faces:
+            # For Collisions, we only use 'Lo' faces.
+            if collision_obj.soulstruct_type == SoulstructType.COLLISION:
+                material = collision_obj.data.materials[face.material_index]
+                if "(Lo)" not in material.name:
+                    continue
+            world_normal = matrix @ face.normal
+            # If the face normal is close enough to up, mark it as selected.
+            if world_normal.dot(up) >= self.walkable_threshold:
+                face.select = True
+
+        bmesh.update_edit_mesh(collision_obj.data)
+
+        # Now deselect small islands of selected faces.
+        visited = set()
+        for face in list(bm.faces):
+            if face.select and face not in visited:
+                island = get_connected_component(face, visited)
+                # Compute total area of the island.
+                total_area = sum(f.calc_area() for f in island)
+                if total_area < self.island_area_threshold:
+                    for f in island:
+                        f.select = False
+        bmesh.update_edit_mesh(collision_obj.data)
+
+        # Make sure we selected enough walkable faces.
+        select_count = sum(1 for face in bm.faces if face.select)
+        bm.free()  # done with this BMesh
+
+        if select_count < self.min_walkable_faces:
+            return self.error(
+                f"Not enough walkable faces found ({select_count} < {self.min_walkable_faces}) with current settings."
+            )
+
+        # Duplicate and separate the selected faces into a new object.
+        bpy.ops.mesh.duplicate()
+        bpy.ops.mesh.separate(type='SELECTED')
+
+        # Switch back to Object mode.
+        bpy.ops.object.mode_set(mode='OBJECT')
+
+        # Identify the new navmesh object: it should be the one selected that is not our original collision object.
+        for obj in context.selected_objects:
+            if obj != collision_obj and obj.type == 'MESH':
+                # noinspection PyTypeChecker
+                navmesh_obj = obj  # type: bpy.types.MeshObject
+                break
+        else:
+            return self.error("Failed to separate walkable faces into a new object.")
+
+        # Rename the navmesh object.
+        navmesh_obj.name = f"{collision_obj.name} Navmesh"
+        navmesh_obj.soulstruct_type = SoulstructType.NAVMESH
+        navmesh_obj.show_wire = True
+
+        # Now we simplify the navmesh geometry.
+        
+        self.edit_object(context, navmesh_obj)
+
+        # Just 'Default' navmesh material on new object.
+        bl_material = get_navmesh_material(0)  # Default
+        navmesh_obj.data.materials.clear()
+        navmesh_obj.data.materials.append(bl_material)
+
+        # Use BMesh to triangulate the mesh, set its material, and bump it up vertically.
+        bm_nav = bmesh.from_edit_mesh(navmesh_obj.data)
+        bmesh.ops.triangulate(bm_nav, faces=bm_nav.faces, quad_method="BEAUTY", ngon_method="BEAUTY")
+        for face in bm_nav.faces:
+            face.material_index = 0
+        if self.vertical_bump > 0.0:
+            for vertex in bm_nav.verts:
+                vertex.co.z += self.vertical_bump
+        bmesh.update_edit_mesh(navmesh_obj.data)
+        bm_nav.free()
+        del bm_nav
+
+        # Select all geometry and Merge by Distance (remove doubles).
+        bpy.ops.mesh.select_all(action='SELECT')
+        bpy.ops.mesh.remove_doubles()
+        # TODO: Limit dissolve is too aggressive.
+        # bpy.ops.mesh.dissolve_limited(angle_limit=self.dissolve_angle_limit)
+
+        # Switch back to Object mode.
+        bpy.ops.object.mode_set(mode='OBJECT')
+
+        self.info(f"Navmesh generated: '{navmesh_obj.name}'")
+        bm.free()
         return {'FINISHED'}

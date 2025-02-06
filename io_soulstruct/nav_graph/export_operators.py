@@ -53,7 +53,7 @@ class ExportMCG(LoggingExportOperator):
     )
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         """Requires a single selected Empty object with 'Edges' and 'Nodes children."""
         if len(context.selected_objects) != 1:
             return False
@@ -159,7 +159,7 @@ class ExportMCGMCPToMap(LoggingOperator):
     )
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         """Requires a single selected Empty object with 'Edges' and 'Nodes children.
         
         Also requires `SoulstructSettings` game.

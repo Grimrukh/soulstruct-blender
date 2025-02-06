@@ -5,6 +5,8 @@ __all__ = [
     "BlenderNVMEventEntity",
 ]
 
+import typing as tp
+
 import numpy as np
 
 import bmesh
@@ -131,7 +133,9 @@ class BlenderNVM(SoulstructObject[NVM, NVMProps]):
             connected_v3 = find_connected_face_index(face[2], face[0], face)
             nvm_connected_face_indices.append((connected_v1, connected_v2, connected_v3))
             if connected_v1 == -1 and connected_v2 == -1 and connected_v3 == -1:
-                operator.warning(f"NVM face {face} appears to have no connected faces, which is very suspicious!")
+                operator.warning(
+                    f"NVM face {face} in '{self.name}' appears to have no connected faces, which is very suspicious!"
+                )
 
         # Create `BMesh` to access custom face layers for `flags` and `obstacle_count`.
         bm = bmesh.new()
@@ -206,6 +210,34 @@ class BlenderNVM(SoulstructObject[NVM, NVMProps]):
             boxes.append(bl_box)
             bl_box.parent = self.obj
         return boxes
+
+    def duplicate(self, collections: tp.Sequence[bpy.types.Collection] = None) -> BlenderNVM:
+        """Duplicate Navmesh model to a new object. Does not rename (will just add duplicate suffix)."""
+        new_model = new_mesh_object(self.name, self.data.copy())
+        new_model.soulstruct_type = SoulstructType.NAVMESH
+        # NOTE: There are currently no properties in the 'NVM' property group.
+        # Face flags and obstacle counts are stored in mesh face data layers.
+        copy_obj_property_group(self.obj, new_model, "NVM")
+        for collection in collections:
+            collection.objects.link(new_model)
+
+        # Copy any NVM Event Entity children of old model.
+        for event_entity in self.get_nvm_event_entities():
+            new_event_obj = event_entity.obj.copy()  # empty object, no data to copy
+            new_event_obj.parent = new_model
+            for collection in collections:
+                collection.objects.link(new_event_obj)
+
+        return self.__class__(new_model)
+
+    def rename(self, new_name: str):
+        """Rename object, data, and event entity children."""
+        old_name = self.name  # TODO: export name?
+        self.obj.name = new_name
+        self.data.name = new_name
+
+        for event_entity in self.get_nvm_event_entities():
+            event_entity.obj.name = event_entity.name.replace(old_name, new_name)
 
     @staticmethod
     def create_box(context: bpy.types.Context, box: NVMBox):

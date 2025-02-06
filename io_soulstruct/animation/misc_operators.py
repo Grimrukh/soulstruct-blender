@@ -78,7 +78,7 @@ class SelectArmatureActionOperator(LoggingOperator):
     bl_description = "Select an animation from the list of imported animations in the current Blender file"
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         """Animation's rigged armature must be selected (to extract bone names)."""
         if not context.selected_objects:
             return False

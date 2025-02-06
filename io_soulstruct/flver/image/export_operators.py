@@ -115,7 +115,7 @@ class ExportTexturesIntoBinderOrTPF(LoggingImportOperator):
     )
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         try:
             # TODO: What if you just want to export an image from the Image Viewer? Different operator?
             sel_tex_nodes = [

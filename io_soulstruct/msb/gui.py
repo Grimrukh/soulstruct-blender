@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 __all__ = [
-    "MSBImportExportPanel",
+    "MSBImportPanel",
+    "MSBExportPanel",
     "MSBToolsPanel",
 
     "MSBPartPanel",
@@ -44,12 +45,13 @@ from .export_operators import *
 from .misc_operators import *
 from .properties import *
 from .properties import MSBProtobossProps
+from .utilities import MSB_COLLECTION_RE
 
 
-class MSBImportExportPanel(bpy.types.Panel):
-    """Panel for Soulstruct MSB import/export operators."""
-    bl_label = "MSB Import/Export"
-    bl_idname = "SCENE_PT_msb_import_export"
+class MSBImportPanel(bpy.types.Panel):
+    """Panel for Soulstruct MSB import operators."""
+    bl_label = "MSB Import"
+    bl_idname = "SCENE_PT_msb_import"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "MSB"
@@ -94,10 +96,36 @@ class MSBImportExportPanel(bpy.types.Panel):
             for prop_name in flver_import_settings.__annotations__:
                 panel.prop(flver_import_settings, prop_name)
 
+        if settings.map_stem:
+            layout.label(text=f"Map {settings.map_stem}:")
+            layout.operator(ImportMapMSB.bl_idname)
+        else:
+            layout.label(text="No game map selected.")
+
+        layout.label(text="Generic Import:")
+        layout.operator(ImportAnyMSB.bl_idname, text="Import Any MSB")
+
+
+class MSBExportPanel(bpy.types.Panel):
+    """Panel for Soulstruct MSB export operators."""
+    bl_label = "MSB Export"
+    bl_idname = "SCENE_PT_msb_export"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "MSB"
+    bl_options = {"DEFAULT_CLOSED"}
+
+    def draw(self, context):
+
+        settings = context.scene.soulstruct_settings
+
+        layout = self.layout
+        map_stem_box(layout, settings)
+
         header, panel = layout.panel("MSB Export Settings", default_closed=True)
         header.label(text="MSB Export Settings")
         if panel:
-            panel.prop(context.scene.soulstruct_settings, "detect_map_from_collection")
+            panel.prop(settings, "detect_map_from_collection")
             msb_export_settings = context.scene.msb_export_settings
             for prop_name in msb_export_settings.__annotations__:
                 if prop_name == "export_nvmdump" and not settings.is_game("DARK_SOULS_DSR"):
@@ -108,15 +136,28 @@ class MSBImportExportPanel(bpy.types.Panel):
                     continue
                 panel.prop(msb_export_settings, prop_name)
 
-        if settings.map_stem:
-            layout.label(text=f"Map {settings.map_stem}:")
-            layout.operator(ImportMapMSB.bl_idname)
-            layout.operator(ExportMapMSB.bl_idname)
+        # We want to tell the user exactly which map this button will export to.
+        if settings.detect_map_from_collection:
+            if ExportMapMSB.poll(context):
+                # TODO: Currently, `ExportMapMSB.poll()` requires a map stem in the context collection name, so we can
+                #  rely upon that here.
+                match = MSB_COLLECTION_RE.match(context.collection.name)
+                map_stem = settings.get_latest_map_stem_version(match.group(1))
+                layout.label(text=f"Auto: {map_stem}")
+            else:
+                map_stem = ""
+                layout.label(text="No game map detected.")
         else:
-            layout.label(text="No game map selected.")
+            map_stem = settings.map_stem
+            if map_stem:
+                layout.label(text=f"Selected: {map_stem}")
+            else:
+                layout.label(text="No game map selected.")
 
-        layout.label(text="Generic Import:")
-        layout.operator(ImportAnyMSB.bl_idname, text="Import Any MSB")
+        if map_stem:
+            layout.operator(ExportMapMSB.bl_idname)
+
+        layout.label(text="No generic export supported.")
 
 
 class MSBToolsPanel(bpy.types.Panel):
@@ -203,7 +244,7 @@ class MSBPartPanel(bpy.types.Panel):
     bl_context = "object"
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         return get_active_part_obj(context) is not None
 
     def draw(self, context):
@@ -256,7 +297,7 @@ class _MSBPartSubtypePanelMixin:
     prop_group_type: tp.Type[bpy.types.PropertyGroup]
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         obj = get_active_part_obj(context)
         return obj is not None and obj.MSB_PART.part_subtype_enum == cls.part_subtype
 
@@ -476,7 +517,7 @@ class MSBRegionPanel(bpy.types.Panel):
     bl_context = "object"
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         obj = context.object
         return obj is not None and obj.soulstruct_type == "MSB_REGION"
 
@@ -529,7 +570,7 @@ class MSBEventPanel(bpy.types.Panel):
     bl_context = "object"
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         return get_active_event_obj(context) is not None
 
     def draw(self, context):
@@ -565,7 +606,7 @@ class _MSBEventSubtypePanelMixin:
     prop_group_type: tp.Type[bpy.types.PropertyGroup]
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         obj = get_active_event_obj(context)
         return obj is not None and obj.MSB_EVENT.event_subtype_enum == cls.event_subtype
 

@@ -82,10 +82,10 @@ class BakeLightmapTextures(LoggingOperator):
     bl_description = "Bake rendered lightmap image textures from all materials of all selected FLVERs"
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         """FLVER meshes must be selected."""
         try:
-            bl_flvers = BlenderFLVER.from_selected_objects(context)
+            BlenderFLVER.from_selected_objects(context)
         except SoulstructTypeError:
             return False
         return True

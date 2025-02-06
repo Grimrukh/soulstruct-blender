@@ -295,7 +295,7 @@ class ImportSelectedMapHKXMapCollision(LoggingOperator):
     ENTRY_NAME_RE = re.compile(r"\((\d+)\) (.+)")
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         settings = cls.settings(context)
         map_stem = settings.get_oldest_map_stem_version()  # collision uses oldest
         if not settings.game_config.supports_collision_model:

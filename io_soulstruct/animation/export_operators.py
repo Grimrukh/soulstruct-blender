@@ -56,7 +56,7 @@ class ExportLooseHKXAnimation(LoggingExportOperator):
     )
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         if not context.scene.soulstruct_settings.game_config.supports_animation:
             return False
         if not context.active_object:
@@ -184,7 +184,7 @@ class ExportHKXAnimationIntoBinder(LoggingImportOperator):
     )
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         if not context.scene.soulstruct_settings.game_config.supports_animation:
             return False
         if not context.active_object:
@@ -253,7 +253,7 @@ class ExportHKXAnimationIntoBinder(LoggingImportOperator):
 class BaseExportTypedHKXAnimation(LoggingOperator):
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         settings = cls.settings(context)
         if not settings.game_config.supports_animation:
             return False
@@ -282,7 +282,7 @@ class ExportCharacterHKXAnimation(BaseExportTypedHKXAnimation):
     )
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         return super().poll(context) and context.active_object.name[0] == "c"
 
     def execute(self, context):
@@ -421,7 +421,7 @@ class ExportObjectHKXAnimation(BaseExportTypedHKXAnimation):
     )
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         return super().poll(context) and context.active_object.name[0] == "o"
 
     def execute(self, context):

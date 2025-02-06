@@ -58,16 +58,12 @@ class ExportLooseHKXMapCollision(LoggingExportOperator):
     )
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         """Must select a single mesh."""
         settings = cls.settings(context)
         if not settings.is_game(DEMONS_SOULS, DARK_SOULS_PTDE, DARK_SOULS_DSR):
             return False
-        if not context.active_object:
-            return False
-        if context.active_object.soulstruct_type != SoulstructType.COLLISION:
-            return False
-        return True
+        return BlenderMapCollision.is_obj_type(context.active_object)
 
     def invoke(self, context, _event):
         """Set default export name to name of object (before first space and without Blender dupe suffix)."""
@@ -188,17 +184,13 @@ class ExportHKXMapCollisionIntoBinder(LoggingImportOperator):
     dcx_type: get_dcx_enum_property(DCXType.DS1_DS2)  # map collisions in DS1 binder are compressed
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         """Must select a single mesh."""
         # TODO: Why not all selected models at once?
         settings = cls.settings(context)
         if not settings.is_game(DEMONS_SOULS, DARK_SOULS_PTDE, DARK_SOULS_DSR):
             return False
-        if not context.active_object:
-            return False
-        if context.active_object.soulstruct_type != SoulstructType.COLLISION:
-            return False
-        return True
+        return BlenderMapCollision.is_obj_type(context.active_object)
 
     def execute(self, context):
         if not self.poll(context):
@@ -273,7 +265,7 @@ class ExportHKXMapCollisionToMap(LoggingOperator):
     )
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         """Must select at least one mesh."""
         settings = cls.settings(context)
         if not settings.can_auto_export:

@@ -110,7 +110,7 @@ class ImportSelectedMapMCG(LoggingOperator):
     # MSB always auto-found.
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         return bool(cls.settings(context).map_stem)
 
     def execute(self, context):

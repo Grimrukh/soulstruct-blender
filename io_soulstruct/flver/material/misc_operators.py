@@ -59,7 +59,7 @@ class _SetMaterialTexture(LoggingOperator):
     SLOT_SUFFIX: tp.ClassVar[str]
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         """An object must be selected."""
         return context.object is not None and context.object.active_material is not None
 
@@ -141,7 +141,7 @@ class AutoRenameMaterials(LoggingOperator):
                       "objects use this material (non-FLVER objects are ignored). Currently only for DS1.")
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         settings = context.scene.soulstruct_settings
         if not settings.is_game_ds1():
             return False
@@ -239,8 +239,14 @@ class MergeObjectMaterials(LoggingOperator):
     bl_description = ("Look for identical FLVER materials across all selected objects and merge them into one Material "
                       "instance (e.g. for easier texture management). Old Materials are not changed or deleted.")
 
+    rename_unique_materials: bpy.props.BoolProperty(
+        name="Rename Unique Materials",
+        description="Rename materials using merged template even if they are not merged with any other materials",
+        default=True,
+    )
+
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         if len(context.selected_objects) < 2:
             return False
         return all(
@@ -261,21 +267,21 @@ class MergeObjectMaterials(LoggingOperator):
         # Maps material hashes to their single merged instances (copied from first instance found).
         merged_materials = {}
         # Merged material created if it already appears in this set.
-        found_materials = set()
+        found_materials = {}
 
         # Store all material hashes for all objects. List index will be used to replace `obj.data.materials[i]` later.
-        material_hashes = {}  # type: dict[str, list[int]]
+        all_obj_material_hashes = {}  # type: dict[str, list[int]]
 
         # First, build all material hashes and create merged materials whenever a hash is found for the second time.
         for obj in flver_objects:
-            obj_material_hashes = material_hashes.setdefault(obj.name, [])
+            obj_material_hashes = all_obj_material_hashes.setdefault(obj.name, [])
             for material in obj.data.materials:
                 flver_material = BlenderFLVERMaterial(material)
                 material_hash = self.get_material_hash(flver_material)
                 obj_material_hashes.append(material_hash)
 
                 if material_hash in merged_materials:
-                    continue  # will be replaced in second pass
+                    continue  # merged material already created; will be replaced in second pass
                 if material_hash in found_materials:
                     # Create merged material.
                     merged_materials[material_hash] = merged_material = material.copy()
@@ -283,15 +289,22 @@ class MergeObjectMaterials(LoggingOperator):
                     self.info(f"Created merged material: {merged_material.name}")
                     continue
 
-                # Hash found for the first time.
-                found_materials.add(material_hash)
+                # Hash found for the first time. We store the material in case we still want to rename it below.
+                found_materials[material_hash] = material
 
         # Now replace all appropriate materials with merged materials.
         for obj in flver_objects:
-            for i, material_hash in enumerate(material_hashes[obj.name]):
+            for i, material_hash in enumerate(all_obj_material_hashes[obj.name]):
                 if material_hash in merged_materials:
                     # Replace material `i`.
                     obj.data.materials[i] = merged_materials[material_hash]
+
+        if self.rename_unique_materials:
+            for material_hash, material in found_materials.items():
+                if material_hash in merged_materials:
+                    continue  # merged material was created above
+                # This is a unique material that was not merged with any other material. We rename it anyway as asked.
+                material.name = self.get_merged_material_name(BlenderFLVERMaterial(material))
 
         self.info(f"Created {len(merged_materials)} merged materials across {len(flver_objects)} objects.")
 
@@ -326,7 +339,7 @@ class MergeObjectMaterials(LoggingOperator):
     def get_material_hash(material: BlenderFLVERMaterial) -> int:
         """Hash all FLVER material properties and texture names.
 
-        Rules:
+        Rules for hash equality:
             - All `FLVER_MATERIAL` properties must be the same, including "face_set_count".
             - `use_backface_culling` must be the same.
             - All texture slots AND names must be the same.
@@ -371,7 +384,7 @@ class RemoveMaterialGXItem(bpy.types.Operator):
     bl_description = "Remove the selected GX Item from the active material"
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         return (
             context.active_object is not None
             and context.active_object.active_material is not None

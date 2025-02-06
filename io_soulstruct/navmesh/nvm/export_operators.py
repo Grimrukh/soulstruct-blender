@@ -46,7 +46,7 @@ class ExportLooseNVM(LoggingExportOperator):
     dcx_type: get_dcx_enum_property(DCXType.Null)  # no compression in DS1
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         return context.active_object and context.active_object.soulstruct_type == SoulstructType.NAVMESH
 
     def invoke(self, context, _event):
@@ -120,7 +120,7 @@ class ExportNVMIntoBinder(LoggingImportOperator):
     )
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         """Requires one or more selected Mesh objects."""
         return (
             len(context.selected_objects) >= 1
@@ -211,7 +211,7 @@ class ExportNVMIntoSelectedMap(LoggingOperator):
     # Always overwrites existing NVM entries.
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         """One or more 'n*' Meshes selected."""
         settings = cls.settings(context)
         if not settings.game_config.supports_nvm:

@@ -266,7 +266,7 @@ class ImportMapMSB(LoggingOperator):
     bl_description = "Import all Parts, Regions, and Events from the active map's MSB, with selected Model meshes"
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         settings = cls.settings(context)
         if not settings.game_config.msb_class:
             return False  # unsupported
@@ -308,7 +308,7 @@ class ImportAnyMSB(LoggingImportOperator):
     directory: bpy.props.StringProperty(options={'HIDDEN'})
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         settings = cls.settings(context)
         if not settings.game_config.msb_class:
             return False  # unsupported

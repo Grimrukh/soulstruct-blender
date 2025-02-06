@@ -43,7 +43,7 @@ class ImportHKXCutscene(LoggingImportOperator):
     IGNORE_MASTER_BONE_NAME: tp.ClassVar[str] = "master"  # TODO: DS1
 
     @classmethod
-    def poll(cls, context):
+    def poll(cls, context) -> bool:
         # Only for DSR right now.
         return cls.settings(context).is_game("DARK_SOULS_DSR")
 
