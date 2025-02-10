@@ -66,7 +66,6 @@ class CopyToNewFLVER(LoggingOperator):
         if not self.poll(context):
             return self.error("Must select a Mesh in Edit Mode.")
 
-        settings = self.settings(context)
         bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
         new_bl_flver = bl_flver.duplicate_edit_mode(
             context=context,
@@ -140,14 +139,7 @@ class RenameFLVER(LoggingOperator):
                 ):
                     # Found a part to rename.
                     part_count += 1
-                    old_part_name = obj.name
-                    for i, (a, b) in enumerate(zip(old_part_name, old_model_name)):
-                        if a != b:
-                            new_part_prefix = new_model_name[:i]  # take same length prefix from new model name
-                            new_part_suffix = old_part_name[i:]  # keep old Part suffix ('_0000', '_CASTLE', whatever).
-                            obj.name = f"{new_part_prefix}{new_part_suffix}"
-                            break
-                    # No need for an `else` check because Blender object names cannot be identical.
+                    obj.name = replace_shared_prefix(old_model_name, new_model_name, obj.name)
 
             self.info(f"Renamed {part_count} parts that instance FLVER model '{old_model_name}' to '{new_model_name}'.")
 

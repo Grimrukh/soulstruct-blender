@@ -57,6 +57,7 @@ from io_soulstruct.msb import *
 from io_soulstruct.nav_graph import *
 from io_soulstruct.navmesh import *
 from io_soulstruct.types import SoulstructType
+from io_soulstruct.utilities import ViewSelectedAtDistanceZero
 
 
 bl_info = {
@@ -118,6 +119,7 @@ CLASSES = (
     CopyMeshSelectionOperator,
     CutMeshSelectionOperator,
     BooleanMeshCut,
+    ViewSelectedAtDistanceZero,
     # endregion
 
     # region FLVER / Materials / Textures
@@ -169,7 +171,7 @@ CLASSES = (
     SetMaterialTexture0,
     SetMaterialTexture1,
     AutoRenameMaterials,
-    MergeObjectMaterials,
+    MergeFLVERMaterials,
     AddMaterialGXItem,
     RemoveMaterialGXItem,
 
@@ -229,7 +231,7 @@ CLASSES = (
     MapCollisionToolsPanel,
 
     RenameCollision,
-    CreateFromSelectedFLVERFaces,
+    GenerateFromMesh,
     SelectHiResFaces,
     SelectLoResFaces,
 
@@ -277,6 +279,7 @@ CLASSES = (
     NVMEventEntityPanel,
     OBJECT_UL_nvm_event_entity_triangle,
     NavmeshFaceSettings,
+    RenameNavmesh,
     AddNVMFaceFlags,
     RemoveNVMFaceFlags,
     SetNVMFaceObstacleCount,
@@ -335,11 +338,15 @@ CLASSES = (
     DisableAllImportModels,
     EnableSelectedNames,
     DisableSelectedNames,
+    MSBPartCreationTemplates,
     CreateMSBPart,
     CreateMSBRegion,
     DuplicateMSBPartModel,
+    BatchSetPartGroups,
     ApplyPartTransformToModel,
     CreateConnectCollision,
+    MSBFindPartsPointer,
+    FindMSBParts,
     FindEntityID,
     ColorMSBEvents,
 
@@ -436,6 +443,8 @@ SCENE_POINTERS = dict(
     mcg_draw_settings=MCGDrawSettings,
     msb_import_settings=MSBImportSettings,
     msb_export_settings=MSBExportSettings,
+    msb_part_creation_templates=MSBPartCreationTemplates,
+    find_msb_parts_pointer=MSBFindPartsPointer,
     msb_tool_settings=MSBToolSettings,
     region_draw_settings=RegionDrawSettings,
     animation_import_settings=AnimationImportSettings,

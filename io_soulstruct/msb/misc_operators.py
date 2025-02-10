@@ -5,15 +5,20 @@ __all__ = [
     "DisableAllImportModels",
     "EnableSelectedNames",
     "DisableSelectedNames",
+    "MSBPartCreationTemplates",
     "CreateMSBPart",
     "CreateMSBRegion",
     "DuplicateMSBPartModel",
+    "BatchSetPartGroups",
     "ApplyPartTransformToModel",
     "CreateConnectCollision",
+    "MSBFindPartsPointer",
+    "FindMSBParts",
     "FindEntityID",
     "ColorMSBEvents",
 ]
 
+import ast
 import typing as tp
 
 import bpy
@@ -100,57 +105,245 @@ class DisableSelectedNames(LoggingOperator):
         return {"FINISHED"}
 
 
+def _is_map_piece_part(_, obj: bpy.types.Object) -> bool:
+    return obj.soulstruct_type == SoulstructType.MSB_PART and obj.MSB_PART.part_subtype == MSBPartSubtype.MapPiece
+
+
+def _is_object_part(_, obj: bpy.types.Object) -> bool:
+    return obj.soulstruct_type == SoulstructType.MSB_PART and obj.MSB_PART.part_subtype == MSBPartSubtype.Object
+
+
+def _is_character_part(_, obj: bpy.types.Object) -> bool:
+    return obj.soulstruct_type == SoulstructType.MSB_PART and obj.MSB_PART.part_subtype == MSBPartSubtype.Character
+
+
+def _is_collision_part(_, obj: bpy.types.Object) -> bool:
+    return obj.soulstruct_type == SoulstructType.MSB_PART and obj.MSB_PART.part_subtype == MSBPartSubtype.Collision
+
+
+def _is_navmesh_part(_, obj: bpy.types.Object) -> bool:
+    return obj.soulstruct_type == SoulstructType.MSB_PART and obj.MSB_PART.part_subtype == MSBPartSubtype.Navmesh
+
+
+class MSBPartCreationTemplates(bpy.types.PropertyGroup):
+    """Template pointers for `CreateMSBPart` operator (pointer properties cannot be used by operators)."""
+
+    template_map_piece: bpy.props.PointerProperty(
+        name="Template Map Piece",
+        description="MSB Map Piece to copy fields from for the new Map Piece",
+        type=bpy.types.Object,
+        poll=_is_map_piece_part,
+    )
+    template_object: bpy.props.PointerProperty(
+        name="Template Object",
+        description="MSB Object to copy fields from for the new Object",
+        type=bpy.types.Object,
+        poll=_is_object_part,
+    )
+    template_character: bpy.props.PointerProperty(
+        name="Template Character",
+        description="MSB Character to copy fields from for the new Character",
+        type=bpy.types.Object,
+        poll=_is_character_part,
+    )
+    # TODO: `template_asset` when Elden Ring MSB is supported.
+    template_collision: bpy.props.PointerProperty(
+        name="Template Collision",
+        description="MSB Collision to copy fields from for the new Collision",
+        type=bpy.types.Object,
+        poll=_is_collision_part,
+    )
+    template_navmesh: bpy.props.PointerProperty(
+        name="Template Navmesh",
+        description="MSB Navmesh to copy fields from for the new Navmesh",
+        type=bpy.types.Object,
+        poll=_is_navmesh_part,
+    )
+
+
 class CreateMSBPart(LoggingOperator):
 
     bl_idname = "object.create_msb_part"
     bl_label = "Create MSB Part"
-    bl_description = ("Create a new MSB Part instance from the selected Mesh model (FLVER, Collision, Navmesh, etc.) "
-                      "and set its location to the 3D cursor")
+    bl_description = (
+        "Create a new MSB Part instance from the selected Mesh model (FLVER, Collision, or NVM Navmesh). The Part "
+        "for FLVER models is detected from the model prefix ('m', 'o', 'c', or 'aeg'). Its location can be optionally "
+        "set to the 3D cursor or otherwise left at origin. An existing Part can also be chosen as a template, with "
+        "Draw/Display/Navmesh group override options. NOTE: This cannot create Connect Collision parts. Use the "
+        "operator to create one from an existing Collision part instead"
+    )
+
+    part_subtype: bpy.props.StringProperty(
+        name="Part Subtype",
+        description="Type of MSB Part to create",
+        default="",
+        options={"HIDDEN"},
+    )
+
+    part_name: bpy.props.StringProperty(
+        name="Part Name",
+        description="Name for the new MSB Part",
+        default="",
+    )
+    move_to_cursor: bpy.props.BoolProperty(
+        name="Move to Cursor",
+        description="Move the new Part to the 3D cursor location (rather than leaving at origin)",
+        default=False,
+    )
+
+    draw_groups: bpy.props.StringProperty(
+        name="Draw Groups",
+        description="Exact draw group indices to assign to the new Part. Example: '[0, 37, 50]'. Leave blank to use "
+                    "template Part's draw groups, or set to '[]' to clear all draw groups",
+        default="",
+    )
+    display_groups: bpy.props.StringProperty(
+        name="Display Groups",
+        description="Exact display group indices to assign to the new Part. Example: '[0, 37, 50]'. Leave blank to use "
+                    "template Part's display groups, or set to '[]' to clear all display groups",
+        default="",
+    )
+    navmesh_groups: bpy.props.StringProperty(
+        name="Navmesh Groups",
+        description="Exact navmesh group indices to assign to the new Part. Example: '[0, 37, 50]'. Leave blank to use "
+                    "template Part's navmesh groups, or set to '[]' to clear all navmesh groups",
+        default="",
+    )
 
     @classmethod
     def poll(cls, context) -> bool:
         return (
             context.mode == "OBJECT"
             and context.active_object
+            and context.active_object.type == "MESH"
             and context.active_object.soulstruct_type in {
                 SoulstructType.FLVER, SoulstructType.COLLISION, SoulstructType.NAVMESH
             }
         )
 
-    def execute(self, context):
-
-        settings = self.settings(context)
-
+    def invoke(self, context, event):
         # noinspection PyTypeChecker
         model_obj = context.active_object  # type: bpy.types.MeshObject
-        if model_obj.type != "MESH":
-            return self.error("Selected object must be a Mesh object (FLVER, Collision, or Navmesh model).")
+
+        try:
+            part_subtype = self._get_part_subtype(model_obj)
+        except ValueError as ex:
+            return self.error(str(ex))
+
+        # For `draw()` call.
+        self.part_subtype = part_subtype.value
+        return context.window_manager.invoke_props_dialog(self)
+
+    def draw(self, context: Context):
+
+        templates = context.scene.msb_part_creation_templates
+
+        if self.part_subtype == MSBPartSubtype.MapPiece:
+            self.layout.prop(self, "part_name")
+            self.layout.prop(templates, "template_map_piece")
+            self.layout.prop(self, "draw_groups")
+        elif self.part_subtype == MSBPartSubtype.Object:
+            self.layout.prop(self, "part_name")
+            self.layout.prop(templates, "template_object")
+            self.layout.prop(self, "draw_groups")
+        elif self.part_subtype == MSBPartSubtype.Character:
+            self.layout.prop(self, "part_name")
+            self.layout.prop(templates, "template_character")
+            self.layout.prop(self, "draw_groups")
+        elif self.part_subtype == MSBPartSubtype.Collision:
+            self.layout.prop(self, "part_name")
+            self.layout.prop(templates, "template_collision")
+            self.layout.prop(self, "draw_groups")
+            self.layout.prop(self, "display_groups")
+            self.layout.prop(self, "navmesh_groups")
+        elif self.part_subtype == MSBPartSubtype.Navmesh:
+            self.layout.prop(self, "part_name")
+            self.layout.prop(templates, "template_navmesh")
+            self.layout.prop(self, "navmesh_groups")
+        else:
+            self.layout.label(text=f"Invalid MSB Part subtype: {self.part_subtype}")
+
+    @staticmethod
+    def _get_part_subtype(model_obj: bpy.types.MeshObject) -> MSBPartSubtype:
+        if model_obj is None:
+            raise ValueError("No model object selected.")
 
         if model_obj.soulstruct_type == SoulstructType.FLVER:
             # Use start of name to detect Part subtype.
             name = model_obj.name.lower()
             if name[0] == "m":
-                part_subtype = MSBPartSubtype.MapPiece
+                return MSBPartSubtype.MapPiece
             elif name[0] == "o":
-                part_subtype = MSBPartSubtype.Object
+                return MSBPartSubtype.Object
             elif name[0] == "c":
-                part_subtype = MSBPartSubtype.Character
+                return MSBPartSubtype.Character
             elif name[:3] == "aeg":
-                part_subtype = MSBPartSubtype.Asset
-            else:
-                return self.error(
-                    f"Cannot guess MSB Part subtype (Map Piece, Object/Asset, or Character) from FLVER name '{name}'."
-                )
-        elif model_obj.soulstruct_type == SoulstructType.COLLISION:
-            # TODO: Another operator to create Connect Collision parts from Collision parts.
-            part_subtype = MSBPartSubtype.Collision
-        elif model_obj.soulstruct_type == SoulstructType.NAVMESH:
-            part_subtype = MSBPartSubtype.Navmesh
-        else:
-            return self.error(
-                f"Cannot create MSB Part from Blender object with Soulstruct type '{model_obj.soulstruct_type}'. "
-                f"Must be a FLVER, Collision, or Navmesh model object."
+                return MSBPartSubtype.Asset
+            raise ValueError(
+                f"Cannot guess MSB Part subtype (Map Piece, Object/Asset, or Character) from FLVER name '{name}'."
             )
+
+        if model_obj.soulstruct_type == SoulstructType.COLLISION:
+            # TODO: Another operator to create Connect Collision parts from Collision parts.
+            return MSBPartSubtype.Collision
+        elif model_obj.soulstruct_type == SoulstructType.NAVMESH:
+            return MSBPartSubtype.Navmesh
+
+        raise ValueError(
+            f"Cannot create MSB Part from Blender object with Soulstruct type '{model_obj.soulstruct_type}'. "
+            f"Must be a FLVER, Collision, or Navmesh model object."
+        )
+
+    def execute(self, context):
+
+        # noinspection PyTypeChecker
+        model_obj = context.active_object  # type: bpy.types.MeshObject
+
+        settings = self.settings(context)
+        templates = context.scene.msb_part_creation_templates
+
+        try:
+            part_subtype = self._get_part_subtype(model_obj)
+        except ValueError as ex:
+            return self.error(str(ex))
+
+        if part_subtype == MSBPartSubtype.MapPiece:
+            template_part = templates.template_map_piece
+            set_groups = (True, False, False)
+        elif part_subtype == MSBPartSubtype.Object:
+            template_part = templates.template_object
+            set_groups = (True, False, False)
+        elif part_subtype == MSBPartSubtype.Character:
+            template_part = templates.template_character
+            set_groups = (True, False, False)
+        elif part_subtype == MSBPartSubtype.Collision:
+            template_part = templates.template_collision
+            set_groups = (True, True, True)
+        elif part_subtype == MSBPartSubtype.Navmesh:
+            template_part = templates.template_navmesh
+            set_groups = (False, False, True)
+        else:
+            template_part = None
+            set_groups = (False, False, False)
+
+        draw_groups = display_groups = navmesh_groups = None
+        try:
+            if set_groups[0] and self.draw_groups:  # Draw
+                _eval_draw_groups = ast.literal_eval(self.draw_groups)
+                if isinstance(_eval_draw_groups, (list, tuple, set)):
+                    draw_groups = set(_eval_draw_groups)
+            if set_groups[1] and self.display_groups:  # Display
+                _eval_display_groups = ast.literal_eval(self.display_groups)
+                if isinstance(_eval_display_groups, (list, tuple, set)):
+                    display_groups = set(_eval_display_groups)
+            if set_groups[2] and self.navmesh_groups:  # Navmesh
+                _eval_navmesh_groups = ast.literal_eval(self.navmesh_groups)
+                if isinstance(_eval_navmesh_groups, (list, tuple, set)):
+                    navmesh_groups = set(_eval_navmesh_groups)
+        except SyntaxError as ex:
+            return self.error(f"Failed to parse group indices: {ex}")
+
+        name = self.part_name or f"{get_bl_obj_tight_name(model_obj)} Part"
 
         try:
             bl_part_type = BLENDER_MSB_PART_TYPES[settings.game][part_subtype]  # type: type[IBlenderMSBPart]
@@ -159,7 +352,6 @@ class CreateMSBPart(LoggingOperator):
                 f"Cannot import MSB Part subtype `{part_subtype.value}` for game {settings.game.name}."
             )
 
-        model_stem = get_bl_obj_tight_name(model_obj)
         part_collection = get_or_create_collection(
             context.scene.collection,
             f"{settings.map_stem} MSB",
@@ -168,17 +360,55 @@ class CreateMSBPart(LoggingOperator):
         )
 
         try:
-            # TODO: Won't create Armature parent for Parts that require it (Map Pieces).
-            bl_part = bl_part_type.new(f"{model_stem} Part", model_obj.data, collection=part_collection)
+            bl_part = bl_part_type.new(name, model_obj.data, collection=part_collection)
             # No properties (other than `model`) are changed from defaults.
         except FLVERError as ex:
             return self.error(f"Could not create `{part_subtype}` MSB Part from model object '{model_obj.name}': {ex}")
+        bl_part.model = model_obj
 
-        # Set location to cursor (Armature parent if present).
-        obj = bl_part.armature or bl_part.obj
-        obj.location = context.scene.cursor.location
+        if part_subtype == MSBPartSubtype.MapPiece:
+            # Create a duplicated parent Armature for the Part if present, so Map Piece static posing is visible.
+            if model_obj.get("MSB_MODEL_PLACEHOLDER", False):
+                # This will return `None` if the FLVER has no Armature (default, most Map Pieces).
+                if armature_obj := bl_part.duplicate_flver_model_armature(context, create_default_armature=False):
+                    # Rename Armature (obj and data) to match Part name.
+                    armature_name = f"{name} Armature"
+                    armature_obj.name = armature_obj.data.name = armature_name
+
+        if self.move_to_cursor:
+            # Set location to cursor (Armature parent if present).
+            obj = bl_part.armature or bl_part.obj
+            obj.location = context.scene.cursor.location
+
+        if template_part:
+            try:
+                bl_part.copy_type_properties_from(template_part, self._prop_filter_func)
+            except Exception as ex:
+                self.error(
+                    f"Failed to copy properties from template Part '{template_part.name}'. Part still created.\n"
+                    f"Error: {ex}"
+                )
+
+        # Apply overrides for groups.
+        try:
+            if draw_groups is not None:
+                bl_part.draw_groups = set(draw_groups)
+            if display_groups is not None:
+                bl_part.display_groups = set(display_groups)
+            if navmesh_groups is not None:
+                bl_part.navmesh_groups = set(navmesh_groups)
+        except Exception as ex:
+            self.error(
+                f"Failed to set some/all group bits on MSB Part. Part still created.\n"
+                f"Error: {ex}"
+            )
 
         return {"FINISHED"}
+
+    @staticmethod
+    def _prop_filter_func(prop_name: str) -> bool:
+        """We don't copy `model` from template, but do copy everything else."""
+        return prop_name != "model"
 
 
 class CreateMSBRegion(LoggingOperator):
@@ -279,7 +509,6 @@ class DuplicateMSBPartModel(LoggingOperator):
         source_collections = old_model.users_collection
 
         part_subtype = part.MSB_PART.part_subtype
-        old_part_name = part.name
 
         if not self.new_model_name:
             new_model_name = self.get_auto_name(part, settings)
@@ -339,15 +568,7 @@ class DuplicateMSBPartModel(LoggingOperator):
             # New model created successfully. Now we update the MSB Part's name to reflect it, and use its name.
             # The Part name may just be part of the full old model name, so we find the overlap size and update from
             # that much of the new model name, e.g. 'm2000B0_0000_SUFFIX' * 'm2000B0A10' = 'm2000B0'.
-            for i, (a, b) in enumerate(zip(old_part_name, old_model_name)):
-                if a != b:
-                    new_part_prefix = new_model_name[:i]  # take same length prefix from new model name
-                    new_part_suffix = old_part_name[i:]  # keep old Part suffix ('_0000', '_CASTLE', whatever).
-                    part.name = f"{new_part_prefix}{new_part_suffix}"
-                    break
-            # No need for `else` because part name cannot have been identical to model name in Blender! And if we
-            # exhausted one of the strings (probably the old model name) without finding a difference, the new Part
-            # name will be identical anyway.
+            part.name = replace_shared_prefix(old_model_name, new_model_name, part.name)
 
         return {"FINISHED"}
 
@@ -367,6 +588,127 @@ class DuplicateMSBPartModel(LoggingOperator):
             self.info(f"Automatic new model name: '{new_model_name}'")
 
         return new_model_name
+
+
+class BatchSetPartGroups(LoggingOperator):
+
+    bl_idname = "object.batch_set_part_groups"
+    bl_label = "Batch Set Part Groups"
+    bl_description = (
+        "Set, add, or remove draw, display, and/or navmesh groups for all selected MSB Parts from list syntax, e.g. "
+        "'[0, 37, 50]'. Set empty list/set '[]' to clear all groups. Leave empty to ignore that group type. All "
+        "selected Parts must have the same Part subtype, to assist in avoiding easy mistakes"
+    )
+
+    operation: bpy.props.EnumProperty(
+        name="Operation",
+        description="Operation to perform on groups",
+        items=(
+            ("SET", "Set", "Set groups to those specified"),
+            ("ADD", "Add", "Add groups to existing groups"),
+            ("REMOVE", "Remove", "Remove groups from existing groups"),
+        ),
+        default="SET",
+    )
+
+    draw_groups: bpy.props.StringProperty(
+        name="Draw Groups",
+        description="Draw groups to set for selected MSB Parts",
+        default="",
+    )
+    display_groups: bpy.props.StringProperty(
+        name="Display Groups",
+        description="Display groups to set for selected MSB Parts",
+        default="",
+    )
+    navmesh_groups: bpy.props.StringProperty(
+        name="Navmesh Groups",
+        description="Navmesh groups to set for selected MSB Collision/Navmesh Parts",
+        default="",
+    )
+
+    @classmethod
+    def poll(cls, context) -> bool:
+        part_subtypes = set()
+        for obj in context.selected_objects:
+            if obj.soulstruct_type != SoulstructType.MSB_PART:
+                return False
+            part_subtypes.add(obj.MSB_PART.part_subtype)
+        if len(part_subtypes) == 1:
+            return True
+        return False
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
+    def draw(self, context):
+        """Only shows appropriate groups."""
+        self.layout.prop(self, "operation")
+        self.layout.prop(self, "draw_groups")
+        self.layout.prop(self, "display_groups")
+        if context.selected_objects[0].MSB_PART.part_subtype in {MSBPartSubtype.Collision, MSBPartSubtype.Navmesh}:
+            self.layout.prop(self, "navmesh_groups")
+
+    def execute(self, context):
+        settings = self.settings(context)
+        # We already checked that all selected objects have the same MSB Part subtype.
+        part_subtype = context.selected_objects[0].MSB_PART.part_subtype
+        bl_part_subtype = BLENDER_MSB_PART_TYPES[settings.game][part_subtype]  # type: type[IBlenderMSBPart]
+        has_navmesh_groups = part_subtype in {MSBPartSubtype.Collision, MSBPartSubtype.Navmesh}
+
+        draw_groups = display_groups = navmesh_groups = None
+        try:
+            if self.draw_groups:  # Draw
+                _eval_draw_groups = ast.literal_eval(self.draw_groups)
+                if isinstance(_eval_draw_groups, (list, tuple, set)):
+                    draw_groups = set(_eval_draw_groups)
+            if self.display_groups:  # Display
+                _eval_display_groups = ast.literal_eval(self.display_groups)
+                if isinstance(_eval_display_groups, (list, tuple, set)):
+                    display_groups = set(_eval_display_groups)
+            if self.navmesh_groups and has_navmesh_groups:
+                _eval_navmesh_groups = ast.literal_eval(self.navmesh_groups)
+                if isinstance(_eval_navmesh_groups, (list, tuple, set)):
+                    navmesh_groups = set(_eval_navmesh_groups)
+        except SyntaxError as ex:
+            return self.error(f"Failed to parse group indices: {ex}")
+
+        counts = [0, 0, 0]
+
+        for obj in context.selected_objects:
+            bl_part = bl_part_subtype(obj)
+            if draw_groups is not None:
+                if self.operation == "SET":
+                    bl_part.draw_groups = draw_groups
+                elif self.operation == "ADD":
+                    bl_part.draw_groups |= draw_groups
+                elif self.operation == "REMOVE":
+                    bl_part.draw_groups -= draw_groups
+                counts[0] += 1
+            if display_groups is not None:
+                if self.operation == "SET":
+                    bl_part.display_groups = display_groups
+                elif self.operation == "ADD":
+                    bl_part.display_groups |= display_groups
+                elif self.operation == "REMOVE":
+                    bl_part.display_groups -= display_groups
+                counts[1] += 1
+            if navmesh_groups is not None and has_navmesh_groups:
+                if self.operation == "SET":
+                    bl_part.navmesh_groups = navmesh_groups
+                elif self.operation == "ADD":
+                    bl_part.navmesh_groups |= navmesh_groups
+                elif self.operation == "REMOVE":
+                    bl_part.navmesh_groups -= navmesh_groups
+                counts[2] += 1
+
+        self.info(
+            f"Set draw groups for {counts[0]} Part{'s' if counts[0] > 1 else ''}, "
+            f"display groups for {counts[1]} Part{'s' if counts[1] > 1 else ''}, "
+            f"and navmesh groups for {counts[2]} Part{'s' if counts[2] > 1 else ''}."
+        )
+
+        return {"FINISHED"}
 
 
 class ApplyPartTransformToModel(LoggingOperator):
@@ -431,8 +773,27 @@ class ApplyPartTransformToModel(LoggingOperator):
 class CreateConnectCollision(LoggingOperator):
     bl_idname = "object.create_connect_collision"
     bl_label = "Create Connect Collision"
-    bl_description = ("Create a new Connect Collision instance from the selected MSB Collision part and adds it to the "
-                      "Connect Collisions collection in the same MSB. Connects to map m00_00_00_00 initially.")
+    bl_description = (
+        "Create a new MSB Connect Collision instance from the selected MSB Collision part, connecting to the given map "
+        "stem, and add the new Part to the collection of Connect Collisions in the same MSB. Map stem must have format "
+        "'mAA_BB_CC_DD' (e.g. 'm10_00_00_00'). If CC and DD are both zero, tag '[AA_BB]' will be added to the name "
+        "after the first underscore. Otherwise, the full '[AA_BB_CC_DD]' tag will be added. For simplicity, the draw "
+        "and display groups of the Connect Collision are controlled as just one (identical) integer, which is standard "
+        "for Connect Collisions (I don't believe the draw groups are even used)"
+    )
+
+    connected_map_stem: bpy.props.StringProperty(
+        name="Connected Map Stem",
+        description="Map stem of the map this Connect Collision connects to, e.g. 'm10_00_00_00'",
+        default="m00_00_00_00",
+    )
+    connected_display_group: bpy.props.IntProperty(
+        name="Connected Display Group",
+        description="Group in the connected map to display. If you want more, add them after creation",
+        default=0,
+        min=0,
+        max=127,  # TODO: DS1 max, currently
+    )
 
     @classmethod
     def poll(cls, context) -> bool:
@@ -444,9 +805,12 @@ class CreateConnectCollision(LoggingOperator):
             return False
         return obj.soulstruct_type == SoulstructType.MSB_PART and obj.MSB_PART.part_subtype == MSBPartSubtype.Collision
 
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
     def execute(self, context):
         # noinspection PyTypeChecker
-        obj = context.active_object  # type: bpy.types.MeshObject
+        collision_part_obj = context.active_object  # type: bpy.types.MeshObject
 
         settings = self.settings(context)
         if settings.is_game_ds1():
@@ -456,7 +820,19 @@ class CreateConnectCollision(LoggingOperator):
         else:
             return self.error(f"Connect Collision creation not supported for game {settings.game.name}.")
 
-        map_stem = get_collection_map_stem(obj)
+        connected_match = MAP_STEM_RE.match(self.connected_map_stem)
+        if not connected_match:
+            return self.error(
+                f"Connected map stem '{self.connected_map_stem}' does not match required format 'mAA_BB_CC_DD'."
+            )
+        connected_map_id = tuple(int(g) for g in connected_match.groups())
+        area, block, cc, dd = connected_map_id
+        if cc == 0 and dd == 0:
+            tag = f"[{area:02d}_{block:02d}]"
+        else:
+            tag = f"[{area:02d}_{block:02d}_{cc:02d}_{dd:02d}]"  # full tag required
+
+        map_stem = get_collection_map_stem(collision_part_obj)
 
         collection = get_or_create_collection(
             context.scene.collection,
@@ -465,19 +841,18 @@ class CreateConnectCollision(LoggingOperator):
             f"{map_stem} Connect Collision Parts"
         )
 
-        if "_" in obj.name:
-            prefix, suffix = obj.name.split("_", maxsplit=1)
-            connect_collision_name = f"{prefix}_[00_00]_{suffix}"
-        else:
-            connect_collision_name = f"{obj.name}_[00_00]"
+        connect_collision_name = f"{collision_part_obj.name}_{tag}"
 
         bl_connect_collision = BlenderMSBConnectCollision.new(
             name=connect_collision_name,
-            data=obj.data,
+            data=collision_part_obj.data,
             collection=collection,
         )
-        bl_connect_collision.collision = obj
-        bl_connect_collision.model = obj.MSB_PART.model
+        bl_connect_collision.collision = collision_part_obj
+        bl_connect_collision.model = collision_part_obj.MSB_PART.model
+        bl_connect_collision.draw_groups = {self.connected_display_group}
+        bl_connect_collision.display_groups = {self.connected_display_group}
+        bl_connect_collision.connected_map_id = connected_map_id
 
         self.info(f"Created Connect Collision '{connect_collision_name}'.")
 
@@ -486,6 +861,59 @@ class CreateConnectCollision(LoggingOperator):
         bl_connect_collision.obj.select_set(True)
         bpy.ops.view3d.view_selected()
 
+        return {"FINISHED"}
+
+
+def _is_user_of_active_model(_, obj):
+    return (
+        bpy.context.active_object
+        and obj.soulstruct_type == SoulstructType.MSB_PART
+        and obj.MSB_PART.model == bpy.context.active_object
+    )
+
+
+class MSBFindPartsPointer(bpy.types.PropertyGroup):
+
+    part: bpy.props.PointerProperty(
+        name="Part",
+        description="MSB Part that uses the active model object",
+        type=bpy.types.Object,
+        poll=_is_user_of_active_model,
+    )
+
+
+class FindMSBParts(LoggingOperator):
+
+    bl_idname = "object.find_msb_parts"
+    bl_label = "Go to MSB Part"
+    bl_description = (
+        "Select an MSB Part that uses the active model object, make it active, and frame it in 3D View if visible"
+    )
+
+    @classmethod
+    def poll(cls, context) -> bool:
+        return (
+            context.active_object
+            and context.active_object.soulstruct_type in {
+                SoulstructType.FLVER, SoulstructType.COLLISION, SoulstructType.NAVMESH
+            }
+        )
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
+    def draw(self, context):
+        self.layout.prop(context.scene.find_msb_parts_pointer, "part")
+
+    def execute(self, context):
+        part_obj = context.scene.find_msb_parts_pointer.part
+        if not part_obj:
+            return self.error("No MSB Part found that uses the active model object.")
+
+        self.deselect_all()
+        part_obj.select_set(True)
+        context.view_layer.objects.active = part_obj
+        getattr(bpy.ops.view3d, "view_selected_distance_zero")()
         return {"FINISHED"}
 
 

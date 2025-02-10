@@ -38,7 +38,7 @@ class BlenderMCG(SoulstructObject[MCG, MCGProps]):
         # MCG parent should have two Empty children: a 'Nodes' sub-parent and an 'Edges' sub-parent.
         # We look for these by name, ignoring Blender dupe suffix.
         if len(obj.children) != 2:
-            raise ValueError(
+            raise SoulstructTypeError(
                 f"MCG object '{obj.name}' must have exactly two children: '{{name}} Nodes' and '{{name}} Edges'."
             )
         for child in obj.children:
@@ -48,9 +48,9 @@ class BlenderMCG(SoulstructObject[MCG, MCGProps]):
             elif name.lower().endswith("edges"):
                 self.edge_parent = child
         if not hasattr(self, "node_parent"):
-            raise ValueError(f"Could not find Nodes parent object as a child of MCG object '{obj.name}'.")
+            raise SoulstructTypeError(f"Could not find Nodes parent object as a child of MCG object '{obj.name}'.")
         if not hasattr(self, "edge_parent"):
-            raise ValueError(f"Could not find Edges parent object as a child of MCG object '{obj.name}'.")
+            raise SoulstructTypeError(f"Could not find Edges parent object as a child of MCG object '{obj.name}'.")
 
     @property
     def unknowns(self):
@@ -444,7 +444,11 @@ class BlenderMCGNode(SoulstructObject[MCGNode, MCGNodeProps]):
         navmesh_a_triangles = self.navmesh_a_triangles
         node_navmesh_info[navmesh_a_name] = navmesh_a_triangles
         if navmesh_nodes is not None:
-            navmesh_nodes[navmesh_a_name].append(node)
+            try:
+                navmesh_a_nodes = navmesh_nodes[navmesh_a_name]
+            except KeyError:
+                raise KeyError(f"Navmesh A '{navmesh_a_name}' not found in `navmesh_nodes`.")
+            navmesh_a_nodes.append(node)
 
         if self.navmesh_b is None:
             raise NavGraphExportError(f"Node '{self.name}' does not have Navmesh B set.")
@@ -452,7 +456,11 @@ class BlenderMCGNode(SoulstructObject[MCGNode, MCGNodeProps]):
         navmesh_b_triangles = self.navmesh_b_triangles
         node_navmesh_info[navmesh_b_name] = navmesh_b_triangles
         if navmesh_nodes is not None:
-            navmesh_nodes[navmesh_b_name].append(node)
+            try:
+                navmesh_b_nodes = navmesh_nodes[navmesh_b_name]
+            except KeyError:
+                raise KeyError(f"Navmesh B '{navmesh_b_name}' not found in `navmesh_nodes`.")
+            navmesh_b_nodes.append(node)
 
         if not navmesh_a_triangles and not navmesh_b_triangles:
             raise NavGraphExportError(

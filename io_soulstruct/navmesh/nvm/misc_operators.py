@@ -2,6 +2,7 @@ from __future__ import annotations
 
 __all__ = [
     "NavmeshFaceSettings",
+    "RenameNavmesh",
     "RefreshFaceIndices",
     "AddNVMFaceFlags",
     "RemoveNVMFaceFlags",
@@ -18,8 +19,10 @@ from mathutils import Vector
 
 from soulstruct.base.events.enums import NavmeshFlag
 
+from io_soulstruct.exceptions import SoulstructTypeError
 from io_soulstruct.types import SoulstructType
-from io_soulstruct.utilities import LoggingOperator
+from io_soulstruct.utilities import LoggingOperator, replace_shared_prefix
+from .types import BlenderNVM
 from .utilities import set_face_material, get_navmesh_material
 
 # Get all non-default `NavmeshFlag` values for Blender `EnumProperty`.
@@ -44,6 +47,65 @@ class NavmeshFaceSettings(bpy.types.PropertyGroup):
         max=255,
         description="Number of obstacles on this navmesh face.",
     )
+
+
+class RenameNavmesh(LoggingOperator):
+    """Simply renames an NVM model and all MSB Navmesh parts that instance it."""
+    bl_idname = "object.rename_nvm"
+    bl_label = "Rename Navmesh"
+    bl_description = (
+        "Rename the selected NVM navmesh model and, optionally, the overlapping prefix of any MSB Navmesh part that "
+        "instances it"
+    )
+
+    new_name: bpy.props.StringProperty(
+        name="New Name",
+        description="New name for the NVM model",
+        default="",
+    )
+    rename_parts: bpy.props.BoolProperty(
+        name="Rename Parts",
+        description="Rename MSB Navmesh parts that instance this NVM model",
+        default=True,
+    )
+
+    @classmethod
+    def poll(cls, context) -> bool:
+        try:
+            BlenderNVM.from_active_object(context)
+        except SoulstructTypeError:
+            return False
+        return True
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self, title="Rename Navmesh")
+
+    def execute(self, context):
+        if not self.new_name:
+            return self.error("New NVM name cannot be empty.")
+
+        bl_nvm = BlenderNVM.from_active_object(context)
+        old_model_name = bl_nvm.tight_name
+        new_model_name = self.new_name
+
+        bl_nvm.name = new_model_name
+        bl_nvm.data.name = new_model_name
+
+        if self.rename_parts:
+            part_count = 0
+            for obj in bpy.data.objects:
+                if (
+                    obj.soulstruct_type == SoulstructType.MSB_PART
+                    and obj.MSB_PART.part_subtype == "MSB_NAVMESH"
+                    and obj is not bl_nvm
+                    and obj.data == bl_nvm.data
+                ):
+                    # Found a part to rename.
+                    part_count += 1
+                    obj.name = replace_shared_prefix(old_model_name, new_model_name, obj.name)
+            self.info(f"Renamed {part_count} MSB Navmeshes that instance '{old_model_name}' to '{new_model_name}'.")
+
+        return {"FINISHED"}
 
 
 class RefreshFaceIndices(LoggingOperator):
@@ -195,9 +257,12 @@ class ResetNVMFaceInfo(LoggingOperator):
         if obstacle_count_layer is None:
             obstacle_count_layer = bm.faces.layers.int.new("nvm_face_obstacle_count")
 
-        for f_i, face in enumerate(bm.faces):
+        for face in bm.faces:
             face[flags_layer] = self.DEFAULT_FLAGS
             face[obstacle_count_layer] = self.DEFAULT_OBSTACLE_COUNT
+            set_face_material(bl_mesh=obj.data, bl_face=face, face_flags=face[flags_layer])
+
+        # TODO: Would be nice to remove unused materials from the mesh.
 
         bmesh.update_edit_mesh(obj.data)
 

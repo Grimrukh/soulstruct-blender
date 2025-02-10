@@ -42,7 +42,7 @@ __all__ = [
     "SetMaterialTexture0",
     "SetMaterialTexture1",
     "AutoRenameMaterials",
-    "MergeObjectMaterials",
+    "MergeFLVERMaterials",
     "AddMaterialGXItem",
     "RemoveMaterialGXItem",
 

@@ -93,11 +93,18 @@ def find_obj_or_create_empty(
         return True, obj
 
 
-def copy_obj_property_group(source_obj: bpy.types.Object, dest_obj: bpy.types.Object, props_name: str):
+def copy_obj_property_group(
+    source_obj: bpy.types.Object,
+    dest_obj: bpy.types.Object,
+    props_name: str,
+    filter_func: tp.Callable[[str], bool] | None = None,
+):
     """Use annotations of `source_obj.props_name` to copy properties to `dest_obj.props_name`."""
     source_props = getattr(source_obj, props_name)
     dest_props = getattr(dest_obj, props_name)
     for prop_name in source_props.__class__.__annotations__:
+        if filter_func and not filter_func(prop_name):
+            continue
         setattr(dest_props, prop_name, getattr(source_props, prop_name))
 
 

@@ -380,7 +380,7 @@ class BlenderMSBPart(SoulstructObject[MSBPart, MSBPartProps], tp.Generic[PART_T,
         animate parts individually (e.g. characters) and need those parts to have their own Armature copies.
         """
         if not self.model:
-            raise ValueError("Cannot duplicate model armature for MSB Map Piece part without a model.")
+            raise ValueError("Cannot duplicate model armature for MSB Part part without a model.")
         if not self.model.soulstruct_type == SoulstructType.FLVER:
             raise TypeError(f"MSB {self.PART_SUBTYPE} parts do not have FLVER model armatures to duplicate.")
         bl_flver = BlenderFLVER(self.model)

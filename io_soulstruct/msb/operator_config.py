@@ -12,6 +12,16 @@ from .properties import MSBPartSubtype, MSBRegionSubtype, MSBEventSubtype
 
 
 BLENDER_MSB_PART_TYPES = {
+    DEMONS_SOULS: {
+        MSBPartSubtype.MapPiece: demonssouls.BlenderMSBMapPiece,
+        MSBPartSubtype.Object: demonssouls.BlenderMSBObject,
+        MSBPartSubtype.Character: demonssouls.BlenderMSBCharacter,
+        MSBPartSubtype.PlayerStart: demonssouls.BlenderMSBPlayerStart,
+        MSBPartSubtype.Collision: demonssouls.BlenderMSBCollision,
+        MSBPartSubtype.Protoboss: demonssouls.BlenderMSBProtoboss,
+        MSBPartSubtype.Navmesh: demonssouls.BlenderMSBNavmesh,
+        MSBPartSubtype.ConnectCollision: demonssouls.BlenderMSBConnectCollision,
+    },
     DARK_SOULS_PTDE: {
         MSBPartSubtype.MapPiece: darksouls1ptde.BlenderMSBMapPiece,
         MSBPartSubtype.Object: darksouls1ptde.BlenderMSBObject,
@@ -29,16 +39,6 @@ BLENDER_MSB_PART_TYPES = {
         MSBPartSubtype.Collision: darksouls1r.BlenderMSBCollision,
         MSBPartSubtype.Navmesh: darksouls1r.BlenderMSBNavmesh,
         MSBPartSubtype.ConnectCollision: darksouls1r.BlenderMSBConnectCollision,
-    },
-    DEMONS_SOULS: {
-        MSBPartSubtype.MapPiece: demonssouls.BlenderMSBMapPiece,
-        MSBPartSubtype.Object: demonssouls.BlenderMSBObject,
-        MSBPartSubtype.Character: demonssouls.BlenderMSBCharacter,
-        MSBPartSubtype.PlayerStart: demonssouls.BlenderMSBPlayerStart,
-        MSBPartSubtype.Collision: demonssouls.BlenderMSBCollision,
-        MSBPartSubtype.Protoboss: demonssouls.BlenderMSBProtoboss,
-        MSBPartSubtype.Navmesh: demonssouls.BlenderMSBNavmesh,
-        MSBPartSubtype.ConnectCollision: demonssouls.BlenderMSBConnectCollision,
     },
 }
 

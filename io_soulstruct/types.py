@@ -15,7 +15,7 @@ from mathutils import Vector, Euler
 from .exceptions import SoulstructTypeError
 
 if tp.TYPE_CHECKING:
-    from io_soulstruct.utilities import LoggingOperator, copy_obj_property_group
+    from io_soulstruct.utilities import LoggingOperator
 
 
 class SoulstructType(StrEnum):
@@ -160,21 +160,31 @@ class SoulstructObject(abc.ABC, tp.Generic[SOULSTRUCT_T, SOULSTRUCT_PROPS_T]):
         """Properties of 'supertype'. Subclasses may have additional 'subtype' properties."""
         return getattr(self.obj, self.TYPE)
 
-    def copy_type_properties_from(self, source_obj: bpy.types.Object | SoulstructObject):
+    def copy_type_properties_from(
+        self,
+        source_obj: bpy.types.Object | SoulstructObject,
+        filter_func: tp.Callable[[str], bool] | None = None,
+    ):
         """Use annotations of to copy properties to `self.properties`."""
+        from .utilities import copy_obj_property_group
         if isinstance(source_obj, SoulstructObject):
             source_obj = source_obj.obj
         if source_obj.soulstruct_type != self.TYPE:
             raise SoulstructTypeError(f"Source object '{source_obj.name}' is not a {self.TYPE} Soulstruct object.")
-        copy_obj_property_group(source_obj, self.obj, self.TYPE)
+        copy_obj_property_group(source_obj, self.obj, self.TYPE, filter_func=filter_func)
 
-    def copy_type_properties_to(self, dest_obj: bpy.types.Object | SoulstructObject):
+    def copy_type_properties_to(
+        self,
+        dest_obj: bpy.types.Object | SoulstructObject,
+        filter_func: tp.Callable[[str], bool] | None = None,
+    ):
         """Use annotations to copy properties to `dest_obj`."""
+        from .utilities import copy_obj_property_group
         if isinstance(dest_obj, SoulstructObject):
             dest_obj = dest_obj.obj
         if dest_obj.soulstruct_type != self.TYPE:
             raise SoulstructTypeError(f"Dest object '{dest_obj.name}' is not a {self.TYPE} Soulstruct object.")
-        copy_obj_property_group(self.obj, dest_obj, self.TYPE)
+        copy_obj_property_group(self.obj, dest_obj, self.TYPE, filter_func=filter_func)
 
     @property
     def name(self):

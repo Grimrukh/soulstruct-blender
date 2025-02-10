@@ -12,6 +12,7 @@ __all__ = [
     "get_bl_obj_tight_name",
     "get_collection_map_stem",
     "remove_dupe_suffix",
+    "replace_shared_prefix",
 ]
 
 import math
@@ -178,3 +179,27 @@ def get_collection_map_stem(obj: bpy.types.Object) -> str:
 def remove_dupe_suffix(name):
     match = BLENDER_DUPE_RE.match(name)
     return match.group(1) if match else name
+
+
+def replace_shared_prefix(old_model_name: str, new_model_name: str, old_instance_name: str) -> str:
+    """Find the shared prefix between the old model name and the old instance name, and replace that prefix with the
+    same number of characters from the new model name.
+
+    Obviously, there's nothing about this function that is specific to model/instance strings, but that's the main usage
+    here and the easiest way to remember the argument order.
+
+    If the old model and instance names are identical -- which should not be possible if the arguments are Blender
+    object names -- then `new_model_name` will simply be returned.
+    """
+    if old_instance_name == old_model_name:
+        return new_model_name
+
+    for i, (a, b) in enumerate(zip(old_instance_name, old_model_name)):
+        if a != b:
+            new_instance_prefix = new_model_name[:i]  # take same length prefix from new model name
+            new_instance_suffix = old_instance_name[i:]  # keep old suffix ('_0000', '_CASTLE', whatever).
+            return f"{new_instance_prefix}{new_instance_suffix}"
+
+    # This should not be reachable, as we already checked if the old names were identical. Just in case, we won't
+    # change the name.
+    return old_instance_name

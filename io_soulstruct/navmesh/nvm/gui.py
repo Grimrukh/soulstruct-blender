@@ -97,6 +97,9 @@ class NVMNavmeshToolsPanel(bpy.types.Panel):
         self.layout.label(text="Navmesh Creation:")
         self.layout.operator(GenerateNavmeshFromCollision.bl_idname)
 
+        self.layout.label(text="Misc. Navmesh:")
+        self.layout.operator(RenameNavmesh.bl_idname)
+
         self.layout.label(text="Selected Face Indices:")
         selected_faces_box = self.layout.box()
         # noinspection PyTypeChecker
@@ -164,8 +167,6 @@ def layout_selected_faces(bm: bmesh.types.BMesh, layout, context, selected_faces
     else:
         # Prompt user to select some faces.
         selected_faces_box.label(text="Select navmesh faces in Edit Mode")
-
-    del bm
 
 
 class OBJECT_UL_nvm_event_entity_triangle(bpy.types.UIList):

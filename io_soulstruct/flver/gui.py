@@ -47,7 +47,6 @@ class FLVERModelToolsPanel(bpy.types.Panel):
 
     def draw(self, context):
 
-        settings = context.scene.soulstruct_settings
         flver_tool_settings = context.scene.flver_tool_settings
         layout = self.layout
 
@@ -73,8 +72,6 @@ class FLVERModelToolsPanel(bpy.types.Panel):
             move_box.prop(context.scene.mesh_move_settings, "new_material_index")
             move_box.operator(CopyMeshSelectionOperator.bl_idname)
             move_box.operator(CutMeshSelectionOperator.bl_idname)
-            move_box.label(text="New Model Name:")
-            move_box.prop(settings, "new_model_name", text="")
             move_box.operator(CopyToNewFLVER.bl_idname)
 
         header, panel = layout.panel("Bone Tools", default_closed=True)
@@ -124,10 +121,7 @@ class FLVERModelToolsPanel(bpy.types.Panel):
         header, panel = layout.panel("Other Tools", default_closed=True)
         header.label(text="Other Tools")
         if panel:
-            box = panel.box()
-            box.prop(context.scene.soulstruct_settings, "new_model_name")
-            box.operator(RenameFLVER.bl_idname)
-
+            panel.operator(RenameFLVER.bl_idname)
             panel.operator(PrintGameTransform.bl_idname)
 
 
@@ -150,7 +144,7 @@ class FLVERMaterialToolsPanel(bpy.types.Panel):
             panel.prop(material_tool_settings, "clean_up_identical")
             panel.prop(material_tool_settings, "clean_up_ignores_face_set_count")
             panel.operator(AutoRenameMaterials.bl_idname)
-            panel.operator(MergeObjectMaterials.bl_idname)
+            panel.operator(MergeFLVERMaterials.bl_idname)
             active_object = context.active_object
             if active_object and active_object.active_material:
                 panel.label(text=active_object.active_material.name)

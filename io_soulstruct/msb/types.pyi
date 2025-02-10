@@ -13,7 +13,7 @@ import bpy
 from io_soulstruct.types import *
 from io_soulstruct.type_checking import *
 from io_soulstruct.utilities import *
-from soulstruct.base.maps.msb import MSB as BaseMSB, MSBEntry
+from soulstruct.base.maps.msb import MSB as BaseMSB, MSBEntry, GroupBitSet
 from soulstruct.base.maps.msb.events import BaseMSBEvent
 from soulstruct.base.maps.msb.parts import BaseMSBPart
 from soulstruct.base.maps.msb.regions import BaseMSBRegion
@@ -96,6 +96,15 @@ class IBlenderMSBPart(SoulstructObject, abc.ABC):
 
     def set_part_transform(self, part: BaseMSBPart, use_world_transform=False):
         """Set MSB Part transform to match the given Blender object. Could get from Armature parent instead of Mesh."""
+        ...
+
+    def duplicate_flver_model_armature(
+        self, context: bpy.types.Context, create_default_armature=False
+    ) -> bpy.types.ArmatureObject | None:
+        """Duplicate the FLVER model's Armature and link it to the Part object.
+
+        Raises a `ValueError` if called on non-FLVER parts.
+        """
         ...
 
     @property

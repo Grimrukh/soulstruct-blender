@@ -25,6 +25,7 @@ __all__ = [
     "OBJECT_UL_nvm_event_entity_triangle",
 
     "NavmeshFaceSettings",
+    "RenameNavmesh",
     "AddNVMFaceFlags",
     "RemoveNVMFaceFlags",
     "SetNVMFaceObstacleCount",

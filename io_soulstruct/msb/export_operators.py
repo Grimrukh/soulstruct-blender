@@ -297,7 +297,13 @@ class ExportMapMSB(LoggingOperator):
                 # Log error (should never happen in any valid MSB), but continue.
                 self.error(f"Blender MSB Navmesh '{bl_navmesh.name}' has no model assigned to export.")
                 continue
-            model_stem = bl_navmesh.export_name
+            try:
+                bl_nvm = BlenderNVM(bl_navmesh.model)
+            except Exception as ex:
+                self.error(f"MSB Navmesh Part '{bl_navmesh.name}' does not have a valid NVM model. Error: {ex}")
+                continue
+
+            model_stem = bl_nvm.export_name
             if model_stem in added_models:
                 self.warning(
                     f"MSB {map_stem} has duplicate MSB Navmesh models ('{model_stem}'), which is extremely unusual."
@@ -305,7 +311,7 @@ class ExportMapMSB(LoggingOperator):
                 continue
             added_models.add(model_stem)
             try:
-                nvm = BlenderNVM(bl_navmesh.model).to_soulstruct_obj(self, context)
+                nvm = bl_nvm.to_soulstruct_obj(self, context)
             except Exception as ex:
                 traceback.print_exc()
                 self.error(f"Could not export NVM navmesh model. Error: {ex}")

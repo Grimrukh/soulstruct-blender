@@ -11,6 +11,7 @@ __all__ = [
     "NVMEventEntityProps",
 
     "NavmeshFaceSettings",
+    "RenameNavmesh",
     "RefreshFaceIndices",
     "AddNVMFaceFlags",
     "RemoveNVMFaceFlags",

@@ -352,6 +352,7 @@ class ExportHKXMapCollisionToMap(LoggingOperator):
                 return_strings |= {"FINISHED" if exported_paths else "CANCELLED"}
                 self.info(f"Exported loose hi-res and lo-res HKX for {model_name} to map directory {map_stem}.")
             else:
+                # DS1 (PTDE/DSR) - uses HKXBHD split binders.
                 if map_stem not in opened_both_res_hkxbhds:
                     # Find and open initial `HKXBHD` Binders for this map.
                     res_hkxbhds = []
@@ -361,7 +362,7 @@ class ExportHKXMapCollisionToMap(LoggingOperator):
                             hkxbhd = settings.get_initial_binder(self, relative_bhd_path, HKXBHD)
                         except FileNotFoundError as ex:
                             return self.error(
-                                f"Could not find HKXBHD file '{relative_bhd_path}' for map '{map_stem}': {ex}"
+                                f"Could not find initial HKXBHD file '{relative_bhd_path}' for map '{map_stem}': {ex}"
                             )
                         res_hkxbhds.append(hkxbhd)
                     map_dir_path = res_hkxbhds[0].path.parent

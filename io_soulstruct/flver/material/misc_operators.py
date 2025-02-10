@@ -6,11 +6,12 @@ __all__ = [
     "SetMaterialTexture0",
     "SetMaterialTexture1",
     "AutoRenameMaterials",
-    "MergeObjectMaterials",
+    "MergeFLVERMaterials",
     "AddMaterialGXItem",
     "RemoveMaterialGXItem",
 ]
 
+import os
 import re
 import typing as tp
 from pathlib import Path
@@ -136,9 +137,11 @@ class AutoRenameMaterials(LoggingOperator):
 
     bl_idname = "object.auto_rename_materials"
     bl_label = "Auto Rename Materials"
-    bl_description = ("Automatically rename all materials of active FLVER model based on their texture names, index, "
-                      "and MatDef path. Puts '<Multiple>' in name instead of model stem if multiple loaded FLVER "
-                      "objects use this material (non-FLVER objects are ignored). Currently only for DS1.")
+    bl_description = (
+        "Automatically rename all materials of active FLVER model based on their texture names, index, "
+        "and MatDef path. Puts '<Multiple>' in name instead of model stem if multiple loaded FLVER "
+        "objects use this material (non-FLVER objects are ignored). Currently only for DS1."
+    )
 
     @classmethod
     def poll(cls, context) -> bool:
@@ -232,12 +235,24 @@ class AutoRenameMaterials(LoggingOperator):
         return mat_name
 
 
-class MergeObjectMaterials(LoggingOperator):
-    """TODO: Not particularly useful for Map Pieces as hoped because of distinct baked lightmap textures."""
-    bl_idname = "object.merge_object_materials"
-    bl_label = "Merge Object Materials"
-    bl_description = ("Look for identical FLVER materials across all selected objects and merge them into one Material "
-                      "instance (e.g. for easier texture management). Old Materials are not changed or deleted.")
+class MergeFLVERMaterials(LoggingOperator):
+    """Scan all materials on all selected objects, and merge materials determined to be identical.
+
+    See `get_material_hash` for rules on what makes two materials identical.
+
+    NOTE: Shaders that use lightmap textures ('L') will probably make all Map Piece material users unique. This won't
+    have much merging success if there are lots of lightmap users.
+    """
+    bl_idname = "object.merge_flver_materials"
+    bl_label = "Merge FLVER Materials"
+    bl_description = (
+        "Look for identical FLVER materials across all selected objects and merge them into one Material "
+        "instance (e.g. for easier texture management). New materials are named based on their diffuse textures, "
+        "shader stem, backface culling (BC), and flags (<N>). Optionally, found materials can be renamed using this "
+        "template even if no repeat uses are detected in the selection. Other than this optional renaming, no "
+        "materials are changed or deleted; it is up to the user to clean up unused materials (i.e. those replaced with "
+        "a new merged material) as desired"
+    )
 
     rename_unique_materials: bpy.props.BoolProperty(
         name="Rename Unique Materials",
@@ -276,6 +291,8 @@ class MergeObjectMaterials(LoggingOperator):
         for obj in flver_objects:
             obj_material_hashes = all_obj_material_hashes.setdefault(obj.name, [])
             for material in obj.data.materials:
+                if not material:
+                    continue  # empty slot
                 flver_material = BlenderFLVERMaterial(material)
                 material_hash = self.get_material_hash(flver_material)
                 obj_material_hashes.append(material_hash)
@@ -312,26 +329,41 @@ class MergeObjectMaterials(LoggingOperator):
 
     @staticmethod
     def get_merged_material_name(material: BlenderFLVERMaterial) -> str:
-        """We strip the 'mAA_' prefixes from diffuse texture names, then add MatDef stem, <BC>, and <flags>."""
+        """We 'factor out' any shared prefix of all diffuse texture names, then add MatDef stem, <BC>, and <flags>.
+
+        As materials have a 63-character name limit, this does the best job it can to keep the name informative. If we
+        hit that name limit, the name will appear truncated (but Blender dupe suffix will keep conflicting material
+        hashes separate).
+
+        Example material name: `m14_(n_wall_10|b_ground_12) <M[DB][M]> <BC> <345>`
+        """
         texture_name_dict = material.get_texture_name_dict()
         texture_names = []
         for sampler_name in ("g_Diffuse", "g_Diffuse_2"):
             if sampler_name in texture_name_dict:
                 texture_name = texture_name_dict[sampler_name].split(".")[0]
-                if _AREA_PREFIX_RE.match(texture_name):
-                    texture_name = texture_name[4:]
                 texture_names.append(texture_name)
-        if texture_names:
-            mat_name = " + ".join(texture_names)
+        if len(texture_names) >= 2:
+            shared_prefix = os.path.commonprefix(texture_names)
+            if shared_prefix and "_" in shared_prefix:
+                # Last character of shared prefix must be an underscore. Split back to that.
+                shared_prefix = shared_prefix.rsplit("_", 1)[0] + "_"
+                texture_names = [name[len(shared_prefix):] for name in texture_names]
+                mat_name = f"{shared_prefix}({'|'.join(texture_names)})"  # e.g. "m14_(n_wall_10|b_ground_12)"
+            else:
+                mat_name = "|".join(texture_names)
+        elif texture_names:
+            mat_name = texture_names[0]
         else:
             mat_name = "No Diffuse"
 
-        mat_name += f" ({Path(material.mat_def_path).stem})"
+        mat_name += f" <{Path(material.mat_def_path).stem}"
 
         if material.use_backface_culling:
-            mat_name += " <BC>"
+            mat_name += "|BC"
         if material.flags:
-            mat_name += f" <{material.flags}>"
+            mat_name += f"|{material.flags}"
+        mat_name += ">"
 
         return mat_name
 

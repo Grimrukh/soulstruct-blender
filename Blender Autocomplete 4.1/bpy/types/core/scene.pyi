@@ -62,6 +62,8 @@ class Scene(ID, bpy_struct):
     mcg_draw_settings: MCGDrawSettings
     msb_import_settings: MSBImportSettings
     msb_export_settings: MSBExportSettings
+    msb_part_creation_templates: MSBPartCreationTemplates
+    find_msb_parts_pointer: MSBFindPartsPointer
     msb_tool_settings: MSBToolSettings
     region_draw_settings: RegionDrawSettings
     animation_import_settings: AnimationImportSettings

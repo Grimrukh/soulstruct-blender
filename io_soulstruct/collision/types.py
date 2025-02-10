@@ -253,6 +253,7 @@ class BlenderMapCollision(SoulstructObject[MapCollisionModel, MapCollisionProps]
                 meshes=hi_hkx_meshes,
                 havok_module=havok_module,
             )
+            lo_collision.path = Path(f"{lo_name}.hkx")
         else:
             operator.warning(
                 f"No 'lo' HKX meshes found for '{lo_name}' and `use_hi_if_missing_lo=False`. No lo-res exported."

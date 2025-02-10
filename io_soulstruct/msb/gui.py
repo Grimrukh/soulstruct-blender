@@ -171,12 +171,14 @@ class MSBToolsPanel(bpy.types.Panel):
 
     def draw(self, context):
         layout = self.layout
+        layout.operator(FindMSBParts.bl_idname, icon='VIEWZOOM')
         layout.operator(FindEntityID.bl_idname, icon='VIEWZOOM')
         layout.operator(EnableSelectedNames.bl_idname, icon='HIDE_OFF')
         layout.operator(DisableSelectedNames.bl_idname, icon='HIDE_ON')
         layout.operator(CreateMSBPart.bl_idname, icon='MESH_CUBE')
         layout.operator(CreateMSBRegion.bl_idname, icon='MESH_CUBE')
         layout.operator(DuplicateMSBPartModel.bl_idname, icon='DUPLICATE')
+        layout.operator(BatchSetPartGroups.bl_idname, icon='MODIFIER')
         layout.operator(ApplyPartTransformToModel.bl_idname, icon='MODIFIER')
         layout.operator(CreateConnectCollision.bl_idname, icon='MODIFIER')
 
