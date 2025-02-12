@@ -595,10 +595,10 @@ def register():
     )
 
     SPACE_VIEW_3D_HANDLERS.append(
-        bpy.types.SpaceView3D.draw_handler_add(draw_mcg_nodes, (), "WINDOW", "POST_VIEW")
+        bpy.types.SpaceView3D.draw_handler_add(update_mcg_draw_caches, (), "WINDOW", "POST_VIEW")
     )
     SPACE_VIEW_3D_HANDLERS.append(
-        bpy.types.SpaceView3D.draw_handler_add(draw_mcg_node_labels, (), "WINDOW", "POST_PIXEL")
+        bpy.types.SpaceView3D.draw_handler_add(draw_mcg_nodes, (), "WINDOW", "POST_VIEW")
     )
     SPACE_VIEW_3D_HANDLERS.append(
         bpy.types.SpaceView3D.draw_handler_add(draw_mcg_edges, (), "WINDOW", "POST_VIEW")

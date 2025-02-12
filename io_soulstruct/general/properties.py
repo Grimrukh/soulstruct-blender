@@ -355,13 +355,24 @@ class SoulstructSettings(bpy.types.PropertyGroup):
     def get_active_object_detected_map(self, context: bpy.types.Context) -> str:
         """Check map of active collection if `detect_map_from_collection` is enabled, or use `map_stem` otherwise."""
         if not context.active_object:
-            return ""
+            return self.map_stem
         if self.detect_map_from_collection:
             try:
                 return get_collection_map_stem(context.active_object)
             except ValueError:
                 # Failed to detect map from active object's collection.
                 pass
+        return self.map_stem
+
+    def get_active_collection_detected_map(self, context: bpy.types.Context) -> str:
+        """Check map of active collection if `detect_map_from_collection` is enabled, or use `map_stem` otherwise."""
+        if not context.collection:
+            return self.map_stem
+        if self.detect_map_from_collection:
+            name_stem = context.collection.name.split(" ")[0]
+            if MAP_STEM_RE.match(name_stem):
+                # Collection has a map stem prefix.
+                return name_stem
         return self.map_stem
 
     # endregion

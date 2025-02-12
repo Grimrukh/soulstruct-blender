@@ -73,8 +73,12 @@ def main(source_map_stem: str, dest_map_stem: str, entry_filter_func: tp.Callabl
         MSBPartSubtype.Collision: set(),
         MSBPartSubtype.Navmesh: set(),
     }
+    moved_names = set()  # don't move children twice (e.g. Event children of Regions)
 
     for obj in msb_objs_to_move:
+
+        if obj.name in moved_names:
+            continue
 
         armature_parent = None
         if obj.soulstruct_type == SoulstructType.MSB_PART:
@@ -99,11 +103,21 @@ def main(source_map_stem: str, dest_map_stem: str, entry_filter_func: tp.Callabl
             # Ignore object. (Could be an Armature that will be moved with its child Part mesh.)
             continue
 
+        moved_names.add(obj.name)
+
         new_collection.objects.link(obj)
-        # Remove from any m10_01_00_00 collections.
+        # Remove from any source map collections.
         for old_collection in obj.users_collection:
             if source_map_stem in old_collection.name:
                 old_collection.objects.unlink(obj)
+
+        # Move any children as well (not expecting any, but just in case).
+        for child in obj.children_recursive:
+            new_collection.objects.link(child)
+            for old_collection in child.users_collection:
+                if source_map_stem in old_collection.name:
+                    old_collection.objects.unlink(child)
+            moved_names.add(child.name)
 
         if armature_parent:
             new_collection.objects.link(armature_parent)
@@ -111,6 +125,15 @@ def main(source_map_stem: str, dest_map_stem: str, entry_filter_func: tp.Callabl
             for old_collection in armature_parent.users_collection:
                 if source_map_stem in old_collection.name:
                     old_collection.objects.unlink(armature_parent)
+            moved_names.add(armature_parent.name)
+
+            # Move any other children of Armature too (e.g. Dummies).
+            for child in armature_parent.children_recursive:
+                new_collection.objects.link(child)
+                for old_collection in child.users_collection:
+                    if source_map_stem in old_collection.name:
+                        old_collection.objects.unlink(child)
+                moved_names.add(child.name)
 
     for part_subtype, model_names in model_obj_names.items():
         new_collection = dest_model_collections[part_subtype]
@@ -122,6 +145,13 @@ def main(source_map_stem: str, dest_map_stem: str, entry_filter_func: tp.Callabl
             for old_collection in model_obj.users_collection:
                 if source_map_stem in old_collection.name:
                     old_collection.objects.unlink(model_obj)
+
+            # Move any children as well (e.g. NVM Event Entities).
+            for child in model_obj.children_recursive:
+                new_collection.objects.link(child)
+                for old_collection in child.users_collection:
+                    if source_map_stem in old_collection.name:
+                        old_collection.objects.unlink(child)
 
             if part_subtype == MSBPartSubtype.MapPiece:
 

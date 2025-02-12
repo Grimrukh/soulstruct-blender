@@ -260,8 +260,8 @@ class MCGGeneratorPanel(bpy.types.Panel):
 
         header, panel = layout.panel("Settings", default_closed=False)
         header.label(text="Settings")
+        nav_graph_compute_settings = context.scene.nav_graph_compute_settings
         if panel:
-            nav_graph_compute_settings = context.scene.nav_graph_compute_settings
             panel.prop(nav_graph_compute_settings, "select_path")
             panel.prop(nav_graph_compute_settings, "wall_multiplier")
             panel.prop(nav_graph_compute_settings, "obstacle_multiplier")
@@ -269,4 +269,5 @@ class MCGGeneratorPanel(bpy.types.Panel):
         layout.operator(RecomputeEdgeCost.bl_idname)
         layout.operator(FindCheapestPath.bl_idname)
         layout.label(text="Complete MCG Generation:")
+        layout.prop(nav_graph_compute_settings, "connected_exit_vertex_distance")
         layout.operator(AutoCreateMCG.bl_idname)

@@ -373,7 +373,13 @@ class RecomputeEdgeCost(LoggingOperator):
             start_face_i = min(node_a_triangles)
             end_face_i = min(node_b_triangles)
 
-            total_cost = get_best_cost(edge_navmesh.data, start_face_i, end_face_i)
+            try:
+                total_cost = get_best_cost(edge_navmesh.data, start_face_i, end_face_i)
+            except Exception as ex:
+                raise ValueError(
+                    f"Failed to compute cost of edge '{bl_edge.name}' between nodes {bl_node_a.name} and "
+                    f"{bl_node_b.name}. Make sure all NVM vertices have been merged by distance. Error: {ex}"
+                )
             if total_cost == 0.0:
                 self.warning(f"No path found in either direction between nodes for edge '{bl_edge.name}'.")
                 continue
@@ -466,8 +472,6 @@ class AutoCreateMCG(LoggingOperator):
     bl_description = ("Create an entire MCG hierarchy of nodes/edges using all navmesh 'Exit' faces. Use by selecting "
                       "a COMPLETE, ORDERED collection of a map's MSB Navmesh parts")
 
-    VERT_SQ_DIST_THRESHOLD: tp.ClassVar[float] = 0.01 ** 2
-
     # Holds all navmesh BMeshes so they can be freed and deleted without fail.
     navmesh_bmeshes: list[bmesh.types.BMesh]
 
@@ -507,6 +511,8 @@ class AutoCreateMCG(LoggingOperator):
 
         navmesh_exit_clusters = []  # type: list[tuple[EXIT_CLUSTER, ...]]
 
+        exit_sq_dist = context.scene.nav_graph_compute_settings.connected_exit_vertex_distance ** 2
+
         for navmesh_part in navmesh_parts:
 
             # Validate name format here, rather than waiting until below.
@@ -537,7 +543,7 @@ class AutoCreateMCG(LoggingOperator):
         bl_mcg = BlenderMCG.new(f"{map_stem} MCG", data=None, collection=collection)
 
         navmesh_nodes_and_keys = self._create_mcg_nodes(
-            bl_mcg, collection, map_stem, navmesh_parts, navmesh_exit_clusters
+            bl_mcg, collection, map_stem, navmesh_parts, navmesh_exit_clusters, exit_sq_dist
         )
         self._create_mcg_edges(
             bl_mcg, collection, map_stem, navmesh_parts, navmesh_nodes_and_keys
@@ -591,6 +597,7 @@ class AutoCreateMCG(LoggingOperator):
         map_stem: str,
         navmesh_parts: list[BlenderMSBNavmesh],
         navmesh_exit_clusters: list[tuple[EXIT_CLUSTER, ...]],
+        exit_sq_dist: float,
     ) -> list[list[NODE_WITH_KEY]]:
         """Find connected exit clusters across navmeshes and create MCG nodes in Blender at those sites.
 
@@ -649,7 +656,7 @@ class AutoCreateMCG(LoggingOperator):
                                 hits = 0
                                 for v in face_verts:
                                     for ov in other_face_verts:
-                                        if self.sq_dist(v, ov) < self.VERT_SQ_DIST_THRESHOLD:
+                                        if self.sq_dist(v, ov) < exit_sq_dist:
                                             hits += 1
                                             if hits >= 2:
                                                 break
@@ -776,7 +783,14 @@ class AutoCreateMCG(LoggingOperator):
                         )
 
                     # Note that this creates its own `BMesh` that removes vertex doubles.
-                    total_cost = get_best_cost(navmesh_part.data, start_face_i, end_face_i)
+                    try:
+                        total_cost = get_best_cost(navmesh_part.data, start_face_i, end_face_i)
+                    except Exception as ex:
+                        raise ValueError(
+                            f"Failed to compute cost between nodes {bl_node_a.name} and {bl_node_b.name} in "
+                            f"MSB Navmesh '{navmesh_part.name}'. Make sure all NVM vertices have been merged by "
+                            f"distance. Error: {ex}"
+                        )
                     if total_cost == 0.0:
                         total_cost = 10000.0  # arbitrary error catch
 

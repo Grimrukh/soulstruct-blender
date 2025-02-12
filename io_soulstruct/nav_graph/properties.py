@@ -125,3 +125,8 @@ class NavGraphComputeSettings(bpy.types.PropertyGroup):
         default=1.0,
         description="Cost multiplier (of distance) for Obstacle faces. Ignores obstacle count",
     )
+    connected_exit_vertex_distance: bpy.props.FloatProperty(
+        name="Connected Exit Vertex Distance",
+        default=0.01,
+        description="Maximum distance for connected 'Exit' face vertices during node creation",
+    )

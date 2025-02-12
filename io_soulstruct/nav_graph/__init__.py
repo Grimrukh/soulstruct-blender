@@ -8,8 +8,8 @@ __all__ = [
     "ExportMCGMCPToMap",
 
     "MCGDrawSettings",
+    "update_mcg_draw_caches",
     "draw_mcg_nodes",
-    "draw_mcg_node_labels",
     "draw_mcg_edges",
     "draw_mcg_edge_cost_labels",
 

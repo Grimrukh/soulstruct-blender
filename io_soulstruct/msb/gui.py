@@ -45,7 +45,6 @@ from .export_operators import *
 from .misc_operators import *
 from .properties import *
 from .properties import MSBProtobossProps
-from .utilities import MSB_COLLECTION_RE
 
 
 class MSBImportPanel(bpy.types.Panel):
@@ -138,7 +137,7 @@ class MSBExportPanel(bpy.types.Panel):
 
         if settings.can_auto_export:
             # We want to tell the user exactly which map this button will export to.
-            map_stem = settings.get_active_object_detected_map(context)
+            map_stem = settings.get_active_collection_detected_map(context)
             if not map_stem:
                 layout.label(text="To Map: <NO MAP>")
             else:
