@@ -28,6 +28,7 @@ __all__ = [
     "CopyToNewFLVER",
     "RenameFLVER",
     "SelectDisplayMaskID",
+    "SelectUnweightedVertices",
     "SetSmoothCustomNormals",
     "SetVertexAlpha",
     "InvertVertexAlpha",

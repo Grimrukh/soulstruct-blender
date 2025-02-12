@@ -75,7 +75,7 @@ class MapCollisionToolsPanel(bpy.types.Panel):
         layout = self.layout
 
         layout.label(text="Creation Tools:")
-        layout.operator(GenerateFromMesh.bl_idname)
+        layout.operator(GenerateCollisionFromMesh.bl_idname)
         layout.prop(context.scene.mesh_move_settings, "new_material_index")
         layout.operator(CopyMeshSelectionOperator.bl_idname)
         layout.operator(CutMeshSelectionOperator.bl_idname)

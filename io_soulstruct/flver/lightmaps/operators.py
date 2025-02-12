@@ -107,7 +107,7 @@ class BakeLightmapTextures(LoggingOperator):
         mtdbnd = settings.get_mtdbnd(self)
         bake_settings = context.scene.bake_lightmap_settings
 
-        bl_flvers = BlenderFLVER.from_selected_objects(context)  # type: list[BlenderFLVER]
+        bl_flvers = BlenderFLVER.from_selected_objects(context, sort=True)  # type: list[BlenderFLVER]
 
         # Set up variables/function to restore original state after bake.
         original_lightmap_strengths = []  # pairs of `(node, value)`

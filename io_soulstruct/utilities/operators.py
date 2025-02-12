@@ -46,6 +46,11 @@ class LoggingOperator(bpy.types.Operator):
         _settings.save_settings()
         return _settings
 
+    @staticmethod
+    def debug(msg: str):
+        _LOGGER.debug(msg)
+        # No report.
+
     def info(self, msg: str):
         _LOGGER.info(msg)
         self.report({"INFO"}, msg)

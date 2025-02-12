@@ -10,7 +10,7 @@ __all__ = [
     "ExportHKXMapCollisionToMap",
 
     "RenameCollision",
-    "GenerateFromMesh",
+    "GenerateCollisionFromMesh",
     "SelectHiResFaces",
     "SelectLoResFaces",
 

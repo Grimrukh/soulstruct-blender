@@ -294,7 +294,7 @@ class ExportHKXMapCollisionToMap(LoggingOperator):
         if havok_module is None:
             return self.error("This operator only supports games with Havok support.")
 
-        bl_map_collisions = BlenderMapCollision.from_selected_objects(context)  # type: list[BlenderMapCollision]
+        bl_map_collisions = BlenderMapCollision.from_selected_objects(context, True)  # type: list[BlenderMapCollision]
 
         opened_both_res_hkxbhds = {}  # type: dict[str, BothResHKXBHD]  # keys are map stems
         return_strings = set()

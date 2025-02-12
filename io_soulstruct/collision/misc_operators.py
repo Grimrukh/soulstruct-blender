@@ -2,7 +2,7 @@ from __future__ import annotations
 
 __all__ = [
     "RenameCollision",
-    "GenerateFromMesh",
+    "GenerateCollisionFromMesh",
     "SelectHiResFaces",
     "SelectLoResFaces",
 ]
@@ -119,7 +119,7 @@ def _flver_mat_name_to_hkx_mat_index(flver_mat_name: str) -> int:
     return MapCollisionMaterial.Default  # so user can actually detect any misses
 
 
-class GenerateFromMesh(LoggingOperator):
+class GenerateCollisionFromMesh(LoggingOperator):
     bl_idname = "object.generate_collision_from_mesh"
     bl_label = "Create Collision from Mesh"
     bl_description = (
@@ -136,8 +136,16 @@ class GenerateFromMesh(LoggingOperator):
     move_to_collision_collection: bpy.props.BoolProperty(
         name="Move to Collision Collection",
         description="If any source model is in a collection called '{map_stem} Map Piece Models', create new collision "
-                    "in collection called '{map_stem} Collision Models' if it exists (rather than same collection)",
+                    "in collection called '{map_stem} Collision Models' if it exists (rather than same collection). "
+                    "Ignored if 'Into Existing Collision' is enabled",
         default=True,
+    )
+
+    into_existing_collision: bpy.props.BoolProperty(
+        name="Into Existing Collision",
+        description="Bake new faces into existing Collision model with given name. Model must already exist if this "
+                    "is enabled (and converse)",
+        default=False,
     )
 
     @classmethod
@@ -155,7 +163,7 @@ class GenerateFromMesh(LoggingOperator):
         )
 
     def invoke(self, context, event):
-        return context.window_manager.invoke_props_dialog(self, title="Create Collision from FLVER")
+        return context.window_manager.invoke_props_dialog(self, title="Generate Collision from Mesh")
 
     def execute(self, context):
 
@@ -163,6 +171,29 @@ class GenerateFromMesh(LoggingOperator):
         source_meshes = context.objects_in_mode  # type: list[bpy.types.MeshObject]
         if any(obj.type != "MESH" for obj in source_meshes):
             return self.error("All objects being edited must be meshes.")
+
+        # Validate existing collision, if chosen.
+        existing_collision_obj = None  # type: bpy.types.MeshObject | None
+        if self.into_existing_collision:
+            if not self.collision_model_name:
+                return self.error("Must provide a name for the existing Collision model.")
+            existing_collision_obj = bpy.data.objects.get(self.collision_model_name)
+            if not existing_collision_obj:
+                return self.error(f"No existing Collision model found with name '{self.collision_model_name}'.")
+            if existing_collision_obj.type != "MESH":
+                return self.error(f"Object with name '{self.collision_model_name}' is not a mesh.")
+            if existing_collision_obj.soulstruct_type != "COLLISION":
+                return self.error(f"Object with name '{self.collision_model_name}' is not a Collision model.")
+            if any(not mat.name.startswith("HKX ") for mat in existing_collision_obj.data.materials):
+                return self.error(
+                    f"Collision model '{self.collision_model_name}' has non-HKX materials. Cannot add new faces to it."
+                )
+        elif self.collision_model_name and bpy.data.objects.get(self.collision_model_name) is not None:
+            return self.error(
+                f"Collision model with name '{self.collision_model_name}' already exists. You must enable "
+                f"'Into Existing Collision' to add new faces to it. (If you leave the new name empty, any number of "
+                f"'{{Name}} Collision' models can be created with '.001' etc.)"
+            )
 
         # Duplicate whatever faces are currently selected.
         bpy.ops.mesh.duplicate()
@@ -186,29 +217,6 @@ class GenerateFromMesh(LoggingOperator):
         bpy.ops.object.join()
         # noinspection PyTypeChecker
         new_model = new_objs[0]  # type: bpy.types.MeshObject
-
-        new_name = self.collision_model_name or f"{source_meshes[0].name} Collision"
-        new_model.name = new_name
-        new_model.data.name = new_name
-        new_model.soulstruct_type = SoulstructType.COLLISION
-
-        if self.move_to_collision_collection:
-            try:
-                map_stem = get_collection_map_stem(source_meshes[0])
-            except ValueError:
-                # Don't move to a new collection.
-                self.warning(
-                    "Could not find map stem in first source object's collection name. New collision not moved."
-                )
-            else:
-                try:
-                    collision_collection = bpy.data.collections[f"{map_stem} Collision Models"]
-                except KeyError:
-                    self.warning(f"Could not find collection '{map_stem} Collision Models'. New collision not moved.")
-                else:
-                    for collection in new_model.users_collection:
-                        collection.objects.unlink(new_model)
-                    collision_collection.objects.link(new_model)
 
         # Switch to Edit mode on the collision object.
         bpy.ops.object.mode_set(mode='EDIT')
@@ -271,9 +279,43 @@ class GenerateFromMesh(LoggingOperator):
         del bm
 
         bpy.ops.object.mode_set(mode='OBJECT')
-
         source_names = ", ".join(obj.name for obj in source_meshes)
-        self.info(f"Collision Mesh model generated from {source_names}: '{new_model.name}'")
+
+        if existing_collision_obj:
+            # Join new model to existing.
+            bpy.ops.object.select_all(action="DESELECT")
+            existing_collision_obj.select_set(True)
+            new_model.select_set(True)
+            context.view_layer.objects.active = existing_collision_obj
+            bpy.ops.object.join()
+            # We never move collections in this case.
+            self.info(f"Collision faces generated from {source_names} and added to '{existing_collision_obj.name}'.")
+        else:
+            # Name and set up new Collision model.
+            new_name = self.collision_model_name or f"{source_meshes[0].name} Collision"
+            new_model.name = new_name
+            new_model.data.name = new_name
+            new_model.soulstruct_type = SoulstructType.COLLISION
+
+            if self.move_to_collision_collection:
+                try:
+                    map_stem = get_collection_map_stem(source_meshes[0])
+                except ValueError:
+                    # Don't move to a new collection.
+                    self.warning(
+                        "Could not find map stem in first source object's collection name. New collision not moved."
+                    )
+                else:
+                    try:
+                        collision_collection = bpy.data.collections[f"{map_stem} Collision Models"]
+                    except KeyError:
+                        self.warning(f"Could not find collection '{map_stem} Collision Models'. Collision not moved.")
+                    else:
+                        for collection in new_model.users_collection:
+                            collection.objects.unlink(new_model)
+                        collision_collection.objects.link(new_model)
+
+            self.info(f"Collision Mesh model generated from {source_names}: '{new_model.name}'")
 
         return {"FINISHED"}
 

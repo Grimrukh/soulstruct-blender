@@ -258,15 +258,15 @@ class ExportMapPieceFLVERs(LoggingOperator):
 
     def execute(self, context):
         try:
-            bl_flvers = BlenderFLVER.get_selected_flvers(context)
+            bl_flvers = BlenderFLVER.get_selected_flvers(context, sort=True)
         except FLVERError as ex:
             return self.error(str(ex))
 
         settings = self.settings(context)
 
         # TODO: Later games (e.g. Elden Ring) use Binders like 'mapbnd' for map pieces, but this is not yet supported.
-        #  This assumes loose FLVERs in the map folder. MAPBND support will require existing MAPBNDs, as the `.grass`
-        #  files inside them will be left untouched.
+        #  This assumes loose FLVERs in the map folder. MAPBND support will require insertion into existing MAPBNDs,
+        #  as the `.grass` files inside them will be left untouched.
         if not settings.map_stem and not settings.detect_map_from_collection:
             return self.error(
                 "No game map directory specified in Soulstruct settings and `Detect Map from Collection` is disabled."

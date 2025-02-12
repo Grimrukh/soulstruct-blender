@@ -74,8 +74,14 @@ class NVMNavmeshExportPanel(bpy.types.Panel):
 
         layout = self.layout
         map_stem_box(layout, settings)
-        layout.label(text="Export to Game/Project:")
+
         layout.prop(context.scene.soulstruct_settings, "detect_map_from_collection")
+        map_stem = settings.get_active_object_detected_map(context)
+        if not map_stem:
+            layout.label(text="To Map: <NO MAP>")
+        else:
+            map_stem = settings.get_latest_map_stem_version(map_stem)
+            layout.label(text=f"To Map: {map_stem}")
         layout.operator(ExportNVMIntoSelectedMap.bl_idname)
 
         layout.label(text="Generic Export:")

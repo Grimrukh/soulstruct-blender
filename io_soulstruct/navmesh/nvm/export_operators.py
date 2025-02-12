@@ -131,7 +131,7 @@ class ExportNVMIntoBinder(LoggingImportOperator):
         if not self.poll(context):
             return self.error("No valid Meshes selected for NVM export.")
 
-        selected_bl_nvms = BlenderNVM.from_selected_objects(context)  # type: list[BlenderNVM]
+        selected_bl_nvms = BlenderNVM.from_selected_objects(context, sort=True)  # type: list[BlenderNVM]
 
         try:
             binder = Binder.from_path(self.filepath)
@@ -244,7 +244,7 @@ class ExportNVMIntoSelectedMap(LoggingOperator):
             return self.error(f"Unsupported game: {settings.game}")
 
         opened_nvmbnds = {}  # type: dict[Path, BaseNVMBND]
-        bl_nvms = BlenderNVM.from_selected_objects(context)  # type: list[BlenderNVM]
+        bl_nvms = BlenderNVM.from_selected_objects(context, sort=True)  # type: list[BlenderNVM]
 
         export_loose_des_nvms = settings.is_game(DEMONS_SOULS) and settings.export_des_debug_files
         loose_nvms_to_export = []  # type: list[tuple[NVM, Path]]

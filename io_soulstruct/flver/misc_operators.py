@@ -4,6 +4,7 @@ __all__ = [
     "CopyToNewFLVER",
     "RenameFLVER",
     "SelectDisplayMaskID",
+    "SelectUnweightedVertices",
     "SetSmoothCustomNormals",
     "SetVertexAlpha",
     "InvertVertexAlpha",
@@ -193,6 +194,39 @@ class SelectDisplayMaskID(LoggingOperator):
 
         bmesh.update_edit_mesh(mesh)
 
+        return {"FINISHED"}
+
+
+class SelectUnweightedVertices(LoggingOperator):
+
+    bl_idname = "mesh.select_unweighted_vertices"
+    bl_label = "Select Unweighted Vertices"
+    bl_description = "Enter Edit Mode on active mesh and select all vertices that are not weighted to any bones"
+
+    @classmethod
+    def poll(cls, context) -> bool:
+        return context.active_object and context.active_object.type == "MESH"
+
+    def execute(self, context):
+
+        if context.mode != "OBJECT":
+            bpy.ops.object.mode_set(mode="OBJECT")
+
+        obj = context.active_object
+        if obj is None or obj.type != "MESH":
+            return self.error("Please select a Mesh object.")
+        # noinspection PyTypeChecker
+        mesh = obj.data  # type: bpy.types.Mesh
+
+        count = 0
+        for vert in mesh.vertices:
+            vert.select = not vert.groups
+            count += vert.select
+
+        # Enter Edit mode.
+        bpy.ops.object.mode_set(mode="EDIT")
+
+        self.info(f"Selected {count} unweighted vertices on mesh '{obj.name}'.")
         return {"FINISHED"}
 
 
@@ -732,7 +766,7 @@ class FindMissingTexturesInImageCache(LoggingOperator):
         settings = self.settings(context)
 
         try:
-            bl_flvers = BlenderFLVER.get_selected_flvers(context)
+            bl_flvers = BlenderFLVER.get_selected_flvers(context, sort=True)
         except SoulstructTypeError as ex:
             return self.error(str(ex))
 

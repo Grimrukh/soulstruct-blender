@@ -123,6 +123,18 @@ class MSBExportSettings(bpy.types.PropertyGroup):
         default=False,
     )
 
+    skip_connect_collisions: bpy.props.BoolProperty(
+        name="Skip Connect Collisions",
+        description="Do not export MSB Connect Collision parts. Useful for debugging map loading problems",
+        default=False,
+    )
+
+    skip_render_hidden: bpy.props.BoolProperty(
+        name="Skip Render Hidden",
+        description="Do not export MSB parts that are hidden from rendering (camera icon in in hierarchy)",
+        default=False,
+    )
+
 
 class MSBToolSettings(bpy.types.PropertyGroup):
 

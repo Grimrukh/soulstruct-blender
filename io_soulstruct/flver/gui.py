@@ -64,6 +64,7 @@ class FLVERModelToolsPanel(bpy.types.Panel):
 
             polish_box = panel.box()
             polish_box.label(text="Select/Polish Mesh:")
+            polish_box.operator(SelectUnweightedVertices.bl_idname)
             polish_box.operator(SelectMeshChildren.bl_idname)
             polish_box.operator(SetSmoothCustomNormals.bl_idname)
 

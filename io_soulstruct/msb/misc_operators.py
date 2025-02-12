@@ -173,6 +173,12 @@ class CreateMSBPart(LoggingOperator):
         "operator to create one from an existing Collision part instead"
     )
 
+    msb_map_stem: bpy.props.StringProperty(
+        name="MSB Map Stem",
+        description="Map stem of MSB in which to create new MSB Part",
+        default="",  # `invoke()` will set default for geo vs. non-geo
+    )
+
     part_subtype: bpy.props.StringProperty(
         name="Part Subtype",
         description="Type of MSB Part to create",
@@ -230,6 +236,15 @@ class CreateMSBPart(LoggingOperator):
         except ValueError as ex:
             return self.error(str(ex))
 
+        if part_subtype in {MSBPartSubtype.MapPiece, MSBPartSubtype.Collision, MSBPartSubtype.Navmesh}:
+            try:
+                self.msb_map_stem = get_collection_map_stem(model_obj)
+            except ValueError:
+                self.msb_map_stem = ""
+        else:
+            # Characters, Objects, Assets, Player Starts.
+            self.msb_map_stem = context.scene.soulstruct_settings.map_stem
+
         # For `draw()` call.
         self.part_subtype = part_subtype.value
         return context.window_manager.invoke_props_dialog(self)
@@ -239,24 +254,29 @@ class CreateMSBPart(LoggingOperator):
         templates = context.scene.msb_part_creation_templates
 
         if self.part_subtype == MSBPartSubtype.MapPiece:
+            self.layout.prop(self, "msb_map_stem")
             self.layout.prop(self, "part_name")
             self.layout.prop(templates, "template_map_piece")
             self.layout.prop(self, "draw_groups")
         elif self.part_subtype == MSBPartSubtype.Object:
+            self.layout.prop(self, "msb_map_stem")
             self.layout.prop(self, "part_name")
             self.layout.prop(templates, "template_object")
             self.layout.prop(self, "draw_groups")
         elif self.part_subtype == MSBPartSubtype.Character:
+            self.layout.prop(self, "msb_map_stem")
             self.layout.prop(self, "part_name")
             self.layout.prop(templates, "template_character")
             self.layout.prop(self, "draw_groups")
         elif self.part_subtype == MSBPartSubtype.Collision:
+            self.layout.prop(self, "msb_map_stem")
             self.layout.prop(self, "part_name")
             self.layout.prop(templates, "template_collision")
             self.layout.prop(self, "draw_groups")
             self.layout.prop(self, "display_groups")
             self.layout.prop(self, "navmesh_groups")
         elif self.part_subtype == MSBPartSubtype.Navmesh:
+            self.layout.prop(self, "msb_map_stem")
             self.layout.prop(self, "part_name")
             self.layout.prop(templates, "template_navmesh")
             self.layout.prop(self, "navmesh_groups")
@@ -265,6 +285,10 @@ class CreateMSBPart(LoggingOperator):
 
     @staticmethod
     def _get_part_subtype(model_obj: bpy.types.MeshObject) -> MSBPartSubtype:
+        """Detect Part subtype that given model object should be used for.
+
+        Uses prefix of FLVER model name to resolve FLVER part subtype.
+        """
         if model_obj is None:
             raise ValueError("No model object selected.")
 
@@ -284,7 +308,7 @@ class CreateMSBPart(LoggingOperator):
             )
 
         if model_obj.soulstruct_type == SoulstructType.COLLISION:
-            # TODO: Another operator to create Connect Collision parts from Collision parts.
+            # NOTE: There is a better operator to create Connect Collision parts from Collision parts.
             return MSBPartSubtype.Collision
         elif model_obj.soulstruct_type == SoulstructType.NAVMESH:
             return MSBPartSubtype.Navmesh
@@ -352,6 +376,9 @@ class CreateMSBPart(LoggingOperator):
                 f"Cannot import MSB Part subtype `{part_subtype.value}` for game {settings.game.name}."
             )
 
+        # TODO: Detect map stem from part! Don't just use global setting.
+        #   - Operator setting can default to model's collection (for geo) or selected map stem (for non-geo).
+
         part_collection = get_or_create_collection(
             context.scene.collection,
             f"{settings.map_stem} MSB",
@@ -374,6 +401,9 @@ class CreateMSBPart(LoggingOperator):
                     # Rename Armature (obj and data) to match Part name.
                     armature_name = f"{name} Armature"
                     armature_obj.name = armature_obj.data.name = armature_name
+        elif part_subtype == MSBPartSubtype.Navmesh:
+            # Enable wireframe for Navmesh part.
+            bl_part.obj.show_wire = True
 
         if self.move_to_cursor:
             # Set location to cursor (Armature parent if present).

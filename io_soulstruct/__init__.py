@@ -153,6 +153,7 @@ CLASSES = (
     CopyToNewFLVER,
     RenameFLVER,
     SelectDisplayMaskID,
+    SelectUnweightedVertices,
     SetSmoothCustomNormals,
     SetVertexAlpha,
     InvertVertexAlpha,
@@ -231,7 +232,7 @@ CLASSES = (
     MapCollisionToolsPanel,
 
     RenameCollision,
-    GenerateFromMesh,
+    GenerateCollisionFromMesh,
     SelectHiResFaces,
     SelectLoResFaces,
 

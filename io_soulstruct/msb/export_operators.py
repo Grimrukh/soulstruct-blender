@@ -103,19 +103,37 @@ class ExportMapMSB(LoggingOperator):
         bl_events = []
         checked_names = set()
 
+        if export_settings.skip_connect_collisions:
+            self.warning("Skipping MSB Connect Collision parts as requested. Other maps will not load.")
+
         collections = [context.collection] + list(context.collection.children_recursive)
+        render_hidden_count = 0
         for col in collections:
             for obj in col.objects:
                 if obj.name in checked_names:
                     continue
                 checked_names.add(obj.name)
+
+                if export_settings.skip_render_hidden and obj.hide_render:
+                    render_hidden_count += 1
+                    continue
+
                 if obj.soulstruct_type == SoulstructType.MSB_PART:
+                    if (
+                        export_settings.skip_connect_collisions
+                        and obj.MSB_PART.part_subtype_enum == MSBPartSubtype.ConnectCollision
+                    ):
+                        # Ignore Connect Collisions.
+                        continue
                     bl_parts.append(obj)
                 elif obj.soulstruct_type == SoulstructType.MSB_REGION:
                     bl_regions.append(obj)
                 elif obj.soulstruct_type == SoulstructType.MSB_EVENT:
                     bl_events.append(obj)
                 # Otherwise, ignore. We allow the user to include non-Soulstruct objects in the MSB collection.
+
+        if render_hidden_count > 0:
+            self.warning(f"Skipped {render_hidden_count} hidden objects from MSB export.")
 
         # Sort by natural order to match Blender hierarchy.
         bl_parts.sort(key=lambda x: natural_keys(x.name))
@@ -197,12 +215,16 @@ class ExportMapMSB(LoggingOperator):
             f"{part_count} Parts, and {len(msb.get_models())} Models."
         )
 
+        # NOTE: MSB export is now irreversible. We handle any errors that occur below while doing optional extra exports
+        # of NVMBND, HKXBHD, NVMDUMP, and Soulstruct project JSON files.
+
         soulstruct_project_root_path = settings.soulstruct_project_root_path
         if soulstruct_project_root_path is not None and export_settings.export_soulstruct_jsons:
             # Write MSB JSON to project 'maps' subfolder.
             msb_json_path = soulstruct_project_root_path / "maps" / f"{map_stem}.json"
             try:
                 msb.write_json(msb_json_path)
+                self.info(f"Exported MSB JSON to Soulstruct Project folder: {msb_json_path}")
             except Exception as ex:
                 self.error(f"Could not write MSB JSON to Soulstruct Project folder (MSBs still written). Error: {ex}")
 

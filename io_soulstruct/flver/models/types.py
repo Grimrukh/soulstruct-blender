@@ -76,7 +76,12 @@ class BlenderFLVERDummy(SoulstructObject[Dummy, FLVERDummyProps]):
     ]
 
     @property
-    def parent_bone(self):
+    def parent_bone(self) -> bpy.types.Bone:
+        """NOTE: Parent bone CANNOT be set as a Pointer property. We have to use a StringProperty name.
+
+        This property uses the attached name to get the actual Bone object from the Armature, and raises a KeyError if
+        that bone name is missing.
+        """
         if not self.parent or self.parent.type != "ARMATURE":
             raise ValueError("Cannot get parent bone of Dummy without an Armature parent.")
         # noinspection PyTypeChecker
@@ -88,6 +93,10 @@ class BlenderFLVERDummy(SoulstructObject[Dummy, FLVERDummyProps]):
 
     @parent_bone.setter
     def parent_bone(self, value: bpy.types.Bone | str):
+        """Set Dummy's parent bone either with a direct Bone object, or name thereof.
+
+        If a string name is given, that Bone name must exist in the parent Armature.
+        """
         if not self.parent or self.parent.type != "ARMATURE":
             raise ValueError("Cannot set parent bone of Dummy without an Armature parent.")
         # noinspection PyTypeChecker
@@ -248,6 +257,15 @@ class BlenderFLVERDummy(SoulstructObject[Dummy, FLVERDummyProps]):
 
         return dummy
 
+    def update_parent_bone_name(self, update_dict: dict[str, str]):
+        """Update Dummy's parent bone name if it is in `update_dict`.
+
+        Called at the same time as Armature bone names are updated, as the `parent_bone_name` property here will NOT
+        update automatically.
+        """
+        if self.type_properties.parent_bone_name and self.type_properties.parent_bone_name in update_dict:
+            self.type_properties.parent_bone_name = update_dict[self.type_properties.parent_bone_name]
+
     @property
     def name(self):
         return self.obj.name
@@ -256,7 +274,7 @@ class BlenderFLVERDummy(SoulstructObject[Dummy, FLVERDummyProps]):
     def name(self, value):
         raise ValueError(
             "Cannot set name of Blender Dummy object directly. Use `model_name`, `index`, and `reference_id` "
-            "properties."
+            "properties, which will update the wrapped object name appropriately."
         )
 
     # region Dummy Name Components
@@ -292,7 +310,7 @@ class BlenderFLVERDummy(SoulstructObject[Dummy, FLVERDummyProps]):
         match = self.DUMMY_NAME_RE.match(self.name)
         if match is None:
             raise ValueError(f"FLVER Dummy object name does not match expected pattern: {self.name}")
-        self.name = self.format_name(
+        self.obj.name = self.format_name(
             model_name=value,
             index=int(match.group(2)[1:-1]) if match.group(2) is not None else None,
             reference_id=int(match.group(3)[1:-1]),  # remove brackets
@@ -303,7 +321,7 @@ class BlenderFLVERDummy(SoulstructObject[Dummy, FLVERDummyProps]):
         match = self.DUMMY_NAME_RE.match(self.name)
         if match is None:
             raise ValueError(f"FLVER Dummy object name does not match expected pattern: {self.name}")
-        self.name = self.format_name(
+        self.obj.name = self.format_name(
             model_name=match.group(1),
             index=index,
             reference_id=int(match.group(3)[1:-1]),  # remove brackets
@@ -325,7 +343,7 @@ class BlenderFLVERDummy(SoulstructObject[Dummy, FLVERDummyProps]):
         match = self.DUMMY_NAME_RE.match(self.name)
         if match is None:
             raise ValueError(f"FLVER Dummy object name does not match expected pattern: {self.name}")
-        self.name = self.format_name(
+        self.obj.name = self.format_name(
             model_name=match.group(1),
             index=int(match.group(2)[1:-1]) if match.group(2) else None,
             reference_id=value,
@@ -523,7 +541,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
                     vertex_group.name = bone_renaming[vertex_group.name]
             for dummy in self.get_dummies():
                 dummy.model_name = new_name
-                # Dummy `parent_bone` pointer will take care of itself, if set.
+                dummy.update_parent_bone_name(bone_renaming)
 
     def select_mesh(self, deselect_all=True):
         if deselect_all:
@@ -1618,15 +1636,15 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
             bl_dummies = self.get_dummies(operator)
             read_bone_type = self.bone_data_type  # set on import and managed by user afterward
             # read_bone_type = self.guess_read_bone_type(operator)
-            operator.info(f"Exporting FLVER '{self.name}' with bone data from {read_bone_type.capitalize()}Bones.")
+            operator.info(f"Exporting FLVER '{self.name}' with bone data from {read_bone_type.name}s.")
         else:
             bl_dummies = []
             read_bone_type = self.BoneDataType.NONE
 
         if not self.armature or not self.armature.pose.bones:
             operator.info(  # not a warning
-                f"No non-empty Armature to export. Creating FLVER skeleton with a single default bone at origin named "
-                f"'{self.export_name}'."
+                f"No non-empty FLVER Armature to export. Creating FLVER skeleton with a single default bone at origin "
+                f"named '{self.export_name}'."
              )
             default_bone = FLVERBone(name=self.export_name)  # default transform and other fields
             flver.bones.append(default_bone)
@@ -1862,7 +1880,9 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
                     # Leave weights as zero.
                 else:
                     # Can't guess which bone to weight to. Raise error.
-                    raise FLVERExportError("Vertex is not weighted to any bones (cannot guess from multiple bones).")
+                    raise FLVERExportError(
+                        f"Vertex {i} is not weighted to any bones, and Map Piece FLVER has multiple bones."
+                    )
 
             if use_map_piece_layout:
                 if len(bone_indices) == 1:
@@ -1894,7 +1914,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         if "bone_indices" in vertex_data.dtype.names:
             vertex_data["bone_indices"] = vertex_bone_indices
 
-        operator.info(f"Constructed combined vertex array in {time.perf_counter() - p} s.")
+        operator.debug(f"Constructed combined vertex array in {time.perf_counter() - p} s.")
 
         # NOTE: We now iterate over the faces of the triangulated copy. Material index has been properly triangulated.
         p = time.perf_counter()
@@ -1905,7 +1925,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
             # Since we've triangulated the mesh, no need to check face loop count here.
             faces[i] = [*face.loop_indices, face.material_index]
 
-        operator.info(f"Constructed combined face array with {len(faces)} rows in {time.perf_counter() - p} s.")
+        operator.debug(f"Constructed combined face array with {len(faces)} rows in {time.perf_counter() - p} s.")
 
         # Finally, we iterate over (triangulated) loops and construct their arrays. Note that loop UV and vertex color
         # data IS copied over during the triangulation. Obviously, we will just have more loops.
@@ -2008,7 +2028,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
             # Later games support multiple vertex tangents and do not overload the bitangents.
             loop_bitangents = None
 
-        operator.info(f"Constructed combined loop array in {time.perf_counter() - p} s.")
+        operator.debug(f"Constructed combined loop array in {time.perf_counter() - p} s.")
 
         merged_mesh_kwargs = dict(
             vertex_data=vertex_data,
@@ -2036,7 +2056,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
             normal_tangent_dot_threshold=normal_tangent_dot_max,
             **settings.get_game_split_mesh_kwargs(),
         )
-        operator.info(f"Split Blender mesh into {len(flver.meshes)} FLVER meshes in {time.perf_counter() - p} s.")
+        operator.debug(f"Split Blender mesh into {len(flver.meshes)} FLVER meshes in {time.perf_counter() - p} s.")
 
     @classmethod
     def get_tangents_for_uv_layer(
@@ -2067,7 +2087,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         loop_tangents_reshaped = loop_tangents.reshape(-1, 3, 4)  # temporary reshape for easy negation
         loop_tangents_reshaped *= loop_tangent_signs[:, np.newaxis, np.newaxis]
         loop_tangents = loop_tangents_reshaped.reshape(-1, 4)
-        operator.info(
+        operator.debug(
             f"Detected {np.sum(loop_tangent_signs < 0)} / {loop_tangent_signs.size} face loops with mirrored UVs in "
             f"UV layer '{uv_name}' and negated their vertex tangents."
         )
@@ -2288,7 +2308,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         return cls(mesh)
 
     @classmethod
-    def get_selected_flvers(cls, context: bpy.types.Context) -> list[BlenderFLVER]:
+    def get_selected_flvers(cls, context: bpy.types.Context, sort=True) -> list[BlenderFLVER]:
         """Get the Mesh and (optional) Armature components of ALL selected FLVER objects of either type."""
         if not context.selected_objects:
             raise SoulstructTypeError("No FLVER Meshes or Armatures selected.")
@@ -2296,6 +2316,8 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         for obj in context.selected_objects:
             _, mesh = cls.parse_flver_obj(obj)
             flvers.append(cls(mesh))
+        if sort:  # sort by Blender name, so export order always matches outliner order
+            flvers = sorted(flvers, key=lambda o: natural_keys(o.obj.name))
         return flvers
 
     @classmethod

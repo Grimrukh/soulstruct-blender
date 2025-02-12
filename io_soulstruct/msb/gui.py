@@ -136,28 +136,19 @@ class MSBExportPanel(bpy.types.Panel):
                     continue
                 panel.prop(msb_export_settings, prop_name)
 
-        # We want to tell the user exactly which map this button will export to.
-        if settings.detect_map_from_collection:
-            if ExportMapMSB.poll(context):
-                # TODO: Currently, `ExportMapMSB.poll()` requires a map stem in the context collection name, so we can
-                #  rely upon that here.
-                match = MSB_COLLECTION_RE.match(context.collection.name)
-                map_stem = settings.get_latest_map_stem_version(match.group(1))
-                layout.label(text=f"Auto: {map_stem}")
+        if settings.can_auto_export:
+            # We want to tell the user exactly which map this button will export to.
+            map_stem = settings.get_active_object_detected_map(context)
+            if not map_stem:
+                layout.label(text="To Map: <NO MAP>")
             else:
-                map_stem = ""
-                layout.label(text="No game map detected.")
-        else:
-            map_stem = settings.map_stem
-            if map_stem:
-                layout.label(text=f"Selected: {map_stem}")
-            else:
-                layout.label(text="No game map selected.")
-
-        if map_stem:
+                map_stem = settings.get_latest_map_stem_version(map_stem)
+                layout.label(text=f"To Map: {map_stem}")
             layout.operator(ExportMapMSB.bl_idname)
+        else:
+            layout.label(text="No export directory set.")
 
-        layout.label(text="No generic export supported.")
+        layout.label(text="(No generic MSB export)")
 
 
 class MSBToolsPanel(bpy.types.Panel):

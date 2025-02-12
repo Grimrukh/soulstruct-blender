@@ -352,6 +352,18 @@ class SoulstructSettings(bpy.types.PropertyGroup):
     def image_cache_directory(self) -> Path | None:
         return Path(self.str_image_cache_directory) if self.str_image_cache_directory else None
 
+    def get_active_object_detected_map(self, context: bpy.types.Context) -> str:
+        """Check map of active collection if `detect_map_from_collection` is enabled, or use `map_stem` otherwise."""
+        if not context.active_object:
+            return ""
+        if self.detect_map_from_collection:
+            try:
+                return get_collection_map_stem(context.active_object)
+            except ValueError:
+                # Failed to detect map from active object's collection.
+                pass
+        return self.map_stem
+
     # endregion
 
     # region Constructors
@@ -639,7 +651,9 @@ class SoulstructSettings(bpy.types.PropertyGroup):
             project_path = project_root.get_file_path(relative_path)
             project_path.parent.mkdir(parents=True, exist_ok=True)
             exported_project_paths = file.write(project_path)  # will create '.bak' if appropriate
-            operator.info(f"Exported {class_name} to project: {exported_project_paths}")
+            operator.info(
+                f"Exported {class_name} to project files: {', '.join(str(path) for path in exported_project_paths)}"
+            )
             exported_game_paths = []
             if game_root and self.also_export_to_game:
                 # Copy all written files to game directory, rather than re-exporting.
@@ -960,9 +974,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):
             for mtdbnd_name in mtdbnd_names:
                 dir_mtdbnd_path = root.get_file_path(f"mtd/{mtdbnd_name}")
                 if dir_mtdbnd_path.is_file():
-                    operator.info(
-                        f"Found MTDBND '{dir_mtdbnd_path.name}' in {label} directory: {dir_mtdbnd_path}"
-                    )
+                    operator.debug(f"Found MTDBND '{dir_mtdbnd_path.name}' in {label} directory: {dir_mtdbnd_path}")
                     if mtdbnd is None:
                         mtdbnd = MTDBND.from_path(dir_mtdbnd_path)
                     else:

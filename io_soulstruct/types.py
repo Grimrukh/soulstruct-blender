@@ -12,6 +12,7 @@ from enum import StrEnum
 
 import bpy
 from mathutils import Vector, Euler
+from soulstruct.utilities.text import natural_keys
 from .exceptions import SoulstructTypeError
 
 if tp.TYPE_CHECKING:
@@ -257,7 +258,11 @@ class SoulstructObject(abc.ABC, tp.Generic[SOULSTRUCT_T, SOULSTRUCT_PROPS_T]):
         return cls(obj)
 
     @classmethod
-    def from_selected_objects(cls: type[SOULSTRUCT_OBJ_T], context: bpy.types.Context) -> list[SOULSTRUCT_OBJ_T]:
+    def from_selected_objects(
+        cls: type[SOULSTRUCT_OBJ_T],
+        context: bpy.types.Context,
+        sort=True,
+    ) -> list[SOULSTRUCT_OBJ_T]:
         if not context.selected_objects:
             raise SoulstructTypeError(f"No selected objects to become {cls.TYPE} Soulstruct objects.")
         selfs = []
@@ -265,6 +270,8 @@ class SoulstructObject(abc.ABC, tp.Generic[SOULSTRUCT_T, SOULSTRUCT_PROPS_T]):
             if obj.soulstruct_type != cls.TYPE:
                 raise SoulstructTypeError(f"Selected object '{obj}' is not a {cls.TYPE} Soulstruct object.")
             selfs.append(cls(obj))
+        if sort:  # sort by Blender name to match Outliner order
+            selfs = sorted(selfs, key=lambda o: natural_keys(o.obj.name))
         return selfs
 
     @classmethod
