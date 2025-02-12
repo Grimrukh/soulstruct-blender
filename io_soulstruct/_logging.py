@@ -36,8 +36,6 @@ def _set_up_logging():
         style="{",
     )
 
-    _IO_LOGGER.propagate = False  # don't use parent handlers
-
     IO_CONSOLE_HANDLER = logging.StreamHandler()
     IO_CONSOLE_HANDLER.setFormatter(IO_CONSOLE_FORMATTER)
     IO_CONSOLE_HANDLER.setLevel(CONSOLE_HANDLER.level)
@@ -51,6 +49,10 @@ def _set_up_logging():
     # _IO_LOGGER.addHandler(IO_FILE_HANDLER)
 
 
-# Only set up once (e.g. not every time we reload Blender scripts).
+_IO_LOGGER.propagate = False  # don't use parent handlers
 if not _IO_LOGGER.hasHandlers():
+    # Only set up once (e.g. not every time we reload Blender scripts).
     _set_up_logging()
+    _IO_LOGGER.info("Set up logging for 'io_soulstruct' sublogger.")
+else:
+    _IO_LOGGER.info("Logger 'io_soulstruct' already set up.")
