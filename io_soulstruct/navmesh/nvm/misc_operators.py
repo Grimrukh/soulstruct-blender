@@ -85,11 +85,10 @@ class RenameNavmesh(LoggingOperator):
             return self.error("New NVM name cannot be empty.")
 
         bl_nvm = BlenderNVM.from_active_object(context)
-        old_model_name = bl_nvm.tight_name
+        old_model_name = bl_nvm.tight_name  # we never rename MORE than this much of the old name
         new_model_name = self.new_name
 
-        bl_nvm.name = new_model_name
-        bl_nvm.data.name = new_model_name
+        bl_nvm.rename(new_model_name)  # will also rename NVM Event Entity children
 
         if self.rename_parts:
             part_count = 0
