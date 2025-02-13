@@ -251,6 +251,7 @@ class ExportMapMSB(LoggingOperator):
             bl_collision_parts = [
                 bl_collision_type(obj) for obj in bl_parts if obj.MSB_PART.part_subtype == MSBPartSubtype.Collision
             ]
+            self.info(f"Exporting {len(bl_collision_parts)} Collision models (might take a few seconds).")
             if settings.is_game(DEMONS_SOULS, DARK_SOULS_PTDE):
                 self.export_loose_hkxs(context, map_stem, bl_collision_parts)
             elif settings.is_game(DARK_SOULS_DSR):

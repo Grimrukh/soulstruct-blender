@@ -8,6 +8,7 @@ __all__ = [
     "MSBPartCreationTemplates",
     "CreateMSBPart",
     "CreateMSBRegion",
+    "CreateMSBEnvironmentEvent",
     "DuplicateMSBPartModel",
     "BatchSetPartGroups",
     "ApplyPartTransformToModel",
@@ -24,6 +25,7 @@ import typing as tp
 import bpy
 from mathutils import Matrix
 
+from soulstruct.base.maps.msb.region_shapes import RegionShapeType
 from soulstruct.games import DEMONS_SOULS, DARK_SOULS_PTDE, DARK_SOULS_DSR
 
 from io_soulstruct.exceptions import FLVERError
@@ -323,7 +325,8 @@ class CreateMSBPart(LoggingOperator):
         # noinspection PyTypeChecker
         model_obj = context.active_object  # type: bpy.types.MeshObject
 
-        settings = self.settings(context)
+        game = self.settings(context).game
+        map_stem = self.msb_map_stem
         templates = context.scene.msb_part_creation_templates
 
         try:
@@ -370,10 +373,10 @@ class CreateMSBPart(LoggingOperator):
         name = self.part_name or f"{get_bl_obj_tight_name(model_obj)} Part"
 
         try:
-            bl_part_type = BLENDER_MSB_PART_TYPES[settings.game][part_subtype]  # type: type[IBlenderMSBPart]
+            bl_part_type = BLENDER_MSB_PART_TYPES[game][part_subtype]  # type: type[IBlenderMSBPart]
         except KeyError:
             return self.error(
-                f"Cannot import MSB Part subtype `{part_subtype.value}` for game {settings.game.name}."
+                f"Cannot import MSB Part subtype `{part_subtype.value}` for game {game.name}."
             )
 
         # TODO: Detect map stem from part! Don't just use global setting.
@@ -381,9 +384,9 @@ class CreateMSBPart(LoggingOperator):
 
         part_collection = get_or_create_collection(
             context.scene.collection,
-            f"{settings.map_stem} MSB",
-            f"{settings.map_stem} Parts",
-            f"{settings.map_stem} {part_subtype.get_nice_name()} Parts",
+            f"{map_stem} MSB",
+            f"{map_stem} Parts",
+            f"{map_stem} {part_subtype.get_nice_name()} Parts",
         )
 
         try:
@@ -473,6 +476,90 @@ class CreateMSBRegion(LoggingOperator):
         context.view_layer.objects.active = region_obj
         self.deselect_all()
         region_obj.select_set(True)
+
+        return {"FINISHED"}
+
+
+class CreateMSBEnvironmentEvent(LoggingOperator):
+
+    bl_idname = "object.create_msb_environment_event"
+    bl_label = "Create MSB Env. Event"
+    bl_description = (
+        "For every selected MSB Collision part, create a new MSB Environment Event at the cursor location (with a "
+        "Region point parent) attached to that Collision (which also attaches to the event). DS1 only. Does not "
+        "actually generate the cubemap textures at these points. Will complain if the event already exists"
+    )
+
+    cubemap_index: bpy.props.IntProperty(
+        name="Cubemap Index",
+        description="Index of cubemap that combines with map stem to find GIEL texture in area TPF. Stored in 'Entity "
+                    "ID' field of MSB Event",
+        default=0,
+    )
+
+    @classmethod
+    def poll(cls, context) -> bool:
+        settings = cls.settings(context)
+        if not settings.is_game_ds1():
+            return False
+        return all(
+            obj.soulstruct_type == SoulstructType.MSB_PART and obj.MSB_PART.is_subtype(MSBPartSubtype.Collision)
+            for obj in context.selected_objects
+        )
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
+    def execute(self, context):
+        from .darksouls1ptde.parts import BlenderMSBCollision
+        from .darksouls1ptde.events import BlenderMSBEnvironmentEvent
+        from .darksouls1ptde.regions import BlenderMSBRegion
+
+        settings = self.settings(context)
+        if not settings.is_game_ds1():
+            return self.error(f"Cannot create MSB Environment Events for game {settings.game.name}.")
+
+        for obj in context.selected_objects:
+            msb_stem = get_collection_map_stem(obj)
+            bl_msb_collision = BlenderMSBCollision(obj)
+            env_event_name = f"GIEL_{bl_msb_collision.export_name}"  # ' <Environment>' suffix added automatically
+            if env_event_name + " <Environment>" in bpy.data.objects or env_event_name in bpy.data.objects:
+                self.error(f"Environment Event '{env_event_name}' already exists. Skipping MSB Collision {obj.name}.")
+                continue
+            env_region_name = f"EnvironmentEvent_GIEL_{bl_msb_collision.export_name}"
+            if env_region_name in bpy.data.objects:
+                self.error(f"Region Point '{env_region_name}' already exists. Skipping MSB Collision {obj.name}.")
+                continue
+
+            regions_events_collection = get_or_create_collection(
+                context.scene.collection,
+                f"{msb_stem} MSB",
+                f"{msb_stem} Regions/Events",
+            )
+
+            bl_region = BlenderMSBRegion.new_from_shape_type(
+                self,
+                context,
+                RegionShapeType.Point,
+                name=env_region_name,
+                collection=regions_events_collection,
+            )
+            bl_event = BlenderMSBEnvironmentEvent.new(
+                env_event_name,
+                data=None,
+                collection=regions_events_collection,
+            )
+            bl_event.obj.parent = bl_region.obj
+            bl_event.entity_id = self.cubemap_index
+            bl_event.attached_part = obj
+            bl_event.attached_region = bl_region.obj
+            # Leave other Environment unknown fields as they are.
+
+            # Move region to cursor.
+            bl_region.obj.location = context.scene.cursor.location
+
+            # Attach event to collision (more important I believe).
+            obj.MSB_COLLISION.environment_event = bl_event.obj
 
         return {"FINISHED"}
 

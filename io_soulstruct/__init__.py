@@ -342,6 +342,7 @@ CLASSES = (
     MSBPartCreationTemplates,
     CreateMSBPart,
     CreateMSBRegion,
+    CreateMSBEnvironmentEvent,
     DuplicateMSBPartModel,
     BatchSetPartGroups,
     ApplyPartTransformToModel,

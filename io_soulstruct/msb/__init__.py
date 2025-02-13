@@ -15,6 +15,7 @@ __all__ = [
     "MSBPartCreationTemplates",
     "CreateMSBPart",
     "CreateMSBRegion",
+    "CreateMSBEnvironmentEvent",
     "DuplicateMSBPartModel",
     "BatchSetPartGroups",
     "ApplyPartTransformToModel",

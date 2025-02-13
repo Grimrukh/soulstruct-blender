@@ -141,6 +141,11 @@ class MSBPartProps(bpy.types.PropertyGroup):
             raise ValueError("MSB Part subtype is not set.")
         return MSBPartSubtype(self.part_subtype)
 
+    def is_subtype(self, subtype: MSBPartSubtype | str):
+        if isinstance(subtype, str):
+            return self.part_subtype == subtype
+        return self.part_subtype == subtype.value
+
     model: bpy.props.PointerProperty(
         name="Model",
         type=bpy.types.Object,  # could be Armature or Mesh
