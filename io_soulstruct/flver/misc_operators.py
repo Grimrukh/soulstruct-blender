@@ -354,41 +354,36 @@ class BakeBonePoseToVertices(LoggingOperator):
     bl_label = "Bake Bone Pose to Vertices"
     bl_description = (
         "Bake the pose of each selected bone into all vertices weighted ONLY to that bone into the mesh and set bone "
-        "pose to origin. Valid only for Map Piece FLVERs; for safety, no Mesh material can have 'Is Bind Pose' custom "
-        "property set to True"
+        "pose to origin. Valid only for Map Piece FLVERs (`Bone Data Type` must be set to 'Pose Bones' in Object FLVER "
+        "properties)"
     )
 
     @classmethod
     def poll(cls, context) -> bool:
         """Must select at least one bone in Armature of active object."""
-        if context.mode == "OBJECT" and context.active_object:
-            # noinspection PyTypeChecker
-            arma = context.active_object.find_armature()  # type: bpy.types.ArmatureObject
-            if arma and any(bone.select for bone in arma.data.bones):
-                return True
-        return False
+        if (
+            context.mode != "OBJECT"
+            or not context.active_object
+            or not context.active_object.type == "ARMATURE"
+        ):
+            return False
+
+        try:
+            bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
+        except SoulstructTypeError:
+            return False
+
+        if not bl_flver.armature or bl_flver.bone_data_type != "PoseBone":
+            return False
+
+        # At least one bone must be selected.
+        return any(bone.select for bone in bl_flver.armature.data.bones)
 
     def execute(self, context):
-        if context.mode != "OBJECT":
-            return self.error("Please enter Object Mode to use this operator.")
 
-        # noinspection PyTypeChecker
-        mesh = context.active_object  # type: bpy.types.MeshObject
-        if mesh is None or mesh.type != "MESH":
-            return self.error("Please select a Mesh object.")
-
-        # TODO: Should check that Mesh has an Armature modifier attached to parent?
-        # noinspection PyTypeChecker
-        armature = mesh.parent  # type: bpy.types.ArmatureObject
-        if not armature or armature.type != "ARMATURE":
-            return self.error("Mesh is not parented to an Armature.")
-
-        if any(mat.get("Is Bind Pose") for mat in mesh.data.materials):
-            return self.error(
-                "One or more materials have 'Is Bind Pose' custom property set to True. This operator is only usable "
-                "for Map Piece FLVERs, where 'Is Bind Pose' is False and vertices are 'auto-posed' by exactly one "
-                "FLVER bone."
-            )
+        bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
+        armature = bl_flver.armature
+        mesh = bl_flver.mesh
 
         # Get a dictionary mapping bone names to their (location, rotation, scale) tuples for baking into vertices.
         # Ignores bones that are not selected.
@@ -406,7 +401,7 @@ class BakeBonePoseToVertices(LoggingOperator):
             if len(vertex.groups) != 1:
                 return self.error(
                     f"Vertex {vertex.index} is weighted to more than one bone: "
-                    f"{[group.name for group in vertex.groups]}. No vertices were baked."
+                    f"{[group.name for group in vertex.groups]}. No bone transforms were baked."
                 )
             group_index = vertex.groups[0].group
             bone_name = mesh.vertex_groups[group_index].name

@@ -20,7 +20,6 @@ import bpy
 
 from io_soulstruct.types import SoulstructType
 from io_soulstruct.utilities.operators import LoggingOperator
-from io_soulstruct.utilities.misc import get_bl_obj_tight_name
 from .types import BlenderFLVERMaterial
 
 _AREA_PREFIX_RE = re.compile(r"m\d\d_")
@@ -154,35 +153,10 @@ class AutoRenameMaterials(LoggingOperator):
     def execute(self, context):
         # noinspection PyTypeChecker
         obj = context.active_object  # type: bpy.types.MeshObject
-        material_tool_settings = context.scene.material_tool_settings
-        include_face_set_count = not material_tool_settings.clean_up_ignores_face_set_count
 
         for i, material in enumerate(obj.data.materials):
             flver_material = BlenderFLVERMaterial(material)
-
-            if material_tool_settings.clean_up_identical:
-                # Check if material without model stem exists, and see if we can use it (if it's identical).
-                modelless_name = self.get_auto_material_name(flver_material, "")
-                if modelless_name in bpy.data.materials:
-                    # Desired material name already exists. Check if we can use it. (We do this even with model stem.)
-                    this_hash = flver_material.get_hash(include_face_set_count)
-                    existing_material = bpy.data.materials[modelless_name]
-                    existing_hash = BlenderFLVERMaterial(existing_material).get_hash(include_face_set_count)
-                    if this_hash == existing_hash:
-                        self.info(
-                            f"Material '{material.name}' is identical to existing material '{modelless_name}'. "
-                            f"Switching to that material on this object."
-                        )
-                        obj.data.materials[i] = existing_material
-                        continue  # don't change material name
-
-            model_stem = ""
-            if material_tool_settings.use_model_stem_in_material_name:
-                other_flver_user_count = self.get_other_flver_user_count(obj, material)
-                if other_flver_user_count == 0:
-                    model_stem = get_bl_obj_tight_name(obj)
-
-            new_name = self.get_auto_material_name(BlenderFLVERMaterial(material), model_stem)
+            new_name = MergeFLVERMaterials.get_merged_material_name(flver_material)
             material.name = new_name  # will add dupe suffix if necessary
 
         return {"FINISHED"}
@@ -203,36 +177,6 @@ class AutoRenameMaterials(LoggingOperator):
                     count += 1
                     break
         return count
-
-    @staticmethod
-    def get_auto_material_name(material: BlenderFLVERMaterial, model_stem: str) -> str:
-        """TODO: These names easily get too long with the model stem, so omitting flag tags for now.
-
-        Index is stupid for multiple-user materials anyway.
-        """
-        texture_name_dict = material.get_texture_name_dict()
-        texture_names = []
-        for sampler_name in ("g_Diffuse", "g_Diffuse_2"):
-            if sampler_name in texture_name_dict:
-                texture_name = texture_name_dict[sampler_name].split(".")[0]
-                texture_names.append(texture_name)
-        if texture_names:
-            mat_name = " + ".join(texture_names)
-        else:
-            mat_name = "No Diffuse"
-
-        # Everything from here will be excluded from tight name on FLVER export.
-        mat_name += f" <{Path(material.mat_def_path).stem}>"
-
-        if not material.use_backface_culling:
-            # Backface culling is the default. We indicate if it is NOT enabled here (trees, etc.).
-            mat_name += " [NBC]"
-        # if material.flags:
-        #     mat_name += f" <{material.flags}>"
-        if model_stem:
-            mat_name += f" [{model_stem}]"
-
-        return mat_name
 
 
 class MergeFLVERMaterials(LoggingOperator):

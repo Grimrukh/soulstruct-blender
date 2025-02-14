@@ -7,6 +7,7 @@ __all__ = [
     "SelectLoResFaces",
 ]
 
+import re
 from functools import lru_cache
 
 import bmesh
@@ -84,15 +85,16 @@ class RenameCollision(LoggingOperator):
         return {"FINISHED"}
 
 
-# Ordered word lookups in FLVER material names.
+# Ordered regex lookups in FLVER material names.
 # Note that the same value can appear multiple times to give it different word-based priorities.
 # TODO: Add more words to this list as needed. It's actually a fairly small set of used words in FLVER materials.
-_FLVER_WORDS_TO_HKX_MATERIAL = {
-    ("_stone",): MapCollisionMaterial.Stone,
-    ("_bridge_board", "_wood", "_tree"): MapCollisionMaterial.Wood,
-    ("_ground", "_grass"): MapCollisionMaterial.Grass,
-    ("_cliff", "_rock"): MapCollisionMaterial.Rock,
-    ("_wall", "_floor"): MapCollisionMaterial.Stone,
+_FLVER_REGEX_TO_HKX_MATERIAL = {
+    re.compile(r"([\W_]|^)stone([\W_]|$)"): MapCollisionMaterial.Stone,
+    re.compile(r"([\W_]|^)(bridge_board|wood|tree)([\W_]|$)"): MapCollisionMaterial.Wood,
+    re.compile(r"([\W_]|^)(ground|grass|egg)([\W_]|$)"): MapCollisionMaterial.Grass,
+    re.compile(r"([\W_]|^)(cliff|rock)([\W_]|$)"): MapCollisionMaterial.Rock,
+    re.compile(r"([\W_]|^)m12_00_wall([\W_]|$)"): MapCollisionMaterial.Grass,  # mossy Darkroot wall texture
+    re.compile(r"([\W_]|^)(wall|floor)([\W_]|$)"): MapCollisionMaterial.Stone,  # generic stone
 }
 
 
@@ -109,12 +111,11 @@ def _flver_mat_name_to_hkx_mat_index(flver_mat_name: str) -> int:
     TODO: Tree/plant FLVER materials that shouldn't have any collision should return something indicating that.
     """
 
-    name = flver_mat_name.lower().split("[")[0].strip()
+    name = flver_mat_name.lower().split("<")[0].strip()
 
-    for words, material in _FLVER_WORDS_TO_HKX_MATERIAL.items():
-        for word in words:
-            if word in name:
-                return material
+    for pattern, material in _FLVER_REGEX_TO_HKX_MATERIAL.items():
+        if pattern.search(name):
+            return material
 
     return MapCollisionMaterial.Default  # so user can actually detect any misses
 
@@ -146,6 +147,20 @@ class GenerateCollisionFromMesh(LoggingOperator):
         description="Bake new faces into existing Collision model with given name. Model must already exist if this "
                     "is enabled (and converse)",
         default=False,
+    )
+
+    friction_offset: bpy.props.EnumProperty(
+        name="Lo Friction Offset",
+        description=(
+            "Offset (x100) to apply to HKX material (Lo only) to increase friction values in the new collision model"
+        ),
+        items=[
+            ("0", "0", "No extra friction"),
+            ("1", "1", "Some friction (up to ~40 deg walking)"),
+            ("2", "2", "Moderate friction (up to ~50 deg walking)"),
+            ("3", "3", "High friction (up to ~60 deg walking)"),
+        ],
+        default="0",
     )
 
     @classmethod
@@ -218,6 +233,11 @@ class GenerateCollisionFromMesh(LoggingOperator):
         # noinspection PyTypeChecker
         new_model = new_objs[0]  # type: bpy.types.MeshObject
 
+        # Delete all vertex groups.
+        # TODO: This won't bake out pose bones in Map Pieces...
+        for group in new_model.vertex_groups:
+            new_model.vertex_groups.remove(group)
+
         # Switch to Edit mode on the collision object.
         bpy.ops.object.mode_set(mode='EDIT')
         bm = bmesh.from_edit_mesh(new_model.data)
@@ -258,6 +278,7 @@ class GenerateCollisionFromMesh(LoggingOperator):
         bpy.ops.mesh.duplicate()
 
         # Use bmesh again to update the material on the duplicated (selected) faces to the low-resolution version.
+        # We also apply the friction offset here.
         bm = bmesh.from_edit_mesh(new_model.data)
         for face in bm.faces:
             if face.select:
@@ -265,6 +286,10 @@ class GenerateCollisionFromMesh(LoggingOperator):
                 mat_name = new_model.data.materials[face.material_index].name
                 m = HKX_MATERIAL_NAME_RE.match(mat_name)
                 index = int(m.group(1))
+
+                # Apply friction offset to Lo material.
+                if self.friction_offset != "0":
+                    index += int(self.friction_offset) * 100
 
                 mat_lo = BlenderMapCollision.get_hkx_material(index, is_hi_res=False)
 
