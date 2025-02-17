@@ -36,8 +36,9 @@ import bpy.ops
 
 from soulstruct.base.models.flver import FLVERVersion, FLVER
 from soulstruct.containers import Binder
-from soulstruct.darksouls1ptde.constants import CHARACTER_MODELS as DS1_CHARACTER_MODELS
 from soulstruct.demonssouls.constants import CHARACTER_MODELS as DES_CHARACTER_MODELS
+from soulstruct.darksouls1ptde.constants import CHARACTER_MODELS as DS1_CHARACTER_MODELS
+from soulstruct.eldenring.constants import CHARACTER_MODELS as ER_CHARACTER_MODELS
 
 from io_soulstruct.flver.image.image_import_manager import ImageImportManager
 from io_soulstruct.flver.utilities import *
@@ -285,6 +286,8 @@ class ImportCharacterFLVER(BaseFLVERImportOperator):
                 model_name = DS1_CHARACTER_MODELS.get(model_stem, "<Unknown>")
             elif settings.is_game("DEMONS_SOULS"):
                 model_name = DES_CHARACTER_MODELS.get(model_stem, "<Unknown>")
+            elif settings.is_game("ELDEN_RING"):
+                model_name = ER_CHARACTER_MODELS.get(model_stem, "<Unknown>")
 
         self.layout.label(text=f"Character: {model_name}")
         # Now draw standard properties for File Browser.

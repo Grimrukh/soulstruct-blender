@@ -22,6 +22,7 @@ import bpy
 from bpy.types import Context
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 from mathutils import Vector
+
 from soulstruct.dcx import DCXType
 from soulstruct.containers import Binder, BinderEntry
 
@@ -43,7 +44,6 @@ class LoggingOperator(bpy.types.Operator):
     def settings(context) -> SoulstructSettings:
         """Retrieve and save current Soulstruct plugin general settings."""
         _settings = context.scene.soulstruct_settings
-        _settings.save_settings()
         return _settings
 
     @staticmethod
@@ -150,6 +150,11 @@ class LoggingExportOperator(LoggingOperator, ExportHelper):
 
 
 class BinderEntrySelectOperator(LoggingOperator):
+    """Base class for operators that allow the user to select from a list of Binder entries to import.
+
+    This is done by unpacking each (filtered) Binder entry to empty files in a temporary directory, then allowing the
+    user to select the entries they want to import using the file browser window.
+    """
 
     # Set by `invoke` when entry choices are written to temp directory.
     binder: Binder  # NOTE: must NOT be imported under `TYPE_CHECKING` guard, as Blender loads annotations

@@ -69,7 +69,8 @@ class _GlobalSettingsPanel_ViewMixin:
             panel.prop(settings, "write_cached_images")
             panel.prop(settings, "pack_image_data")
 
-        layout.operator(LoadCollectionsFromBlend.bl_idname, text="Load BLEND Collections")
+        # TODO: Not that useful anymore. Removing to keep GUI minimal.
+        # layout.operator(LoadCollectionsFromBlend.bl_idname, text="Load BLEND Collections")
 
         # Convenience: expose Soulstruct Type of active object, for manual editing.
         if context.active_object:

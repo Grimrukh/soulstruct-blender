@@ -588,6 +588,9 @@ class DuplicateMSBPartModel(LoggingOperator):
             return False
         return True
 
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
     def execute(self, context):
 
         # Basic validation of selected objects:
@@ -832,10 +835,13 @@ class ApplyPartTransformToModel(LoggingOperator):
 
     bl_idname = "object.apply_part_transform_to_model"
     bl_label = "Apply Part Transform to Model"
-    bl_description = ("For each selected Part, apply its local (NOT world) transform to its model data, then reset the "
-                      "Part's transform to identity. This will cause the model to move to the Part's current location "
-                      "unless any further parent transforms are being applied to the Part. Only useable for geometry "
-                      "Parts (Map Pieces, Collisions, Navmeshes, Connect Collisions), for safety.")
+    bl_description = (
+        "For each selected Part, apply its local (NOT world) transform to its model data, then reset the Part's "
+        "transform to identity. This will cause the model to move to the Part's current location unless any further "
+        "parent transforms are being applied to the Part. Gets around Blender's usual 'no multi user' constraint for "
+        "applying an object transform to its Mesh. Only useable for geometry Parts (Map Pieces, Collisions, Navmeshes, "
+        "Connect Collisions) for safety."
+    )
 
     @classmethod
     def poll(cls, context) -> bool:
@@ -864,7 +870,7 @@ class ApplyPartTransformToModel(LoggingOperator):
         for obj in context.selected_objects:
             obj: bpy.types.MeshObject
             try:
-                self._apply_part_transform(obj)
+                self._apply_matrix_local_to_mesh(obj)
             except Exception as ex:
                 self.error(f"Failed to apply transform of MSB Part '{obj.name}' to model: {ex}")
             else:
@@ -880,7 +886,7 @@ class ApplyPartTransformToModel(LoggingOperator):
         return {"FINISHED"}
 
     @staticmethod
-    def _apply_part_transform(part: bpy.types.MeshObject):
+    def _apply_matrix_local_to_mesh(part: bpy.types.MeshObject):
         mesh = part.data
         local_transform = part.matrix_local.copy()
         mesh.transform(local_transform)  # applies to mesh data

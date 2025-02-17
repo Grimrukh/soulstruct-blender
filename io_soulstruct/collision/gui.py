@@ -90,3 +90,4 @@ class MapCollisionToolsPanel(bpy.types.Panel):
         # Useful in particular for creating HKX map collisions (e.g. from FLVER or high <> low res).
         layout.operator(RenameCollision.bl_idname)
         layout.operator(BooleanMeshCut.bl_idname)
+        layout.operator(ApplyLocalMatrixToMesh.bl_idname)

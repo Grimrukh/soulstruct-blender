@@ -18,6 +18,7 @@ from soulstruct.games import DEMONS_SOULS, DARK_SOULS_PTDE, DARK_SOULS_DSR
 
 from io_soulstruct.exceptions import SoulstructTypeError
 from io_soulstruct.general.gui import map_stem_box
+from io_soulstruct.misc_operators import ApplyLocalMatrixToMesh
 from io_soulstruct.types import *
 
 from .import_operators import *
@@ -104,6 +105,7 @@ class NVMNavmeshToolsPanel(bpy.types.Panel):
         self.layout.operator(GenerateNavmeshFromCollision.bl_idname)
 
         self.layout.label(text="Misc. Navmesh:")
+        self.layout.operator(ApplyLocalMatrixToMesh.bl_idname)
         self.layout.operator(RenameNavmesh.bl_idname)
 
         self.layout.label(text="Selected Face Indices:")
@@ -160,8 +162,9 @@ def layout_selected_faces(bm: bmesh.types.BMesh, layout, context, selected_faces
         row = flag_box.row()
         row.prop(props, "navmesh_flag")
         row = flag_box.row()
-        row.operator(AddNVMFaceFlags.bl_idname, text="Add Flag")
-        row.operator(RemoveNVMFaceFlags.bl_idname, text="Remove Flag")
+        row.operator(AddNVMFaceFlags.bl_idname, text="Add")
+        row.operator(RemoveNVMFaceFlags.bl_idname, text="Remove")
+        row.operator(SetNVMFaceFlags.bl_idname, text="Set")
 
         # Box and button to set obstacle count for selected faces.
         obstacle_box = layout.box()

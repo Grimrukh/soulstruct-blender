@@ -28,6 +28,7 @@ __all__ = [
     "RenameNavmesh",
     "AddNVMFaceFlags",
     "RemoveNVMFaceFlags",
+    "SetNVMFaceFlags",
     "SetNVMFaceObstacleCount",
     "ResetNVMFaceInfo",
     "AddNVMEventEntityTriangleIndex",

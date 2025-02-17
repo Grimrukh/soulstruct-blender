@@ -6,6 +6,7 @@ __all__ = [
     "RefreshFaceIndices",
     "AddNVMFaceFlags",
     "RemoveNVMFaceFlags",
+    "SetNVMFaceFlags",
     "SetNVMFaceObstacleCount",
     "ResetNVMFaceInfo",
     "AddNVMEventEntityTriangleIndex",
@@ -181,6 +182,42 @@ class RemoveNVMFaceFlags(LoggingOperator):
             selected_faces = [face for face in bm.faces if face.select]
             for face in selected_faces:
                 face[flags_layer] &= ~navmesh_flag
+                set_face_material(bl_mesh=obj.data, bl_face=face, face_flags=face[flags_layer])
+
+            bmesh.update_edit_mesh(obj.data)
+
+        # TODO: Would be nice to remove now-unused materials from the mesh.
+
+        return {"FINISHED"}
+
+
+class SetNVMFaceFlags(LoggingOperator):
+    bl_idname = "mesh.set_nvm_face_flags"
+    bl_label = "Set NVM Face Flags"
+    bl_description = "Set the selected NavmeshFlag bit flag (and no others) to all selected faces"
+
+    @classmethod
+    def poll(cls, context) -> bool:
+        return context.edit_object is not None and context.mode == "EDIT_MESH"
+
+    # noinspection PyMethodMayBeStatic
+    def execute(self, context):
+        # noinspection PyTypeChecker
+        obj = context.edit_object
+        if obj is None or obj.type != "MESH":
+            return self.error("No Mesh selected.")
+
+        obj: bpy.types.MeshObject
+        bm = bmesh.from_edit_mesh(obj.data)
+
+        props = context.scene.navmesh_face_settings
+        navmesh_flag = int(props.navmesh_flag)
+
+        flags_layer = bm.faces.layers.int.get("nvm_face_flags")
+        if flags_layer:
+            selected_faces = [face for face in bm.faces if face.select]
+            for face in selected_faces:
+                face[flags_layer] = navmesh_flag
                 set_face_material(bl_mesh=obj.data, bl_face=face, face_flags=face[flags_layer])
 
             bmesh.update_edit_mesh(obj.data)

@@ -15,6 +15,7 @@ __all__ = [
     "RefreshFaceIndices",
     "AddNVMFaceFlags",
     "RemoveNVMFaceFlags",
+    "SetNVMFaceFlags",
     "SetNVMFaceObstacleCount",
     "ResetNVMFaceInfo",
     "AddNVMEventEntityTriangleIndex",

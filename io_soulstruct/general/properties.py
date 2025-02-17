@@ -18,7 +18,7 @@ from soulstruct.base.models.mtd import MTDBND
 from soulstruct.containers import Binder
 from soulstruct.dcx import DCXType, compress, decompress
 from soulstruct.games import *
-from soulstruct.utilities.files import read_json, write_json, create_bak
+from soulstruct.utilities.files import create_bak
 
 from io_soulstruct.exceptions import *
 from io_soulstruct.utilities import *
@@ -1032,43 +1032,6 @@ class SoulstructSettings(bpy.types.PropertyGroup):
 
         operator.info(f"Loading bundled MATBINBND for game {self.game.name}...")
         return MATBINBND.from_bundled(self.game)
-
-    # endregion
-
-    # region Save/Load Settings
-
-    def load_settings(self):
-        """Read settings from a JSON file and set them to this group by scanning annotations."""
-        try:
-            json_settings = read_json(_SETTINGS_PATH)
-        except FileNotFoundError:
-            return  # do nothing
-
-        # All JSON types are compatible (strings, ints, bools).
-        for prop_name in self._get_bl_prop_names():
-            json_value = json_settings.get(prop_name, None)
-            if json_value is None:
-                continue  # not saved
-            setattr(self, prop_name, json_value)
-
-    def save_settings(self):
-        """Write these settings to a JSON file by scanning annotations."""
-        current_settings = {
-            prop_name: getattr(self, prop_name)
-            for prop_name in self._get_bl_prop_names()
-        }
-        write_json(_SETTINGS_PATH, current_settings, indent=4)
-
-    @classmethod
-    def _get_bl_prop_names(cls) -> list[str]:
-        prop_names = []
-        for prop_name, prop_type in cls.__annotations__.items():
-            if isinstance(prop_type, str):
-                if "Property" in prop_type:
-                    prop_names.append(prop_name)
-            elif "Property" in prop_type.__name__:
-                prop_names.append(prop_name)
-        return prop_names
 
     # endregion
 

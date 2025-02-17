@@ -40,6 +40,12 @@ class MaterialToolSettings(bpy.types.PropertyGroup):
         default=False,
     )
 
+    # TODO: These are currently unused. Can unify my two Material renaming operators:
+    #   - Hash all materials in data
+    #   - Scan all materials of all selected FLVERs
+    #   - Can rename and/or merge materials independently
+    #   - Can indicate whether hashing includes face set count in operator settings
+
     clean_up_identical: bpy.props.BoolProperty(
         name="Clean Up Identical",
         description="If the material with the auto-generated name already exists and is identical to the one on this "

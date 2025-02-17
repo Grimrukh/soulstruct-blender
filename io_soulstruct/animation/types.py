@@ -56,7 +56,14 @@ class SoulstructAnimation:
             hkx_entry_path="N:\\SPRJ\\data\\INTERROOT_ps4\\chr\\{model_name}\\hkx\\{animation_stem}.hkx",
             dcx_type=DCXType.Null,
         ),
-        # TODO: For Elden Ring, need to choose appropriate 'divXX' ANIBND.
+        ELDEN_RING: GameAnimationInfo(
+            relative_binder_path="chr/{model_name}.anibnd",
+            stem_template="###_######",
+            hkx_entry_path=(  # note new variable `div_id` for DivXX ANIBNDs, which should end in '_' if non-empty
+                "N:\\GR\\data\\INTERROOT_win64\\chr\\{model_name}\\hkx_{div_id}compendium\\{animation_stem}.hkx"
+            ),
+            dcx_type=DCXType.Null,
+        )
     }
 
     GAME_ANIMATION_INFO_OBJ = {
@@ -84,7 +91,7 @@ class SoulstructAnimation:
             hkx_entry_path="N:\\SPRJ\\data\\INTERROOT_ps4\\obj\\{model_name}\\hkx\\{animation_stem}.hkx",
             dcx_type=DCXType.Null,
         ),
-        # TODO: Elden Ring? Any DivXX stuff?
+        # TODO: Could just put Elden Ring Asset config here.
     }
 
     FAST = {"FAST"}
@@ -174,7 +181,8 @@ class SoulstructAnimation:
         operator.info(f"Importing HKX animation for {armature.name}: '{name}'")
 
         # We cannot rely on track annotations for bone names in all games (e.g. Demon's Souls, Elden Ring).
-        # Here, we just check that all animated bones are present in Blender Armature.
+        # In Elden Ring, some HKX skeletons also animate 'Twist' bones that are not actually present in the FLVER. We
+        # handle and warn about this cases, rather than throwing.
         hk_bone_names = [b.name for b in skeleton_hkx.skeleton.bones]
         track_bone_indices = animation_hkx.animation_container.hkx_binding.transformTrackToBoneIndices
         track_bone_names = [hk_bone_names[i] for i in track_bone_indices]
@@ -183,28 +191,22 @@ class SoulstructAnimation:
         if not animation_hkx.animation_container.is_interleaved:
             p = time.perf_counter()
             interleaved_animation_hkx = animation_hkx.to_interleaved_hkx()
-            operator.info(f"Converted animation to interleaved in {time.perf_counter() - p:.4f} seconds.")
+            operator.debug(f"Converted animation to interleaved in {time.perf_counter() - p:.4f} seconds.")
         else:
             # Already interleaved (fine for import).
             interleaved_animation_hkx = animation_hkx
-            operator.info(f"Imported animation was already interleaved (uncompressed).")
+            operator.debug(f"Imported animation was already interleaved (uncompressed).")
 
         p = time.perf_counter()
         arma_frames = get_armature_frames(interleaved_animation_hkx, skeleton_hkx)
         root_motion = get_root_motion(interleaved_animation_hkx)
-        operator.info(f"Constructed armature animation frames in {time.perf_counter() - p:.4f} seconds.")
+        operator.debug(f"Constructed armature animation frames in {time.perf_counter() - p:.4f} seconds.")
 
         for bone_name in track_bone_names:
             if bone_name not in bl_bone_names:
-                # if bone_name == "TwistRoot":
-                #     raise AnimationImportError(
-                #         f"Animated bone name '{bone_name}' is missing from Armature. This problem is known for this "
-                #         f"specific bone, which is absent from the FLVER, but has not yet been resolved in Soulstruct."
-                #     )
-                # raise AnimationImportError(f"Animated bone name '{bone_name}' is missing from Armature.")
                 operator.warning(
-                    f"Animated bone name '{bone_name}' is missing from Armature. Animation data for this absent bone "
-                    f"will be discarded."
+                    f"Animated bone name '{bone_name}' is missing from FLVER Armature. Animation data for this absent "
+                    f"bone will be discarded."
                 )
                 # Remove bone name from every Armature frame.
                 for frame in arma_frames:
@@ -223,7 +225,7 @@ class SoulstructAnimation:
         except Exception as ex:
             traceback.print_exc()
             raise AnimationImportError(f"Cannot import HKX animation: {name}. Error: {ex}")
-        operator.info(f"Created animation Blender action in {time.perf_counter() - p:.3f} seconds.")
+        operator.debug(f"Created animation Blender action in {time.perf_counter() - p:.3f} seconds.")
 
         return bl_animation
 

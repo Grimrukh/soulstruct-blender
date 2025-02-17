@@ -119,6 +119,7 @@ CLASSES = (
     CopyMeshSelectionOperator,
     CutMeshSelectionOperator,
     BooleanMeshCut,
+    ApplyLocalMatrixToMesh,
     ViewSelectedAtDistanceZero,
     # endregion
 
@@ -283,6 +284,7 @@ CLASSES = (
     RenameNavmesh,
     AddNVMFaceFlags,
     RemoveNVMFaceFlags,
+    SetNVMFaceFlags,
     SetNVMFaceObstacleCount,
     ResetNVMFaceInfo,
     AddNVMEventEntityTriangleIndex,
@@ -524,11 +526,6 @@ LOAD_POST_HANDLERS = []
 SPACE_VIEW_3D_HANDLERS = []
 
 
-@bpy.app.handlers.persistent
-def load_handler(_):
-    SoulstructSettings.from_context().load_settings()
-
-
 def register():
     for cls in CLASSES:
         try:
@@ -587,9 +584,6 @@ def register():
     for prop_name, prop_type in EDIT_BONE_POINTERS.items():
         setattr(bpy.types.EditBone, prop_name, bpy.props.PointerProperty(type=prop_type))
         EDIT_BONE_ATTRIBUTES.append(prop_name)
-
-    bpy.app.handlers.load_post.append(load_handler)
-    LOAD_POST_HANDLERS.append(load_handler)
 
     SPACE_VIEW_3D_HANDLERS.append(
         bpy.types.SpaceView3D.draw_handler_add(draw_dummy_ids, (), "WINDOW", "POST_PIXEL")

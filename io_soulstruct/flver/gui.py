@@ -73,6 +73,7 @@ class FLVERModelToolsPanel(bpy.types.Panel):
             move_box.prop(context.scene.mesh_move_settings, "new_material_index")
             move_box.operator(CopyMeshSelectionOperator.bl_idname)
             move_box.operator(CutMeshSelectionOperator.bl_idname)
+            move_box.operator(ApplyLocalMatrixToMesh.bl_idname)
             move_box.operator(CopyToNewFLVER.bl_idname)
 
         header, panel = layout.panel("Bone Tools", default_closed=True)

@@ -2309,13 +2309,20 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
 
     @classmethod
     def get_selected_flvers(cls, context: bpy.types.Context, sort=True) -> list[BlenderFLVER]:
-        """Get the Mesh and (optional) Armature components of ALL selected FLVER objects of either type."""
+        """Get the Mesh and (optional) Armature components of ALL selected FLVER objects of either type.
+
+        If the Armature and Mesh of the same FLVER are selected, it will NOT be duplicated in the output list, so
+        selecting entire hierarchies before using this is safe.
+        """
         if not context.selected_objects:
             raise SoulstructTypeError("No FLVER Meshes or Armatures selected.")
+        mesh_ids = []
         flvers = []
         for obj in context.selected_objects:
             _, mesh = cls.parse_flver_obj(obj)
-            flvers.append(cls(mesh))
+            if id(mesh) not in mesh_ids:  # make sure we don't duplicate FLVERs
+                flvers.append(cls(mesh))
+                mesh_ids.append(id(mesh))
         if sort:  # sort by Blender name, so export order always matches outliner order
             flvers = sorted(flvers, key=lambda o: natural_keys(o.obj.name))
         return flvers

@@ -5,10 +5,12 @@ __all__ = [
     "CopyMeshSelectionOperator",
     "CutMeshSelectionOperator",
     "BooleanMeshCut",
+    "ApplyLocalMatrixToMesh",
 ]
 
 import bmesh
 import bpy
+from mathutils import Matrix
 
 from io_soulstruct.utilities.operators import LoggingOperator
 
@@ -218,3 +220,54 @@ class BooleanMeshCut(LoggingOperator):
 
         self.info(f"Cut operation completed on shared mesh data of {cut_target_obj.name}.")
         return {"FINISHED"}
+
+
+class ApplyLocalMatrixToMesh(LoggingOperator):
+
+    bl_idname = "object.apply_local_matrix_to_mesh"
+    bl_label = "Apply Local Matrix to Mesh"
+    bl_description = (
+        "For each selected object, apply its local (NOT world) transform to its Mesh model data, then reset the "
+        "model's transform to identity. Gets around Blender's usual 'no multi user' constraint for applying an object "
+        "transform to its Mesh. Useful for applying temporary local transforms on FLVER/Collision/Navmesh models "
+        "(which do not affect model/MSB export at all) that you want to now propagate to their MSB Parts"
+    )
+
+    @classmethod
+    def poll(cls, context) -> bool:
+        """Select at least one MSB Part."""
+        if not context.selected_objects:
+            return False
+        if not all(
+            obj.type == "MESH"
+            for obj in context.selected_objects
+        ):
+            return False
+        return True
+
+    def execute(self, context):
+        success_count = 0
+        for obj in context.selected_objects:
+            obj: bpy.types.MeshObject
+            try:
+                self._apply_matrix_local_to_mesh(obj)
+            except Exception as ex:
+                self.error(f"Failed to apply local transform of object '{obj.name}' to its Mesh: {ex}")
+            else:
+                success_count += 1
+
+        if success_count == 0:
+            return self.error("Failed to apply local transform to any models of selected Mesh objects.")
+
+        self.info(
+            f"Applied transform to {success_count} / {len(context.selected_objects)} Mesh object"
+            f"{'s' if success_count > 1 else ''}."
+        )
+        return {"FINISHED"}
+
+    @staticmethod
+    def _apply_matrix_local_to_mesh(part: bpy.types.MeshObject):
+        mesh = part.data
+        local_transform = part.matrix_local.copy()
+        mesh.transform(local_transform)  # applies to mesh data
+        part.matrix_local = Matrix.Identity(4)  # reset to identity
