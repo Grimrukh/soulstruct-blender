@@ -273,7 +273,10 @@ class ExportCharacterHKXAnimation(BaseExportTypedHKXAnimation):
     """Export active animation from selected character Armature into that character's game ANIBND."""
     bl_idname = "export_scene.hkx_character_animation"
     bl_label = "Export Character Anim"
-    bl_description = "Export active Action into its character's ANIBND"
+    bl_description = (
+        "Export active Action into its character's ANIBND. For c0000, the best available sub-ANIBND will be chosen "
+        "automatically based on animation ID. Use 'Export HKX Anim into Binder' for manual choice"
+    )
 
     force_interleaved: bpy.props.BoolProperty(
         name="Force Interleaved",
@@ -306,11 +309,6 @@ class ExportCharacterHKXAnimation(BaseExportTypedHKXAnimation):
             return self.error(f"No animation HKX class defined for game {settings.game.name}.")
 
         model_name = bl_flver.export_name
-        if model_name == "c0000" and not settings.is_game("DARK_SOULS_DSR"):
-            return self.error(
-                "Automatic export of c0000 animations is currently only supported for DS1R. You can still export "
-                "manually into the correct c0000 sub-ANIBND of your choice."
-            )
 
         relative_anibnd_path = Path(game_anim_info.relative_binder_path.format(model_name=model_name))
         try:
@@ -332,7 +330,6 @@ class ExportCharacterHKXAnimation(BaseExportTypedHKXAnimation):
         animation_id = bl_animation.animation_id
 
         if model_name == "c0000":
-            # Must be DSR as per above check.
             sub_anibnd_stems = [entry.stem for entry in anibnd.find_entries_matching_name(r"c0000_.*\.txt")]
             if not sub_anibnd_stems:
                 return self.error("Could not find any sub-ANIBND definitions (e.g. 'c0000_a0x.txt') in c0000 ANIBND.")
@@ -352,7 +349,7 @@ class ExportCharacterHKXAnimation(BaseExportTypedHKXAnimation):
                     break
             else:
                 # Could not find existing animation ID in any sub-ANIBND. Fall back to DLC or a9x.
-                for stem_option in ["c0000_dlc", "c0000_a9x"]:
+                for stem_option in ["c0000_dlc02", "c0000_dlc", "c0000_a9x"]:
                     if stem_option not in sub_anibnd_stems:
                         continue
                     relative_sub_anibnd_path = Path(game_anim_info.relative_binder_path.format(model_name=stem_option))
@@ -364,7 +361,7 @@ class ExportCharacterHKXAnimation(BaseExportTypedHKXAnimation):
                 else:
                     return self.error(
                         f"Could not find any sub-ANIBND with existing animation ID {animation_id} for c0000, and could "
-                        f"not find either backup sub-ANIBND 'c0000_dlc' or 'c0000_a9x' to export new ID into."
+                        f"not find a backup sub-ANIBND ('c0000_dlc02', 'c0000_dlc', 'c0000_a9x') to export into."
                     )
 
         try:
