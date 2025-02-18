@@ -294,6 +294,8 @@ class ResetNVMFaceInfo(LoggingOperator):
             obstacle_count_layer = bm.faces.layers.int.new("nvm_face_obstacle_count")
 
         for face in bm.faces:
+            if not face.select:
+                continue
             face[flags_layer] = self.DEFAULT_FLAGS
             face[obstacle_count_layer] = self.DEFAULT_OBSTACLE_COUNT
             set_face_material(bl_mesh=obj.data, bl_face=face, face_flags=face[flags_layer])

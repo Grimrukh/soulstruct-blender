@@ -347,6 +347,7 @@ CLASSES = (
     CreateMSBEnvironmentEvent,
     DuplicateMSBPartModel,
     BatchSetPartGroups,
+    CopyDrawGroups,
     ApplyPartTransformToModel,
     CreateConnectCollision,
     MSBFindPartsPointer,

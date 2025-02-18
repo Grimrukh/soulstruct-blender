@@ -11,6 +11,7 @@ __all__ = [
     "CreateMSBEnvironmentEvent",
     "DuplicateMSBPartModel",
     "BatchSetPartGroups",
+    "CopyDrawGroups",
     "ApplyPartTransformToModel",
     "CreateConnectCollision",
     "MSBFindPartsPointer",
@@ -831,6 +832,43 @@ class BatchSetPartGroups(LoggingOperator):
         return {"FINISHED"}
 
 
+class CopyDrawGroups(LoggingOperator):
+
+    bl_idname = "object.copy_draw_groups"
+    bl_label = "Copy Draw Groups"
+    bl_description = (
+        "Copy exact Draw Groups from the active MSB Part to all selected MSB Parts. All selected Parts must be MSB "
+        "Parts of any subtype"
+    )
+
+    @classmethod
+    def poll(cls, context) -> bool:
+        if len(context.selected_objects) < 2 or not context.active_object:
+            return False
+        return all(obj.soulstruct_type == SoulstructType.MSB_PART for obj in context.selected_objects)
+
+    def execute(self, context):
+        settings = self.settings(context)
+        active_part = context.active_object
+        active_part_subtype = active_part.MSB_PART.part_subtype
+        bl_part_subtype = BLENDER_MSB_PART_TYPES[settings.game][active_part_subtype]  # type: type[IBlenderMSBPart]
+        bl_active_part = bl_part_subtype(active_part)
+        # noinspection PyUnresolvedReferences
+        active_draw_groups = bl_active_part.draw_groups
+
+        count = 0
+        for part in context.selected_objects:
+            if part is active_part:
+                continue
+            part_subtype = part.MSB_PART.part_subtype
+            bl_part = BLENDER_MSB_PART_TYPES[settings.game][part_subtype](part)
+            bl_part.draw_groups = active_draw_groups
+            count += 1
+
+        self.info(f"Copied draw groups from active Part to {count} other selected Parts.")
+        return {"FINISHED"}
+
+
 class ApplyPartTransformToModel(LoggingOperator):
 
     bl_idname = "object.apply_part_transform_to_model"
@@ -897,12 +935,12 @@ class CreateConnectCollision(LoggingOperator):
     bl_idname = "object.create_connect_collision"
     bl_label = "Create Connect Collision"
     bl_description = (
-        "Create a new MSB Connect Collision instance from the selected MSB Collision part, connecting to the given map "
-        "stem, and add the new Part to the collection of Connect Collisions in the same MSB. Map stem must have format "
-        "'mAA_BB_CC_DD' (e.g. 'm10_00_00_00'). If CC and DD are both zero, tag '[AA_BB]' will be added to the name "
-        "after the first underscore. Otherwise, the full '[AA_BB_CC_DD]' tag will be added. For simplicity, the draw "
-        "and display groups of the Connect Collision are controlled as just one (identical) integer, which is standard "
-        "for Connect Collisions (I don't believe the draw groups are even used)"
+        "Create a new MSB Connect Collision instance for each selected MSB Collision part, connecting to the given map "
+        "stem, and add the new Parts to the collection of Connect Collisions in the same MSB. Map stem must have "
+        "format 'mAA_BB_CC_DD' (e.g. 'm10_00_00_00'). If CC and DD are both zero, tag '[AA_BB]' will be added to the "
+        "name after the first underscore. Otherwise, the full '[AA_BB_CC_DD]' tag will be added. For simplicity, the "
+        "draw and display groups of the Connect Collisions are controlled as just one (identical) integer, which is "
+        "standard for Connect Collisions (I don't believe the draw groups are even used)"
     )
 
     connected_map_stem: bpy.props.StringProperty(
@@ -923,17 +961,17 @@ class CreateConnectCollision(LoggingOperator):
         settings = cls.settings(context)
         if not settings.is_game(DEMONS_SOULS, DARK_SOULS_PTDE, DARK_SOULS_DSR):
             return False
-        obj = context.active_object
-        if not obj:
+        if not context.selected_objects:
             return False
-        return obj.soulstruct_type == SoulstructType.MSB_PART and obj.MSB_PART.part_subtype == MSBPartSubtype.Collision
+        for obj in context.selected_objects:
+            if obj.soulstruct_type != SoulstructType.MSB_PART or obj.MSB_PART.part_subtype != MSBPartSubtype.Collision:
+                return False
+        return True
 
     def invoke(self, context, event):
         return context.window_manager.invoke_props_dialog(self)
 
     def execute(self, context):
-        # noinspection PyTypeChecker
-        collision_part_obj = context.active_object  # type: bpy.types.MeshObject
 
         settings = self.settings(context)
         if settings.is_game_ds1():
@@ -955,34 +993,42 @@ class CreateConnectCollision(LoggingOperator):
         else:
             tag = f"[{area:02d}_{block:02d}_{cc:02d}_{dd:02d}]"  # full tag required
 
-        map_stem = get_collection_map_stem(collision_part_obj)
+        bl_connect_collisions = []
+        for collision_part_obj in context.selected_objects:
+            collision_part_obj: bpy.types.MeshObject
 
-        collection = get_or_create_collection(
-            context.scene.collection,
-            f"{map_stem} MSB",
-            f"{map_stem} Parts",
-            f"{map_stem} Connect Collision Parts"
-        )
+            map_stem = get_collection_map_stem(collision_part_obj)
 
-        connect_collision_name = f"{collision_part_obj.name}_{tag}"
+            collection = get_or_create_collection(
+                context.scene.collection,
+                f"{map_stem} MSB",
+                f"{map_stem} Parts",
+                f"{map_stem} Connect Collision Parts"
+            )
 
-        bl_connect_collision = BlenderMSBConnectCollision.new(
-            name=connect_collision_name,
-            data=collision_part_obj.data,
-            collection=collection,
-        )
-        bl_connect_collision.collision = collision_part_obj
-        bl_connect_collision.model = collision_part_obj.MSB_PART.model
-        bl_connect_collision.draw_groups = {self.connected_display_group}
-        bl_connect_collision.display_groups = {self.connected_display_group}
-        bl_connect_collision.connected_map_id = connected_map_id
+            connect_collision_name = f"{collision_part_obj.name}_{tag}"
 
-        self.info(f"Created Connect Collision '{connect_collision_name}'.")
+            bl_connect_collision = BlenderMSBConnectCollision.new(
+                name=connect_collision_name,
+                data=collision_part_obj.data,
+                collection=collection,
+            )
+            bl_connect_collision.collision = collision_part_obj
+            bl_connect_collision.model = collision_part_obj.MSB_PART.model
+            bl_connect_collision.draw_groups = {self.connected_display_group}
+            bl_connect_collision.display_groups = {self.connected_display_group}
+            bl_connect_collision.connected_map_id = connected_map_id
 
-        # Select and view new object.
-        context.view_layer.objects.active = bl_connect_collision.obj
-        bl_connect_collision.obj.select_set(True)
-        bpy.ops.view3d.view_selected()
+            self.info(f"Created Connect Collision '{connect_collision_name}'.")
+            bl_connect_collisions.append(bl_connect_collision)
+
+        self.deselect_all()
+        if bl_connect_collisions:
+            for bl_connect_collision in bl_connect_collisions:
+                bl_connect_collision.obj.select_set(True)
+            context.view_layer.objects.active = bl_connect_collisions[0].obj
+
+        getattr(bpy.ops.view3d, "view_selected_distance_zero")()
 
         return {"FINISHED"}
 
@@ -1023,6 +1069,12 @@ class FindMSBParts(LoggingOperator):
         )
 
     def invoke(self, context, event):
+        """If only one Part exists, use that. Otherwise, offer list."""
+        for obj in context.scene.objects:
+            if obj.soulstruct_type == SoulstructType.MSB_PART and obj.MSB_PART.model == context.active_object:
+                context.scene.find_msb_parts_pointer.part = obj
+                return self.execute(context)
+        # Draw props dialog.
         return context.window_manager.invoke_props_dialog(self)
 
     def draw(self, context):

@@ -170,6 +170,7 @@ class MSBToolsPanel(bpy.types.Panel):
         layout.operator(CreateMSBEnvironmentEvent.bl_idname, icon='MESH_CUBE')
         layout.operator(DuplicateMSBPartModel.bl_idname, icon='DUPLICATE')
         layout.operator(BatchSetPartGroups.bl_idname, icon='MODIFIER')
+        layout.operator(CopyDrawGroups.bl_idname, icon='MODIFIER')
         layout.operator(ApplyPartTransformToModel.bl_idname, icon='MODIFIER')
         layout.operator(CreateConnectCollision.bl_idname, icon='MODIFIER')
 

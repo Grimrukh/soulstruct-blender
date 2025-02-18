@@ -18,6 +18,7 @@ __all__ = [
     "CreateMSBEnvironmentEvent",
     "DuplicateMSBPartModel",
     "BatchSetPartGroups",
+    "CopyDrawGroups",
     "ApplyPartTransformToModel",
     "CreateConnectCollision",
     "MSBFindPartsPointer",

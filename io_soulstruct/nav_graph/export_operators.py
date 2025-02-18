@@ -22,7 +22,7 @@ class ExportMCG(LoggingExportOperator):
     """
     bl_idname = "export_scene.mcg"
     bl_label = "Export MCG"
-    bl_description = "Export Blender lists of nodes/edges to an MCG graph file"
+    bl_description = "Export Blender lists of nodes/edges to an MCG graph file and optional additional MCP file"
 
     filename_ext = ".mcg"
 

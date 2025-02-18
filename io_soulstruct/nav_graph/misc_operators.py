@@ -469,8 +469,10 @@ class AutoCreateMCG(LoggingOperator):
     """
     bl_idname = "mesh.auto_create_mcg"
     bl_label = "Create MCG from Navmeshes"
-    bl_description = ("Create an entire MCG hierarchy of nodes/edges using all navmesh 'Exit' faces. Use by selecting "
-                      "a COMPLETE, ORDERED collection of a map's MSB Navmesh parts")
+    bl_description = (
+        "Create an entire MCG hierarchy of nodes/edges using all navmesh 'Exit' faces. Use by selecting "
+        "a COMPLETE, ORDERED collection of a map's MSB Navmesh parts, typically 'mAA_BB_CC_DD Navmesh Parts'"
+    )
 
     # Holds all navmesh BMeshes so they can be freed and deleted without fail.
     navmesh_bmeshes: list[bmesh.types.BMesh]
