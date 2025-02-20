@@ -144,8 +144,8 @@ class AutoRenameMaterials(LoggingOperator):
     bl_label = "Auto Rename Materials"
     bl_description = (
         "Automatically rename all materials of active FLVER model based on their texture names, index, "
-        "and MatDef path. Puts '<Multiple>' in name instead of model stem if multiple loaded FLVER "
-        "objects use this material (non-FLVER objects are ignored). Currently only for DS1."
+        "and MatDef path. If the same target name exists multiple times, Blender's dupe suffix system will handle it "
+        "e.g. '.001'). Currently only for DS1 FLVERs"
     )
 
     @classmethod
@@ -166,23 +166,6 @@ class AutoRenameMaterials(LoggingOperator):
             material.name = new_name  # will add dupe suffix if necessary
 
         return {"FINISHED"}
-
-    def get_other_flver_user_count(self, bl_flver_obj: bpy.types.MeshObject, material: bpy.types.Material) -> int:
-        """Get number of users of this material, ignoring any MSB Parts that use this FLVER.
-
-        Also logs other users, for inspection.
-        """
-        count = 0
-        for obj in bpy.data.objects:
-            if obj.type != "MESH" or obj.soulstruct_type != SoulstructType.FLVER or obj == bl_flver_obj:
-                continue
-            obj: bpy.types.MeshObject
-            for mat in obj.data.materials:
-                if mat == material:
-                    self.info(f"Material '{material.name}' is also used by FLVER object '{obj.name}'.")
-                    count += 1
-                    break
-        return count
 
 
 class MergeFLVERMaterials(LoggingOperator):
@@ -309,8 +292,8 @@ class MergeFLVERMaterials(LoggingOperator):
 
         mat_name += f" <{Path(material.mat_def_path).stem}"
 
-        if material.use_backface_culling:
-            mat_name += "|BC"
+        if not material.use_backface_culling:
+            mat_name += "|NBC"  # culling is way more common
         if material.flags:
             mat_name += f"|{material.flags}"
         mat_name += ">"

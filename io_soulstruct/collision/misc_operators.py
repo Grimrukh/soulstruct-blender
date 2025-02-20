@@ -186,6 +186,8 @@ class GenerateCollisionFromMesh(LoggingOperator):
         source_meshes = context.objects_in_mode  # type: list[bpy.types.MeshObject]
         if any(obj.type != "MESH" for obj in source_meshes):
             return self.error("All objects being edited must be meshes.")
+        if any(obj.soulstruct_type == SoulstructType.MSB_PART for obj in source_meshes):
+            return self.error("Cannot generate collision from MSB Part meshes. Use their model meshes instead.")
 
         # Validate existing collision, if chosen.
         existing_collision_obj = None  # type: bpy.types.MeshObject | None

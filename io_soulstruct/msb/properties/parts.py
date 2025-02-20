@@ -110,9 +110,13 @@ def _is_environment_event(_, obj: bpy.types.Object):
 
 def _is_model(_, obj: bpy.types.Object):
     """Only allow models that are FLVER, COLLISION, or NAVMESH Mesh objects."""
-    return obj.type == "MESH" and obj.soulstruct_type in {
-        SoulstructType.FLVER, SoulstructType.COLLISION, SoulstructType.NAVMESH
-    }
+    return (
+        obj.type == "MESH" and (
+            obj.soulstruct_type in {
+                SoulstructType.FLVER, SoulstructType.COLLISION, SoulstructType.NAVMESH
+            } or obj.get("MSB_MODEL_PLACEHOLDER", False)
+        )
+    )
 
 
 class MSBPartProps(bpy.types.PropertyGroup):
