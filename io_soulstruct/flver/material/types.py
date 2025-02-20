@@ -270,6 +270,11 @@ class BlenderFLVERMaterial:
 
                     tex_nodes_by_name[sampler_name].image = bl_image
 
+                    # Update Image colorspace from node label. (If image is used with multiple sampler types, this will
+                    # be the last one found.)
+                    if bl_image and "Albedo" not in tex_nodes_by_name[sampler_name].label:
+                        bl_image.colorspace_settings.name = "Non-Color"
+
         return material
 
     def to_flver_material(
