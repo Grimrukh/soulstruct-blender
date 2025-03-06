@@ -87,10 +87,10 @@ class RenameCollision(LoggingOperator):
 
 # Ordered regex lookups in FLVER material names.
 # Note that the same value can appear multiple times to give it different word-based priorities.
-# TODO: Add more words to this list as needed. It's actually a fairly small set of used words in FLVER materials.
+# TODO: Add more words to this list as needed. It's actually a fairly small set of used words in FLVER materials (DS1).
 _FLVER_REGEX_TO_HKX_MATERIAL = {
     re.compile(r"([\W_]|^)stone([\W_]|$)"): MapCollisionMaterial.Stone,
-    re.compile(r"([\W_]|^)(bridge_board|wood|tree)([\W_]|$)"): MapCollisionMaterial.Wood,
+    re.compile(r"([\W_]|^)(bridge_board|wood|tree|house)([\W_]|$)"): MapCollisionMaterial.Wood,
     re.compile(r"([\W_]|^)(ground|grass|egg)([\W_]|$)"): MapCollisionMaterial.Grass,
     re.compile(r"([\W_]|^)(cliff|rock)([\W_]|$)"): MapCollisionMaterial.Rock,
     re.compile(r"([\W_]|^)m12_00_wall([\W_]|$)"): MapCollisionMaterial.Grass,  # mossy Darkroot wall texture
