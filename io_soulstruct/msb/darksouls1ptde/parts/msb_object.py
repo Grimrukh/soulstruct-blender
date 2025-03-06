@@ -10,7 +10,7 @@ import typing as tp
 import bpy
 from io_soulstruct.exceptions import FLVERImportError, MissingPartModelError
 from io_soulstruct.flver.image.image_import_manager import ImageImportManager
-from io_soulstruct.flver.models import BlenderFLVER
+from io_soulstruct.flver.models import BlenderFLVER, FLVERBoneDataType
 from io_soulstruct.flver.utilities import get_flvers_from_binder
 from io_soulstruct.msb.properties import MSBPartSubtype, MSBObjectProps
 from io_soulstruct.msb.utilities import find_flver_model, batch_import_flver_models
@@ -157,7 +157,7 @@ class BlenderMSBObject(BlenderMSBPart[MSBObject, MSBObjectProps]):
                 model_name,
                 image_import_manager=image_import_manager,
                 collection=model_collection,
-                force_bone_data_type=BlenderFLVER.BoneDataType.EDIT,
+                force_bone_data_type=FLVERBoneDataType.EDIT,
             )
         except Exception as ex:
             traceback.print_exc()  # for inspection in Blender console

@@ -1,10 +1,10 @@
-_all__ = [
-    "ImportFLVER",
-    "ImportMapPieceFLVER",
-    "ImportCharacterFLVER",
-    "ImportObjectFLVER",
-    "ImportAssetFLVER",
-    "ImportEquipmentFLVER",
+__all__ = [
+    # region Operators
+    "BakeBonePoseToVertices",
+    "ReboneVertices",
+
+    "HideAllDummiesOperator",
+    "ShowAllDummiesOperator",
 
     "ExportLooseFLVER",
     "ExportFLVERIntoBinder",
@@ -12,6 +12,30 @@ _all__ = [
     "ExportCharacterFLVER",
     "ExportObjectFLVER",
     "ExportEquipmentFLVER",
+
+    "ImportFLVER",
+    "ImportMapPieceFLVER",
+    "ImportCharacterFLVER",
+    "ImportObjectFLVER",
+    "ImportAssetFLVER",
+    "ImportEquipmentFLVER",
+
+    "SelectDisplayMaskID",
+    "SelectUnweightedVertices",
+    "SetSmoothCustomNormals",
+    "SetVertexAlpha",
+    "InvertVertexAlpha",
+
+    "CopyToNewFLVER",
+    "RenameFLVER",
+    "SelectMeshChildren",
+
+    "ActivateUVMap",
+    "FastUVUnwrap",
+    "FastUVUnwrapIslands",
+    "RotateUVMapClockwise90",
+    "RotateUVMapCounterClockwise90",
+    "AddRandomUVTileOffsets",
 
     "FLVERImportSettings",
     "FLVERExportSettings",
@@ -23,10 +47,41 @@ _all__ = [
     "FLVERDummyPropsPanel",
     "FLVERImportPanel",
     "FLVERExportPanel",
+    "FLVERModelToolsPanel",
+    "FLVERUVMapsPanel",
+    # endregion
+
+    # region Properties
+    "FLVERProps",
+    "FLVERDummyProps",
+    "FLVERBoneProps",
+    "FLVERImportSettings",
+    "FLVERExportSettings",
+    # endregion
+
+    # region Types
+    "BlenderFLVER",
+    "BlenderFLVERDummy",
+    "FLVERBoneDataType",
+    "FLVERModelType",
+    # endregion
+
+    # region GUI
+    "FLVERPropsPanel",
+    "FLVERDummyPropsPanel",
+    "FLVERImportPanel",
+    "FLVERExportPanel",
+    "FLVERModelToolsPanel",
+    "FLVERUVMapsPanel",
+    # endregion
+
+    # region Draw Handlers
+    "draw_dummy_ids",
+    # endregion
 ]
 
-from .import_operators import *
-from .export_operators import *
+from .operators import *
 from .properties import *
 from .types import *
 from .gui import *
+from .draw_handlers import *

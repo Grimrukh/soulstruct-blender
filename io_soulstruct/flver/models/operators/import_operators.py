@@ -44,8 +44,8 @@ from io_soulstruct.flver.image.image_import_manager import ImageImportManager
 from io_soulstruct.flver.utilities import *
 from io_soulstruct.general import SoulstructSettings
 from io_soulstruct.utilities import *
-from .types import BlenderFLVER
-from .properties import FLVERImportSettings
+from ..types import BlenderFLVER, FLVERBoneDataType
+from ..properties import FLVERImportSettings
 
 
 FLVER_BINDER_RE = re.compile(r"^.*?\.(.*bnd)(\.dcx)?$")
@@ -55,7 +55,7 @@ class BaseFLVERImportOperator(LoggingImportOperator):
 
     # If defined, imported FLVER Armatures will use the forced data type: Pose (map pieces) vs. Edit (all other models).
     # Otherwise, data type will be guessed from FLVER content.
-    FORCE_BONE_DATA_TYPE: BlenderFLVER.BoneDataType | None = None
+    FORCE_BONE_DATA_TYPE: FLVERBoneDataType | None = None
 
     def draw(self, context):
         import_settings = context.scene.flver_import_settings
@@ -188,7 +188,7 @@ class ImportMapPieceFLVER(BaseFLVERImportOperator):
     bl_label = "Import Map Piece"
     bl_description = "Import a Map Piece FLVER from selected game map directory"
 
-    FORCE_BONE_DATA_TYPE = BlenderFLVER.BoneDataType.POSE
+    FORCE_BONE_DATA_TYPE = FLVERBoneDataType.POSE
 
     filter_glob: bpy.props.StringProperty(
         default="*.flver;*.flver.dcx;*.mapbnd;*.mapbnd.dcx",
@@ -245,7 +245,7 @@ class ImportCharacterFLVER(BaseFLVERImportOperator):
     bl_label = "Import Character"
     bl_description = "Import character FLVER from a CHRBND in selected game 'chr' directory"
 
-    FORCE_BONE_DATA_TYPE = BlenderFLVER.BoneDataType.EDIT
+    FORCE_BONE_DATA_TYPE = FLVERBoneDataType.EDIT
 
     filter_glob: bpy.props.StringProperty(
         default="*.chrbnd;*.chrbnd.dcx;*.chrbnd.bak;*.chrbnd.dcx.bak;",
@@ -334,7 +334,7 @@ class ImportObjectFLVER(BaseFLVERImportOperator):
     bl_label = "Import Object"
     bl_description = "Import object FLVER from an OBJBND in selected game 'obj' directory"
 
-    FORCE_BONE_DATA_TYPE = BlenderFLVER.BoneDataType.EDIT
+    FORCE_BONE_DATA_TYPE = FLVERBoneDataType.EDIT
 
     filter_glob: bpy.props.StringProperty(
         default="*.objbnd;*.objbnd.dcx;",
@@ -372,7 +372,7 @@ class ImportAssetFLVER(BaseFLVERImportOperator):
     bl_label = "Import Asset"
     bl_description = "Import asset FLVER from a GEOMBND in selected game 'asset' directory"
 
-    FORCE_BONE_DATA_TYPE = BlenderFLVER.BoneDataType.EDIT
+    FORCE_BONE_DATA_TYPE = FLVERBoneDataType.EDIT
 
     filter_glob: bpy.props.StringProperty(
         default="*.geombnd;*.geombnd.dcx;",
@@ -418,7 +418,7 @@ class ImportEquipmentFLVER(BaseFLVERImportOperator):
     bl_label = "Import Equipment"
     bl_description = "Import equipment FLVER from a PARTSBND in selected game 'parts' directory"
 
-    FORCE_BONE_DATA_TYPE = BlenderFLVER.BoneDataType.EDIT
+    FORCE_BONE_DATA_TYPE = FLVERBoneDataType.EDIT
 
     filter_glob: bpy.props.StringProperty(
         default="*.partsbnd;*.partsbnd.dcx;",

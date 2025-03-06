@@ -18,7 +18,7 @@ from soulstruct.games import DEMONS_SOULS, DARK_SOULS_PTDE, DARK_SOULS_DSR
 
 from io_soulstruct.exceptions import SoulstructTypeError
 from io_soulstruct.general.gui import map_stem_box
-from io_soulstruct.misc_operators import ApplyLocalMatrixToMesh
+from io_soulstruct.misc.misc_mesh import ApplyLocalMatrixToMesh
 from io_soulstruct.types import *
 
 from .import_operators import *

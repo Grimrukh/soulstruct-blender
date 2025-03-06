@@ -690,9 +690,7 @@ def create_vert(
 
 def delete(
     bm: bmesh.types.BMesh,
-    geom: list[bmesh.types.BMEdge]
-    | list[bmesh.types.BMFace]
-    | list[bmesh.types.BMVert] = (),
+    geom: list[bmesh.types.BMEdge] | list[bmesh.types.BMFace] | list[bmesh.types.BMVert] = (),
     context: str = "VERTS",
 ):
     """Delete Geometry.Utility operator to delete geometry.
@@ -816,9 +814,7 @@ def dissolve_verts(
 
 def duplicate(
     bm: bmesh.types.BMesh,
-    geom: list[bmesh.types.BMEdge]
-    | list[bmesh.types.BMFace]
-    | list[bmesh.types.BMVert] = (),
+    geom: list[bmesh.types.BMEdge] | list[bmesh.types.BMFace] | list[bmesh.types.BMVert] = (),
     dest: bmesh.types.BMesh = None,
     use_select_history: bool = False,
     use_edge_flip_from_face: bool = False,

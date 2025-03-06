@@ -3,13 +3,16 @@ from __future__ import annotations
 __all__ = [
     "OBJECT_UL_flver_gx_item",
     "FLVERMaterialPropsPanel",
+    "FLVERMaterialToolsPanel",
 ]
 
 import typing as tp
 
 import bpy
 
-from .misc_operators import AddMaterialGXItem, RemoveMaterialGXItem
+from .operators import *
+from io_soulstruct.flver.image.import_operators import ImportTextures
+from io_soulstruct.flver.image.misc_operators import FindMissingTexturesInImageCache
 
 if tp.TYPE_CHECKING:
     from .properties import FLVERGXItemProps
@@ -20,8 +23,8 @@ class OBJECT_UL_flver_gx_item(bpy.types.UIList):
 
     def draw_item(
         self,
-        context,
-        layout,
+        context: bpy.types.Context,
+        layout: bpy.types.UILayout,
         data,
         item: FLVERGXItemProps,
         icon,
@@ -102,3 +105,48 @@ class FLVERMaterialPropsPanel(bpy.types.Panel):
                     label_done = True
                 key = key[5:-1]
                 layout.label(text=f"{key}: {value}")
+
+
+class FLVERMaterialToolsPanel(bpy.types.Panel):
+    bl_label = "FLVER Material Tools"
+    bl_idname = "SCENE_PT_flver_material_tools"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "FLVER"
+    bl_options = {"DEFAULT_CLOSED"}
+
+    def draw(self, context):
+        layout = self.layout
+
+        header, panel = layout.panel("Material Tools", default_closed=True)
+        header.label(text="Material Tools")
+        if panel:
+            material_tool_settings = context.scene.material_tool_settings
+            panel.prop(material_tool_settings, "use_model_stem_in_material_name")
+            panel.prop(material_tool_settings, "clean_up_identical")
+            panel.prop(material_tool_settings, "clean_up_ignores_face_set_count")
+            panel.operator(AutoRenameMaterials.bl_idname)
+            panel.operator(MergeFLVERMaterials.bl_idname)
+            active_object = context.active_object
+            if active_object and active_object.active_material:
+                panel.label(text=active_object.active_material.name)
+                panel.prop(material_tool_settings, "albedo_image")
+                panel.operator(SetMaterialTexture0.bl_idname)
+                panel.operator(SetMaterialTexture1.bl_idname)
+            else:
+                panel.label(text="No Material Selected.")
+
+        header, panel = layout.panel("Texture Export Settings", default_closed=True)
+        header.label(text="Texture Export Settings")
+        if panel:
+            texture_export_settings = context.scene.texture_export_settings
+            for prop_name in texture_export_settings.__annotations__:
+                panel.prop(texture_export_settings, prop_name)
+
+        header, panel = layout.panel("Texture Tools", default_closed=True)
+        header.label(text="Texture Tools")
+        if panel:
+            panel.label(text="Textures:")
+            panel.operator(ImportTextures.bl_idname)
+            panel.operator(FindMissingTexturesInImageCache.bl_idname)
+            # panel.operator(ExportTexturesIntoBinder.bl_idname)  # TODO: not yet functional

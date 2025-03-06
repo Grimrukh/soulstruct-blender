@@ -26,7 +26,7 @@ from io_soulstruct.general import *
 from io_soulstruct.utilities import *
 from io_soulstruct.flver.image import *
 from io_soulstruct.flver.image.export_operators import export_map_area_textures
-from .types import BlenderFLVER, FLVERModelType
+from ..types import BlenderFLVER, FLVERModelType
 
 if tp.TYPE_CHECKING:
     from io_soulstruct.type_checking import CHRBND_TYPING, OBJBND_TYPING, PARTSBND_TYPING

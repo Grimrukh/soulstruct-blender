@@ -104,6 +104,79 @@ class BlenderMSBRegion(SoulstructObject[MSBRegion, MSBRegionProps]):
         # We use scale to represent shape dimensions.
 
     @classmethod
+    def new_from_shape_type(
+        cls,
+        operator: LoggingOperator,
+        context: bpy.types.Context,
+        shape_type: RegionShapeType,
+        name: str,
+        collection: bpy.types.Collection = None,
+        **kwargs,
+    ) -> BlenderMSBRegion:
+        collection = collection or context.scene.collection
+        operator.to_object_mode()
+
+        if shape_type == RegionShapeType.Point:
+            # Create a new tiny cube Mesh object to represent a Point. Manual GUI handles better drawing, since I don't
+            # like any of Blender's Empty display modes for this, but still want something easily clickable.
+            mesh = bpy.data.meshes.new(name)
+            primitive_three_axes(mesh)
+            bl_region = cls.new(name, mesh, collection)  # type: tp.Self
+            bl_region.shape_type = RegionShapeType.Point
+            # Points also have axes enabled.
+            bl_region.obj.show_axis = True
+        elif shape_type == RegionShapeType.Circle:
+            mesh = bpy.data.meshes.new(name)
+            primitive_circle(mesh)
+            bl_region = cls.new(name, mesh, collection)  # type: tp.Self
+            bl_region.shape_type = RegionShapeType.Circle
+            bl_region.radius = kwargs.pop("radius", 1.0)
+        elif shape_type == RegionShapeType.Sphere:
+            mesh = bpy.data.meshes.new(name)
+            primitive_cube(mesh)
+            bl_region = cls.new(name, mesh, collection)  # type: tp.Self
+            bl_region.shape_type = RegionShapeType.Sphere
+            bl_region.radius = kwargs.pop("radius", 1.0)
+        elif shape_type == RegionShapeType.Cylinder:
+            mesh = bpy.data.meshes.new(name)
+            primitive_cube(mesh)
+            bl_region = cls.new(name, mesh, collection)  # type: tp.Self
+            bl_region.shape_type = RegionShapeType.Cylinder
+            bl_region.radius = kwargs.pop("radius", 1.0)
+            bl_region.height = kwargs.pop("height", 1.0)
+        elif shape_type == RegionShapeType.Rect:
+            mesh = bpy.data.meshes.new(name)
+            primitive_rect(mesh)
+            bl_region = cls.new(name, mesh, collection)  # type: tp.Self
+            bl_region.shape_type = RegionShapeType.Rect
+            bl_region.width = kwargs.pop("width", 1.0)
+            bl_region.depth = kwargs.pop("depth", 1.0)
+        elif shape_type == RegionShapeType.Box:
+            mesh = bpy.data.meshes.new(name)
+            primitive_cube(mesh)
+            bl_region = cls.new(name, mesh, collection)  # type: tp.Self
+            bl_region.shape_type = RegionShapeType.Box
+            bl_region.width = kwargs.pop("width", 1.0)
+            bl_region.depth = kwargs.pop("depth", 1.0)
+            bl_region.height = kwargs.pop("height", 1.0)
+        else:
+            # TODO: Handle Composite... Depends if the children are used anywhere else. Hard to child them if so.
+            raise TypeError(f"Unsupported MSB region shape: {shape_type}")
+
+        if kwargs:
+            raise TypeError(f"Invalid dimension arguments for shape type {shape_type}: {kwargs.keys()}")
+
+        bl_region.shape_type = shape_type
+        bl_region.type_properties.region_subtype = MSBRegionSubtype.All  # no subtypes for DS1
+
+        # Set viewport display to Wire.
+        bl_region.obj.display_type = "WIRE"
+
+        # Transform and entity ID left as default.
+
+        return bl_region
+
+    @classmethod
     def new_from_soulstruct_obj(
         cls,
         operator: LoggingOperator,

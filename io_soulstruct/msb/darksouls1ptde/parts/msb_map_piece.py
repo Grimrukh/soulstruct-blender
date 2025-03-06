@@ -12,7 +12,7 @@ from pathlib import Path
 import bpy
 from io_soulstruct.exceptions import FLVERImportError, MissingPartModelError
 from io_soulstruct.flver.image.image_import_manager import ImageImportManager
-from io_soulstruct.flver.models import BlenderFLVER
+from io_soulstruct.flver.models import BlenderFLVER, FLVERBoneDataType
 from io_soulstruct.msb.properties import MSBPartSubtype, MSBMapPieceProps
 from io_soulstruct.msb.utilities import find_flver_model, batch_import_flver_models
 from io_soulstruct.types import SoulstructType
@@ -91,7 +91,7 @@ class BlenderMSBMapPiece(BlenderMSBPart[MSBMapPiece, MSBMapPieceProps]):
                 model_name,
                 image_import_manager=image_import_manager,
                 collection=model_collection,
-                force_bone_data_type=BlenderFLVER.BoneDataType.POSE,
+                force_bone_data_type=FLVERBoneDataType.POSE,
             )
         except Exception as ex:
             traceback.print_exc()  # for inspection in Blender console

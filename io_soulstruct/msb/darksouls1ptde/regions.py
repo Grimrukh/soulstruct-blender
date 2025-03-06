@@ -155,11 +155,12 @@ class BlenderMSBRegion(SoulstructObject[MSBRegion, MSBRegionProps]):
             mesh = bpy.data.meshes.new(name)
             primitive_cube(mesh)
             bl_region = cls.new(name, mesh, collection)  # type: tp.Self
+            bl_region.shape_type = RegionShapeType.Box
             bl_region.width = kwargs.pop("width", 1.0)
             bl_region.depth = kwargs.pop("depth", 1.0)
             bl_region.height = kwargs.pop("height", 1.0)
         else:
-            # TODO: Handle Composite... Depends if the children are used anywhere else.
+            # TODO: Handle Composite... Depends if the children are used anywhere else. Hard to child them if so.
             raise TypeError(f"Unsupported MSB region shape: {shape_type}")
 
         if kwargs:

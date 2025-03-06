@@ -53,7 +53,6 @@ class Scene(ID, bpy_struct):
     bake_lightmap_settings: BakeLightmapSettings
     flver_tool_settings: FLVERToolSettings
     material_tool_settings: MaterialToolSettings
-    mesh_move_settings: MeshMoveSettings
     map_collision_import_settings: MapCollisionImportSettings
     map_collision_tool_settings: MapCollisionToolSettings
     navmesh_face_settings: NavmeshFaceSettings

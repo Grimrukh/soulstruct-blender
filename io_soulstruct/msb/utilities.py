@@ -312,8 +312,8 @@ def batch_import_flver_models(
                 name=model_name,
                 image_import_manager=image_import_manager,
                 collection=model_collection,
-                merged_mesh=merged_mesh,
-                bl_materials=bl_materials,
+                existing_merged_mesh=merged_mesh,
+                existing_bl_materials=bl_materials,
             )
         except Exception as ex:
             traceback.print_exc()  # for inspection in Blender console

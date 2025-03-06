@@ -47,7 +47,7 @@ for module_name in list(sys.modules.keys()):
 import io_soulstruct._logging
 
 from io_soulstruct.general import *
-from io_soulstruct.misc_operators import *
+from io_soulstruct.misc import *
 
 from io_soulstruct.animation import *
 from io_soulstruct.collision import *
@@ -63,8 +63,8 @@ from io_soulstruct.utilities import ViewSelectedAtDistanceZero
 bl_info = {
     "name": "Soulstruct",
     "author": "Scott Mooney (Grimrukh)",
-    "version": (2, 2, 3),
-    "blender": (4, 2, 0),
+    "version": (2, 3, 0),
+    "blender": (4, 3, 0),
     "location": "File > Import-Export",
     "description": "Import, manipulate, and export FromSoftware/Havok assets",
     "warning": "",
@@ -114,15 +114,6 @@ CLASSES = (
     LoadCollectionsFromBlend,
     # endregion
 
-    # region Misc. Operators
-    MeshMoveSettings,
-    CopyMeshSelectionOperator,
-    CutMeshSelectionOperator,
-    BooleanMeshCut,
-    ApplyLocalMatrixToMesh,
-    ViewSelectedAtDistanceZero,
-    # endregion
-
     # region FLVER / Materials / Textures
     ImportFLVER,
     ImportMapPieceFLVER,
@@ -134,7 +125,6 @@ CLASSES = (
 
     HideAllDummiesOperator,
     ShowAllDummiesOperator,
-    PrintGameTransform,
 
     FLVERExportSettings,
     ExportLooseFLVER,
@@ -160,10 +150,9 @@ CLASSES = (
     InvertVertexAlpha,
     BakeBonePoseToVertices,
     ReboneVertices,
-    ActivateUVTexture0,
-    ActivateUVTexture1,
-    ActiveUVLightmap,
+    ActivateUVMap,
     FastUVUnwrap,
+    FastUVUnwrapIslands,
     RotateUVMapClockwise90,
     RotateUVMapCounterClockwise90,
     FindMissingTexturesInImageCache,
@@ -412,6 +401,38 @@ CLASSES = (
     MSBEnvironmentEventProps,
     MSBNPCInvasionEventProps,
     # endregion
+
+    # region Misc. Operators
+    CopyMeshSelectionOperator,
+    CutMeshSelectionOperator,
+    BooleanMeshCut,
+    ApplyLocalMatrixToMesh,
+    ScaleMeshIslands,
+    SelectActiveMeshVerticesNearSelected,
+    ConvexHullOnEachMeshIsland,
+    SetActiveFaceNormalUpward,
+    SpawnObjectIntoMeshAtFaces,
+    WeightVerticesWithFalloff,
+    ApplyModifierNonSingleUser,
+    PrintGameTransform,
+    ShowAllMapPieceModels,
+    ShowAllCollisionModels,
+    ShowAllNavmeshModels,
+    ShowAllMSBMapPieceParts,
+    ShowAllMSBCollisionParts,
+    ShowAllMSBNavmeshParts,
+    ShowAllMSBConnectCollisionParts,
+    ShowAllMSBObjectParts,
+    ShowAllMSBCharacterParts,
+    ShowAllMSBPlayerStartParts,
+    ShowAllMSBRegionsEvents,
+
+    MiscSoulstructOperatorsPanel,
+    # endregion
+
+    # region Utility Operators
+    ViewSelectedAtDistanceZero,
+    # endregion
 )
 
 
@@ -439,7 +460,6 @@ SCENE_POINTERS = dict(
     bake_lightmap_settings=BakeLightmapSettings,
     flver_tool_settings=FLVERToolSettings,
     material_tool_settings=MaterialToolSettings,
-    mesh_move_settings=MeshMoveSettings,
     map_collision_import_settings=MapCollisionImportSettings,
     map_collision_tool_settings=MapCollisionToolSettings,
     navmesh_face_settings=NavmeshFaceSettings,
