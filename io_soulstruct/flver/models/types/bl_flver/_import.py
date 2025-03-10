@@ -288,9 +288,10 @@ def _create_bl_mesh_from_merged_mesh(
     mesh_data.vertices.add(vertex_count)
     mesh_data.vertices.foreach_set("co", np.array(merged_mesh.vertex_data["position"]).ravel())
 
-    all_faces = merged_mesh.faces[:, :3]  # drop material index column
+    all_faces = merged_mesh.faces[:, :3]  # drop material index column (N x 3 array)
     if merged_mesh.vertices_merged:
-        # Retrieve true vertex indices used by each face loop indexed in `merged_mesh.faces`.
+        # Retrieve true (merged) vertex indices used by each face loop indexed in `merged_mesh.faces`.
+        # Note that `face_vertex_indices` has the exact same shape as `all_faces` (N x 3).
         face_vertex_indices = merged_mesh.loop_vertex_indices[all_faces]
     else:
         # No vertex merging occurred, so FLVER 'loops' and 'vertices' are still synonymous.
@@ -299,11 +300,12 @@ def _create_bl_mesh_from_merged_mesh(
     # Drop faces that don't use three unique vertex indices.
     # TODO: Try a vectorized approach that calculates the difference between each pair of the three columns, then
     #  takes the product of those differences. Any row that ends up with zero is degenerate.
-    unique_mask = np.apply_along_axis(lambda row: len(np.unique(row)) == 3, 1, face_vertex_indices)
-    valid_face_vertex_indices = face_vertex_indices[unique_mask]
+    unique_mask = np.apply_along_axis(lambda row: len(np.unique(row)) == 3, 1, face_vertex_indices)  # 1D array (N)
+    valid_face_vertex_indices = face_vertex_indices[unique_mask]  # N' x 3 array
+    valid_face_material_indices = merged_mesh.faces[:, 3][unique_mask]  # 1D array (N')
 
-    valid_face_count = valid_face_vertex_indices.shape[0]
-    invalid_face_count = face_vertex_indices.shape[0] - valid_face_count
+    valid_face_count = valid_face_vertex_indices.shape[0]  # N'
+    invalid_face_count = face_vertex_indices.shape[0] - valid_face_count  # N - N'
     if invalid_face_count > 0:
         operator.info(f"Removed {invalid_face_count} invalid/degenerate mesh faces from {mesh_data.name}.")
 
@@ -318,7 +320,7 @@ def _create_bl_mesh_from_merged_mesh(
     mesh_data.polygons.add(valid_face_count)
     mesh_data.polygons.foreach_set("loop_start", loop_starts)
     mesh_data.polygons.foreach_set("loop_total", loop_totals)
-    mesh_data.polygons.foreach_set("material_index", merged_mesh.faces[:, 3])
+    mesh_data.polygons.foreach_set("material_index", valid_face_material_indices)
 
     mesh_data.update(calc_edges=True)
 
