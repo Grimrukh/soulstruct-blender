@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 import bpy
 
 from soulstruct.base.models.shaders import MatDef, MatDefSampler
+from soulstruct.games import *
 from soulstruct.utilities.maths import Vector2
 
 from io_soulstruct.exceptions import MaterialImportError
@@ -49,13 +50,16 @@ class NodeTreeBuilder:
     UV_X: tp.ClassVar[int] = -950
     SCALE_X: tp.ClassVar[int] = -750
     TEX_X: tp.ClassVar[int] = -550
-    POST_TEX_X: tp.ClassVar[int] = -250  # overlay, split, math, etc.
+    POST_TEX_X: tp.ClassVar[int] = -250  # overlay, split, math, normal map, etc.
     BSDF_X: tp.ClassVar[int] = -50
     MIX_X: tp.ClassVar[int] = 100
 
     def __post_init__(self):
         self.tree = self.material.node_tree
         self.output = self.tree.nodes["Material Output"]
+
+        # This will create node groups in Blender data (`bpy.data.node_groups`) if not already present.
+        create_node_groups()
 
     def build(self):
         """Build a shader node tree using shader/sampler information from given `MatDef`."""
@@ -270,11 +274,11 @@ class NodeTreeBuilder:
         # TODO: Snow MTD (in DS1R at least) incorrectly says to use UV index 1 for snow normal map, but that UV
         #  layer doesn't even exist on the meshes that use it. MTD for DS1R should already fix that, but we force
         #  'UVTexture0' here anyway to be safe, given the specificity of this code.
-        self.normal_to_bsdf_node(self.tex_image_nodes["Main 1 Normal"], "UVTexture0", diffuse_bsdf_node)
+        self.normal_tex_to_bsdf_node(self.tex_image_nodes["Main 1 Normal"], "UVTexture0", diffuse_bsdf_node)
 
         if "Main 2 Normal" in self.tex_image_nodes:
             # Only known use of 'Main 2 Normal' in DS1R, and it's the normal map of the main texture (e.g. ground).
-            self.normal_to_bsdf_node(self.tex_image_nodes["Main 2 Normal"], "UVTexture0", bsdf_node)
+            self.normal_tex_to_bsdf_node(self.tex_image_nodes["Main 2 Normal"], "UVTexture0", bsdf_node)
 
     def build_standard_shader(self, matdef: MatDef):
         """Build cross-game, standard types of shaders using sampler aliases like 'Main 0 Albedo'.
@@ -316,7 +320,7 @@ class NodeTreeBuilder:
                 if map_type == "Normal":
                     # Intervening Normal Map node required with appropriate UV layer.
                     # TODO: Some groups only have normal maps. How do I mix this? White albedo? Or `color` MATBIN param?
-                    self.normal_to_bsdf_node(tex_node, sampler.uv_layer_name, bsdf_node)
+                    self.normal_tex_to_bsdf_node(tex_node, sampler.uv_layer_name, bsdf_node)
                 else:
                     # Color multiple with lightmap, if present, and channels are split/flipped as appropriate.
                     # TODO: Main texture ALPHA should override any detail BSDF, rather than mixing with it (ER).
@@ -430,11 +434,11 @@ class NodeTreeBuilder:
 
         if sampler.alias.endswith("Specular"):
             # Split specular texture into specular/roughness channels.
-            self.specular_to_principled(
-                tex_image_node.location[1],
-                color_output,
-                bsdf_node,
-                is_metallic="Metallic" in sampler.name,  # different setup for later games
+            self.specular_tex_node_to_bsdf_principled_node(
+                y=tex_image_node.location[1] - 150,  # leave room for overlay node
+                color_output=color_output,
+                bsdf_node=bsdf_node,
+                is_metallic="Metallic" in sampler.name,  # different BSDF parameter used in later games
             )
         elif sampler.alias.endswith("Albedo"):
             self.link(color_output, bsdf_node.inputs["Base Color"])
@@ -451,7 +455,7 @@ class NodeTreeBuilder:
         elif sampler.alias.endswith("Shininess"):
             self.link(color_output, bsdf_node.inputs["Sheen Weight"])
 
-    def normal_to_bsdf_node(
+    def _OLD_normal_to_bsdf_node(
         self,
         tex_image_node: bpy.types.Node,
         uv_layer_name: str,
@@ -544,7 +548,7 @@ class NodeTreeBuilder:
 
     # region Texture Input Methods
 
-    def specular_to_principled(
+    def specular_tex_node_to_bsdf_principled_node(
         self,
         y: float,
         color_output: bpy.types.NodeSocket,
@@ -553,35 +557,65 @@ class NodeTreeBuilder:
     ):
         """Split color channels of a specular texture into Principled BSDF inputs."""
 
-        separate_color_node = self.new("ShaderNodeSeparateColor", location=(self.POST_TEX_X, y))
-        red_math_node = self.new(
-            "ShaderNodeMath",
-            location=(self.POST_TEX_X, y - 40),
-            name="Red Flip",
-            label="Red Flip",
-            operation="SUBTRACT",
-            input_defaults={0: 1.0},
-        )
-        green_math_node = self.new(
-            "ShaderNodeMath",
-            location=(self.POST_TEX_X, y - 80),
-            name="Green Flip",
-            label="Green Flip",
-            operation="SUBTRACT",
-            input_defaults={0: 1.0},
-        )
+        group_node = self.tree.nodes.new('ShaderNodeGroup')
+        group_key = "Process Specular"
+        if is_metallic:
+            group_key += " (Metallic)"
+        group_node.node_tree = bpy.data.node_groups[group_key]
+        group_node.name = group_node.label = "Process Specular"
 
-        self.link(color_output, separate_color_node.inputs["Color"])
-        self.link(separate_color_node.outputs["Red"], red_math_node.inputs[1])
-        self.link(separate_color_node.outputs["Green"], green_math_node.inputs[1])
-        red_input = "Metallic" if is_metallic else "Specular IOR Level"
-        self.link(red_math_node.outputs["Value"], bsdf_node.inputs[red_input])
-        self.link(green_math_node.outputs["Value"], bsdf_node.inputs["Roughness"])
-        self.link(separate_color_node.outputs["Blue"], bsdf_node.inputs["Transmission Weight"])  # not inverted
+        group_node.location = (self.POST_TEX_X, y)
 
-        separate_color_node.hide = True
-        red_math_node.hide = True
-        green_math_node.hide = True
+        # Link texture color to processing group input.
+        self.link(color_output, group_node.inputs["Color In"])
+
+        # Link normal map output to BSDF node Normal.
+        if is_metallic:
+            self.link(group_node.outputs["Metallic"], bsdf_node.inputs["Metallic"])
+        else:
+            self.link(group_node.outputs["Specular IOR Level"], bsdf_node.inputs["Specular IOR Level"])
+        self.link(group_node.outputs["Roughness"], bsdf_node.inputs["Roughness"])
+        self.link(group_node.outputs["Transmission Weight"], bsdf_node.inputs["Transmission Weight"])
+
+    def normal_tex_to_bsdf_node(
+        self,
+        image_tex_node: bpy.types.ShaderNodeTexImage,
+        uv_layer_name: str,
+        bsdf_node: bpy.types.ShaderNodeBsdfPrincipled | bpy.types.ShaderNodeBsdfDiffuse,
+    ):
+        """Create a node group that processes input normal map colors (for given game) to Blender normal colors.
+
+        Blender expects red to be the X component (right positive), green to be the Y component (up positive), and blue
+        to be the Z component. It also expects the color range [0, 1] to actually represent the normal range [-1, 1],
+        i.e. uses a full spherical mapping.
+
+        FromSoft game maps use a hemispherical mapping (all normals are convex), omit Z (normalized vectors), variably
+        use G (earlier games) vs. B (later games) for the Y component, and invert their Y component, all of which we
+        handle here.
+
+        NOTE: Currently assuming that DeS and DS1:PTDE use red/blue maps, and all other games use red/green maps.
+        """
+        y = image_tex_node.location[1]
+        color_output = image_tex_node.outputs["Color"]
+
+        settings = self.context.scene.soulstruct_settings
+
+        group_node = self.tree.nodes.new('ShaderNodeGroup')
+        group_key = "Process RB Normal" if settings.is_game(DEMONS_SOULS, DARK_SOULS_PTDE) else "Process RG Normal"
+        group_node.node_tree = bpy.data.node_groups[group_key]
+        group_node.name = group_node.label = "Process Normals"
+
+        group_node.location = (self.POST_TEX_X, y)
+
+        # Link texture color to processing group input.
+        self.link(color_output, group_node.inputs["Color In"])
+
+        # Create normal map node and link processing group output to it.
+        normal_map_node = self.add_normal_map_node(uv_layer_name, y - 120, 1.0)
+        self.link(group_node.outputs["Normal Out"], normal_map_node.inputs["Color"])
+
+        # Link normal map output to BSDF node Normal.
+        self.link(normal_map_node.outputs["Normal"], bsdf_node.inputs["Normal"])
 
     # endregion
 
@@ -595,15 +629,7 @@ class NodeTreeBuilder:
         input_defaults: dict[str | int, tp.Any] = None,
         **kwargs,
     ) -> bpy.types.Node:
-        node = self.tree.nodes.new(node_type)
-        if location is not None:
-            node.location = location
-        for k, v in kwargs.items():
-            setattr(node, k, v)
-        if input_defaults:
-            for k, v in input_defaults.items():
-                node.inputs[k].default_value = v
-        return node
+        return _new_node(self.tree, node_type, location, input_defaults=input_defaults, **kwargs)
 
     def link(self, node_output: bpy.types.NodeSocket, node_input: bpy.types.NodeSocket) -> bpy.types.NodeLink:
         return self.tree.links.new(node_output, node_input)
@@ -688,3 +714,196 @@ class NodeTreeBuilder:
         )
 
     # endregion
+
+
+def create_node_groups():
+    """One-off function for creating node groups for game-specific normal processing."""
+
+    if "Process Specular" not in bpy.data.node_groups:
+        group = bpy.data.node_groups.new("Process Specular", 'ShaderNodeTree')
+        group.use_fake_user = True
+        _build_specular_processing_node_group(group, is_metallic=False)
+
+    if "Process Specular (Metallic)" not in bpy.data.node_groups:
+        group = bpy.data.node_groups.new("Process Specular (Metallic)", 'ShaderNodeTree')
+        group.use_fake_user = True
+        _build_specular_processing_node_group(group, is_metallic=True)
+
+    if "Process RG Normal" not in bpy.data.node_groups:
+        group = bpy.data.node_groups.new("Process RG Normal", 'ShaderNodeTree')
+        group.use_fake_user = True
+        _build_normal_processing_node_group_tree(group, uses_green=True)
+
+    if "Process RB Normal" not in bpy.data.node_groups:
+        group = bpy.data.node_groups.new("Process RB Normal", 'ShaderNodeTree')
+        group.use_fake_user = True
+        _build_normal_processing_node_group_tree(group, uses_green=False)
+
+
+def _build_specular_processing_node_group(tree: bpy.types.NodeTree, is_metallic: bool):
+
+    # Create input/output sockets for group.
+    tree.interface.new_socket(
+        name="Color In", description="Specular Map Texture Color Input", in_out="INPUT", socket_type="NodeSocketColor"
+    )
+    if is_metallic:
+        tree.interface.new_socket(
+            name="Metallic", description="Metallic strength", in_out="OUTPUT", socket_type="NodeSocketFloat"
+        )
+    else:
+        tree.interface.new_socket(
+            name="Specular IOR Level", description="Specular IOR level", in_out="OUTPUT", socket_type="NodeSocketFloat"
+        )
+    tree.interface.new_socket(
+        name="Roughness", description="Specular roughness", in_out="OUTPUT", socket_type="NodeSocketFloat"
+    )
+    tree.interface.new_socket(
+        name="Transmission Weight", description="Specular transmission", in_out="OUTPUT", socket_type="NodeSocketFloat"
+    )
+
+    # Create nodes for group input and output.
+    group_in = tree.nodes.new('NodeGroupInput')
+    group_in.location = (-400, 0)
+
+    group_out = tree.nodes.new('NodeGroupOutput')
+    group_out.location = (200, 0)
+
+    # Separate the incoming color into R, G, B.
+    sep_rgb = tree.nodes.new('ShaderNodeSeparateRGB')
+    sep_rgb.location = (-200, 0)
+    tree.links.new(group_in.outputs["Color In"], sep_rgb.inputs[0])
+
+    red_flip = _new_math_node(tree, "SUBTRACT", (0, 150), 1.0, sep_rgb.outputs["R"])
+    red_flip.name = red_flip.label = "Red Flip"
+    green_flip = _new_math_node(tree, "SUBTRACT", (0, 0), 1.0, sep_rgb.outputs["G"])
+    green_flip.name = green_flip.label = "Green Flip"
+
+    tree.links.new(red_flip.outputs[0], group_out.inputs["Metallic" if is_metallic else "Specular IOR Level"])
+    tree.links.new(green_flip.outputs[0], group_out.inputs["Roughness"])
+    tree.links.new(sep_rgb.outputs["B"], group_out.inputs["Transmission Weight"])  # not flipped
+
+
+def _build_normal_processing_node_group_tree(tree: bpy.types.NodeTree, uses_green: bool):
+
+    # Create input/output sockets for group.
+    tree.interface.new_socket(
+        name="Color In", description="Normal Map Texture Color Input", in_out="INPUT", socket_type="NodeSocketColor"
+    )
+    tree.interface.new_socket(
+        name="Normal Out", description="Normal Map Color Output", in_out="OUTPUT", socket_type="NodeSocketColor"
+    )
+
+    r_height = 200
+    flipped_height = 0 if uses_green else -200
+    computed_height = -200 if uses_green else 0
+
+    # Create nodes for group input and output.
+    group_in = tree.nodes.new('NodeGroupInput')
+    group_in.location = (-400, 0)
+
+    group_out = tree.nodes.new('NodeGroupOutput')
+    group_out.location = (2200, 0)
+
+    # Separate the incoming color into R, G, B.
+    sep_rgb = tree.nodes.new('ShaderNodeSeparateRGB')
+    sep_rgb.location = (-200, 0)
+    tree.links.new(group_in.outputs["Color In"], sep_rgb.inputs[0])
+
+    # Process the Red channel (X):
+    #    X_temp = 2*R - 1
+    mult_r = _new_math_node(tree, "MULTIPLY", (0, r_height), input_0=sep_rgb.outputs["R"], input_1=2.0)
+    sub_r = _new_math_node(tree, "SUBTRACT", (200, r_height), input_0=mult_r.outputs[0], input_1=1.0)
+    # sub_r output is X in [-1,1].
+
+    # Process the Green/Blue channel:
+    #    First flip: G' = 1 - G
+    flip_g_or_b = _new_math_node(
+        tree, "SUBTRACT", (0, flipped_height), 1.0, sep_rgb.outputs["G" if uses_green else "B"]
+    )
+    flip_g_or_b.label = "Flip"
+    #    Then convert to [-1,1]: Y = 2*G' - 1
+    mult_g_or_b = _new_math_node(tree, "MULTIPLY", (200, flipped_height), flip_g_or_b.outputs[0], 2.0)
+    sub_g_or_b = _new_math_node(tree, "SUBTRACT", (400, flipped_height), mult_g_or_b.outputs[0], 1.0)
+
+    # Compute X^2 and Y^2.
+    x_squared = _new_math_node(tree, "POWER", (600, r_height), sub_r.outputs[0], 2.0)
+    y_squared = _new_math_node(tree, "POWER", (600, flipped_height), sub_g_or_b.outputs[0], 2.0)
+
+    # Sum X^2 and Y^2.
+    sum_of_squares = _new_math_node(tree, "ADD", (800, computed_height), x_squared.outputs[0], y_squared.outputs[0])
+
+    # Compute Z^2 = 1 - (X^2 + Y^2).
+    z_squared = _new_math_node(tree, "SUBTRACT", (1000, computed_height), 1.0, sum_of_squares.outputs[0])
+
+    # Clamp to ensure non-negative, then compute Z = sqrt(1 - X^2 - Y^2).
+    z_squared_clamped = _new_math_node(tree, "MAXIMUM", (1200, computed_height), z_squared.outputs[0], 0.0)
+    z = _new_math_node(tree, "SQRT", (1400, computed_height), z_squared_clamped.outputs[0])
+    # `z` output is Z in [0,1] (since our input is hemispherical, Z is always positive).
+
+    # Remap computed components back to [0,1] for Blender's Normal Map node:
+    #    Remap function: Out = (component + 1) / 2
+
+    add_x = _new_math_node(tree, "ADD", (1600, 200), sub_r.outputs[0], 1.0)
+    output_r = _new_math_node(tree, "MULTIPLY", (1800, 200), add_x.outputs[0], 0.5)
+    add_y = _new_math_node(tree, "ADD", (1600, 0), sub_g_or_b.outputs[0], 1.0)
+    output_g_or_b = _new_math_node(tree, "MULTIPLY", (1800, 0), add_y.outputs[0], 0.5)
+    add_z = _new_math_node(tree, "ADD", (1600, -200), z.outputs[0], 1.0)
+    output_b_or_g = _new_math_node(tree, "MULTIPLY", (1800, -200), add_z.outputs[0], 0.5)
+
+    # Recombine the remapped channels into one vector.
+    combine_rgb = tree.nodes.new('ShaderNodeCombineRGB')
+    combine_rgb.location = (2000, 0)
+    tree.links.new(output_r.outputs[0], combine_rgb.inputs['R'])
+    if uses_green:
+        tree.links.new(output_g_or_b.outputs[0], combine_rgb.inputs['G'])  # flipped
+        tree.links.new(output_b_or_g.outputs[0], combine_rgb.inputs['B'])  # computed
+    else:
+        tree.links.new(output_b_or_g.outputs[0], combine_rgb.inputs['G'])  # computed
+        tree.links.new(output_g_or_b.outputs[0], combine_rgb.inputs['B'])  # flipped
+
+    # Output the resulting normal.
+    tree.links.new(combine_rgb.outputs[0], group_out.inputs["Normal Out"])
+
+
+def _new_node(
+    tree: bpy.types.NodeTree,
+    node_type: str,
+    location: tuple[int, int] = None,
+    /,
+    input_defaults: dict[str | int, tp.Any] = None,
+    **kwargs,
+) -> bpy.types.Node:
+    node = tree.nodes.new(node_type)
+    if location is not None:
+        node.location = location
+    for k, v in kwargs.items():
+        setattr(node, k, v)
+    if input_defaults:
+        for k, v in input_defaults.items():
+            node.inputs[k].default_value = v
+    return node
+
+
+def _new_math_node(
+    tree: bpy.types.NodeTree,
+    operation: str,
+    location: tuple[int, int],
+    input_0: float | bpy.types.NodeSocket = None,
+    input_1: float | bpy.types.NodeSocket = None,
+) -> bpy.types.ShaderNodeMath:
+    node = tree.nodes.new('ShaderNodeMath')
+    node.operation = operation
+    node.location = location
+
+    if isinstance(input_0, bpy.types.NodeSocket):
+        tree.links.new(input_0, node.inputs[0])
+    elif input_0 is not None:
+        node.inputs[0].default_value = input_0
+
+    if isinstance(input_1, bpy.types.NodeSocket):
+        tree.links.new(input_1, node.inputs[1])
+    elif input_1 is not None:
+        node.inputs[1].default_value = input_1
+
+    # noinspection PyTypeChecker
+    return node
