@@ -4,11 +4,13 @@ __all__ = [
     "NodeTreeBuilder",
 ]
 
+from fileinput import filename
 import re
 import typing as tp
 from dataclasses import dataclass, field
 
 import bpy
+import os
 
 from soulstruct.base.models.shaders import MatDef, MatDefSampler
 from soulstruct.games import *
@@ -53,6 +55,8 @@ class NodeTreeBuilder:
     POST_TEX_X: tp.ClassVar[int] = -250  # overlay, split, math, normal map, etc.
     BSDF_X: tp.ClassVar[int] = -50
     MIX_X: tp.ClassVar[int] = 100
+
+    
 
     def __post_init__(self):
         self.tree = self.material.node_tree
@@ -100,12 +104,40 @@ class NodeTreeBuilder:
 
         # Build game-dependent or generic shader.
         try:
-            self.build_standard_shader(self.matdef)
+            if "FRPG_Phn_ColDif" in self.matdef.shader_stem:
+                lighting_type = self.matdef.mtd.get_param("g_LightingType", default=1)
+                if lighting_type == 0:
+                    # if lighting type is equal to 0, nothing matters but the final surface image. This shader is
+                    # probably fine for all games, but should be verified.
+                    self.build_generic_diffuse_no_light_shader(self.matdef)
+                    return
+                elif self.matdef.mtd.get_param("g_MaterialWorkflow", default=0) == 1:
+                    # using legacy specular workflow with added roughness in the alpha channel
+                    self.build_standard_ds1r_shader(self.matdef, node_group_name="DS1R Basic Colored Spec")
+                    return
+                else:
+                    # regular PBR workflow
+                    self.build_standard_ds1r_shader(self.matdef, node_group_name="DS1R Basic PBR")
+                    return
+            elif "FRPG_NormalToAlpha" in self.matdef.shader_stem:
+                # used by fog, lightshafts, and tree leaves sometimes. Fades out the object when viewed at
+                # a perpendicular angle
+                self.build_ds1r_normal_to_alpha_shader(self.matdef)
+                return
+            else:
+                # catch-all shader
+                self.build_standard_shader(self.matdef)
+                return
         except MaterialImportError as ex:
             self.operator.warning(
                 f"Error building shader for material '{self.matdef.name}' with shader '{self.matdef.shader_stem}'. "
                 f"Error:\n    {ex}"
             )
+
+
+
+    # pow(2.0 / (max(fSpecPower * 4.0, 1.0) + 2.0), 0.25) for converting spec power to roughness from StaydMcMuffin
+
 
     def build_shader_uv_texture_nodes(self):
         """Build UV and texture nodes. Used by all games."""
@@ -147,7 +179,6 @@ class NodeTreeBuilder:
             # NOTE: If the texture is used inconsistently across materials, this could change repeatedly.
             if bl_image and "Albedo" not in node_label:
                 bl_image.colorspace_settings.name = "Non-Color"
-
             if uv_layer_name:
                 # Connect to appropriate UV node, creating it if necessary.
                 if uv_layer_name in self.uv_nodes:
@@ -413,6 +444,127 @@ class NodeTreeBuilder:
             if not bsdf_node.inputs["Base Color"].is_linked:
                 bsdf_node.inputs["Base Color"].default_value = (0.0, 0.0, 0.0, 1.0)
 
+    def build_standard_ds1r_shader(
+            self,
+            matdef: MatDef,
+            node_group_name: str = "DS1R Basic PBR"):
+        """Builds the common surface shaders for DS1R. Might be expanded/repurposed to build node group
+        shaders from other games depending on how different they are.
+
+        TODO: Implement UV scroll and parallax occlusion mapping. These should probably happen outside the node group,
+        similar to UV Scale, since they just modify the UVs.
+
+        Shader references:
+        https://github.com/AltimorTASDK/dsr-shader-mods
+        https://github.com/magcius/noclip.website/blob/main/src/DarkSouls/render.ts
+        StaydMcMuffin
+        """
+        node_groups = {}
+        tex_sampler_re = re.compile(r"(Main) (\d+) (Albedo|Specular|Shininess|Normal)")
+        mix_fac_input = 0.5
+        detail_node = self.tex_image_nodes.get("Detail 0 Normal", None)
+        detail_out_node = None
+        if detail_node:
+            combine_color_node = self.flip_normal_image(detail_node)
+            detail_out_node = self.add_normal_map_node("UVTexture0", detail_node.location[1] - 120,
+                                                       matdef.mtd.get_param("g_DetailBump_BumpPower", default=0))
+            self.link(combine_color_node.outputs["Color"], detail_out_node.inputs["Color"])
+        lightmap_node = self.tex_image_nodes.get("g_Lightmap", None)
+        for match, sampler in self.matdef.get_matching_samplers(tex_sampler_re, match_alias=True):
+            node_group_key = f"{match.group(2)}"
+            tex_node = self.tex_image_nodes.get(sampler.alias, None)
+            if tex_node and tex_node.image:
+                node_group_key = f"{match.group(2)}"
+                map_type = match.group(3)
+                try:
+                    node_group = node_groups[node_group_key]
+                except KeyError:
+                    node_group = node_groups[node_group_key] = self.add_node_group(node_group_name)
+                    if lightmap_node is not None:
+                        # Link lightmap node to each new node group. This is probably not accurate for lightmap display
+                        # but at least it gives some approximation
+                        node_group.inputs["Light Map Influence"].default_value = 0.5
+                        self.link(lightmap_node.outputs["Color"], node_group.inputs["Light Map"])
+                    if self.vertex_colors_nodes:
+                        # Link vertex colors to each new node group
+                        self.link(self.vertex_colors_nodes[0].outputs["Color"], node_group.inputs["Vertex Colors"])
+                if map_type == "Albedo":
+                    # This could be changed to linear (non-color) space, since the shaders use it as linear for all
+                    # calculations, then transforms it to sRGB at the very end using x^2.2
+                    self.link(tex_node.outputs["Color"], node_group.inputs["Diffuse Map"])
+                    node_group.inputs["Diffuse Map Color"].default_value = tuple(matdef.mtd.get_param("g_DiffuseMapColor", default=[1,1,1])) + (1,)
+                    node_group.inputs["Diffuse Map Color Power"].default_value = matdef.mtd.get_param("g_DiffuseMapColorPower", default=1)
+                    if matdef.edge or matdef.alpha:
+                        self.link(tex_node.outputs["Alpha"], node_group.inputs["Diffuse Map Alpha"])
+                if map_type == "Normal":
+                    y = tex_node.location[1]
+                    combine_color_node = self.flip_normal_image(tex_node)
+                    normal_map_node = self.add_normal_map_node(sampler.uv_layer_name, y - 120, 1.0)
+                    self.link(combine_color_node.outputs["Color"], normal_map_node.inputs["Color"])
+                    if detail_out_node and matdef.mtd.get_param("g_DetailBump_BumpPower", default=0) > 0:
+                        # Create an add vector node for this and the detail bumpmap, then link that to the node group
+                        combine_detail_node = self.add_normal_combine_node(y - 150)
+                        self.link(normal_map_node.outputs["Normal"], combine_detail_node.inputs[0])
+                        self.link(detail_out_node.outputs["Normal"], combine_detail_node.inputs[1])
+                        self.link(combine_detail_node.outputs[0], node_group.inputs["Normal"])
+                        normal_map_node.hide = True
+                    else:
+                        # If there's no detail bumpmap, just link to node group
+                        self.link(normal_map_node.outputs[0], node_group.inputs["Normal"])
+                if map_type == "Specular":
+                    self.link(tex_node.outputs["Color"], node_group.inputs["Specular Map"])
+                    self.link(tex_node.outputs["Alpha"], node_group.inputs["Specular Map Alpha"])
+                    node_group.inputs["Specular Map Color"].default_value = tuple(matdef.mtd.get_param("g_SpecularMapColor", default=[1,1,1])) + (1,)
+                    node_group.inputs["Specular Map Color Power"].default_value = matdef.mtd.get_param("g_SpecularMapColorPower", default=1)
+
+        if self.vertex_colors_nodes:
+            mix_fac_input = self.vertex_colors_nodes[0].outputs["Alpha"]
+        if len(node_groups) == 2:
+            # Should probably mix the texture maps rather than running two seperate BSDFs
+            out_node = self.mix_shader_nodes(
+                node_groups["0"],
+                node_groups["1"],
+                mix_fac_input,
+            )
+        elif len(node_groups) == 1:
+            out_node = node_groups["0"]
+            if matdef.edge or matdef.alpha:
+                self.link(self.vertex_colors_nodes[0].outputs["Alpha"], node_groups["0"].inputs["Vertex Colors Alpha"])
+        else:
+            return
+
+        self.link_to_output_surface(out_node.outputs[0])
+
+    def build_generic_diffuse_no_light_shader(self, matdef: MatDef):
+        diffuse_node = self.tex_image_nodes.get("Main 0 Albedo")
+        node_group = self.add_node_group("Generic Diffuse No Light")
+        self.link(diffuse_node.outputs["Color"], node_group.inputs["Diffuse Map"])
+        node_group.inputs["Diffuse Map Color"].default_value = tuple(matdef.mtd.get_param("g_DiffuseMapColor", default=[1,1,1])) + (1,)
+        node_group.inputs["Diffuse Map Color Power"].default_value = matdef.mtd.get_param("g_DiffuseMapColorPower", default=1)
+        if matdef.edge or matdef.alpha:
+            self.link(diffuse_node.outputs["Alpha"], node_group.inputs["Diffuse Map Alpha"])
+        if len(self.vertex_colors_nodes) > 0:
+            self.link(self.vertex_colors_nodes[0].outputs["Color"], node_group.inputs["Vertex Colors"])
+            self.link(self.vertex_colors_nodes[0].outputs["Alpha"], node_group.inputs["Vertex Colors Alpha"])
+        self.link_to_output_surface(node_group.outputs[0])
+
+    def build_ds1r_normal_to_alpha_shader(self, matdef: MatDef):
+        diffuse_node = self.tex_image_nodes.get("Main 0 Albedo")
+        node_group = self.add_node_group("DS1R Normal to Alpha")
+        self.link(diffuse_node.outputs["Color"], node_group.inputs["Diffuse Map"])
+        node_group.inputs["Diffuse Map Color"].default_value = tuple(matdef.mtd.get_param("g_DiffuseMapColor", default=[1,1,1])) + (1,)
+        node_group.inputs["Diffuse Map Color Power"].default_value = matdef.mtd.get_param("g_DiffuseMapColorPower", default=1)
+        if matdef.edge or matdef.alpha:
+            self.link(diffuse_node.outputs["Alpha"], node_group.inputs["Diffuse Map Alpha"])
+        if self.vertex_colors_nodes:
+            self.link(self.vertex_colors_nodes[0].outputs["Color"], node_group.inputs["Vertex Colors"])
+            self.link(self.vertex_colors_nodes[0].outputs["Alpha"], node_group.inputs["Vertex Colors Alpha"])
+        node_group.inputs["Min Angle"].default_value = matdef.mtd.get_param("g_Normal2Alpha_MinAngle", default=90)
+        node_group.inputs["Max Angle"].default_value = matdef.mtd.get_param("g_Normal2Alpha_MaxAngle", default=80)
+        self.link_to_output_surface(node_group.outputs[0])
+        
+        
+
     def color_to_bsdf_node(
         self,
         sampler: MatDefSampler,
@@ -467,6 +619,16 @@ class NodeTreeBuilder:
         """
         y = tex_image_node.location[1]
 
+        combine_color_node = self.flip_normal_image(tex_image_node)
+
+        # Create normal map node.
+        normal_map_node = self.add_normal_map_node(uv_layer_name, y - 120, 1.0)
+        self.link(combine_color_node.outputs["Color"], normal_map_node.inputs["Color"])
+        self.link(normal_map_node.outputs["Normal"], bsdf_node.inputs["Normal"])
+
+    def flip_normal_image(self, tex_image_node: bpy.types.Node):
+        """Flip the green and blue channels of a normal map image and return the combined color node"""
+        y = tex_image_node.location[1]
         separate_color_node = self.new("ShaderNodeSeparateColor", location=(self.POST_TEX_X, y))
 
         green_math_node = self.new(
@@ -500,11 +662,19 @@ class NodeTreeBuilder:
         green_math_node.hide = True
         blue_math_node.hide = True
         combine_color_node.hide = True
+        return combine_color_node
 
-        # Create normal map node.
+    def normal_to_node_group(
+        self,
+        tex_image_node: bpy.types.Node,
+        uv_layer_name: str,
+        node_group: bpy.types.ShaderNodeGroup
+    ):
+        y = tex_image_node.location[1]
+        combine_color_node = self.flip_normal_image(tex_image_node)
         normal_map_node = self.add_normal_map_node(uv_layer_name, y - 120, 1.0)
         self.link(combine_color_node.outputs["Color"], normal_map_node.inputs["Color"])
-        self.link(normal_map_node.outputs["Normal"], bsdf_node.inputs["Normal"])
+        self.link(normal_map_node.outputs["Normal"], node_group.inputs["Normal"])
 
     def mix_shader_nodes(
         self,
@@ -673,6 +843,15 @@ class NodeTreeBuilder:
         node.inputs[1].default_value = [scale.x, scale.y, 1.0]
         return node
 
+    def add_normal_combine_node(self, node_y: float):
+        node = self.new(
+            "ShaderNodeVectorMath",
+            location=(self.POST_TEX_X, node_y),
+            operation="ADD",
+            label="Combine Detail",
+        )
+        return node
+
     def add_tex_image_node(
         self, name: str, image: bpy.types.Image | None, label: str = None, hide=False
     ) -> bpy.types.ShaderNodeTexImage:
@@ -712,6 +891,25 @@ class NodeTreeBuilder:
             uv_map=uv_map_name,
             input_defaults={"Strength": strength},
         )
+    def add_node_group(self, node_group_name: str) -> bpy.types.ShaderNodeGroup:
+        if node_group_name not in bpy.data.node_groups:
+            # Import node groups from blend file
+            blend_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), "../../Shaders.blend")
+            with bpy.data.libraries.load(blend_path) as (data_from, data_to):
+                data_to.node_groups = [node_group_name]
+            node = self.new(
+                "ShaderNodeGroup",
+                location=(self.BSDF_X, self.bsdf_y)
+             )
+            node.node_tree = data_to.node_groups[0]
+        else:
+            node = self.new(
+                "ShaderNodeGroup",
+                location=(self.BSDF_X, self.bsdf_y)
+             )
+            node.node_tree = bpy.data.node_groups[node_group_name]
+        self.bsdf_y -= 1000
+        return node
 
     # endregion
 
