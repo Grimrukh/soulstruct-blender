@@ -20,12 +20,12 @@ from io_soulstruct.utilities import *
 from ..properties import *
 
 
-class BlenderFLVERDummy(SoulstructObject[Dummy, FLVERDummyProps]):
+class BlenderFLVERDummy(BaseBlenderSoulstructObject[Dummy, FLVERDummyProps]):
 
     __slots__ = []
 
     TYPE = SoulstructType.FLVER_DUMMY
-    OBJ_DATA_TYPE = SoulstructDataType.EMPTY
+    BL_OBJ_TYPE = ObjectType.EMPTY
 
     # Captures anything else after the `[reference_id]` in name, including Blender dupe suffix like '.001'.
     DUMMY_NAME_RE: tp.ClassVar[re.Pattern] = re.compile(
@@ -318,4 +318,4 @@ class BlenderFLVERDummy(SoulstructObject[Dummy, FLVERDummyProps]):
     # endregion
 
 
-BlenderFLVERDummy.add_auto_type_props(*BlenderFLVERDummy.AUTO_DUMMY_PROPS)
+add_auto_type_props(BlenderFLVERDummy, *BlenderFLVERDummy.AUTO_DUMMY_PROPS)

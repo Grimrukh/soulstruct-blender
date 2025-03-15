@@ -157,23 +157,23 @@ def _create_flver_from_bl_flver(
 
     if command.bl_flver.armature:
         bl_dummies = command.bl_flver.get_dummies(command.operator)
-        read_bone_type = command.bl_flver.bone_data_type  # set on import and managed by user afterward
-        command.operator.info(f"Exporting FLVER '{command.bl_flver.name}' with bone data from {read_bone_type.name}s.")
+        bl_bone_data_type = command.bl_flver.bone_data_type  # set on import and managed by user afterward
+        command.operator.info(f"Exporting FLVER '{command.bl_flver.name}' with bone data: {bl_bone_data_type.name}")
     else:
         bl_dummies = []
-        read_bone_type = FLVERBoneDataType.NONE
+        bl_bone_data_type = FLVERBoneDataType.OMITTED
 
     if not command.bl_flver.armature or not command.bl_flver.armature.pose.bones:
         command.operator.info(  # not a warning
             f"No non-empty FLVER Armature to export. Creating FLVER skeleton with a single default bone at origin "
-            f"named '{command.bl_flver.export_name}'."
+            f"named '{command.bl_flver.game_name}'."
         )
-        default_bone = FLVERBone(name=command.bl_flver.export_name)  # default transform and other fields
+        default_bone = FLVERBone(name=command.bl_flver.game_name)  # default transform and other fields
         command.flver.bones.append(default_bone)
         bl_bone_names = [default_bone.name]
         using_default_bone = True
     else:
-        command.flver.bones, bl_bone_names, bone_arma_transforms = _create_flver_bones(command, read_bone_type)
+        command.flver.bones, bl_bone_names, bone_arma_transforms = _create_flver_bones(command, bl_bone_data_type)
         command.flver.set_bone_children_siblings()  # only parents set in `create_bones`
         command.flver.set_bone_armature_space_transforms(bone_arma_transforms)
         using_default_bone = False
@@ -207,14 +207,15 @@ def _create_flver_from_bl_flver(
 
     if not command.bl_flver.mesh.data.vertices:
         # No meshes in FLVER (e.g. c0000). We also leave all bounding boxes as their default max/min values.
-        # We don't warn for expected empty FLVERs c0000 and c1000.
+        # We don't warn for expected empty FLVERs c0000 and c1000. (Note there are more that are empty in vanilla.)
         if command.bl_flver.name[:5] not in {"c0000", "c1000"}:
             command.operator.warning(f"Exporting non-c0000/c1000 FLVER '{command.bl_flver.name}' with no mesh data.")
         return command.flver
 
     if command.flver_model_type == FLVERModelType.Unknown:
-        # Guess model type based on bone data type.
-        use_map_piece_layout = read_bone_type != FLVERBoneDataType.EDIT  # POSE or NONE
+        # Guess model type based on name.
+        # TODO: For layouts, probably better off checking MTD prefix 'M' or 'C'?
+        use_map_piece_layout = FLVERModelType.guess_from_name(command.name) == FLVERModelType.MapPiece
     else:
         use_map_piece_layout = command.flver_model_type == FLVERModelType.MapPiece
 
@@ -231,10 +232,13 @@ def _create_flver_from_bl_flver(
     #  vertices are weighted to with `is_bind_pose=True`). This is my temporary hack since we are already using
     #  'read_bone_type == FLVERBoneDataType.POSE' as a marker for map pieces.
     # TODO: Better heuristic is likely to use the bone weights themselves (missing or all zero -> armature space).
-    command.flver.refresh_bone_bounding_boxes(in_local_space=FLVERBoneDataType.EDIT)
+    # TODO: At least one object with all `is_bind_pose = False` (o1154 in DSR) has 'undefined' bone bounding boxes (i.e.
+    #  SINGLE_MAX for min and SINGLE_MIN for max).
+    command.flver.refresh_bone_bounding_boxes(in_local_space=bl_bone_data_type == FLVERBoneDataType.EDIT)
 
     # Refresh `FLVERMesh` and FLVER-wide bounding boxes.
-    # TODO: Partially redundant since splitter does this for meshes automatically. Only need FLVER-wide bounds.
+    # TODO: Partially redundant since splitter does this for meshes automatically. Only need FLVER-wide bounds in
+    #  that case...
     command.flver.refresh_bounding_boxes()
 
     return command.flver
@@ -772,7 +776,7 @@ def _create_flver_bones(
     return game_bones, edit_bone_names, game_arma_transforms
 
 
-def _get_des_texture_path_prefix_getter(export_name: str, flver_model_type: FLVERModelType) -> tp.Callable[[str], str]:
+def _get_des_texture_path_prefix_getter(model_name: str, flver_model_type: FLVERModelType) -> tp.Callable[[str], str]:
     """We use the texture prefix ('mAA_', 'cXXXX_', 'oXXXX_') to determine the path prefix where possible,
     and rely on the model type being exported for the default template."""
 
@@ -783,26 +787,26 @@ def _get_des_texture_path_prefix_getter(export_name: str, flver_model_type: FLVE
             template = "N:\\DemonsSoul\\data\\Model\\map\\mAA\\tex\\"  # TODO: unknown area placeholder
 
         case FLVERModelType.Character:
-            template = f"N:\\DemonsSoul\\data\\Model\\chr\\{export_name}\\tex\\"
+            template = f"N:\\DemonsSoul\\data\\Model\\chr\\{model_name}\\tex\\"
 
         case FLVERModelType.Object:
-            template = f"N:\\DemonsSoul\\data\\Model\\obj\\{export_name.split('_')[0]}\\tex\\"
+            template = f"N:\\DemonsSoul\\data\\Model\\obj\\{model_name.split('_')[0]}\\tex\\"
 
         case FLVERModelType.Equipment:
 
-            match export_name[:2]:
+            match model_name[:2]:
                 case "AM":
-                    subdir = f"Arm\\{export_name.upper()}\\"
+                    subdir = f"Arm\\{model_name.upper()}\\"
                 case "BD":
-                    subdir = f"Body\\{export_name.upper()}\\"
+                    subdir = f"Body\\{model_name.upper()}\\"
                 case "HD":
-                    subdir = f"Head\\{export_name.upper()}\\"
+                    subdir = f"Head\\{model_name.upper()}\\"
                 case "HR":
-                    subdir = f"Hair\\{export_name.upper()}\\"
+                    subdir = f"Hair\\{model_name.upper()}\\"
                 case "LG":
-                    subdir = f"Leg\\{export_name.upper()}\\"
+                    subdir = f"Leg\\{model_name.upper()}\\"
                 case "WP":
-                    subdir = f"Weapon\\{export_name.upper()}\\"
+                    subdir = f"Weapon\\{model_name.upper()}\\"
                 case _:
                     subdir = ""
 

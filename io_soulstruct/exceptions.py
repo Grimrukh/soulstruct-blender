@@ -3,6 +3,7 @@ __all__ = [
     "InternalSoulstructBlenderError",
     "UnsupportedGameError",
     "UnsupportedGameTypeError",
+    "ObjectTypeError",
     "SoulstructTypeError",
     "FLVERError",
     "FLVERImportError",
@@ -49,6 +50,11 @@ class UnsupportedGameError(SoulstructBlenderError):
 
 class UnsupportedGameTypeError(SoulstructBlenderError):
     """Raised when trying to handle an unsupported Soulstruct type for an otherwise supportede game."""
+    pass
+
+
+class ObjectTypeError(SoulstructBlenderError):
+    """Raised when the `type` of a Blender object is not as expected or when object is `None`."""
     pass
 
 

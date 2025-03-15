@@ -1,5 +1,6 @@
 __all__ = [
     "MSBPartSubtype",
+    "MSBPartArmatureMode",
     "MSBPartProps",
     "MSBMapPieceProps",
     "MSBObjectProps",
@@ -37,4 +38,4 @@ __all__ = [
 from .events import *
 from .parts import *
 from .regions import *
-from .misc import *
+from .settings import *

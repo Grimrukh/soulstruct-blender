@@ -207,7 +207,7 @@ def get_active_event_obj(context) -> bpy.types.Object | None:
     return None
 
 
-def group_bit_set_prop(
+def bit_set_prop(
     layout: bpy.types.UILayout, props: bpy.types.PropertyGroup, prefix: str, label: str
 ) -> set[str]:
     prop_names = [prop for prop in props.__annotations__ if prop.startswith(prefix)]
@@ -258,8 +258,8 @@ class MSBPartPanel(bpy.types.Panel):
             layout.prop(props, pre_prop)
             handled.add(pre_prop)
 
-        handled |= group_bit_set_prop(layout, props, "draw_groups_", "Draw Groups")
-        handled |= group_bit_set_prop(layout, props, "display_groups_", "Display Groups")
+        handled |= bit_set_prop(layout, props, "draw_groups_", "Draw Groups")
+        handled |= bit_set_prop(layout, props, "display_groups_", "Display Groups")
 
         header, panel = layout.panel("DrawParam IDs", default_closed=True)
         header.label(text="DrawParam IDs")
@@ -438,7 +438,7 @@ class MSBCollisionPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
         props = getattr(obj, self.part_subtype.value)
         prop_names = props.get_game_props(context.scene.soulstruct_settings.game)
         handled = set()
-        handled |= group_bit_set_prop(layout, props, "navmesh_groups_", "Navmesh Groups")
+        handled |= bit_set_prop(layout, props, "navmesh_groups_", "Navmesh Groups")
 
         for prop in prop_names:
             if prop in handled:
@@ -482,7 +482,7 @@ class MSBNavmeshPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
         props = getattr(obj, self.part_subtype.value)
         prop_names = props.get_game_props(context.scene.soulstruct_settings.game)
         handled = set()
-        handled |= group_bit_set_prop(layout, props, "navmesh_groups_", "Navmesh Groups")
+        handled |= bit_set_prop(layout, props, "navmesh_groups_", "Navmesh Groups")
 
         for prop in prop_names:
             if prop in handled:

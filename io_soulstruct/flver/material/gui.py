@@ -11,6 +11,7 @@ import typing as tp
 import bpy
 
 from .operators import *
+from io_soulstruct.types import ObjectType
 from io_soulstruct.flver.image.import_operators import ImportTextures
 from io_soulstruct.flver.image.misc_operators import FindMissingTexturesInImageCache
 
@@ -61,7 +62,7 @@ class FLVERMaterialPropsPanel(bpy.types.Panel):
     @classmethod
     def poll(cls, context):
         obj = context.active_object
-        if obj is None or obj.type != "MESH":
+        if obj is None or obj.type != ObjectType.MESH:
             return False
         return obj.active_material is not None
 
@@ -70,7 +71,7 @@ class FLVERMaterialPropsPanel(bpy.types.Panel):
 
         # Get active material on active object.
         obj = context.active_object
-        if obj is None or obj.type != "MESH":
+        if obj is None or obj.type != ObjectType.MESH:
             layout.label(text="No active mesh object.")
             return
         material = obj.active_material

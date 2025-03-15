@@ -11,6 +11,7 @@ from soulstruct.base.maps.navmesh.mcp import MCP
 from soulstruct.dcx import DCXType
 from soulstruct.games import DARK_SOULS_DSR
 
+from io_soulstruct.exceptions import SoulstructTypeError
 from io_soulstruct.utilities import *
 from .types import BlenderMCG
 
@@ -57,24 +58,19 @@ class ExportMCG(LoggingExportOperator):
         """Requires a single selected Empty object with 'Edges' and 'Nodes children."""
         if len(context.selected_objects) != 1:
             return False
-        obj = context.selected_objects[0]
-        if obj.type != "EMPTY":
+        try:
+            BlenderMCG(context.selected_objects[0])
+        except SoulstructTypeError:
             return False
-        if len(obj.children) != 2:
-            return False
-        if "Edges" in obj.children[0].name and "Nodes" in obj.children[1].name:
-            return True
-        if "Nodes" in obj.children[0].name and "Edges" in obj.children[1].name:
-            return True
-        return False
+        return True
 
     def invoke(self, context, _event):
         """Set default export name to name of object (before first space and without Blender dupe suffix)."""
         if not context.selected_objects:
             return super().invoke(context, _event)
 
-        obj = context.selected_objects[0]
-        self.filepath = get_bl_obj_tight_name(obj, new_ext=".mcg")
+        obj = BlenderMCG(context.selected_objects[0])
+        self.filepath = obj.game_name + ".mcg"
         context.window_manager.fileselect_add(self)
         return {"RUNNING_MODAL"}
 

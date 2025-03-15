@@ -1,3 +1,4 @@
+"""Functions that find and/or create Blender objects, and copy data between them."""
 from __future__ import annotations
 
 __all__ = [
@@ -14,8 +15,8 @@ import typing as tp
 
 import bpy
 
-from io_soulstruct.types import SoulstructType
-from .misc import get_bl_obj_tight_name, get_or_create_collection
+from .misc import get_or_create_collection
+from .bpy_types import ObjectType, SoulstructType
 
 if tp.TYPE_CHECKING:
     PROPS_TYPE = tp.Union[tp.Dict[str, tp.Any], bpy.types.Object, None]
@@ -48,49 +49,127 @@ def new_empty_object(name: str, soulstruct_type: SoulstructType = SoulstructType
     return empty_obj
 
 
+@tp.overload
 def find_obj(
     name: str,
-    find_stem=False,
+    object_type: tp.Literal[ObjectType.MESH] = None,
     soulstruct_type: SoulstructType | None = None,
+    bl_name_func: tp.Callable[[str], str] | None = None,
+) -> bpy.types.MeshObject | None:
+    ...
+
+
+@tp.overload
+def find_obj(
+    name: str,
+    object_type: tp.Literal[ObjectType.ARMATURE] = None,
+    soulstruct_type: SoulstructType | None = None,
+    bl_name_func: tp.Callable[[str], str] | None = None,
+) -> bpy.types.ArmatureObject | None:
+    ...
+
+
+@tp.overload
+def find_obj(
+    name: str,
+    object_type: tp.Literal[ObjectType.EMPTY] = None,
+    soulstruct_type: SoulstructType | None = None,
+    bl_name_func: tp.Callable[[str], str] | None = None,
+) -> bpy.types.EmptyObject | None:
+    ...
+
+
+def find_obj(
+    name: str,
+    object_type: ObjectType | str | None = None,
+    soulstruct_type: SoulstructType | None = None,
+    bl_name_func: tp.Callable[[str], str] | None = None,
 ) -> bpy.types.Object | None:
+    """Search for a Blender object, optionally restricting its Blender type and/or Soulstruct type.
+
+    If `bl_name_func` is given, objects will have their names passed through it before checking for quality with `name`
+    UNLESS an exact name match exists (which should obviously also be a processed match). For example, this function may
+    just split at the first space so existing object 'h1234 (Floor).003' can be found with `name = 'h1234'`.
+    """
     try:
         obj = bpy.data.objects[name]
+        if object_type and obj.type != object_type:
+            raise KeyError
         if soulstruct_type and obj.soulstruct_type != soulstruct_type:
             raise KeyError
         return bpy.data.objects[name]
     except KeyError:
-        if find_stem:
-            # Try to find an object with the same stem (e.g. "h1234" for "h1234 (Floor).003").
+        if bl_name_func:
             for obj in bpy.data.objects:
-                if get_bl_obj_tight_name(obj) == name and (soulstruct_type and obj.soulstruct_type == soulstruct_type):
+                if object_type and obj.type != object_type:
+                    continue
+                if soulstruct_type and obj.soulstruct_type != soulstruct_type:
+                    continue
+                if bl_name_func(obj.name) == name:
                     return obj
     return None
 
 
+@tp.overload
 def find_obj_or_create_empty(
     name: str,
-    find_stem=False,
+    object_type: tp.Literal[ObjectType.MESH] = None,
     soulstruct_type: SoulstructType | None = None,
+    bl_name_func: tp.Callable[[str], str] | None = None,
+    missing_collection_name="Missing MSB References",
+) -> tuple[bool, bpy.types.MeshObject]:
+    ...
+
+
+@tp.overload
+def find_obj_or_create_empty(
+    name: str,
+    object_type: tp.Literal[ObjectType.ARMATURE] = None,
+    soulstruct_type: SoulstructType | None = None,
+    bl_name_func: tp.Callable[[str], str] | None = None,
+    missing_collection_name="Missing MSB References",
+) -> tuple[bool, bpy.types.ArmatureObject]:
+    ...
+
+
+@tp.overload
+def find_obj_or_create_empty(
+    name: str,
+    object_type: tp.Literal[ObjectType.EMPTY] = None,
+    soulstruct_type: SoulstructType | None = None,
+    bl_name_func: tp.Callable[[str], str] | None = None,
+    missing_collection_name="Missing MSB References",
+) -> tuple[bool, bpy.types.EmptyObject]:
+    ...
+
+
+def find_obj_or_create_empty(
+    name: str,
+    object_type: ObjectType | str | None = None,
+    soulstruct_type: SoulstructType | None = None,
+    bl_name_func: tp.Callable[[str], str] | None = None,
     missing_collection_name="Missing MSB References",
 ) -> tuple[bool, bpy.types.Object]:
-    try:
-        obj = bpy.data.objects[name]
-        if soulstruct_type and obj.soulstruct_type != soulstruct_type:
-            raise KeyError
-        return False, bpy.data.objects[name]
-    except KeyError:
-        if find_stem:
-            # Try to find an object with the same stem (e.g. "h1234" for "h1234 (Floor).003").
-            for obj in bpy.data.objects:
-                if get_bl_obj_tight_name(obj) == name and (soulstruct_type and obj.soulstruct_type == soulstruct_type):
-                    return False, obj
+    """Search for a Blender object, optionally restricting its Blender type and/or Soulstruct type.
 
-        missing_collection = get_or_create_collection(bpy.context.scene.collection, missing_collection_name)
-        obj = bpy.data.objects.new(name, None)
-        if soulstruct_type:
-            obj.soulstruct_type = soulstruct_type
-        missing_collection.objects.link(obj)
-        return True, obj
+    If `bl_name_func` is given, objects will have their names passed through it before checking for quality with `name`
+    UNLESS an exact name match exists (which should obviously also be a processed match). For example, this function may
+    just split at the first space so existing object 'h1234 (Floor).003' can be found with `name = 'h1234'`.
+
+    If object isn't found, create it in collection `missing_collection_name`.
+
+    Returns `(was_created, object)`.
+    """
+    obj = find_obj(name, object_type, soulstruct_type, bl_name_func)
+    if obj:
+        return False, obj
+
+    missing_collection = get_or_create_collection(bpy.context.scene.collection, missing_collection_name)
+    obj = bpy.data.objects.new(name, None)
+    if soulstruct_type:
+        obj.soulstruct_type = soulstruct_type
+    missing_collection.objects.link(obj)
+    return True, obj
 
 
 def copy_obj_property_group(

@@ -18,7 +18,7 @@ from pathlib import Path
 
 import bpy
 
-from io_soulstruct.types import SoulstructType
+from io_soulstruct.types import SoulstructType, is_typed_mesh_obj, is_active_obj_typed_mesh_obj
 from io_soulstruct.utilities.operators import LoggingOperator
 from .types import BlenderFLVERMaterial
 
@@ -153,8 +153,7 @@ class AutoRenameMaterials(LoggingOperator):
         settings = context.scene.soulstruct_settings
         if not settings.is_game_ds1():
             return False
-        obj = context.active_object
-        return obj is not None and obj.type == "MESH" and obj.soulstruct_type == SoulstructType.FLVER
+        return is_active_obj_typed_mesh_obj(context, SoulstructType.FLVER)
 
     def execute(self, context):
         # noinspection PyTypeChecker

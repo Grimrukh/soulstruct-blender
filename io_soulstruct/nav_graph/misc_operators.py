@@ -23,7 +23,7 @@ from mathutils import Vector
 from soulstruct.base.events.enums import NavmeshFlag
 
 from io_soulstruct.exceptions import SoulstructTypeError, MCGEdgeCreationError
-from io_soulstruct.msb.darksouls1r import BlenderMSBNavmesh
+from io_soulstruct.msb.types.darksouls1r import BlenderMSBNavmesh
 from io_soulstruct.types import *
 from io_soulstruct.utilities import LoggingOperator
 from .utilities import *
@@ -161,7 +161,7 @@ class JoinMCGNodesThroughNavmesh(LoggingOperator):
             if bl_edge.node_a == node_b and bl_edge.node_b == node_a:
                 raise MCGEdgeCreationError(f"Nodes '{node_b.name}' and '{node_a.name}' are already connected.")
 
-        map_stem = bl_mcg.tight_name
+        map_stem = bl_mcg.game_name
         edge_name = f"{map_stem} Edge [{nav_id}] ({nav_index})"
 
         start = node_a.location
@@ -245,7 +245,7 @@ class RefreshMCGNames(LoggingOperator):
     def execute(self, context):
 
         bl_mcg = BlenderMCG.from_active_object(context)
-        map_stem = bl_mcg.tight_name
+        map_stem = bl_mcg.game_name
 
         bl_nodes = bl_mcg.get_nodes()
         bl_edges = bl_mcg.get_edges()
@@ -331,11 +331,11 @@ class RecomputeEdgeCost(LoggingOperator):
     def execute(self, context):
 
         bl_edges = BlenderMCGEdge.from_selected_objects(context)  # type: list[BlenderMCGEdge]
-        map_stem = bl_edges[0].tight_name
+        map_stem = bl_edges[0].game_name
 
         for bl_edge in bl_edges:
 
-            edge_stem = bl_edge.tight_name
+            edge_stem = bl_edge.game_name
             if edge_stem != map_stem:
                 self.warning(
                     f"Selected edges must belong to a single map stem (first stem: {map_stem}). "
@@ -509,7 +509,7 @@ class AutoCreateMCG(LoggingOperator):
     def auto_create_mcg(self, context: bpy.types.Context):
 
         map_stem = context.collection.name.split(" ")[0]
-        navmesh_parts = BlenderMSBNavmesh.from_collection_objects(context.collection)  # type: list[BlenderMSBNavmesh]
+        navmesh_parts = BlenderMSBNavmesh.from_collection_objects(context.collection)
 
         navmesh_exit_clusters = []  # type: list[tuple[EXIT_CLUSTER, ...]]
 

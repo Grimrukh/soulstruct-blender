@@ -12,7 +12,8 @@ import bpy
 from soulstruct.base.models.flver import *
 
 from io_soulstruct.exceptions import MaterialImportError, FLVERExportError
-from io_soulstruct.utilities import LoggingOperator, get_bl_custom_prop
+from io_soulstruct.types.utilities import add_auto_type_props
+from io_soulstruct.utilities import LoggingOperator, get_bl_custom_prop, remove_dupe_suffix
 from io_soulstruct.flver.image import DDSTexture, DDSTextureCollection
 from .shaders import NodeTreeBuilder
 
@@ -42,9 +43,9 @@ class BlenderFLVERMaterial:
         self.material.name = value
 
     @property
-    def tight_name(self) -> str:
+    def game_name(self) -> str:
         """Removes everything after first '[' bracket and/or first '<' bracket, and strips spaces."""
-        return self.material.name.split("[")[0].split("<")[0].strip()
+        return remove_dupe_suffix(self.material.name).split("[")[0].split("<")[0].strip()
 
     @property
     def node_tree(self):
@@ -324,7 +325,7 @@ class BlenderFLVERMaterial:
         """
         if texture_collection is None:
             texture_collection = DDSTextureCollection()
-        name = self.tight_name
+        name = self.game_name
 
         export_settings = context.scene.flver_export_settings
 
@@ -510,15 +511,5 @@ class BlenderFLVERMaterial:
 
         return hash(tuple(hashed))
 
-    @classmethod
-    def add_auto_type_props(cls, *names):
-        for prop_name in names:
-            setattr(
-                cls, prop_name, property(
-                    lambda self, pn=prop_name: getattr(self.type_properties, pn),
-                    lambda self, value, pn=prop_name: setattr(self.type_properties, pn, value),
-                )
-            )
 
-
-BlenderFLVERMaterial.add_auto_type_props(*BlenderFLVERMaterial.AUTO_MATERIAL_PROPS)
+add_auto_type_props(BlenderFLVERMaterial, *BlenderFLVERMaterial.AUTO_MATERIAL_PROPS)

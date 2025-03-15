@@ -9,10 +9,10 @@ __all__ = [
     "get_or_create_collection",
     "is_path_and_file",
     "is_path_and_dir",
-    "get_bl_obj_tight_name",
     "get_collection_map_stem",
     "remove_dupe_suffix",
     "replace_shared_prefix",
+    "get_model_name",
 ]
 
 import math
@@ -66,7 +66,7 @@ class MapStem(tp.NamedTuple):
             dd=int(match.group("dd")),
         )
 
-    def to_string(self) -> str:
+    def __str__(self) -> str:
         return f"m{self.aa:02d}_{self.bb:02d}_{self.cc:02d}_{self.dd:02d}"
 
 
@@ -103,11 +103,7 @@ def is_uniform(vector: Vector | Vector3, rel_tol: float):
     return xy_close and xz_close and yz_close
 
 
-def get_or_create_collection(
-    root_collection: bpy.types.Collection,
-    *names: str,
-    hide_viewport=False,
-) -> bpy.types.Collection:
+def get_or_create_collection(root_collection: bpy.types.Collection, *names: str) -> bpy.types.Collection:
     """Find or create Collection `names[-1]`. If it doesn't exist, create it, nested inside the given `names` hierarchy,
     starting at `root_collection`.
 
@@ -121,16 +117,12 @@ def get_or_create_collection(
         return bpy.data.collections[target_name]
     except KeyError:
         collection = bpy.data.collections.new(target_name)
-        # TODO: Prevents Armatures from being put into Edit mode.
-        #  Could temporarily enable collection when needed for new Armature.
-        # if hide_viewport:
-        #     collection.hide_viewport = True
         if not names:
             # Reached top of hierarchy.
             if root_collection:
                 root_collection.children.link(collection)
             return collection
-        parent_collection = get_or_create_collection(root_collection, *names, hide_viewport=hide_viewport)
+        parent_collection = get_or_create_collection(root_collection, *names)
         parent_collection.children.link(collection)
         return collection
 
@@ -147,14 +139,6 @@ def is_path_and_dir(path: str | Path | None) -> bool:
     if path is None:
         return False
     return Path(path).is_dir()
-
-
-def get_bl_obj_tight_name(obj: bpy.types.Object, new_ext="") -> str:
-    """Simply gets part of string before first space AND first dot, whichever comes first.
-
-    Can optionally add a new extension to the end of the stem.
-    """
-    return obj.name.split(" ")[0].split(".")[0] + new_ext
 
 
 def get_collection_map_stem(obj: bpy.types.Object) -> str:
@@ -203,3 +187,9 @@ def replace_shared_prefix(old_model_name: str, new_model_name: str, old_instance
     # This should not be reachable, as we already checked if the old names were identical. Just in case, we won't
     # change the name.
     return old_instance_name
+
+
+def get_model_name(name: str) -> str:
+    """In this add-on, model names (FLVER, Collision, Navmesh) are always the first part of an object name,
+    before the first space and/or period (so we don't have to separately remove a dupe suffix)."""
+    return name.split(" ")[0].split(".")[0].strip()

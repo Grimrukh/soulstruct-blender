@@ -9,6 +9,7 @@ __all__ = [
 
 import re
 import traceback
+import typing as tp
 from pathlib import Path
 
 import bpy
@@ -25,6 +26,16 @@ from .types import SoulstructAnimation
 
 
 SKELETON_ENTRY_RE = re.compile(r"skeleton\.hkx", re.IGNORECASE)
+
+
+def _is_bl_flver_with_animation_data(obj: bpy.types.Object) -> tp.TypeGuard[bpy.types.MeshObject]:
+    if not obj:
+        return False
+    try:
+        bl_flver = BlenderFLVER.from_armature_or_mesh(obj)
+    except SoulstructTypeError:
+        return False
+    return bool(bl_flver.armature and bl_flver.armature.animation_data and bl_flver.armature.animation_data.action)
 
 
 class ExportLooseHKXAnimation(LoggingExportOperator):
@@ -61,17 +72,13 @@ class ExportLooseHKXAnimation(LoggingExportOperator):
             return False
         if not context.active_object:
             return False
-        try:
-            bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
-        except SoulstructTypeError:
-            return False
-        return bool(bl_flver.armature and bl_flver.armature.animation_data and bl_flver.armature.animation_data.action)
+        return _is_bl_flver_with_animation_data(context.active_object)
 
     def invoke(self, context, _event):
         """Set default filepath to name of Action after '|' separator, before first space, and without extension."""
         bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
-        action = bl_flver.armature.animation_data.action
-        self.filepath = action.name.split("|")[-1].split(" ")[0].split(".")[0] + ".hkx"
+        bl_animation = SoulstructAnimation(bl_flver.armature.animation_data.action)
+        self.filepath = bl_animation.game_name + ".hkx"
         context.window_manager.fileselect_add(self)
         return {"RUNNING_MODAL"}
 
@@ -308,7 +315,7 @@ class ExportCharacterHKXAnimation(BaseExportTypedHKXAnimation):
         if animation_hkx_class is None:
             return self.error(f"No animation HKX class defined for game {settings.game.name}.")
 
-        model_name = bl_flver.export_name
+        model_name = bl_flver.game_name
 
         relative_anibnd_path = Path(game_anim_info.relative_binder_path.format(model_name=model_name))
         try:
@@ -426,7 +433,7 @@ class ExportObjectHKXAnimation(BaseExportTypedHKXAnimation):
 
         bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
         bl_animation = SoulstructAnimation.from_armature_animation_data(bl_flver.armature)
-        model_name = bl_flver.export_name
+        model_name = bl_flver.game_name
 
         try:
             game_anim_info = SoulstructAnimation.GAME_ANIMATION_INFO_OBJ[settings.game]

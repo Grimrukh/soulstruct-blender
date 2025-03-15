@@ -61,7 +61,7 @@ class ArmatureActionChoiceOperator(LoggingOperator):
         cls.enum_options = []
         for action in bpy.data.actions:
             ss_animation = SoulstructAnimation(action)
-            if ss_animation.model_stem == bl_flver.tight_name:
+            if ss_animation.model_stem == bl_flver.game_name:
                 cls.enum_options.append((action.name, ss_animation.animation_stem, ""))
         # noinspection PyUnresolvedReferences
         bpy.ops.wm.armature_action_choice_operator("INVOKE_DEFAULT")

@@ -88,7 +88,7 @@ class RenameFLVER(LoggingOperator):
 
         flver_obj = context.active_object
         bl_flver = BlenderFLVER.from_armature_or_mesh(flver_obj)
-        old_model_name = bl_flver.export_name
+        old_model_name = bl_flver.game_name
         new_model_name = self.new_name
         bl_flver.deep_rename(new_model_name)
 

@@ -30,7 +30,7 @@ from .properties import MSBPartSubtype
 from .utilities import MSB_COLLECTION_RE
 
 if tp.TYPE_CHECKING:
-    from io_soulstruct.msb.types import *
+    from io_soulstruct.msb.types.base import *
     from soulstruct.base.maps.msb.regions import BaseMSBRegion
     from soulstruct.base.maps.msb.events import BaseMSBEvent
 
@@ -45,19 +45,6 @@ class ExportMapMSB(LoggingOperator):
     bl_options = {"REGISTER", "UNDO"}
     bl_description = ("Export all Parts, Regions, and Events in active collection to a new MSB for the appropriate "
                       "map. Can also export full navmesh model NVMBND and/or full collision model HKXBHDs (DS1 only)")
-
-    PART_SUBTYPE_ORDER = (
-        MSBPartSubtype.MapPiece,
-        MSBPartSubtype.Collision,  # environment event references ignored
-        MSBPartSubtype.Navmesh,
-        MSBPartSubtype.ConnectCollision,  # references Collision
-
-        # These may have Draw Parents from above.
-        MSBPartSubtype.Object,  # includes DummyObject
-        MSBPartSubtype.Asset,
-        MSBPartSubtype.Character,  # includes DummyCharacter
-        MSBPartSubtype.PlayerStart,
-    )
 
     @classmethod
     def poll(cls, context) -> bool:
@@ -146,58 +133,45 @@ class ExportMapMSB(LoggingOperator):
         msb = msb_class()  # type: MSB_PTDE | MSB_DSR | MSB_DES
         msb.path = Path(f"map/{map_stem}/{map_stem}.msb")  # for internal usage
 
-        # We add Regions first, then Parts (in careful subtype order), then Events.
-        region_classes = BLENDER_MSB_REGION_TYPES[settings.game]
-        region_count = 0
+        bl_region_classes = BLENDER_MSB_REGION_CLASSES[settings.game]
+        bl_part_classes = BLENDER_MSB_PART_CLASSES[settings.game]
+        bl_event_classes = BLENDER_MSB_EVENT_CLASSES[settings.game]
+
+        bl_and_msb_regions = []
         for bl_region_obj in bl_regions:
-            bl_region_type = region_classes[bl_region_obj.MSB_REGION.region_subtype_enum]
-            bl_region = bl_region_type(bl_region_obj)  # type: IBlenderMSBRegion
+            bl_region_class = bl_region_classes[bl_region_obj.MSB_REGION.region_subtype_enum]
+            bl_region = bl_region_class(bl_region_obj)  # type: BaseBlenderMSBRegion
             msb_region = bl_region.to_soulstruct_obj(self, context)  # type: BaseMSBRegion
             msb.add_entry(msb_region)
-            region_count += 1
+            bl_and_msb_regions.append((bl_region, msb_region))
             # self.info(f"Added MSB Region: {msb_region.name}")
 
-        # We add Parts next, carefully by subtype.
-        part_classes = BLENDER_MSB_PART_TYPES[settings.game]  # type: dict[str, type[IBlenderMSBPart]]
         bl_and_msb_parts = []
-        for bl_part_subtype in self.PART_SUBTYPE_ORDER:
-            try:
-                bl_part_type = part_classes[bl_part_subtype]
-            except KeyError:
-                continue  # not supported by this game
-
-            # Get subtype parts. They are already sorted from above.
-            bl_subtype_parts = [obj for obj in bl_parts if obj.MSB_PART.part_subtype_enum == bl_part_subtype]
-            self.info(f"Adding {len(bl_subtype_parts)} {bl_part_subtype} parts.")
-
-            # The same Blender part subtype may be exported as multiple real subtypes (e.g. Object and DummyObject) so
-            # we need to detect the correct MSB list on an individual basis.
-            for bl_part_obj in bl_subtype_parts:
-                bl_part = bl_part_type(bl_part_obj)  # type: IBlenderMSBPart
-                msb_part = bl_part.to_soulstruct_obj(self, context, map_stem, msb)  # will create and add MSB model
-                msb.add_entry(msb_part)
-                bl_and_msb_parts.append((bl_part, msb_part))
-                # self.info(f"Added {bl_part_subtype} MSB Part: {msb_part.name}")
-
-        # Sort all Models by name.
-        for list_name in msb.get_subtype_list_names():
-            if list_name.endswith("_models"):
-                getattr(msb, list_name).sort_by_name()
+        for bl_part_obj in bl_parts:
+            bl_part_class = bl_part_classes[bl_part_obj.MSB_PART.part_subtype_enum]
+            bl_part = bl_part_class(bl_part_obj)  # type: BaseBlenderMSBPart
+            msb_part = bl_part.to_soulstruct_obj(self, context)
+            msb.add_entry(msb_part)
+            bl_and_msb_parts.append((bl_part, msb_part))
+            # self.info(f"Added {bl_part_subtype} MSB Part: {msb_part.name}")
 
         # Finally, we add Events.
-        event_classes = BLENDER_MSB_EVENT_TYPES[settings.game]
-        event_count = 0
+        bl_and_msb_events = []
         for bl_event_obj in bl_events:
-            bl_event_type = event_classes[bl_event_obj.MSB_EVENT.event_subtype_enum]
-            bl_event = bl_event_type(bl_event_obj)  # type: IBlenderMSBEvent
-            msb_event = bl_event.to_soulstruct_obj(self, context, map_stem, msb)  # type: BaseMSBEvent
+            bl_event_class = bl_event_classes[bl_event_obj.MSB_EVENT.event_subtype_enum]
+            bl_event = bl_event_class(bl_event_obj)  # type: BaseBlenderMSBEvent
+            msb_event = bl_event.to_soulstruct_obj(self, context)  # type: BaseMSBEvent
             msb.add_entry(msb_event)
-            event_count += 1
+            bl_and_msb_events.append((bl_event, msb_event))
             # self.info(f"Added {bl_event_obj.MSB_EVENT.event_subtype_enum} MSB Event: {msb_event.name}")
 
-        # Resolve any deferred properties for Parts (e.g. Collision environment events).
-        for bl_part, msb_part in bl_and_msb_parts:
-            bl_part.to_soulstruct_obj_deferred(self, context, map_stem, msb, msb_part)
+        # Set all MSB Entry references and Part models/SIB paths.
+        for bl_entry, msb_entry in bl_and_msb_regions + bl_and_msb_parts + bl_and_msb_events:
+            bl_entry.resolve_msb_entry_refs_and_map_stem(self, msb_entry, msb, map_stem)
+
+        # Sort all MSB Models by name.
+        for _, model_list in msb.get_models_dict():
+            model_list.sort_by_name()
 
         # MSB is ready to write.
         relative_msb_path = settings.get_relative_msb_path(map_stem)  # will use latest MSB version
@@ -208,11 +182,14 @@ class ExportMapMSB(LoggingOperator):
             # Do not try to export NVMBND or NVMDUMP below.
             return self.error(f"Could not export MSB. Error: {ex}")
 
+        model_count = len(msb.get_models())
         part_count = len(bl_and_msb_parts)
+        region_count = len(bl_and_msb_regions)
+        event_count = len(bl_and_msb_events)
 
         self.info(
             f"Exported MSB {map_stem} successfully with {region_count} Regions, {event_count} Events, "
-            f"{part_count} Parts, and {len(msb.get_models())} Models."
+            f"{part_count} Parts, and {model_count} Models."
         )
 
         # NOTE: MSB export is now irreversible. We handle any errors that occur below while doing optional extra exports
@@ -236,10 +213,11 @@ class ExportMapMSB(LoggingOperator):
             self.info(f"Exported NVMDUMP file next to NVMBND: {relative_nvmdump_path.name}")
 
         if export_settings.export_navmesh_models:
-            bl_navmesh_type = part_classes[MSBPartSubtype.Navmesh]
+            bl_navmesh_class = bl_part_classes[MSBPartSubtype.Navmesh]
             bl_navmesh_parts = [
-                bl_navmesh_type(obj) for obj in bl_parts if obj.MSB_PART.part_subtype == MSBPartSubtype.Navmesh
+                bl_navmesh_class(obj) for obj in bl_parts if obj.MSB_PART.part_subtype == MSBPartSubtype.Navmesh
             ]
+            self.info(f"Exporting models for {len(bl_navmesh_parts)} MSB Navmesh Parts (should be fast).")
             # NOTE: All these games use NVMBNDs.
             if settings.is_game(DEMONS_SOULS, DARK_SOULS_PTDE, DARK_SOULS_DSR):
                 self.export_nvmbnd(context, map_stem, bl_navmesh_parts)
@@ -247,11 +225,11 @@ class ExportMapMSB(LoggingOperator):
                 self.warning(f"Navmesh model export not supported for game '{settings.game}'.")
 
         if export_settings.export_collision_models:
-            bl_collision_type = part_classes[MSBPartSubtype.Collision]
+            bl_collision_class = bl_part_classes[MSBPartSubtype.Collision]
             bl_collision_parts = [
-                bl_collision_type(obj) for obj in bl_parts if obj.MSB_PART.part_subtype == MSBPartSubtype.Collision
+                bl_collision_class(obj) for obj in bl_parts if obj.MSB_PART.part_subtype == MSBPartSubtype.Collision
             ]
-            self.info(f"Exporting {len(bl_collision_parts)} Collision models (might take a few seconds).")
+            self.info(f"Exporting models for {len(bl_collision_parts)} MSB Collision Parts (might take a few seconds).")
             if settings.is_game(DEMONS_SOULS, DARK_SOULS_PTDE):
                 self.export_loose_hkxs(context, map_stem, bl_collision_parts)
             elif settings.is_game(DARK_SOULS_DSR):
@@ -263,8 +241,10 @@ class ExportMapMSB(LoggingOperator):
 
         return {"FINISHED"}
 
+    # TODO: A lot of redundancy below, with the existing Model export operators.
+
     def export_loose_nvms(
-        self, context: bpy.types.Context, map_stem: str, bl_navmeshes: list[IBlenderMSBPart]
+        self, context: bpy.types.Context, map_stem: str, bl_navmeshes: list[BaseBlenderMSBPart]
     ) -> set[str]:
         """Collect and export all NVMs for all MSB Navmesh models."""
         settings = context.scene.soulstruct_settings
@@ -276,7 +256,7 @@ class ExportMapMSB(LoggingOperator):
                 # Log error (should never happen in any valid MSB), but continue.
                 self.error(f"Blender MSB Navmesh '{bl_navmesh.name}' has no model assigned to export.")
                 continue
-            model_stem = bl_navmesh.export_name
+            model_stem = bl_navmesh.game_name
             if model_stem in added_models:
                 self.warning(
                     f"MSB {map_stem} has duplicate MSB Navmesh models ('{model_stem}'), which is extremely unusual."
@@ -300,7 +280,9 @@ class ExportMapMSB(LoggingOperator):
 
         return {"FINISHED"}
 
-    def export_nvmbnd(self, context: bpy.types.Context, map_stem: str, bl_navmeshes: list[IBlenderMSBPart]) -> set[str]:
+    def export_nvmbnd(
+        self, context: bpy.types.Context, map_stem: str, bl_navmeshes: list[BaseBlenderMSBPart]
+    ) -> set[str]:
         """Collect and export brand new NVMBND containing all MSB Navmesh models."""
         settings = context.scene.soulstruct_settings
 
@@ -326,7 +308,7 @@ class ExportMapMSB(LoggingOperator):
                 self.error(f"MSB Navmesh Part '{bl_navmesh.name}' does not have a valid NVM model. Error: {ex}")
                 continue
 
-            model_stem = bl_nvm.export_name
+            model_stem = bl_nvm.game_name
             if model_stem in added_models:
                 self.warning(
                     f"MSB {map_stem} has duplicate MSB Navmesh models ('{model_stem}'), which is extremely unusual."
@@ -356,7 +338,7 @@ class ExportMapMSB(LoggingOperator):
         return {"FINISHED"}
 
     def export_loose_hkxs(
-        self, context: bpy.types.Context, map_stem: str, bl_collisions: list[IBlenderMSBPart]
+        self, context: bpy.types.Context, map_stem: str, bl_collisions: list[BaseBlenderMSBPart]
     ) -> set[str]:
         """Collect and export all both-res loose HKXs for all MSB Collision models."""
         settings = context.scene.soulstruct_settings
@@ -374,7 +356,7 @@ class ExportMapMSB(LoggingOperator):
                 # Log error (should never happen in any valid MSB), but continue.
                 self.error(f"Blender MSB Collision '{bl_collision.name}' has no model assigned to export.")
                 continue
-            model_stem = bl_collision.export_name
+            model_stem = bl_collision.game_name
             if model_stem in added_models:
                 # Acceptable, unlike navmeshes (e.g. kill planes or shifted dupes of some other kind).
                 continue
@@ -412,7 +394,7 @@ class ExportMapMSB(LoggingOperator):
         return {"FINISHED"}
 
     def export_hkxbhds(
-        self, context: bpy.types.Context, map_stem: str, bl_collisions: list[IBlenderMSBPart]
+        self, context: bpy.types.Context, map_stem: str, bl_collisions: list[BaseBlenderMSBPart]
     ) -> set[str]:
         """Collect and export brand new both-res HKXBHDs containing all MSB Collision models."""
         settings = context.scene.soulstruct_settings
@@ -434,7 +416,7 @@ class ExportMapMSB(LoggingOperator):
                 # Log error (should never happen in any valid MSB), but continue.
                 self.error(f"Blender MSB Collision '{bl_collision.name}' has no model assigned to export.")
                 continue
-            model_stem = bl_collision.export_name
+            model_stem = bl_collision.game_name
             if model_stem in added_models:
                 # Acceptable, unlike navmeshes (e.g. kill planes or shifted dupes of some other kind).
                 continue

@@ -32,7 +32,7 @@ def deep_rename(bl_flver: BlenderFLVER, new_name: str, old_name=""):
     Blender's duplicate suffix, e.g. '.001', is stripped prior to the renaming of all components.
     """
 
-    old_name = old_name or bl_flver.export_name
+    old_name = old_name or bl_flver.game_name
 
     if bl_flver.armature:
         bl_flver.armature.name = f"{new_name} Armature"

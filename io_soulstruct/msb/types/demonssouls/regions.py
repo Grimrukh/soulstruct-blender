@@ -1,0 +1,26 @@
+from __future__ import annotations
+
+__all__ = [
+    "BlenderMSBRegion",
+]
+
+from soulstruct.demonssouls.maps.msb import MSB
+from soulstruct.demonssouls.maps.regions import *
+
+from io_soulstruct.msb.types.base.regions import BaseBlenderMSBRegion
+from io_soulstruct.msb.properties import MSBRegionProps, MSBRegionSubtype
+from io_soulstruct.types import *
+
+
+class BlenderMSBRegion(BaseBlenderMSBRegion[MSBRegion, MSBRegionProps, None, MSB]):
+    """No subclasses in DeS (just shape types)."""
+
+    TYPE = SoulstructType.MSB_REGION
+    BL_OBJ_TYPE = ObjectType.MESH
+    SOULSTRUCT_CLASS = MSBRegion
+    MSB_ENTRY_SUBTYPE = MSBRegionSubtype.All  # no subtypes for DS1
+
+    __slots__ = []
+
+    # No subtype fields.
+    SUBTYPE_FIELDS = ()

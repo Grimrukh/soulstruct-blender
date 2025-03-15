@@ -21,10 +21,10 @@ from .properties import MapCollisionProps
 from .utilities import HKX_MATERIAL_NAME_RE
 
 
-class BlenderMapCollision(SoulstructObject[MapCollisionModel, MapCollisionProps]):
+class BlenderMapCollision(BaseBlenderSoulstructObject[MapCollisionModel, MapCollisionProps]):
 
     TYPE = SoulstructType.COLLISION
-    OBJ_DATA_TYPE = SoulstructDataType.MESH
+    BL_OBJ_TYPE = ObjectType.MESH
     SOULSTRUCT_CLASS = MapCollisionModel
 
     obj: bpy.types.MeshObject
@@ -57,7 +57,8 @@ class BlenderMapCollision(SoulstructObject[MapCollisionModel, MapCollisionProps]
         soulstruct_obj: MapCollisionModel,
         name: str,
         collection: bpy.types.Collection = None,
-        lo_collision: MapCollisionModel = None,  # optional
+        *,
+        lo_collision: MapCollisionModel | None = None,  # optional
     ) -> tp.Self:
         """Read a HKX or two (hi/lo) HKXs into a single Blender mesh, with materials representing res/submeshes."""
         hi_collision = soulstruct_obj
@@ -138,7 +139,7 @@ class BlenderMapCollision(SoulstructObject[MapCollisionModel, MapCollisionProps]
         if not self.obj.material_slots:
             raise ValueError(f"HKX model mesh '{self.name}' has no materials for submesh detection.")
 
-        model_name = self.export_name
+        model_name = self.game_name
         if model_name.startswith("h") or hi_name:
             hi_name = hi_name or model_name
             lo_name = lo_name or model_name.replace("h", "l", 1)

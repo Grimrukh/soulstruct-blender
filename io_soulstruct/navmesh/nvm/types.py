@@ -21,10 +21,10 @@ from .properties import *
 from .utilities import set_face_material
 
 
-class BlenderNVM(SoulstructObject[NVM, NVMProps]):
+class BlenderNVM(BaseBlenderSoulstructObject[NVM, NVMProps]):
 
     TYPE = SoulstructType.NAVMESH
-    OBJ_DATA_TYPE = SoulstructDataType.MESH
+    BL_OBJ_TYPE = ObjectType.MESH
     SOULSTRUCT_CLASS = NVM
 
     __slots__ = []
@@ -71,7 +71,8 @@ class BlenderNVM(SoulstructObject[NVM, NVMProps]):
             # Get the average position of the faces. This is purely for show and is not exported.
             avg_pos = Vector((0, 0, 0))
             for i in nvm_event.triangle_indices:
-                avg_pos += bm.faces[i].calc_center_median()
+                face = bm.faces[i]
+                avg_pos += face.calc_center_median()
             avg_pos /= len(nvm_event.triangle_indices)
             nvm_event_name = f"{name} Event {nvm_event.entity_id}"
             bl_event = BlenderNVMEventEntity.new_from_soulstruct_obj(
@@ -239,6 +240,11 @@ class BlenderNVM(SoulstructObject[NVM, NVMProps]):
         for event_entity in self.get_nvm_event_entities():
             event_entity.obj.name = event_entity.name.replace(old_name, new_name)
 
+    @property
+    def game_name(self) -> str:
+        """Splits on spaces and periods."""
+        return remove_dupe_suffix(self.obj.name).split(" ")[0].split(".")[0].strip()
+
     @staticmethod
     def create_box(context: bpy.types.Context, box: NVMBox):
         """Create an AABB prism representing `box`. Position is baked into mesh data fully, just like the navmesh."""
@@ -253,14 +259,16 @@ class BlenderNVM(SoulstructObject[NVM, NVMProps]):
             vertex.co[1] = start_vec.y if vertex.co[1] == -1.0 else end_vec.y
             vertex.co[2] = start_vec.z if vertex.co[2] == -1.0 else end_vec.z
         bpy.ops.object.modifier_add(type="WIREFRAME")
-        bl_box.modifiers[0].thickness = 0.02
+        # noinspection PyTypeChecker
+        wireframe_mod = bl_box.modifiers[0]  # type: bpy.types.WireframeModifier
+        wireframe_mod.thickness = 0.02
         return bl_box
 
 
-class BlenderNVMEventEntity(SoulstructObject[NVMEventEntity, NVMEventEntityProps]):
+class BlenderNVMEventEntity(BaseBlenderSoulstructObject[NVMEventEntity, NVMEventEntityProps]):
 
     TYPE = SoulstructType.NVM_EVENT_ENTITY
-    OBJ_DATA_TYPE = SoulstructDataType.EMPTY
+    BL_OBJ_TYPE = ObjectType.EMPTY
     SOULSTRUCT_CLASS = NVMEventEntity
 
     __slots__ = []
@@ -268,7 +276,7 @@ class BlenderNVMEventEntity(SoulstructObject[NVMEventEntity, NVMEventEntityProps
     @property
     def entity_id(self) -> int:
         return self.type_properties.entity_id
-    
+
     @entity_id.setter
     def entity_id(self, value: int):
         self.type_properties.entity_id = value
@@ -295,7 +303,7 @@ class BlenderNVMEventEntity(SoulstructObject[NVMEventEntity, NVMEventEntityProps
     ) -> BlenderNVMEventEntity:
         bl_event = cls.new(name, data=None, collection=collection)  # type: BlenderNVMEventEntity
         bl_event.obj.empty_display_type = "CUBE"  # to distinguish it from node spheres
-        
+
         bl_event.obj.location = location or Vector()
         bl_event.entity_id = soulstruct_obj.entity_id
         bl_event.triangle_indices = soulstruct_obj.triangle_indices

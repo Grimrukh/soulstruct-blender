@@ -240,7 +240,7 @@ class BaseImportTypedHKXAnimation(BaseImportHKXAnimation):
 
     def execute(self, context):
         bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
-        model_name = bl_flver.export_name
+        model_name = bl_flver.game_name
 
         # Find animation HKX entry/entries.
         try:
@@ -289,7 +289,7 @@ class ImportCharacterHKXAnimation(BaseImportTypedHKXAnimation):
     def invoke(self, context, _event):
         settings = self.settings(context)
         bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
-        model_name = bl_flver.export_name
+        model_name = bl_flver.game_name
         if model_name == "c0000":
             # NOTE: The 'c0000_*.txt' registration of sub-ANIBNDs holds for all games I've seen so far.
             try:

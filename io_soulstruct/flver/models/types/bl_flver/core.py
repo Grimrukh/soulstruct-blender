@@ -36,7 +36,7 @@ if tp.TYPE_CHECKING:
     from io_soulstruct.flver.image.image_import_manager import ImageImportManager
 
 
-class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
+class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
     """Wrapper for a Blender object hierarchy that represents a `FLVER` or `FLVER0` model.
 
     Exposes convenience methods that access and/or modify different FLVER attributes.
@@ -61,8 +61,7 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
     """
 
     TYPE = SoulstructType.FLVER
-    OBJ_DATA_TYPE = SoulstructDataType.MESH
-    EXPORT_TIGHT_NAME = True
+    BL_OBJ_TYPE = ObjectType.MESH
 
     __slots__ = []
     obj: bpy.types.MeshObject  # type override
@@ -266,13 +265,13 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         cls,
         operator: LoggingOperator,
         context: bpy.types.Context,
-        flver: FLVER,
+        soulstruct_obj: FLVER,
         name: str,
-        image_import_manager: ImageImportManager | None = None,
         collection: bpy.types.Collection = None,
+        *,
+        image_import_manager: ImageImportManager | None = None,
         existing_merged_mesh: MergedMesh = None,
         existing_bl_materials: tp.Sequence[BlenderFLVERMaterial] = None,
-        force_bone_data_type: FLVERBoneDataType | None = None,
     ) -> BlenderFLVER:
         """Read a FLVER into a managed Blender Armature/Mesh.
 
@@ -306,15 +305,15 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         """
 
         return create_bl_flver_from_flver(
+            cls,
             operator,
             context,
-            flver,
-            name,
+            flver=soulstruct_obj,
+            name=name,
             collection=collection,
             image_import_manager=image_import_manager,
             existing_merged_mesh=existing_merged_mesh,
             existing_bl_materials=existing_bl_materials,
-            force_bone_data_type=force_bone_data_type,
         )
 
     @classmethod
@@ -349,6 +348,11 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         flver_model_type=FLVERModelType.Unknown,
     ) -> FLVER:
         return create_flver_from_bl_flver(operator, context, self, texture_collection, flver_model_type)
+
+    @property
+    def game_name(self) -> str:
+        """Splits on spaces and periods after removing dupe suffix."""
+        return get_model_name(self.obj.name)
 
     @classmethod
     def get_selected_flver(cls, context: bpy.types.Context) -> BlenderFLVER:
@@ -413,4 +417,4 @@ class BlenderFLVER(SoulstructObject[FLVER, FLVERProps]):
         return armature, mesh
 
 
-BlenderFLVER.add_auto_type_props(*BlenderFLVER.AUTO_FLVER_PROPS)
+add_auto_type_props(BlenderFLVER, *BlenderFLVER.AUTO_FLVER_PROPS)

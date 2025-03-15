@@ -34,6 +34,7 @@ import re
 from enum import StrEnum
 
 from soulstruct.games import *
+from soulstruct.darksouls1ptde.events.enums import SoundType
 
 import bpy
 from io_soulstruct.types import SoulstructType
@@ -188,18 +189,10 @@ class MSBSoundEventProps(bpy.types.PropertyGroup):
     sound_type: bpy.props.EnumProperty(
         name="Sound Type",
         description="Type of sound to play. Determines sound file prefix letter",
+        # TODO: Using DS1 `SoundType` enum for now.
         items=[
-            ("a_Ambient", "a_Ambient", "Ambient"),
-            ("c_CharacterMotion", "c_CharacterMotion", "Character Motion"),
-            ("f_MenuEffect", "f_MenuEffect", "Menu Effect"),
-            ("o_Object", "o_Object", "Object"),
-            ("p_Cutscene", "p_Cutscene", "Cutscene"),
-            ("s_SFX", "s_SFX", "SFX"),
-            ("m_Music", "m_Music", "Music"),
-            ("v_Voice", "v_Voice", "Voice"),
-            ("x_FloorMaterialDependent", "x_FloorMaterialDependent", "Floor Material Dependent"),
-            ("b_ArmorMaterialDependent", "b_ArmorMaterialDependent", "Armor Material Dependent"),
-            ("g_Ghost", "g_Ghost", "Ghost"),
+            (sound_type.value, sound_type.name, sound_type.name.split("_", 1)[1].title())
+            for sound_type in SoundType
         ],
         default="s_SFX",
     )

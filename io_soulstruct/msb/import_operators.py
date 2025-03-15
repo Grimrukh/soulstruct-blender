@@ -15,57 +15,35 @@ import typing as tp
 from pathlib import Path
 
 import bpy
+from soulstruct.base.maps.msb import BaseMSBSubtype
 from soulstruct.darksouls1ptde.maps import MSB as PTDE_MSB
 from soulstruct.darksouls1r.maps import MSB as DSR_MSB
 from soulstruct.demonssouls.maps import MSB as DES_MSB
 from soulstruct.games import *
-from soulstruct.utilities.misc import IDList
 
-from io_soulstruct.exceptions import BatchOperationUnsupportedError, UnsupportedGameTypeError, MissingPartModelError
-from io_soulstruct.msb import darksouls1ptde, darksouls1r, demonssouls
-from io_soulstruct.msb.properties import MSBPartSubtype
+from io_soulstruct.msb.types import darksouls1ptde, darksouls1r, demonssouls
 from io_soulstruct.general.cached import get_cached_file
 from io_soulstruct.utilities import *
 from io_soulstruct.utilities.operators import LoggingOperator, LoggingImportOperator
+from .operator_config import *
+from .properties import MSBRegionSubtype, MSBPartSubtype, MSBEventSubtype
 
 if tp.TYPE_CHECKING:
     from io_soulstruct.type_checking import *
-    from io_soulstruct.msb.types import *
+    from io_soulstruct.msb.types.base import *
+    from .types.base.models import BaseBlenderMSBModelImporter
 
 
-# Maps all games' `MSBPartSubtype` enum names to the MSB import settings bool name.
+# Maps all games' `MSBModelSubtype` enum names to the MSB import settings bool name.
 _IMPORT_MODEL_BOOLS = {
-    "MapPiece": "import_map_piece_models",
-    "Object": "import_object_models",
-    "Asset":  "import_object_models",  # same
-    "Character": "import_character_models",
-    "PlayerStart": "import_character_models",  # same
-    "Collision": "import_collision_models",
-    "Protoboss": "import_character_models",  # same
-    "Navmesh": "import_navmesh_models",
-    "DummyObject": "import_object_models",
-    "DummyCharacter": "import_character_models",
-    "ConnectCollision": "import_collision_models",  # same
+    "MapPieceModel": "import_map_piece_models",
+    "ObjectModel": "import_object_models",
+    "AssetModel":  "import_object_models",  # same
+    "CharacterModel": "import_character_models",
+    "PlayerModel": "import_character_models",  # same
+    "CollisionModel": "import_collision_models",
+    "NavmeshModel": "import_navmesh_models",
 }
-
-
-# Note that we don't use the Blender `MSBPartSubtype` enum here, which doesn't include Dummy variants.
-PART_SUBTYPE_ORDER = (
-    "MapPiece",
-    "Collision",  # environment event references ignored
-    "Navmesh",
-    "ConnectCollision",  # references Collision
-
-    # These may have Draw Parents from above.
-    "Object",
-    "Asset",
-    "Character",
-    "PlayerStart",
-    "Protoboss",
-    "DummyObject",
-    # TODO: "DummyAsset",
-    "DummyCharacter",
-)
 
 
 def _import_msb(
@@ -85,24 +63,15 @@ def _import_msb(
     else:
         return operator.error(f"Unsupported game for MSB import/export: {settings.game.name}")
 
-    def get_bl_region_type(region_: MSB_REGION_TYPING) -> type[IBlenderMSBRegion]:
-        try:
-            return getattr(blender_types_module, f"Blender{region_.cls_name}")  # type: type[IBlenderMSBRegion]
-        except AttributeError:
-            raise UnsupportedGameTypeError(f"Unsupported MSB Region subtype: {region_.SUBTYPE_ENUM.name}")
+    # TODO: Not a fan of how these keys are Soulstruct enums, but the ones below are Blender enums.
+    #  (It's because there is no `MSBModelSubtype` enum in Blender, as MSB Models aren't a `SoulstructType`.)
+    msb_model_importers = blender_types_module.MSB_MODEL_IMPORTERS
+    msb_model_importers: dict[BaseMSBSubtype, BaseBlenderMSBModelImporter]
 
-    def get_bl_event_type(event_: MSB_EVENT_TYPING) -> type[IBlenderMSBEvent]:
-        try:
-            return getattr(blender_types_module, f"Blender{event_.cls_name}")  # type: type[IBlenderMSBEvent]
-        except AttributeError:
-            raise UnsupportedGameTypeError(f"Unsupported MSB Event subtype: {event_.SUBTYPE_ENUM.name}")
-
-    def get_bl_part_type(part_: MSB_PART_TYPING) -> type[IBlenderMSBPart]:
-        cls_name = part_.cls_name.replace("Dummy", "")
-        try:
-            return getattr(blender_types_module, f"Blender{cls_name}")  # type: type[IBlenderMSBPart]
-        except AttributeError:
-            raise UnsupportedGameTypeError(f"Unsupported MSB Part subtype: {part_.SUBTYPE_ENUM.name}")
+    # NOTE: The keys of these are the *Blender* enums of the same name as the true MSB subtype enums.
+    bl_region_classes = BLENDER_MSB_REGION_CLASSES[settings.game]
+    bl_part_classes = BLENDER_MSB_PART_CLASSES[settings.game]
+    bl_event_classes = BLENDER_MSB_EVENT_CLASSES[settings.game]
 
     # Two separate sub-collections for MSB entries: Parts, and Regions/Events combined.
     parts_collection = get_or_create_collection(context.scene.collection, f"{msb_stem} MSB", f"{msb_stem} Parts")
@@ -112,89 +81,60 @@ def _import_msb(
 
     # TODO: Delete all created objects if/when an error is raised.
 
-    # 1. Find all Parts that will have their models imported.
-    part_name_filter = msb_import_settings.get_name_match_filter()
-    batched_parts_with_models = {}  # for batch import attempt
-    all_parts_with_models = IDList()  # for backup single import attempt
-    for part in msb.get_parts():
-
-        if not part.model:
-            continue
-        subtype_bool = _IMPORT_MODEL_BOOLS[part.SUBTYPE_ENUM.name]
+    # Batch-import all requested `MSBModel` file types (if not found in Blender).
+    model_name_filter = msb_import_settings.get_model_name_match_filter()
+    for model_subtype, model_list in msb.get_models_dict().items():
+        subtype_bool = _IMPORT_MODEL_BOOLS[model_subtype.name]
         if not getattr(msb_import_settings, subtype_bool):
-            continue  # part subtype models disabled
-        if not part_name_filter(part.name):
-            continue  # manually excluded
+            continue  # import of this Model type is disabled
 
-        bl_part_type = get_bl_part_type(part)
-        map_dir_stem = oldest_map_stem if bl_part_type.MODEL_USES_OLDEST_MAP_VERSION else msb_stem
+        model_importer = msb_model_importers[model_subtype]
+        models = [model for model in model_list if model_name_filter(model.name)]
+        if models:
+            # Note that ALL Model types now support batch import. Models that already exist in Blender (of the expected
+            # object type, Soulstruct type, and model name) will be skipped, regardless of their Collection.
+            operator.info(f"Importing (up to) {len(models)} `{model_subtype.name}` model files in parallel.")
+            model_map_stem = oldest_map_stem if model_importer.use_oldest_map_stem else msb_stem
+            model_importer.batch_import_model_meshes(operator, context, models, map_stem=model_map_stem)
 
-        try:
-            bl_part_type.find_model_mesh(part.model.name, map_dir_stem)
-        except MissingPartModelError:
-            pass  # queue up model to import below
-        else:
-            continue  # ignore Part with found model
-
-        if part.SUBTYPE_ENUM in batched_parts_with_models:
-            parts = batched_parts_with_models[part.SUBTYPE_ENUM][1]
-        else:
-            parts = IDList()
-            batched_parts_with_models[part.SUBTYPE_ENUM] = (bl_part_type, parts)
-        parts.append(part)
-
-    # 2. Try to batch-import all queued Part models.
-    for part_subtype, (bl_part_type, parts) in tuple(batched_parts_with_models.items()):
-        map_dir_stem = oldest_map_stem if bl_part_type.MODEL_USES_OLDEST_MAP_VERSION else msb_stem
-
-        try:
-            # Import models for this Part subtype in parallel, as much as possible.
-            operator.info(f"Importing {bl_part_type.PART_SUBTYPE.get_nice_name()} models in parallel.")
-            bl_part_type.batch_import_models(operator, context, parts, map_stem=map_dir_stem)
-        except BatchOperationUnsupportedError:
-            # Import models for this Part subtype one by one below.
-            all_parts_with_models.extend(parts)
-
-    # 3. Import Regions first, as they contain no MSB references.
-    region_count = 0
-    for region in msb.get_regions():
-        bl_region_type = get_bl_region_type(region)
-        try:
-            # Don't need to get created object or provide a subcollection.
-            bl_region_type.new_from_soulstruct_obj(operator, context, region, region.name, regions_events_collection)
-        except Exception as ex:
-            # Fatal error.
-            traceback.print_exc()
-            return operator.error(f"Failed to import {region.cls_name} '{region.name}': {ex}")
-        region_count += 1
-
-    # 4. Import Parts in a particular order so references will exist. TODO: Currently DS1 subtypes only.
-    # Note that Collision references to Environment Events are handled AFTER Event import below (only delayed case).
+    # All MSB inter-entry reference fields are set later, so it doesn't matter what order we create the MSB entry
+    # objects in Blender.
+    msb_and_bl_regions = []
+    msb_and_bl_events = []
     msb_and_bl_parts = []
-    for part_subtype in PART_SUBTYPE_ORDER:
-        try:
-            part_list_name = msb.resolve_subtype_name(part_subtype)
-        except KeyError:
-            continue  # not a subtype in this game
-        parts = getattr(msb, part_list_name)
-        for part in parts:
-            bl_part_type = get_bl_part_type(part)
-            part_subtype_collection = get_or_create_collection(
-                parts_collection,
-                f"{msb_stem} {bl_part_type.PART_SUBTYPE.get_nice_name()} Parts",
-            )
+
+    for region_subtype, msb_region_list in msb.get_regions_dict():
+        bl_region_subtype = MSBRegionSubtype[region_subtype.name]
+        bl_region_class = bl_region_classes[bl_region_subtype]  # type: type[BaseBlenderMSBRegion]
+        for region in msb_region_list:
             try:
-                # We only import the model here if models were requested for this part subtype and batch import for
-                # this subtype was unsupported above. Otherwise, an empty model will be created (with a warning).
-                try_import_model = part in all_parts_with_models
-                bl_part = bl_part_type.new_from_soulstruct_obj(
+                # Don't need to get created object or provide a subcollection.
+                bl_region = bl_region_class.new_from_soulstruct_obj(
+                    operator, context, region, region.name, regions_events_collection
+                )
+            except Exception as ex:
+                # Fatal error.
+                traceback.print_exc()
+                return operator.error(f"Failed to import {region.cls_name} '{region.name}': {ex}")
+            msb_and_bl_regions.append((region, bl_region))
+
+    for part_subtype, msb_part_list in msb.get_parts_dict():
+        bl_part_subtype = MSBPartSubtype[part_subtype.name]
+        bl_part_class = bl_part_classes[bl_part_subtype]  # type: type[BaseBlenderMSBPart]
+        part_subtype_collection = get_or_create_collection(
+            parts_collection,
+            f"{msb_stem} {bl_part_subtype.get_nice_name()} Parts",
+        )
+        for part in msb_part_list:
+            try:
+                bl_part = bl_part_class.new_from_soulstruct_obj(
                     operator,
                     context,
                     part,
                     part.name,
                     collection=part_subtype_collection,
                     map_stem=msb_stem,
-                    try_import_model=try_import_model,
+                    armature_mode=msb_import_settings.part_armature_mode,
                 )
             except Exception as ex:
                 # Fatal error.
@@ -202,48 +142,31 @@ def _import_msb(
                 return operator.error(f"Failed to import {part.cls_name} '{part.name}': {ex}")
             msb_and_bl_parts.append((part, bl_part))
 
-    # 5. Import Events last, as they may reference Parts and Regions.
-    msb_and_bl_events = []
-    for event in msb.get_events():
-        bl_event_type = get_bl_event_type(event)
-        try:
-            bl_event = bl_event_type.new_from_soulstruct_obj(
-                operator, context, event, event.name, regions_events_collection, msb_stem
-            )
-        except Exception as ex:
-            # Fatal error.
-            traceback.print_exc()
-            return operator.error(f"Failed to import {event.cls_name} '{event.name}': {ex}")
+    for event_subtype, msb_event_list in msb.get_events_dict():
+        bl_event_type = MSBEventSubtype[event_subtype.name]
+        bl_event_class = bl_event_classes[bl_event_type]  # type: type[BaseBlenderMSBEvent]
+        for event in msb_event_list:
+            try:
+                bl_event = bl_event_class.new_from_soulstruct_obj(
+                    operator, context, event, event.name, regions_events_collection
+                )
+            except Exception as ex:
+                # Fatal error.
+                traceback.print_exc()
+                return operator.error(f"Failed to import {event.cls_name} '{event.name}': {ex}")
 
+            msb_and_bl_events.append((event, bl_event))
+
+    for msb_entry, bl_obj in msb_and_bl_parts + msb_and_bl_regions + msb_and_bl_events:
+        bl_obj.resolve_bl_entry_refs(operator, msb_entry)
+
+    for _, bl_event in msb_and_bl_events:
         if bl_event.PARENT_PROP_NAME:
             # Should exist in Blender among Parts or Regions imported above. If `None`, it's a harmless assignment.
             bl_event.parent = getattr(bl_event, bl_event.PARENT_PROP_NAME)
 
-        msb_and_bl_events.append((event, bl_event))
-
-    if settings.is_game_ds1():
-        # 6. Set Collision references to Environment Events. TODO: Bloodborne also?
-        collisions = [
-            (msb_c, bl_c) for msb_c, bl_c in msb_and_bl_parts if bl_c.PART_SUBTYPE == MSBPartSubtype.Collision
-        ]
-        for msb_collision, bl_collision in collisions:
-            msb_collision: MSB_COLLISION_TYPING
-            bl_collision: darksouls1ptde.BlenderMSBCollision
-            if msb_collision.environment_event:
-                # Find environment event by searching through the list of events created above, NOT by name (as it MUST
-                # exist and MUST have been imported, and MSB event names may not be unique).
-                for msb_event, bl_event in msb_and_bl_events:
-                    if msb_event is msb_collision.environment_event:  # by ID
-                        bl_collision.environment_event = bl_event.obj
-                        break
-                else:
-                    operator.warning(
-                        f"Collision '{msb_collision.name}' references Environment Event "
-                        f"'{msb_collision.environment_event.name}', but the Environment Event was not found among "
-                        f"imported MSB Events in Blender. Left Collision -> Environment reference empty."
-                    )
-
     part_count = len(msb_and_bl_parts)
+    region_count = len(msb_and_bl_regions)
     event_count = len(msb_and_bl_events)
 
     operator.info(

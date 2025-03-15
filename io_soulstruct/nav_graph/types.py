@@ -10,6 +10,7 @@ import typing as tp
 
 import bpy
 from io_soulstruct.exceptions import *
+from io_soulstruct.navmesh.nvm.types import BlenderNVM
 from io_soulstruct.types import *
 from io_soulstruct.utilities import *
 from soulstruct.base.maps.navmesh import MCG, MCGNode
@@ -18,10 +19,10 @@ from soulstruct.utilities.text import natural_keys
 from .properties import *
 
 
-class BlenderMCG(SoulstructObject[MCG, MCGProps]):
+class BlenderMCG(BaseBlenderSoulstructObject[MCG, MCGProps]):
 
     TYPE = SoulstructType.MCG
-    OBJ_DATA_TYPE = SoulstructDataType.EMPTY
+    BL_OBJ_TYPE = ObjectType.EMPTY
     SOULSTRUCT_CLASS = MCG
 
     __slots__ = [
@@ -84,18 +85,18 @@ class BlenderMCG(SoulstructObject[MCG, MCGProps]):
         collection: bpy.types.Collection = None,
     ) -> tp.Self:
         """Creates Nodes and Edges child-parents."""
-        match cls.OBJ_DATA_TYPE:
-            case SoulstructDataType.EMPTY:
+        match cls.BL_OBJ_TYPE:
+            case ObjectType.EMPTY:
                 if data is not None:
                     raise SoulstructTypeError(f"Cannot create an EMPTY object with data.")
                 obj = bpy.data.objects.new(name, None)
-            case SoulstructDataType.MESH:
+            case ObjectType.MESH:
                 # Permitted to be initialized as Empty.
                 if data is not None and not isinstance(data, bpy.types.Mesh):
                     raise SoulstructTypeError(f"Data for MESH object must be a Mesh, not {type(data).__name__}.")
                 obj = bpy.data.objects.new(name, data)
             case _:
-                raise SoulstructTypeError(f"Unsupported Soulstruct OBJ_DATA_TYPE '{cls.OBJ_DATA_TYPE}'.")
+                raise SoulstructTypeError(f"Unsupported Soulstruct BL_OBJ_TYPE '{cls.BL_OBJ_TYPE}'.")
         obj.soulstruct_type = cls.TYPE
         (collection or bpy.context.scene.collection).objects.link(obj)
 
@@ -223,7 +224,7 @@ class BlenderMCG(SoulstructObject[MCG, MCGProps]):
         if not navmesh_part_indices:
             raise ValueError("`navmesh_part_indices` must be provided to export `MCG`.")
 
-        map_stem = self.tight_name
+        map_stem = self.game_name
         match = MAP_STEM_RE.match(map_stem)
         if not match:
             raise NavGraphExportError(f"Could not extract map stem from MCG name '{self.name}'.")
@@ -235,18 +236,13 @@ class BlenderMCG(SoulstructObject[MCG, MCGProps]):
         )
 
         # Iterate over all nodes to build a dictionary of Nodes that ignores 'dead end' navmesh suffixes.
-        node_dict = {}
-        map_stem = f"m{map_id[0]:02d}_{map_id[1]:02d}_{map_id[2]:02d}_{map_id[3]:02d}"
+        node_dict = {}  # type: dict[str, int]
         node_prefix = f"{map_stem} Node "  # map-specific node prefix (multiple MCGs can exist with the same node names)
         bl_nodes = self.get_nodes()  # natural keys sorting
 
-        def get_node_tight_name(node_obj: bpy.types.Object) -> str:
-            """Strip '<DEAD END>' and any other '<' suffix from tight node name (and strip dupe suffix)."""
-            return node_obj.name.split(".")[0].split("<")[0].strip()
-
         for i, bl_node in enumerate(bl_nodes):
             if bl_node.name.startswith(node_prefix):
-                node_name = get_node_tight_name(bl_node.obj)
+                node_name = _get_node_name_stem(bl_node.obj)
                 node_dict[node_name] = i
             else:
                 raise NavGraphExportError(f"Node '{bl_node.name}' does not start with '{node_prefix}'.")
@@ -307,10 +303,10 @@ class BlenderMCG(SoulstructObject[MCG, MCGProps]):
         return mcg
 
 
-class BlenderMCGNode(SoulstructObject[MCGNode, MCGNodeProps]):
+class BlenderMCGNode(BaseBlenderSoulstructObject[MCGNode, MCGNodeProps]):
 
     TYPE = SoulstructType.MCG_NODE
-    OBJ_DATA_TYPE = SoulstructDataType.EMPTY
+    BL_OBJ_TYPE = ObjectType.EMPTY
     SOULSTRUCT_CLASS = MCGNode
 
     __slots__ = []
@@ -471,10 +467,10 @@ class BlenderMCGNode(SoulstructObject[MCGNode, MCGNodeProps]):
         return node
 
 
-class BlenderMCGEdge(SoulstructObject[MCGEdge, MCGEdgeProps]):
+class BlenderMCGEdge(BaseBlenderSoulstructObject[MCGEdge, MCGEdgeProps]):
 
     TYPE = SoulstructType.MCG_EDGE
-    OBJ_DATA_TYPE = SoulstructDataType.EMPTY
+    BL_OBJ_TYPE = ObjectType.EMPTY
     SOULSTRUCT_CLASS = MCGEdge
 
     __slots__ = []
@@ -576,7 +572,7 @@ class BlenderMCGEdge(SoulstructObject[MCGEdge, MCGEdgeProps]):
         edge = MCGEdge(map_id=map_id, cost=self.cost)
         if not self.navmesh_part:
             raise NavGraphExportError(f"Edge '{self.name}' does not have a Navmesh Part set.")
-        navmesh_part_name = get_bl_obj_tight_name(self.navmesh_part)
+        navmesh_part_name = BlenderNVM(self.navmesh_part).game_name
         try:
             navmesh_index = navmesh_part_indices[navmesh_part_name]
         except KeyError:
@@ -591,8 +587,8 @@ class BlenderMCGEdge(SoulstructObject[MCGEdge, MCGEdgeProps]):
             raise NavGraphExportError(f"Edge '{self.name}' does not have a Node B set.")
 
         # Strip down node names to match dictionary keys.
-        node_a_name = self.get_node_tight_name(self.node_a)
-        node_b_name = self.get_node_tight_name(self.node_b)
+        node_a_name = _get_node_name_stem(self.node_a)
+        node_b_name = _get_node_name_stem(self.node_b)
 
         try:
             node_a_index = node_indices[node_a_name]
@@ -631,7 +627,7 @@ class BlenderMCGEdge(SoulstructObject[MCGEdge, MCGEdgeProps]):
 
         return edge
 
-    @staticmethod
-    def get_node_tight_name(node_obj: bpy.types.Object) -> str:
-        """Strip '<DEAD END>' and any other '<' suffix from tight node name (and strip dupe suffix)."""
-        return node_obj.name.split(".")[0].split("<")[0].strip()
+
+def _get_node_name_stem(node_obj: bpy.types.Object) -> str:
+    """Strip '<DEAD END>' and any other '<' suffix from tight node name (and anything from first period)."""
+    return node_obj.name.split(".")[0].split("<")[0].strip()

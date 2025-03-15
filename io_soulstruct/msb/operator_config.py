@@ -1,17 +1,19 @@
 from __future__ import annotations
 
 __all__ = [
-    "BLENDER_MSB_PART_TYPES",
-    "BLENDER_MSB_REGION_TYPES",
-    "BLENDER_MSB_EVENT_TYPES",
+    "BLENDER_MSB_PART_CLASSES",
+    "BLENDER_MSB_REGION_CLASSES",
+    "BLENDER_MSB_EVENT_CLASSES",
 ]
 
-from io_soulstruct.msb import darksouls1ptde, darksouls1r, demonssouls
 from soulstruct.games import *
+
+from io_soulstruct.msb.types import darksouls1ptde, darksouls1r, demonssouls
 from .properties import MSBPartSubtype, MSBRegionSubtype, MSBEventSubtype
+from .types.base import BaseBlenderMSBPart, BaseBlenderMSBRegion, BaseBlenderMSBEvent
 
 
-BLENDER_MSB_PART_TYPES = {
+BLENDER_MSB_PART_CLASSES = {
     DEMONS_SOULS: {
         MSBPartSubtype.MapPiece: demonssouls.BlenderMSBMapPiece,
         MSBPartSubtype.Object: demonssouls.BlenderMSBObject,
@@ -40,10 +42,10 @@ BLENDER_MSB_PART_TYPES = {
         MSBPartSubtype.Navmesh: darksouls1r.BlenderMSBNavmesh,
         MSBPartSubtype.ConnectCollision: darksouls1r.BlenderMSBConnectCollision,
     },
-}
+}  # type: dict[Game, dict[MSBPartSubtype, type[BaseBlenderMSBPart]]]
 
 
-BLENDER_MSB_REGION_TYPES = {
+BLENDER_MSB_REGION_CLASSES = {
     DARK_SOULS_PTDE: {
         # No subtypes, only shapes.
         MSBRegionSubtype.All: darksouls1ptde.BlenderMSBRegion,
@@ -52,10 +54,10 @@ BLENDER_MSB_REGION_TYPES = {
         # No subtypes, only shapes.
         MSBRegionSubtype.All: darksouls1ptde.BlenderMSBRegion,
     },
-}
+}  # type: dict[Game, dict[MSBRegionSubtype, type[BaseBlenderMSBRegion]]]
 
 
-BLENDER_MSB_EVENT_TYPES = {
+BLENDER_MSB_EVENT_CLASSES = {
     DARK_SOULS_PTDE: {
         MSBEventSubtype.Light: darksouls1ptde.BlenderMSBLightEvent,
         MSBEventSubtype.Sound: darksouls1ptde.BlenderMSBSoundEvent,
@@ -95,4 +97,4 @@ BLENDER_MSB_EVENT_TYPES = {
         MSBEventSubtype.Spawner: demonssouls.BlenderMSBSpawnerEvent,
         MSBEventSubtype.Message: demonssouls.BlenderMSBMessageEvent,
     },
-}
+}  # type: dict[Game, dict[MSBEventSubtype, type[BaseBlenderMSBEvent]]]

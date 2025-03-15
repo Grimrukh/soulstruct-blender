@@ -17,9 +17,8 @@ from soulstruct_havok.fromsoft.shared.map_collision import MapCollisionMaterial
 
 from io_soulstruct.collision.types import BlenderMapCollision
 from io_soulstruct.collision.utilities import HKX_MATERIAL_NAME_RE
-from io_soulstruct.exceptions import SoulstructTypeError
 from io_soulstruct.types import SoulstructType
-from io_soulstruct.utilities import get_collection_map_stem, replace_shared_prefix
+from io_soulstruct.utilities import get_collection_map_stem, replace_shared_prefix, ObjectType
 from io_soulstruct.utilities.operators import LoggingOperator
 
 
@@ -45,11 +44,7 @@ class RenameCollision(LoggingOperator):
 
     @classmethod
     def poll(cls, context) -> bool:
-        try:
-            BlenderMapCollision.from_active_object(context)
-        except SoulstructTypeError:
-            return False
-        return True
+        return BlenderMapCollision.is_active_obj_type(context)
 
     def invoke(self, context, event):
         return context.window_manager.invoke_props_dialog(self, title="Rename Collision")
@@ -59,7 +54,7 @@ class RenameCollision(LoggingOperator):
             return self.error("New Collision name cannot be empty.")
 
         collision = BlenderMapCollision.from_active_object(context)
-        old_model_name = collision.tight_name
+        old_model_name = collision.game_name
         new_model_name = self.new_name
 
         collision.name = new_model_name
@@ -184,7 +179,7 @@ class GenerateCollisionFromMesh(LoggingOperator):
 
         # noinspection PyTypeChecker
         source_meshes = context.objects_in_mode  # type: list[bpy.types.MeshObject]
-        if any(obj.type != "MESH" for obj in source_meshes):
+        if any(obj.type != ObjectType.MESH for obj in source_meshes):
             return self.error("All objects being edited must be meshes.")
         if any(obj.soulstruct_type == SoulstructType.MSB_PART for obj in source_meshes):
             return self.error("Cannot generate collision from MSB Part meshes. Use their model meshes instead.")

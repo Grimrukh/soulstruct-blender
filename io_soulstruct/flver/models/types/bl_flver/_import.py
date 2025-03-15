@@ -46,7 +46,6 @@ class _CreateBlenderFLVERCommand:
     image_import_manager: ImageImportManager | None = None
     existing_merged_mesh: MergedMesh = None
     existing_bl_materials: tp.Sequence[BlenderFLVERMaterial] = None
-    force_bone_data_type: FLVERBoneDataType | None = None
 
     import_settings: FLVERImportSettings = field(default=None, init=False)
 
@@ -63,6 +62,7 @@ class _CreateBlenderFLVERCommand:
 
 
 def create_bl_flver_from_flver(
+    cls: type[BlenderFLVER],
     operator: LoggingOperator,
     context: bpy.types.Context,
     flver: FLVER,
@@ -71,7 +71,6 @@ def create_bl_flver_from_flver(
     image_import_manager: ImageImportManager | None = None,
     existing_merged_mesh: MergedMesh = None,
     existing_bl_materials: tp.Sequence[BlenderFLVERMaterial] = None,
-    force_bone_data_type: FLVERBoneDataType | None = None,
 ) -> BlenderFLVER:
 
     command = _CreateBlenderFLVERCommand(
@@ -83,10 +82,9 @@ def create_bl_flver_from_flver(
         image_import_manager=image_import_manager,
         existing_merged_mesh=existing_merged_mesh,
         existing_bl_materials=existing_bl_materials,
-        force_bone_data_type=force_bone_data_type,
     )
 
-    armature, write_bone_type, bl_bone_names = _create_armature(command)
+    armature, bl_bone_data_type, bl_bone_names = _create_armature(command)
 
     if bpy.ops.object.mode_set.poll():
         bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
@@ -116,9 +114,8 @@ def create_bl_flver_from_flver(
                 collection=command.collection,
             )
 
-    from .core import BlenderFLVER  # lazy import required
-    bl_flver = BlenderFLVER(mesh)
-    bl_flver.obj.FLVER.bone_data_type = write_bone_type.value
+    bl_flver = cls(mesh)
+    bl_flver.obj.FLVER.bone_data_type = bl_bone_data_type.value
 
     # Assign FLVER header properties.
     bl_flver.big_endian = command.flver.big_endian
@@ -236,8 +233,7 @@ def _create_armature(
         and command.flver.bones[0].is_default_origin
     ):
         # Single default bone can be auto-created on export. No Blender Armature parent needed/created.
-        # If no bone data type is forced, we guess Pose for Map Pieces (won't matter for single default bone).
-        return None, command.force_bone_data_type or FLVERBoneDataType.POSE, []
+        return None, FLVERBoneDataType.OMITTED, []
 
     # Create FLVER bone index -> Blender bone name dictionary. (Blender names are UTF-8.)
     # This is done even when `existing_armature` is given, as the order of bones in this new FLVER may be
@@ -256,8 +252,8 @@ def _create_armature(
     command.operator.deselect_all()
     armature = new_armature_object(f"{command.name} Armature", bpy.data.armatures.new(f"{command.name} Armature"))
     command.collection.objects.link(armature)  # needed before creating EditBones!
-    write_bone_type = _create_bl_bones(command, armature, bl_bone_names, command.force_bone_data_type)
-    return armature, write_bone_type, bl_bone_names
+    bl_bone_data_type = _create_bl_bones(command, armature, bl_bone_names)
+    return armature, bl_bone_data_type, bl_bone_names
 
 
 def _create_mesh_armature_modifier(bl_mesh: bpy.types.MeshObject, bl_armature: bpy.types.ArmatureObject):
@@ -400,7 +396,6 @@ def _create_bl_bones(
     command: _CreateBlenderFLVERCommand,
     armature: bpy.types.ArmatureObject,
     bl_bone_names: list[str],
-    write_bone_type: FLVERBoneDataType,
 ) -> FLVERBoneDataType:
     """Create FLVER bones on given `bl_armature_obj` in Blender.
 
@@ -433,37 +428,48 @@ def _create_bl_bones(
     `PoseBones`. This is saved to FLVER properties in Blender for export.
     """
 
-    if not write_bone_type:
-        write_bone_type = FLVERBoneDataType.EDIT if command.flver.any_bind_pose() else FLVERBoneDataType.POSE
+    # Detect bone data type (storage location) based on FLVER mesh `is_bind_pose` state.
+    if command.flver.any_bind_pose():
+        if not command.flver.all_bind_pose():
+            command.operator.warning(
+                "Some FLVER meshes are in bind pose and some are not. Cannot currently handle this properly in "
+                "Blender: using Edit bone data mode, but FLVER may not appear correct when static and/or animated."
+            )
+        bl_bone_data_type = FLVERBoneDataType.EDIT
+    else:
+        # No bind pose.
+        bl_bone_data_type = FLVERBoneDataType.CUSTOM
 
     # We need edit mode to create `EditBones` below.
     command.context.view_layer.objects.active = armature
     command.operator.to_edit_mode()
 
-    # Create all edit bones. Head/tail are not set yet (depends on `write_bone_type` below).
+    # Create all edit bones. Head/tail are not set yet (depends on `bl_bone_data_type` below).
     edit_bones = _create_edit_bones(armature.data, command.flver, bl_bone_names)
 
     # NOTE: Bones that have no vertices weighted to them are left as 'unused' root bones in the FLVER skeleton.
     # They may be animated by HKX animations (and will affect their children appropriately) but will not actually
     # affect any vertices in the mesh.
 
-    if write_bone_type == FLVERBoneDataType.EDIT:
+    if bl_bone_data_type == FLVERBoneDataType.EDIT:
         _write_data_to_edit_bones(
             command.operator, command.flver, edit_bones, command.import_settings.base_edit_bone_length
         )
         del edit_bones  # clear references to edit bones as we exit EDIT mode
         if bpy.ops.object.mode_set.poll():
             bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
-    elif write_bone_type == FLVERBoneDataType.POSE:
-        # This method will change back to OBJECT mode internally before setting pose bone data.
-        _write_data_to_pose_bones(
+    elif bl_bone_data_type == FLVERBoneDataType.CUSTOM:
+        # We record the bone transforms in custom properties and also write them to PoseBone data for correct static
+        # viewing. If animated, this Pose data may be overwritten, but the custom properties will remain for export.
+        # This function will change back to OBJECT mode internally before setting pose bone data.
+        _write_data_to_custom_bone_prop_and_pose(
             command.operator, command.flver, armature, edit_bones, command.import_settings.base_edit_bone_length
         )
     else:
-        # Should not be possible to reach.
-        raise ValueError(f"Invalid `write_bone_type`: {write_bone_type}")
+        # Unreachable.
+        raise ValueError(f"Invalid `bl_bone_data_type`: {bl_bone_data_type}")
 
-    return write_bone_type  # can only be EDIT or POSE
+    return bl_bone_data_type  # can only be EDIT or POSE
 
 
 def _create_edit_bones(
@@ -539,28 +545,37 @@ def _write_data_to_edit_bones(
             # edit_bone.use_connect = True
 
 
-def _write_data_to_pose_bones(
+def _write_data_to_custom_bone_prop_and_pose(
     operator: LoggingOperator,
     flver: FLVER,
     armature: bpy.types.ArmatureObject,
     edit_bones: list[bpy.types.EditBone],
     base_edit_bone_length: float,
 ):
-    for game_bone, edit_bone in zip(flver.bones, edit_bones, strict=True):
+    bl_bone_transforms = []
+    for game_bone in flver.bones:
+        bl_bone_location = GAME_TO_BL_VECTOR(game_bone.translate)
+        bl_bone_rotation_euler = GAME_TO_BL_EULER(game_bone.rotate)
+        bl_bone_scale = GAME_TO_BL_VECTOR(game_bone.scale)
+        bl_bone_transforms.append((bl_bone_location, bl_bone_rotation_euler, bl_bone_scale))
+    
+    for bl_bone_transform, edit_bone in zip(bl_bone_transforms, edit_bones, strict=True):
         # All edit bones are just Blender-Y-direction ("forward") stubs of base length.
         # This rigging makes map piece 'pose' bone data transform as expected for showing accurate vertex positions.
         edit_bone.head = Vector((0, 0, 0))
         edit_bone.tail = Vector((0, base_edit_bone_length, 0))
+        edit_bone.FLVER_BONE.flver_translate = bl_bone_transform[0]
+        edit_bone.FLVER_BONE.flver_rotate = bl_bone_transform[1]  # Euler angles (Blender coordinates)
+        edit_bone.FLVER_BONE.flver_scale = bl_bone_transform[2]
 
     del edit_bones  # clear references to edit bones as we exit EDIT mode
     operator.to_object_mode()
 
     pose_bones = armature.pose.bones
-    for game_bone, pose_bone in zip(flver.bones, pose_bones):
+    for bl_bone_transform, pose_bone in zip(bl_bone_transforms, pose_bones):
         # TODO: Pose bone transforms are relative to parent (in both FLVER and Blender).
         #  Confirm map pieces still behave as expected, though (they shouldn't even have child bones).
         pose_bone.rotation_mode = "QUATERNION"  # should already be default, but being explicit
-        game_translate, game_bone_rotate = game_bone.translate, game_bone.rotate
-        pose_bone.location = GAME_TO_BL_VECTOR(game_translate)
-        pose_bone.rotation_quaternion = GAME_TO_BL_EULER(game_bone_rotate).to_quaternion()
-        pose_bone.scale = GAME_TO_BL_VECTOR(game_bone.scale)
+        pose_bone.location = bl_bone_transform[0]
+        pose_bone.rotation_quaternion = bl_bone_transform[1].to_quaternion()
+        pose_bone.scale = bl_bone_transform[2]

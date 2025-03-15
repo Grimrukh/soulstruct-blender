@@ -68,7 +68,7 @@ class ExportLooseFLVER(LoggingExportOperator):
 
         bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
         settings = self.settings(context)
-        self.filepath = settings.game.process_dcx_path(f"{bl_flver.export_name}.flver")
+        self.filepath = settings.game.process_dcx_path(f"{bl_flver.game_name}.flver")
         context.window_manager.fileselect_add(self)
         return {"RUNNING_MODAL"}
 
@@ -179,7 +179,7 @@ class ExportFLVERIntoBinder(LoggingImportOperator):
                 return self.error("No FLVER files found in Binder and default entry ID was left as -1.")
             flver_entry = binder.set_default_entry(
                 entry_spec=self.default_entry_id,
-                new_path=self.default_entry_path.format(name=bl_flver.export_name),
+                new_path=self.default_entry_path.format(name=bl_flver.game_name),
                 new_flags=self.default_entry_flags,
             )  # no data yet
             if flver_entry.data and not self.overwrite_existing:
@@ -193,16 +193,16 @@ class ExportFLVERIntoBinder(LoggingImportOperator):
             if len(flver_entries) > 1:
                 # Look for FLVER with matching name.
                 for entry in flver_entries:
-                    if entry.minimal_stem == bl_flver.export_name:
+                    if entry.minimal_stem == bl_flver.game_name:
                         self.info(
                             f"Multiple FLVER files found in Binder. Replacing entry with matching stem: "
-                            f"{bl_flver.export_name}"
+                            f"{bl_flver.game_name}"
                         )
                         flver_entry = entry
                         break
                 else:
                     return self.error(
-                        f"Multiple FLVER files found in Binder, none of which have stem '{bl_flver.export_name}'. "
+                        f"Multiple FLVER files found in Binder, none of which have stem '{bl_flver.game_name}'. "
                         f"Change the start of your exported object's name or erase one or more existing FLVERs first."
                     )
             else:
@@ -299,11 +299,11 @@ class ExportMapPieceFLVERs(LoggingOperator):
             except Exception as ex:
                 traceback.print_exc()
                 return self.error(
-                    f"Cannot export Map Piece FLVER '{bl_flver.export_name}' from '{bl_flver.name}'. Error: {ex}"
+                    f"Cannot export Map Piece FLVER '{bl_flver.game_name}' from '{bl_flver.name}'. Error: {ex}"
                 )
 
             flver.dcx_type = flver_dcx_type
-            relative_flver_path = relative_map_path / f"{bl_flver.export_name}.flver"
+            relative_flver_path = relative_map_path / f"{bl_flver.game_name}.flver"
             exported_paths = settings.export_file(self, flver, relative_flver_path)
             all_exported_paths += exported_paths
 
@@ -359,7 +359,7 @@ class BaseGameFLVERBinderExportOperator(LoggingOperator):
         # We prepare and retrieve the Binder to be exported into. If a project Binder already exists, it will be used
         # as the initial Binder to modify. The user should delete this Binder if they, e.g., want to start fresh with
         # the textures and other files from the game directory's Binder.
-        relative_binder_path = self._get_binder_path(settings, bl_flver.export_name)
+        relative_binder_path = self._get_binder_path(settings, bl_flver.game_name)
         try:
             binder = settings.get_initial_binder(self, relative_binder_path, binder_class)
         except Exception as ex:
@@ -379,12 +379,12 @@ class BaseGameFLVERBinderExportOperator(LoggingOperator):
         except Exception as ex:
             traceback.print_exc()
             raise FLVERExportError(
-                f"Cannot create exported FLVER '{bl_flver.export_name}' from Mesh '{bl_flver.name}'. Error: {ex}"
+                f"Cannot create exported FLVER '{bl_flver.game_name}' from Mesh '{bl_flver.name}'. Error: {ex}"
             )
 
         flver.dcx_type = DCXType.Null  # no DCX inside any Binder here
 
-        return bl_flver.export_name, binder, flver, texture_collection
+        return bl_flver.game_name, binder, flver, texture_collection
 
     def export_textures_to_binder_tpf(
         self,

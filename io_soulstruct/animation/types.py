@@ -112,6 +112,14 @@ class SoulstructAnimation:
         self.action.name = value
 
     @property
+    def game_name(self) -> str:
+        """We remove dupe suffix, then take name before any pipe, space, or period."""
+        name = remove_dupe_suffix(self.action.name)
+        for char in "| .":
+            name = name.split(char)[0]
+        return name.strip()
+
+    @property
     def model_stem(self):
         """Try to extract the model stem from the action name.
 
@@ -217,7 +225,7 @@ class SoulstructAnimation:
         try:
             bl_animation = cls.new_from_transform_frames(
                 context,
-                action_name=f"{bl_flver.export_name}|{name}",
+                action_name=f"{bl_flver.game_name}|{name}",
                 armature=armature,
                 arma_frames=arma_frames,
                 root_motion=root_motion,
@@ -257,8 +265,8 @@ class SoulstructAnimation:
 
                 pose_bone.matrix =
                     parent_pose_bone.matrix
-                    @ parent_bone.matrix_local.inverted()
-                    @ bone.matrix_local
+                    @ parent_bone.matrix_local.inverted()  # EditBones data
+                    @ bone.matrix_local  # EditBones data
                     @ pose_bone.matrix_basis
 
             This final `pose_bone.matrix`, of course, is then left-multiplied by `armature_object.matrix_world` to get
@@ -272,7 +280,7 @@ class SoulstructAnimation:
             just a way of getting the 'rest pose' of `bone` in its parent space (originally set using transient
             `EditBone` instances), which is the correct matrix to use for left-multipling the `matrix_basis` to get the
             parent-relative pose matrix, which we then left-multiply by the parent's similarly-computed pose matrix to
-            get the armature-space pose matrix.
+            get the armature-space pose matrix (forward kinematics).
         """
 
         # TODO: Assumes source is 30 FPS, which is probably always true with FromSoft?

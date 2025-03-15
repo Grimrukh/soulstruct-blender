@@ -18,7 +18,6 @@ from soulstruct.utilities.files import create_bak
 
 from soulstruct_havok.fromsoft.shared import BothResHKXBHD, HKXBHD
 
-from io_soulstruct.types import SoulstructType
 from io_soulstruct.utilities import *
 from .types import *
 
@@ -70,8 +69,8 @@ class ExportLooseHKXMapCollision(LoggingExportOperator):
         if not context.active_object:
             return super().invoke(context, _event)
 
-        hkx_model = context.active_object
-        model_stem = get_bl_obj_tight_name(hkx_model)
+        hkx_model = BlenderMapCollision(context.active_object)
+        model_stem = hkx_model.game_name
         settings = self.settings(context)
         self.filepath = settings.game.process_dcx_path(f"{model_stem}.hkx")
         context.window_manager.fileselect_add(self)
@@ -205,7 +204,7 @@ class ExportHKXMapCollisionIntoBinder(LoggingImportOperator):
         hkx_model = context.active_object  # type: bpy.types.MeshObject
         bl_map_collision = BlenderMapCollision(hkx_model)
 
-        model_name = bl_map_collision.export_name
+        model_name = bl_map_collision.game_name
         if not LOOSE_HKX_COLLISION_STEM_RE[settings.game].match(model_name):
             self.warning(
                 f"HKX map collision model name '{model_name}' should generally be 'h....B.A..' or 'l....B.A..'."
@@ -309,7 +308,7 @@ class ExportHKXMapCollisionToMap(LoggingOperator):
 
             map_stem = settings.get_map_stem_for_export(bl_map_collision.obj, oldest=True)
 
-            model_name = bl_map_collision.export_name
+            model_name = bl_map_collision.game_name
             if not LOOSE_HKX_COLLISION_STEM_RE[settings.game].match(model_name):
                 return self.error(
                     f"Model name '{model_name}' detected from selected mesh '{bl_map_collision.name}' does not match "

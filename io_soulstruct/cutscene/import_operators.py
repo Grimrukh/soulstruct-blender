@@ -16,9 +16,12 @@ from soulstruct_havok.utilities.maths import TRSTransform
 from soulstruct_havok.fromsoft.darksouls1r import RemoBND
 
 from io_soulstruct.animation.types import SoulstructAnimation
-from io_soulstruct.exceptions import SoulstructTypeError, CutsceneImportError
-from io_soulstruct.msb.darksouls1r import *
+from io_soulstruct.exceptions import CutsceneImportError
+from io_soulstruct.msb.types.darksouls1r import *
 from io_soulstruct.utilities import *
+
+if tp.TYPE_CHECKING:
+    from io_soulstruct.msb.types.base.parts import BaseBlenderMSBPart
 
 REMOBND_RE = re.compile(r"^.*?\.remobnd(\.dcx)?$")
 
@@ -83,7 +86,7 @@ class ImportHKXCutscene(LoggingImportOperator):
 
         self.info(f"Importing HKX cutscene: {remobnd.cutscene_name}")
 
-        bl_cutscene_parts = {}  # type: dict[str, BlenderMSBPart]
+        bl_cutscene_parts = {}  # type: dict[str, BaseBlenderMSBPart]
 
         for part_name, remo_part in remobnd.remo_parts.items():
 
@@ -92,36 +95,37 @@ class ImportHKXCutscene(LoggingImportOperator):
             msb_part = remo_part.part
 
             if isinstance(msb_part, MSBMapPiece):
-                bl_part_type = BlenderMSBMapPiece
+                bl_part_class = BlenderMSBMapPiece
             elif isinstance(msb_part, MSBCharacter):
-                bl_part_type = BlenderMSBCharacter
+                bl_part_class = BlenderMSBCharacter
             elif isinstance(msb_part, MSBObject):
-                bl_part_type = BlenderMSBObject
+                bl_part_class = BlenderMSBObject
             else:
                 self.warning(
                     f"Cannot load FLVER model for unknown part type: {type(remo_part.part).__name__}"
                 )
                 continue
+            bl_part_class: BaseBlenderMSBPart
 
             area, block = remo_part.map_area_block
             map_stem = f"m{area:02d}_{block:02d}_00_00"
             part_collection = get_or_create_collection(
                 context.scene.collection,
                 f"{map_stem} Parts",
-                f"{map_stem} {bl_part_type.PART_SUBTYPE.get_nice_name()} Parts",
+                f"{map_stem} {bl_part_class.MSB_ENTRY_SUBTYPE.get_nice_name()} Parts",
             )
 
             try:
-                bl_part = bl_part_type.find_in_data(part_name)  # type: BlenderMSBPart
-            except SoulstructTypeError:
-                try:
-                    bl_part = BlenderMSBMapPiece.new_from_soulstruct_obj(
-                        self, context, msb_part, part_name, part_collection, map_stem
-                    )
-                except Exception as ex:
-                    traceback.print_exc()
-                    self.error(f"Failed to import MSB {bl_part_type.PART_SUBTYPE} {msb_part.name}' for cutscene: {ex}")
-                    continue
+                # We restrict the part search only to the cutscene's specified MSB.
+                # Otherwise, the user won't know if the cutscene is referencing valid Parts in the correct map.
+                bl_part = bl_part_class.find_in_data(
+                    part_name, only_in_collections=[part_collection]
+                )  # type: BaseBlenderMSBPart
+            except Exception as ex:
+                self.error(
+                    f"Failed to find/parse MSB {bl_part_class.MSB_ENTRY_SUBTYPE} '{msb_part.name}' for cutscene: {ex}"
+                )
+                continue
             bl_cutscene_parts[part_name] = bl_part
 
         for part_name, remo_part in remobnd.remo_parts.items():
@@ -130,12 +134,13 @@ class ImportHKXCutscene(LoggingImportOperator):
             if part_name not in bl_cutscene_parts:
                 continue  # part not loaded - omitted from cutscene
 
-            bl_part = bl_cutscene_parts[part_name]  # type: BlenderMSBPart
+            bl_part = bl_cutscene_parts[part_name]  # type: BaseBlenderMSBPart
 
             # We need to add an Armature to the Part, if it doesn't already have one (including default Armatures).
             # TODO: Do we actually need the Map Pieces to have default Armatures...?
+            #  Surely they don't have any actual animation data in the REMOBND.
             if not bl_part.armature:
-                bl_part.duplicate_flver_model_armature(context, create_default_armature=True)
+                bl_part.duplicate_flver_model_armature(self, context)
 
             # Get bone names from first cut that includes this part.
             first_cut_frames = next(iter(remo_part.cut_arma_frames.values()))
@@ -179,7 +184,7 @@ class ImportHKXCutscene(LoggingImportOperator):
             try:
                 SoulstructAnimation.new_from_cutscene_cuts(
                     context,
-                    action_name=f"{remobnd.cutscene_name}[{bl_part.export_name}]",
+                    action_name=f"{remobnd.cutscene_name}[{bl_part.game_name}]",
                     armature=bl_part.armature,
                     arma_cuts=all_cut_frames,
                     ignore_master_bone_name=self.IGNORE_MASTER_BONE_NAME,

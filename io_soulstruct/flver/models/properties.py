@@ -104,12 +104,27 @@ class FLVERProps(bpy.types.PropertyGroup):
     # INTERNAL USE
     bone_data_type: bpy.props.EnumProperty(
         name="Bone Data Type",
-        description="Indicates whether FLVER bone data was written to Edit Bones (rigged FLVERs such as Characters and "
-                    "Objects; Pose Bones can be used for viewing real animations) or Pose Bones (static FLVERs such as "
-                    "Map Pieces; Edit Bones all left at origin). The same data source will be used on FLVER export",
+        description="Indicates whether FLVER bone data was written to Edit Bone transforms (rigged FLVERs such as "
+                    "Characters and most Objects) or Edit Bone custom data (static FLVERs such as Map Pieces; Edit "
+                    "Bones all left at origin) or omitted entirely (ignorable default bone). The same data source will "
+                    "be used on FLVER export",
         items=[
-            ("EditBone", "Edit Bones", "Bone data is written to Edit Bones (usually Characters, Objects, Assets)"),
-            ("PoseBone", "Pose Bones", "Bone data is written to Pose Bones (usually Map Pieces)"),
+            (
+                "EditBone",
+                "Edit Bones",
+                "Bone data is written to Edit Bones (usually Characters, Equipment, and most Objects, Assets)",
+            ),
+            (
+                "Custom",
+                "Custom (Initial Pose)",
+                "Bone data is written to custom Edit Bone FLVER property and initially written to PoseBone data (may "
+                "be overwritten by animation data; usually Map Pieces and some Objects)",
+            ),
+            (
+                "Omitted",
+                "Omitted",
+                "Armature/Bones are omitted (usually Map Pieces with only one default bone)",
+            ),
         ],
         default="EditBone",
     )
@@ -164,6 +179,25 @@ class FLVERDummyProps(bpy.types.PropertyGroup):
 
 class FLVERBoneProps(bpy.types.PropertyGroup):
     """Extension properties for Blender Bones that represent FLVER bones."""
+
+    flver_translate: bpy.props.FloatVectorProperty(
+        name="Translate",
+        description="Custom bone translate to write to FLVER in 'Custom' bone data mode",
+        size=3,
+        default=(0.0, 0.0, 0.0),
+    )
+    flver_rotate: bpy.props.FloatVectorProperty(
+        name="Rotate",
+        description="Custom bone rotate (Euler angles) to write to FLVER in 'Custom' bone data mode",
+        size=3,
+        default=(0.0, 0.0, 0.0),
+    )
+    flver_scale: bpy.props.FloatVectorProperty(
+        name="Scale",
+        description="Custom bone scale to write to FLVER in 'Custom' bone data mode",
+        size=3,
+        default=(1.0, 1.0, 1.0),
+    )
 
     is_unused: bpy.props.BoolProperty(
         name="Is Unused",

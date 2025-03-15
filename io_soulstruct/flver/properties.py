@@ -5,6 +5,7 @@ __all__ = [
 ]
 
 import bpy
+from io_soulstruct.utilities.bpy_types import ObjectType
 
 from soulstruct.base.models.flver.material import Material
 
@@ -22,7 +23,7 @@ def _get_display_mask_id_items(self, context) -> list[tuple[str, str, str]]:
 
     mask_id_set = set()  # type: set[str]
     for obj in context.selected_objects:
-        if obj.type != "MESH":
+        if obj.type != ObjectType.MESH:
             continue
         for mat in obj.data.materials:
             if match := Material.DISPLAY_MASK_RE.match(mat.name):

@@ -19,10 +19,12 @@ __all__ = [
 
 from enum import StrEnum
 
+import bpy
+
 from soulstruct.base.maps.msb.region_shapes import RegionShapeType
 
-import bpy
 from io_soulstruct.msb.utilities import *
+from io_soulstruct.utilities import ObjectType
 
 
 class MSBRegionSubtype(StrEnum):
@@ -58,12 +60,12 @@ class MSBRegionProps(bpy.types.PropertyGroup):
         description="Shape of this Region object. Object's mesh will update automatically when changed and shape "
                     "dimension properties will be applied to object scale",
         items=[
-            (RegionShapeType.Point.name, "Point", "Point with location and rotation only"),
-            (RegionShapeType.Circle.name, "Circle", "2D circle with radius (-> X/Y scale). Unused"),
-            (RegionShapeType.Sphere.name, "Sphere", "Volume with radius only (-> X/Y/Z scale)"),
-            (RegionShapeType.Cylinder.name, "Cylinder", "Volume with radius (-> X/Y scale) and height (-> Z scale)"),
-            (RegionShapeType.Rect.name, "Rect", "2D rectangle with width (X) and depth (Y). Unused"),
-            (RegionShapeType.Box.name, "Box", "Volume with width (X), depth (Y), and height (Z)"),
+            (RegionShapeType.Point.value, "Point", "Point with location and rotation only"),
+            (RegionShapeType.Circle.value, "Circle", "2D circle with radius (-> X/Y scale). Unused"),
+            (RegionShapeType.Sphere.value, "Sphere", "Volume with radius only (-> X/Y/Z scale)"),
+            (RegionShapeType.Cylinder.value, "Cylinder", "Volume with radius (-> X/Y scale) and height (-> Z scale)"),
+            (RegionShapeType.Rect.value, "Rect", "2D rectangle with width (X) and depth (Y). Unused"),
+            (RegionShapeType.Box.value, "Box", "Volume with width (X), depth (Y), and height (Z)"),
         ],
         default=RegionShapeType.Point.name,
         update=lambda self, context: self._auto_shape_mesh(context),
@@ -71,6 +73,7 @@ class MSBRegionProps(bpy.types.PropertyGroup):
 
     @property
     def shape_type_enum(self) -> RegionShapeType:
+        # noinspection PyTypeChecker
         return RegionShapeType[self.shape_type]
 
     # Three shape fields that are exposed differently depending on `shape` type. These are used to drive object scale.
@@ -95,7 +98,7 @@ class MSBRegionProps(bpy.types.PropertyGroup):
         """Fully replace mesh when a new shape is selected."""
         shape = RegionShapeType[self.shape_type]
         obj = self.id_data  # type: bpy.types.MeshObject
-        if obj.type != "MESH":
+        if obj.type != ObjectType.Mesh:
             return  # unsupported region object
         mesh = obj.data  # type: bpy.types.Mesh
         # Clear scale drivers. New ones will be created as appropriate.

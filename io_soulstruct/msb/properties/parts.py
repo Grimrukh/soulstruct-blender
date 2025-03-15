@@ -14,6 +14,7 @@ from __future__ import annotations
 
 __all__ = [
     "MSBPartSubtype",
+    "MSBPartArmatureMode",
     "MSBPartProps",
     "MSBMapPieceProps",
     "MSBObjectProps",
@@ -32,7 +33,7 @@ from soulstruct.darksouls1ptde.maps.enums import CollisionHitFilter
 from soulstruct.games import *
 
 import bpy
-from io_soulstruct.types import SoulstructType
+from io_soulstruct.types import SoulstructType, ObjectType
 from .events import MSBEventSubtype
 
 
@@ -60,19 +61,24 @@ class MSBPartSubtype(StrEnum):
         return self in {MSBPartSubtype.MapPiece, MSBPartSubtype.Collision, MSBPartSubtype.Navmesh}
 
 
+class MSBPartArmatureMode(StrEnum):
+
+    NEVER = "Never"  # never duplicate
+    CUSTOM_ONLY = "Custom Only"  # duplicate if model has Armature AND model has Custom bone data
+    IF_PRESENT = "If Present"  # duplicate if model has Armature
+    ALWAYS = "Always"  # always duplicate, even if it requires creation of default Armature when model omits it
+
+
 # noinspection PyUnusedLocal
 def _update_part_model(self: MSBPartProps, context):
     """Set the data-block of this (Mesh) object to `model.data`."""
     if self.model:
-        if (
-            self.model.type == "MESH"
-            and (
-                self.model.get("MSB_MODEL_PLACEHOLDER", False)
-                or self.model.soulstruct_type in {
-                    SoulstructType.FLVER, SoulstructType.COLLISION, SoulstructType.NAVMESH
-                }
-            )
-        ):
+        if self.model.type == ObjectType.MESH and self.model.soulstruct_type in {
+            SoulstructType.FLVER,
+            SoulstructType.COLLISION,
+            SoulstructType.NAVMESH,
+            SoulstructType.MSB_MODEL_PLACEHOLDER,
+        }:
             # Valid or placeholder model has been set. Link mesh data.
             self.id_data.data = self.model.data
             # print(f"INFO: Assigned data of model '{self.model.name}' to Part mesh '{self.id_data.name}'.")
@@ -189,14 +195,34 @@ class MSBPartProps(bpy.types.PropertyGroup):
         size=32,
         default=[False] * 32,
     )
-
-    def get_draw_groups_props_128(self) -> list[bpy.props.BoolVectorProperty]:
-        return [
-            self.draw_groups_0,
-            self.draw_groups_1,
-            self.draw_groups_2,
-            self.draw_groups_3,
-        ]
+    draw_groups_4: bpy.props.BoolVectorProperty(
+        name="Draw Groups [128, 159]",
+        description="Draw groups for this MSB Part object. Parts with draw groups that overlap the display groups of "
+                    "the player's current Collision will be drawn or active in the map",
+        size=32,
+        default=[False] * 32,
+    )
+    draw_groups_5: bpy.props.BoolVectorProperty(
+        name="Draw Groups [160, 191]",
+        description="Draw groups for this MSB Part object. Parts with draw groups that overlap the display groups of "
+                    "the player's current Collision will be drawn or active in the map",
+        size=32,
+        default=[False] * 32,
+    )
+    draw_groups_6: bpy.props.BoolVectorProperty(
+        name="Draw Groups [192, 223]",
+        description="Draw groups for this MSB Part object. Parts with draw groups that overlap the display groups of "
+                    "the player's current Collision will be drawn or active in the map",
+        size=32,
+        default=[False] * 32,
+    )
+    draw_groups_7: bpy.props.BoolVectorProperty(
+        name="Draw Groups [224, 255]",
+        description="Draw groups for this MSB Part object. Parts with draw groups that overlap the display groups of "
+                    "the player's current Collision will be drawn or active in the map",
+        size=32,
+        default=[False] * 32,
+    )
 
     display_groups_0: bpy.props.BoolVectorProperty(
         name="Display Groups [0, 31]",
@@ -226,14 +252,34 @@ class MSBPartProps(bpy.types.PropertyGroup):
         size=32,
         default=[False] * 32,
     )
-
-    def get_display_groups_props_128(self) -> list[bpy.props.BoolVectorProperty]:
-        return [
-            self.display_groups_0,
-            self.display_groups_1,
-            self.display_groups_2,
-            self.display_groups_3,
-        ]
+    display_groups_4: bpy.props.BoolVectorProperty(
+        name="Display Groups [128, 159]",
+        description="Display groups for this MSB Part object. Only used by Collisions. Parts with draw groups that "
+                    "overlap the display groups of the player's current Collision will be drawn or active in the map",
+        size=32,
+        default=[False] * 32,
+    )
+    display_groups_5: bpy.props.BoolVectorProperty(
+        name="Display Groups [160, 191]",
+        description="Display groups for this MSB Part object. Only used by Collisions. Parts with draw groups that "
+                    "overlap the display groups of the player's current Collision will be drawn or active in the map",
+        size=32,
+        default=[False] * 32,
+    )
+    display_groups_6: bpy.props.BoolVectorProperty(
+        name="Display Groups [192, 223]",
+        description="Display groups for this MSB Part object. Only used by Collisions. Parts with draw groups that "
+                    "overlap the display groups of the player's current Collision will be drawn or active in the map",
+        size=32,
+        default=[False] * 32,
+    )
+    display_groups_7: bpy.props.BoolVectorProperty(
+        name="Display Groups [224, 255]",
+        description="Display groups for this MSB Part object. Only used by Collisions. Parts with draw groups that "
+                    "overlap the display groups of the player's current Collision will be drawn or active in the map",
+        size=32,
+        default=[False] * 32,
+    )
 
     ambient_light_id: bpy.props.IntProperty(
         name="Ambient Light (Light Bank) ID",
@@ -617,42 +663,25 @@ class MSBCollisionProps(bpy.types.PropertyGroup):
         default=[False] * 32,
     )
 
-    def get_navmesh_groups_props_128(self) -> list[bpy.props.BoolVectorProperty]:
-        return [
-            self.navmesh_groups_0,
-            self.navmesh_groups_1,
-            self.navmesh_groups_2,
-            self.navmesh_groups_3,
-        ]
+    def get_navmesh_groups_props(self, bit_count: int) -> list[bpy.props.BoolVectorProperty]:
+        """Get the appropriate number of navmesh group properties for the given bit count (always 128).
+        """
+        if bit_count == 128:
+            return [
+                self.navmesh_groups_0,
+                self.navmesh_groups_1,
+                self.navmesh_groups_2,
+                self.navmesh_groups_3,
+            ]
+        raise ValueError(f"Invalid MSB Part navmesh group bit count: {bit_count}. Must be 128.")
 
+    # TODO: Currently uses enum from DeS/DS1. With later games, will probably need separate enum properties.
     hit_filter: bpy.props.EnumProperty(
         name="Hit Filter Name",
         description="Determines effect of collision on characters",
         items=[
-            (CollisionHitFilter.NoHiHitNoFeetIK.name, "NoHiHitNoFeetIK", "NoHiHitNoFeetIK"),  # solid
-            (CollisionHitFilter.NoHiHit_1.name, "NoHiHit_1", "NoHiHit_1"),  # solid
-            (CollisionHitFilter.NoHiHit_2.name, "NoHiHit_2", "NoHiHit_2"),  # solid
-            (CollisionHitFilter.NoHiHit_3.name, "NoHiHit_3", "NoHiHit_3"),  # solid
-            (CollisionHitFilter.NoHiHit_4.name, "NoHiHit_4", "NoHiHit_4"),  # solid
-            (CollisionHitFilter.NoHiHit_5.name, "NoHiHit_5", "NoHiHit_5"),  # solid
-            (CollisionHitFilter.NoHiHit_6.name, "NoHiHit_6", "NoHiHit_6"),  # solid
-            (CollisionHitFilter.NoHiHit_7.name, "NoHiHit_7", "NoHiHit_7"),  # solid
-            (CollisionHitFilter.Normal.name, "Normal", "Normal"),  # solid
-            (CollisionHitFilter.Water_A.name, "Water_A", "Water_A"),  # blue
-            (CollisionHitFilter.Unknown_10.name, "Unknown_10", "Unknown_10"),
-            (CollisionHitFilter.Solid_ForNPCsOnly_A.name, "Solid_ForNPCsOnly_A", "Solid_ForNPCsOnly_A"),  # blue
-            (CollisionHitFilter.Unknown_12.name, "Unknown_12", "Unknown_12"),
-            (CollisionHitFilter.DeathCam.name, "DeathCam", "DeathCam"),  # white
-            (CollisionHitFilter.LethalFall.name, "LethalFall", "LethalFall"),  # red
-            (CollisionHitFilter.KillPlane.name, "KillPlane", "KillPlane"),  # black
-            (CollisionHitFilter.Water_B.name, "Water_B", "Water_B"),  # dark blue
-            (CollisionHitFilter.GroupSwitch.name, "GroupSwitch", "GroupSwitch"),  # turquoise; in elevator shafts
-            (CollisionHitFilter.Unknown_18.name, "Unknown_18", "Unknown_18"),
-            (CollisionHitFilter.Solid_ForNPCsOnly_B.name, "Solid_ForNPCsOnly_B", "Solid_ForNPCsOnly_B"),  # turquoise
-            (CollisionHitFilter.LevelExit_A.name, "LevelExit_A", "LevelExit_A"),  # purple
-            (CollisionHitFilter.Slide.name, "Slide", "Slide"),  # yellow
-            (CollisionHitFilter.FallProtection.name, "FallProtection", "FallProtection"),  # permeable for projectiles
-            (CollisionHitFilter.LevelExit_B.name, "LevelExit_B", "LevelExit_B"),  # glowing turquoise
+            (hit_filter.value, hit_filter.name, hit_filter.name)
+            for hit_filter in CollisionHitFilter
         ],
         default=CollisionHitFilter.Normal.name,
     )
@@ -747,10 +776,15 @@ class MSBCollisionProps(bpy.types.PropertyGroup):
         min=-1,
     )
 
-    def get_vagrant_entity_ids(self) -> list[int]:
-        return [
-            self.vagrant_entity_ids_0, self.vagrant_entity_ids_1, self.vagrant_entity_ids_2
-        ]
+    @property
+    def vagrant_entity_ids(self) -> list[int]:
+        return [self.vagrant_entity_ids_0, self.vagrant_entity_ids_1, self.vagrant_entity_ids_2]
+
+    @vagrant_entity_ids.setter
+    def vagrant_entity_ids(self, value: list[int]):
+        if len(value) != 3:
+            raise ValueError("Vagrant entity IDs must be a list of length 3.")
+        self.vagrant_entity_ids_0, self.vagrant_entity_ids_1, self.vagrant_entity_ids_2 = value
 
     starts_disabled: bpy.props.BoolProperty(
         name="Starts Disabled",
@@ -855,8 +889,16 @@ class MSBCollisionProps(bpy.types.PropertyGroup):
         default=0,
     )
 
-    def get_ref_tex_ids(self) -> list[int]:
+    @property
+    def ref_tex_ids(self):
         return [getattr(self, f"ref_tex_ids_{i}") for i in range(16)]
+
+    @ref_tex_ids.setter
+    def ref_tex_ids(self, value: list[int]):
+        if len(value) != 16:
+            raise ValueError("Ref Tex IDs (DeS only) must be a list of length 16.")
+        for i, v in enumerate(value):
+            setattr(self, f"ref_tex_ids_{i}", v)
 
     unk_x38: bpy.props.IntProperty(
         name="Unknown x38 (DeS)",
@@ -996,13 +1038,17 @@ class MSBNavmeshProps(bpy.types.PropertyGroup):
         default=[False] * 32,
     )
 
-    def get_navmesh_groups_props_128(self) -> list[bpy.props.BoolVectorProperty]:
-        return [
-            self.navmesh_groups_0,
-            self.navmesh_groups_1,
-            self.navmesh_groups_2,
-            self.navmesh_groups_3,
-        ]
+    def get_navmesh_groups_props(self, bit_count: int) -> list[bpy.props.BoolVectorProperty]:
+        """Get the appropriate number of navmesh group properties for the given bit count (always 128).
+        """
+        if bit_count == 128:
+            return [
+                self.navmesh_groups_0,
+                self.navmesh_groups_1,
+                self.navmesh_groups_2,
+                self.navmesh_groups_3,
+            ]
+        raise ValueError(f"Invalid MSB Part navmesh group bit count: {bit_count}. Must be 128.")
 
     # noinspection PyUnusedLocal
     def get_game_props(self, game: Game) -> list[str]:
@@ -1016,6 +1062,7 @@ class MSBConnectCollisionProps(bpy.types.PropertyGroup):
         type=bpy.types.Object,
         poll=_is_collision,
     )
+    # TODO: Why not `connected_map_id` as IntVectorProperty[4]?
     map_area: bpy.props.IntProperty(
         name="Connected Map Area",
         description="Area ID of the connected map ('AA' from mAA_BB_CC_DD)",
@@ -1044,6 +1091,14 @@ class MSBConnectCollisionProps(bpy.types.PropertyGroup):
         min=-1,
         max=99,
     )
+
+    @property
+    def connected_map_id(self) -> tuple[int, int, int, int]:
+        return self.map_area, self.map_block, self.map_cc, self.map_dd
+
+    @connected_map_id.setter
+    def connected_map_id(self, value: tuple[int, int, int, int]):
+        self.map_area, self.map_block, self.map_cc, self.map_dd = value
 
     # noinspection PyUnusedLocal
     def get_game_props(self, game: Game) -> list[str]:

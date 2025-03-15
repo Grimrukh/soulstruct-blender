@@ -7,10 +7,15 @@ from enum import Enum, StrEnum
 
 
 class FLVERBoneDataType(StrEnum):
-    """Indicates where FLVER bone data is kept in Blender: Edit bones (rigged meshes) or Pose bones (static meshes)."""
-    NONE = ""
+    """Indicates where FLVER bone data is kept in Blender:
+
+        Edit bones ('is_bind_pose = True' rigged meshes - Characters, Equipment, and most Objects)
+        Custom FLVER bone data ('is_bind_pose = False' unrigged meshes - Map Pieces and some Objects)
+        Omitted (ignored) - FLVER has one default bone that can be ignored for simplicity (most Map Pieces)
+    """
     EDIT = "EditBone"
-    POSE = "PoseBone"
+    CUSTOM = "Custom"
+    OMITTED = "Omitted"
 
 
 class FLVERModelType(Enum):
@@ -25,3 +30,16 @@ class FLVERModelType(Enum):
     Object = 3  # includes Asset
     Equipment = 4
     Other = 5  # e.g. FFX (not yet used)
+
+    @classmethod
+    def guess_from_name(cls, name: str):
+        name = name.lower()
+        if name[0] == "m":
+            return cls.MapPiece
+        if name[0] == "c":
+            return cls.Character
+        if name[0] == "o" or name.startswith("aeg"):
+            return cls.Object
+        if name[:2] in {"am", "bd", "hd", "hr", "lg", "wp"}:
+            return cls.Equipment
+        return cls.Unknown

@@ -33,15 +33,15 @@ from io_soulstruct.exceptions import FLVERError
 from io_soulstruct.general import SoulstructSettings
 from io_soulstruct.collision.types import BlenderMapCollision
 from io_soulstruct.flver.models import BlenderFLVER
-from io_soulstruct.msb.operator_config import BLENDER_MSB_PART_TYPES
+from io_soulstruct.msb.operator_config import BLENDER_MSB_PART_CLASSES
+from io_soulstruct.msb.properties.parts import MSBPartArmatureMode
 from io_soulstruct.navmesh.nvm.types import BlenderNVM
-from io_soulstruct.types import SoulstructType
 from io_soulstruct.utilities import *
 from .properties import MSBPartSubtype
 from .utilities import primitive_cube
 
 if tp.TYPE_CHECKING:
-    from .types import IBlenderMSBPart
+    from .types.base import *
 
 
 class EnableAllImportModels(LoggingOperator):
@@ -200,6 +200,25 @@ class CreateMSBPart(LoggingOperator):
         default=False,
     )
 
+    part_armature_mode: bpy.props.EnumProperty(
+        name="Part Armature Mode",
+        description="How to handle armatures for MSB Parts that use FLVER models",
+        items=[
+            (MSBPartArmatureMode.NEVER, "Never", "Never create armatures for FLVER MSB Parts"),
+            (
+                MSBPartArmatureMode.CUSTOM_ONLY,
+                "Custom Only",
+                "Only create armatures for FLVER MSB Parts for FLVER models that use Custom bone data",
+            ),
+            (
+                MSBPartArmatureMode.IF_PRESENT,
+                "If Present",
+                "Create armatures for FLVER MSB Parts for FLVER models that have an armature",
+            ),
+            (MSBPartArmatureMode.ALWAYS, "Always", "Always create armatures for FLVER MSB Parts"),
+        ],
+    )
+
     draw_groups: bpy.props.StringProperty(
         name="Draw Groups",
         description="Exact draw group indices to assign to the new Part. Example: '[0, 37, 50]'. Leave blank to use "
@@ -224,7 +243,7 @@ class CreateMSBPart(LoggingOperator):
         return (
             context.mode == "OBJECT"
             and context.active_object
-            and context.active_object.type == "MESH"
+            and context.active_object.type == ObjectType.MESH
             and context.active_object.soulstruct_type in {
                 SoulstructType.FLVER, SoulstructType.COLLISION, SoulstructType.NAVMESH
             }
@@ -371,10 +390,10 @@ class CreateMSBPart(LoggingOperator):
         except SyntaxError as ex:
             return self.error(f"Failed to parse group indices: {ex}")
 
-        name = self.part_name or f"{get_bl_obj_tight_name(model_obj)} Part"
+        name = self.part_name or f"{get_model_name(model_obj.name)} Part"
 
         try:
-            bl_part_type = BLENDER_MSB_PART_TYPES[game][part_subtype]  # type: type[IBlenderMSBPart]
+            bl_part_class = BLENDER_MSB_PART_CLASSES[game][part_subtype]  # type: type[BaseBlenderMSBPart]
         except KeyError:
             return self.error(
                 f"Cannot import MSB Part subtype `{part_subtype.value}` for game {game.name}."
@@ -391,7 +410,7 @@ class CreateMSBPart(LoggingOperator):
         )
 
         try:
-            bl_part = bl_part_type.new(name, model_obj.data, collection=part_collection)
+            bl_part = bl_part_class.new(name, model_obj.data, collection=part_collection)
             # No properties (other than `model`) are changed from defaults.
         except FLVERError as ex:
             return self.error(f"Could not create `{part_subtype}` MSB Part from model object '{model_obj.name}': {ex}")
@@ -399,12 +418,9 @@ class CreateMSBPart(LoggingOperator):
 
         if part_subtype == MSBPartSubtype.MapPiece:
             # Create a duplicated parent Armature for the Part if present, so Map Piece static posing is visible.
-            if model_obj.get("MSB_MODEL_PLACEHOLDER", False):
-                # This will return `None` if the FLVER has no Armature (default, most Map Pieces).
-                if armature_obj := bl_part.duplicate_flver_model_armature(context, create_default_armature=False):
-                    # Rename Armature (obj and data) to match Part name.
-                    armature_name = f"{name} Armature"
-                    armature_obj.name = armature_obj.data.name = armature_name
+            if model_obj.soulstruct_type == SoulstructType.MSB_MODEL_PLACEHOLDER:
+                # Create Armature
+                bl_part.duplicate_flver_model_armature(self, context, mode=MSBPartArmatureMode.IF_PRESENT)
         elif part_subtype == MSBPartSubtype.Navmesh:
             # Enable wireframe for Navmesh part.
             bl_part.obj.show_wire = True
@@ -425,12 +441,13 @@ class CreateMSBPart(LoggingOperator):
 
         # Apply overrides for groups.
         try:
+            bit_set_type = bl_part.SOULSTRUCT_CLASS.BIT_SET_TYPE
             if draw_groups is not None:
-                bl_part.draw_groups = set(draw_groups)
+                bl_part.draw_groups = bit_set_type(draw_groups)
             if display_groups is not None:
-                bl_part.display_groups = set(display_groups)
+                bl_part.display_groups = bit_set_type(display_groups)
             if navmesh_groups is not None:
-                bl_part.navmesh_groups = set(navmesh_groups)
+                bl_part.navmesh_groups = bit_set_type(navmesh_groups)
         except Exception as ex:
             self.error(
                 f"Failed to set some/all group bits on MSB Part. Part still created.\n"
@@ -512,9 +529,9 @@ class CreateMSBEnvironmentEvent(LoggingOperator):
         return context.window_manager.invoke_props_dialog(self)
 
     def execute(self, context):
-        from .darksouls1ptde.parts import BlenderMSBCollision
-        from .darksouls1ptde.events import BlenderMSBEnvironmentEvent
-        from .darksouls1ptde.regions import BlenderMSBRegion
+        from .types.darksouls1ptde.parts import BlenderMSBCollision
+        from .types.darksouls1ptde.events import BlenderMSBEnvironmentEvent
+        from .types.darksouls1ptde.regions import BlenderMSBRegion
 
         settings = self.settings(context)
         if not settings.is_game_ds1():
@@ -523,11 +540,11 @@ class CreateMSBEnvironmentEvent(LoggingOperator):
         for obj in context.selected_objects:
             msb_stem = get_collection_map_stem(obj)
             bl_msb_collision = BlenderMSBCollision(obj)
-            env_event_name = f"GIEL_{bl_msb_collision.export_name}"  # ' <Environment>' suffix added automatically
+            env_event_name = f"GIEL_{bl_msb_collision.game_name}"  # ' <Environment>' suffix added automatically
             if env_event_name + " <Environment>" in bpy.data.objects or env_event_name in bpy.data.objects:
                 self.error(f"Environment Event '{env_event_name}' already exists. Skipping MSB Collision {obj.name}.")
                 continue
-            env_region_name = f"EnvironmentEvent_GIEL_{bl_msb_collision.export_name}"
+            env_region_name = f"EnvironmentEvent_GIEL_{bl_msb_collision.game_name}"
             if env_region_name in bpy.data.objects:
                 self.error(f"Region Point '{env_region_name}' already exists. Skipping MSB Collision {obj.name}.")
                 continue
@@ -774,7 +791,7 @@ class BatchSetPartGroups(LoggingOperator):
         settings = self.settings(context)
         # We already checked that all selected objects have the same MSB Part subtype.
         part_subtype = context.selected_objects[0].MSB_PART.part_subtype
-        bl_part_subtype = BLENDER_MSB_PART_TYPES[settings.game][part_subtype]  # type: type[IBlenderMSBPart]
+        bl_part_class = BLENDER_MSB_PART_CLASSES[settings.game][part_subtype]  # type: type[BaseBlenderMSBPart]
         has_navmesh_groups = part_subtype in {MSBPartSubtype.Collision, MSBPartSubtype.Navmesh}
 
         draw_groups = display_groups = navmesh_groups = None
@@ -797,30 +814,31 @@ class BatchSetPartGroups(LoggingOperator):
         counts = [0, 0, 0]
 
         for obj in context.selected_objects:
-            bl_part = bl_part_subtype(obj)
+            bl_part = bl_part_class(obj)
+            bit_set_type = bl_part_class.SOULSTRUCT_CLASS.BIT_SET_TYPE
             if draw_groups is not None:
                 if self.operation == "SET":
-                    bl_part.draw_groups = draw_groups
+                    bl_part.draw_groups = bit_set_type(draw_groups)
                 elif self.operation == "ADD":
-                    bl_part.draw_groups |= draw_groups
+                    bl_part.draw_groups |= bit_set_type(draw_groups)
                 elif self.operation == "REMOVE":
-                    bl_part.draw_groups -= draw_groups
+                    bl_part.draw_groups -= bit_set_type(draw_groups)
                 counts[0] += 1
             if display_groups is not None:
                 if self.operation == "SET":
-                    bl_part.display_groups = display_groups
+                    bl_part.display_groups = bit_set_type(display_groups)
                 elif self.operation == "ADD":
-                    bl_part.display_groups |= display_groups
+                    bl_part.display_groups |= bit_set_type(display_groups)
                 elif self.operation == "REMOVE":
-                    bl_part.display_groups -= display_groups
+                    bl_part.display_groups -= bit_set_type(display_groups)
                 counts[1] += 1
             if navmesh_groups is not None and has_navmesh_groups:
                 if self.operation == "SET":
-                    bl_part.navmesh_groups = navmesh_groups
+                    bl_part.navmesh_groups = bit_set_type(navmesh_groups)
                 elif self.operation == "ADD":
-                    bl_part.navmesh_groups |= navmesh_groups
+                    bl_part.navmesh_groups |= bit_set_type(navmesh_groups)
                 elif self.operation == "REMOVE":
-                    bl_part.navmesh_groups -= navmesh_groups
+                    bl_part.navmesh_groups -= bit_set_type(navmesh_groups)
                 counts[2] += 1
 
         self.info(
@@ -851,8 +869,8 @@ class CopyDrawGroups(LoggingOperator):
         settings = self.settings(context)
         active_part = context.active_object
         active_part_subtype = active_part.MSB_PART.part_subtype
-        bl_part_subtype = BLENDER_MSB_PART_TYPES[settings.game][active_part_subtype]  # type: type[IBlenderMSBPart]
-        bl_active_part = bl_part_subtype(active_part)
+        bl_part_class = BLENDER_MSB_PART_CLASSES[settings.game][active_part_subtype]  # type: type[BaseBlenderMSBPart]
+        bl_active_part = bl_part_class(active_part)
         # noinspection PyUnresolvedReferences
         active_draw_groups = bl_active_part.draw_groups
 
@@ -861,7 +879,7 @@ class CopyDrawGroups(LoggingOperator):
             if part is active_part:
                 continue
             part_subtype = part.MSB_PART.part_subtype
-            bl_part = BLENDER_MSB_PART_TYPES[settings.game][part_subtype](part)
+            bl_part = BLENDER_MSB_PART_CLASSES[settings.game][part_subtype](part)
             bl_part.draw_groups = active_draw_groups
             count += 1
 
@@ -893,7 +911,7 @@ class ApplyPartTransformToModel(LoggingOperator):
             MSBPartSubtype.ConnectCollision,
         }
         if not all(
-            obj.type == "MESH" and obj.soulstruct_type == SoulstructType.MSB_PART
+            obj.type == ObjectType.MESH and obj.soulstruct_type == SoulstructType.MSB_PART
             and obj.MSB_PART.part_subtype in valid_subtypes
             for obj in context.selected_objects
         ):
@@ -974,10 +992,12 @@ class CreateConnectCollision(LoggingOperator):
     def execute(self, context):
 
         settings = self.settings(context)
-        if settings.is_game_ds1():
-            from .darksouls1ptde.parts.msb_connect_collision import BlenderMSBConnectCollision
+        if settings.is_game(DARK_SOULS_PTDE):
+            from .types.darksouls1ptde import BlenderMSBConnectCollision
+        elif settings.is_game(DARK_SOULS_DSR):
+            from .types.darksouls1r import BlenderMSBConnectCollision
         elif settings.is_game(DEMONS_SOULS):
-            from .demonssouls.parts.msb_connect_collision import BlenderMSBConnectCollision
+            from .types.demonssouls import BlenderMSBConnectCollision
         else:
             return self.error(f"Connect Collision creation not supported for game {settings.game.name}.")
 

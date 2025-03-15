@@ -22,7 +22,7 @@ from soulstruct.base.events.enums import NavmeshFlag
 
 from io_soulstruct.exceptions import SoulstructTypeError
 from io_soulstruct.types import SoulstructType
-from io_soulstruct.utilities import LoggingOperator, replace_shared_prefix
+from io_soulstruct.utilities import ObjectType, LoggingOperator, replace_shared_prefix
 from .types import BlenderNVM
 from .utilities import set_face_material, get_navmesh_material
 
@@ -86,7 +86,7 @@ class RenameNavmesh(LoggingOperator):
             return self.error("New NVM name cannot be empty.")
 
         bl_nvm = BlenderNVM.from_active_object(context)
-        old_model_name = bl_nvm.tight_name  # we never rename MORE than this much of the old name
+        old_model_name = bl_nvm.game_name  # we never rename MORE than this much of the old name
         new_model_name = self.new_name
 
         bl_nvm.rename(new_model_name)  # will also rename NVM Event Entity children
@@ -132,7 +132,7 @@ class AddNVMFaceFlags(LoggingOperator):
     def execute(self, context):
         # noinspection PyTypeChecker
         obj = context.edit_object
-        if obj is None or obj.type != "MESH":
+        if obj is None or obj.type != ObjectType.MESH:
             return self.error("No Mesh selected.")
 
         obj: bpy.types.MeshObject
@@ -168,7 +168,7 @@ class RemoveNVMFaceFlags(LoggingOperator):
     def execute(self, context):
         # noinspection PyTypeChecker
         obj = context.edit_object
-        if obj is None or obj.type != "MESH":
+        if obj is None or obj.type != ObjectType.MESH:
             return self.error("No Mesh selected.")
 
         obj: bpy.types.MeshObject
@@ -204,7 +204,7 @@ class SetNVMFaceFlags(LoggingOperator):
     def execute(self, context):
         # noinspection PyTypeChecker
         obj = context.edit_object
-        if obj is None or obj.type != "MESH":
+        if obj is None or obj.type != ObjectType.MESH:
             return self.error("No Mesh selected.")
 
         obj: bpy.types.MeshObject
@@ -240,7 +240,7 @@ class SetNVMFaceObstacleCount(LoggingOperator):
     def execute(self, context):
         # noinspection PyTypeChecker
         obj = context.edit_object
-        if obj is None or obj.type != "MESH":
+        if obj is None or obj.type != ObjectType.MESH:
             return {"CANCELLED"}
 
         obj: bpy.types.MeshObject
@@ -279,7 +279,7 @@ class ResetNVMFaceInfo(LoggingOperator):
     def execute(self, context):
         # noinspection PyTypeChecker
         obj = context.edit_object
-        if obj is None or obj.type != "MESH":
+        if obj is None or obj.type != ObjectType.MESH:
             return {"CANCELLED"}
 
         obj: bpy.types.MeshObject
