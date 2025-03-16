@@ -1,6 +1,10 @@
 """VERY early/experimental system for importing/exporting DSR cutscene animations into Blender."""
 from __future__ import annotations
 
+__all__ = [
+    "ImportHKXCutscene",
+]
+
 import math
 import re
 import traceback
@@ -17,6 +21,7 @@ from soulstruct_havok.fromsoft.darksouls1r import RemoBND
 
 from io_soulstruct.animation.types import SoulstructAnimation
 from io_soulstruct.exceptions import CutsceneImportError
+from io_soulstruct.msb.properties.parts import MSBPartArmatureMode
 from io_soulstruct.msb.types.darksouls1r import *
 from io_soulstruct.utilities import *
 
@@ -140,7 +145,7 @@ class ImportHKXCutscene(LoggingImportOperator):
             # TODO: Do we actually need the Map Pieces to have default Armatures...?
             #  Surely they don't have any actual animation data in the REMOBND.
             if not bl_part.armature:
-                bl_part.duplicate_flver_model_armature(self, context)
+                bl_part.duplicate_flver_model_armature(self, context, mode=MSBPartArmatureMode.ALWAYS)
 
             # Get bone names from first cut that includes this part.
             first_cut_frames = next(iter(remo_part.cut_arma_frames.values()))

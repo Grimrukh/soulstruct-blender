@@ -7,14 +7,15 @@ __all__ = [
 from soulstruct.demonssouls.maps.msb import MSB, MSBPlayerStart, BitSet128
 from soulstruct.demonssouls.maps.models import MSBCharacterModel
 
-from io_soulstruct.msb.types.base.parts import BaseBlenderMSBPart
 from io_soulstruct.msb.types.adapters import *
 from io_soulstruct.msb.properties import MSBPartSubtype, MSBPartProps, MSBPlayerStartProps
 from io_soulstruct.types import SoulstructType
 
+from .base import BaseBlenderMSBPart_DES
+
 
 @create_msb_entry_field_adapter_properties
-class BlenderMSBPlayerStart(BaseBlenderMSBPart[MSBPlayerStart, MSBPartProps, MSBPlayerStartProps, MSB, BitSet128]):
+class BlenderMSBPlayerStart(BaseBlenderMSBPart_DES[MSBPlayerStart, MSBPartProps, MSBPlayerStartProps, MSB, BitSet128]):
 
     SOULSTRUCT_CLASS = MSBPlayerStart
     MSB_ENTRY_SUBTYPE = MSBPartSubtype.PlayerStart

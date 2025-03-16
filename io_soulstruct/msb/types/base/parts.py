@@ -10,19 +10,17 @@ import typing as tp
 import bpy
 from mathutils import Vector, Euler
 
+from soulstruct.base.maps.msb.parts import BaseMSBPart
 from soulstruct.base.maps.msb.utils import BitSet
 
 from io_soulstruct.msb.properties import MSBPartSubtype, MSBPartArmatureMode, MSBPartProps
-from io_soulstruct.msb.types.adapters import (
-    SoulstructFieldAdapter, MSBPartGroupsAdapter, MSBPartModelAdapter, get_part_game_name
-)
-from io_soulstruct.msb.types.base import BaseBlenderMSBEntry, TYPE_PROPS_T, SUBTYPE_PROPS_T, MSB_T
-from io_soulstruct.msb.types.base.msb_protocols import *
+from io_soulstruct.msb.types.adapters import *
 from io_soulstruct.utilities import *
 
+from .entry import BaseBlenderMSBEntry, TYPE_PROPS_T, SUBTYPE_PROPS_T, MSB_T
 from .part_armature_duplicator import PartArmatureDuplicator
 
-PART_T = tp.TypeVar("PART_T", bound=MSBPartProtocol)
+PART_T = tp.TypeVar("PART_T", bound=BaseMSBPart)
 BIT_SET_T = tp.TypeVar("BIT_SET_T", bound=BitSet)
 
 
@@ -42,7 +40,7 @@ class BaseBlenderMSBPart(
 
     TYPE = SoulstructType.MSB_PART
     BL_OBJ_TYPE = ObjectType.MESH  # true for all subtypes
-    SOULSTRUCT_CLASS: tp.ClassVar[type[MSBPartProtocol]]
+    SOULSTRUCT_CLASS: tp.ClassVar[type[BaseMSBPart]]
     MSB_ENTRY_SUBTYPE: tp.ClassVar[MSBPartSubtype]
 
     _MODEL_ADAPTER: tp.ClassVar[MSBPartModelAdapter]
@@ -50,53 +48,15 @@ class BaseBlenderMSBPart(
     __slots__ = []
     obj: bpy.types.MeshObject
 
-    # Only supported games currently are Demon's Souls and Dark Souls 1, which have identical MSB Part properties.
-    # TODO: Probably need one more level of classes, for per-game supertype properties like these.
-
     TYPE_FIELDS = (
         # NOTE: `model`, `sib_path`, `translate`, `rotate`, and `scale` all handled 100% manually.
         SoulstructFieldAdapter("entity_id"),
-        MSBPartGroupsAdapter("draw_groups"),
-        MSBPartGroupsAdapter("display_groups"),
-        SoulstructFieldAdapter("ambient_light_id"),
-        SoulstructFieldAdapter("fog_id"),
-        SoulstructFieldAdapter("scattered_light_id"),
-        SoulstructFieldAdapter("lens_flare_id"),
-        SoulstructFieldAdapter("shadow_id"),
-        SoulstructFieldAdapter("dof_id"),
-        SoulstructFieldAdapter("tone_map_id"),
-        SoulstructFieldAdapter("point_light_id"),
-        SoulstructFieldAdapter("tone_correction_id"),
-        SoulstructFieldAdapter("lod_id"),
-        SoulstructFieldAdapter("is_shadow_source"),
-        SoulstructFieldAdapter("is_shadow_destination"),
-        SoulstructFieldAdapter("is_shadow_only"),
-        SoulstructFieldAdapter("draw_by_reflect_cam"),
-        SoulstructFieldAdapter("draw_only_reflect_cam"),
-        SoulstructFieldAdapter("use_depth_bias_float"),
-        SoulstructFieldAdapter("disable_point_light_effect"),
+        # NOTE: `draw_groups` and `display_groups` are used by all Parts, but the type of `BitSet` is game-specific.
     )
 
     entity_id: int
     draw_groups: BIT_SET_T
     display_groups: BIT_SET_T
-    ambient_light_id: int
-    fog_id: int
-    scattered_light_id: int
-    lens_flare_id: int
-    shadow_id: int
-    dof_id: int
-    tone_map_id: int
-    point_light_id: int
-    tone_correction_id: int
-    lod_id: int
-    is_shadow_source: bool
-    is_shadow_destination: bool
-    is_shadow_only: bool
-    draw_by_reflect_cam: bool
-    draw_only_reflect_cam: bool
-    use_depth_bias_float: bool
-    disable_point_light_effect: bool
 
     @property
     def mesh(self) -> bpy.types.Mesh:

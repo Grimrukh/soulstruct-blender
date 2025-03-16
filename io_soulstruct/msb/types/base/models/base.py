@@ -19,7 +19,6 @@ import bpy
 
 from soulstruct.base.maps.msb.models import BaseMSBModel
 
-from io_soulstruct.exceptions import BatchOperationUnsupportedError
 from io_soulstruct.utilities.operators import LoggingOperator
 
 

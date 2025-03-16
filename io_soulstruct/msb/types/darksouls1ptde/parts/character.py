@@ -10,15 +10,16 @@ from soulstruct.darksouls1ptde.maps.msb import MSB, BitSet128
 from soulstruct.darksouls1ptde.maps.models import MSBCharacterModel
 from soulstruct.darksouls1ptde.maps.parts import MSBCharacter, MSBDummyCharacter
 
-from io_soulstruct.msb.types.base.parts import BaseBlenderMSBPart
 from io_soulstruct.msb.types.adapters import *
 from io_soulstruct.msb.properties.parts import MSBPartSubtype, MSBPartProps, MSBCharacterProps
 from io_soulstruct.types import SoulstructType
 from io_soulstruct.utilities import LoggingOperator
 
+from .base import BaseBlenderMSBPart_DS1
+
 
 @create_msb_entry_field_adapter_properties
-class BlenderMSBCharacter(BaseBlenderMSBPart[MSBCharacter, MSBPartProps, MSBCharacterProps, MSB, BitSet128]):
+class BlenderMSBCharacter(BaseBlenderMSBPart_DS1[MSBCharacter, MSBPartProps, MSBCharacterProps, MSB, BitSet128]):
     """Concrete wrapper for MSB Characters in Dark Souls 1."""
 
     SOULSTRUCT_CLASS = MSBCharacter

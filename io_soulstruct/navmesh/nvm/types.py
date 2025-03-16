@@ -199,13 +199,13 @@ class BlenderNVM(BaseBlenderSoulstructObject[NVM, NVMProps]):
         """
         collection = collection or context.scene.collection
         boxes = []
-        for box, indices in nvm.get_all_boxes(nvm.root_box):
+        for i, (box, indices) in enumerate(nvm.get_all_boxes(nvm.root_box)):
             if not indices:
                 box_name = f"{model_name} Box ROOT"
             else:
                 indices_string = "-".join(str(i) for i in indices)
                 box_name = f"{model_name} Box {indices_string}"
-            bl_box = self.create_box(context, box)
+            bl_box = self.create_box(context, box, i)
             collection.objects.link(bl_box)
             bl_box.name = box_name
             boxes.append(bl_box)
@@ -246,7 +246,7 @@ class BlenderNVM(BaseBlenderSoulstructObject[NVM, NVMProps]):
         return remove_dupe_suffix(self.obj.name).split(" ")[0].split(".")[0].strip()
 
     @staticmethod
-    def create_box(context: bpy.types.Context, box: NVMBox):
+    def create_box(context: bpy.types.Context, box: NVMBox, index: int):
         """Create an AABB prism representing `box`. Position is baked into mesh data fully, just like the navmesh."""
         start_vec = GAME_TO_BL_VECTOR(box.start_corner)
         end_vec = GAME_TO_BL_VECTOR(box.end_corner)
@@ -258,10 +258,9 @@ class BlenderNVM(BaseBlenderSoulstructObject[NVM, NVMProps]):
             vertex.co[0] = start_vec.x if vertex.co[0] == -1.0 else end_vec.x
             vertex.co[1] = start_vec.y if vertex.co[1] == -1.0 else end_vec.y
             vertex.co[2] = start_vec.z if vertex.co[2] == -1.0 else end_vec.z
-        bpy.ops.object.modifier_add(type="WIREFRAME")
         # noinspection PyTypeChecker
-        wireframe_mod = bl_box.modifiers[0]  # type: bpy.types.WireframeModifier
-        wireframe_mod.thickness = 0.02
+        wireframe_mod = bl_box.modifiers.new(name=f"Box {index}", type="WIREFRAME")  # type: bpy.types.WireframeModifier
+        wireframe_mod.thickness = 0.2
         return bl_box
 
 

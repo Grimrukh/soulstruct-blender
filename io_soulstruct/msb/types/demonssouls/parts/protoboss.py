@@ -8,14 +8,15 @@ from soulstruct.demonssouls.maps.msb import MSB, BitSet128
 from soulstruct.demonssouls.maps.models import MSBCharacterModel
 from soulstruct.demonssouls.maps.parts import MSBProtoboss
 
-from io_soulstruct.msb.types.base.parts import BaseBlenderMSBPart
 from io_soulstruct.msb.types.adapters import *
 from io_soulstruct.msb.properties import MSBPartSubtype, MSBPartProps, MSBProtobossProps
 from io_soulstruct.types import *
 
+from .base import BaseBlenderMSBPart_DES
+
 
 @create_msb_entry_field_adapter_properties
-class BlenderMSBProtoboss(BaseBlenderMSBPart[MSBProtoboss, MSBPartProps, MSBProtobossProps, MSB, BitSet128]):
+class BlenderMSBProtoboss(BaseBlenderMSBPart_DES[MSBProtoboss, MSBPartProps, MSBProtobossProps, MSB, BitSet128]):
     """Ancient Demon's Souls MSB character variant. I don't think it's used in any of the non-cut maps."""
 
     SOULSTRUCT_CLASS = MSBProtoboss

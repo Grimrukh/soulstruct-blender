@@ -19,7 +19,7 @@ from ..base.msb_protocols import *
 
 if tp.TYPE_CHECKING:
     from soulstruct.base.maps.msb import MSB as BaseMSB
-    from ..base.base import BaseBlenderMSBEntry, ENTRY_T, TYPE_PROPS_T, SUBTYPE_PROPS_T, MSB_T
+    from io_soulstruct.msb.types.base import BaseBlenderMSBEntry, ENTRY_T, TYPE_PROPS_T, SUBTYPE_PROPS_T, MSB_T
     REF_TYPING = tp.Literal[SoulstructType.MSB_PART, SoulstructType.MSB_REGION, SoulstructType.MSB_EVENT]
 
 

@@ -18,10 +18,10 @@ from io_soulstruct.msb.utilities import *
 from io_soulstruct.types import *
 from io_soulstruct.utilities import Transform, BlenderTransform, LoggingOperator
 
-from ..base import BaseBlenderMSBEntry, MSB_T
-from .msb_protocols import MSBRegionProtocol
+from .entry import BaseBlenderMSBEntry, MSB_T
 
-REGION_T = tp.TypeVar("REGION_T", bound=MSBRegionProtocol)
+
+REGION_T = tp.TypeVar("REGION_T", bound=BaseMSBRegion)
 
 
 class BaseBlenderMSBRegion(BaseBlenderMSBEntry[REGION_T, MSBRegionProps, None, MSB_T]):

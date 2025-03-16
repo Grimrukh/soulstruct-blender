@@ -10,15 +10,16 @@ from soulstruct.demonssouls.maps.msb import MSB, BitSet128
 from soulstruct.demonssouls.maps.models import MSBObjectModel
 from soulstruct.demonssouls.maps.parts import MSBObject, MSBDummyObject
 
-from io_soulstruct.msb.types.base.parts import BaseBlenderMSBPart
 from io_soulstruct.msb.types.adapters import *
 from io_soulstruct.msb.properties.parts import MSBPartSubtype, MSBPartProps, MSBObjectProps
 from io_soulstruct.types import SoulstructType
 from io_soulstruct.utilities import LoggingOperator
 
+from .base import BaseBlenderMSBPart_DES
+
 
 @create_msb_entry_field_adapter_properties
-class BlenderMSBObject(BaseBlenderMSBPart[MSBObject, MSBPartProps, MSBObjectProps, MSB, BitSet128]):
+class BlenderMSBObject(BaseBlenderMSBPart_DES[MSBObject, MSBPartProps, MSBObjectProps, MSB, BitSet128]):
     """Concrete wrapper for MSB Objects in Demon's Souls."""
 
     SOULSTRUCT_CLASS = MSBObject

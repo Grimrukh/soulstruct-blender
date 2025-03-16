@@ -7,11 +7,13 @@ __all__ = [
 from soulstruct.demonssouls.maps.msb import MSB
 from soulstruct.demonssouls.maps.regions import *
 
+from io_soulstruct.msb.types.adapters import *
 from io_soulstruct.msb.types.base.regions import BaseBlenderMSBRegion
 from io_soulstruct.msb.properties import MSBRegionProps, MSBRegionSubtype
 from io_soulstruct.types import *
 
 
+@create_msb_entry_field_adapter_properties
 class BlenderMSBRegion(BaseBlenderMSBRegion[MSBRegion, MSBRegionProps, None, MSB]):
     """No subclasses in DeS (just shape types)."""
 

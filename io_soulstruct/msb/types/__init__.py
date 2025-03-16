@@ -1,7 +1,1 @@
-from __future__ import annotations
-
-__all__ = []
-
-import typing as tp
-
-import bpy
+"""No imports into this namespace. Game-specific modules and base/adapter classes must be imported specifically."""

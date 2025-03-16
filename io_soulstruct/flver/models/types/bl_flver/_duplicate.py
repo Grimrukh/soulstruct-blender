@@ -13,7 +13,6 @@ import typing as tp
 import bpy
 
 from io_soulstruct.exceptions import *
-from io_soulstruct.types import *
 from io_soulstruct.utilities import *
 
 if tp.TYPE_CHECKING:

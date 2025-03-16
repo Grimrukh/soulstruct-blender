@@ -1,7 +1,6 @@
 import logging
-from pathlib import Path
 
-from soulstruct._logging import _ModuleFormatter, _ColoredModuleFormatter, CONSOLE_HANDLER, FILE_HANDLER
+from soulstruct._logging import _ModuleFormatter, _ColoredModuleFormatter, CONSOLE_HANDLER
 
 
 try:

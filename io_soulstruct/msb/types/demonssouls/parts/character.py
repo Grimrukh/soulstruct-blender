@@ -10,15 +10,16 @@ from soulstruct.demonssouls.maps.msb import MSB, BitSet128
 from soulstruct.demonssouls.maps.models import MSBCharacterModel
 from soulstruct.demonssouls.maps.parts import MSBCharacter, MSBDummyCharacter
 
-from io_soulstruct.msb.types.base.parts import BaseBlenderMSBPart
 from io_soulstruct.msb.types.adapters import *
 from io_soulstruct.msb.properties.parts import MSBPartSubtype, MSBPartProps, MSBCharacterProps
 from io_soulstruct.types import SoulstructType
 from io_soulstruct.utilities import LoggingOperator
 
+from .base import BaseBlenderMSBPart_DES
+
 
 @create_msb_entry_field_adapter_properties
-class BlenderMSBCharacter(BaseBlenderMSBPart[MSBCharacter, MSBPartProps, MSBCharacterProps, MSB, BitSet128]):
+class BlenderMSBCharacter(BaseBlenderMSBPart_DES[MSBCharacter, MSBPartProps, MSBCharacterProps, MSB, BitSet128]):
     """Concrete wrapper for MSB Characters in Demon's Souls."""
 
     SOULSTRUCT_CLASS = MSBCharacter
@@ -46,7 +47,6 @@ class BlenderMSBCharacter(BaseBlenderMSBPart[MSBCharacter, MSBPartProps, MSBChar
         SoulstructFieldAdapter("damage_animation"),
     )
 
-    # Properties common to all supported games' MSB Characters.
     draw_parent: bpy.types.Object | None
     patrol_regions: list[bpy.types.Object | None]
     unk_x00: int

@@ -4,18 +4,20 @@ __all__ = [
     "BlenderMSBConnectCollision",
 ]
 
-from soulstruct.demonssouls.maps.msb import MSB, MSBConnectCollision, BitSet128
+from soulstruct.demonssouls.maps.msb import MSB, BitSet128
 from soulstruct.demonssouls.maps.models import MSBCollisionModel
+from soulstruct.demonssouls.maps.parts import MSBConnectCollision
 
-from io_soulstruct.msb.types.base.parts import BaseBlenderMSBPart
 from io_soulstruct.msb.types.adapters import *
 from io_soulstruct.msb.properties import MSBPartSubtype, MSBPartProps, MSBConnectCollisionProps
 from io_soulstruct.types import SoulstructType
 
+from .base import BaseBlenderMSBPart_DES
+
 
 @create_msb_entry_field_adapter_properties
 class BlenderMSBConnectCollision(
-    BaseBlenderMSBPart[MSBConnectCollision, MSBPartProps, MSBConnectCollisionProps, MSB, BitSet128]
+    BaseBlenderMSBPart_DES[MSBConnectCollision, MSBPartProps, MSBConnectCollisionProps, MSB, BitSet128]
 ):
 
     SOULSTRUCT_CLASS = MSBConnectCollision

@@ -18,7 +18,7 @@ from pathlib import Path
 
 import bpy
 
-from io_soulstruct.types import SoulstructType, is_typed_mesh_obj, is_active_obj_typed_mesh_obj
+from io_soulstruct.types import SoulstructType, is_active_obj_typed_mesh_obj
 from io_soulstruct.utilities.operators import LoggingOperator
 from .types import BlenderFLVERMaterial
 

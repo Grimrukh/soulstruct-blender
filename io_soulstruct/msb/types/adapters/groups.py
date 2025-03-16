@@ -26,7 +26,12 @@ class MSBPartGroupsAdapter(SoulstructFieldAdapter, tp.Generic[BIT_SET_T]):
     Only 128-bit and 256-bit `BitSet` types are supported. (1024-bit is only used for `collision_mask` in Elden Ring.)
     """
 
-    bit_set_type: type[BIT_SET_T] = BitSet
+    bit_set_type: type[BIT_SET_T] = None
+
+    def __post_init__(self):
+        super().__post_init__()
+        if self.bit_set_type is None:
+            raise ValueError("Must provide a `BitSet` type for MSBPartGroupsAdapter.")
 
     def getter(self, bl_obj: BaseBlenderMSBPart, is_subtype=False) -> BIT_SET_T:
         props = bl_obj.subtype_properties if is_subtype else bl_obj.type_properties

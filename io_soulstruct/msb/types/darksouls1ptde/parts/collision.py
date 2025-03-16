@@ -11,14 +11,15 @@ from soulstruct.darksouls1ptde.maps.msb import MSB
 from soulstruct.darksouls1ptde.maps.models import MSBCollisionModel
 from soulstruct.darksouls1ptde.maps.parts import MSBCollision
 
-from io_soulstruct.msb.types.base.parts import BaseBlenderMSBPart
 from io_soulstruct.msb.types.adapters import *
 from io_soulstruct.msb.properties.parts import MSBPartSubtype, MSBPartProps, MSBCollisionProps
 from io_soulstruct.types import SoulstructType
 
+from .base import BaseBlenderMSBPart_DS1
+
 
 @create_msb_entry_field_adapter_properties
-class BlenderMSBCollision(BaseBlenderMSBPart[MSBCollision, MSBPartProps, MSBCollisionProps, MSB, BitSet128]):
+class BlenderMSBCollision(BaseBlenderMSBPart_DS1[MSBCollision, MSBPartProps, MSBCollisionProps, MSB, BitSet128]):
     """Not FLVER-based."""
 
     SOULSTRUCT_CLASS = MSBCollision

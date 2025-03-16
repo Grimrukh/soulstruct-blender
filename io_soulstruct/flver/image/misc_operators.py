@@ -36,10 +36,11 @@ class FindMissingTexturesInImageCache(LoggingOperator):
         for obj in context.selected_objects:
             obj: bpy.types.MeshObject
             for material in obj.data.materials:
+                # noinspection PyUnresolvedReferences,PyTypeChecker
                 texture_nodes = [
                     node for node in material.node_tree.nodes
                     if node.type == "TEX_IMAGE" and node.image is not None
-                ]
+                ]  # type: list[bpy.types.ShaderNodeTexImage]
                 for node in texture_nodes:
                     image = node.image  # type: bpy.types.Image
                     if len(image.pixels) != 4:

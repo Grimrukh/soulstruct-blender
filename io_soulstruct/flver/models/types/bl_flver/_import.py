@@ -19,7 +19,6 @@ from soulstruct.base.models.shaders import MatDefError
 
 from io_soulstruct.flver.material.types import BlenderFLVERMaterial
 from io_soulstruct.flver.models.properties import FLVERImportSettings
-from io_soulstruct.types import *
 from io_soulstruct.utilities import *
 
 from ..bl_flver_dummy import BlenderFLVERDummy

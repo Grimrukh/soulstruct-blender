@@ -20,11 +20,10 @@ from io_soulstruct.msb.properties import MSBEventSubtype, MSBEventProps
 from io_soulstruct.msb.types.adapters import *
 from io_soulstruct.types import ObjectType, SoulstructType
 
-from .msb_protocols import MSBEventProtocol
-from ..base import BaseBlenderMSBEntry, SUBTYPE_PROPS_T, MSB_T
+from .entry import BaseBlenderMSBEntry, SUBTYPE_PROPS_T, MSB_T
 
 
-EVENT_T = tp.TypeVar("EVENT_T", bound=MSBEventProtocol)
+EVENT_T = tp.TypeVar("EVENT_T", bound=BaseMSBEvent)
 
 
 class BaseBlenderMSBEvent(BaseBlenderMSBEntry[EVENT_T, MSBEventProps, SUBTYPE_PROPS_T, MSB_T], abc.ABC):
