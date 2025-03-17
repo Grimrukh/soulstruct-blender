@@ -6,23 +6,20 @@ __all__ = [
 
 import bpy
 
-from soulstruct.darksouls1ptde.maps import MSB
 from soulstruct.darksouls1ptde.maps.msb import MSBSpawnPointEvent
 
-from io_soulstruct.msb.properties import MSBEventSubtype, MSBEventProps, MSBSpawnPointEventProps
+from io_soulstruct.msb.properties import BlenderMSBEventSubtype, MSBSpawnPointEventProps
 from io_soulstruct.msb.types.adapters import *
 from io_soulstruct.types import SoulstructType
 
-from .base import BaseBlenderMSBEventDS1
+from .base import BaseBlenderMSBEvent_DS1
 
 
-@create_msb_entry_field_adapter_properties
-class BlenderMSBSpawnPointEvent(
-    BaseBlenderMSBEventDS1[MSBSpawnPointEvent, MSBEventProps, MSBSpawnPointEventProps, MSB]
-):
+@soulstruct_adapter
+class BlenderMSBSpawnPointEvent(BaseBlenderMSBEvent_DS1[MSBSpawnPointEvent, MSBSpawnPointEventProps]):
 
     SOULSTRUCT_CLASS = MSBSpawnPointEvent
-    MSB_ENTRY_SUBTYPE = MSBEventSubtype.SpawnPoint
+    MSB_ENTRY_SUBTYPE = BlenderMSBEventSubtype.SpawnPoint
     PARENT_PROP_NAME = "spawn_point_region"
     __slots__ = []
 

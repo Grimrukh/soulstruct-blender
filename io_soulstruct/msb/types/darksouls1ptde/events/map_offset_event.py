@@ -8,28 +8,27 @@ import math
 
 from mathutils import Vector
 
-from soulstruct.darksouls1ptde.maps import MSB
 from soulstruct.darksouls1ptde.maps.msb import MSBMapOffsetEvent
 
-from io_soulstruct.msb.properties import MSBEventSubtype, MSBEventProps, MSBMapOffsetEventProps
+from io_soulstruct.msb.properties import BlenderMSBEventSubtype, MSBMapOffsetEventProps
 from io_soulstruct.msb.types.adapters import *
 from io_soulstruct.utilities import BL_TO_GAME_VECTOR3, GAME_TO_BL_VECTOR
 
-from .base import BaseBlenderMSBEventDS1
+from .base import BaseBlenderMSBEvent_DS1
 
 
-@create_msb_entry_field_adapter_properties
-class BlenderMSBMapOffsetEvent(BaseBlenderMSBEventDS1[MSBMapOffsetEvent, MSBEventProps, MSBMapOffsetEventProps, MSB]):
+@soulstruct_adapter
+class BlenderMSBMapOffsetEvent(BaseBlenderMSBEvent_DS1[MSBMapOffsetEvent, MSBMapOffsetEventProps]):
 
     SOULSTRUCT_CLASS = MSBMapOffsetEvent
-    MSB_ENTRY_SUBTYPE = MSBEventSubtype.MapOffset
+    MSB_ENTRY_SUBTYPE = BlenderMSBEventSubtype.MapOffset
     PARENT_PROP_NAME = ""
     __slots__ = []
 
     SUBTYPE_FIELDS = (
-        CustomSoulstructFieldAdapter("translate", read_func=GAME_TO_BL_VECTOR, write_func=BL_TO_GAME_VECTOR3),
+        CustomFieldAdapter("translate", read_func=GAME_TO_BL_VECTOR, write_func=BL_TO_GAME_VECTOR3),
         # Z angle is stored in degrees in Blender and requires negation (LHS/RHS).
-        CustomSoulstructFieldAdapter(
+        CustomFieldAdapter(
             "rotate_z", read_func=lambda x: -math.degrees(x), write_func=lambda x: -math.radians(x)
         ),
     )

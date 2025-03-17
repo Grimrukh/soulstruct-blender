@@ -8,16 +8,15 @@ import abc
 import typing as tp
 
 import bpy
-from mathutils import Vector, Euler
 
 from soulstruct.base.maps.msb.parts import BaseMSBPart
 from soulstruct.base.maps.msb.utils import BitSet
 
-from io_soulstruct.msb.properties import MSBPartSubtype, MSBPartArmatureMode, MSBPartProps
+from io_soulstruct.msb.properties import BlenderMSBPartSubtype, MSBPartArmatureMode, MSBPartProps
 from io_soulstruct.msb.types.adapters import *
 from io_soulstruct.utilities import *
 
-from .entry import BaseBlenderMSBEntry, TYPE_PROPS_T, SUBTYPE_PROPS_T, MSB_T
+from .entry import BaseBlenderMSBEntry, SUBTYPE_PROPS_T, MSB_T
 from .part_armature_duplicator import PartArmatureDuplicator
 
 PART_T = tp.TypeVar("PART_T", bound=BaseMSBPart)
@@ -27,7 +26,7 @@ BIT_SET_T = tp.TypeVar("BIT_SET_T", bound=BitSet)
 class BaseBlenderMSBPart(
     BaseBlenderMSBEntry[PART_T, MSBPartProps, SUBTYPE_PROPS_T, MSB_T],
     abc.ABC,
-    tp.Generic[PART_T, TYPE_PROPS_T, SUBTYPE_PROPS_T, MSB_T, BIT_SET_T],
+    tp.Generic[PART_T, SUBTYPE_PROPS_T, MSB_T, BIT_SET_T],  # added `BitSet` generic
 ):
     """MSB Part instance of a FLVER, Collision (HKX), or Navmesh (NVM) model of the corresponding Part subtype, with
     an additional generic parameter for game-specific `BitSet` type.
@@ -41,7 +40,7 @@ class BaseBlenderMSBPart(
     TYPE = SoulstructType.MSB_PART
     BL_OBJ_TYPE = ObjectType.MESH  # true for all subtypes
     SOULSTRUCT_CLASS: tp.ClassVar[type[BaseMSBPart]]
-    MSB_ENTRY_SUBTYPE: tp.ClassVar[MSBPartSubtype]
+    MSB_ENTRY_SUBTYPE: tp.ClassVar[BlenderMSBPartSubtype]
 
     _MODEL_ADAPTER: tp.ClassVar[MSBPartModelAdapter]
 
@@ -49,8 +48,9 @@ class BaseBlenderMSBPart(
     obj: bpy.types.MeshObject
 
     TYPE_FIELDS = (
-        # NOTE: `model`, `sib_path`, `translate`, `rotate`, and `scale` all handled 100% manually.
-        SoulstructFieldAdapter("entity_id"),
+        # NOTE: `model` and `sib_path` are handled 100% manually.
+        MSBTransformFieldAdapter("translate|rotate|scale"),  # may export world transform
+        FieldAdapter("entity_id"),
         # NOTE: `draw_groups` and `display_groups` are used by all Parts, but the type of `BitSet` is game-specific.
     )
 
@@ -74,6 +74,11 @@ class BaseBlenderMSBPart(
             return self.obj.parent
         return None
 
+    @property
+    def transform_obj(self):
+        """Part transform is stored on parent Armature if present."""
+        return self.armature or self.obj
+
     # region Manual MSB Part Properties
 
     @property
@@ -84,45 +89,15 @@ class BaseBlenderMSBPart(
     def model(self, value: bpy.types.MeshObject | None):
         self.type_properties.model = value
 
-    def set_bl_obj_transform(self, part: PART_T):
-        """Redirect transform to Part's Armature parent if present."""
-        game_transform = Transform.from_msb_entry(part)
-        obj = self.armature or self.obj
-        obj.location = game_transform.bl_translate
-        obj.rotation_euler = game_transform.bl_rotate
-        obj.scale = game_transform.bl_scale
+    @property
+    def location(self):
+        return
 
-    def clear_bl_obj_transform(self):
-        """Reset local transform to identity."""
-        obj = self.armature or self.obj
-        obj.location = Vector((0, 0, 0))
-        obj.rotation_euler = Euler((0, 0, 0))
-        obj.scale = Vector((1, 1, 1))
-
-    def set_part_transform(self, part: PART_T, use_world_transform=False):
-        """Get transform from Part's Armature parent if present."""
-        obj = self.armature or self.obj
-        bl_transform = BlenderTransform.from_bl_obj(obj, use_world_transform)
-        part.translate = bl_transform.game_translate
-        part.rotate = bl_transform.game_rotate_deg
-        part.scale = bl_transform.game_scale
+    @location.setter
+    def location(self, value):
+        pass
 
     # endregion
-
-    @classmethod
-    def new(
-        cls,
-        name: str,
-        data: bpy.types.Mesh,
-        collection: bpy.types.Collection = None,
-    ) -> tp.Self:
-        """Create a new instance of this MSB Part subtype with the given Mesh `data` as its model.
-
-        `data` must be a Mesh for all MSB Part subtypes (enforced in parent method by `cls.BL_OBJ_TYPE`).
-        """
-        bl_part = super().new(name, data, collection)  # type: tp.Self
-        bl_part.obj.MSB_PART.part_subtype = cls.MSB_ENTRY_SUBTYPE
-        return bl_part
 
     @classmethod
     @tp.final
@@ -155,9 +130,6 @@ class BaseBlenderMSBPart(
         bl_part = cls.new(name, model_mesh, collection)  # type: tp.Self
         bl_part.model = model  # NOTE: will redundantly set the Mesh data again but we can't avoid it
 
-        # ENTRY PROPERTIES
-        bl_part._read_props_from_msb_entry(operator, soulstruct_obj)
-
         if cls._MODEL_ADAPTER.bl_model_type == SoulstructType.FLVER:  # FLVER-based Parts only
             # Check if we should duplicate model's Armature to Part. We do this BEFORE setting the Part transform.
             PartArmatureDuplicator.maybe_duplicate_flver_model_armature(
@@ -165,12 +137,18 @@ class BaseBlenderMSBPart(
             )
 
         # Transform will be set to Part's Armature parent if created above.
-        bl_part.set_bl_obj_transform(soulstruct_obj)
+        bl_part._read_props_from_soulstruct_obj(operator, context, soulstruct_obj)
 
         # Any additional processing.
         bl_part._post_new_from_soulstruct_obj(operator, context, soulstruct_obj)
 
         return bl_part
+
+    @classmethod
+    def get_msb_subcollection(cls, msb_collection: bpy.types.Collection, msb_stem: str) -> bpy.types.Collection:
+        return get_or_create_collection(
+            msb_collection, f"{msb_stem} Parts", f"{msb_stem} {cls.MSB_ENTRY_SUBTYPE.get_nice_name()} Parts"
+        )
 
     def duplicate_flver_model_armature(
         self, operator: LoggingOperator, context: bpy.types.Context, mode: MSBPartArmatureMode, exists_ok=True
@@ -184,44 +162,20 @@ class BaseBlenderMSBPart(
         if not self.model:
             raise ValueError("Part has no model to duplicate Armature from.")
 
-        bl_transform = BlenderTransform.from_bl_obj(self.obj)
-        self.clear_bl_obj_transform()
-
-        try:
-            PartArmatureDuplicator.maybe_duplicate_flver_model_armature(
-                operator, context, mode, self, self.model
-            )
-        except Exception:
-            # Un-clear transform.
-            self.obj.location = bl_transform.bl_translate
-            self.obj.rotation_euler = bl_transform.bl_rotate
-            self.obj.scale = bl_transform.bl_scale
-            raise
-
-        # Set now-cleared Mesh object transform back to what it was.
-        self.obj.location = bl_transform.bl_translate
-        self.obj.rotation_euler = bl_transform.bl_rotate
-        self.obj.scale = bl_transform.bl_scale
-
-    def to_soulstruct_obj(self, operator: LoggingOperator, context: bpy.types.Context) -> PART_T:
-        # Creation can be overridden (e.g. to make 'Dummy' versions of entry types).
-        part = self._create_soulstruct_obj()  # type: PART_T
-
-        # `MSBPart` `translate`, `rotate`, and `scale` are set all at once here.
-        use_world_transform = context.scene.msb_export_settings.use_world_transforms
-        self.set_part_transform(part, use_world_transform=use_world_transform)
-
-        self._write_props_to_soulstruct_obj(operator, part)
-
-        # Model is set during entry reference pass.
-
-        return part
+        # If Armature is created, this will move the current local transform of the Mesh to the Armature.
+        PartArmatureDuplicator.maybe_duplicate_flver_model_armature(operator, context, mode, self, self.model)
 
     def resolve_msb_entry_refs_and_map_stem(
-        self, operator: LoggingOperator, msb_entry: PART_T, msb: MSB_T, map_stem: str
+        self,
+        operator: LoggingOperator,
+        context: bpy.types.Context,
+        msb_entry: PART_T,
+        msb: MSB_T,
+        map_stem: str,
     ):
         """Can be overridden by Parts that require a deferred additional call after all MSB entries are created."""
-        super().resolve_msb_entry_refs_and_map_stem(operator, msb_entry, msb, map_stem)
+        super().resolve_msb_entry_refs_and_map_stem(operator, context, msb_entry, msb, map_stem)
+
         self._MODEL_ADAPTER.set_msb_model(operator, self.model, msb_entry, msb, map_stem)
         msb_entry.set_auto_sib_path(map_stem)
 

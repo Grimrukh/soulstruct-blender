@@ -6,30 +6,30 @@ __all__ = [
 
 from mathutils import Vector
 
-from soulstruct.demonssouls.maps import MSB
 from soulstruct.demonssouls.maps.msb import MSBWindEvent
 from soulstruct.utilities.maths import Vector3
 
-from io_soulstruct.msb.properties import MSBEventSubtype, MSBEventProps, MSBWindEventProps
-from io_soulstruct.msb.types.base.events import BaseBlenderMSBEvent
+from io_soulstruct.msb.properties import BlenderMSBEventSubtype, MSBWindEventProps
 from io_soulstruct.msb.types.adapters import *
 
+from .base import BaseBlenderMSBEvent_DES
 
-@create_msb_entry_field_adapter_properties
-class BlenderMSBWindEvent(BaseBlenderMSBEvent[MSBWindEvent, MSBEventProps, MSBWindEventProps, MSB]):
+
+@soulstruct_adapter
+class BlenderMSBWindEvent(BaseBlenderMSBEvent_DES[MSBWindEvent, MSBWindEventProps]):
 
     SOULSTRUCT_CLASS = MSBWindEvent
-    MSB_ENTRY_SUBTYPE = MSBEventSubtype.Wind
+    MSB_ENTRY_SUBTYPE = BlenderMSBEventSubtype.Wind
     PARENT_PROP_NAME = "attached_region"
     __slots__ = []
 
     SUBTYPE_FIELDS = (
-        CustomSoulstructFieldAdapter("wind_vector_min", read_func=Vector, write_func=Vector3),
-        SoulstructFieldAdapter("unk_x0c"),
-        CustomSoulstructFieldAdapter("wind_vector_max", read_func=Vector, write_func=Vector3),
-        SoulstructFieldAdapter("unk_x1c"),
-        CustomSoulstructFieldAdapter("wind_swing_cycles", read_func=Vector, write_func=lambda x: list(x)),
-        CustomSoulstructFieldAdapter("wind_swing_powers", read_func=Vector, write_func=lambda x: list(x)),
+        CustomFieldAdapter("wind_vector_min", read_func=Vector, write_func=Vector3),
+        FieldAdapter("unk_x0c"),
+        CustomFieldAdapter("wind_vector_max", read_func=Vector, write_func=Vector3),
+        FieldAdapter("unk_x1c"),
+        CustomFieldAdapter("wind_swing_cycles", read_func=Vector, write_func=lambda x: list(x)),
+        CustomFieldAdapter("wind_swing_powers", read_func=Vector, write_func=lambda x: list(x)),
     )
 
     wind_vector_min: Vector

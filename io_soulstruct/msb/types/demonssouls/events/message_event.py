@@ -4,26 +4,26 @@ __all__ = [
     "BlenderMSBMessageEvent",
 ]
 
-from soulstruct.demonssouls.maps import MSB
 from soulstruct.demonssouls.maps.msb import MSBMessageEvent
 
-from io_soulstruct.msb.properties import MSBEventSubtype, MSBEventProps, MSBMessageEventProps
-from io_soulstruct.msb.types.base.events import BaseBlenderMSBEvent
+from io_soulstruct.msb.properties import BlenderMSBEventSubtype, MSBMessageEventProps
 from io_soulstruct.msb.types.adapters import *
 
+from .base import BaseBlenderMSBEvent_DES
 
-@create_msb_entry_field_adapter_properties
-class BlenderMSBMessageEvent(BaseBlenderMSBEvent[MSBMessageEvent, MSBEventProps, MSBMessageEventProps, MSB]):
+
+@soulstruct_adapter
+class BlenderMSBMessageEvent(BaseBlenderMSBEvent_DES[MSBMessageEvent, MSBMessageEventProps]):
 
     SOULSTRUCT_CLASS = MSBMessageEvent
-    MSB_ENTRY_SUBTYPE = MSBEventSubtype.Message
+    MSB_ENTRY_SUBTYPE = BlenderMSBEventSubtype.Message
     PARENT_PROP_NAME = "attached_region"
     __slots__ = []
 
     SUBTYPE_FIELDS = (
-        SoulstructFieldAdapter("unk_x00"),
-        SoulstructFieldAdapter("text_id"),
-        SoulstructFieldAdapter("text_param"),
+        FieldAdapter("unk_x00"),
+        FieldAdapter("text_id"),
+        FieldAdapter("text_param"),
     )
 
     unk_x00: int

@@ -398,6 +398,7 @@ class BlenderMCGNode(BaseBlenderSoulstructObject[MCGNode, MCGNodeProps]):
                     raise NavGraphImportError(
                         f"'{bl_node.name}' has invalid navmesh {nav.upper()} index: {navmesh_index}"
                     )
+                # TODO: Only search in appropriate MSB collection.
                 navmesh_part = find_obj(navmesh_name, soulstruct_type=SoulstructType.MSB_PART)
                 if navmesh_part is None:
                     # Not acceptable. Parts must be imported before MCG.
@@ -525,6 +526,7 @@ class BlenderMCGEdge(BaseBlenderSoulstructObject[MCGEdge, MCGEdgeProps]):
         # Point empty arrow in direction of edge.
         bl_edge.obj.rotation_euler = (node_b.location - node_a.location).to_track_quat('Z', 'Y').to_euler()
 
+        # TODO: Only search in appropriate MSB collection.
         navmesh_part = find_obj(navmesh_name, soulstruct_type=SoulstructType.MSB_PART)
         if navmesh_part is None:
             # Not acceptable. Parts must be imported before MCG.

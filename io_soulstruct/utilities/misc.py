@@ -191,5 +191,9 @@ def replace_shared_prefix(old_model_name: str, new_model_name: str, old_instance
 
 def get_model_name(name: str) -> str:
     """In this add-on, model names (FLVER, Collision, Navmesh) are always the first part of an object name,
-    before the first space and/or period (so we don't have to separately remove a dupe suffix)."""
+    before the first space and/or period (so we don't have to separately remove a dupe suffix).
+
+    Unlike other game name types, we do NOT support trailing spaces in model names, and such spaces never appear in
+    vanilla MSBs.
+    """
     return name.split(" ")[0].split(".")[0].strip()

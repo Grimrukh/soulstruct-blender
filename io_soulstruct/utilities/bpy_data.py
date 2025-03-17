@@ -15,7 +15,7 @@ import typing as tp
 
 import bpy
 
-from .misc import get_or_create_collection
+from .misc import get_or_create_collection, remove_dupe_suffix
 from .bpy_types import ObjectType, SoulstructType
 
 if tp.TYPE_CHECKING:
@@ -55,6 +55,7 @@ def find_obj(
     object_type: tp.Literal[ObjectType.MESH] = None,
     soulstruct_type: SoulstructType | None = None,
     bl_name_func: tp.Callable[[str], str] | None = None,
+    objects: tp.Iterable[bpy.types.Object] | None = None,
 ) -> bpy.types.MeshObject | None:
     ...
 
@@ -65,6 +66,7 @@ def find_obj(
     object_type: tp.Literal[ObjectType.ARMATURE] = None,
     soulstruct_type: SoulstructType | None = None,
     bl_name_func: tp.Callable[[str], str] | None = None,
+    objects: tp.Iterable[bpy.types.Object] | None = None,
 ) -> bpy.types.ArmatureObject | None:
     ...
 
@@ -75,6 +77,7 @@ def find_obj(
     object_type: tp.Literal[ObjectType.EMPTY] = None,
     soulstruct_type: SoulstructType | None = None,
     bl_name_func: tp.Callable[[str], str] | None = None,
+    objects: tp.Iterable[bpy.types.Object] | None = None,
 ) -> bpy.types.EmptyObject | None:
     ...
 
@@ -84,29 +87,38 @@ def find_obj(
     object_type: ObjectType | str | None = None,
     soulstruct_type: SoulstructType | None = None,
     bl_name_func: tp.Callable[[str], str] | None = None,
+    objects: tp.Iterable[bpy.types.Object] | None = None,
 ) -> bpy.types.Object | None:
     """Search for a Blender object, optionally restricting its Blender type and/or Soulstruct type.
 
-    If `bl_name_func` is given, objects will have their names passed through it before checking for quality with `name`
-    UNLESS an exact name match exists (which should obviously also be a processed match). For example, this function may
-    just split at the first space so existing object 'h1234 (Floor).003' can be found with `name = 'h1234'`.
+    We can't just do a `bpy.data.objects` look-up for this, because an object with the exact same name (even without
+    dupe suffix) may exist but have the wrong type, while the correctly-typed one has a dupe suffix or requires other
+    processing to match the name. So we iterate over all objects and check each one's name and type carefully.
+
+    You should restrict `objects` as much as possible before calling this (e.g. from specific Collections). Otherwise,
+    it will default to the full `bpy.data.objects` list.
+
+    If `bl_name_func` is given, objects will have their names passed through it before checking for quality with `name`.
+    For example, this function may just split at the first space so existing object 'h1234B0 (Floor).003' can be found
+    with `name = 'h1234B0'`.
+
+    If `bl_name_func` is left as `None`, it will still remove Blender's dupe suffix from each checked object. If you
+    (for some reason) actually want to match a `name` that has a dupe-like suffix, you will need to pass an identity
+    function as `bl_name_func`.
     """
-    try:
-        obj = bpy.data.objects[name]
+    if objects is None:
+        objects = bpy.data.objects
+
+    if not bl_name_func:
+        bl_name_func = remove_dupe_suffix
+
+    for obj in objects:
         if object_type and obj.type != object_type:
-            raise KeyError
+            continue
         if soulstruct_type and obj.soulstruct_type != soulstruct_type:
-            raise KeyError
-        return bpy.data.objects[name]
-    except KeyError:
-        if bl_name_func:
-            for obj in bpy.data.objects:
-                if object_type and obj.type != object_type:
-                    continue
-                if soulstruct_type and obj.soulstruct_type != soulstruct_type:
-                    continue
-                if bl_name_func(obj.name) == name:
-                    return obj
+            continue
+        if bl_name_func(obj.name) == name:
+            return obj
     return None
 
 
@@ -116,7 +128,8 @@ def find_obj_or_create_empty(
     object_type: tp.Literal[ObjectType.MESH] = None,
     soulstruct_type: SoulstructType | None = None,
     bl_name_func: tp.Callable[[str], str] | None = None,
-    missing_collection_name="Missing MSB References",
+    objects: tp.Iterable[bpy.types.Object] | None = None,
+    missing_reference_callback: tp.Callable[[bpy.types.Object], None] = None,
 ) -> tuple[bool, bpy.types.MeshObject]:
     ...
 
@@ -127,7 +140,8 @@ def find_obj_or_create_empty(
     object_type: tp.Literal[ObjectType.ARMATURE] = None,
     soulstruct_type: SoulstructType | None = None,
     bl_name_func: tp.Callable[[str], str] | None = None,
-    missing_collection_name="Missing MSB References",
+    objects: tp.Iterable[bpy.types.Object] | None = None,
+    process_new_object: tp.Callable[[bpy.types.Object], None] = None,
 ) -> tuple[bool, bpy.types.ArmatureObject]:
     ...
 
@@ -138,7 +152,8 @@ def find_obj_or_create_empty(
     object_type: tp.Literal[ObjectType.EMPTY] = None,
     soulstruct_type: SoulstructType | None = None,
     bl_name_func: tp.Callable[[str], str] | None = None,
-    missing_collection_name="Missing MSB References",
+    objects: tp.Iterable[bpy.types.Object] | None = None,
+    process_new_object: tp.Callable[[bpy.types.Object], None] = None,
 ) -> tuple[bool, bpy.types.EmptyObject]:
     ...
 
@@ -148,9 +163,15 @@ def find_obj_or_create_empty(
     object_type: ObjectType | str | None = None,
     soulstruct_type: SoulstructType | None = None,
     bl_name_func: tp.Callable[[str], str] | None = None,
-    missing_collection_name="Missing MSB References",
+    objects: tp.Iterable[bpy.types.Object] | None = None,
+    process_new_object: tp.Callable[[bpy.types.Object], None] = None,
 ) -> tuple[bool, bpy.types.Object]:
-    """Search for a Blender object, optionally restricting its Blender type and/or Soulstruct type.
+    """Search for a Blender object, optionally restricting its Blender type and/or Soulstruct type. If the object isn't
+    found, an Empty is created with the appropriate Soulstruct type and passed to `process_new_object` (if given) or
+    added to the current scene collection.
+
+    You should restrict `objects` as much as possible before calling this (e.g. from specific Collections). Otherwise,
+    it will default to the full `bpy.data.objects` list.
 
     If `bl_name_func` is given, objects will have their names passed through it before checking for quality with `name`
     UNLESS an exact name match exists (which should obviously also be a processed match). For example, this function may
@@ -160,15 +181,21 @@ def find_obj_or_create_empty(
 
     Returns `(was_created, object)`.
     """
-    obj = find_obj(name, object_type, soulstruct_type, bl_name_func)
+    obj = find_obj(name, object_type, soulstruct_type, bl_name_func, objects)
     if obj:
         return False, obj
 
-    missing_collection = get_or_create_collection(bpy.context.scene.collection, missing_collection_name)
-    obj = bpy.data.objects.new(name, None)
+    obj = bpy.data.objects.new(name, None)  # always Empty
     if soulstruct_type:
         obj.soulstruct_type = soulstruct_type
-    missing_collection.objects.link(obj)
+
+    if process_new_object:
+        # This should add the new `obj` to a Collection, plus anything else needed.
+        process_new_object(obj)
+    else:
+        # As as backup, we will at least add it to the scene (NOTE: `context` is not passed in).
+        bpy.context.scene.collection.objects.link(obj)
+
     return True, obj
 
 

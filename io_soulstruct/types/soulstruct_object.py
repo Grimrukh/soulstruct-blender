@@ -19,7 +19,7 @@ from io_soulstruct.utilities import LoggingOperator, remove_dupe_suffix
 from io_soulstruct.utilities.bpy_data import copy_obj_property_group
 from io_soulstruct.utilities.bpy_types import ObjectType, SoulstructType
 
-from .field_adapters import SoulstructFieldAdapter
+from .field_adapters import FieldAdapter
 
 
 SOULSTRUCT_T = tp.TypeVar("SOULSTRUCT_T", bound=object)  # does not have to be a `GameFile` (e.g. `MSBMapPiece`)
@@ -37,7 +37,8 @@ class BaseBlenderSoulstructObject(abc.ABC, tp.Generic[SOULSTRUCT_T, TYPE_PROPS_T
     TYPE: tp.ClassVar[SoulstructType]
     BL_OBJ_TYPE: tp.ClassVar[ObjectType]
     SOULSTRUCT_CLASS: tp.ClassVar[type]
-    TYPE_FIELDS: tp.ClassVar[tuple[SoulstructFieldAdapter, ...]]
+    TYPE_FIELDS: tp.ClassVar[tuple[FieldAdapter, ...]]
+    SUBTYPE_FIELDS: tp.ClassVar[tuple[FieldAdapter, ...]] = ()  # optional, for subclasses with subtypes
 
     obj: bpy.types.Object
 
@@ -98,14 +99,19 @@ class BaseBlenderSoulstructObject(abc.ABC, tp.Generic[SOULSTRUCT_T, TYPE_PROPS_T
                 f"Given `soulstruct_obj` is not of type {cls.SOULSTRUCT_CLASS.__name__}: {soulstruct_obj.cls_name}"
             )
         bl_obj = cls.new(name, data=None, collection=collection)
-        bl_obj._read_props_from_soulstruct_obj(operator, soulstruct_obj)
+        bl_obj._read_props_from_soulstruct_obj(operator, context, soulstruct_obj)
         bl_obj._post_new_from_soulstruct_obj(operator, context, soulstruct_obj)
         return bl_obj
 
-    def _read_props_from_soulstruct_obj(self, operator: LoggingOperator, soulstruct_obj: SOULSTRUCT_T):
+    def _read_props_from_soulstruct_obj(
+        self,
+        operator: LoggingOperator,
+        context: bpy.types.Context,
+        soulstruct_obj: SOULSTRUCT_T,
+    ):
         """Use class `TYPE_FIELDS` adapters to convert Soulstruct field values to Blender property values."""
         for field in self.TYPE_FIELDS:
-            field.read_prop_from_soulstruct_obj(operator, soulstruct_obj, self)
+            field.soulstruct_to_blender(operator, context, soulstruct_obj, self)
 
     def _post_new_from_soulstruct_obj(
         self,
@@ -127,17 +133,22 @@ class BaseBlenderSoulstructObject(abc.ABC, tp.Generic[SOULSTRUCT_T, TYPE_PROPS_T
         By default, we just process `TYPE_FIELDS`.
         """
         soulstruct_obj = self._create_soulstruct_obj()
-        self._write_props_to_soulstruct_obj(operator, soulstruct_obj)
+        self._write_props_to_soulstruct_obj(operator, context, soulstruct_obj)
         return soulstruct_obj
 
     def _create_soulstruct_obj(self, *args, **kwargs) -> SOULSTRUCT_T:
         """By default, will pass args and kwargs into Soulstruct class. Note that subtypes may supply their own args."""
         return self.SOULSTRUCT_CLASS(*args, **kwargs)
 
-    def _write_props_to_soulstruct_obj(self, operator: LoggingOperator, soulstruct_obj: SOULSTRUCT_T):
+    def _write_props_to_soulstruct_obj(
+        self,
+        operator: LoggingOperator,
+        context: bpy.types.Context,
+        soulstruct_obj: SOULSTRUCT_T,
+    ):
         """By default, we just process all `TYPE_FIELDS`."""
         for field in self.TYPE_FIELDS:
-            field.write_prop_to_soulstruct_obj(operator, self, soulstruct_obj)
+            field.blender_to_soulstruct(operator, context, self, soulstruct_obj)
 
     # endregion
 
@@ -196,6 +207,14 @@ class BaseBlenderSoulstructObject(abc.ABC, tp.Generic[SOULSTRUCT_T, TYPE_PROPS_T
     @rotation_euler.setter
     def rotation_euler(self, value: Euler):
         self.obj.rotation_euler = value
+
+    @property
+    def scale(self) -> Vector:
+        return self.obj.scale
+
+    @scale.setter
+    def scale(self, value: Vector):
+        self.obj.scale = value
 
     def copy_type_properties_from(
         self,

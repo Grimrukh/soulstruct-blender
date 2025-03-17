@@ -115,7 +115,7 @@ class NVMNavmeshToolsPanel(bpy.types.Panel):
 
         # Selected object can be a NVM model or an MSB Navmesh part referencing one. We modify the same Mesh data.
         if bpy.context.mode == "EDIT_MESH" and obj and (obj.soulstruct_type == SoulstructType.NAVMESH or (
-            obj.soulstruct_type == SoulstructType.MSB_PART and obj.MSB_PART.part_subtype == "MSB_NAVMESH"
+            obj.soulstruct_type == SoulstructType.MSB_PART and obj.MSB_PART.entry_subtype == "MSB_NAVMESH"
         )):
             self.layout.operator(ResetNVMFaceInfo.bl_idname)
             obj: bpy.types.MeshObject

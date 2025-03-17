@@ -4,27 +4,26 @@ __all__ = [
     "BlenderMSBMessageEvent",
 ]
 
-from soulstruct.darksouls1ptde.maps import MSB
 from soulstruct.darksouls1ptde.maps.msb import MSBMessageEvent
 
-from io_soulstruct.msb.properties import MSBEventSubtype, MSBEventProps, MSBMessageEventProps
+from io_soulstruct.msb.properties import BlenderMSBEventSubtype, MSBMessageEventProps
 from io_soulstruct.msb.types.adapters import *
 
-from .base import BaseBlenderMSBEventDS1
+from .base import BaseBlenderMSBEvent_DS1
 
 
-@create_msb_entry_field_adapter_properties
-class BlenderMSBMessageEvent(BaseBlenderMSBEventDS1[MSBMessageEvent, MSBEventProps, MSBMessageEventProps, MSB]):
+@soulstruct_adapter
+class BlenderMSBMessageEvent(BaseBlenderMSBEvent_DS1[MSBMessageEvent, MSBMessageEventProps]):
 
     SOULSTRUCT_CLASS = MSBMessageEvent
-    MSB_ENTRY_SUBTYPE = MSBEventSubtype.Message
+    MSB_ENTRY_SUBTYPE = BlenderMSBEventSubtype.Message
     PARENT_PROP_NAME = "attached_region"
     __slots__ = []
 
     SUBTYPE_FIELDS = (
-        SoulstructFieldAdapter("text_id"),
-        SoulstructFieldAdapter("unk_x02"),
-        SoulstructFieldAdapter("is_hidden"),
+        FieldAdapter("text_id"),
+        FieldAdapter("unk_x02"),
+        FieldAdapter("is_hidden"),
     )
 
     text_id: int

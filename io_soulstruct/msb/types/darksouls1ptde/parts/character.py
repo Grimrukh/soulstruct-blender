@@ -6,25 +6,24 @@ __all__ = [
 
 import bpy
 
-from soulstruct.darksouls1ptde.maps.msb import MSB, BitSet128
 from soulstruct.darksouls1ptde.maps.models import MSBCharacterModel
 from soulstruct.darksouls1ptde.maps.parts import MSBCharacter, MSBDummyCharacter
 
 from io_soulstruct.msb.types.adapters import *
-from io_soulstruct.msb.properties.parts import MSBPartSubtype, MSBPartProps, MSBCharacterProps
+from io_soulstruct.msb.properties.parts import BlenderMSBPartSubtype, MSBCharacterProps
 from io_soulstruct.types import SoulstructType
 from io_soulstruct.utilities import LoggingOperator
 
 from .base import BaseBlenderMSBPart_DS1
 
 
-@create_msb_entry_field_adapter_properties
-class BlenderMSBCharacter(BaseBlenderMSBPart_DS1[MSBCharacter, MSBPartProps, MSBCharacterProps, MSB, BitSet128]):
+@soulstruct_adapter
+class BlenderMSBCharacter(BaseBlenderMSBPart_DS1[MSBCharacter, MSBCharacterProps]):
     """Concrete wrapper for MSB Characters in Dark Souls 1."""
 
     SOULSTRUCT_CLASS = MSBCharacter
     SOULSTRUCT_DUMMY_CLASS = MSBDummyCharacter
-    MSB_ENTRY_SUBTYPE = MSBPartSubtype.Character
+    MSB_ENTRY_SUBTYPE = BlenderMSBPartSubtype.Character
     MODEL_SUBTYPES = ["character_models"]
 
     _MODEL_ADAPTER = MSBPartModelAdapter(SoulstructType.FLVER, MSBCharacterModel)
@@ -34,14 +33,14 @@ class BlenderMSBCharacter(BaseBlenderMSBPart_DS1[MSBCharacter, MSBPartProps, MSB
     SUBTYPE_FIELDS = (
         MSBReferenceFieldAdapter("draw_parent", ref_type=SoulstructType.MSB_PART),
         MSBReferenceFieldAdapter("patrol_regions", ref_type=SoulstructType.MSB_REGION, array_count=8),
-        SoulstructFieldAdapter("ai_id"),
-        SoulstructFieldAdapter("character_id"),
-        SoulstructFieldAdapter("talk_id"),
-        SoulstructFieldAdapter("platoon_id"),
-        SoulstructFieldAdapter("patrol_type"),
-        SoulstructFieldAdapter("player_id"),
-        SoulstructFieldAdapter("default_animation"),
-        SoulstructFieldAdapter("damage_animation"),
+        FieldAdapter("ai_id"),
+        FieldAdapter("character_id"),
+        FieldAdapter("talk_id"),
+        FieldAdapter("platoon_id"),
+        FieldAdapter("patrol_type"),
+        FieldAdapter("player_id"),
+        FieldAdapter("default_animation"),
+        FieldAdapter("damage_animation"),
     )
 
     # Properties common to all supported games' MSB Characters.

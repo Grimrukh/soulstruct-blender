@@ -9,11 +9,7 @@ import typing as tp
 from pathlib import Path
 
 import bpy
-from io_soulstruct.general.game_config import GAME_CONFIG
-from io_soulstruct.collision.types import BlenderMapCollision
-from io_soulstruct.navmesh.nvm.types import BlenderNVM
-from io_soulstruct.types import SoulstructType
-from io_soulstruct.utilities.operators import LoggingOperator
+
 from soulstruct.darksouls1ptde.maps.msb import MSB as MSB_PTDE
 from soulstruct.darksouls1ptde.maps.navmesh import NVMBND as NVMBND_PTDE
 from soulstruct.darksouls1r.maps.msb import MSB as MSB_DSR
@@ -25,14 +21,19 @@ from soulstruct.dcx import DCXType
 from soulstruct.games import *
 from soulstruct.utilities.text import natural_keys
 from soulstruct_havok.fromsoft.shared import HKXBHD, BothResHKXBHD
+
+from io_soulstruct.general.game_config import GAME_CONFIG
+from io_soulstruct.collision.types import BlenderMapCollision
+from io_soulstruct.navmesh.nvm.types import BlenderNVM
+from io_soulstruct.types import SoulstructType
+from io_soulstruct.utilities.operators import LoggingOperator
+
 from .operator_config import *
-from .properties import MSBPartSubtype
+from .properties import BlenderMSBPartSubtype
 from .utilities import MSB_COLLECTION_RE
 
 if tp.TYPE_CHECKING:
     from io_soulstruct.msb.types.base import *
-    from soulstruct.base.maps.msb.regions import BaseMSBRegion
-    from soulstruct.base.maps.msb.events import BaseMSBEvent
 
 
 # TODO: `ExportAnyMSB` operator.
@@ -85,9 +86,9 @@ class ExportMapMSB(LoggingOperator):
         # We don't care about where they appear, or how they are parented. (All Parts/Regions will have their WORLD
         # transforms used, so users can parent these purely as a matter of their own convenience, even though the MSB
         # supports no such parenting. Events have no transform.)
-        bl_parts = []
-        bl_regions = []
-        bl_events = []
+        bl_part_objs = []
+        bl_region_objs = []
+        bl_event_objs = []
         checked_names = set()
 
         if export_settings.skip_connect_collisions:
@@ -108,70 +109,59 @@ class ExportMapMSB(LoggingOperator):
                 if obj.soulstruct_type == SoulstructType.MSB_PART:
                     if (
                         export_settings.skip_connect_collisions
-                        and obj.MSB_PART.part_subtype_enum == MSBPartSubtype.ConnectCollision
+                        and obj.MSB_PART.entry_subtype_enum == BlenderMSBPartSubtype.ConnectCollision
                     ):
                         # Ignore Connect Collisions.
                         continue
-                    bl_parts.append(obj)
+                    bl_part_objs.append(obj)
                 elif obj.soulstruct_type == SoulstructType.MSB_REGION:
-                    bl_regions.append(obj)
+                    bl_region_objs.append(obj)
                 elif obj.soulstruct_type == SoulstructType.MSB_EVENT:
-                    bl_events.append(obj)
+                    bl_event_objs.append(obj)
                 # Otherwise, ignore. We allow the user to include non-Soulstruct objects in the MSB collection.
 
         if render_hidden_count > 0:
             self.warning(f"Skipped {render_hidden_count} hidden objects from MSB export.")
 
         # Sort by natural order to match Blender hierarchy.
-        bl_parts.sort(key=lambda x: natural_keys(x.name))
-        bl_regions.sort(key=lambda x: natural_keys(x.name))
-        bl_events.sort(key=lambda x: natural_keys(x.name))
+        bl_part_objs.sort(key=lambda x: natural_keys(x.name))
+        bl_region_objs.sort(key=lambda x: natural_keys(x.name))
+        bl_event_objs.sort(key=lambda x: natural_keys(x.name))
 
         self.to_object_mode()
 
-        # Create new MSB. TODO: Type-hinting DS1 for now for my own convenience.
+        # Create new MSB.
         msb = msb_class()  # type: MSB_PTDE | MSB_DSR | MSB_DES
-        msb.path = Path(f"map/{map_stem}/{map_stem}.msb")  # for internal usage
+        msb.path = Path(f"map/{map_stem}/{map_stem}.msb")  # required for some internal map stem detection
 
-        bl_region_classes = BLENDER_MSB_REGION_CLASSES[settings.game]
-        bl_part_classes = BLENDER_MSB_PART_CLASSES[settings.game]
-        bl_event_classes = BLENDER_MSB_EVENT_CLASSES[settings.game]
-
-        bl_and_msb_regions = []
-        for bl_region_obj in bl_regions:
-            bl_region_class = bl_region_classes[bl_region_obj.MSB_REGION.region_subtype_enum]
-            bl_region = bl_region_class(bl_region_obj)  # type: BaseBlenderMSBRegion
-            msb_region = bl_region.to_soulstruct_obj(self, context)  # type: BaseMSBRegion
-            msb.add_entry(msb_region)
-            bl_and_msb_regions.append((bl_region, msb_region))
-            # self.info(f"Added MSB Region: {msb_region.name}")
-
-        bl_and_msb_parts = []
-        for bl_part_obj in bl_parts:
-            bl_part_class = bl_part_classes[bl_part_obj.MSB_PART.part_subtype_enum]
-            bl_part = bl_part_class(bl_part_obj)  # type: BaseBlenderMSBPart
-            msb_part = bl_part.to_soulstruct_obj(self, context)
-            msb.add_entry(msb_part)
-            bl_and_msb_parts.append((bl_part, msb_part))
-            # self.info(f"Added {bl_part_subtype} MSB Part: {msb_part.name}")
-
-        # Finally, we add Events.
-        bl_and_msb_events = []
-        for bl_event_obj in bl_events:
-            bl_event_class = bl_event_classes[bl_event_obj.MSB_EVENT.event_subtype_enum]
-            bl_event = bl_event_class(bl_event_obj)  # type: BaseBlenderMSBEvent
-            msb_event = bl_event.to_soulstruct_obj(self, context)  # type: BaseMSBEvent
-            msb.add_entry(msb_event)
-            bl_and_msb_events.append((bl_event, msb_event))
-            # self.info(f"Added {bl_event_obj.MSB_EVENT.event_subtype_enum} MSB Event: {msb_event.name}")
+        all_bl_and_msb_entries = {  # only really sorted to count them by supertype
+            SoulstructType.MSB_REGION: [],
+            SoulstructType.MSB_PART: [],
+            SoulstructType.MSB_EVENT: [],
+        }
+        for bl_entry_classes, bl_entry_objs, soulstruct_type in (
+            (BLENDER_MSB_REGION_CLASSES[settings.game], bl_region_objs, SoulstructType.MSB_REGION),
+            (BLENDER_MSB_PART_CLASSES[settings.game], bl_part_objs, SoulstructType.MSB_PART),
+            (BLENDER_MSB_EVENT_CLASSES[settings.game], bl_event_objs, SoulstructType.MSB_EVENT),
+        ):
+            bl_and_msb_entries = all_bl_and_msb_entries[soulstruct_type]
+            for bl_entry_obj in bl_entry_objs:
+                subtype_enum = getattr(bl_entry_obj, soulstruct_type.name).entry_subtype_enum
+                bl_entry_class = bl_entry_classes[subtype_enum]
+                bl_entry = bl_entry_class(bl_entry_obj)
+                msb_entry = bl_entry.to_soulstruct_obj(self, context)
+                msb.add_entry(msb_entry)
+                bl_and_msb_entries.append((bl_entry, msb_entry))
+                # self.info(f"Added MSB {subtype_enum.name}: {msb_entry.name}")
 
         # Set all MSB Entry references and Part models/SIB paths.
-        for bl_entry, msb_entry in bl_and_msb_regions + bl_and_msb_parts + bl_and_msb_events:
-            bl_entry.resolve_msb_entry_refs_and_map_stem(self, msb_entry, msb, map_stem)
+        for bl_and_msb_entries in all_bl_and_msb_entries.values():
+            for bl_entry, msb_entry in bl_and_msb_entries:
+                bl_entry.resolve_msb_entry_refs_and_map_stem(self, context, msb_entry, msb, map_stem)
 
         # Sort all MSB Models by name.
-        for _, model_list in msb.get_models_dict():
-            model_list.sort_by_name()
+        for _, model_list in msb.get_models_dict().items():
+            model_list.sort_by_name()  # in-place
 
         # MSB is ready to write.
         relative_msb_path = settings.get_relative_msb_path(map_stem)  # will use latest MSB version
@@ -183,9 +173,9 @@ class ExportMapMSB(LoggingOperator):
             return self.error(f"Could not export MSB. Error: {ex}")
 
         model_count = len(msb.get_models())
-        part_count = len(bl_and_msb_parts)
-        region_count = len(bl_and_msb_regions)
-        event_count = len(bl_and_msb_events)
+        part_count = len(all_bl_and_msb_entries[SoulstructType.MSB_PART])
+        region_count = len(all_bl_and_msb_entries[SoulstructType.MSB_REGION])
+        event_count = len(all_bl_and_msb_entries[SoulstructType.MSB_EVENT])
 
         self.info(
             f"Exported MSB {map_stem} successfully with {region_count} Regions, {event_count} Events, "
@@ -213,9 +203,10 @@ class ExportMapMSB(LoggingOperator):
             self.info(f"Exported NVMDUMP file next to NVMBND: {relative_nvmdump_path.name}")
 
         if export_settings.export_navmesh_models:
-            bl_navmesh_class = bl_part_classes[MSBPartSubtype.Navmesh]
+            bl_navmesh_class = BLENDER_MSB_PART_CLASSES[settings.game][BlenderMSBPartSubtype.Navmesh]
             bl_navmesh_parts = [
-                bl_navmesh_class(obj) for obj in bl_parts if obj.MSB_PART.part_subtype == MSBPartSubtype.Navmesh
+                bl_navmesh_class(obj) for obj in bl_part_objs
+                if obj.MSB_PART.entry_subtype == BlenderMSBPartSubtype.Navmesh
             ]
             self.info(f"Exporting models for {len(bl_navmesh_parts)} MSB Navmesh Parts (should be fast).")
             # NOTE: All these games use NVMBNDs.
@@ -225,9 +216,10 @@ class ExportMapMSB(LoggingOperator):
                 self.warning(f"Navmesh model export not supported for game '{settings.game}'.")
 
         if export_settings.export_collision_models:
-            bl_collision_class = bl_part_classes[MSBPartSubtype.Collision]
+            bl_collision_class = BLENDER_MSB_PART_CLASSES[settings.game][BlenderMSBPartSubtype.Collision]
             bl_collision_parts = [
-                bl_collision_class(obj) for obj in bl_parts if obj.MSB_PART.part_subtype == MSBPartSubtype.Collision
+                bl_collision_class(obj) for obj in bl_part_objs
+                if obj.MSB_PART.entry_subtype == BlenderMSBPartSubtype.Collision
             ]
             self.info(f"Exporting models for {len(bl_collision_parts)} MSB Collision Parts (might take a few seconds).")
             if settings.is_game(DEMONS_SOULS, DARK_SOULS_PTDE):

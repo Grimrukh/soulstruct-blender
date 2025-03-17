@@ -4,25 +4,24 @@ __all__ = [
     "BlenderMSBVFXEvent",
 ]
 
-from soulstruct.darksouls1ptde.maps import MSB
 from soulstruct.darksouls1ptde.maps.msb import MSBVFXEvent
 
-from io_soulstruct.msb.properties import MSBEventSubtype, MSBEventProps, MSBVFXEventProps
+from io_soulstruct.msb.properties import BlenderMSBEventSubtype, MSBVFXEventProps
 from io_soulstruct.msb.types.adapters import *
 
-from .base import BaseBlenderMSBEventDS1
+from .base import BaseBlenderMSBEvent_DS1
 
 
-@create_msb_entry_field_adapter_properties
-class BlenderMSBVFXEvent(BaseBlenderMSBEventDS1[MSBVFXEvent, MSBEventProps, MSBVFXEventProps, MSB]):
+@soulstruct_adapter
+class BlenderMSBVFXEvent(BaseBlenderMSBEvent_DS1[MSBVFXEvent, MSBVFXEventProps]):
 
     SOULSTRUCT_CLASS = MSBVFXEvent
-    MSB_ENTRY_SUBTYPE = MSBEventSubtype.VFX
+    MSB_ENTRY_SUBTYPE = BlenderMSBEventSubtype.VFX
     PARENT_PROP_NAME = "attached_region"  # attached part is used as a 'draw parent'
     __slots__ = []
 
     SUBTYPE_FIELDS = (
-        SoulstructFieldAdapter("vfx_id"),
+        FieldAdapter("vfx_id"),
     )
 
     vfx_id: int

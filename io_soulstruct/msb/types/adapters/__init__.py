@@ -5,20 +5,22 @@ objects and setting `MSBEntry.name` correctly for the supertype).
 """
 
 __all__ = [
-    "SoulstructFieldAdapter",
-    "CustomSoulstructFieldAdapter",
+    "FieldAdapter",
+    "CustomFieldAdapter",
+    "soulstruct_adapter",
     "MSBPartGroupsAdapter",
     "MSBPartModelAdapter",
     "MSBReferenceFieldAdapter",
-    "create_msb_entry_field_adapter_properties",
+    "MSBTransformFieldAdapter",
+
     "get_part_game_name",
     "get_event_game_name",
     "get_region_game_name",
 ]
 
-from io_soulstruct.types.field_adapters import SoulstructFieldAdapter, CustomSoulstructFieldAdapter
-from .core import create_msb_entry_field_adapter_properties
+from io_soulstruct.types.field_adapters import FieldAdapter, CustomFieldAdapter, soulstruct_adapter
 from .groups import MSBPartGroupsAdapter
 from .model import MSBPartModelAdapter
-from .names import *
 from .reference import MSBReferenceFieldAdapter
+from .transform import MSBTransformFieldAdapter
+from .names import *

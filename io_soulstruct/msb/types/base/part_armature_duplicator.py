@@ -7,6 +7,7 @@ __all__ = [
 import typing as tp
 
 import bpy
+from mathutils import Matrix
 
 from io_soulstruct.flver.models.types import BlenderFLVER, FLVERBoneDataType
 from io_soulstruct.msb.properties import MSBPartArmatureMode
@@ -37,6 +38,14 @@ class PartArmatureDuplicator:
         model: bpy.types.MeshObject,
     ):
         """Check `armature_mode` (and presence of `model`) and duplicate model Armature to Part accordingly."""
+        if not model:
+            # I don't think we need to log a warning here, as the missing Model will already be reported.
+            return
+
+        if model.soulstruct_type == SoulstructType.MSB_MODEL_PLACEHOLDER:
+            # Ignore these Parts (no FLVER imported).
+            return
+
         if model.soulstruct_type != SoulstructType.FLVER:
             operator.warning(
                 f"MSB Part '{bl_part.name}' does not have a FLVER model to duplicate Armature from. (This non-FLVER "
@@ -47,9 +56,6 @@ class PartArmatureDuplicator:
         # Check if we should duplicate.
         if armature_mode == MSBPartArmatureMode.NEVER:
             return  # harmless case
-        if not model:
-            # I don't think we need to log a warning here, as the missing Model will already be reported.
-            return
 
         bl_flver = BlenderFLVER(model)
 
@@ -71,8 +77,9 @@ class PartArmatureDuplicator:
         bl_flver: BlenderFLVER,
     ) -> None:
 
-        bl_transform = BlenderTransform.from_bl_obj(bl_part.obj)
-        bl_part.clear_bl_obj_transform()
+        # Prepare to move the Mesh's local transform to the new Armature.
+        matrix_local = bl_part.obj.matrix_local.copy()
+        bl_part.obj.matrix_local = Matrix.Identity(4)
 
         if not bl_flver.armature:
             # This FLVER model doesn't have an Armature, implying the FLVER has only one default bone. We create it
@@ -87,7 +94,5 @@ class PartArmatureDuplicator:
             armature_obj.name = armature_obj.data.name = f"{bl_part.game_name} Armature"
             bl_part.obj.modifiers["FLVER Armature"].name = "Part Armature"
 
-        # Set now-cleared Mesh object transform to new Armature parent of Part.
-        armature_obj.location = bl_transform.bl_translate
-        armature_obj.rotation_euler = bl_transform.bl_rotate
-        armature_obj.scale = bl_transform.bl_scale
+        # Finish moving local transform to new Armature.
+        armature_obj.matrix_local = matrix_local

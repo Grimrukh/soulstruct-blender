@@ -96,7 +96,7 @@ class RenameNavmesh(LoggingOperator):
             for obj in bpy.data.objects:
                 if (
                     obj.soulstruct_type == SoulstructType.MSB_PART
-                    and obj.MSB_PART.part_subtype == "MSB_NAVMESH"
+                    and obj.MSB_PART.entry_subtype == "MSB_NAVMESH"
                     and obj is not bl_nvm
                     and obj.data == bl_nvm.data
                 ):

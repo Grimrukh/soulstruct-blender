@@ -6,34 +6,34 @@ __all__ = [
 
 import bpy
 
-from soulstruct.demonssouls.maps import MSB
 from soulstruct.demonssouls.maps.msb import MSBSpawnerEvent
 
-from io_soulstruct.msb.properties import MSBEventSubtype, MSBEventProps, MSBSpawnerEventProps
-from io_soulstruct.msb.types.base.events import BaseBlenderMSBEvent
+from io_soulstruct.msb.properties import BlenderMSBEventSubtype, MSBSpawnerEventProps
 from io_soulstruct.msb.types.adapters import *
 from io_soulstruct.types import SoulstructType
 
+from .base import BaseBlenderMSBEvent_DES
 
-@create_msb_entry_field_adapter_properties
-class BlenderMSBSpawnerEvent(BaseBlenderMSBEvent[MSBSpawnerEvent, MSBEventProps, MSBSpawnerEventProps, MSB]):
+
+@soulstruct_adapter
+class BlenderMSBSpawnerEvent(BaseBlenderMSBEvent_DES[MSBSpawnerEvent, MSBSpawnerEventProps]):
 
     SOULSTRUCT_CLASS = MSBSpawnerEvent
-    MSB_ENTRY_SUBTYPE = MSBEventSubtype.Spawner
+    MSB_ENTRY_SUBTYPE = BlenderMSBEventSubtype.Spawner
     PARENT_PROP_NAME = ""
     __slots__ = []
 
     SUBTYPE_FIELDS = (
         MSBReferenceFieldAdapter("spawn_parts", ref_type=SoulstructType.MSB_PART, array_count=32),
         MSBReferenceFieldAdapter("spawn_regions", ref_type=SoulstructType.MSB_REGION, array_count=4),
-        SoulstructFieldAdapter("max_count"),
-        SoulstructFieldAdapter("spawner_type"),
-        SoulstructFieldAdapter("limit_count"),
-        SoulstructFieldAdapter("min_spawner_count"),
-        SoulstructFieldAdapter("max_spawner_count"),
-        SoulstructFieldAdapter("min_interval"),
-        SoulstructFieldAdapter("max_interval"),
-        SoulstructFieldAdapter("initial_spawn_count"),
+        FieldAdapter("max_count"),
+        FieldAdapter("spawner_type"),
+        FieldAdapter("limit_count"),
+        FieldAdapter("min_spawner_count"),
+        FieldAdapter("max_spawner_count"),
+        FieldAdapter("min_interval"),
+        FieldAdapter("max_interval"),
+        FieldAdapter("initial_spawn_count"),
     )
 
     spawn_parts: list[bpy.types.MeshObject | None]

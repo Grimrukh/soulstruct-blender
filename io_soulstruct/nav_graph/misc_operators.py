@@ -140,7 +140,7 @@ class JoinMCGNodesThroughNavmesh(LoggingOperator):
         navmesh_parts = [
             obj for obj in context.selected_objects
             if obj.soulstruct_type == SoulstructType.MSB_PART
-            and obj.MSB_PART.part_subtype == "Navmesh"
+               and obj.MSB_PART.entry_subtype == "Navmesh"
         ]
         if len(navmesh_parts) > 1 or not navmesh_parts:
             raise MCGEdgeCreationError("Must select exactly one MSB Navmesh part")

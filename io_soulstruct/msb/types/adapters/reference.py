@@ -10,21 +10,21 @@ from dataclasses import dataclass
 import bpy
 
 from io_soulstruct.exceptions import MissingMSBEntryError, SoulstructTypeError
+from io_soulstruct.msb.types.adapters.names import *
 from io_soulstruct.types import ObjectType, SoulstructType
-from io_soulstruct.types.field_adapters import SoulstructFieldAdapter
+from io_soulstruct.types.field_adapters import FieldAdapter
 from io_soulstruct.utilities.bpy_data import find_obj_or_create_empty
 from io_soulstruct.utilities.operators import LoggingOperator
 
-from ..base.msb_protocols import *
-
 if tp.TYPE_CHECKING:
     from soulstruct.base.maps.msb import MSB as BaseMSB
+    from soulstruct.base.maps.msb.msb_entry import MSBEntry
     from io_soulstruct.msb.types.base import BaseBlenderMSBEntry, ENTRY_T, TYPE_PROPS_T, SUBTYPE_PROPS_T, MSB_T
     REF_TYPING = tp.Literal[SoulstructType.MSB_PART, SoulstructType.MSB_REGION, SoulstructType.MSB_EVENT]
 
 
 @dataclass(slots=True, frozen=True)
-class MSBReferenceFieldAdapter(SoulstructFieldAdapter):
+class MSBReferenceFieldAdapter(FieldAdapter):
     """Wraps an `MSBEntry` property that references another `MSBEntry`, which we handle in Blender.
 
     Property getter/setter is overridden to handle array indices.
@@ -36,9 +36,15 @@ class MSBReferenceFieldAdapter(SoulstructFieldAdapter):
     ref_type: REF_TYPING = None
     ref_subtype: str | None = None  # optional
     array_count: int = 0  # 0 means single reference, otherwise number of references in array
-    missing_collection_name: str = "Missing MSB References"  # where to create missing reference placeholder objects
+
+    _NAME_FUNCS: tp.ClassVar[dict[SoulstructType, tp.Callable[[str], str]]] = {
+        SoulstructType.MSB_PART: get_part_game_name,
+        SoulstructType.MSB_REGION: get_region_game_name,
+        SoulstructType.MSB_EVENT: get_event_game_name,
+    }
 
     def __post_init__(self):
+        super(MSBReferenceFieldAdapter, self).__post_init__()
         if self.ref_type not in {SoulstructType.MSB_PART, SoulstructType.MSB_REGION, SoulstructType.MSB_EVENT}:
             raise ValueError("MSBReferenceFieldAdapter( must reference an MSB Part, Region, or Event.")
         if self.array_count < 0:
@@ -49,12 +55,27 @@ class MSBReferenceFieldAdapter(SoulstructFieldAdapter):
         """Just switches on `ref_type`."""
         return ObjectType.EMPTY if self.ref_type == SoulstructType.MSB_EVENT else ObjectType.MESH
 
-    def read_prop_from_soulstruct_obj(
+    def soulstruct_to_blender(
         self,
         operator: LoggingOperator,
+        context: bpy.types.Context,
         soulstruct_obj: ENTRY_T,
-        bl_entry: BaseBlenderMSBEntry[ENTRY_T, TYPE_PROPS_T, SUBTYPE_PROPS_T, MSB_T],
+        bl_obj: BaseBlenderMSBEntry[ENTRY_T, TYPE_PROPS_T, SUBTYPE_PROPS_T, MSB_T],
+        *,
+        missing_reference_callback: tp.Callable[[bpy.types.Object], None] = None,
+        msb_objects: tp.Iterable[bpy.types.Object] = None,
     ):
+        if not missing_reference_callback:
+            raise ValueError(
+                "Missing reference callback must be given to convert MSB Entry references to Blender object "
+                "references, in case a reference is missing and needs to be created and linked to a collection."
+            )
+        if msb_objects is None:
+            raise ValueError(
+                "MSB objects must be given to convert MSB Entry references to Blender object references, in case "
+                "an object in a different loaded map has the same name."
+            )
+
         if self.array_count >= 1:
             # Blender property groups store array references in separate properties, but have `property` wrappers for
             # getting/setting them all at once.
@@ -63,7 +84,8 @@ class MSBReferenceFieldAdapter(SoulstructFieldAdapter):
                     operator,
                     soulstruct_obj,
                     ref_entry=getattr(soulstruct_obj, self.soulstruct_field_name)[i],
-                    missing_collection_name=self.missing_collection_name,
+                    msb_objects=msb_objects,
+                    missing_reference_callback=missing_reference_callback,
                     array_index=i,  # only needed for error message
                 )
                 for i in range(self.array_count)
@@ -73,15 +95,17 @@ class MSBReferenceFieldAdapter(SoulstructFieldAdapter):
                 operator,
                 soulstruct_obj,
                 ref_entry=getattr(soulstruct_obj, self.soulstruct_field_name),
-                missing_collection_name=self.missing_collection_name,
+                msb_objects=msb_objects,
+                missing_reference_callback=missing_reference_callback,
             )
 
-        setattr(bl_entry, self.bl_prop_name, bl_value)
+        setattr(bl_obj, self.bl_prop_name, bl_value)
 
-    def write_prop_to_soulstruct_obj(
+    def blender_to_soulstruct(
         self,
         operator: LoggingOperator,
-        bl_entry: BaseBlenderMSBEntry[ENTRY_T, TYPE_PROPS_T, SUBTYPE_PROPS_T, MSB_T],
+        context: bpy.types.Context,
+        bl_obj: BaseBlenderMSBEntry[ENTRY_T, TYPE_PROPS_T, SUBTYPE_PROPS_T, MSB_T],
         soulstruct_obj: ENTRY_T,
         msb: MSB_T = None,
     ):
@@ -91,7 +115,7 @@ class MSBReferenceFieldAdapter(SoulstructFieldAdapter):
         if self.array_count >= 1:
             # Blender property groups store array references in separate properties, but have `property` wrappers for
             # getting/setting them all at once.
-            bl_values = getattr(bl_entry, self.bl_prop_name)  # type: list[bpy.types.Object | None]
+            bl_values = getattr(bl_obj, self.bl_prop_name)  # type: list[bpy.types.Object | None]
             entry_value = [
                 self._bl_entry_ref_to_msb_entry_ref(
                     msb,
@@ -102,7 +126,7 @@ class MSBReferenceFieldAdapter(SoulstructFieldAdapter):
                 for i in range(self.array_count)
             ]
         else:
-            bl_value = getattr(bl_entry, self.bl_prop_name)  # type: bpy.types.Object | None
+            bl_value = getattr(bl_obj, self.bl_prop_name)  # type: bpy.types.Object | None
             entry_value = self._bl_entry_ref_to_msb_entry_ref(
                 msb,
                 soulstruct_obj,
@@ -111,14 +135,14 @@ class MSBReferenceFieldAdapter(SoulstructFieldAdapter):
 
         setattr(soulstruct_obj, self.soulstruct_field_name, entry_value)
 
-    def getter(self, bl_entry: BaseBlenderMSBEntry, is_subtype=False):
-        props = bl_entry.subtype_properties if is_subtype else bl_entry.type_properties
+    def getter(self, bl_obj: BaseBlenderMSBEntry, is_subtype=False):
+        props = bl_obj.subtype_properties if is_subtype else bl_obj.type_properties
         if self.array_count > 0:
             return [getattr(props, f"{self.bl_prop_name}_{i}") for i in range(self.array_count)]
         return getattr(props, self.bl_prop_name)
 
-    def setter(self, bl_entry: BaseBlenderMSBEntry, value: tp.Any, is_subtype=False):
-        props = bl_entry.subtype_properties if is_subtype else bl_entry.type_properties
+    def setter(self, bl_obj: BaseBlenderMSBEntry, value: tp.Any, is_subtype=False):
+        props = bl_obj.subtype_properties if is_subtype else bl_obj.type_properties
         if self.array_count > 0:
             if len(value) > self.array_count:
                 raise ValueError(
@@ -133,10 +157,10 @@ class MSBReferenceFieldAdapter(SoulstructFieldAdapter):
     def _msb_entry_ref_to_bl_entry_ref(
         self,
         operator: LoggingOperator,
-        entry: MSBEntryProtocol,
-        ref_entry: MSBEntryProtocol | None,
-        missing_collection_name="Missing MSB References",
-        bl_name_func: tp.Callable[[str], str] | None = None,
+        entry: MSBEntry,
+        ref_entry: MSBEntry | None,
+        msb_objects: tp.Iterable[bpy.types.Object],
+        missing_reference_callback: tp.Callable[[bpy.types.Object], None],
         array_index: int = None,
     ) -> bpy.types.Object | None:
         """Convert MSB entry reference to Blender object reference (may be a created Empty added now to
@@ -148,12 +172,15 @@ class MSBReferenceFieldAdapter(SoulstructFieldAdapter):
         if not ref_entry:
             return None
 
+        bl_name_func = self._NAME_FUNCS[self.ref_type]
+
         was_missing, pointer_obj = find_obj_or_create_empty(
             ref_entry.name,
             object_type=self.obj_type,
             soulstruct_type=self.ref_type,
             bl_name_func=bl_name_func,
-            missing_collection_name=missing_collection_name,
+            objects=msb_objects,
+            process_new_object=missing_reference_callback,
         )
         if was_missing:
             prop_name_i = f"{self.bl_prop_name}[{array_index}]" if array_index is not None else self.bl_prop_name
@@ -166,11 +193,10 @@ class MSBReferenceFieldAdapter(SoulstructFieldAdapter):
     def _bl_entry_ref_to_msb_entry_ref(
         self,
         msb: BaseMSB,
-        referrer_entry: MSBEntryProtocol,
+        referrer_entry: MSBEntry,
         bl_obj: bpy.types.Object | None,
-        name_func: tp.Callable[[str], str] | None = None,
         array_index: int = None,
-    ) -> MSBPartProtocol | MSBRegionProtocol | MSBEventProtocol | None:
+    ) -> MSBEntry | None:
         """Convert Blender object reference to MSB entry reference.
 
         Has wrappers for Part, Event, and Region references. Model references use a separate method.
@@ -181,10 +207,7 @@ class MSBReferenceFieldAdapter(SoulstructFieldAdapter):
             return None
 
         subtypes = (self.ref_subtype,) if self.ref_subtype else ()
-
-        entry_name = bl_obj.name
-        if name_func:
-            entry_name = name_func(entry_name)
+        entry_name = self._NAME_FUNCS[self.ref_type](bl_obj.name)
 
         try:
             if self.ref_type == SoulstructType.MSB_PART:

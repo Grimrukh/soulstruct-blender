@@ -6,23 +6,20 @@ __all__ = [
 
 import bpy
 
-from soulstruct.darksouls1ptde.maps import MSB
 from soulstruct.darksouls1ptde.maps.msb import MSBNavigationEvent
 
-from io_soulstruct.msb.properties import MSBEventSubtype, MSBEventProps, MSBNavigationEventProps
+from io_soulstruct.msb.properties import BlenderMSBEventSubtype, MSBNavigationEventProps
 from io_soulstruct.msb.types.adapters import *
 from io_soulstruct.types import SoulstructType
 
-from .base import BaseBlenderMSBEventDS1
+from .base import BaseBlenderMSBEvent_DS1
 
 
-@create_msb_entry_field_adapter_properties
-class BlenderMSBNavigationEvent(
-    BaseBlenderMSBEventDS1[MSBNavigationEvent, MSBEventProps, MSBNavigationEventProps, MSB]
-):
+@soulstruct_adapter
+class BlenderMSBNavigationEvent(BaseBlenderMSBEvent_DS1[MSBNavigationEvent, MSBNavigationEventProps]):
 
     SOULSTRUCT_CLASS = MSBNavigationEvent
-    MSB_ENTRY_SUBTYPE = MSBEventSubtype.Navigation
+    MSB_ENTRY_SUBTYPE = BlenderMSBEventSubtype.Navigation
     PARENT_PROP_NAME = "navigation_region"
     __slots__ = []
 

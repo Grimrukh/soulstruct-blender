@@ -8,7 +8,7 @@ from bpy.types import Collection
 
 from io_soulstruct.types import SoulstructType
 from io_soulstruct.utilities.misc import MAP_STEM_RE
-from io_soulstruct.msb.properties import MSBPartSubtype
+from io_soulstruct.msb.properties import BlenderMSBPartSubtype
 
 
 def main(source_map_stem: str, dest_map_stem: str, entry_filter_func: tp.Callable[[bpy.types.Object], bool]):
@@ -47,21 +47,21 @@ def main(source_map_stem: str, dest_map_stem: str, entry_filter_func: tp.Callabl
     source_msb_collection = bpy.data.collections[f"{source_map_stem} MSB"]
 
     dest_part_collections = {
-        MSBPartSubtype.MapPiece: bpy.data.collections[f"{dest_map_stem} Map Piece Parts"],
-        MSBPartSubtype.Collision: bpy.data.collections[f"{dest_map_stem} Collision Parts"],
-        MSBPartSubtype.Navmesh: bpy.data.collections[f"{dest_map_stem} Navmesh Parts"],
-        MSBPartSubtype.ConnectCollision: bpy.data.collections[f"{dest_map_stem} Connect Collision Parts"],
-        MSBPartSubtype.Object: bpy.data.collections[f"{dest_map_stem} Object Parts"],
-        MSBPartSubtype.Character: bpy.data.collections[f"{dest_map_stem} Character Parts"],
-        MSBPartSubtype.PlayerStart: bpy.data.collections[f"{dest_map_stem} Player Start Parts"],
-    }  # type: dict[MSBPartSubtype, Collection]
+        BlenderMSBPartSubtype.MapPiece: bpy.data.collections[f"{dest_map_stem} Map Piece Parts"],
+        BlenderMSBPartSubtype.Collision: bpy.data.collections[f"{dest_map_stem} Collision Parts"],
+        BlenderMSBPartSubtype.Navmesh: bpy.data.collections[f"{dest_map_stem} Navmesh Parts"],
+        BlenderMSBPartSubtype.ConnectCollision: bpy.data.collections[f"{dest_map_stem} Connect Collision Parts"],
+        BlenderMSBPartSubtype.Object: bpy.data.collections[f"{dest_map_stem} Object Parts"],
+        BlenderMSBPartSubtype.Character: bpy.data.collections[f"{dest_map_stem} Character Parts"],
+        BlenderMSBPartSubtype.PlayerStart: bpy.data.collections[f"{dest_map_stem} Player Start Parts"],
+    }  # type: dict[BlenderMSBPartSubtype, Collection]
 
     dest_regions_events_collection = bpy.data.collections[f"{dest_map_stem} Regions/Events"]  # type: Collection
 
     dest_model_collections = {
-        MSBPartSubtype.MapPiece: bpy.data.collections[f"{dest_map_stem} Map Piece Models"],
-        MSBPartSubtype.Collision: bpy.data.collections[f"{dest_map_stem} Collision Models"],
-        MSBPartSubtype.Navmesh: bpy.data.collections[f"{dest_map_stem} Navmesh Models"],
+        BlenderMSBPartSubtype.MapPiece: bpy.data.collections[f"{dest_map_stem} Map Piece Models"],
+        BlenderMSBPartSubtype.Collision: bpy.data.collections[f"{dest_map_stem} Collision Models"],
+        BlenderMSBPartSubtype.Navmesh: bpy.data.collections[f"{dest_map_stem} Navmesh Models"],
     }
 
     msb_objs_to_move = [obj for obj in source_msb_collection.all_objects if entry_filter_func(obj)]
@@ -69,9 +69,9 @@ def main(source_map_stem: str, dest_map_stem: str, entry_filter_func: tp.Callabl
 
     # Collected over MSB parts.
     model_obj_names = {
-        MSBPartSubtype.MapPiece: set(),
-        MSBPartSubtype.Collision: set(),
-        MSBPartSubtype.Navmesh: set(),
+        BlenderMSBPartSubtype.MapPiece: set(),
+        BlenderMSBPartSubtype.Collision: set(),
+        BlenderMSBPartSubtype.Navmesh: set(),
     }
     moved_names = set()  # don't move children twice (e.g. Event children of Regions)
 
@@ -82,7 +82,7 @@ def main(source_map_stem: str, dest_map_stem: str, entry_filter_func: tp.Callabl
 
         armature_parent = None
         if obj.soulstruct_type == SoulstructType.MSB_PART:
-            part_subtype = obj.MSB_PART.part_subtype_enum
+            part_subtype = obj.MSB_PART.entry_subtype_enum
 
             if part_subtype in model_obj_names and obj.MSB_PART.model:
                 model_obj_names[part_subtype].add(obj.MSB_PART.model.name)
@@ -153,7 +153,7 @@ def main(source_map_stem: str, dest_map_stem: str, entry_filter_func: tp.Callabl
                     if source_map_stem in old_collection.name:
                         old_collection.objects.unlink(child)
 
-            if part_subtype == MSBPartSubtype.MapPiece:
+            if part_subtype == BlenderMSBPartSubtype.MapPiece:
 
                 if model_obj.parent and model_obj.parent.type == "ARMATURE":
                     model_armature_parent = model_obj.parent
@@ -173,7 +173,7 @@ def main(source_map_stem: str, dest_map_stem: str, entry_filter_func: tp.Callabl
 
             # Fortunately, all Burg Collision/Navmesh models start with h1/n1.
 
-            elif part_subtype == MSBPartSubtype.Collision:
+            elif part_subtype == BlenderMSBPartSubtype.Collision:
                 new_collision_name = model_obj.name.replace(source_map_suffix, dest_map_suffix)
                 bpy.context.view_layer.objects.active = model_obj
                 bpy.ops.object.rename_hkx_collision(
@@ -182,7 +182,7 @@ def main(source_map_stem: str, dest_map_stem: str, entry_filter_func: tp.Callabl
                 )
                 print(f"  Renamed Collision model to: {model_obj.name}")
 
-            elif part_subtype == MSBPartSubtype.Navmesh:
+            elif part_subtype == BlenderMSBPartSubtype.Navmesh:
                 new_navmesh_name = model_obj.name.replace(source_map_suffix, dest_map_suffix)
                 bpy.context.view_layer.objects.active = model_obj
                 bpy.ops.object.rename_nvm(

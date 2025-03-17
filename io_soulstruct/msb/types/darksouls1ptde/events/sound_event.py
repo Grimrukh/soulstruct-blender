@@ -4,25 +4,29 @@ __all__ = [
     "BlenderMSBSoundEvent",
 ]
 
-from soulstruct.darksouls1ptde.maps import MSB
+from soulstruct.darksouls1ptde.events.enums import SoundType
 from soulstruct.darksouls1ptde.maps.msb import MSBSoundEvent
 
-from io_soulstruct.msb.properties import MSBEventSubtype, MSBEventProps, MSBSoundEventProps
+from io_soulstruct.msb.properties import BlenderMSBEventSubtype, MSBSoundEventProps
 from io_soulstruct.msb.types.adapters import *
-from .base import BaseBlenderMSBEventDS1
+from .base import BaseBlenderMSBEvent_DS1
 
 
-@create_msb_entry_field_adapter_properties
-class BlenderMSBSoundEvent(BaseBlenderMSBEventDS1[MSBSoundEvent, MSBEventProps, MSBSoundEventProps, MSB]):
+@soulstruct_adapter
+class BlenderMSBSoundEvent(BaseBlenderMSBEvent_DS1[MSBSoundEvent, MSBSoundEventProps]):
 
     SOULSTRUCT_CLASS = MSBSoundEvent
-    MSB_ENTRY_SUBTYPE = MSBEventSubtype.Sound
+    MSB_ENTRY_SUBTYPE = BlenderMSBEventSubtype.Sound
     PARENT_PROP_NAME = "attached_region"  # attached part is "draw parent" I believe
     __slots__ = []
 
     SUBTYPE_FIELDS = (
-        SoulstructFieldAdapter("sound_type"),
-        SoulstructFieldAdapter("sound_id"),
+        CustomFieldAdapter(
+            "sound_type",
+            read_func=lambda x: SoundType(x).name,
+            write_func=lambda x: SoundType[x].value,
+        ),
+        FieldAdapter("sound_id"),
     )
 
     sound_type: int

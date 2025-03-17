@@ -8,33 +8,32 @@ import abc
 
 from soulstruct.darksouls1ptde.maps.msb import MSB, BitSet128
 
-from io_soulstruct.msb.types.adapters import SoulstructFieldAdapter, MSBPartGroupsAdapter
+from io_soulstruct.msb.types.adapters import FieldAdapter, MSBPartGroupsAdapter
 from io_soulstruct.msb.types.base.parts import BaseBlenderMSBPart, PART_T, SUBTYPE_PROPS_T
-from io_soulstruct.msb.properties.parts import MSBPartProps
 
 
-class BaseBlenderMSBPart_DS1(BaseBlenderMSBPart[PART_T, MSBPartProps, SUBTYPE_PROPS_T, MSB], abc.ABC):
+class BaseBlenderMSBPart_DS1(BaseBlenderMSBPart[PART_T, SUBTYPE_PROPS_T, MSB, BitSet128], abc.ABC):
 
     TYPE_FIELDS = BaseBlenderMSBPart.TYPE_FIELDS + (
         MSBPartGroupsAdapter("draw_groups", bit_set_type=BitSet128),
         MSBPartGroupsAdapter("display_groups", bit_set_type=BitSet128),
-        SoulstructFieldAdapter("ambient_light_id"),
-        SoulstructFieldAdapter("fog_id"),
-        SoulstructFieldAdapter("scattered_light_id"),
-        SoulstructFieldAdapter("lens_flare_id"),
-        SoulstructFieldAdapter("shadow_id"),
-        SoulstructFieldAdapter("dof_id"),
-        SoulstructFieldAdapter("tone_map_id"),
-        SoulstructFieldAdapter("point_light_id"),
-        SoulstructFieldAdapter("tone_correction_id"),
-        SoulstructFieldAdapter("lod_id"),
-        SoulstructFieldAdapter("is_shadow_source"),
-        SoulstructFieldAdapter("is_shadow_destination"),
-        SoulstructFieldAdapter("is_shadow_only"),
-        SoulstructFieldAdapter("draw_by_reflect_cam"),
-        SoulstructFieldAdapter("draw_only_reflect_cam"),
-        SoulstructFieldAdapter("use_depth_bias_float"),
-        SoulstructFieldAdapter("disable_point_light_effect"),
+        FieldAdapter("ambient_light_id"),
+        FieldAdapter("fog_id"),
+        FieldAdapter("scattered_light_id"),
+        FieldAdapter("lens_flare_id"),
+        FieldAdapter("shadow_id"),
+        FieldAdapter("dof_id"),
+        FieldAdapter("tone_map_id"),
+        FieldAdapter("point_light_id"),
+        FieldAdapter("tone_correction_id"),
+        FieldAdapter("lod_id"),
+        FieldAdapter("is_shadow_source"),
+        FieldAdapter("is_shadow_destination"),
+        FieldAdapter("is_shadow_only"),
+        FieldAdapter("draw_by_reflect_cam"),
+        FieldAdapter("draw_only_reflect_cam"),
+        FieldAdapter("use_depth_bias_float"),
+        FieldAdapter("disable_point_light_effect"),
     )
 
     draw_groups: BitSet128

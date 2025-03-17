@@ -13,7 +13,7 @@ aid porting.
 from __future__ import annotations
 
 __all__ = [
-    "MSBPartSubtype",
+    "BlenderMSBPartSubtype",
     "MSBPartArmatureMode",
     "MSBPartProps",
     "MSBMapPieceProps",
@@ -29,15 +29,15 @@ __all__ = [
 
 from enum import StrEnum
 
-from soulstruct.darksouls1ptde.maps.enums import CollisionHitFilter
+from soulstruct.base.maps.msb.enums import BaseMSBPartSubtype
 from soulstruct.games import *
 
 import bpy
 from io_soulstruct.types import SoulstructType, ObjectType
-from .events import MSBEventSubtype
+from .events import BlenderMSBEventSubtype
 
 
-class MSBPartSubtype(StrEnum):
+class BlenderMSBPartSubtype(StrEnum):
     """Union of Part subtypes across all games."""
     MapPiece = "MSB_MAP_PIECE"
     Object = "MSB_OBJECT"
@@ -54,11 +54,28 @@ class MSBPartSubtype(StrEnum):
         return f"{self.value.replace('MSB_', '').replace('_', ' ').title()}"
 
     def is_flver(self) -> bool:
-        return self in {MSBPartSubtype.MapPiece, MSBPartSubtype.Object, MSBPartSubtype.Asset, MSBPartSubtype.Character}
+        return self in {
+            BlenderMSBPartSubtype.MapPiece,
+            BlenderMSBPartSubtype.Object,
+            BlenderMSBPartSubtype.Asset,
+            BlenderMSBPartSubtype.Character,
+        }
 
     def is_map_geometry(self) -> bool:
         """TODO: Asset is ambiguous here. Probably want more enum options."""
-        return self in {MSBPartSubtype.MapPiece, MSBPartSubtype.Collision, MSBPartSubtype.Navmesh}
+        return self in {
+            BlenderMSBPartSubtype.MapPiece,
+            BlenderMSBPartSubtype.Collision,
+            BlenderMSBPartSubtype.Navmesh,
+        }
+
+    @classmethod
+    def from_msb_part_subtype(cls, subtype: BaseMSBPartSubtype) -> BlenderMSBPartSubtype:
+        try:
+            # noinspection PyTypeChecker
+            return cls[subtype.name]
+        except KeyError:
+            raise ValueError(f"Unsupported Blender MSB Part subtype: {subtype}")
 
 
 class MSBPartArmatureMode(StrEnum):
@@ -100,7 +117,10 @@ def _is_part(_, obj: bpy.types.Object):
 
 
 def _is_collision(_, obj: bpy.types.Object):
-    return obj.soulstruct_type == SoulstructType.MSB_PART and obj.MSB_PART.part_subtype_enum == MSBPartSubtype.Collision
+    return (
+        obj.soulstruct_type == SoulstructType.MSB_PART
+        and obj.MSB_PART.entry_subtype_enum == BlenderMSBPartSubtype.Collision
+    )
 
 
 def _is_region(_, obj: bpy.types.Object):
@@ -110,51 +130,50 @@ def _is_region(_, obj: bpy.types.Object):
 def _is_environment_event(_, obj: bpy.types.Object):
     return (
         obj.soulstruct_type == SoulstructType.MSB_EVENT
-        and obj.MSB_EVENT.event_subtype == MSBEventSubtype.Environment
+        and obj.MSB_EVENT.entry_subtype == BlenderMSBEventSubtype.Environment
     )
 
 
 def _is_model(_, obj: bpy.types.Object):
-    """Only allow models that are FLVER, COLLISION, or NAVMESH Mesh objects."""
+    """Only allow models that are FLVER, COLLISION, NAVMESH, or MSB_MODEL_PLACEHOLDER Mesh objects."""
     return (
-        obj.type == "MESH" and (
-            obj.soulstruct_type in {
-                SoulstructType.FLVER, SoulstructType.COLLISION, SoulstructType.NAVMESH
-            } or obj.get("MSB_MODEL_PLACEHOLDER", False)
-        )
+        obj.type == "MESH" and obj.soulstruct_type in {
+            SoulstructType.FLVER, SoulstructType.COLLISION, SoulstructType.NAVMESH, SoulstructType.MSB_MODEL_PLACEHOLDER
+        }
     )
 
 
 class MSBPartProps(bpy.types.PropertyGroup):
-    part_subtype: bpy.props.EnumProperty(
+
+    entry_subtype: bpy.props.EnumProperty(
         name="Part Subtype",
         description="MSB subtype of this Part object",
         items=[
             ("NONE", "None", "Not an MSB Part"),
-            (MSBPartSubtype.MapPiece, "Map Piece", "MSB MapPiece object"),
-            (MSBPartSubtype.Object, "Object", "MSB Object object"),
-            (MSBPartSubtype.Asset, "Asset", "MSB Asset object"),
-            (MSBPartSubtype.Character, "Character", "MSB Character object"),
-            (MSBPartSubtype.PlayerStart, "Player Start", "MSB PlayerStart object"),
-            (MSBPartSubtype.Collision, "Collision", "MSB Collision object"),
-            (MSBPartSubtype.Protoboss, "Protoboss", "MSB Protoboss object (DeS only)"),
-            (MSBPartSubtype.Navmesh, "Navmesh", "MSB Navmesh object"),
-            (MSBPartSubtype.ConnectCollision, "Connect Collision", "MSB Connect Collision object"),
-            (MSBPartSubtype.Other, "Other", "MSB Other object"),
+            (BlenderMSBPartSubtype.MapPiece, "Map Piece", "MSB MapPiece object"),
+            (BlenderMSBPartSubtype.Object, "Object", "MSB Object object"),
+            (BlenderMSBPartSubtype.Asset, "Asset", "MSB Asset object"),
+            (BlenderMSBPartSubtype.Character, "Character", "MSB Character object"),
+            (BlenderMSBPartSubtype.PlayerStart, "Player Start", "MSB PlayerStart object"),
+            (BlenderMSBPartSubtype.Collision, "Collision", "MSB Collision object"),
+            (BlenderMSBPartSubtype.Protoboss, "Protoboss", "MSB Protoboss object (DeS only)"),
+            (BlenderMSBPartSubtype.Navmesh, "Navmesh", "MSB Navmesh object"),
+            (BlenderMSBPartSubtype.ConnectCollision, "Connect Collision", "MSB Connect Collision object"),
+            (BlenderMSBPartSubtype.Other, "Other", "MSB Other object"),
         ],
         default="NONE",
     )
 
     @property
-    def part_subtype_enum(self) -> MSBPartSubtype:
-        if self.part_subtype == "NONE":
+    def entry_subtype_enum(self) -> BlenderMSBPartSubtype:
+        if self.entry_subtype == "NONE":
             raise ValueError("MSB Part subtype is not set.")
-        return MSBPartSubtype(self.part_subtype)
+        return BlenderMSBPartSubtype(self.entry_subtype)
 
-    def is_subtype(self, subtype: MSBPartSubtype | str):
+    def is_subtype(self, subtype: BlenderMSBPartSubtype | str):
         if isinstance(subtype, str):
-            return self.part_subtype == subtype
-        return self.part_subtype == subtype.value
+            return self.entry_subtype == subtype
+        return self.entry_subtype == subtype.value
 
     model: bpy.props.PointerProperty(
         name="Model",
@@ -633,6 +652,37 @@ class MSBPlayerStartProps(bpy.types.PropertyGroup):
         return list(self.__annotations__)
 
 
+class BlenderMSBCollisionHitFilter(StrEnum):
+    """Union of all `CollisionHitFilter` enum NAMES across games.
+
+    These names are resolved to integer values by each game-specific MSB Collision object.
+    """
+    NoHiHitNoFeetIK = "NoHiHitNoFeetIK"  # 0  # solid
+    NoHiHit_1 = "NoHiHit_1"  # 1  # solid
+    NoHiHit_2 = "NoHiHit_2"  # 2  # solid
+    NoHiHit_3 = "NoHiHit_3"  # 3  # solid
+    NoHiHit_4 = "NoHiHit_4"  # 4  # solid
+    NoHiHit_5 = "NoHiHit_5"  # 5  # solid
+    NoHiHit_6 = "NoHiHit_6"  # 6  # solid
+    NoHiHit_7 = "NoHiHit_7"  # 7  # solid
+    Normal = "Normal"  # 8  # solid
+    Water_A = "Water_A"  # 9  # blue
+    Unknown_10 = "Unknown_10"  # 10
+    Solid_ForNPCsOnly_A = "Solid_ForNPCsOnly_A"  # 11  # blue
+    Unknown_12 = "Unknown_12"  # 12
+    DeathCam = "DeathCam"  # 13  # white
+    LethalFall = "LethalFall"  # 14  # red
+    KillPlane = "KillPlane"  # 15  # black
+    Water_B = "Water_B"  # 16  # dark blue
+    GroupSwitch = "GroupSwitch"  # 17  # turquoise; in elevator shafts
+    Unknown_18 = "Unknown_18"  # 18
+    Solid_ForNPCsOnly_B = "Solid_ForNPCsOnly_B"  # 19  # turquoise
+    LevelExit_A = "LevelExit_A"  # 20  # purple
+    Slide = "Slide"  # 21  # yellow
+    FallProtection = "FallProtection"  # 22  # permeable for projectiles
+    LevelExit_B = "LevelExit_B"  # 23  # glowing turquoise
+
+
 class MSBCollisionProps(bpy.types.PropertyGroup):
     navmesh_groups_0: bpy.props.BoolVectorProperty(
         name="Navmesh Groups [0, 31]",
@@ -663,7 +713,7 @@ class MSBCollisionProps(bpy.types.PropertyGroup):
         default=[False] * 32,
     )
 
-    def get_navmesh_groups_props(self, bit_count: int) -> list[bpy.props.BoolVectorProperty]:
+    def get_navmesh_groups_props(self, bit_count: int) -> list[bpy.types.CollectionProperty]:
         """Get the appropriate number of navmesh group properties for the given bit count (always 128).
         """
         if bit_count == 128:
@@ -679,11 +729,8 @@ class MSBCollisionProps(bpy.types.PropertyGroup):
     hit_filter: bpy.props.EnumProperty(
         name="Hit Filter Name",
         description="Determines effect of collision on characters",
-        items=[
-            (hit_filter.value, hit_filter.name, hit_filter.name)
-            for hit_filter in CollisionHitFilter
-        ],
-        default=CollisionHitFilter.Normal.name,
+        items=[(h, h, h) for h in BlenderMSBCollisionHitFilter],
+        default=BlenderMSBCollisionHitFilter.Normal,
     )
     sound_space_type: bpy.props.IntProperty(
         name="Sound Space Type",
@@ -1038,7 +1085,7 @@ class MSBNavmeshProps(bpy.types.PropertyGroup):
         default=[False] * 32,
     )
 
-    def get_navmesh_groups_props(self, bit_count: int) -> list[bpy.props.BoolVectorProperty]:
+    def get_navmesh_groups_props(self, bit_count: int) -> list[bpy.types.CollectionProperty]:
         """Get the appropriate number of navmesh group properties for the given bit count (always 128).
         """
         if bit_count == 128:

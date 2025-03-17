@@ -26,7 +26,7 @@ from io_soulstruct.general.cached import get_cached_file
 from io_soulstruct.utilities import *
 from io_soulstruct.utilities.operators import LoggingOperator, LoggingImportOperator
 from .operator_config import *
-from .properties import MSBRegionSubtype, MSBPartSubtype, MSBEventSubtype
+from .properties import BlenderMSBRegionSubtype, BlenderMSBPartSubtype, BlenderMSBEventSubtype
 
 if tp.TYPE_CHECKING:
     from io_soulstruct.type_checking import *
@@ -74,10 +74,7 @@ def _import_msb(
     bl_event_classes = BLENDER_MSB_EVENT_CLASSES[settings.game]
 
     # Two separate sub-collections for MSB entries: Parts, and Regions/Events combined.
-    parts_collection = get_or_create_collection(context.scene.collection, f"{msb_stem} MSB", f"{msb_stem} Parts")
-    regions_events_collection = get_or_create_collection(
-        context.scene.collection, f"{msb_stem} MSB", f"{msb_stem} Regions/Events"
-    )
+    msb_collection = get_or_create_collection(context.scene.collection, f"{msb_stem} MSB")
 
     # TODO: Delete all created objects if/when an error is raised.
 
@@ -103,14 +100,14 @@ def _import_msb(
     msb_and_bl_events = []
     msb_and_bl_parts = []
 
-    for region_subtype, msb_region_list in msb.get_regions_dict():
-        bl_region_subtype = MSBRegionSubtype[region_subtype.name]
+    for region_subtype, msb_region_list in msb.get_regions_dict().items():
+        bl_region_subtype = BlenderMSBRegionSubtype[region_subtype.name]
         bl_region_class = bl_region_classes[bl_region_subtype]  # type: type[BaseBlenderMSBRegion]
+        bl_region_collection = bl_region_class.get_msb_subcollection(msb_collection, msb_stem)
         for region in msb_region_list:
             try:
-                # Don't need to get created object or provide a subcollection.
                 bl_region = bl_region_class.new_from_soulstruct_obj(
-                    operator, context, region, region.name, regions_events_collection
+                    operator, context, region, region.name, bl_region_collection
                 )
             except Exception as ex:
                 # Fatal error.
@@ -118,13 +115,12 @@ def _import_msb(
                 return operator.error(f"Failed to import {region.cls_name} '{region.name}': {ex}")
             msb_and_bl_regions.append((region, bl_region))
 
-    for part_subtype, msb_part_list in msb.get_parts_dict():
-        bl_part_subtype = MSBPartSubtype[part_subtype.name]
+    for part_subtype, msb_part_list in msb.get_parts_dict().items():
+        # NOTE: `Dummy...` Parts are imported as non-Dummy parts and have `is_dummy` set per instance.
+        # TODO: This approach might not work as well for ER's Dummy Assets, which are massively stripped.
+        bl_part_subtype = BlenderMSBPartSubtype[part_subtype.name.removeprefix("Dummy")]
         bl_part_class = bl_part_classes[bl_part_subtype]  # type: type[BaseBlenderMSBPart]
-        part_subtype_collection = get_or_create_collection(
-            parts_collection,
-            f"{msb_stem} {bl_part_subtype.get_nice_name()} Parts",
-        )
+        bl_part_collection = bl_part_class.get_msb_subcollection(msb_collection, msb_stem)
         for part in msb_part_list:
             try:
                 bl_part = bl_part_class.new_from_soulstruct_obj(
@@ -132,7 +128,7 @@ def _import_msb(
                     context,
                     part,
                     part.name,
-                    collection=part_subtype_collection,
+                    collection=bl_part_collection,
                     map_stem=msb_stem,
                     armature_mode=msb_import_settings.part_armature_mode,
                 )
@@ -142,13 +138,14 @@ def _import_msb(
                 return operator.error(f"Failed to import {part.cls_name} '{part.name}': {ex}")
             msb_and_bl_parts.append((part, bl_part))
 
-    for event_subtype, msb_event_list in msb.get_events_dict():
-        bl_event_type = MSBEventSubtype[event_subtype.name]
+    for event_subtype, msb_event_list in msb.get_events_dict().items():
+        bl_event_type = BlenderMSBEventSubtype[event_subtype.name]
         bl_event_class = bl_event_classes[bl_event_type]  # type: type[BaseBlenderMSBEvent]
+        bl_event_collection = bl_event_class.get_msb_subcollection(msb_collection, msb_stem)
         for event in msb_event_list:
             try:
                 bl_event = bl_event_class.new_from_soulstruct_obj(
-                    operator, context, event, event.name, regions_events_collection
+                    operator, context, event, event.name, bl_event_collection
                 )
             except Exception as ex:
                 # Fatal error.
@@ -157,9 +154,28 @@ def _import_msb(
 
             msb_and_bl_events.append((event, bl_event))
 
-    for msb_entry, bl_obj in msb_and_bl_parts + msb_and_bl_regions + msb_and_bl_events:
-        bl_obj.resolve_bl_entry_refs(operator, msb_entry)
+    missing_collection = None  # type: bpy.types.Collection | None
 
+    def process_missing_reference(missing_obj: bpy.types.Object):
+        """Add created reference placeholder to missing collection (creating it on first time).
+
+        NOTE: The exact referrer entry and field with the missing reference is logged when encountered.
+        """
+        nonlocal missing_collection
+        if missing_collection is None:  # first missing MSB reference encountered
+            missing_collection = get_or_create_collection(msb_collection, f"{msb_stem} Missing References")
+        missing_collection.objects.link(missing_obj)
+
+    for msb_entry, bl_obj in msb_and_bl_parts + msb_and_bl_regions + msb_and_bl_events:
+        bl_obj.resolve_bl_entry_refs(
+            operator,
+            context,
+            msb_entry,
+            missing_reference_callback=process_missing_reference,
+            msb_objects=msb_collection.all_objects,
+        )
+
+    # Assign Blender MSB Event parents.
     for _, bl_event in msb_and_bl_events:
         if bl_event.PARENT_PROP_NAME:
             # Should exist in Blender among Parts or Regions imported above. If `None`, it's a harmless assignment.
@@ -173,6 +189,10 @@ def _import_msb(
         f"Imported {part_count} Parts, {region_count} Regions, and {event_count} Events from MSB {msb_stem} "
         f"in {time.perf_counter() - p:.3f} seconds."
     )
+
+    if missing_collection is not None:
+        missing_count = len(missing_collection.all_objects)
+        operator.warning(f"{missing_count} missing MSB references were found in MSB {msb_stem}.")
 
     return {"FINISHED"}
 

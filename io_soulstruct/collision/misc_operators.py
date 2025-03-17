@@ -65,7 +65,7 @@ class RenameCollision(LoggingOperator):
             for obj in bpy.data.objects:
                 if (
                     obj.soulstruct_type == SoulstructType.MSB_PART
-                    and obj.MSB_PART.part_subtype in {"MSB_COLLISION", "MSB_CONNECT_COLLISION"}
+                    and obj.MSB_PART.entry_subtype in {"MSB_COLLISION", "MSB_CONNECT_COLLISION"}
                     and obj is not collision
                     and obj.data == collision.data
                 ):

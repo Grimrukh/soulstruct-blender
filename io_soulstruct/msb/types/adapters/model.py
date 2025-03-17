@@ -83,7 +83,7 @@ class MSBPartModelAdapter:
 
         # Create placeholder icosphere.
         mesh = bpy.data.meshes.new(model_name)
-        self._build_placeholder_mesh(mesh)
+        self._build_placeholder_mesh_pyramid_arrow(mesh)
         model = new_mesh_object(model_name, mesh, SoulstructType.MSB_MODEL_PLACEHOLDER)
         model.show_axis = True  # hard to tell orientation of placeholder icosphere otherwise
         placeholder_model_collection = get_or_create_collection(context.scene.collection, "Placeholder Models")
@@ -91,12 +91,59 @@ class MSBPartModelAdapter:
         return model
 
     @staticmethod
-    def _build_placeholder_mesh(mesh: bpy.types.Mesh):
+    def _build_placeholder_mesh_pyramid_arrow(mesh: bpy.types.Mesh):
+        verts = [
+            (-0.2500, -0.2500, 0.0000),
+            (0.2500, -0.2500, 0.0000),
+            (0.2500, 0.2500, 0.0000),
+            (-0.2500, 0.2500, 0.0000),
+            (0.0000, 0.0000, 1.0000),
+            (0.1526, 0.3000, 0.7718),
+            (0.0000, 0.5000, 0.7718),
+            (-0.1525, 0.3000, 0.7718),
+            (0.1526, 0.3000, 0.6718),
+            (0.0000, 0.5000, 0.6718),
+            (-0.1525, 0.3000, 0.6718),
+            (-0.0510, -0.0000, 0.7718),
+            (-0.0510, 0.3000, 0.7718),
+            (0.0510, 0.0000, 0.7718),
+            (0.0510, 0.3000, 0.7718),
+            (-0.0510, -0.0000, 0.6718),
+            (-0.0510, 0.3000, 0.6718),
+            (0.0510, 0.0000, 0.6718),
+            (0.0510, 0.3000, 0.6718),
+        ]
+
+        faces = [
+            (0, 1, 2, 3),
+            (0, 1, 4),
+            (1, 2, 4),
+            (2, 3, 4),
+            (3, 0, 4),
+            (10, 8, 9),
+            (5, 6, 9, 8),
+            (6, 7, 10, 9),
+            (17, 13, 11, 15),
+            (12, 16, 15, 11),
+            (14, 13, 17, 18),
+            (7, 10, 16, 12),
+            (8, 5, 14, 18),
+            (12, 11, 13, 14),
+            (7, 6, 5),
+            (18, 17, 15, 16),
+        ]
+
+        mesh.clear_geometry()
+        mesh.from_pydata(verts, [], faces)
+        mesh.update()
+
+    @staticmethod
+    def _build_placeholder_mesh_icosphere(mesh: bpy.types.Mesh):
         """Used as a dummy mesh for non-imported Part models.
 
         TODO: Doesn't convey orientation as well as I'd like (without axes visible).
         """
-        vertices = [
+        verts = [
             (0.0000, 0.0000, -1.0000),
             (0.7236, -0.5257, -0.4472),
             (-0.2764, -0.8506, -0.4472),
@@ -133,5 +180,5 @@ class MSBPartModelAdapter:
             (10, 9, 11),
         ]
         mesh.clear_geometry()
-        mesh.from_pydata(vertices, [], faces)
+        mesh.from_pydata(verts, [], faces)
         mesh.update()

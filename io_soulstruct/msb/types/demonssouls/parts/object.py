@@ -6,25 +6,24 @@ __all__ = [
 
 import bpy
 
-from soulstruct.demonssouls.maps.msb import MSB, BitSet128
 from soulstruct.demonssouls.maps.models import MSBObjectModel
 from soulstruct.demonssouls.maps.parts import MSBObject, MSBDummyObject
 
 from io_soulstruct.msb.types.adapters import *
-from io_soulstruct.msb.properties.parts import MSBPartSubtype, MSBPartProps, MSBObjectProps
+from io_soulstruct.msb.properties.parts import BlenderMSBPartSubtype, MSBObjectProps
 from io_soulstruct.types import SoulstructType
 from io_soulstruct.utilities import LoggingOperator
 
 from .base import BaseBlenderMSBPart_DES
 
 
-@create_msb_entry_field_adapter_properties
-class BlenderMSBObject(BaseBlenderMSBPart_DES[MSBObject, MSBPartProps, MSBObjectProps, MSB, BitSet128]):
+@soulstruct_adapter
+class BlenderMSBObject(BaseBlenderMSBPart_DES[MSBObject, MSBObjectProps]):
     """Concrete wrapper for MSB Objects in Demon's Souls."""
 
     SOULSTRUCT_CLASS = MSBObject
     SOULSTRUCT_DUMMY_CLASS = MSBDummyObject
-    MSB_ENTRY_SUBTYPE = MSBPartSubtype.Object
+    MSB_ENTRY_SUBTYPE = BlenderMSBPartSubtype.Object
     MODEL_SUBTYPES = ["object_models"]
 
     _MODEL_ADAPTER = MSBPartModelAdapter(SoulstructType.FLVER, MSBObjectModel)
@@ -32,11 +31,11 @@ class BlenderMSBObject(BaseBlenderMSBPart_DES[MSBObject, MSBPartProps, MSBObject
     __slots__ = []
 
     SUBTYPE_FIELDS = (
-        SoulstructFieldAdapter("break_term"),
-        SoulstructFieldAdapter("net_sync_type"),
-        SoulstructFieldAdapter("default_animation"),
-        SoulstructFieldAdapter("unk_x0e"),
-        SoulstructFieldAdapter("unk_x10"),
+        FieldAdapter("break_term"),
+        FieldAdapter("net_sync_type"),
+        FieldAdapter("default_animation"),
+        FieldAdapter("unk_x0e"),
+        FieldAdapter("unk_x10"),
     )
 
     break_term: int

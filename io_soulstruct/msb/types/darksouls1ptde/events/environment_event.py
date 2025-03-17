@@ -4,22 +4,19 @@ __all__ = [
     "BlenderMSBEnvironmentEvent",
 ]
 
-from soulstruct.darksouls1ptde.maps import MSB
 from soulstruct.darksouls1ptde.maps.msb import MSBEnvironmentEvent
 
-from io_soulstruct.msb.properties import MSBEventSubtype, MSBEventProps, MSBEnvironmentEventProps
+from io_soulstruct.msb.properties import BlenderMSBEventSubtype, MSBEnvironmentEventProps
 from io_soulstruct.msb.types.adapters import *
 
-from .base import BaseBlenderMSBEventDS1
+from .base import BaseBlenderMSBEvent_DS1
 
 
-@create_msb_entry_field_adapter_properties
-class BlenderMSBEnvironmentEvent(
-    BaseBlenderMSBEventDS1[MSBEnvironmentEvent, MSBEventProps, MSBEnvironmentEventProps, MSB]
-):
+@soulstruct_adapter
+class BlenderMSBEnvironmentEvent(BaseBlenderMSBEvent_DS1[MSBEnvironmentEvent, MSBEnvironmentEventProps]):
 
     SOULSTRUCT_CLASS = MSBEnvironmentEvent
-    MSB_ENTRY_SUBTYPE = MSBEventSubtype.Environment
+    MSB_ENTRY_SUBTYPE = BlenderMSBEventSubtype.Environment
     PARENT_PROP_NAME = "attached_region"  # parenting to Collision would be useful but less important
 
     __slots__ = []
@@ -28,12 +25,12 @@ class BlenderMSBEnvironmentEvent(
     # However, the same instances do NOT always point at each other (though they often do).
 
     SUBTYPE_FIELDS = (
-        SoulstructFieldAdapter("unk_x00_x04"),
-        SoulstructFieldAdapter("unk_x04_x08"),
-        SoulstructFieldAdapter("unk_x08_x0c"),
-        SoulstructFieldAdapter("unk_x0c_x10"),
-        SoulstructFieldAdapter("unk_x10_x14"),
-        SoulstructFieldAdapter("unk_x14_x18"),
+        FieldAdapter("unk_x00_x04"),
+        FieldAdapter("unk_x04_x08"),
+        FieldAdapter("unk_x08_x0c"),
+        FieldAdapter("unk_x0c_x10"),
+        FieldAdapter("unk_x10_x14"),
+        FieldAdapter("unk_x14_x18"),
     )
 
     unk_x00_x04: int

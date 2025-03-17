@@ -33,7 +33,7 @@ def remap_groups(map_stem: str, remap_dict: dict[int, int], region_tag: str, doi
             continue
         if not obj.soulstruct_type == "MSB_PART":
             continue
-        if obj.MSB_PART.part_subtype == "MSB_CONNECT_COLLISION":
+        if obj.MSB_PART.entry_subtype == "MSB_CONNECT_COLLISION":
             continue  # different map's groups
 
         print(obj.name)
@@ -57,7 +57,7 @@ def remap_groups(map_stem: str, remap_dict: dict[int, int], region_tag: str, doi
             if doit:
                 BlenderMSBPart._set_groups_bit_set(display_groups_props, new_groups_set)
 
-        if obj.MSB_PART.part_subtype == "MSB_NAVMESH":
+        if obj.MSB_PART.entry_subtype == "MSB_NAVMESH":
             navmesh_groups_props = obj.MSB_NAVMESH.get_navmesh_groups_props_128()
             navmesh_groups = BlenderMSBPart._get_groups_bit_set(navmesh_groups_props)
             if navmesh_groups.enabled_bits:
@@ -67,7 +67,7 @@ def remap_groups(map_stem: str, remap_dict: dict[int, int], region_tag: str, doi
                 print("   ", sorted(new_groups_set))
                 if doit:
                     BlenderMSBPart._set_groups_bit_set(navmesh_groups_props, new_groups_set)
-        elif obj.MSB_PART.part_subtype == "MSB_COLLISION":
+        elif obj.MSB_PART.entry_subtype == "MSB_COLLISION":
             navmesh_groups_props = obj.MSB_COLLISION.get_navmesh_groups_props_128()
             navmesh_groups = BlenderMSBPart._get_groups_bit_set(navmesh_groups_props)
             if navmesh_groups.enabled_bits:

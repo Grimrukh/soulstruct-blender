@@ -11,7 +11,7 @@ import typing as tp
 from fnmatch import fnmatch
 
 import bpy
-from .events import MSBEventSubtype
+from .events import BlenderMSBEventSubtype
 from .parts import MSBPartArmatureMode
 
 
@@ -170,19 +170,19 @@ class MSBToolSettings(bpy.types.PropertyGroup):
         name="Event Subtype to Color",
         items=[
             ("ALL", "All", "Color all MSB Events"),
-            (MSBEventSubtype.Light, "Light", "MSB Light Events"),
-            (MSBEventSubtype.Sound, "Sound", "MSB Sound Events"),
-            (MSBEventSubtype.VFX, "VFX", "MSB VFX Events"),
-            (MSBEventSubtype.Wind, "Wind", "MSB Wind Events"),
-            (MSBEventSubtype.Treasure, "Treasure", "MSB Treasure Events"),
-            (MSBEventSubtype.Spawner, "Spawner", "MSB Spawner Events"),
-            (MSBEventSubtype.Message, "Message", "MSB Message Events"),
-            (MSBEventSubtype.ObjAct, "ObjAct", "MSB ObjAct (Object Action) Events"),
-            (MSBEventSubtype.SpawnPoint, "Spawn Point", "MSB Spawn Point Events"),
-            (MSBEventSubtype.MapOffset, "Map Offset", "MSB Map Offset Events"),
-            (MSBEventSubtype.Navigation, "Navigation", "MSB Navigation Events"),
-            (MSBEventSubtype.Environment, "Environment", "MSB Environment Events"),
-            (MSBEventSubtype.NPCInvasion, "NPC Invasion", "MSB NPC Invasion Events"),
+            (BlenderMSBEventSubtype.Light, "Light", "MSB Light Events"),
+            (BlenderMSBEventSubtype.Sound, "Sound", "MSB Sound Events"),
+            (BlenderMSBEventSubtype.VFX, "VFX", "MSB VFX Events"),
+            (BlenderMSBEventSubtype.Wind, "Wind", "MSB Wind Events"),
+            (BlenderMSBEventSubtype.Treasure, "Treasure", "MSB Treasure Events"),
+            (BlenderMSBEventSubtype.Spawner, "Spawner", "MSB Spawner Events"),
+            (BlenderMSBEventSubtype.Message, "Message", "MSB Message Events"),
+            (BlenderMSBEventSubtype.ObjAct, "ObjAct", "MSB ObjAct (Object Action) Events"),
+            (BlenderMSBEventSubtype.SpawnPoint, "Spawn Point", "MSB Spawn Point Events"),
+            (BlenderMSBEventSubtype.MapOffset, "Map Offset", "MSB Map Offset Events"),
+            (BlenderMSBEventSubtype.Navigation, "Navigation", "MSB Navigation Events"),
+            (BlenderMSBEventSubtype.Environment, "Environment", "MSB Environment Events"),
+            (BlenderMSBEventSubtype.NPCInvasion, "NPC Invasion", "MSB NPC Invasion Events"),
         ],
         default="ALL",
     )

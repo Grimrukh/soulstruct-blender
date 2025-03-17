@@ -1,5 +1,5 @@
 __all__ = [
-    "MSBPartSubtype",
+    "BlenderMSBPartSubtype",
     "MSBPartArmatureMode",
     "MSBPartProps",
     "MSBMapPieceProps",
@@ -11,10 +11,10 @@ __all__ = [
     "MSBNavmeshProps",
     "MSBConnectCollisionProps",
 
-    "MSBRegionSubtype",
+    "BlenderMSBRegionSubtype",
     "MSBRegionProps",
 
-    "MSBEventSubtype",
+    "BlenderMSBEventSubtype",
     "MSBEventProps",
     "MSBLightEventProps",
     "MSBSoundEventProps",

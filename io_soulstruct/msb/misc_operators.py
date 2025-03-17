@@ -37,7 +37,7 @@ from io_soulstruct.msb.operator_config import BLENDER_MSB_PART_CLASSES
 from io_soulstruct.msb.properties.parts import MSBPartArmatureMode
 from io_soulstruct.navmesh.nvm.types import BlenderNVM
 from io_soulstruct.utilities import *
-from .properties import MSBPartSubtype
+from .properties import BlenderMSBPartSubtype
 from .utilities import primitive_cube
 
 if tp.TYPE_CHECKING:
@@ -109,23 +109,23 @@ class DisableSelectedNames(LoggingOperator):
 
 
 def _is_map_piece_part(_, obj: bpy.types.Object) -> bool:
-    return obj.soulstruct_type == SoulstructType.MSB_PART and obj.MSB_PART.part_subtype == MSBPartSubtype.MapPiece
+    return obj.soulstruct_type == SoulstructType.MSB_PART and obj.MSB_PART.entry_subtype == BlenderMSBPartSubtype.MapPiece
 
 
 def _is_object_part(_, obj: bpy.types.Object) -> bool:
-    return obj.soulstruct_type == SoulstructType.MSB_PART and obj.MSB_PART.part_subtype == MSBPartSubtype.Object
+    return obj.soulstruct_type == SoulstructType.MSB_PART and obj.MSB_PART.entry_subtype == BlenderMSBPartSubtype.Object
 
 
 def _is_character_part(_, obj: bpy.types.Object) -> bool:
-    return obj.soulstruct_type == SoulstructType.MSB_PART and obj.MSB_PART.part_subtype == MSBPartSubtype.Character
+    return obj.soulstruct_type == SoulstructType.MSB_PART and obj.MSB_PART.entry_subtype == BlenderMSBPartSubtype.Character
 
 
 def _is_collision_part(_, obj: bpy.types.Object) -> bool:
-    return obj.soulstruct_type == SoulstructType.MSB_PART and obj.MSB_PART.part_subtype == MSBPartSubtype.Collision
+    return obj.soulstruct_type == SoulstructType.MSB_PART and obj.MSB_PART.entry_subtype == BlenderMSBPartSubtype.Collision
 
 
 def _is_navmesh_part(_, obj: bpy.types.Object) -> bool:
-    return obj.soulstruct_type == SoulstructType.MSB_PART and obj.MSB_PART.part_subtype == MSBPartSubtype.Navmesh
+    return obj.soulstruct_type == SoulstructType.MSB_PART and obj.MSB_PART.entry_subtype == BlenderMSBPartSubtype.Navmesh
 
 
 class MSBPartCreationTemplates(bpy.types.PropertyGroup):
@@ -258,7 +258,7 @@ class CreateMSBPart(LoggingOperator):
         except ValueError as ex:
             return self.error(str(ex))
 
-        if part_subtype in {MSBPartSubtype.MapPiece, MSBPartSubtype.Collision, MSBPartSubtype.Navmesh}:
+        if part_subtype in {BlenderMSBPartSubtype.MapPiece, BlenderMSBPartSubtype.Collision, BlenderMSBPartSubtype.Navmesh}:
             try:
                 self.msb_map_stem = get_collection_map_stem(model_obj)
             except ValueError:
@@ -275,29 +275,29 @@ class CreateMSBPart(LoggingOperator):
 
         templates = context.scene.msb_part_creation_templates
 
-        if self.part_subtype == MSBPartSubtype.MapPiece:
+        if self.part_subtype == BlenderMSBPartSubtype.MapPiece:
             self.layout.prop(self, "msb_map_stem")
             self.layout.prop(self, "part_name")
             self.layout.prop(templates, "template_map_piece")
             self.layout.prop(self, "draw_groups")
-        elif self.part_subtype == MSBPartSubtype.Object:
+        elif self.part_subtype == BlenderMSBPartSubtype.Object:
             self.layout.prop(self, "msb_map_stem")
             self.layout.prop(self, "part_name")
             self.layout.prop(templates, "template_object")
             self.layout.prop(self, "draw_groups")
-        elif self.part_subtype == MSBPartSubtype.Character:
+        elif self.part_subtype == BlenderMSBPartSubtype.Character:
             self.layout.prop(self, "msb_map_stem")
             self.layout.prop(self, "part_name")
             self.layout.prop(templates, "template_character")
             self.layout.prop(self, "draw_groups")
-        elif self.part_subtype == MSBPartSubtype.Collision:
+        elif self.part_subtype == BlenderMSBPartSubtype.Collision:
             self.layout.prop(self, "msb_map_stem")
             self.layout.prop(self, "part_name")
             self.layout.prop(templates, "template_collision")
             self.layout.prop(self, "draw_groups")
             self.layout.prop(self, "display_groups")
             self.layout.prop(self, "navmesh_groups")
-        elif self.part_subtype == MSBPartSubtype.Navmesh:
+        elif self.part_subtype == BlenderMSBPartSubtype.Navmesh:
             self.layout.prop(self, "msb_map_stem")
             self.layout.prop(self, "part_name")
             self.layout.prop(templates, "template_navmesh")
@@ -306,7 +306,7 @@ class CreateMSBPart(LoggingOperator):
             self.layout.label(text=f"Invalid MSB Part subtype: {self.part_subtype}")
 
     @staticmethod
-    def _get_part_subtype(model_obj: bpy.types.MeshObject) -> MSBPartSubtype:
+    def _get_part_subtype(model_obj: bpy.types.MeshObject) -> BlenderMSBPartSubtype:
         """Detect Part subtype that given model object should be used for.
 
         Uses prefix of FLVER model name to resolve FLVER part subtype.
@@ -318,22 +318,22 @@ class CreateMSBPart(LoggingOperator):
             # Use start of name to detect Part subtype.
             name = model_obj.name.lower()
             if name[0] == "m":
-                return MSBPartSubtype.MapPiece
+                return BlenderMSBPartSubtype.MapPiece
             elif name[0] == "o":
-                return MSBPartSubtype.Object
+                return BlenderMSBPartSubtype.Object
             elif name[0] == "c":
-                return MSBPartSubtype.Character
+                return BlenderMSBPartSubtype.Character
             elif name[:3] == "aeg":
-                return MSBPartSubtype.Asset
+                return BlenderMSBPartSubtype.Asset
             raise ValueError(
                 f"Cannot guess MSB Part subtype (Map Piece, Object/Asset, or Character) from FLVER name '{name}'."
             )
 
         if model_obj.soulstruct_type == SoulstructType.COLLISION:
             # NOTE: There is a better operator to create Connect Collision parts from Collision parts.
-            return MSBPartSubtype.Collision
+            return BlenderMSBPartSubtype.Collision
         elif model_obj.soulstruct_type == SoulstructType.NAVMESH:
-            return MSBPartSubtype.Navmesh
+            return BlenderMSBPartSubtype.Navmesh
 
         raise ValueError(
             f"Cannot create MSB Part from Blender object with Soulstruct type '{model_obj.soulstruct_type}'. "
@@ -354,19 +354,19 @@ class CreateMSBPart(LoggingOperator):
         except ValueError as ex:
             return self.error(str(ex))
 
-        if part_subtype == MSBPartSubtype.MapPiece:
+        if part_subtype == BlenderMSBPartSubtype.MapPiece:
             template_part = templates.template_map_piece
             set_groups = (True, False, False)
-        elif part_subtype == MSBPartSubtype.Object:
+        elif part_subtype == BlenderMSBPartSubtype.Object:
             template_part = templates.template_object
             set_groups = (True, False, False)
-        elif part_subtype == MSBPartSubtype.Character:
+        elif part_subtype == BlenderMSBPartSubtype.Character:
             template_part = templates.template_character
             set_groups = (True, False, False)
-        elif part_subtype == MSBPartSubtype.Collision:
+        elif part_subtype == BlenderMSBPartSubtype.Collision:
             template_part = templates.template_collision
             set_groups = (True, True, True)
-        elif part_subtype == MSBPartSubtype.Navmesh:
+        elif part_subtype == BlenderMSBPartSubtype.Navmesh:
             template_part = templates.template_navmesh
             set_groups = (False, False, True)
         else:
@@ -416,12 +416,12 @@ class CreateMSBPart(LoggingOperator):
             return self.error(f"Could not create `{part_subtype}` MSB Part from model object '{model_obj.name}': {ex}")
         bl_part.model = model_obj
 
-        if part_subtype == MSBPartSubtype.MapPiece:
+        if part_subtype == BlenderMSBPartSubtype.MapPiece:
             # Create a duplicated parent Armature for the Part if present, so Map Piece static posing is visible.
             if model_obj.soulstruct_type == SoulstructType.MSB_MODEL_PLACEHOLDER:
                 # Create Armature
                 bl_part.duplicate_flver_model_armature(self, context, mode=MSBPartArmatureMode.IF_PRESENT)
-        elif part_subtype == MSBPartSubtype.Navmesh:
+        elif part_subtype == BlenderMSBPartSubtype.Navmesh:
             # Enable wireframe for Navmesh part.
             bl_part.obj.show_wire = True
 
@@ -484,7 +484,7 @@ class CreateMSBRegion(LoggingOperator):
         region_obj = bpy.data.objects.new(f"{settings.map_stem}_Region", region_mesh)
         region_obj.display_type = "WIRE"
         region_obj.soulstruct_type = SoulstructType.MSB_REGION
-        region_obj.MSB_REGION.region_subtype = "ALL"
+        region_obj.MSB_REGION.entry_subtype = "ALL"
         region_obj.MSB_REGION.shape_type = "Box"
 
         region_obj.location = context.scene.cursor.location
@@ -521,7 +521,7 @@ class CreateMSBEnvironmentEvent(LoggingOperator):
         if not settings.is_game_ds1():
             return False
         return all(
-            obj.soulstruct_type == SoulstructType.MSB_PART and obj.MSB_PART.is_subtype(MSBPartSubtype.Collision)
+            obj.soulstruct_type == SoulstructType.MSB_PART and obj.MSB_PART.is_subtype(BlenderMSBPartSubtype.Collision)
             for obj in context.selected_objects
         )
 
@@ -646,7 +646,7 @@ class DuplicateMSBPartModel(LoggingOperator):
         # Find all collections containing source model.
         source_collections = old_model.users_collection
 
-        part_subtype = part.MSB_PART.part_subtype
+        part_subtype = part.MSB_PART.entry_subtype
 
         if not self.new_model_name:
             new_model_name = self.get_auto_name(part, settings)
@@ -663,7 +663,7 @@ class DuplicateMSBPartModel(LoggingOperator):
             )
 
         if part_subtype in {
-            MSBPartSubtype.MapPiece, MSBPartSubtype.Object, MSBPartSubtype.Character, MSBPartSubtype.Asset
+            BlenderMSBPartSubtype.MapPiece, BlenderMSBPartSubtype.Object, BlenderMSBPartSubtype.Character, BlenderMSBPartSubtype.Asset
         }:
             # Model is a FLVER.
             old_bl_flver = BlenderFLVER(old_model)
@@ -673,13 +673,13 @@ class DuplicateMSBPartModel(LoggingOperator):
                 context=context,
                 collections=source_collections,
                 make_materials_single_user=True,
-                copy_pose=part_subtype == MSBPartSubtype.MapPiece,
+                copy_pose=part_subtype == BlenderMSBPartSubtype.MapPiece,
             )
             # Do a deep renaming of FLVER.
             new_bl_flver.deep_rename(new_model_name, old_model_name)
             new_model = new_bl_flver.mesh
 
-        elif part_subtype == MSBPartSubtype.Collision:
+        elif part_subtype == BlenderMSBPartSubtype.Collision:
             # Model is a Collision.
             old_bl_collision = BlenderMapCollision(old_model)
             new_bl_collision = old_bl_collision.duplicate(source_collections)
@@ -687,7 +687,7 @@ class DuplicateMSBPartModel(LoggingOperator):
             new_bl_collision.rename(new_model_name)
             new_model = new_bl_collision.obj
 
-        elif part_subtype == MSBPartSubtype.Navmesh:
+        elif part_subtype == BlenderMSBPartSubtype.Navmesh:
             # Model is a Navmesh.
             old_bl_nvm = BlenderNVM(old_model)
             new_bl_nvm = old_bl_nvm.duplicate(source_collections)
@@ -771,7 +771,7 @@ class BatchSetPartGroups(LoggingOperator):
         for obj in context.selected_objects:
             if obj.soulstruct_type != SoulstructType.MSB_PART:
                 return False
-            part_subtypes.add(obj.MSB_PART.part_subtype)
+            part_subtypes.add(obj.MSB_PART.entry_subtype)
         if len(part_subtypes) == 1:
             return True
         return False
@@ -784,15 +784,15 @@ class BatchSetPartGroups(LoggingOperator):
         self.layout.prop(self, "operation")
         self.layout.prop(self, "draw_groups")
         self.layout.prop(self, "display_groups")
-        if context.selected_objects[0].MSB_PART.part_subtype in {MSBPartSubtype.Collision, MSBPartSubtype.Navmesh}:
+        if context.selected_objects[0].MSB_PART.entry_subtype in {BlenderMSBPartSubtype.Collision, BlenderMSBPartSubtype.Navmesh}:
             self.layout.prop(self, "navmesh_groups")
 
     def execute(self, context):
         settings = self.settings(context)
         # We already checked that all selected objects have the same MSB Part subtype.
-        part_subtype = context.selected_objects[0].MSB_PART.part_subtype
+        part_subtype = context.selected_objects[0].MSB_PART.entry_subtype
         bl_part_class = BLENDER_MSB_PART_CLASSES[settings.game][part_subtype]  # type: type[BaseBlenderMSBPart]
-        has_navmesh_groups = part_subtype in {MSBPartSubtype.Collision, MSBPartSubtype.Navmesh}
+        has_navmesh_groups = part_subtype in {BlenderMSBPartSubtype.Collision, BlenderMSBPartSubtype.Navmesh}
 
         draw_groups = display_groups = navmesh_groups = None
         try:
@@ -868,7 +868,7 @@ class CopyDrawGroups(LoggingOperator):
     def execute(self, context):
         settings = self.settings(context)
         active_part = context.active_object
-        active_part_subtype = active_part.MSB_PART.part_subtype
+        active_part_subtype = active_part.MSB_PART.entry_subtype
         bl_part_class = BLENDER_MSB_PART_CLASSES[settings.game][active_part_subtype]  # type: type[BaseBlenderMSBPart]
         bl_active_part = bl_part_class(active_part)
         # noinspection PyUnresolvedReferences
@@ -878,7 +878,7 @@ class CopyDrawGroups(LoggingOperator):
         for part in context.selected_objects:
             if part is active_part:
                 continue
-            part_subtype = part.MSB_PART.part_subtype
+            part_subtype = part.MSB_PART.entry_subtype
             bl_part = BLENDER_MSB_PART_CLASSES[settings.game][part_subtype](part)
             bl_part.draw_groups = active_draw_groups
             count += 1
@@ -905,14 +905,14 @@ class ApplyPartTransformToModel(LoggingOperator):
         if not context.selected_objects:
             return False
         valid_subtypes = {
-            MSBPartSubtype.MapPiece,
-            MSBPartSubtype.Collision,
-            MSBPartSubtype.Navmesh,
-            MSBPartSubtype.ConnectCollision,
+            BlenderMSBPartSubtype.MapPiece,
+            BlenderMSBPartSubtype.Collision,
+            BlenderMSBPartSubtype.Navmesh,
+            BlenderMSBPartSubtype.ConnectCollision,
         }
         if not all(
             obj.type == ObjectType.MESH and obj.soulstruct_type == SoulstructType.MSB_PART
-            and obj.MSB_PART.part_subtype in valid_subtypes
+            and obj.MSB_PART.entry_subtype in valid_subtypes
             for obj in context.selected_objects
         ):
             return False
@@ -982,7 +982,7 @@ class CreateConnectCollision(LoggingOperator):
         if not context.selected_objects:
             return False
         for obj in context.selected_objects:
-            if obj.soulstruct_type != SoulstructType.MSB_PART or obj.MSB_PART.part_subtype != MSBPartSubtype.Collision:
+            if obj.soulstruct_type != SoulstructType.MSB_PART or obj.MSB_PART.entry_subtype != BlenderMSBPartSubtype.Collision:
                 return False
         return True
 
@@ -1188,7 +1188,7 @@ class ColorMSBEvents(LoggingOperator):
             objects = [
                 obj for obj in objects
                 if obj.soulstruct_type == SoulstructType.MSB_EVENT
-                and obj.MSB_EVENT.event_subtype == tool_settings.event_color_type  # enums are identical except for ALL
+                   and obj.MSB_EVENT.entry_subtype == tool_settings.event_color_type  # enums are identical except for ALL
             ]
         else:
             objects = [

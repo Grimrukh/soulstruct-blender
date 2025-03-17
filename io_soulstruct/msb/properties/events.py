@@ -13,7 +13,7 @@ aid porting.
 from __future__ import annotations
 
 __all__ = [
-    "MSBEventSubtype",
+    "BlenderMSBEventSubtype",
     "MSBEventProps",
     "MSBLightEventProps",
     "MSBSoundEventProps",
@@ -33,8 +33,9 @@ __all__ = [
 import re
 from enum import StrEnum
 
-from soulstruct.games import *
+from soulstruct.base.maps.msb.enums import BaseMSBEventSubtype
 from soulstruct.darksouls1ptde.events.enums import SoundType
+from soulstruct.games import *
 
 import bpy
 from io_soulstruct.types import SoulstructType
@@ -48,7 +49,7 @@ def _is_region(_, obj: bpy.types.Object):
     return obj.soulstruct_type == SoulstructType.MSB_REGION
 
 
-class MSBEventSubtype(StrEnum):
+class BlenderMSBEventSubtype(StrEnum):
     """Union of Event subtypes across all games."""
     Light = "MSB_LIGHT"
     Sound = "MSB_SOUND"
@@ -71,37 +72,45 @@ class MSBEventSubtype(StrEnum):
     def get_enum_name(cls, enum_value: str):
         return cls(enum_value).name
 
+    @classmethod
+    def from_msb_event_subtype(cls, subtype: BaseMSBEventSubtype) -> BaseMSBEventSubtype:
+        try:
+            # noinspection PyTypeChecker
+            return cls[subtype.name]
+        except KeyError:
+            raise ValueError(f"Unsupported Blender MSB Event subtype: {subtype}")
+
 
 class MSBEventProps(bpy.types.PropertyGroup):
 
-    event_subtype: bpy.props.EnumProperty(
+    entry_subtype: bpy.props.EnumProperty(
         name="Event Subtype",
         description="MSB subtype of this Event object",
         items=[
             ("NONE", "None", "Not an MSB Event"),
-            (MSBEventSubtype.Light, "Light", "MSB Light Event"),
-            (MSBEventSubtype.Sound, "Sound", "MSB Sound Event"),
-            (MSBEventSubtype.VFX, "VFX", "MSB VFX Event"),
-            (MSBEventSubtype.Wind, "Wind", "MSB Wind Event"),
-            (MSBEventSubtype.Treasure, "Treasure", "MSB Treasure Event"),
-            (MSBEventSubtype.Spawner, "Spawner", "MSB Spawner Event"),
-            (MSBEventSubtype.Message, "Message", "MSB Message Event"),
-            (MSBEventSubtype.ObjAct, "ObjAct", "MSB ObjAct (Object Action) Event"),
-            (MSBEventSubtype.SpawnPoint, "Spawn Point", "MSB Spawn Point Event"),
-            (MSBEventSubtype.MapOffset, "Map Offset", "MSB Map Offset Event"),
-            (MSBEventSubtype.Navigation, "Navigation", "MSB Navigation Event"),
-            (MSBEventSubtype.Environment, "Environment", "MSB Environment Event"),
-            (MSBEventSubtype.NPCInvasion, "NPC Invasion", "MSB NPC Invasion Event"),
+            (BlenderMSBEventSubtype.Light, "Light", "MSB Light Event"),
+            (BlenderMSBEventSubtype.Sound, "Sound", "MSB Sound Event"),
+            (BlenderMSBEventSubtype.VFX, "VFX", "MSB VFX Event"),
+            (BlenderMSBEventSubtype.Wind, "Wind", "MSB Wind Event"),
+            (BlenderMSBEventSubtype.Treasure, "Treasure", "MSB Treasure Event"),
+            (BlenderMSBEventSubtype.Spawner, "Spawner", "MSB Spawner Event"),
+            (BlenderMSBEventSubtype.Message, "Message", "MSB Message Event"),
+            (BlenderMSBEventSubtype.ObjAct, "ObjAct", "MSB ObjAct (Object Action) Event"),
+            (BlenderMSBEventSubtype.SpawnPoint, "Spawn Point", "MSB Spawn Point Event"),
+            (BlenderMSBEventSubtype.MapOffset, "Map Offset", "MSB Map Offset Event"),
+            (BlenderMSBEventSubtype.Navigation, "Navigation", "MSB Navigation Event"),
+            (BlenderMSBEventSubtype.Environment, "Environment", "MSB Environment Event"),
+            (BlenderMSBEventSubtype.NPCInvasion, "NPC Invasion", "MSB NPC Invasion Event"),
         ],
         default="NONE",
         update=lambda self, context: self._update_name_suffix(context),
     )
 
     @property
-    def event_subtype_enum(self) -> MSBEventSubtype:
-        if self.event_subtype == "NONE":
+    def entry_subtype_enum(self) -> BlenderMSBEventSubtype:
+        if self.entry_subtype == "NONE":
             raise ValueError("MSB Event subtype is not set.")
-        return MSBEventSubtype(self.event_subtype)
+        return BlenderMSBEventSubtype(self.entry_subtype)
 
     entity_id: bpy.props.IntProperty(
         name="Entity ID",
@@ -138,11 +147,11 @@ class MSBEventProps(bpy.types.PropertyGroup):
         """Update suffix is one current exists. Preserves dupe suffix."""
         if match := self._EVENT_NAME_RE.match(self.name):
             old_suffix = match.group(2)
-            if old_suffix in MSBEventSubtype.__members__:
+            if old_suffix in BlenderMSBEventSubtype.__members__:
                 obj = self.id_data  # type: bpy.types.Object
                 name = match.group(1).strip()
                 dupe_suffix = match.group(3) or ""
-                obj.name = f"{name} <{MSBEventSubtype.get_enum_name(obj.MSB_EVENT.event_subtype)}>{dupe_suffix}"
+                obj.name = f"{name} <{BlenderMSBEventSubtype.get_enum_name(obj.MSB_EVENT.entry_subtype)}>{dupe_suffix}"
 
     def get_game_props(self, game: Game) -> list[str]:
         if game is DEMONS_SOULS:
@@ -191,7 +200,7 @@ class MSBSoundEventProps(bpy.types.PropertyGroup):
         description="Type of sound to play. Determines sound file prefix letter",
         # TODO: Using DS1 `SoundType` enum for now.
         items=[
-            (sound_type.value, sound_type.name, sound_type.name.split("_", 1)[1].title())
+            (sound_type.name, sound_type.name, sound_type.name.split("_", 1)[1].title())
             for sound_type in SoundType
         ],
         default="s_SFX",

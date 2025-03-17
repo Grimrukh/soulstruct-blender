@@ -27,7 +27,7 @@ __all__ = [
     "ColorMSBEvents",
 
     # PART
-    "MSBPartSubtype",
+    "BlenderMSBPartSubtype",
     "MSBPartProps",
     "MSBMapPieceProps",
     "MSBObjectProps",
@@ -38,10 +38,10 @@ __all__ = [
     "MSBNavmeshProps",
     "MSBConnectCollisionProps",
     # REGION
-    "MSBRegionSubtype",
+    "BlenderMSBRegionSubtype",
     "MSBRegionProps",
     # EVENT
-    "MSBEventSubtype",
+    "BlenderMSBEventSubtype",
     "MSBEventProps",
     "MSBLightEventProps",
     "MSBSoundEventProps",

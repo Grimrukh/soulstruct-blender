@@ -4,29 +4,26 @@ __all__ = [
     "BlenderMSBConnectCollision",
 ]
 
-from soulstruct.demonssouls.maps.msb import MSB, BitSet128
 from soulstruct.demonssouls.maps.models import MSBCollisionModel
 from soulstruct.demonssouls.maps.parts import MSBConnectCollision
 
 from io_soulstruct.msb.types.adapters import *
-from io_soulstruct.msb.properties import MSBPartSubtype, MSBPartProps, MSBConnectCollisionProps
+from io_soulstruct.msb.properties import BlenderMSBPartSubtype, MSBConnectCollisionProps
 from io_soulstruct.types import SoulstructType
 
 from .base import BaseBlenderMSBPart_DES
 
 
-@create_msb_entry_field_adapter_properties
-class BlenderMSBConnectCollision(
-    BaseBlenderMSBPart_DES[MSBConnectCollision, MSBPartProps, MSBConnectCollisionProps, MSB, BitSet128]
-):
+@soulstruct_adapter
+class BlenderMSBConnectCollision(BaseBlenderMSBPart_DES[MSBConnectCollision, MSBConnectCollisionProps]):
 
     SOULSTRUCT_CLASS = MSBConnectCollision
-    MSB_ENTRY_SUBTYPE = MSBPartSubtype.ConnectCollision
+    MSB_ENTRY_SUBTYPE = BlenderMSBPartSubtype.ConnectCollision
     _MODEL_ADAPTER = MSBPartModelAdapter(SoulstructType.COLLISION, MSBCollisionModel)
 
     __slots__ = []
 
     SUBTYPE_FIELDS = (
-        MSBReferenceFieldAdapter("collision", ref_type=SoulstructType.COLLISION),
-        SoulstructFieldAdapter("connected_map_id"),  # stored as four ints in Blender properties
+        MSBReferenceFieldAdapter("collision", ref_type=SoulstructType.MSB_PART, ref_subtype="collisions"),  # subtype
+        FieldAdapter("connected_map_id"),  # stored as four ints in Blender properties
     )

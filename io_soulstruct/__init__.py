@@ -586,6 +586,7 @@ def register():
             (SoulstructType.MSB_PART, "MSB Part", "MSB part object"),  # NOT a FLVER data-block owner
             (SoulstructType.MSB_REGION, "MSB Region", "MSB region object"),
             (SoulstructType.MSB_EVENT, "MSB Event", "MSB event object"),
+            (SoulstructType.MSB_MODEL_PLACEHOLDER, "MSB Model (Placeholder)", "MSB model placeholder object"),
         ]
     )
     OBJECT_ATTRIBUTES.append("soulstruct_type")

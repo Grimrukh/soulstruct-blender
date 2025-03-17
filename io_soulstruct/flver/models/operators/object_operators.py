@@ -107,7 +107,7 @@ class RenameFLVER(LoggingOperator):
             for obj in bpy.data.objects:
                 if (
                     obj.soulstruct_type == SoulstructType.MSB_PART
-                    and obj.MSB_PART.part_subtype == part_subtype
+                    and obj.MSB_PART.entry_subtype == part_subtype
                     and obj is not flver_obj
                     and obj.data == flver_obj.data
                 ):

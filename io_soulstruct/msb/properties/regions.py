@@ -13,7 +13,7 @@ aid porting.
 from __future__ import annotations
 
 __all__ = [
-    "MSBRegionSubtype",
+    "BlenderMSBRegionSubtype",
     "MSBRegionProps",
 ]
 
@@ -21,15 +21,24 @@ from enum import StrEnum
 
 import bpy
 
+from soulstruct.base.maps.msb.enums import BaseMSBRegionSubtype
 from soulstruct.base.maps.msb.region_shapes import RegionShapeType
 
 from io_soulstruct.msb.utilities import *
 from io_soulstruct.utilities import ObjectType
 
 
-class MSBRegionSubtype(StrEnum):
+class BlenderMSBRegionSubtype(StrEnum):
     """Union of Region subtypes across all games."""
-    All = "ALL"  # for games with no real subtypes (DS1, BB, ...)
+    All = "ALL"  # for games with no real subtypes (DeS, DS1, BB, ...)
+
+    @classmethod
+    def from_msb_region_subtype(cls, subtype: BaseMSBRegionSubtype) -> BaseMSBRegionSubtype:
+        try:
+            # noinspection PyTypeChecker
+            return cls[subtype.name]
+        except KeyError:
+            raise ValueError(f"Unsupported Blender MSB Region subtype: {subtype}")
 
 
 class MSBRegionProps(bpy.types.PropertyGroup):
@@ -38,34 +47,34 @@ class MSBRegionProps(bpy.types.PropertyGroup):
         default=-1
     )
 
-    region_subtype: bpy.props.EnumProperty(
+    entry_subtype: bpy.props.EnumProperty(
         name="Region Subtype",
         description="MSB subtype (shape) of this Region object",
         items=[
             ("NONE", "None", "Not an MSB Region"),
-            (MSBRegionSubtype.All, "All", "Older game with no region subtypes (only shapes)"),
+            (BlenderMSBRegionSubtype.All, "All", "Older game with no region subtypes (only shapes)"),
             # TODO: ER subtypes...
         ],
         default="NONE",
     )
 
     @property
-    def region_subtype_enum(self):
-        if self.region_subtype == "NONE":
+    def entry_subtype_enum(self):
+        if self.entry_subtype == "NONE":
             raise ValueError("MSB Region subtype is not set.")
-        return MSBRegionSubtype(self.region_subtype)
+        return BlenderMSBRegionSubtype(self.entry_subtype)
 
     shape_type: bpy.props.EnumProperty(
         name="Shape",
         description="Shape of this Region object. Object's mesh will update automatically when changed and shape "
                     "dimension properties will be applied to object scale",
         items=[
-            (RegionShapeType.Point.value, "Point", "Point with location and rotation only"),
-            (RegionShapeType.Circle.value, "Circle", "2D circle with radius (-> X/Y scale). Unused"),
-            (RegionShapeType.Sphere.value, "Sphere", "Volume with radius only (-> X/Y/Z scale)"),
-            (RegionShapeType.Cylinder.value, "Cylinder", "Volume with radius (-> X/Y scale) and height (-> Z scale)"),
-            (RegionShapeType.Rect.value, "Rect", "2D rectangle with width (X) and depth (Y). Unused"),
-            (RegionShapeType.Box.value, "Box", "Volume with width (X), depth (Y), and height (Z)"),
+            (RegionShapeType.Point.name, "Point", "Point with location and rotation only"),
+            (RegionShapeType.Circle.name, "Circle", "2D circle with radius (-> X/Y scale). Unused"),
+            (RegionShapeType.Sphere.name, "Sphere", "Volume with radius only (-> X/Y/Z scale)"),
+            (RegionShapeType.Cylinder.name, "Cylinder", "Volume with radius (-> X/Y scale) and height (-> Z scale)"),
+            (RegionShapeType.Rect.name, "Rect", "2D rectangle with width (X) and depth (Y). Unused"),
+            (RegionShapeType.Box.name, "Box", "Volume with width (X), depth (Y), and height (Z)"),
         ],
         default=RegionShapeType.Point.name,
         update=lambda self, context: self._auto_shape_mesh(context),
@@ -98,7 +107,7 @@ class MSBRegionProps(bpy.types.PropertyGroup):
         """Fully replace mesh when a new shape is selected."""
         shape = RegionShapeType[self.shape_type]
         obj = self.id_data  # type: bpy.types.MeshObject
-        if obj.type != ObjectType.Mesh:
+        if obj.type != ObjectType.MESH:
             return  # unsupported region object
         mesh = obj.data  # type: bpy.types.Mesh
         # Clear scale drivers. New ones will be created as appropriate.

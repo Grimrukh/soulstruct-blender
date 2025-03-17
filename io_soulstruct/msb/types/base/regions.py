@@ -12,11 +12,12 @@ from soulstruct.base.maps.msb.region_shapes import *
 from soulstruct.base.maps.msb.regions import BaseMSBRegion
 
 from io_soulstruct.exceptions import MSBRegionImportError, SoulstructTypeError
-from io_soulstruct.msb.properties import MSBRegionProps, MSBRegionSubtype
+from io_soulstruct.msb.properties import MSBRegionProps, BlenderMSBRegionSubtype
 from io_soulstruct.msb.types.adapters import *
 from io_soulstruct.msb.utilities import *
 from io_soulstruct.types import *
-from io_soulstruct.utilities import Transform, BlenderTransform, LoggingOperator
+from io_soulstruct.utilities.bpy_data import get_or_create_collection
+from io_soulstruct.utilities.operators import LoggingOperator
 
 from .entry import BaseBlenderMSBEntry, MSB_T
 
@@ -33,26 +34,28 @@ class BaseBlenderMSBRegion(BaseBlenderMSBEntry[REGION_T, MSBRegionProps, None, M
     TYPE = SoulstructType.MSB_REGION
     BL_OBJ_TYPE = ObjectType.MESH
     SOULSTRUCT_CLASS: tp.ClassVar[type[BaseMSBRegion]]  # set by subclasses
-    MSB_ENTRY_SUBTYPE: tp.ClassVar[MSBRegionSubtype]  # set by subclasses
+    MSB_ENTRY_SUBTYPE: tp.ClassVar[BlenderMSBRegionSubtype]  # set by subclasses
 
     __slots__ = []
     data: bpy.types.Mesh  # type override
 
     TYPE_FIELDS = (
-        SoulstructFieldAdapter("entity_id"),
-        CustomSoulstructFieldAdapter("shape_type", auto_prop=False),  # manual property converts between enum/name
+        MSBTransformFieldAdapter("translate|rotate"),
+        FieldAdapter("entity_id"),
+        # NOTE: `shape_type` is a 'class property' in `BaseMSBRegion`, but an instance property in Blender.
     )
 
     entity_id: int
 
     @property
     def shape_type(self) -> RegionShapeType:
-        # noinspection PyTypeChecker
         return RegionShapeType[self.type_properties.shape_type]
 
     @shape_type.setter
     def shape_type(self, value: RegionShapeType):
-        self.type_properties.shape_type = value.valiue
+        self.type_properties.shape_type = value.name
+
+    # region Dimensional Properties
 
     @property
     def radius(self):
@@ -102,17 +105,11 @@ class BaseBlenderMSBRegion(BaseBlenderMSBEntry[REGION_T, MSBRegionProps, None, M
             raise TypeError(f"Region shape {self.shape_type} does not have a height.")
         self.type_properties.shape_z = value
 
-    def set_obj_transform(self, region: REGION_T):
-        game_transform = Transform.from_msb_entry(region)
-        self.obj.location = game_transform.bl_translate
-        self.obj.rotation_euler = game_transform.bl_rotate
-        # We use scale to represent shape dimensions.
+    # endregion
 
-    def set_region_transform(self, region: REGION_T, use_world_transform=False):
-        bl_transform = BlenderTransform.from_bl_obj(self.obj, use_world_transform)
-        region.translate = bl_transform.game_translate
-        region.rotate = bl_transform.game_rotate_deg
-        # We use scale to represent shape dimensions.
+    @classmethod
+    def get_msb_subcollection(cls, msb_collection: bpy.types.Collection, msb_stem: str) -> bpy.types.Collection:
+        return get_or_create_collection(msb_collection, f"{msb_stem} Regions/Events")
 
     @classmethod
     def new_from_shape_type(
@@ -128,8 +125,6 @@ class BaseBlenderMSBRegion(BaseBlenderMSBEntry[REGION_T, MSBRegionProps, None, M
         operator.to_object_mode()
 
         if shape_type == RegionShapeType.Point:
-            # Create a new tiny cube Mesh object to represent a Point. Manual GUI handles better drawing, since I don't
-            # like any of Blender's Empty display modes for this, but still want something easily clickable.
             mesh = bpy.data.meshes.new(name)
             primitive_three_axes(mesh)
             bl_region = cls.new(name, mesh, collection)  # type: tp.Self
@@ -178,12 +173,11 @@ class BaseBlenderMSBRegion(BaseBlenderMSBEntry[REGION_T, MSBRegionProps, None, M
             raise TypeError(f"Invalid dimension arguments for shape type {shape_type}: {kwargs.keys()}")
 
         bl_region.shape_type = shape_type
-        bl_region.type_properties.region_subtype = MSBRegionSubtype.All  # no subtypes for DS1
+        bl_region.type_properties.region_subtype = BlenderMSBRegionSubtype.All  # no subtypes for DS1
+        # Other fields (transform, entity ID) left as default.
 
         # Set viewport display to Wire.
         bl_region.obj.display_type = "WIRE"
-
-        # Transform and entity ID left as default.
 
         return bl_region
 
@@ -201,82 +195,29 @@ class BaseBlenderMSBRegion(BaseBlenderMSBEntry[REGION_T, MSBRegionProps, None, M
         The user should NOT mess with these meshes, but just control them with Region properties, which in turn drive
         scale (to impact the unit-scale, correctly offset meshes).
         """
-        collection = collection or context.scene.collection
-        operator.to_object_mode()
+        shape = soulstruct_obj.shape
+        if isinstance(shape, CompositeShape):
+            raise MSBRegionImportError(f"Cannot yet import MSB region shape: {shape.SHAPE_TYPE.name}")
 
-        if isinstance(soulstruct_obj.shape, PointShape):
-            # Create a new tiny cube Mesh object to represent a Point. Manual GUI handles better drawing, since I don't
-            # like any of Blender's Empty display modes for this, but still want something easily clickable.
-            bl_region = cls.new_from_shape_type(
-                operator, context, RegionShapeType.Point, name, collection
-            )
-        elif isinstance(soulstruct_obj.shape, CircleShape):
-            bl_region = cls.new_from_shape_type(
-                operator, context, RegionShapeType.Circle, name, collection,
-                radius=soulstruct_obj.shape.radius
-            )
-        elif isinstance(soulstruct_obj.shape, SphereShape):
-            bl_region = cls.new_from_shape_type(
-                operator, context, RegionShapeType.Sphere, name, collection,
-                radius=soulstruct_obj.shape.radius
-            )
-        elif isinstance(soulstruct_obj.shape, CylinderShape):
-            bl_region = cls.new_from_shape_type(
-                operator, context, RegionShapeType.Cylinder, name, collection,
-                radius=soulstruct_obj.shape.radius,
-                height=soulstruct_obj.shape.height
-            )
-        elif isinstance(soulstruct_obj.shape, RectShape):
-            bl_region = cls.new_from_shape_type(
-                operator, context, RegionShapeType.Rect, name, collection,
-                width=soulstruct_obj.shape.width,
-                depth=soulstruct_obj.shape.depth
-            )
-        elif isinstance(soulstruct_obj.shape, BoxShape):
-            bl_region = cls.new_from_shape_type(
-                operator, context, RegionShapeType.Box, name, collection,
-                width=soulstruct_obj.shape.width,
-                depth=soulstruct_obj.shape.depth,
-                height=soulstruct_obj.shape.height
-            )
-        else:
-            # TODO: Handle Composite... Depends if the children are used anywhere else.
-            raise MSBRegionImportError(f"Cannot yet import MSB region shape: {soulstruct_obj.shape_type}")
-
-        bl_region.set_obj_transform(soulstruct_obj)
-        bl_region.entity_id = soulstruct_obj.entity_id
+        kwargs = {field: getattr(shape, field) for field in shape.SHAPE_FIELDS}
+        bl_region = cls.new_from_shape_type(operator, context, shape.SHAPE_TYPE, name, collection, **kwargs)
+        bl_region._read_props_from_soulstruct_obj(operator, context, soulstruct_obj)
 
         return bl_region
 
     # noinspection PyArgumentList
     def _create_soulstruct_obj(self) -> REGION_T:
+        """Selects Soulstruct shape class automatically from `shape_type` enum."""
+
+        if self.shape_type == RegionShapeType.Composite:
+            raise SoulstructTypeError(f"Cannot yet export Composite MSB region shapes.")
+
         shape_class = self.SOULSTRUCT_CLASS.SHAPE_CLASSES[self.shape_type.value]
-        match self.shape_type.value:
-            case RegionShapeType.Point:
-                shape = shape_class()
-            case RegionShapeType.Circle:
-                shape = shape_class(radius=self.radius)
-            case RegionShapeType.Sphere:
-                shape = shape_class(radius=self.radius)
-            case RegionShapeType.Cylinder:
-                shape = shape_class(radius=self.radius, height=self.height)
-            case RegionShapeType.Rect:
-                shape = shape_class(width=self.width, depth=self.depth)
-            case RegionShapeType.Box:
-                shape = shape_class(width=self.width, depth=self.depth, height=self.height)
-            case _:
-                # TODO: Composite.
-                raise SoulstructTypeError(f"Unsupported MSB region shape for export: {self.shape_type}")
+        kwargs = {field: getattr(self, field) for field in shape_class.SHAPE_FIELDS}
+        shape = shape_class(**kwargs)
 
         # noinspection PyTypeChecker
         return self.SOULSTRUCT_CLASS(name=self.name, shape=shape)
-
-    def to_soulstruct_obj(self, operator: LoggingOperator, context: bpy.types.Context) -> REGION_T:
-        region = self._create_soulstruct_obj()
-        use_world_transform = context.scene.msb_export_settings.use_world_transforms
-        self.set_region_transform(region, use_world_transform=use_world_transform)
-        region.entity_id = self.entity_id
-        return region
 
     @property
     def game_name(self) -> str:
