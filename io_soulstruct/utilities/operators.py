@@ -34,6 +34,8 @@ _LOGGER = logging.getLogger("soulstruct.io")
 
 class LoggingOperator(bpy.types.Operator):
 
+    INITIAL_DEBUG_SETTING_DONE: tp.ClassVar[bool] = False
+
     # Has REGISTER and UNDO by default.
     bl_options = {"REGISTER", "UNDO"}
 
@@ -44,6 +46,10 @@ class LoggingOperator(bpy.types.Operator):
     def settings(context) -> SoulstructSettings:
         """Retrieve and save current Soulstruct plugin general settings."""
         _settings = context.scene.soulstruct_settings
+        if not LoggingOperator.INITIAL_DEBUG_SETTING_DONE:
+            for handler in _LOGGER.handlers:
+                handler.setLevel(logging.DEBUG if _settings.enable_debug_logging else logging.INFO)
+            LoggingOperator.INITIAL_DEBUG_SETTING_DONE = True
         return _settings
 
     @staticmethod
