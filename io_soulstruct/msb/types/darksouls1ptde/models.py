@@ -12,7 +12,9 @@ from io_soulstruct.msb.types.base.models import *
 
 MSB_MODEL_IMPORTERS = {
     MSBModelSubtype.MapPieceModel: BlenderMSBMapPieceModelImporter(MSBMapPieceModel, use_oldest_map_stem=True),
-    MSBModelSubtype.CollisionModel: BlenderMSBCollisionModelImporter(MSBCollisionModel, use_oldest_map_stem=True),
+    MSBModelSubtype.CollisionModel: BlenderMSBCollisionModelImporter(
+        MSBCollisionModel, use_oldest_map_stem=True, uses_loose=True
+    ),
     MSBModelSubtype.NavmeshModel: BlenderMSBNavmeshModelImporter(MSBNavmeshModel, use_oldest_map_stem=False),
     MSBModelSubtype.ObjectModel: BlenderMSBObjectModelImporter(MSBObjectModel),
     MSBModelSubtype.CharacterModel: BlenderMSBCharacterModelImporter(MSBCharacterModel),

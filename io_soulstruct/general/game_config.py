@@ -121,7 +121,7 @@ GAME_CONFIG = {
             "m12_00_00_00": "m12_00_00_01",
         },
         use_new_map=(".msb", ".nvmbnd", ".mcg", ".mcp"),
-        use_old_map=(".flver", ".hkxbhd", ".hkxbdt"),
+        use_old_map=(".flver", ".hkx"),
     ),
     DARK_SOULS_DSR: GameConfig(
         flver_default_version=FLVERVersion.DarkSouls_A,
