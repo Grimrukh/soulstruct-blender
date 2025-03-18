@@ -2,20 +2,24 @@
 from __future__ import annotations
 
 __all__ = [
-    "MiscSoulstructOperatorsPanel",
+    "MiscSoulstructMeshOperatorsPanel",
+    "MiscSoulstructCollectionOperatorsPanel",
+    "MiscSoulstructOtherOperatorsPanel",
 ]
 
 import bpy
+
+from io_soulstruct.general.gui import map_stem_box
 
 from .misc_mesh import *
 from .misc_other import *
 from .misc_outliner import *
 
 
-class MiscSoulstructOperatorsPanel(bpy.types.Panel):
+class MiscSoulstructMeshOperatorsPanel(bpy.types.Panel):
 
-    bl_label = "Misc. Soulstruct"
-    bl_idname = "SCENE_PT_misc_soulstruct"
+    bl_label = "Mesh Operators"
+    bl_idname = "SCENE_PT_misc_soulstruct_mesh"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "Misc. Soulstruct"
@@ -37,19 +41,84 @@ class MiscSoulstructOperatorsPanel(bpy.types.Panel):
         layout.operator(WeightVerticesWithFalloff.bl_idname)
         layout.operator(ApplyModifierNonSingleUser.bl_idname)
 
-        layout.label(text="Model Collection Visibility:")
-        layout.operator(ShowAllMapPieceModels.bl_idname, text="Map Piece Models")
-        layout.operator(ShowAllCollisionModels.bl_idname, text="Collision Models")
-        layout.operator(ShowAllNavmeshModels.bl_idname, text="Navmesh Models")
-        layout.label(text="MSB Collection Visibility:")
-        layout.operator(ShowAllMSBMapPieceParts.bl_idname, text="MSB Map Pieces")
-        layout.operator(ShowAllMSBCollisionParts.bl_idname, text="MSB Collisions")
-        layout.operator(ShowAllMSBNavmeshParts.bl_idname, text="MSB Navmeshes")
-        layout.operator(ShowAllMSBConnectCollisionParts.bl_idname, text="MSB Connect Collisions")
-        layout.operator(ShowAllMSBObjectParts.bl_idname, text="MSB Objects")
-        layout.operator(ShowAllMSBCharacterParts.bl_idname, text="MSB Characters")
-        layout.operator(ShowAllMSBPlayerStartParts.bl_idname, text="MSB Player Starts")
-        layout.operator(ShowAllMSBRegionsEvents.bl_idname, text="MSB Regions/Events")
 
-        layout.label(text="Other Tools:")
+class MiscSoulstructCollectionOperatorsPanel(bpy.types.Panel):
+
+    bl_label = "Collection Operators"
+    bl_idname = "SCENE_PT_misc_soulstruct_collection"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "Misc. Soulstruct"
+    bl_options = {"DEFAULT_CLOSED"}
+
+    def draw(self, context):
+        layout = self.layout
+
+        map_stem_box(layout, context.scene.soulstruct_settings)
+
+        layout.prop(context.scene.misc_outliner_settings, "collection_mode")
+
+        layout.separator()
+        layout.label(text="Model Collection Visibility:")
+
+        row = layout.row()
+        row.label(text="All Models")
+        row.operator(ShowAllModels.bl_idname, text="", icon="HIDE_OFF").show = True
+        row.operator(ShowAllModels.bl_idname, text="", icon="HIDE_ON").show = False
+
+        row = layout.row()
+        row.label(text="Game Models")
+        row.operator(ShowAllGameModels.bl_idname, text="", icon="HIDE_OFF").show = True
+        row.operator(ShowAllGameModels.bl_idname, text="", icon="HIDE_ON").show = False
+
+        for op in (ShowAllObjectModels, ShowAllCharacterModels):
+            row = layout.row()
+            row.label(text="  " + op.LABEL)
+            row.operator(op.bl_idname, text="", icon="HIDE_OFF").show = True
+            row.operator(op.bl_idname, text="", icon="HIDE_ON").show = False
+
+        row = layout.row()
+        row.label(text="Map Models")
+        row.operator(ShowAllMapModels.bl_idname, text="", icon="HIDE_OFF").show = True
+        row.operator(ShowAllMapModels.bl_idname, text="", icon="HIDE_ON").show = False
+
+        for op in (ShowAllMapPieceModels, ShowAllCollisionModels, ShowAllNavmeshModels):
+            row = layout.row()
+            row.label(text="  " + op.LABEL)
+            row.operator(op.bl_idname, text="", icon="HIDE_OFF").show = True
+            row.operator(op.bl_idname, text="", icon="HIDE_ON").show = False
+
+        layout.separator()
+        layout.label(text="MSB Collection Visibility:")
+        row = layout.row()
+        row.label(text="Full MSB")
+        row.operator(ShowAllMSB.bl_idname, text="", icon="HIDE_OFF").show = True
+        row.operator(ShowAllMSB.bl_idname, text="", icon="HIDE_ON").show = False
+        for op in (
+            ShowAllMSBMapPieceParts,
+            ShowAllMSBCollisionParts,
+            ShowAllMSBNavmeshParts,
+            ShowAllMSBConnectCollisionParts,
+            ShowAllMSBObjectParts,
+            ShowAllMSBCharacterParts,
+            ShowAllMSBPlayerStartParts,
+            ShowAllMSBRegionsEvents,
+        ):
+            row = layout.row()
+            row.label(text="  " + op.LABEL)
+            row.operator(op.bl_idname, text="", icon="HIDE_OFF").show = True
+            row.operator(op.bl_idname, text="", icon="HIDE_ON").show = False
+
+
+class MiscSoulstructOtherOperatorsPanel(bpy.types.Panel):
+
+    bl_label = "Other Operators"
+    bl_idname = "SCENE_PT_misc_soulstruct_other"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "Misc. Soulstruct"
+    bl_options = {"DEFAULT_CLOSED"}
+
+    def draw(self, context):
+        layout = self.layout
         layout.operator(PrintGameTransform.bl_idname)

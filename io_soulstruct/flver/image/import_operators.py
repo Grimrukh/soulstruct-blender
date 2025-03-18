@@ -22,7 +22,7 @@ from io_soulstruct.general.enums import BlenderImageFormat
 from .types import *
 
 
-_LOGGER = logging.getLogger(__name__)
+_LOGGER = logging.getLogger("soulstruct.io")
 
 TPF_RE = re.compile(r"(?P<stem>.*)\.tpf(?P<dcx>\.dcx)?$")
 CHRTPFBHD_RE = re.compile(r"(?P<stem>.*)\.chrtpfbhd?$")  # never has DCX
@@ -255,7 +255,7 @@ class ImportTextures(LoggingImportOperator):
                 continue  # failed to convert this texture
             try:
                 bl_image = DDSTexture.new_from_image_data(
-                    self, texture.stem.lower(), image_format, image_data, replace_existing=self.overwrite_existing
+                    texture.stem.lower(), image_format, image_data, replace_existing=self.overwrite_existing
                 )
             except Exception as ex:
                 self.warning(f"Could not create Blender image from TPF texture '{texture.stem}': {ex}")

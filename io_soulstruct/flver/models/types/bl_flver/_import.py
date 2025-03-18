@@ -302,7 +302,7 @@ def _create_bl_mesh_from_merged_mesh(
     valid_face_count = valid_face_vertex_indices.shape[0]  # N'
     invalid_face_count = face_vertex_indices.shape[0] - valid_face_count  # N - N'
     if invalid_face_count > 0:
-        operator.info(f"Removed {invalid_face_count} invalid/degenerate mesh faces from {mesh_data.name}.")
+        operator.debug(f"Removed {invalid_face_count} invalid/degenerate mesh faces from {mesh_data.name}.")
 
     # Directly assign face corner (loop) vertex indices.
     mesh_data.loops.add(valid_face_vertex_indices.size)
@@ -430,11 +430,19 @@ def _create_bl_bones(
     # Detect bone data type (storage location) based on FLVER mesh `is_bind_pose` state.
     if command.flver.any_bind_pose():
         if not command.flver.all_bind_pose():
+            # Happens for rare objects (e.g. o0150 in DS1). In these cases, my observation is that the meshes do want
+            # to be statically posed in Blender for viewing.
+            # TODO: Could theoretically handle this per-Bone IFF no Bone is used by both bind pose and non-bind pose
+            #  meshes.
             command.operator.warning(
-                "Some FLVER meshes are in bind pose and some are not. Cannot currently handle this properly in "
-                "Blender: using Edit bone data mode, but FLVER may not appear correct when static and/or animated."
+                f"Some meshes in FLVER '{command.name}' are in bind pose and some are not. Cannot currently handle "
+                f"this properly in Blender. Will store bone data in custom Bone properties ('Custom' mode). FLVER may "
+                f"not appear correct when static and/or animated, but FLVER export should be unaffected."
             )
-        bl_bone_data_type = FLVERBoneDataType.EDIT
+            bl_bone_data_type = FLVERBoneDataType.CUSTOM
+        else:
+            # Only used if ALL FLVER meshes are in bind pose.
+            bl_bone_data_type = FLVERBoneDataType.EDIT
     else:
         # No bind pose.
         bl_bone_data_type = FLVERBoneDataType.CUSTOM

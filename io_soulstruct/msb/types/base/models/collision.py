@@ -238,3 +238,4 @@ class BlenderMSBCollisionModelImporter(BaseBlenderMSBModelImporter):
                 operator.error(
                     f"(Batch) Cannot import Collision model '{model_name}' from HKXBHDs in map {map_stem}. Error: {ex}"
                 )
+                # We continue with other models.

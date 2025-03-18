@@ -38,6 +38,8 @@ class _GlobalSettingsPanel_ViewMixin:
         else:
             layout.label(text="Unsupported Game")
 
+        map_stem_box(layout, settings)
+
         header, panel = layout.panel("Import/Export Settings", default_closed=True)
         header.label(text="Import/Export Settings")
         if panel:
@@ -49,8 +51,6 @@ class _GlobalSettingsPanel_ViewMixin:
                 panel.prop(settings, "export_des_debug_files")
             panel.label(text="Soulstruct GUI Project Path:")
             panel.prop(settings, "soulstruct_project_root_str", text="")
-
-        map_stem_box(layout, settings)
 
         header, panel = layout.panel("Material/Texture Settings", default_closed=True)
         header.label(text="Material/Texture Settings")
@@ -76,6 +76,8 @@ class _GlobalSettingsPanel_ViewMixin:
         if context.active_object:
             layout.label(text=f"Name: {context.active_object.name}")
             layout.prop(context.active_object, "soulstruct_type", text="Active Object Type")
+
+        layout.prop(settings, "enable_debug_logging")
 
 
 class GlobalSettingsPanel(bpy.types.Panel, _GlobalSettingsPanel_ViewMixin):

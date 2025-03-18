@@ -8,7 +8,6 @@ __all__ = [
 ]
 
 import abc
-import re
 import time
 import traceback
 import typing as tp
@@ -68,8 +67,16 @@ class BaseBlenderMSBFLVERModelImporter(BaseBlenderMSBModelImporter, abc.ABC):
         flver_sources: dict[str, BinderEntry | Path],
         map_stem: str,
         flver_source_binders: dict[str, Binder] = None,
-        image_import_callback: tp.Callable[[ImageImportManager, FLVER], None] = None,
+        image_import_callback: tp.Callable[[ImageImportManager, FLVER, BinderEntry | Path, Binder | None], None] = None,
     ):
+        """Base method for batch-importing FLVER models, which have already been parsed into `flver_sources` and
+        (if in Binders) `flver_source_binders`.
+
+        A single `ImageImportManager` is created to handle the batch (if enabled in import settings). If
+        `image_import_callback` is given, it will be called on each `FLVER` with its corresponding source entry/path and
+        (if given) its source `Binder` instance. This is in addition (and after) to the standard texture import method
+        `ImageImportManager.find_flver_textures()`. This callback will usually load 'lazy' map textures used by a FLVER.
+        """
         flver_import_settings = context.scene.flver_import_settings
         flver_source_binders = flver_source_binders or {}
 
@@ -82,7 +89,9 @@ class BaseBlenderMSBFLVERModelImporter(BaseBlenderMSBModelImporter, abc.ABC):
         elif all(isinstance(data, BinderEntry) for data in flver_sources.values()):
             flvers_list = FLVER.from_binder_entry_batch(list(flver_sources.values()))
         else:
-            raise ValueError("All FLVER model data for batch importing must be either `BinderEntry` or `Path` objects.")
+            raise ValueError(
+                "FLVER model data for batch importing must be ALL either `BinderEntry` or `Path` objects (not a mix)."
+            )
         # Drop failed FLVERs immediately.
         flvers = {
             model_name: flver
@@ -96,6 +105,7 @@ class BaseBlenderMSBFLVERModelImporter(BaseBlenderMSBModelImporter, abc.ABC):
         p = time.perf_counter()
 
         if flver_import_settings.import_textures:
+            # Create a shared `ImageImportManager` used for complete batch.
             image_import_manager = ImageImportManager(operator, context)
             # Find textures for all loaded FLVERs.
             for model_name, flver in flvers.items():
@@ -105,7 +115,12 @@ class BaseBlenderMSBFLVERModelImporter(BaseBlenderMSBModelImporter, abc.ABC):
                     source_binder,
                 )
                 if image_import_callback:
-                    image_import_callback(image_import_manager, flver)
+                    image_import_callback(
+                        image_import_manager,
+                        flver,
+                        flver_sources[model_name],
+                        flver_source_binders.get(model_name, None),
+                    )
         else:
             image_import_manager = None
 
@@ -116,21 +131,27 @@ class BaseBlenderMSBFLVERModelImporter(BaseBlenderMSBModelImporter, abc.ABC):
         flver_merged_mesh_args = []
         bl_materials_by_matdef_name = {}  # can re-use cache across all FLVERs!
         merge_mesh_vertices = flver_import_settings.merge_mesh_vertices
-        for model_name, flver in flvers.items():
+        for model_name, flver in tuple(flvers.items()):
             if not flver.meshes:
                 # FLVER has no meshes. No materials or merging.
                 continue
 
-            bl_materials, mesh_bl_material_indices, bl_material_uv_layer_names = BlenderFLVER.create_materials(
-                operator,
-                context,
-                flver,
-                model_name,
-                material_blend_mode=flver_import_settings.material_blend_mode,
-                image_import_manager=image_import_manager,
-                bl_materials_by_matdef_name=bl_materials_by_matdef_name,
-            )
+            try:
+                bl_materials, mesh_bl_material_indices, bl_material_uv_layer_names = BlenderFLVER.create_materials(
+                    operator,
+                    context,
+                    flver,
+                    model_name,
+                    material_blend_mode=flver_import_settings.material_blend_mode,
+                    image_import_manager=image_import_manager,
+                    bl_materials_by_matdef_name=bl_materials_by_matdef_name,
+                )
+            except Exception as ex:
+                operator.error(f"(Batch) Cannot import FLVER: {flver.path_name}. Material creation error: {ex}")
+                flvers.pop(model_name)  # drop failed FLVER
+                continue
             flver_bl_materials[model_name] = bl_materials
+
             flver_names_to_merge.append(model_name)
             flvers_to_merge.append(flver)
             flver_merged_mesh_args.append(
@@ -242,15 +263,7 @@ class BlenderMSBMapPieceModelImporter(BaseBlenderMSBFLVERModelImporter):
         if flver_import_settings.import_textures:
             image_import_manager = ImageImportManager(operator, context)
             image_import_manager.find_flver_textures(flver_path)
-            area_re = re.compile(r"^m\d\d_")
-            texture_map_areas = {
-                texture_path.stem[:3]
-                for texture_path in flver.get_all_texture_paths()
-                if re.match(area_re, texture_path.stem)
-            }
-            for map_area in texture_map_areas:
-                map_area_dir = (flver_path.parent / f"../{map_area}").resolve()
-                image_import_manager.find_specific_map_textures(map_area_dir)
+            self._register_lazy_map_textures(image_import_manager, flver, flver_path, None)
         else:
             image_import_manager = None
 
@@ -293,17 +306,6 @@ class BlenderMSBMapPieceModelImporter(BaseBlenderMSBFLVERModelImporter):
             else:
                 model_datas[model_name] = model_path
 
-        def image_import_callback(image_import_manager: ImageImportManager, flver: FLVER) -> None:
-            area_re = re.compile(r"^m\d\d_")
-            texture_map_areas = {
-                texture_path.stem[:3]
-                for texture_path in flver.get_all_texture_paths()
-                if re.match(area_re, texture_path.stem)
-            }
-            for map_area in texture_map_areas:
-                map_area_dir = (flver.path.parent / f"../{map_area}").resolve()
-                image_import_manager.find_specific_map_textures(map_area_dir)
-
         if not model_datas:
             operator.info("No Map Piece FLVER models to import.")
             return  # nothing to import
@@ -314,8 +316,18 @@ class BlenderMSBMapPieceModelImporter(BaseBlenderMSBFLVERModelImporter):
             model_datas,
             map_stem,
             flver_source_binders=None,
-            image_import_callback=image_import_callback,
+            image_import_callback=self._register_lazy_map_textures,
         )
+
+    @staticmethod
+    def _register_lazy_map_textures(
+        image_import_manager: ImageImportManager,
+        flver: FLVER,
+        flver_source: Path,
+        _: None,  # no source Binder  # TODO: there will be for MAPBND
+    ) -> None:
+        map_dir = flver_source.parent.parent  # assume Map Piece FLVER is in 'map/{map_stem}' subdirectory
+        image_import_manager.register_lazy_flver_map_textures(map_dir, flver)
 
 
 @dataclass(slots=True)
@@ -336,20 +348,25 @@ class BlenderMSBObjectModelImporter(BaseBlenderMSBFLVERModelImporter):
         """Import the model of the given name into a collection in the current scene."""
         settings = operator.settings(context)
 
-        import_settings = context.scene.flver_import_settings
+        flver_import_settings = context.scene.flver_import_settings
 
         # No game-specific logic needed to find OBJBND path (always the same).
         objbnd_path = settings.get_import_file_path(f"obj/{model_name}.objbnd")
 
         operator.info(f"Importing object FLVER from OBJBND: {objbnd_path.name}")
 
-        image_import_manager = ImageImportManager(operator, context) if import_settings.import_textures else None
-
         objbnd = Binder.from_path(objbnd_path)
         binder_flvers = get_flvers_from_binder(objbnd, objbnd_path, allow_multiple=True)
-        if image_import_manager:
-            image_import_manager.find_flver_textures(objbnd_path, objbnd)
         flver = binder_flvers[0]  # TODO: ignoring secondary Object FLVERs for now
+
+        if flver_import_settings.import_textures:
+            image_import_manager = ImageImportManager(operator, context)
+            image_import_manager.find_flver_textures(objbnd_path, flver_binder=objbnd)
+            self._register_lazy_map_textures(image_import_manager, flver, None, objbnd)
+            map_dir = objbnd_path.parent.parent / "map"  # assume OBJBND is in 'obj' subdirectory next to 'map'
+            image_import_manager.register_lazy_flver_map_textures(map_dir, flver)
+        else:
+            image_import_manager = None
 
         if not model_collection:
             model_collection = get_or_create_collection(context.scene.collection, "Object Models")
@@ -397,7 +414,18 @@ class BlenderMSBObjectModelImporter(BaseBlenderMSBFLVERModelImporter):
             model_datas,
             map_stem,
             flver_source_binders=model_objbnds,
+            image_import_callback=self._register_lazy_map_textures,
         )
+
+    @staticmethod
+    def _register_lazy_map_textures(
+        image_import_manager: ImageImportManager,
+        flver: FLVER,
+        _: BinderEntry | None,  # Entry not needed
+        source_objbnd: Binder,
+    ) -> None:
+        map_dir = source_objbnd.path.parent / "../map"  # assume OBJBND is in 'obj' subdirectory
+        image_import_manager.register_lazy_flver_map_textures(map_dir, flver)
 
 
 @dataclass(slots=True)

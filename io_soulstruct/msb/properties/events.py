@@ -775,14 +775,12 @@ class MSBSpawnPointEventProps(bpy.types.PropertyGroup):
 
 class MSBMapOffsetEventProps(bpy.types.PropertyGroup):
 
-    # TODO: Standard game coordinate conversion.
     translate: bpy.props.FloatVectorProperty(
         name="Translate",
         description="Translation offset for the map (in Blender coordinates)",
         default=(0.0, 0.0, 0.0),
     )
 
-    # TODO: Make sure to convert to radians and negate.
     rotate_z: bpy.props.FloatProperty(
         name="Rotate Z",
         description="Z-axis rotation offset for the map (in degrees around Blender's vertical Z axis)",

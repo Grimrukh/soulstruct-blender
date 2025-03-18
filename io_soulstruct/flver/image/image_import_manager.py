@@ -6,19 +6,27 @@ __all__ = [
 
 import logging
 import re
+import typing as tp
 from pathlib import Path
 
 import bpy
-from io_soulstruct.utilities import *
+
 from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
 from soulstruct.containers.tpf import TPF, TPFTexture, TPFPlatform
 from soulstruct.games import *
 
-_LOGGER = logging.getLogger(__name__)
+from io_soulstruct.utilities import LoggingOperator, CheckDCXMode, MAP_STEM_RE
+
+if tp.TYPE_CHECKING:
+    from soulstruct.base.models.flver import FLVER
+
+_LOGGER = logging.getLogger("soulstruct.io")
 
 TPF_RE = re.compile(r"(?P<stem>.*)\.tpf(?P<dcx>\.dcx)?$")
 CHRTPFBHD_RE = re.compile(r"(?P<stem>.*)\.chrtpfbhd?$")  # never has DCX
+CHR_cXXX9_RE = re.compile(r"c\d\d\d9")  # checks stem only
 AEG_STEM_RE = re.compile(r"^aeg(?P<aeg>\d\d\d)$")  # checks stem only
+MAP_AREA_RE = re.compile(r"^m\d\d_")
 
 
 def lower_name(texture: TPFTexture) -> str:
@@ -30,10 +38,16 @@ def lower_stem(path_or_entry: Path | BinderEntry) -> str:
 
 
 class ImageImportManager:
-    """Manages various texture sources across some import context, ensuring that Binders and TPFs are only loaded
-    when requested for the first time during the operation.
+    """Manages various texture sources across some import context.
+
+    Ensures that Binders and TPFs are only loaded when needed (because a texture cannot be found in a source already
+    scanned). Also separates the reading of Binder entry names, TPF texture names, and actual loading of DDS or cached
+    PNG/TGA textures.
 
     Different methods are available for different FLVER file types that search different known locations for textures.
+
+    Game texture paths are generally case-insensitive, but we try hard to maintain them for exporting the same texture
+    path names into FLVERs (and/or writing new actual texture TPFs).
     """
     operator: LoggingOperator
     context: bpy.types.Context
@@ -81,59 +95,62 @@ class ImageImportManager:
         # MAP PIECES
         if model_stem.startswith("m") and source_name.endswith(".flver"):
             # Loose FLVER file. Likely a map piece in an older game like DS1. We look in adjacent `mXX` directory.
-            self._find_map_tpfs(source_dir)
+            self._register_map_tpfs(source_dir)
         elif source_name.endswith(".mapbnd"):
-            # PARTSBND should have been given as an initial Binder. We also look in adjacent `Common*.tpf` loose TPFs.
-            if flver_binder:
-                self.scan_binder_textures(flver_binder)
-            else:
-                _LOGGER.warning(f"Opened PARTSBND '{flver_binder}' was not passed to ImageImportManager!")
-            self._find_parts_common_tpfs(source_dir)
+            # MAPBND should have been given as an initial Binder. We also look in adjacent `Common*.tpf` loose TPFs.
+            _LOGGER.warning("Cannot yet find MAPBND Map Piece FLVER textures.")
+            # TODO: Elden Ring MAPBND Map Piece textures are in 'asset/aet' subdirectories, I believe.
+            # if flver_binder:
+            #     self.scan_binder_textures(flver_binder)
+            # else:
+            #     _LOGGER.warning(f"Opened MAPBND '{flver_binder}' was not passed to ImageImportManager!")
+            # self._find_mapbnd_tpfs(source_dir)
 
         # CHARACTERS
         elif model_stem.startswith("c") and source_name.endswith(".flver"):
             # Loose FLVER file, e.g. from Demon's Souls. We look for a TPF right next to it.
-            self._find_chr_loose_tpfs(source_dir)
+            self._register_chr_loose_tpfs(source_dir, CheckDCXMode.NO_DCX)
         elif source_name.endswith(".chrbnd"):
             # CHRBND should have been given as an initial Binder. We also look in adjacent `chrtpfbdt` file (using
             # header in CHRBND) for DSR, and adjacent loose folders for PTDE.
             if flver_binder:
                 self.scan_binder_textures(flver_binder)
                 if settings.is_game(DEMONS_SOULS):
-                    # CHRBND itself is inside model subdirectory.
-                    self._find_chr_loose_tpfs(source_dir)
+                    # CHRBND itself is already inside model subdirectory ('chr/cXXXX') alongside the loose TPFs.
+                    self._register_chr_loose_tpfs(source_dir, CheckDCXMode.NO_DCX)
                 elif settings.is_game(DARK_SOULS_PTDE):
-                    # CHRBND is next to model subdirectory.
-                    self._find_chr_loose_tpfs(source_dir / model_stem)
+                    # CHRBND is next to a model subdirectory that contains loose TPFs ('chr/cXXXX').
+                    self._register_chr_loose_tpfs(source_dir / model_stem, CheckDCXMode.NO_DCX)
                 elif settings.is_game(DARK_SOULS_DSR):
-                    self._find_chr_tpfbdts(source_dir, flver_binder)  # CHRTPFBHD is in `flver_binder`
+                    # Some CHRBNDs have CHRTPFBDTs next to them (with the CHRTPFBHD inside the CHRBND).
+                    self._register_chr_tpfbdts(source_dir, flver_binder)
                 elif settings.is_game(BLOODBORNE):
-                    # Bloodborne doesn't have any loose/BXF CHRBND textures.
+                    # Bloodborne doesn't have any loose/BXF CHRBND textures. All TPFs are inside the CHRBND.
                     pass
                 elif settings.is_game(DARK_SOULS_3, SEKIRO):
-                    self._find_texbnd(source_dir, model_stem=model_stem, res="")  # no res
+                    self._register_chr_texbnd(source_dir, model_stem=model_stem, res="")  # no res
                 elif settings.is_game(ELDEN_RING):
                     res = "_h" if prefer_hi_res else "_l"
-                    self._find_texbnd(source_dir, model_stem=model_stem, res=res)
-                    self._find_common_body(source_dir)
+                    self._register_chr_texbnd(source_dir, model_stem=model_stem, res=res)
+                    self._register_parts_common_body(source_dir)
             else:
                 _LOGGER.warning(
                     f"Opened CHRBND '{flver_source_path}' should have been passed to ImageImportManager! Will not be "
                     f"able to load attached character textures."
                 )
 
-            if not source_name.endswith("9.chrbnd"):
+            if not CHR_cXXX9_RE.match(model_stem):
                 # We also check for a 'cXXX9' CHRBND, which contains textures shared by all characters 'cXXX*'.
                 # Example: c2239 in DSR has skin textures for Stray (c2230), Firesage (c2231), and Asylum Demon (c2232).
-                c9_name = f"{source_name[:-8]}9.chrbnd"
+                cxxx9_name = f"{model_stem[:4]}9.chrbnd"
                 if flver_source_path.suffix == ".dcx":
-                    c9_name += ".dcx"
-                c9_chrbnd_path = source_dir / c9_name
-                if c9_chrbnd_path not in self._scanned_binder_paths and c9_chrbnd_path.is_file():
+                    cxxx9_name += ".dcx"
+                cxxx9_chrbnd_path = source_dir / cxxx9_name
+                if cxxx9_chrbnd_path not in self._scanned_binder_paths and cxxx9_chrbnd_path.is_file():
                     # Found cXXX9 CHRBND. Mark it as scanned now, then recur this method on it.
-                    self._scanned_binder_paths.add(c9_chrbnd_path)
-                    c9_chrbnd = Binder.from_path(c9_chrbnd_path)
-                    self.find_flver_textures(c9_chrbnd_path, flver_binder=c9_chrbnd)
+                    self._scanned_binder_paths.add(cxxx9_chrbnd_path)
+                    c9_chrbnd = Binder.from_path(cxxx9_chrbnd_path)
+                    self.find_flver_textures(cxxx9_chrbnd_path, flver_binder=c9_chrbnd)
 
         # EQUIPMENT
         elif source_name.endswith(".partsbnd"):
@@ -142,14 +159,14 @@ class ImageImportManager:
                 self.scan_binder_textures(flver_binder)
             else:
                 _LOGGER.warning(f"Opened PARTSBND '{flver_binder}' was not passed to ImageImportManager!")
-            self._find_parts_common_tpfs(source_dir)
+            self._register_parts_common_tpfs(source_dir)
 
         # ASSETS (Elden Ring)
         elif source_name.endswith(".geombnd"):
             # Likely an AEG asset FLVER from Elden Ring onwards. We look in nearby `aet` directory.
-            self._find_aeg_tpfs(source_dir)
+            self._register_aeg_tpfs(source_dir)
 
-        # GENERIC BINDERS (e.g. OBJECTS)
+        # GENERIC BINDERS (e.g. Object FLVERs in OBJBNDs)
         elif source_name.endswith("bnd"):
             # Scan miscellaneous Binder for TPFs. Warn if it wasn't passed in.
             if not flver_binder:
@@ -159,19 +176,6 @@ class ImageImportManager:
                 )
             else:
                 self.scan_binder_textures(flver_binder)
-
-    def find_specific_map_textures(self, map_area_dir: Path):
-        """Register TPFBHD Binders and loose TPFs in a specific `map_area_dir` 'mAA' map directory.
-
-        Some vanilla map pieces use textures from different maps, e.g. when the game expects the map piece to be loaded
-        while the source map is still active. This is especially common in DS1, which has a lot of shared textures.
-
-        A map piece FLVER importer can call this method as a backup if a texture is not found based on the initial
-        same-map TPFBHD scanning, using the texture's prefix to find the correct `map_area_dir`. For example, if a map
-        piece in m12 uses a texture named `m10_wall_01`, this method will be called with `map_area_dir` set to
-        `{game_directory}/map/m10`.
-        """
-        self._find_map_area_tpfs(map_area_dir)
 
     def scan_binder_textures(self, binder: Binder):
         """Register all TPFs in an arbitrary opened Binder (usually the one containing the FLVER) as pending sources."""
@@ -228,27 +232,56 @@ class ImageImportManager:
 
         raise KeyError(f"Could not find texture '{texture_stem}' in any registered Binders or TPFs.")
 
-    def _load_binder(self, binder_stem):
-        binder_path = self._binder_paths.pop(binder_stem)
-        self._scanned_binder_paths.add(binder_path)
-        binder = Binder.from_path(binder_path)
-        for tpf_entry in binder.find_entries_matching_name(TPF_RE):
-            tpf_entry_stem = lower_stem(tpf_entry)
-            if tpf_entry_stem not in self._scanned_tpf_sources:
-                self._pending_tpf_sources.setdefault(tpf_entry_stem, tpf_entry)
+    def register_lazy_flver_map_textures(self, map_dir: Path, flver: FLVER) -> set[str]:
+        """Check all FLVER texture stems for any 'mAA_' prefixes and register texures in that map area dir.
 
-    def _load_tpf(self, tpf_stem):
-        tpf_path_or_entry = self._pending_tpf_sources.pop(tpf_stem)
-        self._scanned_tpf_sources.add(tpf_stem)
-        if isinstance(tpf_path_or_entry, BinderEntry):
-            tpf = TPF.from_binder_entry(tpf_path_or_entry)
-        else:
-            tpf = TPF.from_path(tpf_path_or_entry)
-        for texture in tpf.textures:
-            # TODO: Handle duplicate textures/overwrites. Currently ignoring duplicates.
-            self._tpf_textures.setdefault(texture.stem.lower(), texture)
+        Required for FLVERs that use 'lazy' texture loading:
+            - Many Object FLVERs use textures from the map areas they expect to appear in.
+            - Some vanilla Map Pieces also use textures from different maps that the game assumes will be loaded when
+            the Map Piece appears. This is especially common in DS1, which has a lot of shared textures.
 
-    def _find_map_tpfs(self, map_area_block_dir: Path):
+        Returns a set of map area prefixes found in the FLVER textures.
+        """
+        texture_map_areas = {
+            texture_path.stem[:3]
+            for texture_path in flver.get_all_texture_paths()
+            if MAP_AREA_RE.match(texture_path.stem)
+        }
+        for map_area in texture_map_areas:
+            map_area_dir = (map_dir / map_area).resolve()
+            self._register_map_area_textures(map_area_dir)
+
+        return texture_map_areas
+
+    # region Source Registration Methods
+
+    def _register_map_area_textures(self, map_area_dir: Path, check_dcx_mode: CheckDCXMode = CheckDCXMode.BOTH):
+        """Register TPFBHD Binders and loose TPFs in a specific `map_area_dir` 'mAA' map directory."""
+        if not map_area_dir.is_dir():
+            _LOGGER.warning(f"`mXX` area folder does not exist: {map_area_dir}. Cannot register map area TPFs.")
+            return
+
+        for tpf_or_tpfbhd_path in map_area_dir.glob("*.tpf*"):
+            if tpf_or_tpfbhd_path.name.endswith(".tpfbhd"):
+                binder_stem = lower_stem(tpf_or_tpfbhd_path)
+                if tpf_or_tpfbhd_path not in self._scanned_binder_paths:
+                    self._binder_paths.setdefault(binder_stem, tpf_or_tpfbhd_path)
+            elif tpf_m := TPF_RE.match(tpf_or_tpfbhd_path.name):
+                if tpf_m.groupdict()["dcx"] and check_dcx_mode == CheckDCXMode.NO_DCX:
+                    continue
+                elif not tpf_m.groupdict()["dcx"] and check_dcx_mode == CheckDCXMode.DCX_ONLY:
+                    continue
+
+                # Loose map multi-texture TPF (usually 'mXX_9999.tpf'). We unpack all textures in it immediately.
+                tpf_stem = lower_stem(tpf_or_tpfbhd_path)
+                if tpf_stem not in self._scanned_tpf_sources:
+                    tpf = TPF.from_path(tpf_or_tpfbhd_path)
+                    for texture in tpf.textures:
+                        # TODO: Handle duplicate textures/overwrites. Currently ignoring duplicates.
+                        self._tpf_textures.setdefault(texture.stem.lower(), texture)
+                    self._scanned_tpf_sources.add(tpf_stem)
+
+    def _register_map_tpfs(self, map_area_block_dir: Path, check_dcx_mode=CheckDCXMode.BOTH):
         """Find 'mAA' directory adjacent to given 'mAA_BB_CC_DD' directory and find all TPFBHD split Binders in it.
 
         In PTDE, also searches loose `map/tx` folder for TPFs.
@@ -261,53 +294,36 @@ class ImageImportManager:
         # Most games have some TPFs or TPFBHDs (DSR) in the shared map area directory.
         area = map_directory_match.groupdict()["area"]
         map_area_dir = map_area_block_dir / f"../m{area}"
-        self._find_map_area_tpfs(map_area_dir)
+        self._register_map_area_textures(map_area_dir, check_dcx_mode)
 
         # Unpacked PTDE has a 'map/tx' folder with every loose TPF.
         tx_path = map_area_block_dir / "../tx"
         if tx_path.is_dir():
-            self._find_tpfs_in_dir(map_area_block_dir / "../tx")
+            self._register_tpfs_in_dir(map_area_block_dir / "../tx", check_dcx_mode=CheckDCXMode.NO_DCX)
 
-    def _find_map_area_tpfs(self, map_area_dir: Path):
-        if not map_area_dir.is_dir():
-            _LOGGER.warning(f"`mXX` area folder does not exist: {map_area_dir}. Cannot find map TPFs.")
-            return
-
-        for tpf_or_tpfbhd_path in map_area_dir.glob("*.tpf*"):
-            if tpf_or_tpfbhd_path.name.endswith(".tpfbhd"):
-                binder_stem = lower_stem(tpf_or_tpfbhd_path)
-                if tpf_or_tpfbhd_path not in self._scanned_binder_paths:
-                    self._binder_paths.setdefault(binder_stem, tpf_or_tpfbhd_path)
-            elif TPF_RE.match(tpf_or_tpfbhd_path.name):
-                # Loose map multi-texture TPF (usually 'mXX_9999.tpf'). We unpack all textures in it immediately.
-                tpf_stem = lower_stem(tpf_or_tpfbhd_path)
-                if tpf_stem not in self._scanned_tpf_sources:
-                    tpf = TPF.from_path(tpf_or_tpfbhd_path)
-                    for texture in tpf.textures:
-                        # TODO: Handle duplicate textures/overwrites. Currently ignoring duplicates.
-                        self._tpf_textures.setdefault(texture.stem.lower(), texture)
-                    self._scanned_tpf_sources.add(tpf_stem)
-
-    def _find_tpfs_in_dir(self, tpf_dir: Path):
-        """Register all TPF files in `tpf_dir` as pending sources."""
+    def _register_tpfs_in_dir(self, tpf_dir: Path, check_dcx_mode: CheckDCXMode = CheckDCXMode.BOTH):
+        """Register all loose TPF files in `tpf_dir` as pending sources."""
         if not tpf_dir.is_dir():
             _LOGGER.warning(f"Directory does not exist: {tpf_dir}. Cannot find TPFs in it.")
             return
 
-        for tpf_path in tpf_dir.glob("*.tpf"):
-            tpf_stem = lower_stem(tpf_path)
-            if tpf_stem not in self._scanned_tpf_sources:
-                self._pending_tpf_sources.setdefault(tpf_stem, tpf_path)
-
-    def _find_chr_loose_tpfs(self, chr_tpf_dir: Path):
-        """Find character TPFs in a loose folder next to the CHRBND."""
-        if chr_tpf_dir.is_dir():
-            for tpf_path in chr_tpf_dir.glob("*.tpf"):  # no DCX in PTDE
+        for glob_pattern in check_dcx_mode.get_globs("*.tpf"):
+            for tpf_path in tpf_dir.glob(glob_pattern):
                 tpf_stem = lower_stem(tpf_path)
                 if tpf_stem not in self._scanned_tpf_sources:
                     self._pending_tpf_sources.setdefault(tpf_stem, tpf_path)
 
-    def _find_chr_tpfbdts(self, source_dir: Path, chrbnd: Binder):
+    def _register_chr_loose_tpfs(self, chr_tpf_dir: Path, check_dcx_mode: CheckDCXMode = CheckDCXMode.BOTH):
+        """Find character TPFs in a given loose folder."""
+        if chr_tpf_dir.is_dir():
+            for glob_pattern in check_dcx_mode.get_globs("*.tpf"):
+                for tpf_path in chr_tpf_dir.glob(glob_pattern):
+                    tpf_stem = lower_stem(tpf_path)
+                    if tpf_stem not in self._scanned_tpf_sources:
+                        self._pending_tpf_sources.setdefault(tpf_stem, tpf_path)
+
+    def _register_chr_tpfbdts(self, source_dir: Path, chrbnd: Binder):
+        """CHRTPFBDTs never have DCX."""
         try:
             tpfbhd_entry = chrbnd.find_entry_matching_name(CHRTPFBHD_RE)
         except (EntryNotFoundError, ValueError):
@@ -328,9 +344,15 @@ class ImageImportManager:
             if tpf_stem not in self._scanned_tpf_sources:
                 self._pending_tpf_sources.setdefault(tpf_stem, tpf_entry)
 
-    def _find_texbnd(self, source_dir: Path, model_stem: str, res: str):
+    def _register_chr_texbnd(
+        self,
+        source_dir: Path,
+        model_stem: str,
+        res: str,
+        check_dcx_mode: CheckDCXMode = CheckDCXMode.DCX_ONLY,
+    ):
         """Find character TPFs in a TEXBND next to the CHRBND. (Always DCX for games that use it.)"""
-        texbnd_path = source_dir / f"{model_stem}{res}.texbnd.dcx"
+        texbnd_path = source_dir / f"{model_stem}{res}.texbnd{'.dcx' if check_dcx_mode != CheckDCXMode.NO_DCX else ''}"
         if texbnd_path not in self._scanned_binder_paths and texbnd_path.is_file():
             self._scanned_binder_paths.add(texbnd_path)
             texbnd = Binder.from_path(texbnd_path)
@@ -342,27 +364,33 @@ class ImageImportManager:
                 for texture in texbnd_tpf.textures:
                     self._tpf_textures.setdefault(texture.stem.lower(), texture)
 
-    def _find_common_body(self, source_dir):
-        """Find 'parts/common_body.tpf.dcx' character TPFs. Used by many non-c0000 characters."""
-        common_body_path = source_dir / "../parts/common_body.tpf.dcx"
-        if "common_body" not in self._scanned_tpf_sources and common_body_path.is_file():
-            # Multi-texture TPF; we unpack it now.
-            self._scanned_tpf_sources.add("common_body")
-            common_body = TPF.from_path(common_body_path)
-            for texture in common_body.textures:
-                self._tpf_textures.setdefault(texture.stem.lower(), texture)
+    def _register_parts_common_body(self, source_dir: Path, check_dcx_mode: CheckDCXMode = CheckDCXMode.DCX_ONLY):
+        """Find 'parts/common_body.tpf' character TPFs. Used by many non-c0000 characters.
 
-    def _find_parts_common_tpfs(self, source_dir: Path):
+        Elden Ring only.
+        """
+        for common_body_path in check_dcx_mode.get_paths(source_dir / "../parts/common_body.tpf"):
+            if "common_body" not in self._scanned_tpf_sources and common_body_path.is_file():
+                # Multi-texture TPF; we unpack it now.
+                self._scanned_tpf_sources.add("common_body")
+                common_body = TPF.from_path(common_body_path)
+                for texture in common_body.textures:
+                    self._tpf_textures.setdefault(texture.stem.lower(), texture)
+                return  # don't check non-DCX version if DCX found
+
+    def _register_parts_common_tpfs(self, source_dir: Path, check_dcx_mode: CheckDCXMode = CheckDCXMode.BOTH):
         """Find and immediately load all textures inside multi-texture 'Common' TPFs (e.g. player skin)."""
-        for common_tpf_path in source_dir.glob("Common*.tpf"):
-            common_tpf = TPF.from_path(common_tpf_path)
-            common_tpf_stem = lower_stem(common_tpf_path)
-            self._scanned_tpf_sources.add(common_tpf_stem)
-            for texture in common_tpf.textures:
-                # TODO: Handle duplicate textures/overwrites. Currently ignoring duplicates.
-                self._tpf_textures.setdefault(texture.stem.lower(), texture)
+        for glob_pattern in check_dcx_mode.get_globs("Common*.tpf"):
+            for common_tpf_path in source_dir.glob(glob_pattern):
+                common_tpf = TPF.from_path(common_tpf_path)
+                common_tpf_stem = lower_stem(common_tpf_path)
+                self._scanned_tpf_sources.add(common_tpf_stem)
+                for texture in common_tpf.textures:
+                    # TODO: Handle duplicate textures/overwrites. Currently ignoring duplicates.
+                    self._tpf_textures.setdefault(texture.stem.lower(), texture)
 
-    def _find_aeg_tpfs(self, source_dir: Path):
+    def _register_aeg_tpfs(self, source_dir: Path, check_dcx_mode: CheckDCXMode = CheckDCXMode.DCX_ONLY):
+        """Find AEG TPFs in an adjacent 'aet' directory. Always uses DCX in games that use it."""
         aeg_directory_match = AEG_STEM_RE.match(source_dir.name)
         if not aeg_directory_match:
             _LOGGER.warning("GEOMBND not located in an AEG folder (`aegXXX`). Cannot find AEG TPFs.")
@@ -372,7 +400,34 @@ class ImageImportManager:
             _LOGGER.warning(f"`aet` directory does not exist: {aet_directory}. Cannot find AEG TPFs.")
             return
 
-        for tpf_path in aet_directory.glob("*.tpf"):
-            tpf_stem = lower_stem(tpf_path)
-            if tpf_stem not in self._scanned_tpf_sources:
-                self._pending_tpf_sources.setdefault(tpf_stem, tpf_path)
+        for glob_pattern in check_dcx_mode.get_globs("*.tpf"):
+            for tpf_path in aet_directory.glob(glob_pattern):
+                tpf_stem = lower_stem(tpf_path)
+                if tpf_stem not in self._scanned_tpf_sources:
+                    self._pending_tpf_sources.setdefault(tpf_stem, tpf_path)
+
+    # endregion
+
+    # region Loading Methods
+
+    def _load_binder(self, binder_stem):
+        binder_path = self._binder_paths.pop(binder_stem)
+        self._scanned_binder_paths.add(binder_path)
+        binder = Binder.from_path(binder_path)
+        for tpf_entry in binder.find_entries_matching_name(TPF_RE):
+            tpf_entry_stem = lower_stem(tpf_entry)
+            if tpf_entry_stem not in self._scanned_tpf_sources:
+                self._pending_tpf_sources.setdefault(tpf_entry_stem, tpf_entry)
+
+    def _load_tpf(self, tpf_stem):
+        tpf_path_or_entry = self._pending_tpf_sources.pop(tpf_stem)
+        self._scanned_tpf_sources.add(tpf_stem)
+        if isinstance(tpf_path_or_entry, BinderEntry):
+            tpf = TPF.from_binder_entry(tpf_path_or_entry)
+        else:
+            tpf = TPF.from_path(tpf_path_or_entry)
+        for texture in tpf.textures:
+            # TODO: Handle duplicate textures/overwrites. Currently ignoring duplicates.
+            self._tpf_textures.setdefault(texture.stem.lower(), texture)
+
+    # endregion

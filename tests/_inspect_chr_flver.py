@@ -1,5 +1,4 @@
 import colorama
-import numpy as np
 
 from soulstruct import FLVER, Path
 from soulstruct.base.models.matbin import MATBINBND
@@ -42,7 +41,7 @@ def test_model(model_id):
         # Print vertex array layout.
         layout = submesh.vertex_arrays[0].layout
         print("    Layout:")
-        for data_type in layout:
+        for data_type in layout.read_types:
             print(f"        {data_type}")
         # Reconstruct layout and compare.
         re_layout = matdef.get_non_map_piece_layout()

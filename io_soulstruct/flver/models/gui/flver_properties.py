@@ -36,7 +36,12 @@ class FLVERPropsPanel(bpy.types.Panel):
         else:
             prop_names = [prop for prop in prop_names if not prop.startswith("f0_")]
         for prop in prop_names:
-            self.layout.prop(bl_flver.type_properties, prop)
+            if prop == "mesh_vertices_merged":
+                # Label only.
+                txt = f"Meshes were {'' if bl_flver.mesh_vertices_merged else 'NOT '}merged on import."
+                self.layout.label(text=txt)
+            else:
+                self.layout.prop(bl_flver.type_properties, prop)
 
 
 class FLVERDummyPropsPanel(bpy.types.Panel):

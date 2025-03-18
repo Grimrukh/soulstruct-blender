@@ -61,7 +61,7 @@ class BaseFLVERImportOperator(LoggingImportOperator):
     def execute(self, context: bpy.types.Context):
         """Default import method for FLVERs."""
 
-        start_time = time.perf_counter()
+        p = time.perf_counter()
 
         flvers = []  # type: list[tuple[str, FLVER]]  # holds `(bl_name, flver)` pairs
         image_import_manager = ImageImportManager(self, context)
@@ -118,7 +118,7 @@ class BaseFLVERImportOperator(LoggingImportOperator):
 
             self.post_process_flver(context, settings, import_settings, bl_flver)
 
-        self.info(f"Imported {len(flvers)} FLVER(s) in {time.perf_counter() - start_time:.3f} seconds.")
+        self.info(f"Imported {len(flvers)} FLVER(s) in {time.perf_counter() - p:.3f} seconds.")
 
         # Select and frame view on (final) newly imported Mesh.
         if bl_flver:
@@ -220,16 +220,9 @@ class ImportMapPieceFLVER(BaseFLVERImportOperator):
         )
 
     def find_extra_textures(self, flver_source_path: Path, flver: FLVER, image_import_manager: ImageImportManager):
-        """Check all textures in FLVER for specific map 'mAA_' prefix textures and register TPFBHDs in those maps."""
-        area_re = re.compile(r"^m\d\d_")
-        texture_map_areas = {
-            texture_path.stem[:3]
-            for texture_path in flver.get_all_texture_paths()
-            if re.match(area_re, texture_path.stem)
-        }
-        for map_area in texture_map_areas:
-            map_area_dir = (flver_source_path.parent / f"../{map_area}").resolve()
-            image_import_manager.find_specific_map_textures(map_area_dir)
+        """Some Map Pieces lazily use textures from other areas that are assumed to be loaded at the right time."""
+        map_dir = flver_source_path.parent.parent  # assume FLVER is in a 'map' subdirectory
+        image_import_manager.register_lazy_flver_map_textures(map_dir, flver)
 
 
 class ImportCharacterFLVER(BaseFLVERImportOperator):
@@ -318,6 +311,8 @@ class ImportCharacterFLVER(BaseFLVERImportOperator):
     def get_collection(self, context: bpy.types.Context, file_directory_name: str):
         return get_or_create_collection(context.scene.collection, "Character Models")
 
+    # We do NOT look anywhere else for character textures.
+
 
 class ImportObjectFLVER(BaseFLVERImportOperator):
     """Shortcut for browsing for OBJBND Binders in game 'obj' directory."""
@@ -353,6 +348,11 @@ class ImportObjectFLVER(BaseFLVERImportOperator):
 
     def get_collection(self, context: bpy.types.Context, file_directory_name: str):
         return get_or_create_collection(context.scene.collection, "Object Models")
+
+    def find_extra_textures(self, flver_source_path: Path, flver: FLVER, image_import_manager: ImageImportManager):
+        """Some Objects lazily use textures from the map area they expect to be placed in."""
+        map_dir = flver_source_path.parent.parent / "map"  # assume OBJBND is in 'obj' next to 'map' subdirectory
+        image_import_manager.register_lazy_flver_map_textures(map_dir, flver)
 
 
 class ImportAssetFLVER(BaseFLVERImportOperator):

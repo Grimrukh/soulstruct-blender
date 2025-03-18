@@ -254,7 +254,7 @@ class MSBPartPanel(bpy.types.Panel):
         prop_names = props.get_game_props(context.scene.soulstruct_settings.game)
         handled = set()
 
-        for pre_prop in ("part_subtype", "model", "entity_id"):
+        for pre_prop in ("entry_subtype", "model", "entity_id"):
             layout.prop(props, pre_prop)
             handled.add(pre_prop)
 
@@ -287,25 +287,25 @@ class _MSBPartSubtypePanelMixin:
 
     layout: bpy.types.UILayout
 
-    part_subtype: BlenderMSBPartSubtype  # also `Object` property attribute name
-    prop_group_type: tp.Type[bpy.types.PropertyGroup]
+    PART_SUBTYPE: tp.ClassVar[BlenderMSBPartSubtype]  # also `Object` property attribute name
+    PROP_GROUP_TYPE: tp.ClassVar[type[bpy.types.PropertyGroup]]
 
     @classmethod
     def poll(cls, context) -> bool:
         obj = get_active_part_obj(context)
-        return obj is not None and obj.MSB_PART.entry_subtype_enum == cls.part_subtype
+        return obj is not None and obj.MSB_PART.entry_subtype_enum == cls.PART_SUBTYPE
 
     def draw(self, context):
         layout = self.layout
 
         obj = get_active_part_obj(context)
-        if obj is None or obj.MSB_PART.entry_subtype != self.part_subtype:
+        if obj is None or obj.MSB_PART.entry_subtype != self.PART_SUBTYPE:
             # Should already fail Panel poll.
-            layout.label(text=f"No active MSB {self.part_subtype}.")
+            layout.label(text=f"No active MSB {self.PART_SUBTYPE}.")
             return
 
         # noinspection PyTypeChecker
-        props = getattr(obj, self.part_subtype.value)
+        props = getattr(obj, self.PART_SUBTYPE.value)
         prop_names = props.get_game_props(context.scene.soulstruct_settings.game)
         if not prop_names:
             layout.label(text="No additional properties.")
@@ -323,8 +323,8 @@ class MSBMapPiecePartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
     bl_region_type = 'WINDOW'
     bl_context = "object"
 
-    part_subtype = BlenderMSBPartSubtype.MapPiece
-    prop_group_type = None
+    PART_SUBTYPE = BlenderMSBPartSubtype.MapPiece
+    PROP_GROUP_TYPE = None
 
     def draw(self, context):
         layout = self.layout
@@ -339,8 +339,8 @@ class MSBObjectPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
     bl_region_type = 'WINDOW'
     bl_context = "object"
 
-    part_subtype = BlenderMSBPartSubtype.Object
-    prop_group_type = MSBObjectProps
+    PART_SUBTYPE = BlenderMSBPartSubtype.Object
+    PROP_GROUP_TYPE = MSBObjectProps
 
 
 class MSBCharacterPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
@@ -351,20 +351,20 @@ class MSBCharacterPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
     bl_region_type = 'WINDOW'
     bl_context = "object"
 
-    part_subtype = BlenderMSBPartSubtype.Character
-    prop_group_type = MSBCharacterProps
+    PART_SUBTYPE = BlenderMSBPartSubtype.Character
+    PROP_GROUP_TYPE = MSBCharacterProps
 
     def draw(self, context):
         layout = self.layout
 
         obj = get_active_part_obj(context)
-        if obj is None or obj.MSB_PART.entry_subtype != self.part_subtype:
+        if obj is None or obj.MSB_PART.entry_subtype != self.PART_SUBTYPE:
             # Should already fail Panel poll.
-            layout.label(text=f"No active MSB {self.part_subtype}.")
+            layout.label(text=f"No active MSB {self.PART_SUBTYPE}.")
             return
 
         # noinspection PyTypeChecker
-        props = getattr(obj, self.part_subtype.value)
+        props = getattr(obj, self.PART_SUBTYPE.value)
         prop_names = props.get_game_props(context.scene.soulstruct_settings.game)
 
         header, panel = layout.panel("Basic Settings", default_closed=False)
@@ -410,8 +410,8 @@ class MSBPlayerStartPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
     bl_region_type = 'WINDOW'
     bl_context = "object"
 
-    part_subtype = BlenderMSBPartSubtype.PlayerStart
-    prop_group_type = MSBPlayerStartProps
+    PART_SUBTYPE = BlenderMSBPartSubtype.PlayerStart
+    PROP_GROUP_TYPE = MSBPlayerStartProps
 
 
 class MSBCollisionPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
@@ -422,20 +422,20 @@ class MSBCollisionPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
     bl_region_type = 'WINDOW'
     bl_context = "object"
 
-    part_subtype = BlenderMSBPartSubtype.Collision
-    prop_group_type = MSBCollisionProps
+    PART_SUBTYPE = BlenderMSBPartSubtype.Collision
+    PROP_GROUP_TYPE = MSBCollisionProps
 
     def draw(self, context):
         layout = self.layout
 
         obj = get_active_part_obj(context)
-        if obj is None or obj.MSB_PART.entry_subtype != self.part_subtype:
+        if obj is None or obj.MSB_PART.entry_subtype != self.PART_SUBTYPE:
             # Should already fail Panel poll.
-            layout.label(text=f"No active MSB {self.part_subtype}.")
+            layout.label(text=f"No active MSB {self.PART_SUBTYPE}.")
             return
 
         # noinspection PyTypeChecker
-        props = getattr(obj, self.part_subtype.value)
+        props = getattr(obj, self.PART_SUBTYPE.value)
         prop_names = props.get_game_props(context.scene.soulstruct_settings.game)
         handled = set()
         handled |= bit_set_prop(layout, props, "navmesh_groups_", "Navmesh Groups")
@@ -454,8 +454,8 @@ class MSBProtobossPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
     bl_region_type = 'WINDOW'
     bl_context = "object"
 
-    part_subtype = BlenderMSBPartSubtype.Protoboss
-    prop_group_type = MSBProtobossProps
+    PART_SUBTYPE = BlenderMSBPartSubtype.Protoboss
+    PROP_GROUP_TYPE = MSBProtobossProps
 
 
 class MSBNavmeshPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
@@ -466,20 +466,20 @@ class MSBNavmeshPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
     bl_region_type = 'WINDOW'
     bl_context = "object"
 
-    part_subtype = BlenderMSBPartSubtype.Navmesh
-    prop_group_type = MSBNavmeshProps
+    PART_SUBTYPE = BlenderMSBPartSubtype.Navmesh
+    PROP_GROUP_TYPE = MSBNavmeshProps
 
     def draw(self, context):
         layout = self.layout
 
         obj = get_active_part_obj(context)
-        if obj is None or obj.MSB_PART.entry_subtype != self.part_subtype:
+        if obj is None or obj.MSB_PART.entry_subtype != self.PART_SUBTYPE:
             # Should already fail Panel poll.
-            layout.label(text=f"No active MSB {self.part_subtype}.")
+            layout.label(text=f"No active MSB {self.PART_SUBTYPE}.")
             return
 
         # noinspection PyTypeChecker
-        props = getattr(obj, self.part_subtype.value)
+        props = getattr(obj, self.PART_SUBTYPE.value)
         prop_names = props.get_game_props(context.scene.soulstruct_settings.game)
         handled = set()
         handled |= bit_set_prop(layout, props, "navmesh_groups_", "Navmesh Groups")
@@ -498,8 +498,8 @@ class MSBConnectCollisionPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
     bl_region_type = 'WINDOW'
     bl_context = "object"
 
-    part_subtype = BlenderMSBPartSubtype.ConnectCollision
-    prop_group_type = MSBConnectCollisionProps
+    PART_SUBTYPE = BlenderMSBPartSubtype.ConnectCollision
+    PROP_GROUP_TYPE = MSBConnectCollisionProps
 
 
 class MSBRegionPanel(bpy.types.Panel):
@@ -526,7 +526,7 @@ class MSBRegionPanel(bpy.types.Panel):
 
         props = obj.MSB_REGION
 
-        layout.prop(props, "region_subtype")
+        layout.prop(props, "entry_subtype")
         layout.prop(props, "entity_id")
 
         header, panel = layout.panel("Shape Settings", default_closed=False)
@@ -580,7 +580,7 @@ class MSBEventPanel(bpy.types.Panel):
         prop_names = props.get_game_props(context.scene.soulstruct_settings.game)
         handled = set()
 
-        for pre_prop in ("event_subtype", "entity_id"):
+        for pre_prop in ("entry_subtype", "entity_id"):
             layout.prop(props, pre_prop)
             handled.add(pre_prop)
 
@@ -596,25 +596,25 @@ class _MSBEventSubtypePanelMixin:
 
     layout: bpy.types.UILayout
 
-    event_subtype: BlenderMSBEventSubtype  # also `Object` property attribute name
-    prop_group_type: tp.Type[bpy.types.PropertyGroup]
+    EVENT_SUBTYPE: tp.ClassVar[BlenderMSBEventSubtype]  # also `Object` property attribute name
+    PROP_GROUP_TYPE: tp.ClassVar[type[bpy.types.PropertyGroup]]
 
     @classmethod
     def poll(cls, context) -> bool:
         obj = get_active_event_obj(context)
-        return obj is not None and obj.MSB_EVENT.entry_subtype_enum == cls.event_subtype
+        return obj is not None and obj.MSB_EVENT.entry_subtype_enum == cls.EVENT_SUBTYPE
 
     def draw(self, context):
         layout = self.layout
 
         obj = get_active_event_obj(context)
-        if obj is None or obj.MSB_EVENT.entry_subtype != self.event_subtype:
+        if obj is None or obj.MSB_EVENT.entry_subtype != self.EVENT_SUBTYPE:
             # Should already fail Panel poll.
-            layout.label(text=f"No active MSB {self.event_subtype}.")
+            layout.label(text=f"No active MSB {self.EVENT_SUBTYPE}.")
             return
 
         # noinspection PyTypeChecker
-        props = getattr(obj, self.event_subtype.value)
+        props = getattr(obj, self.EVENT_SUBTYPE.value)
         # prop_names = props.get_game_props(context.scene.soulstruct_settings.game)
         prop_names = list(props.__annotations__)
         for prop in prop_names:
@@ -629,8 +629,8 @@ class MSBLightEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
     bl_region_type = 'WINDOW'
     bl_context = "object"
 
-    event_subtype = BlenderMSBEventSubtype.Light
-    prop_group_type = MSBLightEventProps
+    EVENT_SUBTYPE = BlenderMSBEventSubtype.Light
+    PROP_GROUP_TYPE = MSBLightEventProps
 
 
 class MSBSoundEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
@@ -641,8 +641,8 @@ class MSBSoundEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
     bl_region_type = 'WINDOW'
     bl_context = "object"
 
-    event_subtype = BlenderMSBEventSubtype.Sound
-    prop_group_type = MSBSoundEventProps
+    EVENT_SUBTYPE = BlenderMSBEventSubtype.Sound
+    PROP_GROUP_TYPE = MSBSoundEventProps
 
 
 class MSBVFXEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
@@ -653,8 +653,8 @@ class MSBVFXEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
     bl_region_type = 'WINDOW'
     bl_context = "object"
 
-    event_subtype = BlenderMSBEventSubtype.VFX
-    prop_group_type = MSBVFXEventProps
+    EVENT_SUBTYPE = BlenderMSBEventSubtype.VFX
+    PROP_GROUP_TYPE = MSBVFXEventProps
 
 
 class MSBWindEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
@@ -665,8 +665,8 @@ class MSBWindEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
     bl_region_type = 'WINDOW'
     bl_context = "object"
 
-    event_subtype = BlenderMSBEventSubtype.Wind
-    prop_group_type = MSBWindEventProps
+    EVENT_SUBTYPE = BlenderMSBEventSubtype.Wind
+    PROP_GROUP_TYPE = MSBWindEventProps
 
 
 class MSBTreasureEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
@@ -677,8 +677,8 @@ class MSBTreasureEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
     bl_region_type = 'WINDOW'
     bl_context = "object"
 
-    event_subtype = BlenderMSBEventSubtype.Treasure
-    prop_group_type = MSBTreasureEventProps
+    EVENT_SUBTYPE = BlenderMSBEventSubtype.Treasure
+    PROP_GROUP_TYPE = MSBTreasureEventProps
 
 
 class MSBSpawnerEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
@@ -689,8 +689,8 @@ class MSBSpawnerEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
     bl_region_type = 'WINDOW'
     bl_context = "object"
 
-    event_subtype = BlenderMSBEventSubtype.Spawner
-    prop_group_type = MSBSpawnerEventProps
+    EVENT_SUBTYPE = BlenderMSBEventSubtype.Spawner
+    PROP_GROUP_TYPE = MSBSpawnerEventProps
 
 
 class MSBMessageEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
@@ -701,8 +701,8 @@ class MSBMessageEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
     bl_region_type = 'WINDOW'
     bl_context = "object"
 
-    event_subtype = BlenderMSBEventSubtype.Message
-    prop_group_type = MSBMessageEventProps
+    EVENT_SUBTYPE = BlenderMSBEventSubtype.Message
+    PROP_GROUP_TYPE = MSBMessageEventProps
 
 
 class MSBObjActEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
@@ -713,8 +713,8 @@ class MSBObjActEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
     bl_region_type = 'WINDOW'
     bl_context = "object"
 
-    event_subtype = BlenderMSBEventSubtype.ObjAct
-    prop_group_type = MSBObjActEventProps
+    EVENT_SUBTYPE = BlenderMSBEventSubtype.ObjAct
+    PROP_GROUP_TYPE = MSBObjActEventProps
 
 
 class MSBSpawnPointEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
@@ -725,8 +725,8 @@ class MSBSpawnPointEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
     bl_region_type = 'WINDOW'
     bl_context = "object"
 
-    event_subtype = BlenderMSBEventSubtype.SpawnPoint
-    prop_group_type = MSBSpawnPointEventProps
+    EVENT_SUBTYPE = BlenderMSBEventSubtype.SpawnPoint
+    PROP_GROUP_TYPE = MSBSpawnPointEventProps
 
 
 class MSBMapOffsetEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
@@ -737,8 +737,8 @@ class MSBMapOffsetEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
     bl_region_type = 'WINDOW'
     bl_context = "object"
 
-    event_subtype = BlenderMSBEventSubtype.MapOffset
-    prop_group_type = MSBMapOffsetEventProps
+    EVENT_SUBTYPE = BlenderMSBEventSubtype.MapOffset
+    PROP_GROUP_TYPE = MSBMapOffsetEventProps
 
 
 class MSBNavigationEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
@@ -749,8 +749,8 @@ class MSBNavigationEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
     bl_region_type = 'WINDOW'
     bl_context = "object"
 
-    event_subtype = BlenderMSBEventSubtype.Navigation
-    prop_group_type = MSBNavigationEventProps
+    EVENT_SUBTYPE = BlenderMSBEventSubtype.Navigation
+    PROP_GROUP_TYPE = MSBNavigationEventProps
 
 
 class MSBEnvironmentEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
@@ -761,8 +761,8 @@ class MSBEnvironmentEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
     bl_region_type = 'WINDOW'
     bl_context = "object"
 
-    event_subtype = BlenderMSBEventSubtype.Environment
-    prop_group_type = MSBEnvironmentEventProps
+    EVENT_SUBTYPE = BlenderMSBEventSubtype.Environment
+    PROP_GROUP_TYPE = MSBEnvironmentEventProps
 
 
 class MSBNPCInvasionEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
@@ -773,7 +773,7 @@ class MSBNPCInvasionEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
     bl_region_type = 'WINDOW'
     bl_context = "object"
 
-    event_subtype = BlenderMSBEventSubtype.NPCInvasion
-    prop_group_type = MSBNPCInvasionEventProps
+    EVENT_SUBTYPE = BlenderMSBEventSubtype.NPCInvasion
+    PROP_GROUP_TYPE = MSBNPCInvasionEventProps
 
 # endregion

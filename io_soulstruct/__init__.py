@@ -415,9 +415,17 @@ CLASSES = (
     WeightVerticesWithFalloff,
     ApplyModifierNonSingleUser,
     PrintGameTransform,
+
+    MiscOutlinerSettings,
+    ShowAllModels,
+    ShowAllGameModels,
+    ShowAllObjectModels,
+    ShowAllCharacterModels,
+    ShowAllMapModels,
     ShowAllMapPieceModels,
     ShowAllCollisionModels,
     ShowAllNavmeshModels,
+    ShowAllMSB,
     ShowAllMSBMapPieceParts,
     ShowAllMSBCollisionParts,
     ShowAllMSBNavmeshParts,
@@ -427,7 +435,9 @@ CLASSES = (
     ShowAllMSBPlayerStartParts,
     ShowAllMSBRegionsEvents,
 
-    MiscSoulstructOperatorsPanel,
+    MiscSoulstructMeshOperatorsPanel,
+    MiscSoulstructCollectionOperatorsPanel,
+    MiscSoulstructOtherOperatorsPanel,
     # endregion
 
     # region Utility Operators
@@ -474,6 +484,7 @@ SCENE_POINTERS = dict(
     region_draw_settings=RegionDrawSettings,
     animation_import_settings=AnimationImportSettings,
     animation_export_settings=AnimationExportSettings,
+    misc_outliner_settings=MiscOutlinerSettings,
     # TODO: Cutscene disabled.
     # cutscene_import_settings=CutsceneImportSettings,
     # cutscene_export_settings=CutsceneExportSettings,

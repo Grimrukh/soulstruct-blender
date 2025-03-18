@@ -217,6 +217,7 @@ class CreateMSBPart(LoggingOperator):
             ),
             (MSBPartArmatureMode.ALWAYS, "Always", "Always create armatures for FLVER MSB Parts"),
         ],
+        default=MSBPartArmatureMode.CUSTOM_ONLY,
     )
 
     draw_groups: bpy.props.StringProperty(

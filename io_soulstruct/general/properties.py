@@ -5,8 +5,9 @@ __all__ = [
     "SoulstructSettings",
 ]
 
-import traceback
+import logging
 import shutil
+import traceback
 import typing as tp
 from pathlib import Path
 
@@ -31,7 +32,8 @@ if tp.TYPE_CHECKING:
     from io_soulstruct.type_checking import MSB_TYPING
     from io_soulstruct.utilities import LoggingOperator
 
-_SETTINGS_PATH = Path(__file__).parent.parent / "SoulstructSettings.json"
+
+_LOGGER = logging.getLogger("soulstruct.io_soulstruct")
 
 
 # Global holder for games that front-end users can currently select (or have auto-detected) for the `game` enum.
@@ -45,6 +47,17 @@ SUPPORTED_GAMES = [
 
 # Type variable for `get_initial_binder()` method.
 BINDER_T = tp.TypeVar("BINDER_T", bound=Binder)
+
+
+# noinspection PyUnusedLocal
+def _update_log_level(self: SoulstructSettings, context: bpy.types.Context):
+    """Set logging level of 'soulstruct.io' logger to either DEBUG or INFO."""
+    from io_soulstruct._logging import IO_CONSOLE_HANDLER
+
+    if self.enable_debug_logging:
+        IO_CONSOLE_HANDLER.setLevel(logging.DEBUG)
+    else:
+        IO_CONSOLE_HANDLER.setLevel(logging.INFO)
 
 
 class SoulstructSettings(bpy.types.PropertyGroup):
@@ -299,6 +312,13 @@ class SoulstructSettings(bpy.types.PropertyGroup):
                     "is the correct way to handle files for Darkroot Garden in DS1. Selecting map m12_00_00_00 vs. "
                     "m12_00_00_01 in the dropdown will therefore have no effect on auto-import/export",
         default=True,
+    )
+
+    enable_debug_logging: bpy.props.BoolProperty(
+        name="Enable Debug Logging",
+        description="Enable debug logging for more detailed information in the Blender console",
+        default=False,
+        update=_update_log_level,
     )
 
     # endregion

@@ -14,9 +14,16 @@ __all__ = [
     # endregion
 
     # region Outliner Operators
+    "MiscOutlinerSettings",
+    "ShowAllModels",
+    "ShowAllGameModels",
+    "ShowAllObjectModels",
+    "ShowAllCharacterModels",
+    "ShowAllMapModels",
     "ShowAllMapPieceModels",
     "ShowAllCollisionModels",
     "ShowAllNavmeshModels",
+    "ShowAllMSB",
     "ShowAllMSBMapPieceParts",
     "ShowAllMSBCollisionParts",
     "ShowAllMSBNavmeshParts",
@@ -32,7 +39,9 @@ __all__ = [
     # endregion
 
     # region GUI
-    "MiscSoulstructOperatorsPanel",
+    "MiscSoulstructMeshOperatorsPanel",
+    "MiscSoulstructCollectionOperatorsPanel",
+    "MiscSoulstructOtherOperatorsPanel",
     # endregion
 ]
 

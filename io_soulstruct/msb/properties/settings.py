@@ -61,6 +61,7 @@ class MSBImportSettings(bpy.types.PropertyGroup):
             ),
             (MSBPartArmatureMode.ALWAYS, "Always", "Always create armatures for FLVER MSB Parts"),
         ],
+        default=MSBPartArmatureMode.CUSTOM_ONLY,
     )
 
     model_name_filter: bpy.props.StringProperty(
@@ -94,17 +95,21 @@ class MSBImportSettings(bpy.types.PropertyGroup):
                 raise ValueError(f"Invalid MSB Model name match mode: {self.model_name_filter}")
         return is_name_match
 
-    hide_model_collections: bpy.props.BoolProperty(
-        name="Hide Model Collections",
-        description="Hide any new Model collections (in viewport) created for the first time on MSB import",
-        default=True,
-    )
+    # TODO: These properties don't work yet. Collection hiding needs to be implemented via the View Layer.
+    #  I think (but am not 100% sure) that Collections need to be visible in the View Layer to be selected/active, which
+    #  creates problems for some operators (e.g. Armatures).
 
-    hide_dummy_entries: bpy.props.BoolProperty(
-        name="Hide Dummy Characters/Objects",
-        description="Hide dummy MSB Characters, Objects, and Assets (disabled, cutscene only, etc.) in the viewport",
-        default=True,
-    )
+    # hide_model_collections: bpy.props.BoolProperty(
+    #     name="Hide Model Collections",
+    #     description="Hide any new Model collections (in viewport) created for the first time on MSB import",
+    #     default=True,
+    # )
+
+    # hide_dummy_entries: bpy.props.BoolProperty(
+    #     name="Hide Dummy Characters/Objects",
+    #     description="Hide dummy MSB Characters, Objects, and Assets (disabled, cutscene only, etc.) in the viewport",
+    #     default=True,
+    # )
 
 
 class MSBExportSettings(bpy.types.PropertyGroup):

@@ -27,9 +27,12 @@ class BlenderMSBMapOffsetEvent(BaseBlenderMSBEvent_DS1[MSBMapOffsetEvent, MSBMap
 
     SUBTYPE_FIELDS = (
         CustomFieldAdapter("translate", read_func=GAME_TO_BL_VECTOR, write_func=BL_TO_GAME_VECTOR3),
-        # Z angle is stored in degrees in Blender and requires negation (LHS/RHS).
+        # Y angle is stored in degrees in Blender (as Z) and requires negation (LHS/RHS).
         CustomFieldAdapter(
-            "rotate_z", read_func=lambda x: -math.degrees(x), write_func=lambda x: -math.radians(x)
+            "rotate_y",
+            bl_prop_name="rotate_z",
+            read_func=lambda x: -math.degrees(x),
+            write_func=lambda x: -math.radians(x),
         ),
     )
 

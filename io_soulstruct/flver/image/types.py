@@ -28,7 +28,7 @@ class DDSTexture:
 
     # Enum used in `TPFTexture`, which is unfortunately not the same as `DDS` itself.
     # Defaults to 1. Not required by every game, but definitely required in DSR.
-    TPF_TEXTURE_FORMATS: tp.ClassVar[str, int] = {
+    TPF_TEXTURE_FORMATS: tp.ClassVar[dict[str, int]] = {
         "DXT1": 1,
         "BC5_UNORM": 36,
         "BC7_UNORM": 38,
@@ -117,7 +117,6 @@ class DDSTexture:
     @classmethod
     def new_from_image_data(
         cls,
-        operator: LoggingOperator,
         name: str,
         image_format: BlenderImageFormat,
         image_data: bytes,
@@ -135,11 +134,7 @@ class DDSTexture:
             # Use a temporarily file.
             write_image_path = Path(f"~/AppData/Local/Temp/{image_name}").expanduser()
             is_temp_image = True
-            if not pack_image_data:
-                operator.warning(
-                    "Must pack image data into Blender file when `image_cache_directory` is not given ('Write Cached "
-                    "Images' disabled)."
-                )
+            # NOTE: We must pack Image data, but we don't warn about the incompatible setting here.
         else:
             write_image_path = image_cache_directory / image_name
             is_temp_image = False

@@ -72,7 +72,7 @@ def create_materials(
                 operator, context, model_name, all_texture_stems, image_import_manager
             )
             if texture_collection:
-                operator.info(f"Loaded {len(texture_collection)} textures in {time.perf_counter() - p:.3f} s.")
+                operator.debug(f"Loaded {len(texture_collection)} textures in {time.perf_counter() - p:.3f} s.")
         else:
             operator.info("No imported textures or PNG cache folder given. No textures loaded for FLVER.")
 
@@ -317,8 +317,8 @@ def _load_texture_images(
 
     if tpf_textures_to_load:
         for texture_stem in tpf_textures_to_load:
-            operator.info(f"Loading texture into Blender: {texture_stem}")
-        t = time.perf_counter()
+            operator.debug(f"Loading texture into Blender: {texture_stem}")
+        p = time.perf_counter()
         image_format = settings.bl_image_format
         deswizzle_platform = settings.game_config.swizzle_platform
         if image_format == BlenderImageFormat.TARGA:
@@ -336,14 +336,14 @@ def _load_texture_images(
             write_image_directory = settings.image_cache_directory  # could be None
         else:
             write_image_directory = None
-        operator.info(
-            f"Converted images in {time.perf_counter() - t} s (cached = {settings.write_cached_images})"
+        operator.debug(
+            f"Converted DDS images to {image_format.value} in {time.perf_counter() - p:.3f} s "
+            f"(cached = {settings.write_cached_images})"
         )
         for texture_stem, image_data in zip(tpf_textures_to_load.keys(), all_image_data):
             if image_data is None:
                 continue  # failed to convert this texture
             dds_texture = DDSTexture.new_from_image_data(
-                operator,
                 name=texture_stem,
                 image_format=image_format,
                 image_data=image_data,

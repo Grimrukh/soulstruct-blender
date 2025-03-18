@@ -67,6 +67,7 @@ class Scene(ID, bpy_struct):
     region_draw_settings: RegionDrawSettings
     animation_import_settings: AnimationImportSettings
     animation_export_settings: AnimationExportSettings
+    misc_outliner_settings: MiscOutlinerSettings
     cutscene_import_settings: CutsceneImportSettings
     cutscene_export_settings: CutsceneExportSettings
     # endregion

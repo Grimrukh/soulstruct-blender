@@ -68,7 +68,7 @@ def _import_msb(
     msb_model_importers = blender_types_module.MSB_MODEL_IMPORTERS
     msb_model_importers: dict[BaseMSBSubtype, BaseBlenderMSBModelImporter]
 
-    # NOTE: The keys of these are the *Blender* enums of the same name as the true MSB subtype enums.
+    # NOTE: The keys of these are the *Blender* enums that act as a union of all games' corresponding MSB subtype enums.
     bl_region_classes = BLENDER_MSB_REGION_CLASSES[settings.game]
     bl_part_classes = BLENDER_MSB_PART_CLASSES[settings.game]
     bl_event_classes = BLENDER_MSB_EVENT_CLASSES[settings.game]
@@ -90,9 +90,11 @@ def _import_msb(
         if models:
             # Note that ALL Model types now support batch import. Models that already exist in Blender (of the expected
             # object type, Soulstruct type, and model name) will be skipped, regardless of their Collection.
-            operator.info(f"Importing (up to) {len(models)} `{model_subtype.name}` model files in parallel.")
+            operator.info(f"Importing (up to) {len(models)} MSB{model_subtype.name} model files in parallel.")
             model_map_stem = oldest_map_stem if model_importer.use_oldest_map_stem else msb_stem
+            p = time.perf_counter()
             model_importer.batch_import_model_meshes(operator, context, models, map_stem=model_map_stem)
+            operator.info(f"Imported {len(models)} MSB{model_subtype.name} models in {time.perf_counter() - p:.3f} s.")
 
     # All MSB inter-entry reference fields are set later, so it doesn't matter what order we create the MSB entry
     # objects in Blender.
@@ -166,6 +168,7 @@ def _import_msb(
             missing_collection = get_or_create_collection(msb_collection, f"{msb_stem} Missing References")
         missing_collection.objects.link(missing_obj)
 
+    p = time.perf_counter()
     for msb_entry, bl_obj in msb_and_bl_parts + msb_and_bl_regions + msb_and_bl_events:
         bl_obj.resolve_bl_entry_refs(
             operator,
@@ -174,6 +177,7 @@ def _import_msb(
             missing_reference_callback=process_missing_reference,
             msb_objects=msb_collection.all_objects,
         )
+    operator.debug(f"Resolved MSB references in {time.perf_counter() - p:.3f} seconds.")
 
     # Assign Blender MSB Event parents.
     for _, bl_event in msb_and_bl_events:
@@ -192,7 +196,7 @@ def _import_msb(
 
     if missing_collection is not None:
         missing_count = len(missing_collection.all_objects)
-        operator.warning(f"{missing_count} missing MSB references were found in MSB {msb_stem}.")
+        operator.warning(f"{missing_count} missing MSB references created in MSB {msb_stem}.")
 
     return {"FINISHED"}
 

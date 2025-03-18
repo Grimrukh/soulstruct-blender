@@ -4,6 +4,7 @@ __all__ = [
     "MAP_STEM_RE",
     "BLENDER_DUPE_RE",
     "MapStem",
+    "CheckDCXMode",
     "get_bl_custom_prop",
     "is_uniform",
     "get_or_create_collection",
@@ -18,6 +19,8 @@ __all__ = [
 import math
 import re
 import typing as tp
+from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 
 import bpy
@@ -28,11 +31,33 @@ MAP_STEM_RE = re.compile(r"^m(?P<area>\d\d)_(?P<block>\d\d)_(?P<cc>\d\d)_(?P<dd>
 BLENDER_DUPE_RE = re.compile(r"^(.*)\.(\d+)$")
 
 
-class MapStem(tp.NamedTuple):
+@dataclass(slots=True, frozen=True)
+class MapStem:
     aa: int
     bb: int
     cc: int
     dd: int
+
+    @tp.overload
+    def __init__(self, map_stem_str: str):
+        ...
+
+    @tp.overload
+    def __init__(self, aa: int, bb: int, cc: int, dd: int):
+        ...
+
+    def __init__(self, *args):
+        """Can be initialized with a map stem string or four integers."""
+        if len(args) == 1:
+            for key, value in zip(("aa", "bb", "cc", "dd"), self.string_to_ints(args[0])):
+                object.__setattr__(self, key, value)
+        elif len(args) == 4:
+            for key, value in zip(("aa", "bb", "cc", "dd"), args):
+                object.__setattr__(self, key, value)
+        else:
+            raise ValueError("Expected either a map stem string or four integers.")
+
+    # region Component Aliases
 
     @property
     def area(self):
@@ -54,20 +79,58 @@ class MapStem(tp.NamedTuple):
     def tile_z(self):
         return self.dd
 
-    @classmethod
-    def from_string(cls, map_stem: str) -> MapStem:
+    # endregion
+
+    @staticmethod
+    def string_to_ints(map_stem: str) -> tuple[int, int, int, int]:
         match = MAP_STEM_RE.match(map_stem)
         if match is None:
             raise ValueError(f"Map stem '{map_stem}' does not match expected pattern.")
-        return cls(
-            aa=int(match.group("area")),
-            bb=int(match.group("block")),
-            cc=int(match.group("cc")),
-            dd=int(match.group("dd")),
+        return (
+            int(match.group("area")),
+            int(match.group("block")),
+            int(match.group("cc")),
+            int(match.group("dd")),
         )
+
+    def __eq__(self, other: MapStem) -> bool:
+        return all(getattr(self, key) == getattr(other, key) for key in ("aa", "bb", "cc", "dd"))
+
+    def __hash__(self) -> int:
+        return hash((self.aa, self.bb, self.cc, self.dd))
+
+    def __iter__(self) -> tp.Iterator[int]:
+        return iter((self.aa, self.bb, self.cc, self.dd))
 
     def __str__(self) -> str:
         return f"m{self.aa:02d}_{self.bb:02d}_{self.cc:02d}_{self.dd:02d}"
+
+    def __repr__(self) -> str:
+        return f"MapStem({self.aa}, {self.bb}, {self.cc}, {self.dd})"
+
+
+class CheckDCXMode(Enum):
+    """Used as a variable to determine whether to check some disk source for DCX and/or non-DCX files."""
+    BOTH = 0
+    DCX_ONLY = 1
+    NO_DCX = 2
+
+    def get_paths(self, path: Path) -> list[Path]:
+        """Get paths with and/or without '.dcx' extension."""
+        if self == CheckDCXMode.DCX_ONLY:
+            return [path.with_suffix(f"{path.suffix}.dcx")]
+        if self == CheckDCXMode.NO_DCX:
+            return [path.with_suffix(f"{path.suffix.removesuffix('.dcx')}")]
+        return [path.with_suffix(f"{path.suffix}.dcx"), path.with_suffix(f"{path.suffix.removesuffix('.dcx')}")]
+
+    def get_globs(self, pattern: str) -> list[str]:
+        """Get glob patterns with and/or without '.dcx' extension."""
+        pattern = pattern.removesuffix(".dcx")
+        if self == CheckDCXMode.DCX_ONLY:
+            return [pattern + ".dcx"]
+        if self == CheckDCXMode.NO_DCX:
+            return [pattern]
+        return [pattern + ".dcx", pattern]
 
 
 def get_bl_custom_prop(bl_obj, name: str, prop_type: tp.Type, default=None, callback: tp.Callable = None) -> tp.Any:
