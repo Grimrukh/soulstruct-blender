@@ -137,7 +137,7 @@ class BlenderMCG(BaseBlenderSoulstructObject[MCG, MCGProps]):
             )
         # NOTE: navmesh count can exceed highest edge index, as some navmeshes may have no edges in them.
 
-        operator.to_object_mode()
+        operator.to_object_mode(context)
         operator.deselect_all()
 
         bl_mcg = cls.new(name, data=None, collection=collection)  # type: BlenderMCG

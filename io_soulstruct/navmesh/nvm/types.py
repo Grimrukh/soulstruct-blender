@@ -41,7 +41,7 @@ class BlenderNVM(BaseBlenderSoulstructObject[NVM, NVMProps]):
         name: str,
         collection: bpy.types.Collection = None,
     ) -> BlenderNVM:
-        operator.to_object_mode()
+        operator.to_object_mode(context)
         operator.deselect_all()
 
         nvm = soulstruct_obj
@@ -186,7 +186,7 @@ class BlenderNVM(BaseBlenderSoulstructObject[NVM, NVMProps]):
 
     def set_face_materials(self, nvm: NVM):
         mesh_data = self.obj.data
-        for bl_tri, nvm_triangle in zip(mesh_data.polygons, nvm.triangles):
+        for bl_tri, nvm_triangle in zip(mesh_data.polygons, nvm.triangles, strict=True):
             set_face_material(mesh_data, bl_tri, nvm_triangle.flags)
 
     def create_nvm_quadtree(

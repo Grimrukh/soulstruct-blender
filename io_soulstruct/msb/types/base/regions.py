@@ -122,7 +122,7 @@ class BaseBlenderMSBRegion(BaseBlenderMSBEntry[REGION_T, MSBRegionProps, None, M
         **kwargs,
     ) -> tp.Self:
         collection = collection or context.scene.collection
-        operator.to_object_mode()
+        operator.to_object_mode(context)
 
         if shape_type == RegionShapeType.Point:
             mesh = bpy.data.meshes.new(name)

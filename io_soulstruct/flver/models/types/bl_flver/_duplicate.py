@@ -23,7 +23,6 @@ def duplicate_armature(
     bl_flver: BlenderFLVER,
     context: bpy.types.Context,
     child_mesh_obj: bpy.types.MeshObject,
-    copy_pose=False,
 ) -> bpy.types.ArmatureObject:
     if not bl_flver.armature:
         # TODO: Could copy 'implicit Armature' by creating a single-bone Armature with the same name as the model.
@@ -35,15 +34,7 @@ def duplicate_armature(
     # No properties taken from Armature.
     context.view_layer.objects.active = new_armature_obj
 
-    if copy_pose:
-        # Copy pose bone transforms.
-        context.view_layer.update()  # need Blender to create `linked_armature_obj.pose` now
-        for new_pose_bone in new_armature_obj.pose.bones:
-            source_bone = bl_flver.armature.pose.bones[new_pose_bone.name]
-            new_pose_bone.rotation_mode = "QUATERNION"  # should be default but being explicit
-            new_pose_bone.location = source_bone.location
-            new_pose_bone.rotation_quaternion = source_bone.rotation_quaternion
-            new_pose_bone.scale = source_bone.scale
+    # We don't copy `PoseBone` data here, as it will be copied separately after all objects are duplicated.
 
     if child_mesh_obj:
         child_mesh_obj.parent = new_armature_obj
@@ -73,7 +64,7 @@ def duplicate(
     context: bpy.types.Context,
     collections: tp.Sequence[bpy.types.Collection] = None,
     make_materials_single_user=True,
-    copy_pose=True,
+    copy_pose=False,
 ):
     collections = collections or [context.scene.collection]
 
@@ -105,7 +96,7 @@ def duplicate_edit_mode(
     bl_flver: BlenderFLVER,
     context: bpy.types.Context,
     make_materials_single_user=True,
-    copy_pose=True,
+    copy_pose=False,
 ) -> BlenderFLVER:
     if context.edit_object != bl_flver.mesh:
         raise FLVERError(f"Mesh of FLVER model '{bl_flver.name}' is not currently being edited in Edit Mode.")

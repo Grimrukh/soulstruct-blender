@@ -247,7 +247,7 @@ def _create_armature(
         bl_bone_names.append(bl_bone_name)
 
     # Create Blender Armature. We have to do this first so mesh vertices can be weighted to its bones.
-    command.operator.to_object_mode()
+    command.operator.to_object_mode(command.context)
     command.operator.deselect_all()
     armature = new_armature_object(f"{command.name} Armature", bpy.data.armatures.new(f"{command.name} Armature"))
     command.collection.objects.link(armature)  # needed before creating EditBones!
@@ -449,7 +449,7 @@ def _create_bl_bones(
 
     # We need edit mode to create `EditBones` below.
     command.context.view_layer.objects.active = armature
-    command.operator.to_edit_mode()
+    command.operator.to_edit_mode(command.context)
 
     # Create all edit bones. Head/tail are not set yet (depends on `bl_bone_data_type` below).
     edit_bones = _create_edit_bones(armature.data, command.flver, bl_bone_names)
@@ -470,7 +470,9 @@ def _create_bl_bones(
         # viewing. If animated, this Pose data may be overwritten, but the custom properties will remain for export.
         # This function will change back to OBJECT mode internally before setting pose bone data.
         _write_data_to_custom_bone_prop_and_pose(
-            command.operator, command.flver, armature, edit_bones, command.import_settings.base_edit_bone_length
+            command,
+            armature,
+            edit_bones,
         )
     else:
         # Unreachable.
@@ -553,14 +555,12 @@ def _write_data_to_edit_bones(
 
 
 def _write_data_to_custom_bone_prop_and_pose(
-    operator: LoggingOperator,
-    flver: FLVER,
+    command: _CreateBlenderFLVERCommand,
     armature: bpy.types.ArmatureObject,
     edit_bones: list[bpy.types.EditBone],
-    base_edit_bone_length: float,
 ):
     bl_bone_transforms = []
-    for game_bone in flver.bones:
+    for game_bone in command.flver.bones:
         bl_bone_location = GAME_TO_BL_VECTOR(game_bone.translate)
         bl_bone_rotation_euler = GAME_TO_BL_EULER(game_bone.rotate)
         bl_bone_scale = GAME_TO_BL_VECTOR(game_bone.scale)
@@ -570,13 +570,13 @@ def _write_data_to_custom_bone_prop_and_pose(
         # All edit bones are just Blender-Y-direction ("forward") stubs of base length.
         # This rigging makes map piece 'pose' bone data transform as expected for showing accurate vertex positions.
         edit_bone.head = Vector((0, 0, 0))
-        edit_bone.tail = Vector((0, base_edit_bone_length, 0))
+        edit_bone.tail = Vector((0, command.import_settings.base_edit_bone_length, 0))
         edit_bone.FLVER_BONE.flver_translate = bl_bone_transform[0]
         edit_bone.FLVER_BONE.flver_rotate = bl_bone_transform[1]  # Euler angles (Blender coordinates)
         edit_bone.FLVER_BONE.flver_scale = bl_bone_transform[2]
 
     del edit_bones  # clear references to edit bones as we exit EDIT mode
-    operator.to_object_mode()
+    command.operator.to_object_mode(command.context)
 
     pose_bones = armature.pose.bones
     for bl_bone_transform, pose_bone in zip(bl_bone_transforms, pose_bones):

@@ -44,7 +44,7 @@ class CopyToNewFLVER(LoggingOperator):
         new_bl_flver = bl_flver.duplicate_edit_mode(
             context=context,
             make_materials_single_user=True,
-            copy_pose=True,
+            copy_pose=True,  # copy pose immediately (not batched)
         )
         new_bl_flver.deep_rename(self.new_name or f"{bl_flver.name}_Copy")
 

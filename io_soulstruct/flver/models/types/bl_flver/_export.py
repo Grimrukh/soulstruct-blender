@@ -128,7 +128,7 @@ def create_flver_from_bl_flver(
 
     _clear_temp_flver()
     try:
-        flver = _create_flver_from_bl_flver(command)
+        flver = _create_flver_from_bl_flver(context, command)
     except Exception:
         # NOTE: Would use `finally` for this, but PyCharm can't handle the return type at the moment.
         _clear_temp_flver()
@@ -151,6 +151,7 @@ def _clear_temp_flver():
 
 
 def _create_flver_from_bl_flver(
+    context: bpy.types.Context,
     command: _CreateFLVERCommand,
 ) -> FLVER:
     """`FLVER` exporter. By far the most complicated function in the add-on!"""
@@ -173,7 +174,9 @@ def _create_flver_from_bl_flver(
         bl_bone_names = [default_bone.name]
         using_default_bone = True
     else:
-        command.flver.bones, bl_bone_names, bone_arma_transforms = _create_flver_bones(command, bl_bone_data_type)
+        command.flver.bones, bl_bone_names, bone_arma_transforms = _create_flver_bones(
+            context, command, bl_bone_data_type
+        )
         command.flver.set_bone_children_siblings()  # only parents set in `create_bones`
         command.flver.set_bone_armature_space_transforms(bone_arma_transforms)
         using_default_bone = False
@@ -671,6 +674,7 @@ def _create_triangulated_mesh(
 
 
 def _create_flver_bones(
+    context: bpy.types.Context,
     command: _CreateFLVERCommand,
     read_bone_type: FLVERBoneDataType,
 ) -> tuple[list[FLVERBone], list[str], list[tuple[Vector3, Matrix3, Vector3]]]:
@@ -684,7 +688,7 @@ def _create_flver_bones(
     # TODO: Still true for extension properties?
     armature = command.bl_flver.armature
     command.context.view_layer.objects.active = armature
-    command.operator.to_edit_mode()
+    command.operator.to_edit_mode(context)
 
     edit_bone_names = [edit_bone.name for edit_bone in armature.data.edit_bones]
 
@@ -739,9 +743,9 @@ def _create_flver_bones(
     for game_bone, parent_index in zip(game_bones, game_bone_parent_indices):
         game_bone.parent_bone = game_bones[parent_index] if parent_index >= 0 else None
 
-    command.operator.to_object_mode()
+    command.operator.to_object_mode(command.context)
 
-    if read_bone_type == FLVERBoneDataType.POSE:
+    if read_bone_type == FLVERBoneDataType.CUSTOM:
         # Get armature-space bone transform from PoseBone (map pieces).
         # Note that non-uniform bone scale is supported here (and is actually used in some old vanilla map pieces).
         for game_bone, bl_bone_name in zip(game_bones, edit_bone_names):

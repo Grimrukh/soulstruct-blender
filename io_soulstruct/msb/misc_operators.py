@@ -109,23 +109,33 @@ class DisableSelectedNames(LoggingOperator):
 
 
 def _is_map_piece_part(_, obj: bpy.types.Object) -> bool:
-    return obj.soulstruct_type == SoulstructType.MSB_PART and obj.MSB_PART.entry_subtype == BlenderMSBPartSubtype.MapPiece
+    return (
+        obj.soulstruct_type == SoulstructType.MSB_PART and obj.MSB_PART.entry_subtype == BlenderMSBPartSubtype.MapPiece
+    )
 
 
 def _is_object_part(_, obj: bpy.types.Object) -> bool:
-    return obj.soulstruct_type == SoulstructType.MSB_PART and obj.MSB_PART.entry_subtype == BlenderMSBPartSubtype.Object
+    return (
+        obj.soulstruct_type == SoulstructType.MSB_PART and obj.MSB_PART.entry_subtype == BlenderMSBPartSubtype.Object
+    )
 
 
 def _is_character_part(_, obj: bpy.types.Object) -> bool:
-    return obj.soulstruct_type == SoulstructType.MSB_PART and obj.MSB_PART.entry_subtype == BlenderMSBPartSubtype.Character
+    return (
+        obj.soulstruct_type == SoulstructType.MSB_PART and obj.MSB_PART.entry_subtype == BlenderMSBPartSubtype.Character
+    )
 
 
 def _is_collision_part(_, obj: bpy.types.Object) -> bool:
-    return obj.soulstruct_type == SoulstructType.MSB_PART and obj.MSB_PART.entry_subtype == BlenderMSBPartSubtype.Collision
+    return (
+        obj.soulstruct_type == SoulstructType.MSB_PART and obj.MSB_PART.entry_subtype == BlenderMSBPartSubtype.Collision
+    )
 
 
 def _is_navmesh_part(_, obj: bpy.types.Object) -> bool:
-    return obj.soulstruct_type == SoulstructType.MSB_PART and obj.MSB_PART.entry_subtype == BlenderMSBPartSubtype.Navmesh
+    return (
+        obj.soulstruct_type == SoulstructType.MSB_PART and obj.MSB_PART.entry_subtype == BlenderMSBPartSubtype.Navmesh
+    )
 
 
 class MSBPartCreationTemplates(bpy.types.PropertyGroup):
@@ -259,7 +269,11 @@ class CreateMSBPart(LoggingOperator):
         except ValueError as ex:
             return self.error(str(ex))
 
-        if part_subtype in {BlenderMSBPartSubtype.MapPiece, BlenderMSBPartSubtype.Collision, BlenderMSBPartSubtype.Navmesh}:
+        if part_subtype in {
+            BlenderMSBPartSubtype.MapPiece,
+            BlenderMSBPartSubtype.Collision,
+            BlenderMSBPartSubtype.Navmesh,
+        }:
             try:
                 self.msb_map_stem = get_collection_map_stem(model_obj)
             except ValueError:
@@ -664,7 +678,10 @@ class DuplicateMSBPartModel(LoggingOperator):
             )
 
         if part_subtype in {
-            BlenderMSBPartSubtype.MapPiece, BlenderMSBPartSubtype.Object, BlenderMSBPartSubtype.Character, BlenderMSBPartSubtype.Asset
+            BlenderMSBPartSubtype.MapPiece,
+            BlenderMSBPartSubtype.Object,
+            BlenderMSBPartSubtype.Character,
+            BlenderMSBPartSubtype.Asset,
         }:
             # Model is a FLVER.
             old_bl_flver = BlenderFLVER(old_model)
@@ -674,7 +691,7 @@ class DuplicateMSBPartModel(LoggingOperator):
                 context=context,
                 collections=source_collections,
                 make_materials_single_user=True,
-                copy_pose=part_subtype == BlenderMSBPartSubtype.MapPiece,
+                copy_pose=True,  # copy pose immediately (not batched)
             )
             # Do a deep renaming of FLVER.
             new_bl_flver.deep_rename(new_model_name, old_model_name)
@@ -785,7 +802,9 @@ class BatchSetPartGroups(LoggingOperator):
         self.layout.prop(self, "operation")
         self.layout.prop(self, "draw_groups")
         self.layout.prop(self, "display_groups")
-        if context.selected_objects[0].MSB_PART.entry_subtype in {BlenderMSBPartSubtype.Collision, BlenderMSBPartSubtype.Navmesh}:
+        if context.selected_objects[0].MSB_PART.entry_subtype in {
+            BlenderMSBPartSubtype.Collision, BlenderMSBPartSubtype.Navmesh
+        }:
             self.layout.prop(self, "navmesh_groups")
 
     def execute(self, context):
@@ -983,7 +1002,9 @@ class CreateConnectCollision(LoggingOperator):
         if not context.selected_objects:
             return False
         for obj in context.selected_objects:
-            if obj.soulstruct_type != SoulstructType.MSB_PART or obj.MSB_PART.entry_subtype != BlenderMSBPartSubtype.Collision:
+            if obj.soulstruct_type != SoulstructType.MSB_PART:
+                return False
+            if obj.MSB_PART.entry_subtype != BlenderMSBPartSubtype.Collision:
                 return False
         return True
 
@@ -1188,8 +1209,10 @@ class ColorMSBEvents(LoggingOperator):
         if tool_settings.event_color_type != "ALL":
             objects = [
                 obj for obj in objects
-                if obj.soulstruct_type == SoulstructType.MSB_EVENT
-                   and obj.MSB_EVENT.entry_subtype == tool_settings.event_color_type  # enums are identical except for ALL
+                if (
+                    obj.soulstruct_type == SoulstructType.MSB_EVENT
+                    and obj.MSB_EVENT.entry_subtype == tool_settings.event_color_type  # enums are same except for ALL
+                )
             ]
         else:
             objects = [

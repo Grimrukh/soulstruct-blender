@@ -63,7 +63,7 @@ from io_soulstruct.utilities import ViewSelectedAtDistanceZero
 bl_info = {
     "name": "Soulstruct",
     "author": "Scott Mooney (Grimrukh)",
-    "version": (2, 3, 0),
+    "version": (2, 3, 1),
     "blender": (4, 3, 0),
     "location": "File > Import-Export",
     "description": "Import, manipulate, and export FromSoftware/Havok assets",

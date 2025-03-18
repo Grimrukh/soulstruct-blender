@@ -4,6 +4,7 @@ __all__ = [
     "MSBTransformFieldAdapter",
 ]
 
+import math
 import typing as tp
 from dataclasses import dataclass
 
@@ -56,7 +57,7 @@ class MSBTransformFieldAdapter(FieldAdapter):
             bl_translate = GAME_TO_BL_VECTOR(getattr(soulstruct_obj, "translate"))
             bl_obj.transform_obj.location = bl_translate  # local
         if "rotate" in field_names:
-            bl_rotate = GAME_TO_BL_EULER(getattr(soulstruct_obj, "rotate"))
+            bl_rotate = GAME_TO_BL_EULER(math.pi / 180.0 * getattr(soulstruct_obj, "rotate"))  # degrees to radians
             bl_obj.transform_obj.rotation_euler = bl_rotate  # local
         if "scale" in field_names:
             bl_scale = GAME_TO_BL_VECTOR(getattr(soulstruct_obj, "scale"))
@@ -82,7 +83,7 @@ class MSBTransformFieldAdapter(FieldAdapter):
             soulstruct_value = BL_TO_GAME_VECTOR3(bl_translate)
             setattr(soulstruct_obj, "translate", soulstruct_value)
         if "rotate" in field_names:
-            soulstruct_value = BL_TO_GAME_EULER(bl_rotate)
+            soulstruct_value = 180.0 / math.pi * BL_TO_GAME_EULER(bl_rotate)  # radians to degrees
             setattr(soulstruct_obj, "rotate", soulstruct_value)
         if "scale" in field_names:
             soulstruct_value = BL_TO_GAME_VECTOR3(bl_scale)

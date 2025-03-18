@@ -200,7 +200,11 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
 
         Does not rename anything.
         """
-        return duplicate_armature(self, context, child_mesh_obj, copy_pose)
+        new_armature_obj = duplicate_armature(self, context, child_mesh_obj)
+        if copy_pose:
+            context.view_layer.update()  # SLOW
+            copy_armature_pose(self.armature, new_armature_obj)
+        return new_armature_obj
 
     def duplicate_dummies(self) -> list[bpy.types.Object]:
         """Duplicate all FLVER Dummies of this model to new Empty objects in the same collections."""
@@ -211,7 +215,7 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
         context: bpy.types.Context,
         collections: tp.Sequence[bpy.types.Collection] = None,
         make_materials_single_user=True,
-        copy_pose=True,
+        copy_pose=False,
     ) -> BlenderFLVER:
         """Duplicate ALL objects, data-blocks, and materials of this FLVER model to a new one.
 
@@ -224,7 +228,7 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
         self,
         context: bpy.types.Context,
         make_materials_single_user=True,
-        copy_pose=True,
+        copy_pose=False,
     ) -> BlenderFLVER:
         """Duplicate to a new FLVER model, but in Edit Mode, taking only the selected vertices/edges/faces of Mesh.
 

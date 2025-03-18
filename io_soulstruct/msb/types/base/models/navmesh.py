@@ -71,8 +71,9 @@ class BlenderMSBNavmeshModelImporter(BaseBlenderMSBModelImporter):
 
         bl_nvm.set_face_materials(nvm)
         # Don't create quadtree boxes.
+        bl_nvm.obj.show_wire = True
 
-        # TODO: NVM import is so fast that this just slows the console down when importing all navmeshes.
+        # NVM import is so fast that this just slows the console down when importing all navmeshes.
         # operator.info(f"Imported NVM model {import_info.model_file_stem} as '{import_info.bl_name}'.")
 
         return bl_nvm.obj
@@ -118,7 +119,7 @@ class BlenderMSBNavmeshModelImporter(BaseBlenderMSBModelImporter):
             nvm = nvmbnd.get_nvm(model_name)
 
             try:
-                BlenderNVM.new_from_soulstruct_obj(
+                bl_nvm = BlenderNVM.new_from_soulstruct_obj(
                     operator,
                     context,
                     nvm,
@@ -130,3 +131,7 @@ class BlenderMSBNavmeshModelImporter(BaseBlenderMSBModelImporter):
                 raise NVMImportError(
                     f"Cannot import NVM '{model_name}' from NVMBND in map {map_stem}. Error: {ex}"
                 )
+
+            bl_nvm.set_face_materials(nvm)
+            # Don't create quadtree boxes.
+            bl_nvm.obj.show_wire = True

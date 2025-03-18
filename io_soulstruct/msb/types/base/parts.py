@@ -12,6 +12,7 @@ import bpy
 from soulstruct.base.maps.msb.parts import BaseMSBPart
 from soulstruct.base.maps.msb.utils import BitSet
 
+from io_soulstruct.flver.models.types import BlenderFLVER
 from io_soulstruct.msb.properties import BlenderMSBPartSubtype, MSBPartArmatureMode, MSBPartProps
 from io_soulstruct.msb.types.adapters import *
 from io_soulstruct.utilities import *
@@ -111,6 +112,7 @@ class BaseBlenderMSBPart(
         *,
         map_stem="",
         armature_mode=MSBPartArmatureMode.CUSTOM_ONLY,
+        copy_pose=False,
     ) -> tp.Self:
         """Create a fully-represented MSB Part linked to a source model in Blender.
 
@@ -151,7 +153,12 @@ class BaseBlenderMSBPart(
         )
 
     def duplicate_flver_model_armature(
-        self, operator: LoggingOperator, context: bpy.types.Context, mode: MSBPartArmatureMode, exists_ok=True
+        self,
+        operator: LoggingOperator,
+        context: bpy.types.Context,
+        mode: MSBPartArmatureMode,
+        exists_ok=True,
+        copy_pose=True,  # default is that this isn't batched
     ):
         if self._MODEL_ADAPTER.bl_model_type != SoulstructType.FLVER:
             raise TypeError("Only FLVER-based Parts can have their model Armature duplicated.")
@@ -163,7 +170,23 @@ class BaseBlenderMSBPart(
             raise ValueError("Part has no model to duplicate Armature from.")
 
         # If Armature is created, this will move the current local transform of the Mesh to the Armature.
-        PartArmatureDuplicator.maybe_duplicate_flver_model_armature(operator, context, mode, self, self.model)
+        created = PartArmatureDuplicator.maybe_duplicate_flver_model_armature(operator, context, mode, self, self.model)
+
+        if copy_pose and created:
+            context.view_layer.update()  # SLOW
+            self.copy_model_armature_pose()
+
+    def copy_model_armature_pose(self):
+        if self._MODEL_ADAPTER.bl_model_type != SoulstructType.FLVER:
+            raise TypeError("Only FLVER-based Parts can have their model Armature pose copied.")
+        if not self.armature:
+            raise ValueError("Part does not have an Armature parent to copy pose from.")
+        if not self.model:
+            raise ValueError("Part has no model to copy Armature pose from.")
+        bl_flver = BlenderFLVER(self.model)
+        if not bl_flver.armature:
+            return  # harmless case
+        copy_armature_pose(bl_flver.armature, self.armature)
 
     def resolve_msb_entry_refs_and_map_stem(
         self,

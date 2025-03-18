@@ -128,7 +128,7 @@ class ExportMapMSB(LoggingOperator):
         bl_region_objs.sort(key=lambda x: natural_keys(x.name))
         bl_event_objs.sort(key=lambda x: natural_keys(x.name))
 
-        self.to_object_mode()
+        self.to_object_mode(context)
 
         # Create new MSB.
         msb = msb_class()  # type: MSB_PTDE | MSB_DSR | MSB_DES

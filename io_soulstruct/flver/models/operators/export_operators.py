@@ -83,7 +83,7 @@ class ExportLooseFLVER(LoggingExportOperator):
         dcx_type = settings.resolve_dcx_type(self.dcx_type, "flver")
 
         flver_file_path = Path(self.filepath)  # set by user
-        self.to_object_mode()
+        self.to_object_mode(context)
 
         try:
             # No textures collected and FLVER model type unknown (will be guessed).
@@ -165,7 +165,7 @@ class ExportFLVERIntoBinder(LoggingImportOperator):
         # Automatic DCX for FLVERs in Binders is Null.
         dcx_type = DCXType.from_member_name(self.dcx_type) if self.dcx_type != "AUTO" else DCXType.Null
 
-        self.to_object_mode()
+        self.to_object_mode(context)
         binder_file_path = Path(self.filepath)
         try:
             binder = Binder.from_path(binder_file_path)
@@ -275,7 +275,7 @@ class ExportMapPieceFLVERs(LoggingOperator):
         flver_export_settings = context.scene.flver_export_settings
         flver_dcx_type = settings.resolve_dcx_type("AUTO", "flver")
 
-        self.to_object_mode()
+        self.to_object_mode(context)
         active_object = context.active_object  # to restore later
 
         map_area_textures = {}  # maps area stems 'mAA' to dictionaries of Blender images to export
@@ -367,7 +367,7 @@ class BaseGameFLVERBinderExportOperator(LoggingOperator):
                 f"Cannot find {cls_name} binder for {bl_flver.name}: '{relative_binder_path}'. Error: {ex}"
             )
 
-        self.to_object_mode()
+        self.to_object_mode(context)
         texture_collection = DDSTextureCollection()
         try:
             flver = bl_flver.to_soulstruct_obj(

@@ -226,7 +226,7 @@ def import_mcp(
 ) -> bpy.types.Object:
     operator.info(f"Importing MCP: {bl_name}")
 
-    operator.to_object_mode()
+    operator.to_object_mode(context)
     operator.deselect_all()
 
     mcp_parent = bpy.data.objects.new(bl_name, None)  # empty parent for all AABB meshes

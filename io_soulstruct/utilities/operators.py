@@ -89,13 +89,13 @@ class LoggingOperator(bpy.types.Operator):
         return decorated_execute(context)
 
     @staticmethod
-    def to_object_mode():
-        if bpy.ops.object.mode_set.poll():
+    def to_object_mode(context: bpy.types.Context):
+        if context.mode != "OBJECT" and bpy.ops.object.mode_set.poll():
             bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
 
     @staticmethod
-    def to_edit_mode():
-        if bpy.ops.object.mode_set.poll():
+    def to_edit_mode(context: bpy.types.Context):
+        if not context.mode.startswith("EDIT") and bpy.ops.object.mode_set.poll():
             bpy.ops.object.mode_set(mode="EDIT", toggle=False)
 
     @staticmethod

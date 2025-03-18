@@ -215,10 +215,10 @@ def copy_obj_property_group(
 
 
 def copy_armature_pose(source_armature: bpy.types.ArmatureObject, dest_armature: bpy.types.ArmatureObject):
-    """Copy pose bone transforms."""
+    """Copy pose bone transforms.
 
-    # Need to ensure Blender creates `linked_armature_obj.pose` first, in case `dest_armature` was only just created.
-    bpy.context.view_layer.update()
+    NOTE: You need to call `context.view_layer.update()` between creating an `Armature` and accessing its `pose`.
+    """
 
     for pose_bone in dest_armature.pose.bones:
         source_bone = source_armature.pose.bones[pose_bone.name]
