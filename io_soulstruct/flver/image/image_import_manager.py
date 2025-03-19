@@ -247,6 +247,9 @@ class ImageImportManager:
 
         Returns a set of map area prefixes found in the FLVER textures.
         """
+        # Unpacked PTDE has a 'map/tx' folder with every loose TPF. We only search for the given area prefix, though.
+        tx_path = map_dir / "tx"
+
         texture_map_areas = {
             texture_path.stem[:3]
             for texture_path in flver.get_all_texture_paths()
@@ -255,6 +258,8 @@ class ImageImportManager:
         for map_area in texture_map_areas:
             map_area_dir = (map_dir / map_area).resolve()
             self._register_map_area_textures(map_area_dir)
+            if tx_path.is_dir():
+                self._register_tpfs_in_dir(tx_path, tpf_glob=f"{map_area}_*.tpf", check_dcx_mode=CheckDCXMode.NO_DCX)
 
         return texture_map_areas
 
@@ -304,15 +309,20 @@ class ImageImportManager:
         # Unpacked PTDE has a 'map/tx' folder with every loose TPF.
         tx_path = map_area_block_dir / "../tx"
         if tx_path.is_dir():
-            self._register_tpfs_in_dir(map_area_block_dir / "../tx", check_dcx_mode=CheckDCXMode.NO_DCX)
+            self._register_tpfs_in_dir(tx_path, check_dcx_mode=CheckDCXMode.NO_DCX)
 
-    def _register_tpfs_in_dir(self, tpf_dir: Path, check_dcx_mode: CheckDCXMode = CheckDCXMode.BOTH):
+    def _register_tpfs_in_dir(
+        self,
+        tpf_dir: Path,
+        tpf_glob="*.tpf",
+        check_dcx_mode: CheckDCXMode = CheckDCXMode.BOTH,
+    ):
         """Register all loose TPF files in `tpf_dir` as pending sources."""
         if not tpf_dir.is_dir():
             _LOGGER.warning(f"Directory does not exist: {tpf_dir}. Cannot find TPFs in it.")
             return
 
-        for glob_pattern in check_dcx_mode.get_globs("*.tpf"):
+        for glob_pattern in check_dcx_mode.get_globs(tpf_glob):
             for tpf_path in tpf_dir.glob(glob_pattern):
                 tpf_stem = lower_stem(tpf_path)
                 if tpf_stem not in self._scanned_tpf_sources:
