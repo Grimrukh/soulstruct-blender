@@ -54,15 +54,15 @@ class LoggingOperator(bpy.types.Operator):
 
     @staticmethod
     def debug(msg: str):
-        _LOGGER.debug(msg)
+        _LOGGER.debug(msg, stacklevel=2)
         # No report.
 
     def info(self, msg: str):
-        _LOGGER.info(msg)
+        _LOGGER.info(msg, stacklevel=2)
         self.report({"INFO"}, msg)
 
     def warning(self, msg: str):
-        _LOGGER.warning(msg)
+        _LOGGER.warning(msg, stacklevel=2)
         self.report({"WARNING"}, msg)
 
     def error(self, msg: str) -> set[str]:
@@ -72,7 +72,7 @@ class LoggingOperator(bpy.types.Operator):
             except Exception as ex:
                 _LOGGER.error(f"Error occurred during cleanup callback: {ex}")
                 self.report({"ERROR"}, f"Error occurred during cleanup callback: {ex}")
-        _LOGGER.error(msg)
+        _LOGGER.error(msg, stacklevel=2)
         self.report({"ERROR"}, msg)
         return {"CANCELLED"}
 

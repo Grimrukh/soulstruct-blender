@@ -109,7 +109,7 @@ class BaseBlenderMSBRegion(BaseBlenderMSBEntry[REGION_T, MSBRegionProps, None, M
 
     @classmethod
     def get_msb_subcollection(cls, msb_collection: bpy.types.Collection, msb_stem: str) -> bpy.types.Collection:
-        return get_or_create_collection(msb_collection, f"{msb_stem} Regions/Events")
+        return get_or_create_collection(msb_collection, f"{msb_stem} Regions")
 
     @classmethod
     def new_from_shape_type(

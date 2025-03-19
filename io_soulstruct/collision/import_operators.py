@@ -439,7 +439,7 @@ class ImportSelectedMapHKXMapCollision(LoggingOperator):
         # NOTE: Currently no Map Collision model import settings.
 
         collection = get_or_create_collection(
-            context.scene.collection, f"{map_stem} Models", f"{map_stem} Collision Models"
+            context.scene.collection, "Models", f"{map_stem} Models", f"{map_stem} Collision Models"
         )
 
         # Import single HKX.

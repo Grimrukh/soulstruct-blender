@@ -10,12 +10,14 @@ from pathlib import Path
 import bpy
 
 from soulstruct.base.models.flver import *
+from soulstruct.games import DARK_SOULS_DSR
 
 from io_soulstruct.exceptions import MaterialImportError, FLVERExportError
 from io_soulstruct.types.utilities import add_auto_type_props
 from io_soulstruct.utilities import LoggingOperator, get_bl_custom_prop, remove_dupe_suffix
 from io_soulstruct.flver.image import DDSTexture, DDSTextureCollection
-from .shaders import NodeTreeBuilder
+from io_soulstruct.flver.image.utilities import find_or_create_image
+from .shaders import NodeTreeBuilder, NodeTreeBuilder_DS1R
 
 if tp.TYPE_CHECKING:
     from soulstruct.base.models.shaders import MatDef
@@ -122,7 +124,8 @@ class BlenderFLVERMaterial:
         """Create a new Blender material from a FLVER material.
 
         Will use material texture stems to search for images of all supported formats in the Blender image data. If no
-        image is found, the texture will be left unassigned in the material.
+        image is found (and the texture is not empty), a placeholder 1x1 magenta image will be created (we need the
+        Image name to write to `FLVER`). This placeholder image can be replaced later with another operator if desired.
 
         Attempts to build a Blender node tree for the material. The only critical information stored in the node tree is
         the sampler names (node labels) and image names (image node `Image` names) of the `ShaderNodeTexImage` nodes
@@ -215,8 +218,12 @@ class BlenderFLVERMaterial:
 
         if not copied:
             # Try to build shader nodetree.
+            if context.scene.soulstruct_settings.is_game(DARK_SOULS_DSR):
+                builder_class = NodeTreeBuilder_DS1R
+            else:
+                builder_class = NodeTreeBuilder
             try:
-                builder = NodeTreeBuilder(
+                builder = builder_class(
                     operator=operator,
                     context=context,
                     material=bl_material,
@@ -249,31 +256,12 @@ class BlenderFLVERMaterial:
                         tex_nodes_by_name[sampler_name].image = None
                         continue
 
-                    # TODO: NodeTreeBuilder has identical method.
-                    # Search for Blender image with no extension, TGA, PNG, or DDS, in that order of preference.
-                    for image_name in (
-                        f"{texture_stem}", f"{texture_stem}.tga", f"{texture_stem}.png", f"{texture_stem}.dds"
-                    ):
-                        try:
-                            bl_image = bpy.data.images[image_name]
-                            break
-                        except KeyError:
-                            pass
-                    else:
-                        # Blender image not found. Create empty 1x1 Blender image.
-                        bl_image = bpy.data.images.new(name=texture_stem, width=1, height=1, alpha=True)
-                        bl_image.pixels = [1.0, 0.0, 1.0, 1.0]  # magenta
-                        if context.scene.flver_import_settings.import_textures:  # otherwise, expected to be missing
-                            operator.warning(
-                                f"Could not find texture '{texture_stem}' in Blender image data. "
-                                f"Created 1x1 magenta Image."
-                            )
-
+                    bl_image = find_or_create_image(operator, context, texture_stem)
                     tex_nodes_by_name[sampler_name].image = bl_image
 
                     # Update Image colorspace from node label. (If image is used with multiple sampler types, this will
-                    # be the last one found.)
-                    if bl_image and "Albedo" not in tex_nodes_by_name[sampler_name].label:
+                    # be the last one found.) TODO: Would be better to do this upon `Image` creation, based on name.
+                    if "Albedo" not in tex_nodes_by_name[sampler_name].label:
                         bl_image.colorspace_settings.name = "Non-Color"
 
         return material
@@ -498,7 +486,7 @@ class BlenderFLVERMaterial:
 
     def get_hash(self, include_face_set_count=True, is_flver0=False) :
         """Hash based on all FLVER material properties, with `face_set_count` optional (used by default)."""
-        hashed = [self.is_bind_pose, self.mat_def_path, self.default_bone_index]
+        hashed = [self.is_bind_pose, self.mat_def_path, self.default_bone_index]  # type: list[bool | str | int | tuple]
         if not is_flver0:
             hashed.extend([self.flags, self.f2_unk_x18])
         if include_face_set_count:

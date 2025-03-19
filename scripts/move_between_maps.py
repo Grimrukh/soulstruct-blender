@@ -56,6 +56,7 @@ def main(source_map_stem: str, dest_map_stem: str, entry_filter_func: tp.Callabl
         BlenderMSBPartSubtype.PlayerStart: bpy.data.collections[f"{dest_map_stem} Player Start Parts"],
     }  # type: dict[BlenderMSBPartSubtype, Collection]
 
+    # TODO: Need to update Event subcollections.
     dest_regions_events_collection = bpy.data.collections[f"{dest_map_stem} Regions/Events"]  # type: Collection
 
     dest_model_collections = {

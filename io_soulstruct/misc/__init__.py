@@ -14,24 +14,8 @@ __all__ = [
     # endregion
 
     # region Outliner Operators
-    "MiscOutlinerSettings",
-    "ShowAllModels",
-    "ShowAllGameModels",
-    "ShowAllObjectModels",
-    "ShowAllCharacterModels",
-    "ShowAllMapModels",
-    "ShowAllMapPieceModels",
-    "ShowAllCollisionModels",
-    "ShowAllNavmeshModels",
-    "ShowAllMSB",
-    "ShowAllMSBMapPieceParts",
-    "ShowAllMSBCollisionParts",
-    "ShowAllMSBNavmeshParts",
-    "ShowAllMSBConnectCollisionParts",
-    "ShowAllMSBObjectParts",
-    "ShowAllMSBCharacterParts",
-    "ShowAllMSBPlayerStartParts",
-    "ShowAllMSBRegionsEvents",
+    "ShowCollectionOperator",
+    "HideCollectionOperator",
     # endregion
 
     # region Other Operators

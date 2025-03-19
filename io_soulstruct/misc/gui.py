@@ -49,65 +49,65 @@ class MiscSoulstructCollectionOperatorsPanel(bpy.types.Panel):
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "Misc. Soulstruct"
-    bl_options = {"DEFAULT_CLOSED"}
 
     def draw(self, context):
         layout = self.layout
 
         map_stem_box(layout, context.scene.soulstruct_settings)
 
-        layout.prop(context.scene.misc_outliner_settings, "collection_mode")
+        layout.separator()
+        layout.label(text="Model Collections:")
+        self._draw_collection_operators(context, layout, "Models", "All Models")
+        self._draw_collection_operators(context, layout, "Game Models", "  Game Models")
+        self._draw_collection_operators(context, layout, "Character Models", "    Character Models")
+        self._draw_collection_operators(context, layout, "Object Models", "    Object Models")
+
+        self._draw_collection_operators(context, layout, "{map_stem} Models", "  Active Map Models")
+        self._draw_collection_operators(context, layout, "{map_stem} Map Piece Models", "    Map Piece Models")
+        self._draw_collection_operators(context, layout, "{map_stem} Collision Models", "    Collision Models")
+        self._draw_collection_operators(context, layout, "{map_stem} Navmesh Models", "    Navmesh Models")
 
         layout.separator()
-        layout.label(text="Model Collection Visibility:")
 
+        layout.label(text="MSB Collections:")
+        self._draw_collection_operators(context, layout, "MSBs", "All MSBs")
+        self._draw_collection_operators(context, layout, "{map_stem} MSB", "Active MSB")
+
+        self._draw_collection_operators(context, layout, "{map_stem} Regions", "  Regions")
+
+        self._draw_collection_operators(context, layout, "{map_stem} Events", "  Events")
+        # TODO: Event subtypes.
+
+        self._draw_collection_operators(context, layout, "{map_stem} Parts", "  Parts")
+        self._draw_collection_operators(context, layout, "{map_stem} Map Piece Parts", "    Map Pieces")
+        self._draw_collection_operators(context, layout, "{map_stem} Object Parts", "    Objects")
+        self._draw_collection_operators(context, layout, "{map_stem} Character Parts", "    Characters")
+        self._draw_collection_operators(context, layout, "{map_stem} Player Start Parts", "    Player Starts")
+        self._draw_collection_operators(context, layout, "{map_stem} Collision Parts", "    Collisions")
+        self._draw_collection_operators(context, layout, "{map_stem} Navmesh Parts", "    Navmeshes")
+        self._draw_collection_operators(context, layout, "{map_stem} Connect Collision Parts", "    Connect Collisions")
+
+    @staticmethod
+    def _draw_collection_operators(context, layout, name: str, label: str):
         row = layout.row()
-        row.label(text="All Models")
-        row.operator(ShowAllModels.bl_idname, text="", icon="HIDE_OFF").show = True
-        row.operator(ShowAllModels.bl_idname, text="", icon="HIDE_ON").show = False
+        row.label(text=label)
 
-        row = layout.row()
-        row.label(text="Game Models")
-        row.operator(ShowAllGameModels.bl_idname, text="", icon="HIDE_OFF").show = True
-        row.operator(ShowAllGameModels.bl_idname, text="", icon="HIDE_ON").show = False
+        is_hidden = _is_collection_hidden(context, name)
+        if is_hidden is None:
+            return
 
-        for op in (ShowAllObjectModels, ShowAllCharacterModels):
-            row = layout.row()
-            row.label(text="  " + op.LABEL)
-            row.operator(op.bl_idname, text="", icon="HIDE_OFF").show = True
-            row.operator(op.bl_idname, text="", icon="HIDE_ON").show = False
+        # The icon here is an indicator of current state, like in the Outliner, not the button's function.
+        if is_hidden:
+            row.operator(ShowCollectionOperator.bl_idname, text="", icon="HIDE_ON").name = name
+        else:
+            row.operator(HideCollectionOperator.bl_idname, text="", icon="HIDE_OFF").name = name
 
-        row = layout.row()
-        row.label(text="Map Models")
-        row.operator(ShowAllMapModels.bl_idname, text="", icon="HIDE_OFF").show = True
-        row.operator(ShowAllMapModels.bl_idname, text="", icon="HIDE_ON").show = False
 
-        for op in (ShowAllMapPieceModels, ShowAllCollisionModels, ShowAllNavmeshModels):
-            row = layout.row()
-            row.label(text="  " + op.LABEL)
-            row.operator(op.bl_idname, text="", icon="HIDE_OFF").show = True
-            row.operator(op.bl_idname, text="", icon="HIDE_ON").show = False
-
-        layout.separator()
-        layout.label(text="MSB Collection Visibility:")
-        row = layout.row()
-        row.label(text="Full MSB")
-        row.operator(ShowAllMSB.bl_idname, text="", icon="HIDE_OFF").show = True
-        row.operator(ShowAllMSB.bl_idname, text="", icon="HIDE_ON").show = False
-        for op in (
-            ShowAllMSBMapPieceParts,
-            ShowAllMSBCollisionParts,
-            ShowAllMSBNavmeshParts,
-            ShowAllMSBConnectCollisionParts,
-            ShowAllMSBObjectParts,
-            ShowAllMSBCharacterParts,
-            ShowAllMSBPlayerStartParts,
-            ShowAllMSBRegionsEvents,
-        ):
-            row = layout.row()
-            row.label(text="  " + op.LABEL)
-            row.operator(op.bl_idname, text="", icon="HIDE_OFF").show = True
-            row.operator(op.bl_idname, text="", icon="HIDE_ON").show = False
+def _is_collection_hidden(context: bpy.types.Context, name: str) -> bool | None:
+    coll = find_layer_collection(context, name)
+    if not coll:
+        return None
+    return coll.hide_viewport
 
 
 class MiscSoulstructOtherOperatorsPanel(bpy.types.Panel):

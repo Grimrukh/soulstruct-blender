@@ -80,6 +80,13 @@ class ImageImportManager:
         self._scanned_binder_paths = set()
         self._scanned_tpf_sources = set()  # NOTE: all lower case
 
+        # We register all `parts/common_*.tpf` textures immediately.
+        parts_dir = context.scene.soulstruct_settings.get_import_dir_path("parts")
+        if parts_dir:
+            self._register_parts_common_tpfs(parts_dir)
+        else:
+            operator.warning("Could not find 'parts' directory to import common TPFs.")
+
     def find_flver_textures(self, flver_source_path: Path, flver_binder: Binder = None, prefer_hi_res=True):
         """Register known game Binders/TPFs to be opened as needed.
 
@@ -132,7 +139,6 @@ class ImageImportManager:
                 elif settings.is_game(ELDEN_RING):
                     res = "_h" if prefer_hi_res else "_l"
                     self._register_chr_texbnd(source_dir, model_stem=model_stem, res=res)
-                    self._register_parts_common_body(source_dir)
             else:
                 _LOGGER.warning(
                     f"Opened CHRBND '{flver_source_path}' should have been passed to ImageImportManager! Will not be "
@@ -159,7 +165,6 @@ class ImageImportManager:
                 self.scan_binder_textures(flver_binder)
             else:
                 _LOGGER.warning(f"Opened PARTSBND '{flver_binder}' was not passed to ImageImportManager!")
-            self._register_parts_common_tpfs(source_dir)
 
         # ASSETS (Elden Ring)
         elif source_name.endswith(".geombnd"):
@@ -364,30 +369,18 @@ class ImageImportManager:
                 for texture in texbnd_tpf.textures:
                     self._tpf_textures.setdefault(texture.stem.lower(), texture)
 
-    def _register_parts_common_body(self, source_dir: Path, check_dcx_mode: CheckDCXMode = CheckDCXMode.DCX_ONLY):
-        """Find 'parts/common_body.tpf' character TPFs. Used by many non-c0000 characters.
-
-        Elden Ring only.
-        """
-        for common_body_path in check_dcx_mode.get_paths(source_dir / "../parts/common_body.tpf"):
-            if "common_body" not in self._scanned_tpf_sources and common_body_path.is_file():
-                # Multi-texture TPF; we unpack it now.
-                self._scanned_tpf_sources.add("common_body")
-                common_body = TPF.from_path(common_body_path)
-                for texture in common_body.textures:
-                    self._tpf_textures.setdefault(texture.stem.lower(), texture)
-                return  # don't check non-DCX version if DCX found
-
     def _register_parts_common_tpfs(self, source_dir: Path, check_dcx_mode: CheckDCXMode = CheckDCXMode.BOTH):
-        """Find and immediately load all textures inside multi-texture 'Common' TPFs (e.g. player skin)."""
-        for glob_pattern in check_dcx_mode.get_globs("Common*.tpf"):
-            for common_tpf_path in source_dir.glob(glob_pattern):
-                common_tpf = TPF.from_path(common_tpf_path)
-                common_tpf_stem = lower_stem(common_tpf_path)
-                self._scanned_tpf_sources.add(common_tpf_stem)
-                for texture in common_tpf.textures:
-                    # TODO: Handle duplicate textures/overwrites. Currently ignoring duplicates.
-                    self._tpf_textures.setdefault(texture.stem.lower(), texture)
+        """Find and immediately load all textures inside multi-texture 'Common' TPFs (e.g. player skin, detail)."""
+        for glob_case in ("Common*.tpf", "common*.tpf"):
+            for glob_pattern in check_dcx_mode.get_globs(glob_case):
+                for common_tpf_path in source_dir.glob(glob_pattern):
+                    common_tpf_stem = lower_stem(common_tpf_path)
+                    if common_tpf_stem not in self._scanned_tpf_sources:
+                        self._scanned_tpf_sources.add(common_tpf_stem)
+                        common_tpf = TPF.from_path(common_tpf_path)
+                        for texture in common_tpf.textures:
+                            # TODO: Handle duplicate textures/overwrites. Currently ignoring duplicates.
+                            self._tpf_textures.setdefault(texture.stem.lower(), texture)
 
     def _register_aeg_tpfs(self, source_dir: Path, check_dcx_mode: CheckDCXMode = CheckDCXMode.DCX_ONLY):
         """Find AEG TPFs in an adjacent 'aet' directory. Always uses DCX in games that use it."""

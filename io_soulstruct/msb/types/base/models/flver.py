@@ -179,6 +179,7 @@ class BaseBlenderMSBFLVERModelImporter(BaseBlenderMSBModelImporter, abc.ABC):
         if cls.USE_MAP_COLLECTION:
             model_collection = get_or_create_collection(
                 context.scene.collection,
+                "Models",
                 f"{map_stem} Models",
                 f"{map_stem} {cls.MODEL_SUBTYPE_TITLE} Models",
             )
@@ -186,6 +187,7 @@ class BaseBlenderMSBFLVERModelImporter(BaseBlenderMSBModelImporter, abc.ABC):
             # Not map-specific.
             model_collection = get_or_create_collection(
                 context.scene.collection,
+                "Models",
                 "Game Models",
                 f"{cls.MODEL_SUBTYPE_TITLE} Models",
             )
@@ -270,6 +272,7 @@ class BlenderMSBMapPieceModelImporter(BaseBlenderMSBFLVERModelImporter):
         if not model_collection:
             model_collection = get_or_create_collection(
                 context.scene.collection,
+                "Models",
                 f"{map_stem} Models",
                 f"{map_stem} Map Piece Models",
             )
@@ -369,7 +372,7 @@ class BlenderMSBObjectModelImporter(BaseBlenderMSBFLVERModelImporter):
             image_import_manager = None
 
         if not model_collection:
-            model_collection = get_or_create_collection(context.scene.collection, "Object Models")
+            model_collection = get_or_create_collection(context.scene.collection, "Models", "Object Models")
 
         return self._import_flver_model_mesh(
             operator, context, flver, model_name, model_collection, image_import_manager
@@ -452,7 +455,7 @@ class BlenderMSBCharacterModelImporter(BaseBlenderMSBFLVERModelImporter):
         settings = operator.settings(context)
 
         if not model_collection:
-            model_collection = get_or_create_collection(context.scene.collection, "Character Models")
+            model_collection = get_or_create_collection(context.scene.collection, "Models", "Character Models")
 
         import_settings = context.scene.flver_import_settings
         image_import_manager = ImageImportManager(operator, context) if import_settings.import_textures else None

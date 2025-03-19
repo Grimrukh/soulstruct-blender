@@ -308,7 +308,7 @@ def _load_texture_images(
                 # Searching for original texture is NOT case-sensitive.
                 texture = image_import_manager.get_flver_texture(texture_stem, name)
             except KeyError as ex:
-                operator.warning(str(ex))
+                operator.warning(f"Could not find FLVER texture '{texture_stem}'. Error: {ex}")
             else:
                 tpf_textures_to_load[texture_stem] = texture
                 continue

@@ -113,7 +113,7 @@ class ImportHKXAnimationWithBinderChoice(BaseImportHKXAnimation, BinderEntrySele
 
         p = time.perf_counter()
         animation_hkx = read_animation_hkx_entry(entry, self.HKX_COMPENDIUM)
-        self.info(f"Read `AnimationHKX` Binder entry '{entry.name}' in {time.perf_counter() - p:.4f} seconds.")
+        self.info(f"Read `AnimationHKX` Binder entry '{entry.name}' in {time.perf_counter() - p:.3f} s.")
         # `skeleton_hkx` already set to operator.
 
         anim_name = entry.name.split(".")[0]
@@ -132,7 +132,7 @@ class ImportHKXAnimationWithBinderChoice(BaseImportHKXAnimation, BinderEntrySele
             return self.error(
                 f"Cannot import HKX animation {anim_name} from '{self.BINDER.path_name}'. Error: {ex}"
             )
-        self.debug(f"Created animation action in {time.perf_counter() - p:.4f} seconds.")
+        self.debug(f"Created animation action in {time.perf_counter() - p:.3f} s.")
 
         return {"FINISHED"}
 

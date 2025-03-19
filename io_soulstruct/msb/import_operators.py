@@ -73,8 +73,7 @@ def _import_msb(
     bl_part_classes = BLENDER_MSB_PART_CLASSES[settings.game]
     bl_event_classes = BLENDER_MSB_EVENT_CLASSES[settings.game]
 
-    # Two separate sub-collections for MSB entries: Parts, and Regions/Events combined.
-    msb_collection = get_or_create_collection(context.scene.collection, f"{msb_stem} MSB")
+    msb_collection = get_or_create_collection(context.scene.collection, "MSBs", f"{msb_stem} MSB")
 
     # TODO: Delete all created objects if/when an error is raised.
 
@@ -117,7 +116,25 @@ def _import_msb(
                 traceback.print_exc()
                 return operator.error(f"Failed to import {region.cls_name} '{region.name}': {ex}")
             msb_and_bl_regions.append((region, bl_region))
-    operator.debug(f"Imported {len(msb_and_bl_regions)} Regions in {time.perf_counter() - p:.3f} seconds.")
+    operator.debug(f"Imported {len(msb_and_bl_regions)} Regions in {time.perf_counter() - p:.3f} s.")
+
+    p = time.perf_counter()
+    for event_subtype, msb_event_list in msb.get_events_dict().items():
+        bl_event_type = BlenderMSBEventSubtype[event_subtype.name]
+        bl_event_class = bl_event_classes[bl_event_type]  # type: type[BaseBlenderMSBEvent]
+        bl_event_collection = bl_event_class.get_msb_subcollection(msb_collection, msb_stem)
+        for event in msb_event_list:
+            try:
+                bl_event = bl_event_class.new_from_soulstruct_obj(
+                    operator, context, event, event.name, bl_event_collection
+                )
+            except Exception as ex:
+                # Fatal error.
+                traceback.print_exc()
+                return operator.error(f"Failed to import {event.cls_name} '{event.name}': {ex}")
+
+            msb_and_bl_events.append((event, bl_event))
+    operator.debug(f"Imported {len(msb_and_bl_events)} Events in {time.perf_counter() - p:.3f} s.")
 
     p = time.perf_counter()
     bl_parts_with_armatures = []
@@ -146,30 +163,12 @@ def _import_msb(
             msb_and_bl_parts.append((part, bl_part))
             if bl_part.armature:
                 bl_parts_with_armatures.append(bl_part)
-    operator.debug(f"Imported {len(msb_and_bl_parts)} Parts in {time.perf_counter() - p:.3f} seconds.")
+    operator.debug(f"Imported {len(msb_and_bl_parts)} Parts in {time.perf_counter() - p:.3f} s.")
 
     # Create any duplicated Part Armature poses, then copy FLVER pose to them.
     context.view_layer.update()  # SLOW - we call it just ONCE here, after all Parts are created
     for bl_part in bl_parts_with_armatures:
         bl_part.copy_model_armature_pose()
-
-    p = time.perf_counter()
-    for event_subtype, msb_event_list in msb.get_events_dict().items():
-        bl_event_type = BlenderMSBEventSubtype[event_subtype.name]
-        bl_event_class = bl_event_classes[bl_event_type]  # type: type[BaseBlenderMSBEvent]
-        bl_event_collection = bl_event_class.get_msb_subcollection(msb_collection, msb_stem)
-        for event in msb_event_list:
-            try:
-                bl_event = bl_event_class.new_from_soulstruct_obj(
-                    operator, context, event, event.name, bl_event_collection
-                )
-            except Exception as ex:
-                # Fatal error.
-                traceback.print_exc()
-                return operator.error(f"Failed to import {event.cls_name} '{event.name}': {ex}")
-
-            msb_and_bl_events.append((event, bl_event))
-    operator.debug(f"Imported {len(msb_and_bl_events)} Events in {time.perf_counter() - p:.3f} seconds.")
 
     missing_collection = None  # type: bpy.types.Collection | None
 
@@ -192,7 +191,7 @@ def _import_msb(
             missing_reference_callback=process_missing_reference,
             msb_objects=msb_collection.all_objects,
         )
-    operator.debug(f"Resolved MSB references in {time.perf_counter() - p:.3f} seconds.")
+    operator.debug(f"Resolved MSB references in {time.perf_counter() - p:.3f} s.")
 
     # Assign Blender MSB Event parents.
     for _, bl_event in msb_and_bl_events:
@@ -206,7 +205,7 @@ def _import_msb(
 
     operator.info(
         f"Imported {part_count} Parts, {region_count} Regions, and {event_count} Events from MSB {msb_stem} "
-        f"in {time.perf_counter() - p:.3f} seconds."
+        f"in {time.perf_counter() - p:.3f} s."
     )
 
     if missing_collection is not None:

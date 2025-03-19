@@ -179,8 +179,7 @@ class BaseBlenderSoulstructObject(abc.ABC, tp.Generic[SOULSTRUCT_T, TYPE_PROPS_T
     def game_name(self) -> str:
         """Just removes Blender dupe suffix by default (if present), but subclasses may be more aggressive.
 
-        Model types, for example, will finish at the first space or periods (as will MSB Parts). MSB Events will remove
-        the descriptive '<SUBTYPE>' suffix added on import. And so on. All of them will `strip()` the result.
+        Model types, for example, will finish at the first space or periods (as will MSB Parts).
         """
         return remove_dupe_suffix(self.obj.name).strip()
 

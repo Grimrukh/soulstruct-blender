@@ -96,6 +96,7 @@ class BlenderMSBCollisionModelImporter(BaseBlenderMSBModelImporter):
     def _get_collision_model_map_collection(context: bpy.types.Context, map_stem: str) -> bpy.types.Collection:
         return get_or_create_collection(
             context.scene.collection,
+            "Models",
             f"{map_stem} Models",
             f"{map_stem} Collision Models",
         )

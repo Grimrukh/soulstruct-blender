@@ -7,11 +7,7 @@ __all__ = [
     "get_region_game_name",
 ]
 
-import re
-
 from io_soulstruct.utilities.misc import remove_dupe_suffix, get_model_name
-
-_EVENT_PREFIX_RE = re.compile(r"^<(.*)> (.*)$")  # note exactly one space, in case game name starts with spaces
 
 
 def get_part_game_name(obj_name: str) -> str:
@@ -25,12 +21,10 @@ def get_part_game_name(obj_name: str) -> str:
 def get_event_game_name(obj_name: str) -> str:
     """Get the game name of an MSB Event Blender object from its Blender name.
 
-    We remove any Event subtype tag '<EvenSubtype>' added by Blender on import. Note that we do NOT strip the name.
+    We also remove the ' <E>' suffix (note exactly one space removed) if it exists. This suffix is added by us when
+    importing an MSB, as many Events have the same name as their parent Regions.
     """
-    name = remove_dupe_suffix(obj_name)  # no strip!
-    if match := _EVENT_PREFIX_RE.match(name):
-        return match.group(2)  # no strip!
-    return name
+    return remove_dupe_suffix(obj_name).removesuffix(" <E>")
 
 
 def get_region_game_name(obj_name: str) -> str:

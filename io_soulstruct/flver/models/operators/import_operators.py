@@ -118,7 +118,7 @@ class BaseFLVERImportOperator(LoggingImportOperator):
 
             self.post_process_flver(context, settings, import_settings, bl_flver)
 
-        self.info(f"Imported {len(flvers)} FLVER(s) in {time.perf_counter() - p:.3f} seconds.")
+        self.info(f"Imported {len(flvers)} FLVER(s) in {time.perf_counter() - p:.3f} s.")
 
         # Select and frame view on (final) newly imported Mesh.
         if bl_flver:
@@ -309,7 +309,7 @@ class ImportCharacterFLVER(BaseFLVERImportOperator):
                     pass
 
     def get_collection(self, context: bpy.types.Context, file_directory_name: str):
-        return get_or_create_collection(context.scene.collection, "Character Models")
+        return get_or_create_collection(context.scene.collection, "Models", "Character Models")
 
     # We do NOT look anywhere else for character textures.
 
@@ -347,7 +347,7 @@ class ImportObjectFLVER(BaseFLVERImportOperator):
     # Base `execute` method is fine.
 
     def get_collection(self, context: bpy.types.Context, file_directory_name: str):
-        return get_or_create_collection(context.scene.collection, "Object Models")
+        return get_or_create_collection(context.scene.collection, "Models", "Object Models")
 
     def find_extra_textures(self, flver_source_path: Path, flver: FLVER, image_import_manager: ImageImportManager):
         """Some Objects lazily use textures from the map area they expect to be placed in."""
@@ -388,7 +388,7 @@ class ImportAssetFLVER(BaseFLVERImportOperator):
     # Base `execute` method is fine.
 
     def get_collection(self, context: bpy.types.Context, file_directory_name: str):
-        return get_or_create_collection(context.scene.collection, "Asset Models")
+        return get_or_create_collection(context.scene.collection, "Models", "Asset Models")
 
 
 class ImportEquipmentFLVER(BaseFLVERImportOperator):
@@ -429,6 +429,6 @@ class ImportEquipmentFLVER(BaseFLVERImportOperator):
     # Base `execute` method is fine.
 
     def get_collection(self, context: bpy.types.Context, file_directory_name: str):
-        return get_or_create_collection(context.scene.collection, "Equipment Models")
+        return get_or_create_collection(context.scene.collection, "Models", "Equipment Models")
 
 # endregion

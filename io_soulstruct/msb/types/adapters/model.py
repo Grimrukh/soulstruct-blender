@@ -86,7 +86,9 @@ class MSBPartModelAdapter:
         self._build_placeholder_mesh_pyramid_arrow(mesh)
         model = new_mesh_object(model_name, mesh, SoulstructType.MSB_MODEL_PLACEHOLDER)
         model.show_axis = True  # hard to tell orientation of placeholder icosphere otherwise
-        placeholder_model_collection = get_or_create_collection(context.scene.collection, "Placeholder Models")
+        placeholder_model_collection = get_or_create_collection(
+            context.scene.collection, "Models", "Placeholder Models"
+        )
         placeholder_model_collection.objects.link(model)
         return model
 

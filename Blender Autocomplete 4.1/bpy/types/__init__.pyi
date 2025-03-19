@@ -1755,6 +1755,7 @@ __all__ = [
     "ShaderNodeBsdfGlass",
     "ShaderNodeBsdfHair",
     "ShaderNodeBsdfHairPrincipled",
+    "ShaderNodeBsdfMetallic",
     "ShaderNodeBsdfPrincipled",
     "ShaderNodeBsdfRefraction",
     "ShaderNodeBsdfSheen",

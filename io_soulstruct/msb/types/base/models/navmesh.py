@@ -53,6 +53,7 @@ class BlenderMSBNavmeshModelImporter(BaseBlenderMSBModelImporter):
         if not model_collection:
             model_collection = get_or_create_collection(
                 context.scene.collection,
+                "Models",
                 f"{map_stem} Models",
                 f"{map_stem} Navmesh Models",
             )
@@ -94,6 +95,7 @@ class BlenderMSBNavmeshModelImporter(BaseBlenderMSBModelImporter):
 
         model_collection = get_or_create_collection(
             context.scene.collection,
+            "Models",
             f"{map_stem} Models",
             f"{map_stem} Navmesh Models",
         )

@@ -1122,6 +1122,7 @@ __all__ = [
     "ShaderNodeBsdfGlass",
     "ShaderNodeBsdfHair",
     "ShaderNodeBsdfHairPrincipled",
+    "ShaderNodeBsdfMetallic",
     "ShaderNodeBsdfPrincipled",
     "ShaderNodeBsdfRefraction",
     "ShaderNodeBsdfSheen",
@@ -2594,6 +2595,7 @@ from .shader_node_bsdf_diffuse import ShaderNodeBsdfDiffuse
 from .shader_node_bsdf_glass import ShaderNodeBsdfGlass
 from .shader_node_bsdf_hair import ShaderNodeBsdfHair
 from .shader_node_bsdf_hair_principled import ShaderNodeBsdfHairPrincipled
+from .shader_node_bsdf_metallic import ShaderNodeBsdfMetallic
 from .shader_node_bsdf_principled import ShaderNodeBsdfPrincipled
 from .shader_node_bsdf_refraction import ShaderNodeBsdfRefraction
 from .shader_node_bsdf_sheen import ShaderNodeBsdfSheen

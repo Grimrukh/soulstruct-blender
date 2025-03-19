@@ -13,6 +13,7 @@ import abc
 import typing as tp
 
 import bpy
+from io_soulstruct.utilities import remove_dupe_suffix
 
 from soulstruct.base.maps.msb.events import BaseMSBEvent
 
@@ -57,7 +58,9 @@ class BaseBlenderMSBEvent(BaseBlenderMSBEntry[EVENT_T, MSBEventProps, SUBTYPE_PR
 
     @classmethod
     def get_msb_subcollection(cls, msb_collection: bpy.types.Collection, msb_stem: str) -> bpy.types.Collection:
-        return get_or_create_collection(msb_collection, f"{msb_stem} Regions/Events")
+        return get_or_create_collection(
+            msb_collection, f"{msb_stem} Events", f"{msb_stem} {cls.MSB_ENTRY_SUBTYPE.get_nice_name()} Events"
+        )
 
     @classmethod
     def new(
@@ -66,13 +69,20 @@ class BaseBlenderMSBEvent(BaseBlenderMSBEntry[EVENT_T, MSBEventProps, SUBTYPE_PR
         data: bpy.types.Mesh | None,
         collection: bpy.types.Collection = None,
     ) -> SELF_T:
-        """MSB Event has its '<EventSubtype>' prepended as a tag (removed for export/ref finding)."""
-        event_name = f"<{cls.SOULSTRUCT_CLASS.__name__.removeprefix('MSB')}> {name}"
-        return super().new(event_name, data, collection)  # type: SELF_T
+        """MSB Event has ' <E>' appended as a tag (removed for export/ref finding). Note exactly one space in tag.
+
+        However, we have to be careful that this tag doesn't put the name length just over the limit, so if the created
+        object doesn't have the tag, we just set its name to the original one.
+        """
+        event_name = name + (" <E>" if not name.endswith(" <E>") else "")
+        bl_event = super().new(event_name, data, collection)  # type: SELF_T
+        if not remove_dupe_suffix(bl_event.name).endswith(" <E>"):
+            bl_event.name = name
+        return bl_event
 
     @property
     def game_name(self) -> str:
         """Any name is permitted for events, including Unicode (Japanese) characters, and they do not have to be
         unique in the MSB (though this makes Soulstruct EMEVD event scripting harder). We just remove any Blender
-        duplicate suffixes and the convenient '<SUBTYPE>' suffix added on import."""
+        duplicate suffixes and the convenient ' <E>' suffix added on import."""
         return get_event_game_name(self.name)

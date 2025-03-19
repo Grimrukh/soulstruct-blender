@@ -301,6 +301,7 @@ class ImportNVMHKTFromNVMHKTBND(BinderEntrySelectOperator):
             settings.get_import_map_file_path(f"{settings.map_stem}.nvmhktbnd")
         except FileNotFoundError:
             return False
+        return True
 
     @classmethod
     def get_binder(cls, context) -> Binder | None:
@@ -321,7 +322,7 @@ class ImportNVMHKTFromNVMHKTBND(BinderEntrySelectOperator):
         nvmhkt = entry.to_binary_file(NavmeshHKX)
 
         collection = get_or_create_collection(
-            context.scene.collection, f"{map_stem} Models", f"{map_stem} Navmesh Models"
+            context.scene.collection, "Models", f"{map_stem} Models", f"{map_stem} Navmesh Models"
         )
         importer = NVMHKTImporter(self, context, collection=collection)
 
@@ -429,7 +430,7 @@ class ImportAllNVMHKTsFromNVMHKTBND(ImportAllNVMHKTBase):
         small_tile_match = re.match(r"(m60|m61)_(\d\d)_(\d\d)_(\d)0", map_stem)
 
         collection = get_or_create_collection(
-            context.scene.collection, f"{map_stem} Models", f"{map_stem} Navmesh Models"
+            context.scene.collection, "Models", f"{map_stem} Models", f"{map_stem} Navmesh Models"
         )
 
         if small_tile_match:
@@ -627,7 +628,7 @@ class ImportAllOverworldNVMHKTsBase(ImportAllNVMHKTBase):
         model_count = 0
 
         collection = get_or_create_collection(
-            context.scene.collection, f"{self.AREA} Models", f"{self.AREA} Navmesh Models"
+            context.scene.collection, "Models", f"{self.AREA} Models", f"{self.AREA} Navmesh Models"
         )
 
         for nvmhktbnd_path in overworld_map_dir.rglob(f"{self.AREA}_??_??_00.nvmhktbnd.dcx"):

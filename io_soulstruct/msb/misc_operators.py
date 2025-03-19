@@ -419,6 +419,7 @@ class CreateMSBPart(LoggingOperator):
 
         part_collection = get_or_create_collection(
             context.scene.collection,
+            "MSBs",
             f"{map_stem} MSB",
             f"{map_stem} Parts",
             f"{map_stem} {part_subtype.get_nice_name()} Parts",
@@ -490,8 +491,9 @@ class CreateMSBRegion(LoggingOperator):
 
         region_collection = get_or_create_collection(
             context.scene.collection,
+            "MSBs",
             f"{settings.map_stem} MSB",
-            f"{settings.map_stem} Regions/Events",
+            f"{settings.map_stem} Regions",
         )
 
         region_mesh = bpy.data.meshes.new(f"{settings.map_stem}_Region")
@@ -564,10 +566,12 @@ class CreateMSBEnvironmentEvent(LoggingOperator):
                 self.error(f"Region Point '{env_region_name}' already exists. Skipping MSB Collision {obj.name}.")
                 continue
 
-            regions_events_collection = get_or_create_collection(
+            # All Regions go in the same Collection for now. TODO: Elden Ring will use subcollections.
+            regions_collection = get_or_create_collection(
                 context.scene.collection,
+                "MSBs",
                 f"{msb_stem} MSB",
-                f"{msb_stem} Regions/Events",
+                f"{msb_stem} Regions",
             )
 
             bl_region = BlenderMSBRegion.new_from_shape_type(
@@ -575,7 +579,7 @@ class CreateMSBEnvironmentEvent(LoggingOperator):
                 context,
                 RegionShapeType.Point,
                 name=env_region_name,
-                collection=regions_events_collection,
+                collection=regions_collection,
             )
             bl_event = BlenderMSBEnvironmentEvent.new(
                 env_event_name,
@@ -1043,6 +1047,7 @@ class CreateConnectCollision(LoggingOperator):
 
             collection = get_or_create_collection(
                 context.scene.collection,
+                "MSBs",
                 f"{map_stem} MSB",
                 f"{map_stem} Parts",
                 f"{map_stem} Connect Collision Parts"

@@ -199,7 +199,7 @@ class SoulstructAnimation:
         if not animation_hkx.animation_container.is_interleaved:
             p = time.perf_counter()
             interleaved_animation_hkx = animation_hkx.to_interleaved_hkx()
-            operator.debug(f"Converted animation to interleaved in {time.perf_counter() - p:.4f} seconds.")
+            operator.debug(f"Converted animation to interleaved in {time.perf_counter() - p:.3f} s.")
         else:
             # Already interleaved (fine for import).
             interleaved_animation_hkx = animation_hkx
@@ -208,7 +208,7 @@ class SoulstructAnimation:
         p = time.perf_counter()
         arma_frames = get_armature_frames(interleaved_animation_hkx, skeleton_hkx)
         root_motion = get_root_motion(interleaved_animation_hkx)
-        operator.debug(f"Constructed armature animation frames in {time.perf_counter() - p:.4f} seconds.")
+        operator.debug(f"Constructed armature animation frames in {time.perf_counter() - p:.3f} s.")
 
         for bone_name in track_bone_names:
             if bone_name not in bl_bone_names:
@@ -233,7 +233,7 @@ class SoulstructAnimation:
         except Exception as ex:
             traceback.print_exc()
             raise AnimationImportError(f"Cannot import HKX animation: {name}. Error: {ex}")
-        operator.debug(f"Created animation Blender action in {time.perf_counter() - p:.3f} seconds.")
+        operator.debug(f"Created animation Blender action in {time.perf_counter() - p:.3f} s.")
 
         return bl_animation
 

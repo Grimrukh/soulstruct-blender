@@ -524,10 +524,16 @@ def _write_data_to_edit_bones(
         game_translate, game_rotmat, game_scale = game_arma_transform
 
         if not is_uniform(game_scale, rel_tol=0.001):
-            operator.warning(f"Bone {game_bone.name} has non-uniform scale: {game_scale}. Left as identity.")
+            operator.warning(
+                f"Bone {game_bone.name} in FLVER {flver.path_stem} has non-uniform scale: {game_scale}. "
+                f"This is unsupported in Blender. Left as identity."
+            )
             bone_length = base_edit_bone_length
         elif any(c < 0.0 for c in game_scale):
-            operator.warning(f"Bone {game_bone.name} has negative scale: {game_scale}. Left as identity.")
+            operator.warning(
+                f"Bone {game_bone.name} in FLVER {flver.path_stem} has negative scale: {game_scale}. "
+                f"This is unsupported in Blender. Left as identity."
+            )
             bone_length = base_edit_bone_length
         elif math.isclose(game_scale.x, 1.0, rel_tol=0.001):
             # Bone scale is ALMOST uniform and 1. Correct it.
