@@ -589,11 +589,11 @@ class NodeTreeBuilder:
         to be the Z component. It also expects the color range [0, 1] to actually represent the normal range [-1, 1],
         i.e. uses a full spherical mapping.
 
-        FromSoft game maps use a hemispherical mapping (all normals are convex), omit Z (normalized vectors), variably
-        use G (earlier games) vs. B (later games) for the Y component, and invert their Y component, all of which we
-        handle here.
+        Most FromSoft games use standard DX format RGB normal maps. We only need to flip the G channel to convert to
+        Blender's expected OpenGL format. DSR uses a hemispherical RG normal map with B implicit from normalization
+        (given convexity). We need to invert the G channel and compute the B channel to convert to the OpenGL format.
 
-        NOTE: Currently assuming that DeS and DS1:PTDE use red/blue maps, and all other games use red/green maps.
+        TODO: From memory, Elden Ring normal map B channel is actually Shininess?
         """
         y = image_tex_node.location[1]
         color_output = image_tex_node.outputs["Color"]
@@ -601,7 +601,7 @@ class NodeTreeBuilder:
         settings = self.context.scene.soulstruct_settings
 
         group_node = self.tree.nodes.new('ShaderNodeGroup')
-        group_key = "Process RB Normal" if settings.is_game(DEMONS_SOULS, DARK_SOULS_PTDE) else "Process RG Normal"
+        group_key = "Process RG Normal" if settings.is_game(DARK_SOULS_DSR) else "Process DX Normal"
         group_node.node_tree = bpy.data.node_groups[group_key]
         group_node.name = group_node.label = "Process Normals"
 
@@ -730,14 +730,16 @@ def create_node_groups():
         _build_specular_processing_node_group(group, is_metallic=True)
 
     if "Process RG Normal" not in bpy.data.node_groups:
+        # For DSR and possibly later games.
         group = bpy.data.node_groups.new("Process RG Normal", 'ShaderNodeTree')
         group.use_fake_user = True
-        _build_normal_processing_node_group_tree(group, uses_green=True)
+        _build_rg_normal_processing_node_group_tree(group)
 
-    if "Process RB Normal" not in bpy.data.node_groups:
-        group = bpy.data.node_groups.new("Process RB Normal", 'ShaderNodeTree')
+    if "Process DX Normal" not in bpy.data.node_groups:
+        # For DeS and DS1:PTDE.
+        group = bpy.data.node_groups.new("Process DX Normal", 'ShaderNodeTree')
         group.use_fake_user = True
-        _build_normal_processing_node_group_tree(group, uses_green=False)
+        _build_dx_normal_processing_node_group_tree(group)
 
 
 def _build_specular_processing_node_group(tree: bpy.types.NodeTree, is_metallic: bool):
@@ -783,7 +785,45 @@ def _build_specular_processing_node_group(tree: bpy.types.NodeTree, is_metallic:
     tree.links.new(sep_rgb.outputs["B"], group_out.inputs["Transmission Weight"])  # not flipped
 
 
-def _build_normal_processing_node_group_tree(tree: bpy.types.NodeTree, uses_green: bool):
+def _build_dx_normal_processing_node_group_tree(tree: bpy.types.NodeTree):
+    """Build node group that just flips green channel."""
+
+    # Create input/output sockets for group.
+    tree.interface.new_socket(
+        name="Color In", description="Normal Map Texture Color Input", in_out="INPUT", socket_type="NodeSocketColor"
+    )
+    tree.interface.new_socket(
+        name="Normal Out", description="Normal Map Color Output", in_out="OUTPUT", socket_type="NodeSocketColor"
+    )
+
+    # Create nodes for group input and output.
+    group_in = tree.nodes.new('NodeGroupInput')
+    group_in.location = (-400, 0)
+
+    group_out = tree.nodes.new('NodeGroupOutput')
+    group_out.location = (400, 0)
+
+    # Separate the incoming color into R, G, B.
+    sep_rgb = tree.nodes.new('ShaderNodeSeparateRGB')
+    sep_rgb.location = (-200, 0)
+    tree.links.new(group_in.outputs["Color In"], sep_rgb.inputs[0])
+
+    # Flip the G channel:
+    flip_g = _new_math_node(tree, "SUBTRACT", (0, 0), 1.0, sep_rgb.outputs["G"])
+    flip_g.label = "Flip"
+
+    # Recombine R, flipped G, and B channels.
+    combine_rgb = tree.nodes.new('ShaderNodeCombineRGB')
+    combine_rgb.location = (200, 0)
+    tree.links.new(sep_rgb.outputs["R"], combine_rgb.inputs['R'])
+    tree.links.new(flip_g.outputs[0], combine_rgb.inputs['G'])  # flipped
+    tree.links.new(sep_rgb.outputs["B"], combine_rgb.inputs['B'])
+
+    # Output the resulting normal.
+    tree.links.new(combine_rgb.outputs[0], group_out.inputs["Normal Out"])
+
+
+def _build_rg_normal_processing_node_group_tree(tree: bpy.types.NodeTree):
 
     # Create input/output sockets for group.
     tree.interface.new_socket(
@@ -794,8 +834,8 @@ def _build_normal_processing_node_group_tree(tree: bpy.types.NodeTree, uses_gree
     )
 
     r_height = 200
-    flipped_height = 0 if uses_green else -200
-    computed_height = -200 if uses_green else 0
+    g_height = 0
+    b_height = -200
 
     # Create nodes for group input and output.
     group_in = tree.nodes.new('NodeGroupInput')
@@ -815,29 +855,29 @@ def _build_normal_processing_node_group_tree(tree: bpy.types.NodeTree, uses_gree
     sub_r = _new_math_node(tree, "SUBTRACT", (200, r_height), input_0=mult_r.outputs[0], input_1=1.0)
     # sub_r output is X in [-1,1].
 
-    # Process the Green/Blue channel:
+    # Process the Green channel:
     #    First flip: G' = 1 - G
-    flip_g_or_b = _new_math_node(
-        tree, "SUBTRACT", (0, flipped_height), 1.0, sep_rgb.outputs["G" if uses_green else "B"]
+    flip_g = _new_math_node(
+        tree, "SUBTRACT", (0, g_height), 1.0, sep_rgb.outputs["G"]
     )
-    flip_g_or_b.label = "Flip"
+    flip_g.label = "Flip"
     #    Then convert to [-1,1]: Y = 2*G' - 1
-    mult_g_or_b = _new_math_node(tree, "MULTIPLY", (200, flipped_height), flip_g_or_b.outputs[0], 2.0)
-    sub_g_or_b = _new_math_node(tree, "SUBTRACT", (400, flipped_height), mult_g_or_b.outputs[0], 1.0)
+    mult_g = _new_math_node(tree, "MULTIPLY", (200, g_height), flip_g.outputs[0], 2.0)
+    sub_g = _new_math_node(tree, "SUBTRACT", (400, g_height), mult_g.outputs[0], 1.0)
 
     # Compute X^2 and Y^2.
     x_squared = _new_math_node(tree, "POWER", (600, r_height), sub_r.outputs[0], 2.0)
-    y_squared = _new_math_node(tree, "POWER", (600, flipped_height), sub_g_or_b.outputs[0], 2.0)
+    y_squared = _new_math_node(tree, "POWER", (600, g_height), sub_g.outputs[0], 2.0)
 
     # Sum X^2 and Y^2.
-    sum_of_squares = _new_math_node(tree, "ADD", (800, computed_height), x_squared.outputs[0], y_squared.outputs[0])
+    sum_of_squares = _new_math_node(tree, "ADD", (800, b_height), x_squared.outputs[0], y_squared.outputs[0])
 
     # Compute Z^2 = 1 - (X^2 + Y^2).
-    z_squared = _new_math_node(tree, "SUBTRACT", (1000, computed_height), 1.0, sum_of_squares.outputs[0])
+    z_squared = _new_math_node(tree, "SUBTRACT", (1000, b_height), 1.0, sum_of_squares.outputs[0])
 
     # Clamp to ensure non-negative, then compute Z = sqrt(1 - X^2 - Y^2).
-    z_squared_clamped = _new_math_node(tree, "MAXIMUM", (1200, computed_height), z_squared.outputs[0], 0.0)
-    z = _new_math_node(tree, "SQRT", (1400, computed_height), z_squared_clamped.outputs[0])
+    z_squared_clamped = _new_math_node(tree, "MAXIMUM", (1200, b_height), z_squared.outputs[0], 0.0)
+    z = _new_math_node(tree, "SQRT", (1400, b_height), z_squared_clamped.outputs[0])
     # `z` output is Z in [0,1] (since our input is hemispherical, Z is always positive).
 
     # Remap computed components back to [0,1] for Blender's Normal Map node:
@@ -845,21 +885,17 @@ def _build_normal_processing_node_group_tree(tree: bpy.types.NodeTree, uses_gree
 
     add_x = _new_math_node(tree, "ADD", (1600, 200), sub_r.outputs[0], 1.0)
     output_r = _new_math_node(tree, "MULTIPLY", (1800, 200), add_x.outputs[0], 0.5)
-    add_y = _new_math_node(tree, "ADD", (1600, 0), sub_g_or_b.outputs[0], 1.0)
-    output_g_or_b = _new_math_node(tree, "MULTIPLY", (1800, 0), add_y.outputs[0], 0.5)
+    add_y = _new_math_node(tree, "ADD", (1600, 0), sub_g.outputs[0], 1.0)
+    output_g = _new_math_node(tree, "MULTIPLY", (1800, 0), add_y.outputs[0], 0.5)
     add_z = _new_math_node(tree, "ADD", (1600, -200), z.outputs[0], 1.0)
-    output_b_or_g = _new_math_node(tree, "MULTIPLY", (1800, -200), add_z.outputs[0], 0.5)
+    output_b = _new_math_node(tree, "MULTIPLY", (1800, -200), add_z.outputs[0], 0.5)
 
     # Recombine the remapped channels into one vector.
     combine_rgb = tree.nodes.new('ShaderNodeCombineRGB')
     combine_rgb.location = (2000, 0)
     tree.links.new(output_r.outputs[0], combine_rgb.inputs['R'])
-    if uses_green:
-        tree.links.new(output_g_or_b.outputs[0], combine_rgb.inputs['G'])  # flipped
-        tree.links.new(output_b_or_g.outputs[0], combine_rgb.inputs['B'])  # computed
-    else:
-        tree.links.new(output_b_or_g.outputs[0], combine_rgb.inputs['G'])  # computed
-        tree.links.new(output_g_or_b.outputs[0], combine_rgb.inputs['B'])  # flipped
+    tree.links.new(output_g.outputs[0], combine_rgb.inputs['G'])  # flipped
+    tree.links.new(output_b.outputs[0], combine_rgb.inputs['B'])  # computed
 
     # Output the resulting normal.
     tree.links.new(combine_rgb.outputs[0], group_out.inputs["Normal Out"])
