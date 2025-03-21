@@ -2,26 +2,28 @@ from __future__ import annotations
 
 __all__ = [
     "MCGPropsPanel",
-    "OBJECT_UL_nav_triangle",
+    "NavTriangleUIList",
     "MCGNodePropsPanel",
     "MCGEdgePropsPanel",
-    "MCGImportExportPanel",
-    "MCGDrawPanel",
-    "MCGToolsPanel",
+    "NavGraphImportExportPanel",
+    "NavGraphDrawPanel",
+    "NavGraphToolsPanel",
     "MCGGeneratorPanel",
 ]
 
 import typing as tp
 
 import bpy
-from io_soulstruct.general.gui import map_stem_box
+
+from io_soulstruct.bpy_base.panel import SoulstructPanel
 from io_soulstruct.types import SoulstructType
+
 from .import_operators import *
 from .export_operators import *
 from .misc_operators import *
 
 
-class MCGPropsPanel(bpy.types.Panel):
+class MCGPropsPanel(SoulstructPanel):
     """Draw a Panel in the Object properties window exposing the appropriate MCG fields for active object."""
     bl_label = "MCG Properties"
     bl_idname = "OBJECT_PT_mcg"
@@ -42,9 +44,11 @@ class MCGPropsPanel(bpy.types.Panel):
             self.layout.prop(props, prop)
 
 
-class OBJECT_UL_nav_triangle(bpy.types.UIList):
+class NavTriangleUIList(bpy.types.UIList):
     """Draws a list of items."""
     PROP_NAME: tp.ClassVar[str] = "index"
+
+    bl_idname = "OBJECT_UL_nav_triangle"
 
     def draw_item(
         self,
@@ -68,7 +72,7 @@ class OBJECT_UL_nav_triangle(bpy.types.UIList):
             layout.prop(item, self.PROP_NAME, text="", emboss=False)
 
 
-class MCGNodePropsPanel(bpy.types.Panel):
+class MCGNodePropsPanel(SoulstructPanel):
     """Draw a Panel in the Object properties window exposing the appropriate MCG_NODE fields for active object."""
     bl_label = "MCG Node Properties"
     bl_idname = "OBJECT_PT_mcg_node"
@@ -94,7 +98,7 @@ class MCGNodePropsPanel(bpy.types.Panel):
         layout.label(text="Navmesh A Triangles:")
         row = layout.row()
         row.template_list(
-            listtype_name=OBJECT_UL_nav_triangle.__name__,
+            listtype_name=NavTriangleUIList.bl_idname,
             list_id="",
             dataptr=bl_node.MCG_NODE,
             propname="navmesh_a_triangles",
@@ -108,7 +112,7 @@ class MCGNodePropsPanel(bpy.types.Panel):
         layout.label(text="Navmesh B Triangles:")
         row = layout.row()
         row.template_list(
-            listtype_name=OBJECT_UL_nav_triangle.__name__,
+            listtype_name=NavTriangleUIList.bl_idname,
             list_id="",
             dataptr=bl_node.MCG_NODE,
             propname="navmesh_b_triangles",
@@ -120,7 +124,7 @@ class MCGNodePropsPanel(bpy.types.Panel):
         col.operator(RemoveMCGNodeNavmeshBTriangleIndex.bl_idname, icon='REMOVE', text="")
 
 
-class MCGEdgePropsPanel(bpy.types.Panel):
+class MCGEdgePropsPanel(SoulstructPanel):
     """Draw a Panel in the Object properties window exposing the appropriate MCG_EDGE fields for active object."""
     bl_label = "MCG Edge Properties"
     bl_idname = "OBJECT_PT_mcg_edge"
@@ -141,7 +145,7 @@ class MCGEdgePropsPanel(bpy.types.Panel):
             self.layout.prop(props, prop)
 
 
-class MCGImportExportPanel(bpy.types.Panel):
+class NavGraphImportExportPanel(SoulstructPanel):
     bl_label = "MCG Import/Export"
     bl_idname = "MCG_PT_mcg_import_export"
     bl_space_type = "VIEW_3D"
@@ -153,37 +157,37 @@ class MCGImportExportPanel(bpy.types.Panel):
     def draw(self, context):
         settings = context.scene.soulstruct_settings
 
-        if not settings.is_game("DARK_SOULS_DSR"):
-            self.layout.label(text="NavGraph (MCG) supported for DSR only.")
+        if not settings.game_config.supports_mcg:
+            self.layout.label(text="Game does not use NavGraph (MCG).")
             return
 
         layout = self.layout
-        map_stem_box(layout, settings)
+
         header, panel = layout.panel("Import", default_closed=False)
         header.label(text="Import")
         if panel:
+            self.draw_active_map(context, layout)
             if settings.map_stem:
-                panel.label(text=f"From {settings.map_stem}:")
-                panel.operator(ImportSelectedMapMCG.bl_idname)
-                panel.operator(ImportSelectedMapMCP.bl_idname)
+                panel.operator(ImportMapMCG.bl_idname)
+                panel.operator(ImportMapMCP.bl_idname)
             else:
                 panel.label(text="No game map selected.")
-            panel.operator(ImportMCG.bl_idname, text="Import Any MCG")
-            panel.operator(ImportMCP.bl_idname, text="Import Any MCP")
+            panel.operator(ImportAnyMCG.bl_idname)
+            panel.operator(ImportAnyMCP.bl_idname)
 
         header, panel = layout.panel("Export", default_closed=False)
         header.label(text="Export")
         if panel:
-            panel.label(text="Export to Game/Project:")
-            panel.prop(
-                context.window_manager.operator_properties_last(ExportMCGMCPToMap.bl_idname), "detect_map_from_parent"
-            )
-            panel.operator(ExportMCGMCPToMap.bl_idname)
-            panel.label(text="Generic Export:")
-            panel.operator(ExportMCG.bl_idname, text="Export MCG + MCP")
+            panel.prop(settings, "auto_detect_export_map")
+            if settings.auto_detect_export_map:
+                self.draw_detected_map(context, layout, use_latest_version=True)
+            else:
+                self.draw_active_map(context, layout)
+            panel.operator(ExportMapMCGMCP.bl_idname)
+            panel.operator(ExportAnyMCGMCP.bl_idname)
 
 
-class MCGDrawPanel(bpy.types.Panel):
+class NavGraphDrawPanel(SoulstructPanel):
     bl_label = "MCG Drawing"
     bl_idname = "MCG_PT_mcg_draw"
     bl_space_type = "VIEW_3D"
@@ -191,7 +195,6 @@ class MCGDrawPanel(bpy.types.Panel):
     bl_category = "NavGraph (MCG)"
     bl_options = {"DEFAULT_CLOSED"}
 
-    # noinspection PyUnusedLocal
     def draw(self, context):
         """Still shown if game is not DSR."""
         layout = self.layout
@@ -211,7 +214,7 @@ class MCGDrawPanel(bpy.types.Panel):
         header, panel = layout.panel("Detailed Settings", default_closed=False)
         header.label(text="Detailed Settings")
         if panel:
-            for prop_name in mcg_draw_settings.__annotations__:
+            for prop_name in mcg_draw_settings.get_all_prop_names():
                 if prop_name in drawn:
                     continue
                 layout.prop(mcg_draw_settings, prop_name)
@@ -228,7 +231,7 @@ class MCGDrawPanel(bpy.types.Panel):
             column.prop(mcg_draw_settings, prop_name, text="")
 
 
-class MCGToolsPanel(bpy.types.Panel):
+class NavGraphToolsPanel(SoulstructPanel):
     bl_label = "MCG Tools"
     bl_idname = "MCG_PT_navmesh_tools"
     bl_space_type = "VIEW_3D"
@@ -245,7 +248,7 @@ class MCGToolsPanel(bpy.types.Panel):
         layout.operator(RefreshMCGNames.bl_idname)
 
 
-class MCGGeneratorPanel(bpy.types.Panel):
+class MCGGeneratorPanel(SoulstructPanel):
     bl_label = "MCG Generator"
     bl_idname = "MCG_PT_navmesh_generator"
     bl_space_type = "VIEW_3D"

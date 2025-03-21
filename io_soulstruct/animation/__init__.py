@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 __all__ = [
-    "ImportHKXAnimation",
+    "ImportAnyHKXAnimation",
     "ImportHKXAnimationWithBinderChoice",
     "ImportCharacterHKXAnimation",
     "ImportObjectHKXAnimation",
     "ImportAssetHKXAnimation",
 
-    "ExportLooseHKXAnimation",
-    "ExportHKXAnimationIntoBinder",
+    "ExportAnyHKXAnimation",
+    "ExportHKXAnimationIntoAnyBinder",
     "ExportCharacterHKXAnimation",
     "ExportObjectHKXAnimation",
 

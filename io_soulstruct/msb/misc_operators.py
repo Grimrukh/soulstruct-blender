@@ -573,6 +573,13 @@ class CreateMSBEnvironmentEvent(LoggingOperator):
                 f"{msb_stem} MSB",
                 f"{msb_stem} Regions",
             )
+            env_event_collection = get_or_create_collection(
+                context.scene.collection,
+                "MSBs",
+                f"{msb_stem} MSB",
+                f"{msb_stem} Events",
+                f"{msb_stem} Environment Events",
+            )
 
             bl_region = BlenderMSBRegion.new_from_shape_type(
                 self,
@@ -584,7 +591,7 @@ class CreateMSBEnvironmentEvent(LoggingOperator):
             bl_event = BlenderMSBEnvironmentEvent.new(
                 env_event_name,
                 data=None,
-                collection=regions_events_collection,
+                collection=env_event_collection,
             )
             bl_event.obj.parent = bl_region.obj
             bl_event.entity_id = self.cubemap_index

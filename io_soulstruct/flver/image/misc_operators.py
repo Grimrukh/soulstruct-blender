@@ -7,7 +7,7 @@ __all__ = [
 
 import bpy
 
-from io_soulstruct.utilities import LoggingOperator
+from io_soulstruct.utilities import LoggingOperator, ObjectType, is_path_and_file
 
 
 class FindMissingTexturesInImageCache(LoggingOperator):
@@ -24,23 +24,26 @@ class FindMissingTexturesInImageCache(LoggingOperator):
 
     @classmethod
     def poll(cls, context) -> bool:
-        return context.selected_objects and all(obj.type == "MESH" for obj in context.selected_objects)
+        mat_settings = context.scene.flver_material_settings
+        if not mat_settings.get_game_image_cache_directory(context):
+            return False
+        return context.selected_objects and all(obj.type == ObjectType.MESH for obj in context.selected_objects)
 
     def execute(self, context):
 
-        settings = self.settings(context)
-
-        checked_image_names = set()  # to avoid looking for the same image twice
-        image_suffix = settings.bl_image_format.get_suffix()
+        mat_settings = context.scene.flver_material_settings
+        checked_image_stems = set()  # to avoid looking for the same image twice
 
         for obj in context.selected_objects:
             obj: bpy.types.MeshObject
+
             for material in obj.data.materials:
                 # noinspection PyUnresolvedReferences,PyTypeChecker
                 texture_nodes = [
                     node for node in material.node_tree.nodes
                     if node.type == "TEX_IMAGE" and node.image is not None
                 ]  # type: list[bpy.types.ShaderNodeTexImage]
+
                 for node in texture_nodes:
                     image = node.image  # type: bpy.types.Image
                     if len(image.pixels) != 4:
@@ -48,24 +51,21 @@ class FindMissingTexturesInImageCache(LoggingOperator):
                     if image.pixels[:] != [1.0, 0.0, 1.0, 0.0]:
                         continue  # not magenta
 
-                    # This is a dummy texture. Try to find it in the image cache.
-                    image_name = image.name
-                    if image_name.endswith(".dds"):
-                        image_name = image_name.removesuffix(".dds") + image_suffix
-                    elif not image_name.endswith(image_suffix):
-                        image_name += image_suffix
-                    if image_name in checked_image_names:
+                    # This is currently a dummy 1x1 texture. Try to find the real texture in the image cache.
+                    image_stem = image.name.removesuffix(".dds")
+                    if image_stem in checked_image_stems:
                         continue
-                    checked_image_names.add(image_name)
-                    image_path = settings.image_cache_directory / image_name
-                    if image_path.is_file():
+                    checked_image_stems.add(image_stem)
+
+                    cached_image_path = mat_settings.get_cached_image_path(context, image_stem)
+                    if is_path_and_file(cached_image_path):
                         # NOTE: We can't update the DDS Texture settings of the image.
-                        image.filepath = str(image_path)
-                        image.file_format = settings.bl_image_format
-                        image.source = "FILE"
+                        image.filepath = str(cached_image_path)
+                        image.file_format = mat_settings.bl_image_cache_format
+                        image.source = "FILE"  # not packed
                         image.reload()
-                        self.info(f"Found and linked texture file '{image_name}' in image cache.")
+                        self.info(f"Found and linked texture file '{cached_image_path.name}' in image cache.")
                     else:
-                        self.warning(f"Could not find texture file '{image_name}' in image cache.")
+                        self.warning(f"Could not find texture file '{cached_image_path.name}' in image cache.")
 
         return {"FINISHED"}

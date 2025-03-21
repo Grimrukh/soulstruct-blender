@@ -8,7 +8,7 @@ from soulstruct.demonssouls.maps.models import MSBCharacterModel
 from soulstruct.demonssouls.maps.parts import MSBPlayerStart
 
 from io_soulstruct.msb.types.adapters import *
-from io_soulstruct.msb.properties import BlenderMSBPartSubtype, MSBPartProps, MSBPlayerStartProps
+from io_soulstruct.msb.properties import BlenderMSBPartSubtype, MSBPlayerStartProps
 from io_soulstruct.types import SoulstructType
 
 from .base import BaseBlenderMSBPart_DES

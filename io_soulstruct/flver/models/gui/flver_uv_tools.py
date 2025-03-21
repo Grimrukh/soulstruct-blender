@@ -6,10 +6,11 @@ __all__ = [
 
 import bpy
 
+from io_soulstruct.bpy_base.panel import SoulstructPanel
 from io_soulstruct.flver.models.operators.uv_operators import *
 
 
-class FLVERUVMapsPanel(bpy.types.Panel):
+class FLVERUVMapsPanel(SoulstructPanel):
     """Panel for Soulstruct FLVER UV map operators. Appears in 'IMAGE_EDITOR' space."""
     bl_label = "FLVER UV Maps"
     bl_idname = "SCENE_PT_uv_maps"

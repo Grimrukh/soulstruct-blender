@@ -701,6 +701,7 @@ class UILayout(bpy_struct):
 
     def label(
         self,
+        *,  # must use keywords
         text: str | typing.Any | None = "",
         text_ctxt: str | typing.Any | None = "",
         translate: bool | typing.Any | None = True,

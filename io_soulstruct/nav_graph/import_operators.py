@@ -9,10 +9,10 @@ This file format is only used in DeS and DS1 (PTDE/DSR).
 from __future__ import annotations
 
 __all__ = [
-    "ImportMCG",
-    "ImportSelectedMapMCG",
-    "ImportMCP",
-    "ImportSelectedMapMCP",
+    "ImportAnyMCG",
+    "ImportMapMCG",
+    "ImportAnyMCP",
+    "ImportMapMCP",
 ]
 
 import traceback
@@ -31,9 +31,9 @@ if tp.TYPE_CHECKING:
     from io_soulstruct.type_checking import *
 
 
-class ImportMCG(LoggingImportOperator):
+class ImportAnyMCG(LoggingImportOperator):
     bl_idname = "import_scene.mcg"
-    bl_label = "Import MCG"
+    bl_label = "Import Any MCG"
     bl_description = "Import an MCG navmesh node/edge graph file. Supports DCX-compressed files"
 
     filter_glob: bpy.props.StringProperty(
@@ -102,9 +102,9 @@ class ImportMCG(LoggingImportOperator):
         return {"FINISHED"}
 
 
-class ImportSelectedMapMCG(LoggingOperator):
-    bl_idname = "import_scene.quick_mcg"
-    bl_label = "Import MCG"
+class ImportMapMCG(LoggingOperator):
+    bl_idname = "import_scene.map_mcg"
+    bl_label = "Import Map MCG"
     bl_description = "Import MCG navmesh node/edge graph file from selected game map"
 
     # MSB always auto-found.
@@ -165,9 +165,9 @@ class ImportSelectedMapMCG(LoggingOperator):
         return {"FINISHED"}
 
 
-class ImportMCP(LoggingImportOperator):
+class ImportAnyMCP(LoggingImportOperator):
     bl_idname = "import_scene.mcp"
-    bl_label = "Import MCP"
+    bl_label = "Import Any MCP"
     bl_description = "Import an MCP file containing MSB navmesh AABBs and connections. Supports DCX-compressed files"
 
     filter_glob: bpy.props.StringProperty(
@@ -197,9 +197,9 @@ class ImportMCP(LoggingImportOperator):
         return {"FINISHED"}
 
 
-class ImportSelectedMapMCP(LoggingOperator):
-    bl_idname = "import_scene.selected_map_mcp"
-    bl_label = "Import MCP"
+class ImportMapMCP(LoggingOperator):
+    bl_idname = "import_scene.map_mcp"
+    bl_label = "Import Map MCP"
     bl_description = "Import MCP file containing MSB navmesh AABBs and connections from selected game map"
 
     def execute(self, context):

@@ -4,7 +4,7 @@ __all__ = [
     "NVMNavmeshImportPanel",
     "NVMNavmeshExportPanel",
     "NVMNavmeshToolsPanel",
-    "OBJECT_UL_nvm_event_entity_triangle",
+    "NVMEventEntityTriangleUIList",
     "NVMEventEntityPanel",
 ]
 
@@ -16,8 +16,8 @@ import bpy
 from soulstruct.base.events.enums import NavmeshFlag
 from soulstruct.games import DEMONS_SOULS, DARK_SOULS_PTDE, DARK_SOULS_DSR
 
+from io_soulstruct.bpy_base.panel import SoulstructPanel
 from io_soulstruct.exceptions import SoulstructTypeError
-from io_soulstruct.general.gui import map_stem_box
 from io_soulstruct.misc.misc_mesh import ApplyLocalMatrixToMesh
 from io_soulstruct.types import *
 
@@ -27,7 +27,7 @@ from .misc_operators import *
 from .types import BlenderNVM
 
 
-class NVMNavmeshImportPanel(bpy.types.Panel):
+class NVMNavmeshImportPanel(SoulstructPanel):
     bl_label = "NVM Navmesh Import"
     bl_idname = "NVM_PT_nvm_navmesh_import"
     bl_space_type = "VIEW_3D"
@@ -43,16 +43,12 @@ class NVMNavmeshImportPanel(bpy.types.Panel):
             return
 
         layout = self.layout
-        map_stem_box(layout, settings)
-        if settings.map_stem:
-            layout.label(text=f"From {settings.map_stem}:")
-            layout.operator(ImportSelectedMapNVM.bl_idname)
-        else:
-            layout.label(text="No game map selected.")
-        layout.operator(ImportNVM.bl_idname, text="Import Any NVM")
+        self.draw_active_map(context, layout)
+        layout.operator(ImportMapNVM.bl_idname)
+        layout.operator(ImportAnyNVM.bl_idname, text="Import Any NVM")
 
 
-class NVMNavmeshExportPanel(bpy.types.Panel):
+class NVMNavmeshExportPanel(SoulstructPanel):
     bl_label = "NVM Navmesh Export"
     bl_idname = "NVM_PT_nvm_navmesh_export"
     bl_space_type = "VIEW_3D"
@@ -60,37 +56,31 @@ class NVMNavmeshExportPanel(bpy.types.Panel):
     bl_category = "Navmesh"
     bl_options = {"DEFAULT_CLOSED"}
 
-    # noinspection PyUnusedLocal
     def draw(self, context):
         settings = context.scene.soulstruct_settings
-        if not settings.is_game(DEMONS_SOULS, DARK_SOULS_PTDE, DARK_SOULS_DSR):
+        if not settings.game_config.nvmbnd_class:
             self.layout.label(text="Game does not use NVM.")
             return
 
         try:
             BlenderNVM.from_selected_objects(context)
         except SoulstructTypeError:
-            self.layout.label(text="Select one or more navmesh (NVM) models.")
+            self.layout.label(text="Select some navmesh (NVM) models.")
             return
 
         layout = self.layout
-        map_stem_box(layout, settings)
-
-        layout.prop(context.scene.soulstruct_settings, "detect_map_from_collection")
-        map_stem = settings.get_active_object_detected_map(context)
-        if not map_stem:
-            layout.label(text="To Map: <NO MAP>")
+        layout.prop(settings, "auto_detect_export_map")
+        if settings.auto_detect_export_map:
+            self.draw_detected_map(context, layout, use_latest_version=True)
         else:
-            map_stem = settings.get_latest_map_stem_version(map_stem)
-            layout.label(text=f"To Map: {map_stem}")
-        layout.operator(ExportNVMIntoSelectedMap.bl_idname)
+            self.draw_active_map(context, layout)
 
-        layout.label(text="Generic Export:")
-        layout.operator(ExportLooseNVM.bl_idname)
-        layout.operator(ExportNVMIntoBinder.bl_idname)
+        self.maybe_draw_export_operator(context, ExportMapNVM.bl_idname, layout)
+        layout.operator(ExportAnyNVM.bl_idname)
+        layout.operator(ExportNVMIntoAnyBinder.bl_idname)
 
 
-class NVMNavmeshToolsPanel(bpy.types.Panel):
+class NVMNavmeshToolsPanel(SoulstructPanel):
     bl_label = "NVM Navmesh Tools"
     bl_idname = "NVM_PT_nvm_navmesh_tools"
     bl_space_type = "VIEW_3D"
@@ -178,9 +168,11 @@ def layout_selected_faces(bm: bmesh.types.BMesh, layout, context, selected_faces
         selected_faces_box.label(text="Select navmesh faces in Edit Mode")
 
 
-class OBJECT_UL_nvm_event_entity_triangle(bpy.types.UIList):
+class NVMEventEntityTriangleUIList(bpy.types.UIList):
     """Draws a list of items."""
     PROP_NAME: tp.ClassVar[str] = "index"
+
+    bl_idname = "OBJECT_UL_nvm_event_entity_triangle"
 
     def draw_item(
         self,
@@ -204,7 +196,7 @@ class OBJECT_UL_nvm_event_entity_triangle(bpy.types.UIList):
             layout.prop(item, self.PROP_NAME, text="", emboss=False)
 
 
-class NVMEventEntityPanel(bpy.types.Panel):
+class NVMEventEntityPanel(SoulstructPanel):
     """Draw a Panel in the Object properties window exposing NVM Event Entity properties for active object."""
     bl_label = "NVM Event Entity Settings"
     bl_idname = "OBJECT_PT_nvm_event_entity"
@@ -231,7 +223,7 @@ class NVMEventEntityPanel(bpy.types.Panel):
         layout.label(text="Triangles:")
         row = layout.row()
         row.template_list(
-            listtype_name=OBJECT_UL_nvm_event_entity_triangle.__name__,
+            listtype_name=NVMEventEntityTriangleUIList.bl_idname,
             list_id="",
             dataptr=props,
             propname="triangle_indices",

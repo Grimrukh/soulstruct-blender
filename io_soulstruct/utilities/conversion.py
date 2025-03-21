@@ -35,7 +35,7 @@ from soulstruct.utilities.maths import Vector3, Vector4, Matrix3
 from soulstruct_havok.utilities.maths import TRSTransform, Quaternion as GameQuaternion
 
 
-def GAME_TO_BL_VECTOR(game_vector: Vector3 | Vector4 | tp.Sequence[float, float, float]) -> Vector:
+def GAME_TO_BL_VECTOR(game_vector: Vector3 | Vector4 | tp.Sequence[float]) -> Vector:
     """Just swaps Y and Z axes. X increases to the right in both systems; the game is left-handed and Blender is
     right-handed.
 

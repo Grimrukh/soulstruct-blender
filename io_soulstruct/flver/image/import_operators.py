@@ -18,7 +18,7 @@ from soulstruct.base.textures.dds import DDS
 from soulstruct.base.textures.texconv import texconv
 from soulstruct.containers.tpf import TPF, batch_get_tpf_texture_png_data, batch_get_tpf_texture_tga_data, TPFPlatform
 
-from io_soulstruct.general.enums import BlenderImageFormat
+from .enums import BlenderImageFormat
 from .types import *
 
 
@@ -103,18 +103,20 @@ class ImportTextures(LoggingImportOperator):
 
         # TODO: Respect general image cache settings, including optional data pack.
         settings = context.scene.soulstruct_settings
+        mat_settings = context.scene.flver_material_settings
         deswizzle_platform = settings.game_config.swizzle_platform
+        image_cache_format = mat_settings.bl_image_cache_format
 
         texture_collection = DDSTextureCollection()
 
         for file_path in self.file_paths:
 
             if TPF_RE.match(file_path.name):
-                texture_collection |= self.import_tpf(file_path, settings.bl_image_format, deswizzle_platform)
+                texture_collection |= self.import_tpf(file_path, image_cache_format, deswizzle_platform)
             elif file_path.suffix == ".dds":
                 # Loose DDS file. (Must already be deswizzled and headerized.)
                 try:
-                    texture_collection |= self.import_dds(file_path, settings.bl_image_format)
+                    texture_collection |= self.import_dds(file_path, image_cache_format)
                 except Exception as ex:
                     self.warning(f"Could not import DDS file into Blender: {ex}")
             else:
@@ -299,7 +301,7 @@ class ImportTextures(LoggingImportOperator):
             self.warning(f"Could not convert texture DDS to {image_format.name}:\n    {stdout}")
             return {}
 
-    def import_native(self, image_path: Path) -> dict[str, bpy.types.Image]:
+    def import_native(self, image_path: Path) -> dict[str, DDSTexture]:
         """Import a non-DDS image file (assumes general Blender support).
 
         Does NOT pack image data into '.blend' file, unlike DDS/TPF imports.

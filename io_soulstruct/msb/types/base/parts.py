@@ -12,6 +12,7 @@ import bpy
 from soulstruct.base.maps.msb.parts import BaseMSBPart
 from soulstruct.base.maps.msb.utils import BitSet
 
+from io_soulstruct.exceptions import SoulstructTypeError
 from io_soulstruct.flver.models.types import BlenderFLVER
 from io_soulstruct.msb.properties import BlenderMSBPartSubtype, MSBPartArmatureMode, MSBPartProps
 from io_soulstruct.msb.types.adapters import *
@@ -186,7 +187,7 @@ class BaseBlenderMSBPart(
         bl_flver = BlenderFLVER(self.model)
         if not bl_flver.armature:
             return  # harmless case
-        copy_armature_pose(bl_flver.armature, self.armature)
+        copy_armature_pose(bl_flver.armature, self.armature, ignore_bone_names={"<PART_ROOT>"})
 
     def resolve_msb_entry_refs_and_map_stem(
         self,
@@ -206,3 +207,44 @@ class BaseBlenderMSBPart(
     def game_name(self) -> str:
         """Part names only use text before first space OR first period."""
         return get_part_game_name(self.name)
+
+    @classmethod
+    def from_armature_or_mesh(cls, obj: bpy.types.Object) -> tp.Self:
+        """MSB Parts can be parsed from a Mesh obj or its optional Armature parent."""
+        if not obj:
+            raise SoulstructTypeError("No Object given.")
+        _, mesh = cls.parse_msb_part_obj(obj)
+        return cls(mesh)
+
+    @classmethod
+    def is_obj_type(cls, obj: bpy.types.Object) -> bool:
+        """For MSB Part, Blender `obj` could be Mesh or Armature."""
+        try:
+            cls.from_armature_or_mesh(obj)
+        except SoulstructTypeError:
+            return False
+        return True
+
+    @staticmethod
+    def parse_msb_part_obj(obj: bpy.types.Object) -> tuple[bpy.types.ArmatureObject | None, bpy.types.MeshObject]:
+        """Parse a Blender object into an MSB Part Mesh and (optional) Armature object."""
+        if obj.type == "MESH" and obj.soulstruct_type == SoulstructType.MSB_PART:
+            mesh = obj
+            armature = mesh.parent if mesh.parent is not None and mesh.parent.type == "ARMATURE" else None
+        elif obj.type == "ARMATURE":
+            armature = obj
+            mesh_children = [child for child in armature.children if child.type == "MESH"]
+            if not mesh_children or mesh_children[0].soulstruct_type != SoulstructType.MSB_PART:
+                raise SoulstructTypeError(
+                    f"Armature '{armature.name}' has no MSB Part Mesh child. Please create it, even if empty, and set "
+                    f"its Soulstruct object type to MSB Part using the General Settings panel."
+                )
+            mesh = mesh_children[0]
+        else:
+            raise SoulstructTypeError(
+                f"Given object '{obj.name}' is not an MSB Part Mesh or Armature parent of such. "
+                f"Cannot parse as MSB Part."
+            )
+
+        # noinspection PyTypeChecker
+        return armature, mesh

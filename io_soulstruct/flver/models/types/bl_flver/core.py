@@ -124,7 +124,7 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
         return None
 
     @classmethod
-    def from_armature_or_mesh(cls, obj: bpy.types.Object) -> BlenderFLVER:
+    def from_armature_or_mesh(cls, obj: bpy.types.Object) -> tp.Self:
         """FLVER models can be parsed from a Mesh obj or its optional Armature parent."""
         if not obj:
             raise SoulstructTypeError("No Object given.")

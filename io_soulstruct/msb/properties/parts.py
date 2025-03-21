@@ -29,11 +29,13 @@ __all__ = [
 
 from enum import StrEnum
 
+import bpy
+
 from soulstruct.base.maps.msb.enums import BaseMSBPartSubtype
 from soulstruct.games import *
 
-import bpy
 from io_soulstruct.types import SoulstructType, ObjectType
+from io_soulstruct.bpy_base.property_group import SoulstructPropertyGroup
 from .events import BlenderMSBEventSubtype
 
 
@@ -143,7 +145,74 @@ def _is_model(_, obj: bpy.types.Object):
     )
 
 
-class MSBPartProps(bpy.types.PropertyGroup):
+class MSBPartProps(SoulstructPropertyGroup):
+    """Properties for MSB Parts."""
+
+    GAME_PROP_NAMES = {
+        DEMONS_SOULS: (
+            "entry_subtype",
+
+            "model",
+            "entity_id",
+            "draw_groups_0",
+            "draw_groups_1",
+            "draw_groups_2",
+            "draw_groups_3",
+            "display_groups_0",
+            "display_groups_1",
+            "display_groups_2",
+            "display_groups_3",
+            "ambient_light_id",
+            "fog_id",
+            "scattered_light_id",
+            "lens_flare_id",
+            "shadow_id",
+            "dof_id",
+            "tone_map_id",
+            "point_light_id",
+            "tone_correction_id",
+            "lod_id",
+            "unk_x0e",
+            "is_shadow_source",
+            "is_shadow_destination",
+            "is_shadow_only",
+            "draw_by_reflect_cam",
+            "draw_only_reflect_cam",
+            "use_depth_bias_float",
+            "disable_point_light_effect",
+        ),
+        DARK_SOULS_PTDE: (
+            "entry_subtype",
+
+            "model",
+            "entity_id",
+            "draw_groups_0",
+            "draw_groups_1",
+            "draw_groups_2",
+            "draw_groups_3",
+            "display_groups_0",
+            "display_groups_1",
+            "display_groups_2",
+            "display_groups_3",
+            "ambient_light_id",
+            "fog_id",
+            "scattered_light_id",
+            "lens_flare_id",
+            "shadow_id",
+            "dof_id",
+            "tone_map_id",
+            "point_light_id",
+            "tone_correction_id",
+            "lod_id",
+            "is_shadow_source",
+            "is_shadow_destination",
+            "is_shadow_only",
+            "draw_by_reflect_cam",
+            "draw_only_reflect_cam",
+            "use_depth_bias_float",
+            "disable_point_light_effect",
+        ),
+    }
 
     entry_subtype: bpy.props.EnumProperty(
         name="Part Subtype",
@@ -409,21 +478,34 @@ class MSBPartProps(bpy.types.PropertyGroup):
         "disable_point_light_effect",
     )
 
-    def get_game_props(self, game: Game) -> list[str]:
-        if game is DARK_SOULS_DSR or game is DARK_SOULS_PTDE:
-            return [
-                p for p in self.__annotations__
-                if p != "unk_x0e"
-            ]
-        return list(self.__annotations__)
 
-
-class MSBMapPieceProps(bpy.types.PropertyGroup):
+class MSBMapPieceProps(SoulstructPropertyGroup):
     """No additional properties."""
     pass
 
 
-class MSBObjectProps(bpy.types.PropertyGroup):
+class MSBObjectProps(SoulstructPropertyGroup):
+
+    GAME_PROP_NAMES = {
+        DEMONS_SOULS: (
+            "is_dummy",
+            "break_term",
+            "net_sync_type",
+            "default_animation",
+            "unk_x0e",
+            "unk_x10",
+        ),
+        DARK_SOULS_PTDE: (
+            "is_dummy",
+            "draw_parent",
+            "break_term",
+            "net_sync_type",
+            "default_animation",
+            "unk_x0e",
+            "unk_x10",
+        ),
+    }
+
     is_dummy: bpy.props.BoolProperty(
         name="Is Dummy",
         description="If enabled, this object will be written to MSB as a Dummy object, which is not loaded "
@@ -457,16 +539,16 @@ class MSBObjectProps(bpy.types.PropertyGroup):
         default=0,
     )
 
-    def get_game_props(self, game: Game) -> list[str]:
-        if game is DEMONS_SOULS:
-            return [
-                p for p in self.__annotations__
-                if p != "draw_parent"
-            ]
-        return list(self.__annotations__)
 
+class MSBAssetProps(SoulstructPropertyGroup):
 
-class MSBAssetProps(bpy.types.PropertyGroup):
+    GAME_PROP_NAMES = {
+        ELDEN_RING: (
+            "is_dummy",
+            "draw_parent",
+        ),
+    }
+
     is_dummy: bpy.props.BoolProperty(
         name="Is Dummy",
         description="If enabled, this Asset will be written to MSB as a Dummy Asset, which is not loaded "
@@ -481,7 +563,51 @@ class MSBAssetProps(bpy.types.PropertyGroup):
     # TODO: Elden Ring Asset properties.
 
 
-class MSBCharacterProps(bpy.types.PropertyGroup):
+class MSBCharacterProps(SoulstructPropertyGroup):
+
+    GAME_PROP_NAMES = {
+        DEMONS_SOULS: (
+            "character_id",
+            "talk_id",
+            "platoon_id",
+            "patrol_type",
+            "player_id",
+            "draw_parent",
+            "patrol_regions_0",
+            "patrol_regions_1",
+            "patrol_regions_2",
+            "patrol_regions_3",
+            "patrol_regions_4",
+            "patrol_regions_5",
+            "patrol_regions_6",
+            "patrol_regions_7",
+            "default_animation",
+            "damage_animation",
+            "unk_x00",
+            "unk_x04",
+            "unk_x08",
+        ),
+        DARK_SOULS_PTDE: (
+            "ai_id",
+            "character_id",
+            "talk_id",
+            "platoon_id",
+            "patrol_type",
+            "player_id",
+            "draw_parent",
+            "patrol_regions_0",
+            "patrol_regions_1",
+            "patrol_regions_2",
+            "patrol_regions_3",
+            "patrol_regions_4",
+            "patrol_regions_5",
+            "patrol_regions_6",
+            "patrol_regions_7",
+            "default_animation",
+            "damage_animation",
+        ),
+    }
+
     is_dummy: bpy.props.BoolProperty(
         name="Is Dummy",
         description="If enabled, this character will be written to MSB as a Dummy character, which is not loaded "
@@ -628,28 +754,21 @@ class MSBCharacterProps(bpy.types.PropertyGroup):
         "damage_animation",
     )
 
-    def get_game_props(self, game: Game) -> list[str]:
-        if game is DEMONS_SOULS:
-            return [
-                p for p in self.__annotations__
-                if p != "ai_id"
-            ]
-        return list(self.__annotations__)
 
+class MSBPlayerStartProps(SoulstructPropertyGroup):
 
-class MSBPlayerStartProps(bpy.types.PropertyGroup):
+    GAME_PROP_NAMES = {
+        DEMONS_SOULS: (
+            "unk_x00",
+        ),
+        DARK_SOULS_PTDE: (),
+    }
 
     unk_x00: bpy.props.IntProperty(
         name="Unknown x00 (DeS)",
         description="Unknown DeS-specific PlayerStart field",
         default=0,
     )
-
-    def get_game_props(self, game: Game) -> list[str]:
-        if game is not DEMONS_SOULS:
-            return []
-
-        return list(self.__annotations__)
 
 
 class BlenderMSBCollisionHitFilter(StrEnum):
@@ -683,7 +802,57 @@ class BlenderMSBCollisionHitFilter(StrEnum):
     LevelExit_B = "LevelExit_B"  # 23  # glowing turquoise
 
 
-class MSBCollisionProps(bpy.types.PropertyGroup):
+class MSBCollisionProps(SoulstructPropertyGroup):
+
+    GAME_PROP_NAMES = {
+        DEMONS_SOULS: (
+            "hit_filter_id",
+            "sound_space_type",
+            "cubemap_index",
+            "reflect_plane_height",
+            "navmesh_groups",
+            "ref_tex_ids_0",
+            "ref_tex_ids_1",
+            "ref_tex_ids_2",
+            "ref_tex_ids_3",
+            "ref_tex_ids_4",
+            "ref_tex_ids_5",
+            "ref_tex_ids_6",
+            "ref_tex_ids_7",
+            "ref_tex_ids_8",
+            "ref_tex_ids_9",
+            "ref_tex_ids_10",
+            "ref_tex_ids_11",
+            "ref_tex_ids_12",
+            "ref_tex_ids_13",
+            "ref_tex_ids_14",
+            "ref_tex_ids_15",
+            "unk_x38",
+            "place_name_banner_id",
+            "force_place_name_banner",
+        ),
+        DARK_SOULS_PTDE: (
+            "hit_filter_id",
+            "sound_space_type",
+            "environment_event",
+            "reflect_plane_height",
+            "navmesh_groups_0",
+            "navmesh_groups_1",
+            "navmesh_groups_2",
+            "navmesh_groups_3",
+            "vagrant_entity_ids",
+            "place_name_banner_id",
+            "force_place_name_banner",
+            "starts_disabled",
+            "play_region_id",
+            "stable_footing_flag",
+            "camera_1_id",
+            "camera_2_id",
+            "unk_x27_x28",
+            "attached_bonfire",
+        )
+    }
+
     navmesh_groups_0: bpy.props.BoolVectorProperty(
         name="Navmesh Groups [0, 31]",
         description="Navmesh groups for this Collision. These should match the navmesh groups of corresponding Navmesh "
@@ -953,40 +1122,27 @@ class MSBCollisionProps(bpy.types.PropertyGroup):
         default=0,
     )
 
-    def get_game_props(self, game: Game) -> list[str]:
-        if game is DEMONS_SOULS:
-            exclude = {
-                "play_region_id",
-                "stable_footing_flag",
-                "camera_1_id",
-                "camera_2_id",
-                "unk_x27_x28",
-                "attached_bonfire",
-                "vagrant_entity_ids_0",
-                "vagrant_entity_ids_1",
-                "vagrant_entity_ids_2",
-                "starts_disabled",
-            }
-            return [
-                p for p in self.__annotations__
-                if p not in exclude
-            ]
-        elif game is DARK_SOULS_PTDE or game is DARK_SOULS_DSR:
-            exclude = {
-                "unk_x38",
-                "cubemap_index",
-            }
-            return [
-                p for p in self.__annotations__
-                if not p.startswith("ref_tex_ids")
-                if p not in exclude
-            ]
 
-        return list(self.__annotations__)
-
-
-class MSBProtobossProps(bpy.types.PropertyGroup):
+class MSBProtobossProps(SoulstructPropertyGroup):
     """Only used in Demon's Souls, but doesn't appear in any final MSB files. TODO."""
+
+    GAME_PROP_NAMES = {
+        DEMONS_SOULS: (
+            "unk_x00",
+            "unk_x04",
+            "unk_x08",
+            "unk_x0c",
+            "unk_x10",
+            "unk_x14",
+            "unk_x18",
+            "unk_x1c",
+            "unk_x20",
+            "unk_x24",
+            "unk_x28",
+            "unk_x2c",
+            "unk_x30",
+        ),
+    }
 
     unk_x00: bpy.props.FloatProperty(
         name="Unk x00",
@@ -1055,7 +1211,23 @@ class MSBProtobossProps(bpy.types.PropertyGroup):
     )
 
 
-class MSBNavmeshProps(bpy.types.PropertyGroup):
+class MSBNavmeshProps(SoulstructPropertyGroup):
+
+    GAME_PROP_NAMES = {
+        DEMONS_SOULS: (
+            "navmesh_groups_0",
+            "navmesh_groups_1",
+            "navmesh_groups_2",
+            "navmesh_groups_3",
+        ),
+        DARK_SOULS_PTDE: (
+            "navmesh_groups_0",
+            "navmesh_groups_1",
+            "navmesh_groups_2",
+            "navmesh_groups_3",
+        ),
+    }
+
     navmesh_groups_0: bpy.props.BoolVectorProperty(
         name="Navmesh Groups [0, 31]",
         description="Navmesh groups for this Navmesh. These should match the navmesh groups of corresponding Collision "
@@ -1097,56 +1269,32 @@ class MSBNavmeshProps(bpy.types.PropertyGroup):
             ]
         raise ValueError(f"Invalid MSB Part navmesh group bit count: {bit_count}. Must be 128.")
 
-    # noinspection PyUnusedLocal
-    def get_game_props(self, game: Game) -> list[str]:
-        return list(self.__annotations__)
 
+class MSBConnectCollisionProps(SoulstructPropertyGroup):
 
-class MSBConnectCollisionProps(bpy.types.PropertyGroup):
+    GAME_PROP_NAMES = {
+        DEMONS_SOULS: (
+            "collision",
+            "connected_map_id",
+        ),
+        DARK_SOULS_PTDE: (
+            "collision",
+            "connected_map_id",
+        ),
+    }
+
     collision: bpy.props.PointerProperty(
         name="Collision Part",
         description="Collision part to which this Connect Collision is attached",
         type=bpy.types.Object,
         poll=_is_collision,
     )
-    # TODO: Why not `connected_map_id` as IntVectorProperty[4]?
-    map_area: bpy.props.IntProperty(
-        name="Connected Map Area",
-        description="Area ID of the connected map ('AA' from mAA_BB_CC_DD)",
-        default=0,
-        min=0,
-        max=99,
-    )
-    map_block: bpy.props.IntProperty(
-        name="Connected Map Block",
-        description="Block ID of the connected map ('BB' from mAA_BB_CC_DD). Can be -1",
-        default=-1,
+
+    connected_map_id: bpy.props.IntVectorProperty(
+        name="Connected Map",
+        description="Four-part map ID of the connected map (mAA_BB_CC_DD). -1 can be used instead of 0",
+        default=(0, -1, -1, -1),
         min=-1,
         max=99,
+        size=4,
     )
-    map_cc: bpy.props.IntProperty(
-        name="Connected Map CC",
-        description="CC ID of the connected map (from mAA_BB_CC_DD). Can be -1",
-        default=-1,
-        min=-1,
-        max=99,
-    )
-    map_dd: bpy.props.IntProperty(
-        name="Connected Map DD",
-        description="DD ID of the connected map (from mAA_BB_CC_DD). Can be -1",
-        default=-1,
-        min=-1,
-        max=99,
-    )
-
-    @property
-    def connected_map_id(self) -> tuple[int, int, int, int]:
-        return self.map_area, self.map_block, self.map_cc, self.map_dd
-
-    @connected_map_id.setter
-    def connected_map_id(self, value: tuple[int, int, int, int]):
-        self.map_area, self.map_block, self.map_cc, self.map_dd = value
-
-    # noinspection PyUnusedLocal
-    def get_game_props(self, game: Game) -> list[str]:
-        return list(self.__annotations__)

@@ -3,9 +3,6 @@ from __future__ import annotations
 __all__ = [
     "get_cached_file",
     "get_cached_bxf",
-    "get_cached_mtdbnd",
-    "get_cached_matbinbnd",
-    "clear_cached_matdefs",
 ]
 
 import typing as tp
@@ -15,12 +12,7 @@ from soulstruct.containers import Binder
 from soulstruct.utilities.files import get_blake2b_hash
 
 if tp.TYPE_CHECKING:
-    from soulstruct.games import Game
-    from soulstruct.base.models.mtd import MTDBND
-    from soulstruct.base.models.matbin import MATBINBND
     from soulstruct.base.base_binary_file import BASE_BINARY_FILE_T
-    from io_soulstruct.utilities import LoggingOperator
-    from .properties import SoulstructSettings
 
 
 # Maps file paths to `(BaseBinaryFile, blake2b_hash)` tuples for caching. Useful for inspecting, say, MSB files
@@ -89,28 +81,3 @@ def get_cached_bxf(bhd_path: Path | str) -> Binder:
     bxf = Binder.from_bytes(bhd_data, bdt_data)
     _CACHED_FILES[bhd_path] = (bxf, bhd_bdt_hash)
     return bxf
-
-
-# These are cached per-game on first load, which also preserves lazily loaded MATBINs. They can be cleared with
-# `clear_cached_matdefs`()`.
-_CACHED_MTDBNDS: dict[Game, MTDBND] = {}
-_CACHED_MATBINBNDS: dict[Game, MATBINBND] = {}
-
-
-def get_cached_mtdbnd(operator: LoggingOperator, settings: SoulstructSettings) -> MTDBND:
-    game = settings.game
-    if game not in _CACHED_MTDBNDS:
-        _CACHED_MTDBNDS[game] = settings.get_mtdbnd(operator)
-    return _CACHED_MTDBNDS[game]
-
-
-def get_cached_matbinbnd(operator: LoggingOperator, settings: SoulstructSettings) -> MATBINBND:
-    game = settings.game
-    if game not in _CACHED_MATBINBNDS:
-        _CACHED_MATBINBNDS[game] = settings.get_matbinbnd(operator)
-    return _CACHED_MATBINBNDS[game]
-
-
-def clear_cached_matdefs():
-    _CACHED_MTDBNDS.clear()
-    _CACHED_MATBINBNDS.clear()

@@ -1,11 +1,11 @@
 __all__ = [
-    "ImportMCG",
-    "ImportSelectedMapMCG",
-    "ImportMCP",
-    "ImportSelectedMapMCP",
+    "ImportAnyMCG",
+    "ImportMapMCG",
+    "ImportAnyMCP",
+    "ImportMapMCP",
 
-    "ExportMCG",
-    "ExportMCGMCPToMap",
+    "ExportAnyMCGMCP",
+    "ExportMapMCGMCP",
 
     "MCGDrawSettings",
     "update_mcg_draw_caches",
@@ -31,12 +31,12 @@ __all__ = [
     "NavGraphComputeSettings",
 
     "MCGPropsPanel",
-    "OBJECT_UL_nav_triangle",
+    "NavTriangleUIList",
     "MCGNodePropsPanel",
     "MCGEdgePropsPanel",
-    "MCGImportExportPanel",
-    "MCGDrawPanel",
-    "MCGToolsPanel",
+    "NavGraphImportExportPanel",
+    "NavGraphDrawPanel",
+    "NavGraphToolsPanel",
     "MCGGeneratorPanel",
 ]
 

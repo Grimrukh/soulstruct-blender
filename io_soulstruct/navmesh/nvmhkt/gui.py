@@ -4,12 +4,11 @@ __all__ = [
     "NVMHKTImportPanel",
 ]
 
-import bpy
-
+from io_soulstruct.bpy_base.panel import SoulstructPanel
 from .model_import import *
 
 
-class NVMHKTImportPanel(bpy.types.Panel):
+class NVMHKTImportPanel(SoulstructPanel):
     bl_label = "NVMHKT Import"
     bl_idname = "NVMHKT_PT_import"
     bl_space_type = "VIEW_3D"

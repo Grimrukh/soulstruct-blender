@@ -11,12 +11,39 @@ import typing as tp
 from fnmatch import fnmatch
 
 import bpy
+
+from soulstruct.games import *
+
+from io_soulstruct.bpy_base.property_group import SoulstructPropertyGroup
 from .events import BlenderMSBEventSubtype
 from .parts import MSBPartArmatureMode
 
 
-class MSBImportSettings(bpy.types.PropertyGroup):
+class MSBImportSettings(SoulstructPropertyGroup):
     """Common MSB import settings. Drawn manually in operator browser windows."""
+
+    GAME_PROP_NAMES = {
+        DEMONS_SOULS: (
+            "import_map_piece_models",
+            "import_collision_models",
+            "import_navmesh_models",
+            "import_object_models",
+            "import_character_models",
+            "part_armature_mode",
+            "model_name_filter",
+            "model_name_filter_match_mode",
+        ),
+        DARK_SOULS_PTDE: (
+            "import_map_piece_models",
+            "import_collision_models",
+            "import_navmesh_models",
+            "import_object_models",
+            "import_character_models",
+            "part_armature_mode",
+            "model_name_filter",
+            "model_name_filter_match_mode",
+        ),
+    }
 
     import_map_piece_models: bpy.props.BoolProperty(
         name="Import Map Piece Models",
@@ -81,6 +108,20 @@ class MSBImportSettings(bpy.types.PropertyGroup):
         default="GLOB",
     )
 
+    def import_any_models(self) -> bool:
+        """Returns True if any of the MSB model import settings are enabled."""
+        return any(getattr(
+            self, f"import_{part}_models") for part in ["map_piece", "collision", "navmesh", "object", "character"]
+        )
+
+    def import_any_flver_models(self) -> bool:
+        """Returns True if any of the FLVER model import settings are enabled."""
+        return (
+            self.import_map_piece_models
+            or self.import_character_models
+            or self.import_object_models
+        )
+
     def get_model_name_match_filter(self) -> tp.Callable[[str], bool]:
         match self.model_name_filter_match_mode:
             case "GLOB":
@@ -96,7 +137,28 @@ class MSBImportSettings(bpy.types.PropertyGroup):
         return is_name_match
 
 
-class MSBExportSettings(bpy.types.PropertyGroup):
+class MSBExportSettings(SoulstructPropertyGroup):
+
+    GAME_PROP_NAMES = {
+        DEMONS_SOULS: (
+            "use_world_transforms",
+            "export_collision_models",
+            "export_navmesh_models",
+            # No NVMDUMP file.
+            "export_soulstruct_jsons",
+            "skip_connect_collisions",
+            "skip_render_hidden",
+        ),
+        DARK_SOULS_PTDE: (
+            "use_world_transforms",
+            "export_collision_models",
+            "export_navmesh_models",
+            "export_nvmdump",
+            "export_soulstruct_jsons",
+            "skip_connect_collisions",
+            "skip_render_hidden",
+        ),
+    }
 
     use_world_transforms: bpy.props.BoolProperty(
         name="Use World Transforms",
@@ -145,7 +207,7 @@ class MSBExportSettings(bpy.types.PropertyGroup):
     )
 
 
-class MSBToolSettings(bpy.types.PropertyGroup):
+class MSBToolSettings(SoulstructPropertyGroup):
 
     event_color: bpy.props.FloatVectorProperty(
         name="Event Color",

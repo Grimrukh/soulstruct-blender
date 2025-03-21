@@ -52,6 +52,7 @@ class Scene(ID, bpy_struct):
     texture_export_settings: TextureExportSettings
     bake_lightmap_settings: BakeLightmapSettings
     flver_tool_settings: FLVERToolSettings
+    flver_material_settings: FLVERMaterialSettings
     material_tool_settings: MaterialToolSettings
     map_collision_import_settings: MapCollisionImportSettings
     map_collision_tool_settings: MapCollisionToolSettings

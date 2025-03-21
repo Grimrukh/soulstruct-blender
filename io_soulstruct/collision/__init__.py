@@ -3,11 +3,11 @@ from __future__ import annotations
 __all__ = [
     "ImportHKXMapCollision",
     "ImportHKXMapCollisionWithBinderChoice",
-    "ImportSelectedMapHKXMapCollision",
+    "ImportMapHKXMapCollision",
 
-    "ExportLooseHKXMapCollision",
-    "ExportHKXMapCollisionIntoBinder",
-    "ExportHKXMapCollisionToMap",
+    "ExportAnyHKXMapCollision",
+    "ExportHKXMapCollisionIntoAnyBinder",
+    "ExportMapHKXMapCollision",
 
     "RenameCollision",
     "GenerateCollisionFromMesh",

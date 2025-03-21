@@ -16,8 +16,7 @@ from io_soulstruct.msb.properties import MSBRegionProps, BlenderMSBRegionSubtype
 from io_soulstruct.msb.types.adapters import *
 from io_soulstruct.msb.utilities import *
 from io_soulstruct.types import *
-from io_soulstruct.utilities.bpy_data import get_or_create_collection
-from io_soulstruct.utilities.operators import LoggingOperator
+from io_soulstruct.utilities import LoggingOperator, get_or_create_collection
 
 from .entry import BaseBlenderMSBEntry, MSB_T
 

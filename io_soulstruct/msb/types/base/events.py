@@ -20,7 +20,7 @@ from soulstruct.base.maps.msb.events import BaseMSBEvent
 from io_soulstruct.msb.properties import BlenderMSBEventSubtype, MSBEventProps
 from io_soulstruct.msb.types.adapters import *
 from io_soulstruct.types import ObjectType, SoulstructType
-from io_soulstruct.utilities.bpy_data import get_or_create_collection
+from io_soulstruct.utilities import get_or_create_collection
 
 from .entry import BaseBlenderMSBEntry, SUBTYPE_PROPS_T, MSB_T
 

@@ -20,6 +20,7 @@ from mathutils import Vector
 
 from soulstruct.base.events.enums import NavmeshFlag
 
+from io_soulstruct.bpy_base.property_group import SoulstructPropertyGroup
 from io_soulstruct.exceptions import SoulstructTypeError
 from io_soulstruct.types import SoulstructType
 from io_soulstruct.utilities import ObjectType, LoggingOperator, replace_shared_prefix
@@ -33,7 +34,9 @@ _navmesh_flag_items = [
 ]
 
 
-class NavmeshFaceSettings(bpy.types.PropertyGroup):
+class NavmeshFaceSettings(SoulstructPropertyGroup):
+
+    # No game-specific properties.
 
     navmesh_flag: bpy.props.EnumProperty(
         name="Flag",

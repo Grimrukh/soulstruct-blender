@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 __all__ = [
-    "ExportLooseNVM",
-    "ExportNVMIntoBinder",
-    "ExportNVMIntoSelectedMap",
+    "ExportAnyNVM",
+    "ExportNVMIntoAnyBinder",
+    "ExportMapNVM",
 ]
 
 import traceback
@@ -26,7 +26,7 @@ from io_soulstruct.utilities.misc import *
 from .types import *
 
 
-class ExportLooseNVM(LoggingExportOperator):
+class ExportAnyNVM(LoggingExportOperator):
     """Export loose NVM file from a Blender mesh.
 
     Mesh faces should be using materials named `Navmesh Flag {type}`
@@ -86,7 +86,7 @@ class ExportLooseNVM(LoggingExportOperator):
         return {"FINISHED"}
 
 
-class ExportNVMIntoBinder(LoggingImportOperator):
+class ExportNVMIntoAnyBinder(LoggingImportOperator):
     bl_idname = "export_scene.nvm_binder"
     bl_label = "Export NVM Into Binder"
     bl_description = "Export NVM navmesh files into a FromSoftware Binder (BND/BHD)"
@@ -202,7 +202,7 @@ class ExportNVMIntoBinder(LoggingImportOperator):
         return {"FINISHED"}
 
 
-class ExportNVMIntoSelectedMap(LoggingOperator):
+class ExportMapNVM(LoggingOperator):
 
     bl_idname = "export_scene.nvm_selected_map"
     bl_label = "Export NVM"
@@ -229,7 +229,7 @@ class ExportNVMIntoSelectedMap(LoggingOperator):
 
         settings = self.settings(context)
 
-        if not settings.map_stem and not settings.detect_map_from_collection:
+        if not settings.map_stem and not settings.auto_detect_export_map:
             return self.error(
                 "No game map directory specified in Soulstruct settings and `Detect Map from Collection` is disabled."
             )
@@ -246,7 +246,7 @@ class ExportNVMIntoSelectedMap(LoggingOperator):
         opened_nvmbnds = {}  # type: dict[Path, BaseNVMBND]
         bl_nvms = BlenderNVM.from_selected_objects(context, sort=True)  # type: list[BlenderNVM]
 
-        export_loose_des_nvms = settings.is_game(DEMONS_SOULS) and settings.export_des_debug_files
+        export_loose_des_nvms = settings.is_game(DEMONS_SOULS) and settings.des_export_debug_files
         loose_nvms_to_export = []  # type: list[tuple[NVM, Path]]
 
         for bl_nvm in bl_nvms:
@@ -290,7 +290,7 @@ class ExportNVMIntoSelectedMap(LoggingOperator):
                 entry.entry_id = i
             exported_paths += settings.export_file(self, nvmbnd, relative_nvmbnd_path)
 
-        if settings.is_game(DEMONS_SOULS) and settings.export_des_debug_files and loose_nvms_to_export:
+        if settings.is_game(DEMONS_SOULS) and settings.des_export_debug_files and loose_nvms_to_export:
             # Export loose NVMs next to NVMBND.
             for nvm, relative_nvm_path in loose_nvms_to_export:
                 exported_paths += settings.export_file(self, nvm, relative_nvm_path)

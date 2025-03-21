@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-__all__ = ["ExportMCG", "ExportMCGMCPToMap"]
+__all__ = ["ExportAnyMCGMCP", "ExportMapMCGMCP"]
 
 import traceback
 from pathlib import Path
@@ -9,20 +9,19 @@ import bpy
 
 from soulstruct.base.maps.navmesh.mcp import MCP
 from soulstruct.dcx import DCXType
-from soulstruct.games import DARK_SOULS_DSR
 
 from io_soulstruct.exceptions import SoulstructTypeError
 from io_soulstruct.utilities import *
 from .types import BlenderMCG
 
 
-class ExportMCG(LoggingExportOperator):
+class ExportAnyMCGMCP(LoggingExportOperator):
     """Export MCG from a Blender object containing a Nodes parent and an Edges parent.
 
     Can optionally use MSB and NVMBND to auto-generate MCP file as well, as MCP connectivity is inferred from MCG nodes.
     """
     bl_idname = "export_scene.mcg"
-    bl_label = "Export MCG"
+    bl_label = "Export Any MCG/MCP"
     bl_description = "Export Blender lists of nodes/edges to an MCG graph file and optional additional MCP file"
 
     filename_ext = ".mcg"
@@ -138,19 +137,18 @@ class ExportMCG(LoggingExportOperator):
         return {"FINISHED"}
 
 
-class ExportMCGMCPToMap(LoggingOperator):
+class ExportMapMCGMCP(LoggingOperator):
     """Export MCG from a Blender object containing a Nodes parent and an Edges parent, and regenerate MCP.
 
     Can optionally use MSB and NVMBND to auto-generate MCP file as well, as MCP connectivity is inferred from MCG nodes.
     """
     bl_idname = "export_scene.map_mcg_mcp"
-    bl_label = "Export MCG + MCP to Map"
+    bl_label = "Export Map MCG/MCP"
     bl_description = "Export Blender lists of nodes/edges to MCG graph file and refresh MCP file in selected game map"
 
-    # This setting is exposed in the GUI panel.
-    detect_map_from_parent: bpy.props.BoolProperty(
-        name="Detect Map from Parent",
-        description="Use the map stem from the selected MCG to detect the map to export to, rather than map settings",
+    auto_generate_mcp: bpy.props.BoolProperty(
+        name="Auto-generate MCP",
+        description="Auto-generate MCP file from new MCG and existing MSB and NVMBND",
         default=True,
     )
 
@@ -163,37 +161,24 @@ class ExportMCGMCPToMap(LoggingOperator):
         settings = cls.settings(context)
         if not settings.can_auto_export:
             return False
-        if not settings.is_game(DARK_SOULS_DSR):
+        if not settings.map_stem:
             return False
-        if len(context.selected_objects) != 1:
+        if not settings.game_config.supports_mcg:
             return False
-        obj = context.selected_objects[0]
-        if obj.type != "EMPTY":
-            return False
-        if len(obj.children) != 2:
-            return False
-        if "Edges" in obj.children[0].name and "Nodes" in obj.children[1].name:
-            return True
-        if "Nodes" in obj.children[0].name and "Edges" in obj.children[1].name:
-            return True
-        return False
+        return BlenderMCG.is_active_obj_type(context)
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
 
     def execute(self, context):
-        selected_objs = [obj for obj in context.selected_objects]
-        if not selected_objs:
-            return self.error("No Empty with Edges and Nodes child Empties selected for MCG export.")
-        if len(selected_objs) > 1:
-            return self.error("More than one object cannot be selected for MCG export.")
-
-        mcg_parent = selected_objs[0]
-
         settings = self.settings(context)
-        if self.detect_map_from_parent:
-            map_stem = mcg_parent.name.split(" ")[0]
-        elif settings.map_stem:
-            map_stem = settings.map_stem
+        bl_mcg = BlenderMCG.from_active_object(context)
+
+        if settings.auto_detect_export_map:
+            map_stem = bl_mcg.name.split(" ")[0]
         else:
-            return self.error("No map stem specified in settings.")
+            map_stem = settings.map_stem  # validated in `poll()`
+
         if not MAP_STEM_RE.match(map_stem):
             raise ValueError(f"Invalid map stem: {map_stem}")
 
@@ -215,7 +200,6 @@ class ExportMCGMCPToMap(LoggingOperator):
                 f"Could not find NVMBND binder required for MCG export for map {map_stem} in project or game directory."
             )
 
-        bl_mcg = BlenderMCG(mcg_parent)
         msb_class = settings.game_config.msb_class
 
         try:
@@ -240,7 +224,7 @@ class ExportMCGMCPToMap(LoggingOperator):
         exported_paths = settings.export_file(self, mcg, relative_mcg_path)
         if not exported_paths:
             # MCG export failed. Don't bother trying to write MCP.
-            return {"CANCELLED"}
+            return self.error("MCG export failed. No files written.")
 
         # Any error here will not affect MCG write (already done above).
 

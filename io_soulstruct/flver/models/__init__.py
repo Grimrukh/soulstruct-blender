@@ -6,8 +6,8 @@ __all__ = [
     "HideAllDummiesOperator",
     "ShowAllDummiesOperator",
 
-    "ExportLooseFLVER",
-    "ExportFLVERIntoBinder",
+    "ExportAnyFLVER",
+    "ExportFLVERIntoAnyBinder",
     "ExportMapPieceFLVERs",
     "ExportCharacterFLVER",
     "ExportObjectFLVER",
@@ -47,6 +47,8 @@ __all__ = [
     "FLVERDummyPropsPanel",
     "FLVERImportPanel",
     "FLVERExportPanel",
+    "FLVERMaterialSettingsPanel",
+    "FLVERMaterialSettingsPanel",
     "FLVERModelToolsPanel",
     "FLVERUVMapsPanel",
     # endregion

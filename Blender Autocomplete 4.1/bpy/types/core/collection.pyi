@@ -11,12 +11,18 @@ from .object import Object
 from .collection_child import CollectionChild
 from .collection_objects import CollectionObjects
 
+if typing.TYPE_CHECKING:
+    from io_soulstruct.types import SoulstructCollectionType
+
 GenericType1 = typing.TypeVar("GenericType1")
 GenericType2 = typing.TypeVar("GenericType2")
 
 
 class Collection(ID, bpy_struct):
     """Collection of Object data-blocks"""
+
+    # CUSTOM SOULSTRUCT PROPERTIES
+    soulstruct_type: SoulstructCollectionType
 
     all_objects: bpy_prop_collection[Object]
     """ Objects that are in this collection and its child collections

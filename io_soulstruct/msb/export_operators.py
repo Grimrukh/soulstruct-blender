@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 __all__ = [
+    "ExportAnyMSB",
     "ExportMapMSB",
 ]
 
@@ -22,11 +23,11 @@ from soulstruct.games import *
 from soulstruct.utilities.text import natural_keys
 from soulstruct_havok.fromsoft.shared import HKXBHD, BothResHKXBHD
 
-from io_soulstruct.general.game_config import GAME_CONFIG
+from io_soulstruct.general.game_config import BLENDER_GAME_CONFIG
 from io_soulstruct.collision.types import BlenderMapCollision
 from io_soulstruct.navmesh.nvm.types import BlenderNVM
 from io_soulstruct.types import SoulstructType
-from io_soulstruct.utilities.operators import LoggingOperator
+from io_soulstruct.utilities.operators import LoggingOperator, LoggingExportOperator
 
 from .operator_config import *
 from .properties import BlenderMSBPartSubtype
@@ -34,23 +35,138 @@ from .utilities import MSB_COLLECTION_RE
 
 if tp.TYPE_CHECKING:
     from io_soulstruct.msb.types.base import *
+    MSB_TYPING = tp.Union[MSB_PTDE, MSB_DSR, MSB_DES]
 
 
-# TODO: `ExportAnyMSB` operator.
+def _export_msb(
+    operator: LoggingOperator,
+    context: bpy.types.Context,
+    map_stem: str,
+) -> tuple[MSB_TYPING | None, list[bpy.types.Object]]:
+    """Export `MSB` from Blender.
+
+    Given `map_stem` will be the map stem that is baked into MSB entries, e.g. for SIB paths. It should match the
+    MSB's written file stem, obviously (up to caller).
+    """
+    settings = operator.settings(context)
+    export_settings = context.scene.msb_export_settings
+
+    msb_class = settings.game_config.msb_class
+    if not msb_class:
+        operator.error(f"MSB class not found for game '{settings.game}'.")
+        return None, []
+
+    # First, collect all Parts, Regions, and Events in this collection, recursively.
+    # We don't care about where they appear, or how they are parented. (All Parts/Regions will have their WORLD
+    # transforms used, so users can parent these purely as a matter of their own convenience, even though the MSB
+    # supports no such parenting. Events have no transform.)
+    bl_part_objs = []
+    bl_region_objs = []
+    bl_event_objs = []
+    checked_names = set()
+
+    if export_settings.skip_connect_collisions:
+        operator.warning("Skipping MSB Connect Collision parts as requested. Other maps will not load.")
+
+    # TODO: Don't blindly check all collections/objects. Look for expected subcollection names.
+    #  (At the supertype level, at least.)
+
+    collections = [context.collection] + list(context.collection.children_recursive)
+    render_hidden_count = 0
+    for col in collections:
+        for obj in col.objects:
+            if obj.name in checked_names:
+                continue
+            checked_names.add(obj.name)
+
+            if export_settings.skip_render_hidden and obj.hide_render:
+                render_hidden_count += 1
+                continue
+
+            if obj.soulstruct_type == SoulstructType.MSB_PART:
+                if (
+                    export_settings.skip_connect_collisions
+                    and obj.MSB_PART.entry_subtype_enum == BlenderMSBPartSubtype.ConnectCollision
+                ):
+                    # Ignore Connect Collisions.
+                    continue
+                bl_part_objs.append(obj)
+            elif obj.soulstruct_type == SoulstructType.MSB_REGION:
+                bl_region_objs.append(obj)
+            elif obj.soulstruct_type == SoulstructType.MSB_EVENT:
+                bl_event_objs.append(obj)
+            # Otherwise, ignore. We allow the user to include non-Soulstruct objects in the MSB collection.
+
+    if render_hidden_count > 0:
+        operator.warning(f"Skipped {render_hidden_count} hidden objects from MSB export.")
+
+    # Sort by natural order to match Blender hierarchy.
+    bl_part_objs.sort(key=lambda x: natural_keys(x.name))
+    bl_region_objs.sort(key=lambda x: natural_keys(x.name))
+    bl_event_objs.sort(key=lambda x: natural_keys(x.name))
+
+    operator.to_object_mode(context)
+
+    # Create new MSB.
+    msb = msb_class()  # type: MSB_PTDE | MSB_DSR | MSB_DES
+    # We set `msb.path` for internal map stem detection in some MSB classes. Obviously not written path (relative).
+    msb.path = Path(f"map/{map_stem}/{map_stem}.msb")
+
+    all_bl_and_msb_entries = {  # only really sorted to count them by supertype
+        SoulstructType.MSB_REGION: [],
+        SoulstructType.MSB_PART: [],
+        SoulstructType.MSB_EVENT: [],
+    }
+    for bl_entry_classes, bl_entry_objs, soulstruct_type in (
+        (BLENDER_MSB_REGION_CLASSES[settings.game], bl_region_objs, SoulstructType.MSB_REGION),
+        (BLENDER_MSB_PART_CLASSES[settings.game], bl_part_objs, SoulstructType.MSB_PART),
+        (BLENDER_MSB_EVENT_CLASSES[settings.game], bl_event_objs, SoulstructType.MSB_EVENT),
+    ):
+        bl_and_msb_entries = all_bl_and_msb_entries[soulstruct_type]
+        for bl_entry_obj in bl_entry_objs:
+            subtype_enum = getattr(bl_entry_obj, soulstruct_type.name).entry_subtype_enum
+            bl_entry_class = bl_entry_classes[subtype_enum]
+            bl_entry = bl_entry_class(bl_entry_obj)
+            msb_entry = bl_entry.to_soulstruct_obj(operator, context)
+            msb.add_entry(msb_entry)
+            bl_and_msb_entries.append((bl_entry, msb_entry))
+            # self.info(f"Added MSB {subtype_enum.name}: {msb_entry.name}")
+
+    # Set all MSB Entry references and Part models/SIB paths.
+    for bl_and_msb_entries in all_bl_and_msb_entries.values():
+        for bl_entry, msb_entry in bl_and_msb_entries:
+            bl_entry.resolve_msb_entry_refs_and_map_stem(operator, context, msb_entry, msb, map_stem)
+
+    # Sort all MSB Models by name.
+    for _, model_list in msb.get_models_dict().items():
+        model_list.sort_by_name()  # in-place
+
+    model_count = len(msb.get_models())
+    part_count = len(all_bl_and_msb_entries[SoulstructType.MSB_PART])
+    region_count = len(all_bl_and_msb_entries[SoulstructType.MSB_REGION])
+    event_count = len(all_bl_and_msb_entries[SoulstructType.MSB_EVENT])
+
+    operator.info(
+        f"Created MSB {map_stem} successfully with {region_count} Regions, {event_count} Events, "
+        f"{part_count} Parts, and {model_count} Models."
+    )
+
+    return msb, bl_part_objs
 
 
-class ExportMapMSB(LoggingOperator):
+class ExportAnyMSB(LoggingExportOperator):
 
-    bl_idname = "export_scene.map_msb"
-    bl_label = "Export MSB"
+    bl_idname = "export_scene.any_msb"
+    bl_label = "Export MSB to File"
     bl_options = {"REGISTER", "UNDO"}
-    bl_description = ("Export all Parts, Regions, and Events in active collection to a new MSB for the appropriate "
-                      "map. Can also export full navmesh model NVMBND and/or full collision model HKXBHDs (DS1 only)")
+    bl_description = "Export all Parts, Regions, and Events in active collection to a new MSB file"
+
+    filename_ext = ".msb"
 
     @classmethod
-    def poll(cls, context) -> bool:
+    def poll(cls, context):
         settings = cls.settings(context)
-        if not GAME_CONFIG[settings.game].msb_class:
+        if not BLENDER_GAME_CONFIG[settings.game].msb_class:
             return False  # unsupported
         if not context.collection:
             return False
@@ -59,15 +175,33 @@ class ExportMapMSB(LoggingOperator):
             return False
         return True
 
-    def execute(self, context):
+    def invoke(self, context, _event):
         settings = self.settings(context)
-        export_settings = context.scene.msb_export_settings
+        map_stem = ""
+        if settings.auto_detect_export_map:
+            match = MSB_COLLECTION_RE.match(context.collection.name)
+            if match:
+                map_stem = settings.get_latest_map_stem_version(match.group(1))
+        else:
+            map_stem = settings.get_latest_map_stem_version()  # MSB always uses latest
+        if map_stem:
+            self.filepath = f"{map_stem}.msb"
+        return super().invoke(context, _event)
 
-        msb_class = settings.game_config.msb_class
-        if not msb_class:
-            return self.error(f"MSB class not found for game '{settings.game}'.")
+    def draw(self, context):
+        layout = self.layout
 
-        if settings.detect_map_from_collection:
+        msb_export_settings = context.scene.msb_export_settings
+        for prop_name in msb_export_settings.get_game_prop_names(context):
+            if prop_name.startswith("export_"):
+                continue  # no bonus exports (Models/JSON) for this generic operator
+            layout.prop(msb_export_settings, prop_name)
+
+    def execute(self, context):
+
+        settings = self.settings(context)
+
+        if settings.auto_detect_export_map:
             match = MSB_COLLECTION_RE.match(context.collection.name)
             if not match:
                 return self.error(
@@ -82,86 +216,69 @@ class ExportMapMSB(LoggingOperator):
                     "No map selected in Soulstruct settings and `Detect Map from Collection` is disabled."
                 )
 
-        # First, collect all Parts, Regions, and Events in this collection, recursively.
-        # We don't care about where they appear, or how they are parented. (All Parts/Regions will have their WORLD
-        # transforms used, so users can parent these purely as a matter of their own convenience, even though the MSB
-        # supports no such parenting. Events have no transform.)
-        bl_part_objs = []
-        bl_region_objs = []
-        bl_event_objs = []
-        checked_names = set()
+        written_stem = Path(self.filepath).name.split(".")[0]
+        if map_stem != written_stem:
+            self.warning(
+                f"Stem of written MSB file '{written_stem}' does not match exported MSB ID: {map_stem}. Internal MSB "
+                f"strings (e.g. model SIB paths) may not match the written file."
+            )
 
-        if export_settings.skip_connect_collisions:
-            self.warning("Skipping MSB Connect Collision parts as requested. Other maps will not load.")
+        msb, _ = _export_msb(self, context, map_stem)
+        if msb is None:
+            return self.error("Could not export MSB.")
 
-        collections = [context.collection] + list(context.collection.children_recursive)
-        render_hidden_count = 0
-        for col in collections:
-            for obj in col.objects:
-                if obj.name in checked_names:
-                    continue
-                checked_names.add(obj.name)
+        msb.write(Path(self.filepath))
 
-                if export_settings.skip_render_hidden and obj.hide_render:
-                    render_hidden_count += 1
-                    continue
+        return {"FINISHED"}
 
-                if obj.soulstruct_type == SoulstructType.MSB_PART:
-                    if (
-                        export_settings.skip_connect_collisions
-                        and obj.MSB_PART.entry_subtype_enum == BlenderMSBPartSubtype.ConnectCollision
-                    ):
-                        # Ignore Connect Collisions.
-                        continue
-                    bl_part_objs.append(obj)
-                elif obj.soulstruct_type == SoulstructType.MSB_REGION:
-                    bl_region_objs.append(obj)
-                elif obj.soulstruct_type == SoulstructType.MSB_EVENT:
-                    bl_event_objs.append(obj)
-                # Otherwise, ignore. We allow the user to include non-Soulstruct objects in the MSB collection.
 
-        if render_hidden_count > 0:
-            self.warning(f"Skipped {render_hidden_count} hidden objects from MSB export.")
+class ExportMapMSB(LoggingOperator):
 
-        # Sort by natural order to match Blender hierarchy.
-        bl_part_objs.sort(key=lambda x: natural_keys(x.name))
-        bl_region_objs.sort(key=lambda x: natural_keys(x.name))
-        bl_event_objs.sort(key=lambda x: natural_keys(x.name))
+    bl_idname = "export_scene.map_msb"
+    bl_label = "Export MSB to Map"
+    bl_options = {"REGISTER", "UNDO"}
+    bl_description = ("Export all Parts, Regions, and Events in active collection to a new MSB for the appropriate "
+                      "map. Can also export NVMDUMP, full navmesh model NVMBND, full collision model HKXBHDs, and/or "
+                      "Soulstruct Project JSONs (all DS1 only)")
 
-        self.to_object_mode(context)
+    @classmethod
+    def poll(cls, context) -> bool:
+        settings = cls.settings(context)
+        if not BLENDER_GAME_CONFIG[settings.game].msb_class:
+            return False  # unsupported
+        if not context.collection:
+            return False
+        # TODO: Hack for now. Probably use an extension property for Collection marking it as an MSB.
+        if not MSB_COLLECTION_RE.match(context.collection.name):
+            return False
+        return True
 
-        # Create new MSB.
-        msb = msb_class()  # type: MSB_PTDE | MSB_DSR | MSB_DES
-        msb.path = Path(f"map/{map_stem}/{map_stem}.msb")  # required for some internal map stem detection
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
 
-        all_bl_and_msb_entries = {  # only really sorted to count them by supertype
-            SoulstructType.MSB_REGION: [],
-            SoulstructType.MSB_PART: [],
-            SoulstructType.MSB_EVENT: [],
-        }
-        for bl_entry_classes, bl_entry_objs, soulstruct_type in (
-            (BLENDER_MSB_REGION_CLASSES[settings.game], bl_region_objs, SoulstructType.MSB_REGION),
-            (BLENDER_MSB_PART_CLASSES[settings.game], bl_part_objs, SoulstructType.MSB_PART),
-            (BLENDER_MSB_EVENT_CLASSES[settings.game], bl_event_objs, SoulstructType.MSB_EVENT),
-        ):
-            bl_and_msb_entries = all_bl_and_msb_entries[soulstruct_type]
-            for bl_entry_obj in bl_entry_objs:
-                subtype_enum = getattr(bl_entry_obj, soulstruct_type.name).entry_subtype_enum
-                bl_entry_class = bl_entry_classes[subtype_enum]
-                bl_entry = bl_entry_class(bl_entry_obj)
-                msb_entry = bl_entry.to_soulstruct_obj(self, context)
-                msb.add_entry(msb_entry)
-                bl_and_msb_entries.append((bl_entry, msb_entry))
-                # self.info(f"Added MSB {subtype_enum.name}: {msb_entry.name}")
+    def execute(self, context):
 
-        # Set all MSB Entry references and Part models/SIB paths.
-        for bl_and_msb_entries in all_bl_and_msb_entries.values():
-            for bl_entry, msb_entry in bl_and_msb_entries:
-                bl_entry.resolve_msb_entry_refs_and_map_stem(self, context, msb_entry, msb, map_stem)
+        settings = self.settings(context)
+        export_settings = context.scene.msb_export_settings
 
-        # Sort all MSB Models by name.
-        for _, model_list in msb.get_models_dict().items():
-            model_list.sort_by_name()  # in-place
+        if settings.auto_detect_export_map:
+            match = MSB_COLLECTION_RE.match(context.collection.name)
+            if not match:
+                return self.error(
+                    f"Collection name '{context.collection.name}' does not match expected MSB collection name format. "
+                    f"(You can still export this collection if you disable the 'Detect Map from Collection' setting.)"
+                )
+            map_stem = settings.get_latest_map_stem_version(match.group(1))
+        else:
+            map_stem = settings.get_latest_map_stem_version()  # MSB always uses latest
+            if not map_stem:
+                return self.error(
+                    "No map selected in Soulstruct settings and `Detect Map from Collection` is disabled."
+                )
+
+        msb, bl_part_objs = _export_msb(self, context, map_stem)
+        if msb is None:
+            return self.error("Could not export MSB.")
 
         # MSB is ready to write.
         relative_msb_path = settings.get_relative_msb_path(map_stem)  # will use latest MSB version
@@ -170,17 +287,8 @@ class ExportMapMSB(LoggingOperator):
             settings.export_file(self, msb, relative_msb_path, class_name="MSB")
         except Exception as ex:
             # Do not try to export NVMBND or NVMDUMP below.
-            return self.error(f"Could not export MSB. Error: {ex}")
-
-        model_count = len(msb.get_models())
-        part_count = len(all_bl_and_msb_entries[SoulstructType.MSB_PART])
-        region_count = len(all_bl_and_msb_entries[SoulstructType.MSB_REGION])
-        event_count = len(all_bl_and_msb_entries[SoulstructType.MSB_EVENT])
-
-        self.info(
-            f"Exported MSB {map_stem} successfully with {region_count} Regions, {event_count} Events, "
-            f"{part_count} Parts, and {model_count} Models."
-        )
+            self.error(f"Could not export MSB. Error: {ex}")
+            return None
 
         # NOTE: MSB export is now irreversible. We handle any errors that occur below while doing optional extra exports
         # of NVMBND, HKXBHD, NVMDUMP, and Soulstruct project JSON files.
@@ -195,39 +303,39 @@ class ExportMapMSB(LoggingOperator):
             except Exception as ex:
                 self.error(f"Could not write MSB JSON to Soulstruct Project folder (MSBs still written). Error: {ex}")
 
-        if export_settings.export_nvmdump and isinstance(msb, MSB_DSR):
+        if export_settings.is_bool_prop_active_and_true(context, "export_nvmdump") and isinstance(msb, MSB_DSR):
             # Export NVMDUMP text file (DSR only).
             relative_nvmdump_path = Path(f"map/{map_stem}/{map_stem}.nvmdump")
             nvmdump = msb.get_nvmdump(map_stem)
             settings.export_text_file(self, nvmdump, relative_nvmdump_path)
             self.info(f"Exported NVMDUMP file next to NVMBND: {relative_nvmdump_path.name}")
 
-        if export_settings.export_navmesh_models:
+        if export_settings.is_bool_prop_active_and_true(context, "export_navmesh_models"):
             bl_navmesh_class = BLENDER_MSB_PART_CLASSES[settings.game][BlenderMSBPartSubtype.Navmesh]
             bl_navmesh_parts = [
                 bl_navmesh_class(obj) for obj in bl_part_objs
                 if obj.MSB_PART.entry_subtype == BlenderMSBPartSubtype.Navmesh
             ]
             self.info(f"Exporting models for {len(bl_navmesh_parts)} MSB Navmesh Parts (should be fast).")
-            # NOTE: All these games use NVMBNDs.
-            if settings.is_game(DEMONS_SOULS, DARK_SOULS_PTDE, DARK_SOULS_DSR):
-                self.export_nvmbnd(context, map_stem, bl_navmesh_parts)
-            else:
-                self.warning(f"Navmesh model export not supported for game '{settings.game}'.")
+            self.export_nvmbnd(context, map_stem, bl_navmesh_parts)
 
-        if export_settings.export_collision_models:
-            bl_collision_class = BLENDER_MSB_PART_CLASSES[settings.game][BlenderMSBPartSubtype.Collision]
-            bl_collision_parts = [
-                bl_collision_class(obj) for obj in bl_part_objs
-                if obj.MSB_PART.entry_subtype == BlenderMSBPartSubtype.Collision
-            ]
-            self.info(f"Exporting models for {len(bl_collision_parts)} MSB Collision Parts (might take a few seconds).")
-            if settings.is_game(DEMONS_SOULS, DARK_SOULS_PTDE):
-                self.export_loose_hkxs(context, map_stem, bl_collision_parts)
-            elif settings.is_game(DARK_SOULS_DSR):
-                self.export_hkxbhds(context, map_stem, bl_collision_parts)
-            else:
+        if export_settings.is_bool_prop_active_and_true(context, "export_collision_models"):
+            if not settings.game_config.supports_collision_model:
                 self.warning(f"Collision model export not supported for game '{settings.game}'.")
+            else:
+                bl_collision_class = BLENDER_MSB_PART_CLASSES[settings.game][BlenderMSBPartSubtype.Collision]
+                bl_collision_parts = [
+                    bl_collision_class(obj) for obj in bl_part_objs
+                    if obj.MSB_PART.entry_subtype == BlenderMSBPartSubtype.Collision
+                ]
+                self.info(
+                    f"Exporting models for {len(bl_collision_parts)} MSB Collision Parts (might take a few seconds)."
+                )
+
+                if settings.game_config.uses_loose_collision_files:
+                    self.export_loose_hkxs(context, map_stem, bl_collision_parts)
+                else:
+                    self.export_hkxbhds(context, map_stem, bl_collision_parts)
 
         # NOTE: There is no option to export FLVER models, as this is slow and better done individually by user.
 

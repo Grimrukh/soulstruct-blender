@@ -4,13 +4,12 @@ __all__ = [
     "FLVERImportPanel",
 ]
 
-import bpy
+from io_soulstruct.bpy_base.panel import SoulstructPanel
 
-from io_soulstruct.general.gui import map_stem_box
 from ..operators.import_operators import *
 
 
-class FLVERImportPanel(bpy.types.Panel):
+class FLVERImportPanel(SoulstructPanel):
     """Panel for Soulstruct FLVER operators."""
     bl_label = "FLVER Import"
     bl_idname = "SCENE_PT_flver_import"
@@ -23,7 +22,7 @@ class FLVERImportPanel(bpy.types.Panel):
         layout = self.layout
         settings = context.scene.soulstruct_settings
 
-        map_stem_box(layout, settings)
+        self.draw_active_map(context, layout)
 
         # NOTE: FLVER import settings are exposed within each individual operator (all use browser pop-ups).
 

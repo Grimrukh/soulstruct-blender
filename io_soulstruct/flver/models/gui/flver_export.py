@@ -4,14 +4,12 @@ __all__ = [
     "FLVERExportPanel",
 ]
 
-import bpy
-
-from io_soulstruct.general.gui import map_stem_box
+from io_soulstruct.bpy_base.panel import SoulstructPanel
 from ..operators.export_operators import *
 from ..types import BlenderFLVER
 
 
-class FLVERExportPanel(bpy.types.Panel):
+class FLVERExportPanel(SoulstructPanel):
     """Panel for Soulstruct FLVER operators."""
     bl_label = "FLVER Export"
     bl_idname = "SCENE_PT_flver_export"
@@ -29,7 +27,7 @@ class FLVERExportPanel(bpy.types.Panel):
         header.label(text="FLVER Export Settings")
         if panel:
             export_settings = context.scene.flver_export_settings
-            panel.prop(settings, "detect_map_from_collection")
+            panel.prop(settings, "auto_detect_export_map")
             panel.prop(export_settings, "export_textures")
             panel.prop(export_settings, "allow_missing_textures")
             panel.prop(export_settings, "allow_unknown_texture_types")
@@ -48,23 +46,23 @@ class FLVERExportPanel(bpy.types.Panel):
                 layout.label(text="MSB Parts cannot be selected.")
                 return
 
-        map_stem_box(layout, settings)
-
         if settings.can_auto_export:
-            map_stem = settings.get_active_object_detected_map(context)
-            if not map_stem:
-                layout.label(text="To Map: <NO MAP>")
+            box = layout.box()
+            box.label(text="Game Models:")
+            box.operator(ExportCharacterFLVER.bl_idname)
+            box.operator(ExportObjectFLVER.bl_idname)
+            box.operator(ExportEquipmentFLVER.bl_idname)
+
+            box = layout.box()
+            box.label(text="Map Models:")
+            box.prop(settings, "auto_detect_export_map")
+            if settings.auto_detect_export_map:
+                self.draw_detected_map(context, box, use_latest_version=False)
             else:
-                map_stem = settings.get_oldest_map_stem_version(map_stem)
-                layout.label(text=f"To Map: {map_stem}")
-            layout.operator(ExportMapPieceFLVERs.bl_idname)
-            layout.label(text="Game Models:")
-            layout.operator(ExportCharacterFLVER.bl_idname)
-            layout.operator(ExportObjectFLVER.bl_idname)
-            layout.operator(ExportEquipmentFLVER.bl_idname)
+                self.draw_active_map(context, box)
+            box.operator(ExportMapPieceFLVERs.bl_idname)
         else:
             layout.label(text="No export directory set.")
 
-        layout.label(text="Generic Export:")
-        layout.operator(ExportLooseFLVER.bl_idname, text="Export Loose FLVER")
-        layout.operator(ExportFLVERIntoBinder.bl_idname)
+        layout.operator(ExportAnyFLVER.bl_idname)
+        layout.operator(ExportFLVERIntoAnyBinder.bl_idname)

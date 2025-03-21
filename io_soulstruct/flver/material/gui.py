@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 __all__ = [
-    "OBJECT_UL_flver_gx_item",
+    "FLVERGXItemUIList",
     "FLVERMaterialPropsPanel",
     "FLVERMaterialToolsPanel",
 ]
@@ -10,17 +10,21 @@ import typing as tp
 
 import bpy
 
-from .operators import *
+from io_soulstruct.bpy_base.panel import SoulstructPanel
 from io_soulstruct.types import ObjectType
 from io_soulstruct.flver.image.import_operators import ImportTextures
 from io_soulstruct.flver.image.misc_operators import FindMissingTexturesInImageCache
+
+from .operators import *
 
 if tp.TYPE_CHECKING:
     from .properties import FLVERGXItemProps
 
 
-class OBJECT_UL_flver_gx_item(bpy.types.UIList):
+class FLVERGXItemUIList(bpy.types.UIList):
     """Draws a list of `GXItem` elements."""
+
+    bl_idname = "OBJECT_UL_flver_gx_item"
 
     def draw_item(
         self,
@@ -51,9 +55,9 @@ class OBJECT_UL_flver_gx_item(bpy.types.UIList):
             subsplit.prop(item, "data", text="", emboss=True)
 
 
-class FLVERMaterialPropsPanel(bpy.types.Panel):
+class FLVERMaterialPropsPanel(SoulstructPanel):
     """FLVER Material properties, available on all Blender materials."""
-    bl_label = "FLVER Material Settings"
+    bl_label = "FLVER Material Properties"
     bl_idname = "MATERIAL_PT_flver_material"
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
@@ -84,7 +88,7 @@ class FLVERMaterialPropsPanel(bpy.types.Panel):
                 layout.label(text="GX Items:")
                 row = layout.row()
                 row.template_list(
-                    listtype_name=OBJECT_UL_flver_gx_item.__name__,
+                    listtype_name=FLVERGXItemUIList.bl_idname,
                     list_id="",
                     dataptr=material.FLVER_MATERIAL,
                     propname="gx_items",
@@ -108,7 +112,7 @@ class FLVERMaterialPropsPanel(bpy.types.Panel):
                 layout.label(text=f"{key}: {value}")
 
 
-class FLVERMaterialToolsPanel(bpy.types.Panel):
+class FLVERMaterialToolsPanel(SoulstructPanel):
     bl_label = "FLVER Material Tools"
     bl_idname = "SCENE_PT_flver_material_tools"
     bl_space_type = "VIEW_3D"
@@ -136,13 +140,6 @@ class FLVERMaterialToolsPanel(bpy.types.Panel):
                 panel.operator(SetMaterialTexture1.bl_idname)
             else:
                 panel.label(text="No Material Selected.")
-
-        header, panel = layout.panel("Texture Export Settings", default_closed=True)
-        header.label(text="Texture Export Settings")
-        if panel:
-            texture_export_settings = context.scene.texture_export_settings
-            for prop_name in texture_export_settings.__annotations__:
-                panel.prop(texture_export_settings, prop_name)
 
         header, panel = layout.panel("Texture Tools", default_closed=True)
         header.label(text="Texture Tools")

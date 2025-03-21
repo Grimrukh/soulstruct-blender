@@ -11,14 +11,56 @@ __all__ = [
 import bpy
 
 from soulstruct.base.models.flver import FLVERBoneUsageFlags, FLVERVersion
+from soulstruct.games import *
+
+from io_soulstruct.bpy_base.property_group import SoulstructPropertyGroup
 
 
-class FLVERProps(bpy.types.PropertyGroup):
-    """Extension properties for all Blender objects that represent FLVER models.
+class FLVERProps(SoulstructPropertyGroup):
+    """Extension properties for all Blender Mesh objects that represent FLVER models.
 
-    These properties exist simply as `bpy.types.Object.flver` and are expected to be set on the FLVER Mesh objects, not
-    their parent Armature objects.
+    These properties are stored on the Mesh, not any Armature parent.
     """
+
+    # Valid properties can depend on each FLVER's `version`, not the active game.
+    FLVER0_PROP_NAMES = (
+        "big_endian",
+        "version",
+        "unicode",
+        "f0_unk_x4a",
+        "f0_unk_x4b",
+        "f0_unk_x4c",
+        "f0_unk_x5c",
+
+        # Internal usage:
+        "bone_data_type",
+        "mesh_vertices_merged",
+    )
+
+    FLVER2_PROP_NAMES = (
+        "big_endian",
+        "version",
+        "unicode",
+        "f2_unk_x4a",
+        "f2_unk_x4c",
+        "f2_unk_x5c",
+        "f2_unk_x5d",
+        "f2_unk_x68",
+
+        # Internal usage:
+        "bone_data_type",
+        "mesh_vertices_merged",
+    )
+
+    # Game-specific property names for each FLVER version.
+    GAME_PROP_NAMES = {
+        DEMONS_SOULS: FLVER0_PROP_NAMES,
+
+        DARK_SOULS_PTDE: FLVER2_PROP_NAMES,
+        DARK_SOULS_DSR: FLVER2_PROP_NAMES,
+        BLOODBORNE: FLVER2_PROP_NAMES,
+        ELDEN_RING: FLVER2_PROP_NAMES,
+    }
 
     big_endian: bpy.props.BoolProperty(
         name="Is Big Endian",
@@ -137,8 +179,10 @@ class FLVERProps(bpy.types.PropertyGroup):
     )
 
 
-class FLVERDummyProps(bpy.types.PropertyGroup):
+class FLVERDummyProps(SoulstructPropertyGroup):
     """Extension properties for Blender objects that represent FLVER Dummy objects."""
+
+    # No game-specific properties.
 
     parent_bone_name: bpy.props.StringProperty(
         name="In Space of Bone",
@@ -177,8 +221,10 @@ class FLVERDummyProps(bpy.types.PropertyGroup):
     )
 
 
-class FLVERBoneProps(bpy.types.PropertyGroup):
+class FLVERBoneProps(SoulstructPropertyGroup):
     """Extension properties for Blender Bones that represent FLVER bones."""
+
+    # No game-specific properties.
 
     flver_translate: bpy.props.FloatVectorProperty(
         name="Translate",
@@ -235,8 +281,13 @@ class FLVERBoneProps(bpy.types.PropertyGroup):
         return flags
 
 
-class FLVERImportSettings(bpy.types.PropertyGroup):
-    """Common FLVER import settings. Drawn manually in operator browser windows."""
+class FLVERImportSettings(SoulstructPropertyGroup):
+    """Common FLVER import settings.
+
+    Note that these are always drawn manually in operator browser windows, never in Panels.
+    """
+
+    # No game-specific properties.
 
     merge_mesh_vertices: bpy.props.BoolProperty(
         name="Merge Mesh Vertices",
@@ -285,8 +336,10 @@ class FLVERImportSettings(bpy.types.PropertyGroup):
     )
 
 
-class FLVERExportSettings(bpy.types.PropertyGroup):
+class FLVERExportSettings(SoulstructPropertyGroup):
     """Common FLVER export settings. Drawn manually in operator browser windows."""
+
+    # No game-specific properties.
 
     export_textures: bpy.props.BoolProperty(
         name="Export Textures",

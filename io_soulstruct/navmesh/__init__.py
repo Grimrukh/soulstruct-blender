@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 __all__ = [
-    "ImportNVM",
+    "ImportAnyNVM",
     "ImportNVMWithBinderChoice",
-    "ImportSelectedMapNVM",
+    "ImportMapNVM",
 
-    "ExportLooseNVM",
-    "ExportNVMIntoBinder",
-    "ExportNVMIntoSelectedMap",
+    "ExportAnyNVM",
+    "ExportNVMIntoAnyBinder",
+    "ExportMapNVM",
 
     "ImportNVMHKT",
     "ImportNVMHKTWithBinderChoice",
@@ -22,7 +22,7 @@ __all__ = [
     "NVMNavmeshExportPanel",
     "NVMNavmeshToolsPanel",
     "NVMEventEntityPanel",
-    "OBJECT_UL_nvm_event_entity_triangle",
+    "NVMEventEntityTriangleUIList",
 
     "NavmeshFaceSettings",
     "RenameNavmesh",

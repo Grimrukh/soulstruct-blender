@@ -9,14 +9,13 @@ __all__ = [
 
 import bpy
 
-from io_soulstruct.general.gui import map_stem_box
-
+from io_soulstruct.bpy_base.panel import SoulstructPanel
 from .misc_mesh import *
 from .misc_other import *
 from .misc_outliner import *
 
 
-class MiscSoulstructMeshOperatorsPanel(bpy.types.Panel):
+class MiscSoulstructMeshOperatorsPanel(SoulstructPanel):
 
     bl_label = "Mesh Operators"
     bl_idname = "SCENE_PT_misc_soulstruct_mesh"
@@ -42,7 +41,7 @@ class MiscSoulstructMeshOperatorsPanel(bpy.types.Panel):
         layout.operator(ApplyModifierNonSingleUser.bl_idname)
 
 
-class MiscSoulstructCollectionOperatorsPanel(bpy.types.Panel):
+class MiscSoulstructCollectionOperatorsPanel(SoulstructPanel):
 
     bl_label = "Collection Operators"
     bl_idname = "SCENE_PT_misc_soulstruct_collection"
@@ -53,7 +52,7 @@ class MiscSoulstructCollectionOperatorsPanel(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
 
-        map_stem_box(layout, context.scene.soulstruct_settings)
+        self.draw_active_map(context, layout)
 
         layout.separator()
         layout.label(text="Model Collections:")
@@ -110,7 +109,7 @@ def _is_collection_hidden(context: bpy.types.Context, name: str) -> bool | None:
     return coll.hide_viewport
 
 
-class MiscSoulstructOtherOperatorsPanel(bpy.types.Panel):
+class MiscSoulstructOtherOperatorsPanel(SoulstructPanel):
 
     bl_label = "Other Operators"
     bl_idname = "SCENE_PT_misc_soulstruct_other"

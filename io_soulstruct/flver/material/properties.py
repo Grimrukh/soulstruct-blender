@@ -3,11 +3,33 @@ from __future__ import annotations
 __all__ = [
     "FLVERGXItemProps",
     "FLVERMaterialProps",
+    "FLVERMaterialSettings",
+
+    "get_cached_mtdbnd",
+    "get_cached_matbinbnd",
+    "clear_cached_matdefs",
 ]
+
+
+import typing as tp
+from pathlib import Path
 
 import bpy
 
-from soulstruct.base.models.flver.material import GXItem
+from soulstruct.base.models.flver import GXItem
+from soulstruct.base.models.matbin import MATBINBND
+from soulstruct.base.models.mtd import MTDBND
+from soulstruct.games import *
+
+from io_soulstruct.bpy_base.property_group import SoulstructPropertyGroup
+from io_soulstruct.exceptions import InternalSoulstructBlenderError
+from io_soulstruct.flver.image.enums import BlenderImageFormat
+from io_soulstruct.general import SoulstructSettings
+from io_soulstruct.utilities import *
+
+if tp.TYPE_CHECKING:
+    from soulstruct.games import Game
+    from io_soulstruct.utilities import LoggingOperator
 
 
 # noinspection PyUnusedLocal
@@ -86,12 +108,43 @@ class FLVERGXItemProps(bpy.types.PropertyGroup):
         return bytes(bytearray.fromhex(self.data))
 
 
-class FLVERMaterialProps(bpy.types.PropertyGroup):
+class FLVERMaterialProps(SoulstructPropertyGroup):
     """Extension properties for Blender materials that represent FLVER materials.
 
     In Blender, materials also store desired FLVER mesh settings -- that is, there may be multiple materials that are
     identical except for FLVER mesh/face set settings like backface culling. These settings are stored here.
     """
+
+    GAME_PROP_NAMES = {
+        DEMONS_SOULS: (
+            "flags",
+            "mat_def_path",
+            "is_bind_pose",
+            "default_bone_index",
+            "face_set_count",
+            "sampler_prefix",
+        ),
+        DARK_SOULS_PTDE: (
+            "flags",
+            "mat_def_path",
+            "f2_unk_x18",
+            "is_bind_pose",
+            "default_bone_index",
+            "face_set_count",
+            "sampler_prefix",
+        ),
+        ELDEN_RING: (
+            "flags",
+            "mat_def_path",
+            "f2_unk_x18",
+            "is_bind_pose",
+            "default_bone_index",
+            "face_set_count",
+            "gx_items",
+            "gx_item_index",
+            "sampler_prefix",
+        ),
+    }
 
     flags: bpy.props.IntProperty(
         name="Flags",
@@ -145,3 +198,349 @@ class FLVERMaterialProps(bpy.types.PropertyGroup):
         description="Optional prefix for sampler names in this material to make shader nodes nicer",
         default="",
     )
+
+
+class FLVERMaterialSettings(SoulstructPropertyGroup):
+    """Global (Scene) settings for FLVER material import/export."""
+
+    GAME_PROP_NAMES = {
+        DEMONS_SOULS: (
+            "demonssouls_str_mtdbnd_path",
+            "demonssouls_str_image_cache_directory",
+            "image_cache_format",
+            "import_cached_images",
+            "cache_new_game_images",
+            "pack_image_data",
+        ),
+        DARK_SOULS_PTDE: (
+            "darksouls1ptde_str_mtdbnd_path",
+            "darksouls1ptde_str_image_cache_directory",
+            "image_cache_format",
+            "import_cached_images",
+            "cache_new_game_images",
+            "pack_image_data",
+        ),
+        DARK_SOULS_DSR: (
+            "darksouls1r_str_mtdbnd_path",
+            "darksouls1r_str_image_cache_directory",
+            "image_cache_format",
+            "import_cached_images",
+            "cache_new_game_images",
+            "pack_image_data",
+        ),
+        BLOODBORNE: (
+            "bloodborne_str_mtdbnd_path",
+            "bloodborne_str_image_cache_directory",
+            "image_cache_format",
+            "import_cached_images",
+            "cache_new_game_images",
+            "pack_image_data",
+        ),
+        ELDEN_RING: (
+            "eldenring_str_matbinbnd_path",
+            "eldenring_str_image_cache_directory",
+            "image_cache_format",
+            "import_cached_images",
+            "cache_new_game_images",
+            "pack_image_data",
+        ),
+    }
+
+    demonssouls_str_mtdbnd_path: bpy.props.StringProperty(
+        name="MTDBND Path",
+        description="Path of custom MTDBND file for detecting material setups in Demon's Souls. "
+                    "Defaults to an automatic known location in selected project (preferred) or game directory",
+        default="",
+        subtype="FILE_PATH",
+    )
+    darksouls1ptde_str_mtdbnd_path: bpy.props.StringProperty(
+        name="MTDBND Path",
+        description="Path of custom MTDBND file for detecting material setups in Dark Souls 1 (PTDE). "
+                    "Defaults to an automatic known location in selected project (preferred) or game directory",
+        default="",
+        subtype="FILE_PATH",
+    )
+    darksouls1r_str_mtdbnd_path: bpy.props.StringProperty(
+        name="MTDBND Path",
+        description="Path of custom MTDBND file for detecting material setups in Dark Souls 1 (Remastered). "
+                    "Defaults to an automatic known location in selected project (preferred) or game directory",
+        default="",
+        subtype="FILE_PATH",
+    )
+    bloodborne_str_mtdbnd_path: bpy.props.StringProperty(
+        name="MTDBND Path",
+        description="Path of custom MTDBND file for detecting material setups in Bloodborne. "
+                    "Defaults to an automatic known location in selected project (preferred) or game directory",
+        default="",
+        subtype="FILE_PATH",
+    )
+
+    eldenring_str_matbinbnd_path: bpy.props.StringProperty(
+        name="MATBINBND Path",
+        description="Path of custom MATBINBND file for detecting material setups in Elden Ring. "
+                    "Defaults to an automatic known location in selected project (preferred) or game directory. "
+                    "If '_dlc01' and '_dlc02' variants of path name are found, they will also be loaded",
+        default="",
+        subtype="FILE_PATH",
+    )
+
+    demonssouls_str_image_cache_directory: bpy.props.StringProperty(
+        name="Image Cache Directory",
+        description="Path of directory to read/write cached image textures of chosen format for Demon's Souls. "
+                    "Any textures not found in this directory will attempt to be loaded from raw DDS in the project or "
+                    "game directory",
+        default="",
+        subtype="DIR_PATH",
+    )
+    darksouls1ptde_str_image_cache_directory: bpy.props.StringProperty(
+        name="Image Cache Directory",
+        description="Path of directory to read/write cached image textures of chosen format for Dark Souls 1 (PTDE). "
+                    "Any textures not found in this directory will attempt to be loaded from raw DDS in the project or "
+                    "game directory",
+        default="",
+        subtype="DIR_PATH",
+    )
+    darksouls1r_str_image_cache_directory: bpy.props.StringProperty(
+        name="Image Cache Directory",
+        description="Path of directory to read/write cached image textures of chosen format for Dark Souls 1 "
+                    "(Remastered). "
+                    "Any textures not found in this directory will attempt to be loaded from raw DDS in the project or "
+                    "game directory",
+        default="",
+        subtype="DIR_PATH",
+    )
+    bloodborne_str_image_cache_directory: bpy.props.StringProperty(
+        name="Image Cache Directory",
+        description="Path of directory to read/write cached image textures of chosen format for Bloodborne. "
+                    "Any textures not found in this directory will attempt to be loaded from raw DDS in the project or "
+                    "game directory",
+        default="",
+        subtype="DIR_PATH",
+    )
+    eldenring_str_image_cache_directory: bpy.props.StringProperty(
+        name="Image Cache Directory",
+        description="Path of directory to read/write cached image textures of chosen format for Elden Ring. "
+                    "Any textures not found in this directory will attempt to be loaded from raw DDS in the project or "
+                    "game directory",
+        default="",
+        subtype="DIR_PATH",
+    )
+
+    image_cache_format: bpy.props.EnumProperty(
+        name="Image Cache Format",
+        description="Format of cached image textures. Both lossless; PNG files take up less space but load slower",
+        items=[
+            ("TARGA", "TGA", "TGA format (TARGA)"),
+            ("PNG", "PNG", "PNG format"),
+        ],
+        default="TARGA",
+    )
+
+    import_cached_images: bpy.props.BoolProperty(
+        name="Import Cached Images",
+        description="Import cached images of the given format with matching stems from image cache directory if given, "
+                    "rather than finding and converting DDS textures of imported FLVERs",
+        default=True,
+    )
+
+    cache_new_game_images: bpy.props.BoolProperty(
+        name="Cache New Game Images",
+        description="Write cached images of the given format of imported FLVER textures (converted from DDS files) to "
+                    "image cache directory if given and not already cached, so they can be loaded more quickly in the "
+                    "future or modified without DDS headaches",
+        default=True,
+    )
+
+    pack_image_data: bpy.props.BoolProperty(
+        name="Pack Images in Blender",
+        description="Pack Blender Image texture data into Blend file, rather than simply linking to the cached "
+                    "image file on disk (if it exists and is loaded). Uncached DDS texture data will always be packed",
+        default=False,
+    )
+
+    # region Wrapper Properties
+
+    @staticmethod
+    def get_game_mtdbnd_path_prop_name(context: bpy.types.Context) -> str:
+        """Get property name for MTDBND path string. Returns empty string if active game does not use MTDs."""
+        if context.scene.soulstruct_settings.game_config.uses_matbin:
+            return ""
+        game = context.scene.soulstruct_settings.game
+        return f"{game.submodule_name}_str_mtdbnd_path"
+
+    def get_game_mtdbnd_path(self, context: bpy.types.Context) -> Path | None:
+        prop_name = self.get_game_mtdbnd_path_prop_name(context)
+        if not prop_name:
+            game = context.scene.soulstruct_settings.game
+            raise InternalSoulstructBlenderError(
+                f"Active game '{game.name}' does not use MTDs and should not be trying to read MTDBND path."
+            )
+        path_str = getattr(self, prop_name)
+        return Path(path_str) if path_str else None
+
+    @staticmethod
+    def get_game_matbinbnd_path_prop_name(context: bpy.types.Context) -> str:
+        """Get property name for MATBINBND path string. Returns empty string if active game does not use MATBINs."""
+        if not context.scene.soulstruct_settings.game_config.uses_matbin:
+            return ""
+        game = context.scene.soulstruct_settings.game
+        return f"{game.submodule_name}_str_matbinbnd_path"
+
+    def get_game_matbinbnd_path(self, context: bpy.types.Context) -> Path | None:
+        prop_name = self.get_game_matbinbnd_path_prop_name(context)
+        if not prop_name:
+            game = context.scene.soulstruct_settings.game
+            raise InternalSoulstructBlenderError(
+                f"Active game '{game.name}' does not use MATBINs and should not be trying to read MATBINBND path."
+            )
+        path_str = getattr(self, prop_name)
+        return Path(path_str) if path_str else None
+
+    @staticmethod
+    def get_game_image_cache_path_prop_name(context: bpy.types.Context) -> str:
+        """Get property name for active game's image cache directory."""
+        game = context.scene.soulstruct_settings.game
+        return f"{game.submodule_name}_str_image_cache_directory"
+
+    def get_game_image_cache_directory(self, context: bpy.types.Context) -> Path | None:
+        prop_name = self.get_game_image_cache_path_prop_name(context)
+        path_str = getattr(self, prop_name)
+        return Path(path_str) if path_str else None
+
+    def get_cached_image_path(self, context: bpy.types.Context, image_stem: str):
+        """Get the path to a cached image file in the image cache directory."""
+        image_cache_directory = self.get_game_image_cache_directory(context)
+        if not image_cache_directory:
+            raise NotADirectoryError("No image cache directory set.")
+        image_name = f"{image_stem}{self.bl_image_cache_format.get_suffix()}"
+        return image_cache_directory / image_name
+
+    @property
+    def bl_image_cache_format(self) -> BlenderImageFormat:
+        return BlenderImageFormat(self.image_cache_format)
+
+    def get_mtdbnd(self, operator: LoggingOperator, context: bpy.types.Context) -> MTDBND:
+        """Load `MTDBND` from custom path, standard location in game directory, or bundled Soulstruct file.
+
+        Should not be called for games that do not use MTDs. Otherwise, always finds a `MTDBND` or we have an error.
+        """
+        settings = SoulstructSettings.from_context(context)
+        game = settings.game
+
+        if settings.game_config.uses_matbin:
+            raise InternalSoulstructBlenderError(f"Active game '{game.name}' does not use MTDs. Should not call this.")
+
+        if is_path_and_file(custom_path := self.get_game_mtdbnd_path(context)):
+            return MTDBND.from_path(custom_path)
+
+        # Try to find MTDBND in project or game directory. We know their names from the bundled versions in Soulstruct,
+        # but only fall back to those actual bundled files if necessary.
+        mtdbnd_names = [
+            resource_path.name
+            for resource_key, resource_path in game.bundled_resource_paths.items()
+            if resource_key.endswith("MTDBND")
+        ]
+
+        if settings.prefer_import_from_project:
+            labelled_roots = (("project", settings.project_root), ("game", settings.game_root))
+        else:
+            labelled_roots = (("game", settings.game_root), ("project", settings.project_root))
+
+        mtdbnd = None  # type: MTDBND | None
+        for label, root in labelled_roots:
+            if not root:
+                continue
+            for mtdbnd_name in mtdbnd_names:
+                dir_mtdbnd_path = root.get_file_path(f"mtd/{mtdbnd_name}")
+                if dir_mtdbnd_path.is_file():
+                    operator.debug(f"Found MTDBND '{dir_mtdbnd_path.name}' in {label} directory: {dir_mtdbnd_path}")
+                    if mtdbnd is None:
+                        mtdbnd = MTDBND.from_path(dir_mtdbnd_path)
+                    else:
+                        mtdbnd |= MTDBND.from_path(dir_mtdbnd_path)
+        if mtdbnd is not None:  # found
+            return mtdbnd
+
+        operator.info(f"Loading bundled MTDBND for game {game.name}...")
+        return MTDBND.from_bundled(game)
+
+    def get_matbinbnd(self, operator: LoggingOperator, context: bpy.types.Context) -> MATBINBND | None:
+        """Load `MATBINBND` from custom path, standard location in game directory, or bundled Soulstruct file.
+
+        Should not be called for games that do not use MATBINs. Otherwise, always finds a `MATBINBND` or we have an
+        error.
+        """
+
+        settings = SoulstructSettings.from_context(context)
+        game = settings.game
+
+        if not settings.game_config.uses_matbin:
+            raise InternalSoulstructBlenderError(
+                f"Active game '{game.name}' does not use MATBINs. Should not call this."
+            )
+
+        if is_path_and_file(custom_path := self.get_game_matbinbnd_path(context)):
+            return MATBINBND.from_path(custom_path)
+
+        # Try to find MATBINBND in project or game directory.
+        matbinbnd_names = [
+            resource_path.name
+            for resource_key, resource_path in game.bundled_resource_paths.items()
+            if resource_key.endswith("MATBINBND")
+        ]
+
+        if settings.prefer_import_from_project:
+            labelled_roots = (("project", settings.project_root), ("game", settings.game_root))
+        else:
+            labelled_roots = (("game", settings.game_root), ("project", settings.project_root))
+
+        matbinbnd = None  # type: MATBINBND | None
+        for label, root in labelled_roots:
+            if not root:
+                continue
+            for matbinbnd_name in matbinbnd_names:
+                dir_matbinbnd_path = root.get_file_path(f"material/{matbinbnd_name}")
+                if dir_matbinbnd_path.is_file():
+                    operator.info(
+                        f"Found MATBINBND '{dir_matbinbnd_path.name}' in {label} directory: {dir_matbinbnd_path}"
+                    )
+                    if matbinbnd is None:
+                        matbinbnd = MATBINBND.from_path(dir_matbinbnd_path)
+                    else:
+                        matbinbnd |= MATBINBND.from_path(dir_matbinbnd_path)
+        if matbinbnd is not None:  # found
+            return matbinbnd
+
+        operator.info(f"Loading bundled MATBINBND for game {game.name}...")
+        return MATBINBND.from_bundled(game)
+
+    # endregion
+
+
+# These are cached per-game on first load, which also preserves lazily loaded MATBINs. They can be cleared with
+# `clear_cached_matdefs`()`.
+_CACHED_MTDBNDS: dict[Game, MTDBND] = {}
+_CACHED_MATBINBNDS: dict[Game, MATBINBND] = {}
+
+
+def get_cached_mtdbnd(operator: LoggingOperator, context: bpy.types.Context) -> MTDBND:
+    settings = context.scene.soulstruct_settings
+    mat_settings = context.scene.flver_material_settings
+    game = settings.game
+    if game not in _CACHED_MTDBNDS:
+        _CACHED_MTDBNDS[game] = mat_settings.get_mtdbnd(operator, context)
+    return _CACHED_MTDBNDS[game]
+
+
+def get_cached_matbinbnd(operator: LoggingOperator, context: bpy.types.Context) -> MATBINBND:
+    settings = context.scene.soulstruct_settings
+    mat_settings = context.scene.flver_material_settings
+    game = settings.game
+    if game not in _CACHED_MATBINBNDS:
+        _CACHED_MATBINBNDS[game] = mat_settings.get_matbinbnd(operator, context)
+    return _CACHED_MATBINBNDS[game]
+
+
+def clear_cached_matdefs():
+    _CACHED_MTDBNDS.clear()
+    _CACHED_MATBINBNDS.clear()

@@ -328,8 +328,8 @@ class BaseBlenderSoulstructObject(abc.ABC, tp.Generic[SOULSTRUCT_T, TYPE_PROPS_T
 
     @classmethod
     def from_collection_objects(
-        cls: type[SELF_T], collection: bpy.types.Collection, sort_alphabetical=True
-    ) -> list[SELF_T]:
+        cls, collection: bpy.types.Collection, sort_alphabetical=True
+    ) -> list[tp.Self]:
         """NOTE: ALL objects in collection must be of given type. Not recursive.
 
         Raises a ValueError if there are no objects of this type in the collection.

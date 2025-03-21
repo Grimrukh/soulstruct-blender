@@ -21,10 +21,10 @@ from soulstruct.utilities.maths import Vector3, Matrix3
 
 from io_soulstruct.exceptions import *
 from io_soulstruct.flver.image.types import DDSTextureCollection
+from io_soulstruct.flver.material.properties import get_cached_mtdbnd, get_cached_matbinbnd
 from io_soulstruct.flver.material.types import BlenderFLVERMaterial
 from io_soulstruct.flver.models.properties import FLVERExportSettings
-from io_soulstruct.general import GAME_CONFIG, SoulstructSettings
-from io_soulstruct.general.cached import get_cached_mtdbnd, get_cached_matbinbnd
+from io_soulstruct.general import BLENDER_GAME_CONFIG, SoulstructSettings
 from io_soulstruct.utilities import *
 
 from ..enums import FLVERModelType, FLVERBoneDataType
@@ -37,7 +37,9 @@ if tp.TYPE_CHECKING:
 
 @dataclass(slots=True)
 class _CreateFLVERCommand:
+    """Bundled inputs and state for creating an FLVER from a Blender FLVER object."""
 
+    # Command arguments:
     operator: LoggingOperator
     context: bpy.types.Context
     bl_flver: BlenderFLVER
@@ -45,6 +47,7 @@ class _CreateFLVERCommand:
     flver_model_type: FLVERModelType = FLVERModelType.Unknown
     texture_collection: DDSTextureCollection | None = None
 
+    # State initialized in `__post_init__`:
     flver: FLVER = field(default=None, init=False)
     settings: SoulstructSettings = field(default=None, init=False)
     export_settings: FLVERExportSettings = field(default=None, init=False)
@@ -62,10 +65,10 @@ class _CreateFLVERCommand:
         self.settings = self.context.scene.soulstruct_settings
         self.export_settings = self.context.scene.flver_export_settings
 
-        if GAME_CONFIG[self.settings.game].uses_matbin:
-            self.matbinbnd = get_cached_matbinbnd(self.operator, self.settings)
+        if BLENDER_GAME_CONFIG[self.settings.game].uses_matbin:
+            self.matbinbnd = get_cached_matbinbnd(self.operator, self.context)
         else:
-            self.mtdbnd = get_cached_mtdbnd(self.operator, self.settings)
+            self.mtdbnd = get_cached_mtdbnd(self.operator, self.context)
 
         if self.bl_flver.version == "DEFAULT":
             # Default is game-dependent.
@@ -194,9 +197,8 @@ def _create_flver_from_bl_flver(
         command.flver.dummies.append(flver_dummy)
 
     # `MatDef` for each Blender material is needed to determine which Blender UV layers to use for which loops.
-    try:
-        matdef_class = command.settings.get_game_matdef_class()
-    except UnsupportedGameError:
+    matdef_class = command.settings.game_config.matdef_class
+    if matdef_class is None:
         raise UnsupportedGameError(f"Cannot yet export FLVERs for game {command.settings.game}. (No `MatDef` class.)")
 
     matdefs = []
@@ -566,7 +568,7 @@ def _create_flver_meshes(
         split_mesh_defs,
         unused_bone_indices_are_minus_one=True,  # saves some time within the splitter (no ambiguous zeroes)
         normal_tangent_dot_threshold=command.export_settings.normal_tangent_dot_max,
-        **command.settings.get_game_split_mesh_kwargs(),
+        **command.settings.game_config.split_mesh_kwargs,
     )
     command.operator.debug(
         f"Split Blender mesh into {len(command.flver.meshes)} FLVER meshes in {time.perf_counter() - p} s."

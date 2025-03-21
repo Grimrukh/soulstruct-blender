@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 __all__ = [
-    "ExportLooseFLVER",
-    "ExportFLVERIntoBinder",
+    "ExportAnyFLVER",
+    "ExportFLVERIntoAnyBinder",
     "ExportMapPieceFLVERs",
     "ExportCharacterFLVER",
     "ExportObjectFLVER",
@@ -34,10 +34,10 @@ if tp.TYPE_CHECKING:
 
 # region Generic Exporters
 
-class ExportLooseFLVER(LoggingExportOperator):
+class ExportAnyFLVER(LoggingExportOperator):
     """Export one FLVER model from a Blender Armature parent to a file using a browser window."""
     bl_idname = "export_scene.flver"
-    bl_label = "Export FLVER"
+    bl_label = "Export Any FLVER"
     bl_description = "Export Blender Armature/Mesh to a standalone FromSoftware FLVER model file"
 
     filename_ext = ".flver"
@@ -104,13 +104,13 @@ class ExportLooseFLVER(LoggingExportOperator):
         return {"FINISHED"}
 
 
-class ExportFLVERIntoBinder(LoggingImportOperator):
+class ExportFLVERIntoAnyBinder(LoggingImportOperator):
     """Export a single FLVER model from a Blender mesh into a chosen game binder (BND/BHD).
 
     TODO: Does not support Binders with multiple FLVERs yet (e.g. some OBJBNDs).
     """
     bl_idname = "export_scene.flver_binder"
-    bl_label = "Export FLVER Into Binder"
+    bl_label = "Export FLVER Into Any Binder"
     bl_description = "Export a FLVER model file into a FromSoftware Binder (BND/BHD)"
 
     filter_glob: StringProperty(
@@ -267,7 +267,7 @@ class ExportMapPieceFLVERs(LoggingOperator):
         # TODO: Later games (e.g. Elden Ring) use Binders like 'mapbnd' for map pieces, but this is not yet supported.
         #  This assumes loose FLVERs in the map folder. MAPBND support will require insertion into existing MAPBNDs,
         #  as the `.grass` files inside them will be left untouched.
-        if not settings.map_stem and not settings.detect_map_from_collection:
+        if not settings.map_stem and not settings.auto_detect_export_map:
             return self.error(
                 "No game map directory specified in Soulstruct settings and `Detect Map from Collection` is disabled."
             )
@@ -316,7 +316,7 @@ class ExportMapPieceFLVERs(LoggingOperator):
             if (
                 settings.is_game(DEMONS_SOULS)
                 and relative_flver_path.name.endswith(".dcx")
-                and settings.export_des_debug_files
+                and settings.des_export_debug_files
             ):
                 # DeS loose FLVER has DCX by default, but we want a non-DCX Map Piece too.
                 for export_path in exported_paths:
@@ -460,7 +460,7 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
 
             if (
                 settings.is_game(DEMONS_SOULS)
-                and settings.export_des_debug_files
+                and settings.des_export_debug_files
             ):
                 if chrbnd.dcx_type != DCXType.Null:
                     # Export non-DCX CHRBND too.
@@ -498,7 +498,7 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
 
         if (
             settings.is_game(DEMONS_SOULS)
-            and settings.export_des_debug_files
+            and settings.des_export_debug_files
             and multi_tpf is not None
         ):
             # Export non-DCX TPF next to CHRBND too.
@@ -712,7 +712,7 @@ class ExportObjectFLVER(BaseGameFLVERBinderExportOperator):
 
         if (
             settings.is_game(DEMONS_SOULS)
-            and settings.export_des_debug_files
+            and settings.des_export_debug_files
         ):
             if objbnd.dcx_type != DCXType.Null:
                 # Export non-DCX OBJBND too.
@@ -825,7 +825,7 @@ class ExportEquipmentFLVER(BaseGameFLVERBinderExportOperator):
 
         if (
             settings.is_game(DEMONS_SOULS)
-            and settings.export_des_debug_files
+            and settings.des_export_debug_files
         ):
             if partsbnd.dcx_type != DCXType.Null:
                 # Export non-DCX PARTSBND too.

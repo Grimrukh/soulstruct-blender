@@ -14,13 +14,12 @@ from soulstruct.base.models.flver import *
 from soulstruct.base.models.shaders import MatDef, MatDefError
 from soulstruct.containers.tpf import TPFTexture
 
-from io_soulstruct.exceptions import *
+from io_soulstruct.flver.image.enums import BlenderImageFormat
 from io_soulstruct.flver.image.import_operators import *
 from io_soulstruct.flver.image.types import DDSTexture, DDSTextureCollection
 from io_soulstruct.flver.material.types import BlenderFLVERMaterial
-from io_soulstruct.general import GAME_CONFIG
-from io_soulstruct.general.cached import get_cached_mtdbnd, get_cached_matbinbnd
-from io_soulstruct.general.enums import BlenderImageFormat
+from io_soulstruct.flver.material.properties import get_cached_mtdbnd, get_cached_matbinbnd
+from io_soulstruct.general import BLENDER_GAME_CONFIG
 from io_soulstruct.utilities import *
 
 if tp.TYPE_CHECKING:
@@ -51,16 +50,20 @@ def create_materials(
     material (NOT each mesh).
     """
 
-    # Mesh-matched list of dictionaries mapping sample/texture type to texture path (only name matters).
     settings = operator.settings(context)
     import_settings = context.scene.flver_import_settings
-    mtdbnd = get_cached_mtdbnd(operator, settings) if not GAME_CONFIG[settings.game].uses_matbin else None
-    matbinbnd = get_cached_matbinbnd(operator, settings) if GAME_CONFIG[settings.game].uses_matbin else None
+    mat_settings = context.scene.flver_material_settings
+
+    mtdbnd = get_cached_mtdbnd(operator, context) if not BLENDER_GAME_CONFIG[settings.game].uses_matbin else None
+    matbinbnd = get_cached_matbinbnd(operator, context) if BLENDER_GAME_CONFIG[settings.game].uses_matbin else None
+
+    # Mesh-matched list of dictionaries mapping sample/texture type to texture path (only name matters).
     all_mesh_texture_stems = _get_mesh_flver_textures(flver, matbinbnd)
+
     bl_materials_by_matdef_name = bl_materials_by_matdef_name or {}  # still worthwhile within one FLVER
 
     if import_settings.import_textures:
-        if image_import_manager or settings.str_image_cache_directory:
+        if image_import_manager or is_path_and_dir(mat_settings.get_game_image_cache_directory(context)):
             p = time.perf_counter()
             all_texture_stems = {
                 v
@@ -97,22 +100,22 @@ def create_materials(
             continue  # material already created (used by a previous mesh)
 
         # Try to look up material info from MTD or MATBIN (Elden Ring).
-        try:
-            matdef_class = settings.get_game_matdef_class()
-        except UnsupportedGameError:
-            operator.warning(f"FLVER material shader creation not implemented for game {settings.game.name}.")
-            matdef = None
-        except MatDefError as ex:
-            operator.warning(
-                f"Could not create `MatDef` for game material '{mesh.material.mat_def_name}'. Error:\n"
-                f"    {ex}"
-            )
-            matdef = None
+        matdef_class = settings.game_config.matdef_class
+        if matdef_class:
+            try:
+                if BLENDER_GAME_CONFIG[settings.game].uses_matbin:
+                    matdef = matdef_class.from_matbinbnd_or_name(mesh.material.mat_def_name, matbinbnd)
+                else:
+                    matdef = matdef_class.from_mtdbnd_or_name(mesh.material.mat_def_name, mtdbnd)
+            except MatDefError as ex:
+                operator.warning(
+                    f"Could not create `MatDef` for game material '{mesh.material.mat_def_name}'. Error:\n"
+                    f"    {ex}"
+                )
+                matdef = None
         else:
-            if GAME_CONFIG[settings.game].uses_matbin:
-                matdef = matdef_class.from_matbinbnd_or_name(mesh.material.mat_def_name, matbinbnd)
-            else:
-                matdef = matdef_class.from_mtdbnd_or_name(mesh.material.mat_def_name, mtdbnd)
+            operator.warning(f"FLVER material definition (`MatDef`) not implemented for game {settings.game.name}.")
+            matdef = None
 
         flver_matdefs[material_hash] = matdef
 
@@ -280,6 +283,7 @@ def _load_texture_images(
     without any other modifications. (The cached images are also case-sensitive.)
     """
     settings = operator.settings(context)
+    mat_settings = context.scene.flver_material_settings
 
     # TODO: I was checking every Image in Blender's data to find 1x1 magenta dummy textures to replace, but that's
     #  super slow as more and more textures are loaded.
@@ -288,17 +292,20 @@ def _load_texture_images(
     new_texture_collection = DDSTextureCollection()
 
     tpf_textures_to_load = {}  # type: dict[str, TPFTexture]
+    image_cache_directory = mat_settings.get_game_image_cache_directory(context)
+    image_cache_exists = is_path_and_dir(image_cache_directory)
+
     for texture_stem in texture_stems:
         if texture_stem in bl_image_stems:
             continue  # already loaded
         if texture_stem in tpf_textures_to_load:
             continue  # already queued to load below
 
-        if settings.read_cached_images and settings.str_image_cache_directory:
-            cached_path = settings.get_cached_image_path(texture_stem)
+        if mat_settings.import_cached_images and image_cache_exists:
+            cached_path = mat_settings.get_cached_image_path(context, texture_stem)
             if cached_path.is_file():
                 # Found cached image.
-                dds_texture = DDSTexture.new_from_image_path(cached_path, settings.pack_image_data)
+                dds_texture = DDSTexture.new_from_image_path(cached_path, mat_settings.pack_image_data)
                 new_texture_collection.add(dds_texture)
                 bl_image_stems.add(texture_stem)
                 continue
@@ -319,7 +326,7 @@ def _load_texture_images(
         for texture_stem in tpf_textures_to_load:
             operator.debug(f"Loading texture into Blender: {texture_stem}")
         p = time.perf_counter()
-        image_format = settings.bl_image_format
+        image_format = mat_settings.bl_image_cache_format
         deswizzle_platform = settings.game_config.swizzle_platform
         if image_format == BlenderImageFormat.TARGA:
             all_image_data = batch_get_tpf_texture_tga_data(
@@ -332,14 +339,16 @@ def _load_texture_images(
         else:
             raise ValueError(f"Unsupported image format for DDS conversion: {image_format}")
 
-        if settings.write_cached_images:
-            write_image_directory = settings.image_cache_directory  # could be None
+        if mat_settings.cache_new_game_images and image_cache_exists:
+            write_image_directory = image_cache_directory
         else:
             write_image_directory = None
+
         operator.debug(
             f"Converted DDS images to {image_format.value} in {time.perf_counter() - p:.3f} s "
-            f"(cached = {settings.write_cached_images})"
+            f"(cached = {mat_settings.cache_new_game_images})"
         )
+
         for texture_stem, image_data in zip(tpf_textures_to_load.keys(), all_image_data):
             if image_data is None:
                 continue  # failed to convert this texture
@@ -349,7 +358,7 @@ def _load_texture_images(
                 image_data=image_data,
                 image_cache_directory=write_image_directory,
                 replace_existing=False,  # not currently used
-                pack_image_data=settings.pack_image_data,
+                pack_image_data=mat_settings.pack_image_data,
             )
             new_texture_collection.add(dds_texture)
 

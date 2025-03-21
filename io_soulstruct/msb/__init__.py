@@ -4,6 +4,7 @@ __all__ = [
     "ImportMapMSB",
     "ImportAnyMSB",
     "ExportMapMSB",
+    "ExportAnyMSB",
 
     "RegionDrawSettings",
     "draw_msb_regions",

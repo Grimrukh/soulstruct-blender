@@ -3,9 +3,18 @@ __all__ = ["NVMHKTImportSettings"]
 
 import bpy
 
+from soulstruct.games import ELDEN_RING
 
-class NVMHKTImportSettings(bpy.types.PropertyGroup):
+from io_soulstruct.bpy_base.property_group import SoulstructPropertyGroup
+
+
+class NVMHKTImportSettings(SoulstructPropertyGroup):
     """Determines which NVMHKT navmeshes are collected by 'all'-style importers."""
+
+    GAME_PROP_NAMES = {
+        # TODO: I think Bloodborne and onward use NVMHKT.
+        ELDEN_RING: (),  # all properties are supported
+    }
 
     import_hires_navmeshes: bpy.props.BoolProperty(
         name="Import Hi-Res Navs (n*/q*)",

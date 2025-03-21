@@ -5,9 +5,11 @@ __all__ = [
 ]
 
 import bpy
-from io_soulstruct.utilities.bpy_types import ObjectType
 
 from soulstruct.base.models.flver.material import Material
+
+from io_soulstruct.bpy_base.property_group import SoulstructPropertyGroup
+from io_soulstruct.utilities import ObjectType
 
 _MASK_ID_STRINGS = []
 
@@ -37,8 +39,10 @@ def _get_display_mask_id_items(self, context) -> list[tuple[str, str, str]]:
     return items
 
 
-class FLVERToolSettings(bpy.types.PropertyGroup):
+class FLVERToolSettings(SoulstructPropertyGroup):
     """Holds settings for the various operators below. Drawn manually in operator browser windows."""
+
+    # No game-specific properties.
 
     vertex_color_layer_name: bpy.props.StringProperty(
         name="Vertex Color Layer",

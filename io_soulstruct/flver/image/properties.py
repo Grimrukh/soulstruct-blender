@@ -8,10 +8,12 @@ __all__ = [
 import bpy
 
 from soulstruct.containers.tpf import TPFPlatform
+
+from io_soulstruct.bpy_base.property_group import SoulstructPropertyGroup
 from .enums import *
 
 
-class DDSTextureProps(bpy.types.PropertyGroup):
+class DDSTextureProps(SoulstructPropertyGroup):
     """Used as `bpy.types.Image.DDS_TEXTURE`."""
 
     dds_format: bpy.props.EnumProperty(
@@ -52,7 +54,7 @@ class DDSTextureProps(bpy.types.PropertyGroup):
     )
 
 
-class TextureExportSettings(bpy.types.PropertyGroup):
+class TextureExportSettings(SoulstructPropertyGroup):
     """Contains settings and enums that determine DDS compression type for each FLVER texture slot type."""
 
     overwrite_existing_map_textures: bpy.props.BoolProperty(

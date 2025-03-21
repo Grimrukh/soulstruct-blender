@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 __all__ = [
-    "ExportLooseHKXAnimation",
-    "ExportHKXAnimationIntoBinder",
+    "ExportAnyHKXAnimation",
+    "ExportHKXAnimationIntoAnyBinder",
     "ExportCharacterHKXAnimation",
     "ExportObjectHKXAnimation",
 ]
@@ -38,10 +38,10 @@ def _is_bl_flver_with_animation_data(obj: bpy.types.Object) -> tp.TypeGuard[bpy.
     return bool(bl_flver.armature and bl_flver.armature.animation_data and bl_flver.armature.animation_data.action)
 
 
-class ExportLooseHKXAnimation(LoggingExportOperator):
+class ExportAnyHKXAnimation(LoggingExportOperator):
     """Export loose HKX animation file from an Action attached to active FLVER Armature."""
     bl_idname = "export_scene.hkx_animation"
-    bl_label = "Export Loose HKX Anim"
+    bl_label = "Export Any HKX Animation"
     bl_description = "Export a Blender action to a standalone HKX animation file with manual HKX skeleton source"
 
     filename_ext = ".hkx"
@@ -139,10 +139,10 @@ class ExportLooseHKXAnimation(LoggingExportOperator):
         return {"FINISHED"}
 
 
-class ExportHKXAnimationIntoBinder(LoggingImportOperator):
+class ExportHKXAnimationIntoAnyBinder(LoggingImportOperator):
     """Export HKX animation from an Action attached to a FLVER armature, into an existing BND."""
     bl_idname = "export_scene.hkx_animation_binder"
-    bl_label = "Export HKX Anim Into Binder"
+    bl_label = "Export HKX Animation Into Any Binder"
     bl_description = "Export a Blender action to a HKX animation file inside a FromSoftware Binder (BND/BHD)"
 
     filter_glob: bpy.props.StringProperty(
@@ -414,7 +414,7 @@ class ExportCharacterHKXAnimation(BaseExportTypedHKXAnimation):
 
 class ExportObjectHKXAnimation(BaseExportTypedHKXAnimation):
     """Export active animation from selected object Armature into that object's game OBJBND."""
-    bl_idname = "export_scene.quick_hkx_object_animation"
+    bl_idname = "export_scene.object_hkx_animation"
     bl_label = "Export Object Anim"
     bl_description = "Export active Action into its object's OBJBND"
 

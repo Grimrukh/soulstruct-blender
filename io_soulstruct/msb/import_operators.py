@@ -22,9 +22,11 @@ from soulstruct.demonssouls.maps import MSB as DES_MSB
 from soulstruct.games import *
 
 from io_soulstruct.msb.types import darksouls1ptde, darksouls1r, demonssouls
+from io_soulstruct.flver.models.properties import FLVERImportSettings
 from io_soulstruct.general.cached import get_cached_file
 from io_soulstruct.utilities import *
 from io_soulstruct.utilities.operators import LoggingOperator, LoggingImportOperator
+from .misc_operators import EnableAllImportModels, DisableAllImportModels
 from .operator_config import *
 from .properties import BlenderMSBRegionSubtype, BlenderMSBPartSubtype, BlenderMSBEventSubtype
 
@@ -52,7 +54,6 @@ def _import_msb(
 
     settings = operator.settings(context)
     msb_import_settings = context.scene.msb_import_settings
-    p = time.perf_counter()
 
     if settings.is_game(DARK_SOULS_PTDE):
         blender_types_module = darksouls1ptde
@@ -208,6 +209,8 @@ def _import_msb(
         f"in {time.perf_counter() - p:.3f} s."
     )
 
+    msb_collection.soulstruct_type = SoulstructCollectionType.MSB
+
     if missing_collection is not None:
         missing_count = len(missing_collection.all_objects)
         operator.warning(f"{missing_count} missing MSB references created in MSB {msb_stem}.")
@@ -215,14 +218,92 @@ def _import_msb(
     return {"FINISHED"}
 
 
-class ImportMapMSB(LoggingOperator):
+class _BaseImportMSB(LoggingOperator):
+    """Draws `MSBImportSettings` and `FLVERImportSettings` when invoked."""
+
+    def draw(self, context):
+        """Draws MSB import settings and FLVER import settings.
+
+        May be drawn in a pop-up or in browser window, varying with subclass.
+        """
+
+        layout = self.layout
+        settings = self.settings(context)
+
+        msb_import_settings = context.scene.msb_import_settings
+        import_props = list(msb_import_settings.__annotations__)
+        booleans = [prop for prop in import_props if prop.startswith("import_")]
+        for prop_name in booleans:
+            if settings.is_game("ELDEN_RING") and prop_name == "import_object_models":
+                layout.prop(msb_import_settings, prop_name, text="Import Asset Models")
+            else:
+                layout.prop(msb_import_settings, prop_name)
+            import_props.remove(prop_name)
+
+        row = layout.row()
+        split = row.split(factor=0.5)
+        split.operator(EnableAllImportModels.bl_idname, text="All")
+        split.operator(DisableAllImportModels.bl_idname, text="None")
+
+        for prop_name in import_props:
+            if prop_name in {"model_name_filter_match_mode", "model_name_filter"}:
+                continue
+            layout.prop(msb_import_settings, prop_name)
+
+        if not msb_import_settings.import_any_models():
+            layout.separator()
+            layout.label(text="No models will be imported.")
+            return
+
+        layout.label(text="Model Name Import Filter:")
+        row = layout.row()
+        split = row.split(factor=0.2)
+        split.prop(msb_import_settings, "model_name_filter_match_mode", text="")
+        split.prop(msb_import_settings, "model_name_filter", text="")
+
+        if not msb_import_settings.import_any_flver_models():
+            layout.separator()
+            layout.label(text="No FLVER models will be imported.")
+            return
+
+        self.layout.separator()
+        row = layout.row()
+        split = row.split(factor=0.4)
+        split.label(text="Part Armature Mode:")
+        split.prop(msb_import_settings, "part_armature_mode", text="")
+        import_props.remove("part_armature_mode")
+
+        self.layout.label(text="FLVER Import Settings:")
+        for prop in FLVERImportSettings.__annotations__:
+            self.layout.prop(context.scene.flver_import_settings, prop)
+
+        self.layout.separator()
+        self.layout.label(text="FLVER Material Settings:")
+        mat_settings = context.scene.flver_material_settings
+
+        if settings.game_config.uses_matbin:
+            layout.label(text="Custom MATBINBND Path:")
+            layout.prop(mat_settings, mat_settings.get_game_matbinbnd_path_prop_name(context), text="")
+        else:
+            layout.label(text="Custom MTDBND Path:")
+            layout.prop(mat_settings, mat_settings.get_game_mtdbnd_path_prop_name(context), text="")
+
+        layout.label(text="Image Cache Directory:")
+        layout.prop(mat_settings, mat_settings.get_game_image_cache_path_prop_name(context), text="")
+        layout.prop(mat_settings, "image_cache_format")
+        layout.prop(mat_settings, "import_cached_images")
+        layout.prop(mat_settings, "cache_new_game_images")
+        layout.prop(mat_settings, "pack_image_data")
+
+
+class ImportMapMSB(_BaseImportMSB):
     """Import all Parts, Regions, and Events from active map's MSB.
 
     All entries must be imported and exported at once. However, Part models are optional, and may be empty.
     """
 
     bl_idname = "import_scene.map_msb"
-    bl_label = "Import MSB"
+    bl_label = "Import Map MSB"
     bl_options = {"REGISTER", "UNDO"}
     bl_description = "Import all Parts, Regions, and Events from the active map's MSB, with selected Model meshes"
 
@@ -237,26 +318,29 @@ class ImportMapMSB(LoggingOperator):
             return False
         return True
 
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
     def execute(self, context):
 
         settings = self.settings(context)
 
         msb_stem = settings.get_latest_map_stem_version()
         msb_path = settings.get_import_msb_path()  # will automatically use latest MSB version if known and enabled
-        msb = get_cached_file(msb_path, settings.get_game_msb_class())  # type: MSB_TYPING
+        msb = get_cached_file(msb_path, settings.game_config.msb_class)  # type: MSB_TYPING
         oldest_map_stem = settings.get_oldest_map_stem_version(msb_stem)
 
         return _import_msb(self, context, msb, msb_stem, oldest_map_stem)
 
 
-class ImportAnyMSB(LoggingImportOperator):
+class ImportAnyMSB(_BaseImportMSB, LoggingImportOperator):
     """Import all Parts, Regions, and Events from active map's MSB.
 
     All entries must be imported and exported at once. However, Part models are optional, and may be empty.
     """
 
     bl_idname = "import_scene.any_msb"
-    bl_label = "Import MSB"
+    bl_label = "Import Any MSB"
     bl_options = {"REGISTER", "UNDO"}
     bl_description = "Import all Parts, Regions, and Events from selected MSB or JSON, with selected Model meshes"
 

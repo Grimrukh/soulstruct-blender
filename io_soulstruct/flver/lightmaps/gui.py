@@ -2,12 +2,11 @@ from __future__ import annotations
 
 __all__ = ["FLVERLightmapsPanel"]
 
-import bpy
-
+from io_soulstruct.bpy_base.panel import SoulstructPanel
 from .operators import BakeLightmapTextures
 
 
-class FLVERLightmapsPanel(bpy.types.Panel):
+class FLVERLightmapsPanel(SoulstructPanel):
     """Panel for Soulstruct FLVER operators."""
     bl_label = "FLVER Lightmaps"
     bl_idname = "SCENE_PT_flver_lightmaps"

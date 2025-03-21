@@ -56,7 +56,7 @@ from io_soulstruct.flver import *
 from io_soulstruct.msb import *
 from io_soulstruct.nav_graph import *
 from io_soulstruct.navmesh import *
-from io_soulstruct.types import SoulstructType
+from io_soulstruct.types import SoulstructType, SoulstructCollectionType
 from io_soulstruct.utilities import ViewSelectedAtDistanceZero
 
 
@@ -81,17 +81,17 @@ bl_info = {
 def menu_func_import(self, context):
     layout = self.layout
     layout.operator(ImportFLVER.bl_idname, text="FLVER (.flver/.*bnd)")
-    layout.operator(ImportNVM.bl_idname, text="NVM (.nvm/.nvmbnd)")
-    layout.operator(ImportMCG.bl_idname, text="MCG (.mcg)")
+    layout.operator(ImportAnyNVM.bl_idname, text="NVM (.nvm/.nvmbnd)")
+    layout.operator(ImportAnyMCG.bl_idname, text="MCG (.mcg)")
 
 
 # noinspection PyUnusedLocal
 def menu_func_export(self, context):
     layout = self.layout
-    layout.operator(ExportLooseFLVER.bl_idname, text="FLVER (.flver)")
-    layout.operator(ExportFLVERIntoBinder.bl_idname, text="FLVER to Binder (.*bnd)")
-    layout.operator(ExportLooseNVM.bl_idname, text="NVM (.nvm)")
-    layout.operator(ExportNVMIntoBinder.bl_idname, text="NVM to Binder (.nvmbnd)")
+    layout.operator(ExportAnyFLVER.bl_idname, text="FLVER (.flver)")
+    layout.operator(ExportFLVERIntoAnyBinder.bl_idname, text="FLVER to Binder (.*bnd)")
+    layout.operator(ExportAnyNVM.bl_idname, text="NVM (.nvm)")
+    layout.operator(ExportNVMIntoAnyBinder.bl_idname, text="NVM to Binder (.nvmbnd)")
 
 
 # noinspection PyUnusedLocal
@@ -127,8 +127,8 @@ CLASSES = (
     ShowAllDummiesOperator,
 
     FLVERExportSettings,
-    ExportLooseFLVER,
-    ExportFLVERIntoBinder,
+    ExportAnyFLVER,
+    ExportFLVERIntoAnyBinder,
     ExportMapPieceFLVERs,
     ExportCharacterFLVER,
     ExportObjectFLVER,
@@ -158,6 +158,7 @@ CLASSES = (
     FindMissingTexturesInImageCache,
     SelectMeshChildren,
 
+    FLVERMaterialSettings,
     MaterialToolSettings,
     SetMaterialTexture0,
     SetMaterialTexture1,
@@ -177,25 +178,26 @@ CLASSES = (
     FLVERDummyPropsPanel,
     FLVERImportPanel,
     FLVERExportPanel,
+    FLVERMaterialSettingsPanel,
     FLVERModelToolsPanel,
     FLVERMaterialToolsPanel,
     # FLVERLightmapsPanel,  # TODO: not quite ready
     FLVERUVMapsPanel,
 
-    OBJECT_UL_flver_gx_item,
+    FLVERGXItemUIList,
     FLVERMaterialPropsPanel,
     # endregion
 
     # region Havok Animation
     GlobalSettingsPanel_AnimationView,
 
-    ImportHKXAnimation,
+    ImportAnyHKXAnimation,
     ImportHKXAnimationWithBinderChoice,
     ImportCharacterHKXAnimation,
     ImportObjectHKXAnimation,
     ImportAssetHKXAnimation,
-    ExportLooseHKXAnimation,
-    ExportHKXAnimationIntoBinder,
+    ExportAnyHKXAnimation,
+    ExportHKXAnimationIntoAnyBinder,
     ExportCharacterHKXAnimation,
     ExportObjectHKXAnimation,
 
@@ -213,11 +215,11 @@ CLASSES = (
 
     ImportHKXMapCollision,
     ImportHKXMapCollisionWithBinderChoice,
-    ImportSelectedMapHKXMapCollision,
+    ImportMapHKXMapCollision,
 
-    ExportLooseHKXMapCollision,
-    ExportHKXMapCollisionIntoBinder,
-    ExportHKXMapCollisionToMap,
+    ExportAnyHKXMapCollision,
+    ExportHKXMapCollisionIntoAnyBinder,
+    ExportMapHKXMapCollision,
     MapCollisionImportExportPanel,
     MapCollisionToolsPanel,
 
@@ -248,12 +250,12 @@ CLASSES = (
     NVMFaceIndex,  # also used by `MCGNodeProps`
     NVMEventEntityProps,
 
-    ImportNVM,
+    ImportAnyNVM,
     ImportNVMWithBinderChoice,
-    ImportSelectedMapNVM,
-    ExportLooseNVM,
-    ExportNVMIntoBinder,
-    ExportNVMIntoSelectedMap,
+    ImportMapNVM,
+    ExportAnyNVM,
+    ExportNVMIntoAnyBinder,
+    ExportMapNVM,
 
     ImportNVMHKT,
     ImportNVMHKTWithBinderChoice,
@@ -268,7 +270,7 @@ CLASSES = (
     NVMNavmeshToolsPanel,
     NVMHKTImportPanel,
     NVMEventEntityPanel,
-    OBJECT_UL_nvm_event_entity_triangle,
+    NVMEventEntityTriangleUIList,
     NavmeshFaceSettings,
     RenameNavmesh,
     AddNVMFaceFlags,
@@ -284,12 +286,12 @@ CLASSES = (
     # region Nav Graph (MCG)
     GlobalSettingsPanel_NavGraphView,
 
-    ImportMCG,
-    ImportSelectedMapMCG,
-    ImportMCP,
-    ImportSelectedMapMCP,
-    ExportMCG,
-    ExportMCGMCPToMap,
+    ImportAnyMCG,
+    ImportMapMCG,
+    ImportAnyMCP,
+    ImportMapMCP,
+    ExportAnyMCGMCP,
+    ExportMapMCGMCP,
     MCGDrawSettings,
 
     AddMCGNodeNavmeshATriangleIndex,
@@ -309,12 +311,12 @@ CLASSES = (
     NavGraphComputeSettings,
 
     MCGPropsPanel,
-    OBJECT_UL_nav_triangle,
+    NavTriangleUIList,
     MCGNodePropsPanel,
     MCGEdgePropsPanel,
-    MCGImportExportPanel,
-    MCGDrawPanel,
-    MCGToolsPanel,
+    NavGraphImportExportPanel,
+    NavGraphDrawPanel,
+    NavGraphToolsPanel,
     MCGGeneratorPanel,
     # endregion
 
@@ -323,6 +325,7 @@ CLASSES = (
     ImportMapMSB,
     ImportAnyMSB,
     ExportMapMSB,
+    ExportAnyMSB,
 
     RegionDrawSettings,
 
@@ -419,6 +422,7 @@ CLASSES = (
     ShowCollectionOperator,
     HideCollectionOperator,
 
+    GlobalSettingsPanel_MiscView,
     MiscSoulstructMeshOperatorsPanel,
     MiscSoulstructCollectionOperatorsPanel,
     MiscSoulstructOtherOperatorsPanel,
@@ -433,16 +437,16 @@ CLASSES = (
 # noinspection PyUnusedLocal
 def havok_menu_func_import(self, context):
     self.layout.operator(ImportHKXMapCollision.bl_idname, text="HKX Collision (.hkx/.hkxbhd)")
-    self.layout.operator(ImportHKXAnimation.bl_idname, text="HKX Animation (.hkx/.hkxbhd)")
+    self.layout.operator(ImportAnyHKXAnimation.bl_idname, text="HKX Animation (.hkx/.hkxbhd)")
     # self.layout.operator(ImportHKXCutscene.bl_idname, text="HKX Cutscene (.remobnd)")
 
 
 # noinspection PyUnusedLocal
 def havok_menu_func_export(self, context):
-    self.layout.operator(ExportLooseHKXMapCollision.bl_idname, text="HKX Collision (.hkx)")
-    self.layout.operator(ExportHKXMapCollisionIntoBinder.bl_idname, text="HKX Collision to Binder (.hkxbhd)")
-    self.layout.operator(ExportLooseHKXAnimation.bl_idname, text="HKX Animation (.hkx)")
-    self.layout.operator(ExportHKXAnimationIntoBinder.bl_idname, text="HKX Animation to Binder (.hkxbhd)")
+    self.layout.operator(ExportAnyHKXMapCollision.bl_idname, text="HKX Collision (.hkx)")
+    self.layout.operator(ExportHKXMapCollisionIntoAnyBinder.bl_idname, text="HKX Collision to Binder (.hkxbhd)")
+    self.layout.operator(ExportAnyHKXAnimation.bl_idname, text="HKX Animation (.hkx)")
+    self.layout.operator(ExportHKXAnimationIntoAnyBinder.bl_idname, text="HKX Animation to Binder (.hkxbhd)")
     # self.layout.operator(ExportHKXCutscene.bl_idname, text="HKX Cutscene (.remobnd)")
 
 
@@ -453,6 +457,7 @@ SCENE_POINTERS = dict(
     texture_export_settings=TextureExportSettings,
     bake_lightmap_settings=BakeLightmapSettings,
     flver_tool_settings=FLVERToolSettings,
+    flver_material_settings=FLVERMaterialSettings,
     material_tool_settings=MaterialToolSettings,
     map_collision_import_settings=MapCollisionImportSettings,
     map_collision_tool_settings=MapCollisionToolSettings,
@@ -533,6 +538,7 @@ EDIT_BONE_POINTERS = dict(
 
 SCENE_ATTRIBUTES = []
 OBJECT_ATTRIBUTES = []
+COLLECTION_ATTRIBUTES = []
 MATERIAL_ATTRIBUTES = []
 IMAGE_ATTRIBUTES = []
 EDIT_BONE_ATTRIBUTES = []
@@ -584,6 +590,17 @@ def register():
         ]
     )
     OBJECT_ATTRIBUTES.append("soulstruct_type")
+
+    bpy.types.Collection.soulstruct_type = bpy.props.EnumProperty(
+        name="Soulstruct Collection Type",
+        description="Type of Soulstruct collection that this Blender Collection represents (INTERNAL)",
+        items=[
+            (SoulstructCollectionType.NONE, "None", "Not a Soulstruct typed collection"),
+
+            (SoulstructCollectionType.MSB, "MSB", "MSB collection"),
+        ]
+    )
+    COLLECTION_ATTRIBUTES.append("soulstruct_type")
 
     for prop_name, prop_type in OBJECT_POINTERS.items():
         setattr(bpy.types.Object, prop_name, bpy.props.PointerProperty(type=prop_type))
@@ -642,6 +659,10 @@ def unregister():
     for prop_name in OBJECT_ATTRIBUTES:
         delattr(bpy.types.Object, prop_name)
     OBJECT_ATTRIBUTES.clear()
+
+    for prop_name in COLLECTION_ATTRIBUTES:
+        delattr(bpy.types.Collection, prop_name)
+    COLLECTION_ATTRIBUTES.clear()
 
     for prop_name in MATERIAL_ATTRIBUTES:
         delattr(bpy.types.Material, prop_name)

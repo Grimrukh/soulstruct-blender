@@ -16,7 +16,9 @@ import gpu
 from bpy_extras.view3d_utils import location_3d_to_region_2d
 from gpu_extras.batch import batch_for_shader
 from mathutils import Vector
+
 from io_soulstruct.exceptions import SoulstructTypeError
+from io_soulstruct.bpy_base.property_group import SoulstructPropertyGroup
 
 from .types import *
 
@@ -37,7 +39,10 @@ _LAST_DRAWN_TRIANGLES_A = None  # type: list[Vector] | None  # flattened list of
 _LAST_DRAWN_TRIANGLES_B = None  # type: list[Vector] | None  # flattened list of triangle vertices
 
 
-class MCGDrawSettings(bpy.types.PropertyGroup):
+class MCGDrawSettings(SoulstructPropertyGroup):
+
+    # No game-specific properties.
+
     mcg_parent: bpy.props.PointerProperty(
         type=bpy.types.Object,
         name="MCG Parent",

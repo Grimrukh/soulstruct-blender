@@ -5,13 +5,13 @@ __all__ = [
     "AnimationToolsPanel",
 ]
 
-import bpy
+from io_soulstruct.bpy_base.panel import SoulstructPanel
 from .import_operators import *
 from .export_operators import *
 from .misc_operators import *
 
 
-class AnimationImportExportPanel(bpy.types.Panel):
+class AnimationImportExportPanel(SoulstructPanel):
     bl_label = "Animation Import/Export"
     bl_idname = "HKX_ANIMATION_PT_animation_import_export"
     bl_space_type = "VIEW_3D"
@@ -32,27 +32,30 @@ class AnimationImportExportPanel(bpy.types.Panel):
             if settings.import_roots != (None, None):
                 panel.label(text="Import from Game/Project")
                 panel.operator(ImportCharacterHKXAnimation.bl_idname)
-                if settings.game_variable_name == "ELDEN_RING":
+                if settings.is_game("ELDEN_RING"):
                     panel.operator(ImportAssetHKXAnimation.bl_idname)
                 else:
                     panel.operator(ImportObjectHKXAnimation.bl_idname)
             else:
                 panel.label(text="No game root path set.")
             panel.label(text="Generic Import:")
-            panel.operator(ImportHKXAnimation.bl_idname, text="Import Any Animation")
+            panel.operator(ImportAnyHKXAnimation.bl_idname, text="Import Any Animation")
 
         header, panel = self.layout.panel("Export", default_closed=False)
         header.label(text="Export")
         if panel:
             panel.label(text="Export to Project/Game")
             panel.operator(ExportCharacterHKXAnimation.bl_idname)
-            panel.operator(ExportObjectHKXAnimation.bl_idname)
+            if settings.is_game("ELDEN_RING"):
+                panel.label(text="Asset animation export not ready!")
+            else:
+                panel.operator(ExportObjectHKXAnimation.bl_idname)
             panel.label(text="Generic Export:")
-            panel.operator(ExportLooseHKXAnimation.bl_idname)
-            panel.operator(ExportHKXAnimationIntoBinder.bl_idname)
+            panel.operator(ExportAnyHKXAnimation.bl_idname)
+            panel.operator(ExportHKXAnimationIntoAnyBinder.bl_idname)
 
 
-class AnimationToolsPanel(bpy.types.Panel):
+class AnimationToolsPanel(SoulstructPanel):
     bl_label = "Animation Tools"
     bl_idname = "HKX_ANIMATION_PT_animation_tools"
     bl_space_type = "VIEW_3D"

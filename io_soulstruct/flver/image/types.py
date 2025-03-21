@@ -17,7 +17,6 @@ from soulstruct.dcx import DCXType
 from soulstruct.base.textures import *
 
 from io_soulstruct.exceptions import UnsupportedGameError, SoulstructTypeError, TextureExportError
-from io_soulstruct.general.enums import BlenderImageFormat
 from io_soulstruct.utilities import *
 from .enums import *
 from .properties import *

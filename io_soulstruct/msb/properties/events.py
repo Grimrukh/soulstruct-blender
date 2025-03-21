@@ -33,11 +33,13 @@ __all__ = [
 import re
 from enum import StrEnum
 
+import bpy
+
 from soulstruct.base.maps.msb.enums import BaseMSBEventSubtype
 from soulstruct.darksouls1ptde.events.enums import SoundType
 from soulstruct.games import *
 
-import bpy
+from io_soulstruct.bpy_base.property_group import SoulstructPropertyGroup
 from io_soulstruct.types import SoulstructType
 
 
@@ -81,7 +83,25 @@ class BlenderMSBEventSubtype(StrEnum):
             raise ValueError(f"Unsupported Blender MSB Event subtype: {subtype}")
 
 
-class MSBEventProps(bpy.types.PropertyGroup):
+class MSBEventProps(SoulstructPropertyGroup):
+
+    GAME_PROP_NAMES = {
+        DEMONS_SOULS: (
+            "entry_subtype",
+
+            "entity_id",
+            "attached_part",
+            "attached_region",
+        ),
+        DARK_SOULS_PTDE: (
+            "entry_subtype",
+
+            "entity_id",
+            "attached_part",
+            "attached_region",
+            "unknowns",
+        ),
+    }
 
     entry_subtype: bpy.props.EnumProperty(
         name="Event Subtype",
@@ -153,19 +173,18 @@ class MSBEventProps(bpy.types.PropertyGroup):
                 dupe_suffix = match.group(3) or ""
                 obj.name = f"{name} <{BlenderMSBEventSubtype.get_enum_name(obj.MSB_EVENT.entry_subtype)}>{dupe_suffix}"
 
-    def get_game_props(self, game: Game) -> list[str]:
-        if game is DEMONS_SOULS:
-            exclude = {
-                "unknowns",
-            }
-            return [
-                p for p in self.__annotations__
-                if p not in exclude
-            ]
-        return list(self.__annotations__)
 
+class MSBLightEventProps(SoulstructPropertyGroup):
 
-class MSBLightEventProps(bpy.types.PropertyGroup):
+    GAME_PROP_NAMES = {
+        DEMONS_SOULS: (
+            "point_light_id",
+            "unk_x04",
+        ),
+        DARK_SOULS_PTDE: (
+            "point_light_id",
+        ),
+    }
 
     point_light_id: bpy.props.IntProperty(
         name="Point Light ID",
@@ -181,19 +200,20 @@ class MSBLightEventProps(bpy.types.PropertyGroup):
         default=0,
     )
 
-    def get_game_props(self, game: Game) -> list[str]:
-        if game is not DEMONS_SOULS:
-            exclude = {
-                "unk_x04",
-            }
-            return [
-                p for p in self.__annotations__
-                if p not in exclude
-            ]
-        return list(self.__annotations__)
 
+class MSBSoundEventProps(SoulstructPropertyGroup):
 
-class MSBSoundEventProps(bpy.types.PropertyGroup):
+    GAME_PROP_NAMES = {
+        DEMONS_SOULS: (
+            "sound_type",
+            "sound_id",
+            "unk_x00",
+        ),
+        DARK_SOULS_PTDE: (
+            "sound_type",
+            "sound_id",
+        ),
+    }
 
     sound_type: bpy.props.EnumProperty(
         name="Sound Type",
@@ -219,19 +239,18 @@ class MSBSoundEventProps(bpy.types.PropertyGroup):
         default=0,
     )
 
-    def get_game_props(self, game: Game) -> list[str]:
-        if game is not DEMONS_SOULS:
-            exclude = {
-                "unk_x00",
-            }
-            return [
-                p for p in self.__annotations__
-                if p not in exclude
-            ]
-        return list(self.__annotations__)
 
+class MSBVFXEventProps(SoulstructPropertyGroup):
 
-class MSBVFXEventProps(bpy.types.PropertyGroup):
+    GAME_PROP_NAMES = {
+        DEMONS_SOULS: (
+            "vfx_id",
+            "unk_x00",
+        ),
+        DARK_SOULS_PTDE: (
+            "vfx_id",
+        ),
+    }
 
     vfx_id: bpy.props.IntProperty(
         name="VFX ID",
@@ -246,19 +265,27 @@ class MSBVFXEventProps(bpy.types.PropertyGroup):
         default=0,
     )
 
-    def get_game_props(self, game: Game) -> list[str]:
-        if game is not DEMONS_SOULS:
-            exclude = {
-                "unk_x00",
-            }
-            return [
-                p for p in self.__annotations__
-                if p not in exclude
-            ]
-        return list(self.__annotations__)
 
+class MSBWindEventProps(SoulstructPropertyGroup):
 
-class MSBWindEventProps(bpy.types.PropertyGroup):
+    GAME_PROP_NAMES = {
+        DEMONS_SOULS: (
+            "wind_vector_min",
+            "unk_x0c",
+            "wind_vector_max",
+            "unk_x1c",
+            "wind_swing_cycles",
+            "wind_swing_powers",
+        ),
+        DARK_SOULS_PTDE: (
+            "wind_vector_min",
+            "unk_x0c",
+            "wind_vector_max",
+            "unk_x1c",
+            "wind_swing_cycles",
+            "wind_swing_powers",
+        ),
+    }
 
     wind_vector_min: bpy.props.FloatVectorProperty(
         name="Wind Vector (Min)",
@@ -293,11 +320,29 @@ class MSBWindEventProps(bpy.types.PropertyGroup):
         default=(0.0, 0.0, 0.0, 0.0),
     )
 
-    def get_game_props(self, game: Game) -> list[str]:
-        return list(self.__annotations__)
 
+class MSBTreasureEventProps(SoulstructPropertyGroup):
 
-class MSBTreasureEventProps(bpy.types.PropertyGroup):
+    GAME_PROP_NAMES = {
+        DEMONS_SOULS: (
+            "treasure_part",
+            "item_lot_1",
+            "item_lot_2",
+            "item_lot_3",
+            "item_lot_4",
+            "item_lot_5",
+        ),
+        DARK_SOULS_PTDE: (
+            "treasure_part",
+            "item_lot_1",
+            "item_lot_2",
+            "item_lot_3",
+            "item_lot_4",
+            "item_lot_5",
+            "is_in_chest",
+            "is_hidden",
+        ),
+    }
 
     treasure_part: bpy.props.PointerProperty(
         name="Treasure Part",
@@ -342,20 +387,31 @@ class MSBTreasureEventProps(bpy.types.PropertyGroup):
         default=False,
     )
 
-    def get_game_props(self, game: Game) -> list[str]:
-        if game is DEMONS_SOULS:
-            exclude = {
-                "is_in_chest",
-                "is_hidden",
-            }
-            return [
-                p for p in self.__annotations__
-                if p not in exclude
-            ]
-        return list(self.__annotations__)
 
+class MSBSpawnerEventProps(SoulstructPropertyGroup):
 
-class MSBSpawnerEventProps(bpy.types.PropertyGroup):
+    GAME_PROP_NAMES = {
+        DEMONS_SOULS: (
+            "max_count",
+            "spawner_type",
+            "limit_count",
+            "min_spawner_count",
+            "max_spawner_count",
+            "min_interval",
+            "max_interval",
+            "initial_spawn_count",
+        ) + tuple(f"spawn_parts_{i}" for i in range(32)) + tuple(f"spawn_regions_{i}" for i in range(4)),
+        DARK_SOULS_PTDE: (
+            "max_count",
+            "spawner_type",
+            "limit_count",
+            "min_spawner_count",
+            "max_spawner_count",
+            "min_interval",
+            "max_interval",
+            "initial_spawn_count",
+        ) + tuple(f"spawn_parts_{i}" for i in range(32)) + tuple(f"spawn_regions_{i}" for i in range(4)),
+    }
 
     max_count: bpy.props.IntProperty(
         name="Max Count",
@@ -676,11 +732,21 @@ class MSBSpawnerEventProps(bpy.types.PropertyGroup):
     def get_spawn_regions(self) -> list[bpy.types.Object | None]:
         return [getattr(self, f"spawn_regions_{i}") for i in range(4)]
 
-    def get_game_props(self, game: Game) -> list[str]:
-        return list(self.__annotations__)
 
+class MSBMessageEventProps(SoulstructPropertyGroup):
 
-class MSBMessageEventProps(bpy.types.PropertyGroup):
+    GAME_PROP_NAMES = {
+        DEMONS_SOULS: (
+            "unk_x00",
+            "text_id",
+            "text_param",
+        ),
+        DARK_SOULS_PTDE: (
+            "text_id",
+            "unk_x02",
+            "is_hidden",
+        ),
+    }
 
     text_id: bpy.props.IntProperty(
         name="Text ID",
@@ -709,27 +775,18 @@ class MSBMessageEventProps(bpy.types.PropertyGroup):
         default=-1,
     )
 
-    def get_game_props(self, game: Game) -> list[str]:
-        if game is not DEMONS_SOULS:
-            exclude = {
-                "unk_x00",
-                "text_param_id",
-            }
-            return [
-                p for p in self.__annotations__
-                if p not in exclude
-            ]
 
-        exclude = {
-            "unk_x02",
-        }
-        return [
-            p for p in self.__annotations__
-            if p not in exclude
-        ]
+class MSBObjActEventProps(SoulstructPropertyGroup):
 
-
-class MSBObjActEventProps(bpy.types.PropertyGroup):
+    GAME_PROP_NAMES = {
+        DARK_SOULS_PTDE: (
+            "obj_act_entity_id",
+            "obj_act_part",
+            "obj_act_param_id",
+            "obj_act_state",
+            "obj_act_flag",
+        ),
+    }
 
     obj_act_entity_id: bpy.props.IntProperty(
         name="ObjAct Entity ID",
@@ -763,7 +820,13 @@ class MSBObjActEventProps(bpy.types.PropertyGroup):
     )
 
 
-class MSBSpawnPointEventProps(bpy.types.PropertyGroup):
+class MSBSpawnPointEventProps(SoulstructPropertyGroup):
+
+    GAME_PROP_NAMES = {
+        DARK_SOULS_PTDE: (
+            "spawn_point_region",
+        ),
+    }
 
     spawn_point_region: bpy.props.PointerProperty(
         name="Spawn Point Region",
@@ -773,7 +836,14 @@ class MSBSpawnPointEventProps(bpy.types.PropertyGroup):
     )
 
 
-class MSBMapOffsetEventProps(bpy.types.PropertyGroup):
+class MSBMapOffsetEventProps(SoulstructPropertyGroup):
+
+    GAME_PROP_NAMES = {
+        DARK_SOULS_PTDE: (
+            "translate",
+            "rotate_z",
+        ),
+    }
 
     translate: bpy.props.FloatVectorProperty(
         name="Translate",
@@ -788,7 +858,13 @@ class MSBMapOffsetEventProps(bpy.types.PropertyGroup):
     )
 
 
-class MSBNavigationEventProps(bpy.types.PropertyGroup):
+class MSBNavigationEventProps(SoulstructPropertyGroup):
+
+    GAME_PROP_NAMES = {
+        DARK_SOULS_PTDE: (
+            "navigation_region",
+        ),
+    }
 
     navigation_region: bpy.props.PointerProperty(
         name="Navigation Region",
@@ -799,7 +875,18 @@ class MSBNavigationEventProps(bpy.types.PropertyGroup):
     )
 
 
-class MSBEnvironmentEventProps(bpy.types.PropertyGroup):
+class MSBEnvironmentEventProps(SoulstructPropertyGroup):
+
+    GAME_PROP_NAMES = {
+        DARK_SOULS_PTDE: (
+            "unk_x00_x04",
+            "unk_x04_x08",
+            "unk_x08_x0c",
+            "unk_x0c_x10",
+            "unk_x10_x14",
+            "unk_x14_x18",
+        ),
+    }
 
     unk_x00_x04: bpy.props.IntProperty(
         name="Unk x00",
@@ -838,7 +925,15 @@ class MSBEnvironmentEventProps(bpy.types.PropertyGroup):
     )
 
 
-class MSBNPCInvasionEventProps(bpy.types.PropertyGroup):
+class MSBNPCInvasionEventProps(SoulstructPropertyGroup):
+
+    GAME_PROP_NAMES = {
+        DARK_SOULS_PTDE: (
+            "host_entity_id",
+            "invasion_flag_id",
+            "activate_good_id",
+        ),
+    }
 
     host_entity_id: bpy.props.IntProperty(
         name="Host Entity ID",

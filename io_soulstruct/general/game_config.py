@@ -2,14 +2,15 @@
 from __future__ import annotations
 
 __all__ = [
-    "GameConfig",
-    "GAME_CONFIG",
+    "BlenderGameConfig",
+    "BLENDER_GAME_CONFIG",
 ]
 
 from types import ModuleType
 from dataclasses import dataclass, field
 
 from soulstruct.base.models.flver import FLVERVersion
+from soulstruct.base.models.shaders import MatDef
 from soulstruct.base.maps.msb import MSB as BaseMSB
 from soulstruct.base.maps.navmesh import BaseNVMBND
 from soulstruct.containers.tpf import TPFPlatform
@@ -23,13 +24,18 @@ from soulstruct_havok.fromsoft.base import BaseSkeletonHKX, BaseAnimationHKX
 
 
 @dataclass(slots=True, kw_only=True)
-class GameConfig:
+class BlenderGameConfig:
     """Fixed configuration data and game-specific classes for a specific game."""
 
-    # FLVER CONFIG
+    # FLVER/MATERIAL CONFIG
     flver_default_version: FLVERVersion | None = None  # `None` implies no FLVER support
     swizzle_platform: TPFPlatform | None = None  # overrides `TPF.platform` for de/swizzling
     uses_matbin: bool = False
+    matdef_class: type[MatDef] | None = None
+    _split_mesh_kwargs: dict[str, int | bool] = field(default_factory=lambda: dict(
+        use_mesh_bone_indices=False,
+        max_mesh_vertex_count=4294967295,  # faces use 32-bit vertex indices
+    ))
 
     # MSB CONFIG
     msb_class: type[BaseMSB] | None = None
@@ -37,12 +43,14 @@ class GameConfig:
 
     # NAVMESH CONFIG
     nvmbnd_class: type[BaseNVMBND] | None = None
+    supports_mcg: bool = False
 
     # HAVOK CONFIG
     havok_module: HavokModule | None = None
     skeleton_hkx_class: type[BaseSkeletonHKX] | None = None
     animation_hkx_class: type[BaseAnimationHKX] | None = None
     supports_collision_model: bool = False  # `MapCollisionModel` support
+    uses_loose_collision_files: bool = False
     supports_cutscenes: bool = False  # `RemoBND` support
 
     # MISC CONFIG
@@ -84,35 +92,56 @@ class GameConfig:
             and self.animation_hkx_class is not None
         )
 
+    @property
+    def split_mesh_kwargs(self) -> dict[str, int | bool]:
+        """Return a copy of game-specific FLVER mesh-splitting kwargs."""
+        return self._split_mesh_kwargs.copy()
 
-GAME_CONFIG = {
-    DEMONS_SOULS: GameConfig(
+
+BLENDER_GAME_CONFIG = {
+    DEMONS_SOULS: BlenderGameConfig(
         flver_default_version=FLVERVersion.DemonsSouls,
         swizzle_platform=TPFPlatform.PC,  # no swizzling despite being a PS3 exclusive
+        matdef_class=demonssouls.models.MatDef,
+        _split_mesh_kwargs=dict(
+            use_mesh_bone_indices=True,
+            max_bones_per_mesh=38,
+            max_mesh_vertex_count=65535,  # faces MUST use 16-bit vertex indices
+        ),
 
         msb_class=demonssouls.maps.MSB,
         map_constants=demonssouls.maps.constants,
 
         # TODO: No idea why PyCharm is complaining about type here. Can't seem to detect 'type[BaseNVMBND] hint above.
         nvmbnd_class=demonssouls.maps.navmesh.NVMBND,
+        supports_mcg=True,
 
         havok_module=HavokModule.hk550,
-        supports_collision_model=True,
         skeleton_hkx_class=hk_fromsoft.demonssouls.SkeletonHKX,
         animation_hkx_class=hk_fromsoft.demonssouls.AnimationHKX,
+        supports_collision_model=True,
+        uses_loose_collision_files=True,
     ),
-    DARK_SOULS_PTDE: GameConfig(
+    DARK_SOULS_PTDE: BlenderGameConfig(
         flver_default_version=FLVERVersion.DarkSouls_A,
+        matdef_class=darksouls1ptde.models.MatDef,
+        _split_mesh_kwargs=dict(
+            use_mesh_bone_indices=True,
+            max_bones_per_mesh=38,
+            max_mesh_vertex_count=65535,  # TODO: can DS1 use 32-bit vertices?
+        ),
 
         msb_class=darksouls1ptde.maps.MSB,
         map_constants=darksouls1ptde.constants,
 
         nvmbnd_class=darksouls1ptde.maps.navmesh.NVMBND,
+        supports_mcg=True,
 
         havok_module=HavokModule.hk2010,
         skeleton_hkx_class=hk_fromsoft.darksouls1ptde.SkeletonHKX,
         animation_hkx_class=hk_fromsoft.darksouls1ptde.AnimationHKX,
         supports_collision_model=True,
+        uses_loose_collision_files=True,
 
         new_to_old_map={
             "m12_00_00_01": "m12_00_00_00",
@@ -123,13 +152,20 @@ GAME_CONFIG = {
         use_new_map=(".msb", ".nvmbnd", ".mcg", ".mcp"),
         use_old_map=(".flver", ".hkx"),
     ),
-    DARK_SOULS_DSR: GameConfig(
+    DARK_SOULS_DSR: BlenderGameConfig(
         flver_default_version=FLVERVersion.DarkSouls_A,
+        matdef_class=darksouls1r.models.MatDef,
+        _split_mesh_kwargs=dict(
+            use_mesh_bone_indices=True,
+            max_bones_per_mesh=38,
+            max_mesh_vertex_count=65535,  # TODO: can DS1 use 32-bit vertices?
+        ),
 
         msb_class=darksouls1r.maps.MSB,
         map_constants=darksouls1r.maps.constants,
 
         nvmbnd_class=darksouls1r.maps.navmesh.NVMBND,
+        supports_mcg=True,
 
         havok_module=HavokModule.hk2015,
         skeleton_hkx_class=hk_fromsoft.darksouls1r.SkeletonHKX,
@@ -145,8 +181,9 @@ GAME_CONFIG = {
         use_new_map=(".msb", ".nvmbnd", ".mcg", ".mcp"),
         use_old_map=(".flver", ".hkxbhd", ".hkxbdt"),
     ),
-    BLOODBORNE: GameConfig(
+    BLOODBORNE: BlenderGameConfig(
         flver_default_version=FLVERVersion.Bloodborne_DS3_A,
+        matdef_class=bloodborne.models.MatDef,
 
         msb_class=None,  # TODO: need Blender wrappers
         map_constants=bloodborne.maps.constants,
@@ -158,8 +195,9 @@ GAME_CONFIG = {
         animation_hkx_class=hk_fromsoft.bloodborne.AnimationHKX,
         supports_collision_model=False,  # TODO: could at least read hknp meshes
     ),
-    DARK_SOULS_3: GameConfig(
+    DARK_SOULS_3: BlenderGameConfig(
         flver_default_version=FLVERVersion.Bloodborne_DS3_A,
+        matdef_class=None,  # TODO: not in Soulstruct yet
 
         msb_class=None,  # TODO: not in Soulstruct yet
         map_constants=darksouls3.maps.constants,
@@ -170,8 +208,9 @@ GAME_CONFIG = {
         animation_hkx_class=None,
         supports_collision_model=False,  # TODO: could at least read hknp meshes
     ),
-    SEKIRO: GameConfig(
+    SEKIRO: BlenderGameConfig(
         flver_default_version=FLVERVersion.Sekiro_EldenRing,
+        matdef_class=None,  # TODO: not in Soulstruct yet
 
         msb_class=None,  # TODO: not in Soulstruct yet
 
@@ -180,9 +219,10 @@ GAME_CONFIG = {
         animation_hkx_class=hk_fromsoft.sekiro.AnimationHKX,
         supports_collision_model=False,
     ),
-    ELDEN_RING: GameConfig(
+    ELDEN_RING: BlenderGameConfig(
         flver_default_version=FLVERVersion.Sekiro_EldenRing,
         uses_matbin=True,  # first game to use MATBIN rather than MTD
+        matdef_class=eldenring.models.MatDef,
 
         msb_class=eldenring.maps.MSB,
         map_constants=eldenring.maps.constants,

@@ -1,11 +1,11 @@
 __all__ = [
-    "ImportNVM",
+    "ImportAnyNVM",
     "ImportNVMWithBinderChoice",
-    "ImportSelectedMapNVM",
+    "ImportMapNVM",
 
-    "ExportLooseNVM",
-    "ExportNVMIntoBinder",
-    "ExportNVMIntoSelectedMap",
+    "ExportAnyNVM",
+    "ExportNVMIntoAnyBinder",
+    "ExportMapNVM",
 
     "NVMProps",
     "NVMEventEntityProps",
@@ -28,7 +28,7 @@ __all__ = [
     "NVMNavmeshImportPanel",
     "NVMNavmeshExportPanel",
     "NVMNavmeshToolsPanel",
-    "OBJECT_UL_nvm_event_entity_triangle",
+    "NVMEventEntityTriangleUIList",
     "NVMEventEntityPanel",
 ]
 

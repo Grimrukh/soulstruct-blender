@@ -6,6 +6,7 @@ __all__ = [
     "MaterialToolSettings",
     "FLVERMaterialProps",
     "FLVERGXItemProps",
+    "FLVERMaterialSettings",
     # endregion
 
     # region Operators
@@ -22,7 +23,7 @@ __all__ = [
     # endregion
 
     # region GUI
-    "OBJECT_UL_flver_gx_item",
+    "FLVERGXItemUIList",
     "FLVERMaterialPropsPanel",
     "FLVERMaterialToolsPanel",
     # endregion
@@ -36,8 +37,8 @@ __all__ = [
     "HideAllDummiesOperator",
     "ShowAllDummiesOperator",
 
-    "ExportLooseFLVER",
-    "ExportFLVERIntoBinder",
+    "ExportAnyFLVER",
+    "ExportFLVERIntoAnyBinder",
     "ExportMapPieceFLVERs",
     "ExportCharacterFLVER",
     "ExportObjectFLVER",
@@ -77,6 +78,7 @@ __all__ = [
     "FLVERDummyPropsPanel",
     "FLVERImportPanel",
     "FLVERExportPanel",
+    "FLVERMaterialSettingsPanel",
     "FLVERModelToolsPanel",
     "FLVERUVMapsPanel",
     # endregion
@@ -101,6 +103,7 @@ __all__ = [
     "FLVERDummyPropsPanel",
     "FLVERImportPanel",
     "FLVERExportPanel",
+    "FLVERMaterialSettingsPanel",
     "FLVERModelToolsPanel",
     "FLVERUVMapsPanel",
     # endregion

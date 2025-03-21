@@ -13,6 +13,7 @@ __all__ = [
     # Convenience imports:
     "ObjectType",
     "SoulstructType",
+    "SoulstructCollectionType",
     "is_mesh_obj",
     "is_armature_obj",
     "is_empty_obj",

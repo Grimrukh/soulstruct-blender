@@ -5,14 +5,13 @@ __all__ = [
     "FLVERDummyPropsPanel",
 ]
 
-import bpy
-
 from soulstruct.base.models import FLVERVersion
 
+from io_soulstruct.bpy_base.panel import SoulstructPanel
 from ..types import BlenderFLVER, BlenderFLVERDummy
 
 
-class FLVERPropsPanel(bpy.types.Panel):
+class FLVERPropsPanel(SoulstructPanel):
     """Draw a Panel in the Object properties window exposing the appropriate FLVER fields for active object."""
     bl_label = "FLVER Properties"
     bl_idname = "OBJECT_PT_flver"
@@ -28,23 +27,24 @@ class FLVERPropsPanel(bpy.types.Panel):
 
     def draw(self, context):
         bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
-        prop_names = bl_flver.type_properties.__annotations__
         if bl_flver.version == "DEFAULT":
-            pass  # show all properties
+            # Use active game's properties.
+            prop_names = bl_flver.type_properties.get_game_prop_names(context)
         elif FLVERVersion[bl_flver.version].is_flver0():
-            prop_names = [prop for prop in prop_names if not prop.startswith("f2_")]
+            prop_names = bl_flver.type_properties.FLVER0_PROP_NAMES
         else:
-            prop_names = [prop for prop in prop_names if not prop.startswith("f0_")]
+            prop_names = bl_flver.type_properties.FLVER2_PROP_NAMES
+
         for prop in prop_names:
             if prop == "mesh_vertices_merged":
-                # Label only.
+                # Label only (value locked after import).
                 txt = f"Meshes were {'' if bl_flver.mesh_vertices_merged else 'NOT '}merged on import."
                 self.layout.label(text=txt)
             else:
                 self.layout.prop(bl_flver.type_properties, prop)
 
 
-class FLVERDummyPropsPanel(bpy.types.Panel):
+class FLVERDummyPropsPanel(SoulstructPanel):
     """Draw a Panel in the Object properties window exposing the appropriate FLVER Dummy fields for active object."""
     bl_label = "FLVER Dummy Properties"
     bl_idname = "OBJECT_PT_flver_dummy"

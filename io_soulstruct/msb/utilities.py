@@ -88,7 +88,7 @@ class BaseMSBEntrySelectOperator(LoggingOperator):
         settings = self.settings(context)
         # We always use the latest MSB, if the setting is enabled.
         msb_path = settings.get_import_msb_path()  # will automatically use latest MSB version if known and enabled
-        self.msb = get_cached_file(msb_path, settings.get_game_msb_class())
+        self.msb = get_cached_file(msb_path, settings.game_config.msb_class)
 
         entry_list_names = self.get_msb_list_names(context)
         if not entry_list_names:

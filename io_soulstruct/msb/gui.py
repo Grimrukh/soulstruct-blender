@@ -37,9 +37,10 @@ import typing as tp
 
 import bpy
 
-from io_soulstruct.general.gui import map_stem_box
-from io_soulstruct.types import SoulstructType
 from soulstruct.base.maps.msb.region_shapes import RegionShapeType
+
+from io_soulstruct.types import SoulstructType
+from io_soulstruct.bpy_base import SoulstructPanel, SoulstructPropertyGroup
 from .import_operators import *
 from .export_operators import *
 from .misc_operators import *
@@ -47,7 +48,7 @@ from .properties import *
 from .properties import MSBProtobossProps
 
 
-class MSBImportPanel(bpy.types.Panel):
+class MSBImportPanel(SoulstructPanel):
     """Panel for Soulstruct MSB import operators."""
     bl_label = "MSB Import"
     bl_idname = "SCENE_PT_msb_import"
@@ -58,54 +59,16 @@ class MSBImportPanel(bpy.types.Panel):
 
     def draw(self, context):
 
-        settings = context.scene.soulstruct_settings
-
         layout = self.layout
-        map_stem_box(layout, settings)
+        self.draw_active_map(context, layout)
 
-        header, panel = layout.panel("MSB Import Settings", default_closed=True)
-        header.label(text="MSB Import Settings")
-        if panel:
-            msb_import_settings = context.scene.msb_import_settings
-            import_props = list(msb_import_settings.__annotations__)
-            booleans = [prop for prop in import_props if prop.startswith("import_")]
-            for prop_name in booleans:
-                panel.prop(msb_import_settings, prop_name)
-                import_props.remove(prop_name)
+        # MSB and FLVER import settings are drawn by operator property dialogs.
 
-            row = panel.row()
-            split = row.split(factor=0.5)
-            split.operator(EnableAllImportModels.bl_idname, text="All")
-            split.operator(DisableAllImportModels.bl_idname, text="None")
-
-            panel.label(text="Model Name Import Filter:")
-            panel.prop(msb_import_settings, "model_name_filter", text="")
-            import_props.remove("model_name_filter")
-            panel.label(text="Model Name Filter Mode:")
-            panel.prop(msb_import_settings, "model_name_filter_match_mode", text="")
-            import_props.remove("model_name_filter_match_mode")
-
-            for prop_name in import_props:
-                panel.prop(msb_import_settings, prop_name)
-
-        header, panel = layout.panel("FLVER Import Settings", default_closed=True)
-        header.label(text="FLVER Import Settings")
-        if panel:
-            flver_import_settings = context.scene.flver_import_settings
-            for prop_name in flver_import_settings.__annotations__:
-                panel.prop(flver_import_settings, prop_name)
-
-        if settings.map_stem:
-            layout.label(text=f"Map {settings.map_stem}:")
-            layout.operator(ImportMapMSB.bl_idname)
-        else:
-            layout.label(text="No game map selected.")
-
-        layout.label(text="Generic Import:")
-        layout.operator(ImportAnyMSB.bl_idname, text="Import Any MSB")
+        self.maybe_draw_map_import_operator(context, ImportMapMSB.bl_idname, layout)
+        layout.operator(ImportAnyMSB.bl_idname)
 
 
-class MSBExportPanel(bpy.types.Panel):
+class MSBExportPanel(SoulstructPanel):
     """Panel for Soulstruct MSB export operators."""
     bl_label = "MSB Export"
     bl_idname = "SCENE_PT_msb_export"
@@ -115,42 +78,25 @@ class MSBExportPanel(bpy.types.Panel):
     bl_options = {"DEFAULT_CLOSED"}
 
     def draw(self, context):
+        layout = self.layout
+
+        if not ExportMapMSB.poll(context):
+            layout.label(text="Select an MSB Collection.")
+            return
 
         settings = context.scene.soulstruct_settings
 
-        layout = self.layout
-        map_stem_box(layout, settings)
-
-        header, panel = layout.panel("MSB Export Settings", default_closed=True)
-        header.label(text="MSB Export Settings")
-        if panel:
-            panel.prop(settings, "detect_map_from_collection")
-            msb_export_settings = context.scene.msb_export_settings
-            for prop_name in msb_export_settings.__annotations__:
-                if prop_name == "export_nvmdump" and not settings.is_game("DARK_SOULS_DSR"):
-                    continue
-                if prop_name == "export_navmesh_models" and not settings.is_game_ds1():
-                    continue
-                if prop_name == "export_collision_models" and not settings.is_game("DARK_SOULS_DSR"):
-                    continue
-                panel.prop(msb_export_settings, prop_name)
-
-        if settings.can_auto_export:
-            # We want to tell the user exactly which map this button will export to.
-            map_stem = settings.get_active_collection_detected_map(context)
-            if not map_stem:
-                layout.label(text="To Map: <NO MAP>")
-            else:
-                map_stem = settings.get_latest_map_stem_version(map_stem)
-                layout.label(text=f"To Map: {map_stem}")
-            layout.operator(ExportMapMSB.bl_idname)
+        layout.prop(settings, "auto_detect_export_map")
+        if settings.auto_detect_export_map:
+            self.draw_detected_map(context, layout, use_latest_version=True, detect_from_collection=True)
         else:
-            layout.label(text="No export directory set.")
+            self.draw_active_map(context, layout)
 
-        layout.label(text="(No generic MSB export)")
+        self.maybe_draw_export_operator(context, ExportMapMSB.bl_idname, layout)
+        layout.operator(ExportAnyMSB.bl_idname)
 
 
-class MSBToolsPanel(bpy.types.Panel):
+class MSBToolsPanel(SoulstructPanel):
     """Panel for Soulstruct MSB tool settings/operators."""
     bl_label = "MSB Tools"
     bl_idname = "SCENE_PT_msb_tools"
@@ -229,7 +175,7 @@ def bit_set_prop(
 
 # region Property Panels
 
-class MSBPartPanel(bpy.types.Panel):
+class MSBPartPanel(SoulstructPanel):
     """Draw a Panel in the Object properties window exposing the appropriate MSB Part fields for active object."""
     bl_label = "MSB Part Settings"
     bl_idname = "OBJECT_PT_msb_part"
@@ -251,7 +197,7 @@ class MSBPartPanel(bpy.types.Panel):
             return
 
         props = obj.MSB_PART
-        prop_names = props.get_game_props(context.scene.soulstruct_settings.game)
+        prop_names = props.get_game_prop_names(context)
         handled = set()
 
         for pre_prop in ("entry_subtype", "model", "entity_id"):
@@ -304,9 +250,8 @@ class _MSBPartSubtypePanelMixin:
             layout.label(text=f"No active MSB {self.PART_SUBTYPE}.")
             return
 
-        # noinspection PyTypeChecker
-        props = getattr(obj, self.PART_SUBTYPE.value)
-        prop_names = props.get_game_props(context.scene.soulstruct_settings.game)
+        props = getattr(obj, self.PART_SUBTYPE.value)  # type: SoulstructPropertyGroup
+        prop_names = props.get_game_prop_names(context)
         if not prop_names:
             layout.label(text="No additional properties.")
             return
@@ -315,7 +260,7 @@ class _MSBPartSubtypePanelMixin:
             layout.prop(props, prop)
 
 
-class MSBMapPiecePartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
+class MSBMapPiecePartPanel(SoulstructPanel, _MSBPartSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate MSB Character fields for active object."""
     bl_label = "MSB Map Piece Settings"
     bl_idname = "OBJECT_PT_msb_map_piece"
@@ -331,7 +276,7 @@ class MSBMapPiecePartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
         layout.label(text="No additional properties.")
 
 
-class MSBObjectPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
+class MSBObjectPartPanel(SoulstructPanel, _MSBPartSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate MSB Object fields for active object."""
     bl_label = "MSB Object Settings"
     bl_idname = "OBJECT_PT_msb_object"
@@ -343,7 +288,7 @@ class MSBObjectPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
     PROP_GROUP_TYPE = MSBObjectProps
 
 
-class MSBCharacterPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
+class MSBCharacterPartPanel(SoulstructPanel, _MSBPartSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate MSB Character fields for active object."""
     bl_label = "MSB Character Settings"
     bl_idname = "OBJECT_PT_msb_character"
@@ -363,9 +308,8 @@ class MSBCharacterPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
             layout.label(text=f"No active MSB {self.PART_SUBTYPE}.")
             return
 
-        # noinspection PyTypeChecker
-        props = getattr(obj, self.PART_SUBTYPE.value)
-        prop_names = props.get_game_props(context.scene.soulstruct_settings.game)
+        props = getattr(obj, self.PART_SUBTYPE.value)  # type: SoulstructPropertyGroup
+        prop_names = props.get_game_prop_names(context)
 
         header, panel = layout.panel("Basic Settings", default_closed=False)
         header.label(text="Basic Settings")
@@ -402,7 +346,7 @@ class MSBCharacterPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
                 panel.prop(props, prop)
 
 
-class MSBPlayerStartPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
+class MSBPlayerStartPartPanel(SoulstructPanel, _MSBPartSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate MSB PlayerStart fields for object."""
     bl_label = "MSB Player Start Settings"
     bl_idname = "OBJECT_PT_msb_player_start"
@@ -414,7 +358,7 @@ class MSBPlayerStartPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
     PROP_GROUP_TYPE = MSBPlayerStartProps
 
 
-class MSBCollisionPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
+class MSBCollisionPartPanel(SoulstructPanel, _MSBPartSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate MSB Collision fields for active object."""
     bl_label = "MSB Collision Settings"
     bl_idname = "OBJECT_PT_msb_collision"
@@ -434,9 +378,8 @@ class MSBCollisionPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
             layout.label(text=f"No active MSB {self.PART_SUBTYPE}.")
             return
 
-        # noinspection PyTypeChecker
-        props = getattr(obj, self.PART_SUBTYPE.value)
-        prop_names = props.get_game_props(context.scene.soulstruct_settings.game)
+        props = getattr(obj, self.PART_SUBTYPE.value)  # type: SoulstructPropertyGroup
+        prop_names = props.get_game_prop_names(context)
         handled = set()
         handled |= bit_set_prop(layout, props, "navmesh_groups_", "Navmesh Groups")
 
@@ -446,7 +389,7 @@ class MSBCollisionPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
             layout.prop(props, prop)
 
 
-class MSBProtobossPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
+class MSBProtobossPartPanel(SoulstructPanel, _MSBPartSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate MSB Protoboss fields for object."""
     bl_label = "MSB Protoboss Settings"
     bl_idname = "OBJECT_PT_msb_protoboss"
@@ -458,7 +401,7 @@ class MSBProtobossPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
     PROP_GROUP_TYPE = MSBProtobossProps
 
 
-class MSBNavmeshPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
+class MSBNavmeshPartPanel(SoulstructPanel, _MSBPartSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate MSB Navmesh fields for active object."""
     bl_label = "MSB Navmesh Settings"
     bl_idname = "OBJECT_PT_msb_navmesh"
@@ -479,8 +422,8 @@ class MSBNavmeshPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
             return
 
         # noinspection PyTypeChecker
-        props = getattr(obj, self.PART_SUBTYPE.value)
-        prop_names = props.get_game_props(context.scene.soulstruct_settings.game)
+        props = getattr(obj, self.PART_SUBTYPE.value)  # type: SoulstructPropertyGroup
+        prop_names = props.get_game_prop_names(context)
         handled = set()
         handled |= bit_set_prop(layout, props, "navmesh_groups_", "Navmesh Groups")
 
@@ -490,7 +433,7 @@ class MSBNavmeshPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
             layout.prop(props, prop)
 
 
-class MSBConnectCollisionPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
+class MSBConnectCollisionPartPanel(SoulstructPanel, _MSBPartSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate MSB Collision fields for active object."""
     bl_label = "MSB Connect Collision Settings"
     bl_idname = "OBJECT_PT_msb_connect_collision"
@@ -502,7 +445,7 @@ class MSBConnectCollisionPartPanel(bpy.types.Panel, _MSBPartSubtypePanelMixin):
     PROP_GROUP_TYPE = MSBConnectCollisionProps
 
 
-class MSBRegionPanel(bpy.types.Panel):
+class MSBRegionPanel(SoulstructPanel):
     """Creates a Panel in the Object properties window."""
     bl_label = "MSB Region Settings"
     bl_idname = "OBJECT_PT_hello"
@@ -555,7 +498,7 @@ class MSBRegionPanel(bpy.types.Panel):
         # All properties handled manually above.
 
 
-class MSBEventPanel(bpy.types.Panel):
+class MSBEventPanel(SoulstructPanel):
     """Draw a Panel in the Object properties window exposing the appropriate MSB Event fields for active object."""
     bl_label = "MSB Event Settings"
     bl_idname = "OBJECT_PT_msb_event"
@@ -577,7 +520,7 @@ class MSBEventPanel(bpy.types.Panel):
             return
 
         props = obj.MSB_EVENT
-        prop_names = props.get_game_props(context.scene.soulstruct_settings.game)
+        prop_names = props.get_game_prop_names(context)
         handled = set()
 
         for pre_prop in ("entry_subtype", "entity_id"):
@@ -614,14 +557,13 @@ class _MSBEventSubtypePanelMixin:
             return
 
         # noinspection PyTypeChecker
-        props = getattr(obj, self.EVENT_SUBTYPE.value)
-        # prop_names = props.get_game_props(context.scene.soulstruct_settings.game)
-        prop_names = list(props.__annotations__)
+        props = getattr(obj, self.EVENT_SUBTYPE.value)  # type: SoulstructPropertyGroup
+        prop_names = props.get_game_prop_names(context)
         for prop in prop_names:
             layout.prop(props, prop)
 
 
-class MSBLightEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
+class MSBLightEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate Light fields for active object."""
     bl_label = "MSB Light Settings"
     bl_idname = "OBJECT_PT_msb_light"
@@ -633,7 +575,7 @@ class MSBLightEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
     PROP_GROUP_TYPE = MSBLightEventProps
 
 
-class MSBSoundEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
+class MSBSoundEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate Sound fields for active object."""
     bl_label = "MSB Sound Settings"
     bl_idname = "OBJECT_PT_msb_sound"
@@ -645,7 +587,7 @@ class MSBSoundEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
     PROP_GROUP_TYPE = MSBSoundEventProps
 
 
-class MSBVFXEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
+class MSBVFXEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate VFX fields for active object."""
     bl_label = "MSB VFX Settings"
     bl_idname = "OBJECT_PT_msb_vfx"
@@ -657,7 +599,7 @@ class MSBVFXEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
     PROP_GROUP_TYPE = MSBVFXEventProps
 
 
-class MSBWindEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
+class MSBWindEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate Wind fields for active object."""
     bl_label = "MSB Wind Settings"
     bl_idname = "OBJECT_PT_msb_wind"
@@ -669,7 +611,7 @@ class MSBWindEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
     PROP_GROUP_TYPE = MSBWindEventProps
 
 
-class MSBTreasureEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
+class MSBTreasureEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate Treasure fields for active object."""
     bl_label = "MSB Treasure Settings"
     bl_idname = "OBJECT_PT_msb_treasure"
@@ -681,7 +623,7 @@ class MSBTreasureEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
     PROP_GROUP_TYPE = MSBTreasureEventProps
 
 
-class MSBSpawnerEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
+class MSBSpawnerEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate Spawner fields for active object."""
     bl_label = "MSB Spawner Settings"
     bl_idname = "OBJECT_PT_msb_spawner"
@@ -693,7 +635,7 @@ class MSBSpawnerEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
     PROP_GROUP_TYPE = MSBSpawnerEventProps
 
 
-class MSBMessageEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
+class MSBMessageEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate Message fields for active object."""
     bl_label = "MSB Message Settings"
     bl_idname = "OBJECT_PT_msb_message"
@@ -705,7 +647,7 @@ class MSBMessageEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
     PROP_GROUP_TYPE = MSBMessageEventProps
 
 
-class MSBObjActEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
+class MSBObjActEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate ObjAct fields for active object."""
     bl_label = "MSB ObjAct Settings"
     bl_idname = "OBJECT_PT_msb_obj_act"
@@ -717,7 +659,7 @@ class MSBObjActEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
     PROP_GROUP_TYPE = MSBObjActEventProps
 
 
-class MSBSpawnPointEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
+class MSBSpawnPointEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate Spawn Point fields for active object."""
     bl_label = "MSB Spawn Point Settings"
     bl_idname = "OBJECT_PT_msb_spawn_point"
@@ -729,7 +671,7 @@ class MSBSpawnPointEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
     PROP_GROUP_TYPE = MSBSpawnPointEventProps
 
 
-class MSBMapOffsetEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
+class MSBMapOffsetEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate Map Offset fields for active object."""
     bl_label = "MSB Map Offset Settings"
     bl_idname = "OBJECT_PT_msb_map_offset"
@@ -741,7 +683,7 @@ class MSBMapOffsetEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
     PROP_GROUP_TYPE = MSBMapOffsetEventProps
 
 
-class MSBNavigationEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
+class MSBNavigationEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate Navigation fields for active object."""
     bl_label = "MSB Navigation Settings"
     bl_idname = "OBJECT_PT_msb_navigation"
@@ -753,7 +695,7 @@ class MSBNavigationEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
     PROP_GROUP_TYPE = MSBNavigationEventProps
 
 
-class MSBEnvironmentEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
+class MSBEnvironmentEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate Environment fields for active object."""
     bl_label = "MSB Environment Settings"
     bl_idname = "OBJECT_PT_msb_environment"
@@ -765,7 +707,7 @@ class MSBEnvironmentEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
     PROP_GROUP_TYPE = MSBEnvironmentEventProps
 
 
-class MSBNPCInvasionEventPanel(bpy.types.Panel, _MSBEventSubtypePanelMixin):
+class MSBNPCInvasionEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate NPC Invasion fields for active object."""
     bl_label = "MSB NPC Invasion Settings"
     bl_idname = "OBJECT_PT_msb_npc_invasion"

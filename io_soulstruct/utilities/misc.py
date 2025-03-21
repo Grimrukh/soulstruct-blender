@@ -7,7 +7,6 @@ __all__ = [
     "CheckDCXMode",
     "get_bl_custom_prop",
     "is_uniform",
-    "get_or_create_collection",
     "is_path_and_file",
     "is_path_and_dir",
     "get_collection_map_stem",
@@ -164,30 +163,6 @@ def is_uniform(vector: Vector | Vector3, rel_tol: float):
     xz_close = math.isclose(vector.x, vector.z, rel_tol=rel_tol)
     yz_close = math.isclose(vector.y, vector.z, rel_tol=rel_tol)
     return xy_close and xz_close and yz_close
-
-
-def get_or_create_collection(root_collection: bpy.types.Collection, *names: str) -> bpy.types.Collection:
-    """Find or create Collection `names[-1]`. If it doesn't exist, create it, nested inside the given `names` hierarchy,
-    starting at `root_collection`.
-
-    `hide_viewport` is only used if a new Collection is created.
-    """
-    names = list(names)
-    if not names:
-        raise ValueError("At least one Collection name must be provided.")
-    target_name = names.pop()
-    try:
-        return bpy.data.collections[target_name]
-    except KeyError:
-        collection = bpy.data.collections.new(target_name)
-        if not names:
-            # Reached top of hierarchy.
-            if root_collection:
-                root_collection.children.link(collection)
-            return collection
-        parent_collection = get_or_create_collection(root_collection, *names)
-        parent_collection.children.link(collection)
-        return collection
 
 
 def is_path_and_file(path: str | Path | None) -> bool:

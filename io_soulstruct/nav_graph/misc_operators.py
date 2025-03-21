@@ -139,8 +139,7 @@ class JoinMCGNodesThroughNavmesh(LoggingOperator):
 
         navmesh_parts = [
             obj for obj in context.selected_objects
-            if obj.soulstruct_type == SoulstructType.MSB_PART
-               and obj.MSB_PART.entry_subtype == "Navmesh"
+            if obj.soulstruct_type == SoulstructType.MSB_PART and obj.MSB_PART.entry_subtype == "Navmesh"
         ]
         if len(navmesh_parts) > 1 or not navmesh_parts:
             raise MCGEdgeCreationError("Must select exactly one MSB Navmesh part")
@@ -219,14 +218,13 @@ class SetNodeNavmeshTriangles(LoggingOperator):
                 bl_node.navmesh_a_triangles = [f.index for f in bm.faces if f.select]
             elif mesh is bl_node.navmesh_b:
                 bl_node.navmesh_b_triangles = [f.index for f in bm.faces if f.select]
+            return {"FINISHED"}
         except Exception as ex:
             return self.error(str(ex))
         finally:
             if bm:
                 bm.free()
                 del bm
-
-        return {"FINISHED"}
 
 
 class RefreshMCGNames(LoggingOperator):
@@ -524,7 +522,7 @@ class AutoCreateMCG(LoggingOperator):
                 return self.error(f"Navmesh part '{navmesh_part.name}' must start with 'n####'.")
 
             bm = bmesh.new()
-            bm.from_mesh(navmesh_part.data)  # same Mesh as NVM model
+            bm.from_mesh(navmesh_part.mesh)  # same Mesh as NVM model
             # We do NOT remove doubles here, as it could modify face indices.
             bm.faces.ensure_lookup_table()  # face indices won't change again
             self.navmesh_bmeshes.append(bm)
@@ -547,9 +545,12 @@ class AutoCreateMCG(LoggingOperator):
         navmesh_nodes_and_keys = self._create_mcg_nodes(
             bl_mcg, collection, map_stem, navmesh_parts, navmesh_exit_clusters, exit_sq_dist
         )
-        self._create_mcg_edges(
-            bl_mcg, collection, map_stem, navmesh_parts, navmesh_nodes_and_keys
-        )
+        try:
+            self._create_mcg_edges(
+                bl_mcg, collection, map_stem, navmesh_parts, navmesh_nodes_and_keys
+            )
+        except ValueError as ex:
+            return self.error(f"Cannot create MCG. Error occurred during edge creation: {ex}")
 
         # Since we succeeded, set MCG parent draw name.
         context.scene.mcg_draw_settings.mcg_parent = bl_mcg.obj
@@ -730,8 +731,8 @@ class AutoCreateMCG(LoggingOperator):
 
         return navmesh_nodes_and_keys
 
+    @staticmethod
     def _create_mcg_edges(
-        self,
         bl_mcg: BlenderMCG,
         collection: bpy.types.Collection,
         map_stem: str,
@@ -747,7 +748,7 @@ class AutoCreateMCG(LoggingOperator):
                 bl_node = nodes_and_keys[0][0]
                 if bl_node.name.endswith(" <DEAD END>"):
                     # ERROR: Node cannot straddle two dead ends.
-                    return self.error(f"Node {bl_node.name} has two dead end navmeshes. Cannot create MCG.")
+                    raise ValueError(f"Node {bl_node.name} has two dead end navmeshes. Cannot create MCG.")
                 bl_node.name += " <DEAD END>"  # this will cause the above error if it has no edges in ANOTHER navmesh
                 continue  # no edges to create
 
@@ -786,7 +787,7 @@ class AutoCreateMCG(LoggingOperator):
 
                     # Note that this creates its own `BMesh` that removes vertex doubles.
                     try:
-                        total_cost = get_best_cost(navmesh_part.data, start_face_i, end_face_i)
+                        total_cost = get_best_cost(navmesh_part.mesh, start_face_i, end_face_i)
                     except Exception as ex:
                         raise ValueError(
                             f"Failed to compute cost between nodes {bl_node_a.name} and {bl_node_b.name} in "

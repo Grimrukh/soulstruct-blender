@@ -18,15 +18,18 @@ from pathlib import Path
 
 import bpy
 
+from io_soulstruct.bpy_base.property_group import SoulstructPropertyGroup
 from io_soulstruct.types import SoulstructType, is_active_obj_typed_mesh_obj
-from io_soulstruct.utilities.operators import LoggingOperator
+from io_soulstruct.utilities import LoggingOperator
 from .types import BlenderFLVERMaterial
 
 _AREA_PREFIX_RE = re.compile(r"m\d\d_")
 
 
-class MaterialToolSettings(bpy.types.PropertyGroup):
+class MaterialToolSettings(SoulstructPropertyGroup):
     """Miscellaneous settings used by various Material operators."""
+
+    # No game-specific properties.
 
     albedo_image: bpy.props.PointerProperty(
         name="Albedo Image",
@@ -309,7 +312,7 @@ class MergeFLVERMaterials(LoggingOperator):
             - All texture slots AND names must be the same.
             - Any materials with ANY GXItems are considered different. TODO: Not that hard to check, though.
         """
-        hash_list = [material.use_backface_culling]
+        hash_list = [material.use_backface_culling]  # type: list[bool | int | float | tuple]
 
         for mat_prop in (
             "flags",

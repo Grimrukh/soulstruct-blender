@@ -11,7 +11,7 @@ from __future__ import annotations
 __all__ = [
     "ImportHKXMapCollision",
     "ImportHKXMapCollisionWithBinderChoice",
-    "ImportSelectedMapHKXMapCollision",
+    "ImportMapHKXMapCollision",
 ]
 
 import shutil
@@ -262,7 +262,7 @@ class ImportHKXMapCollisionWithBinderChoice(LoggingOperator):
         bpy.ops.wm.hkx_map_collision_binder_choice_operator("INVOKE_DEFAULT")
 
 
-class ImportSelectedMapHKXMapCollision(LoggingOperator):
+class ImportMapHKXMapCollision(LoggingOperator):
     bl_idname = "import_scene.map_hkx_map_collision"
     bl_label = "Import Map Collision"
     bl_description = "Import selected HKX map collision entry from selected game map HKXBHD"

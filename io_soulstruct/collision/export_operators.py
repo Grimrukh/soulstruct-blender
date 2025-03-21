@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 __all__ = [
-    "ExportLooseHKXMapCollision",
-    "ExportHKXMapCollisionIntoBinder",
-    "ExportHKXMapCollisionToMap",
+    "ExportAnyHKXMapCollision",
+    "ExportHKXMapCollisionIntoAnyBinder",
+    "ExportMapHKXMapCollision",
 ]
 
 import re
@@ -34,7 +34,7 @@ NUMERIC_HKX_COLLISION_STEM_RE = {  # standard map model name; no extensions
 }
 
 
-class ExportLooseHKXMapCollision(LoggingExportOperator):
+class ExportAnyHKXMapCollision(LoggingExportOperator):
     """Export 'hi' and/or 'lo' HKX from a selection of Blender meshes."""
     bl_idname = "export_scene.hkx_map_collision"
     bl_label = "Export Loose Map Collision"
@@ -169,7 +169,7 @@ class ExportLooseHKXMapCollision(LoggingExportOperator):
         return {"FINISHED"}
 
 
-class ExportHKXMapCollisionIntoBinder(LoggingImportOperator):
+class ExportHKXMapCollisionIntoAnyBinder(LoggingImportOperator):
     bl_idname = "export_scene.hkx_map_collision_binder"
     bl_label = "Export Map Collision Into Binder"
     bl_description = "Export a HKX collision file into a FromSoftware Binder (BND/BHD)"
@@ -255,7 +255,7 @@ class ExportHKXMapCollisionIntoBinder(LoggingImportOperator):
         return {"FINISHED"}
 
 
-class ExportHKXMapCollisionToMap(LoggingOperator):
+class ExportMapHKXMapCollision(LoggingOperator):
     """Export a HKX collision file to detected map in appropriate format (loose or HKXBHD)."""
     bl_idname = "export_scene_map.hkx_map_collision"
     bl_label = "Export Map Collision"

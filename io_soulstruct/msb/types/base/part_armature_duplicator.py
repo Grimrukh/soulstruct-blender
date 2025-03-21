@@ -68,6 +68,9 @@ class PartArmatureDuplicator:
             return False
 
         # We definitely duplicate at this stage, creating the default Armature if needed.
+        # TODO: To animate Parts "in place" in the MSB, need their root motion to ADD to Armature's transform.
+        #  Easiest solution here is to give the Part Armature a "<ROOT>" bone to write root motion to.
+        #  Harmless because we never export the Part Armature... except for the mythical Cutscene Export.
         cls._duplicate_flver_model_armature(context, bl_part, bl_flver)
         return True
 
@@ -93,6 +96,22 @@ class PartArmatureDuplicator:
             armature_obj = bl_flver.duplicate_armature(context, bl_part.obj)
             # Rename duplicated Armature and new modifier (name always set to 'FLVER Armature' initially).
             armature_obj.name = armature_obj.data.name = f"{bl_part.game_name} Armature"
+
+            # Create a new Bone called '<PART_ROOT>' and parent all other root bones to it.
+            # This is to allow for root motion in the future.
+            context.view_layer.objects.active = armature_obj
+            bpy.ops.object.mode_set(mode="EDIT")
+            root_bone = armature_obj.data.edit_bones.new("<PART_ROOT>")
+            base_edit_bone_length = context.scene.flver_import_settings.base_edit_bone_length
+            root_bone.tail = (0, base_edit_bone_length, 0)
+            root_bone.use_connect = False
+            root_bone.use_local_location = True
+            root_bone.inherit_scale = "NONE"
+            for bone in armature_obj.data.edit_bones:
+                if not bone.parent:
+                    bone.parent = root_bone
+            bpy.ops.object.mode_set(mode="OBJECT")
+
             bl_part.obj.modifiers["FLVER Armature"].name = "Part Armature"
 
         # Finish moving local transform to new Armature.

@@ -3,6 +3,7 @@ from __future__ import annotations
 __all__ = [
     "ObjectType",
     "SoulstructType",
+    "SoulstructCollectionType",
     "is_mesh_obj",
     "is_armature_obj",
     "is_empty_obj",
@@ -22,7 +23,7 @@ class ObjectType(StrEnum):
 
 
 class SoulstructType(StrEnum):
-    """Set on Blender `Object` instances to indicate what kind of Soulstruct 'subtype' they represent.
+    """Set on Blender `Object` instances to indicate what kind of Soulstruct object they represent.
 
     Matches the name of `PropertyGroup` direct properties on `Object` as well (except "NONE").
     """
@@ -44,6 +45,16 @@ class SoulstructType(StrEnum):
     MSB_EVENT = "MSB_EVENT"
     # Used for placeholder MSB models. Real models are FLVER/COLLISION/NAVMESH types.
     MSB_MODEL_PLACEHOLDER = "MSB_MODEL_PLACEHOLDER"
+
+
+class SoulstructCollectionType(StrEnum):
+    """Set on Blender `Collection` instances to indicate what kind of Soulstruct object they represent.
+
+    Matches the name of `PropertyGroup` direct properties on `Collection` as well (except "NONE").
+    """
+    NONE = "NONE"  # default; not a Soulstruct object
+
+    MSB = "MSB"
 
 
 def is_mesh_obj(obj: bpy.types.Object) -> tp.TypeGuard[bpy.types.MeshObject]:

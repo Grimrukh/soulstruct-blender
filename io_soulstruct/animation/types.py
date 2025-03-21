@@ -16,7 +16,6 @@ from soulstruct_havok.fromsoft.demonssouls import AnimationHKX as DES_AnimationH
 from soulstruct_havok.utilities.maths import TRSTransform
 
 from io_soulstruct.exceptions import *
-from io_soulstruct.flver.models import BlenderFLVER
 from io_soulstruct.utilities import *
 from .utilities import *
 
@@ -178,15 +177,11 @@ class SoulstructAnimation:
         animation_hkx: ANIMATION_TYPING,
         skeleton_hkx: SKELETON_TYPING,
         name: str,
-        bl_flver: BlenderFLVER,
+        armature_obj: bpy.types.ArmatureObject,
+        model_name: str,
+        root_motion_bone_name="",
     ) -> SoulstructAnimation:
-        armature = bl_flver.armature
-        if not armature:
-            raise AnimationImportError(
-                f"Cannot import animation '{name}' into FLVER model {bl_flver.name} without an armature."
-            )
-
-        operator.info(f"Importing HKX animation for {armature.name}: '{name}'")
+        operator.info(f"Importing HKX animation to Armature '{armature_obj.name}': '{name}'")
 
         # We cannot rely on track annotations for bone names in all games (e.g. Demon's Souls, Elden Ring).
         # In Elden Ring, some HKX skeletons also animate 'Twist' bones that are not actually present in the FLVER. We
@@ -194,7 +189,7 @@ class SoulstructAnimation:
         hk_bone_names = [b.name for b in skeleton_hkx.skeleton.bones]
         track_bone_indices = animation_hkx.animation_container.hkx_binding.transformTrackToBoneIndices
         track_bone_names = [hk_bone_names[i] for i in track_bone_indices]
-        bl_bone_names = [b.name for b in armature.data.bones]
+        bl_bone_names = [b.name for b in armature_obj.data.bones]
 
         if not animation_hkx.animation_container.is_interleaved:
             p = time.perf_counter()
@@ -210,6 +205,8 @@ class SoulstructAnimation:
         root_motion = get_root_motion(interleaved_animation_hkx)
         operator.debug(f"Constructed armature animation frames in {time.perf_counter() - p:.3f} s.")
 
+        # Note that it's common for the HKX animation to not animate all bones in the FLVER, but we do warn if there
+        # are any bones in the HKX animation that are not in the FLVER.
         for bone_name in track_bone_names:
             if bone_name not in bl_bone_names:
                 operator.warning(
@@ -225,10 +222,11 @@ class SoulstructAnimation:
         try:
             bl_animation = cls.new_from_transform_frames(
                 context,
-                action_name=f"{bl_flver.game_name}|{name}",
-                armature=armature,
+                action_name=f"{model_name}|{name}",
+                armature=armature_obj,
                 arma_frames=arma_frames,
                 root_motion=root_motion,
+                root_motion_bone_name=root_motion_bone_name,
             )
         except Exception as ex:
             traceback.print_exc()
@@ -245,6 +243,7 @@ class SoulstructAnimation:
         armature: bpy.types.ArmatureObject,
         arma_frames: list[dict[str, TRSTransform]],
         root_motion: np.ndarray,
+        root_motion_bone_name="",
     ) -> SoulstructAnimation:
         """Import single animation HKX.
 
@@ -306,8 +305,13 @@ class SoulstructAnimation:
             bone_basis_samples = cls.get_bone_basis_samples(
                 armature, arma_frames, cls.get_armature_local_inv_matrices(armature)
             )
-            cls.add_keyframes_batch(
-                action, bone_basis_samples, root_motion, bone_frame_scaling, root_motion_frame_scaling
+            cls._add_keyframes_batch(
+                action,
+                bone_basis_samples,
+                root_motion,
+                bone_frame_scaling,
+                root_motion_frame_scaling,
+                root_motion_bone_name,
             )
         except Exception:
             if action:
@@ -374,7 +378,7 @@ class SoulstructAnimation:
                 # Record final frame index, so we can set constant interpolation there across camera cuts. Note that
                 # this is necessary for ALL parts, not just the camera -- many cuts disguise time jumps!
 
-            cls.add_keyframes_batch(
+            cls._add_keyframes_batch(
                 action,
                 bone_basis_samples,
                 root_motion=None,
@@ -477,12 +481,13 @@ class SoulstructAnimation:
         return bone_basis_samples
 
     @staticmethod
-    def add_keyframes_batch(
+    def _add_keyframes_batch(
         action: bpy.types.Action,
         bone_basis_samples: dict[str, list[list[float]]],
         root_motion: np.ndarray | None,
         bone_frame_scaling: float,
         root_motion_frame_scaling: float,
+        root_motion_bone_name: str = "",
     ):
         """Faster method of adding all bone and (optional) root keyframe data.
 
@@ -490,12 +495,20 @@ class SoulstructAnimation:
         curve keyframe points at once.
 
         `bone_basis_samples` should map bone names to ten lists of floats (location XYZ, quaternion WXYZ, scale XYZ).
+
+        If `root_motion_bone_name` is given (non-empty), root motion will be applied to the bone with that name.
+        Otherwise it will be applied directly to the object's local transform (location and Z-axis rotation).
         """
 
         # Initialize FCurves for root motion and bones.
         if root_motion is not None:
-            root_fcurves = [action.fcurves.new(data_path="location", index=i) for i in range(3)]
-            root_fcurves.append(action.fcurves.new(data_path="rotation_euler", index=2))  # z-axis rotation in Blender
+            if root_motion_bone_name:
+                data_path = f"pose.bones[\"{root_motion_bone_name}\"]"
+                root_fcurves = [action.fcurves.new(data_path=f"{data_path}.location", index=i) for i in range(3)]
+                root_fcurves.append(action.fcurves.new(data_path=f"{data_path}.rotation_euler", index=2))  # Z
+            else:
+                root_fcurves = [action.fcurves.new(data_path="location", index=i) for i in range(3)]
+                root_fcurves.append(action.fcurves.new(data_path="rotation_euler", index=2))  # Z
         else:
             root_fcurves = []
 

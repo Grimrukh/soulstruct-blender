@@ -25,5 +25,14 @@ class BlenderMSBConnectCollision(BaseBlenderMSBPart_DS1[MSBConnectCollision, MSB
 
     SUBTYPE_FIELDS = (
         MSBReferenceFieldAdapter("collision", ref_type=SoulstructType.MSB_PART, ref_subtype="collisions"),  # subtype
-        FieldAdapter("connected_map_id"),  # stored as four ints in Blender properties
+        FieldAdapter("connected_map_id", auto_prop=False),  # `IntVectorProperty` in Blender
     )
+
+    @property
+    def connected_map_id(self) -> tuple[int, int, int, int]:
+        # noinspection PyTypeChecker
+        return tuple(self.subtype_properties.connected_map_id)
+
+    @connected_map_id.setter
+    def connected_map_id(self, value: tuple[int, int, int, int]):
+        self.subtype_properties.connected_map_id = value

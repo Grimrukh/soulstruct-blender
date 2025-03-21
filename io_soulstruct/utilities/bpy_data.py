@@ -9,13 +9,14 @@ __all__ = [
     "find_obj_or_create_empty",
     "copy_obj_property_group",
     "copy_armature_pose",
+    "get_or_create_collection",
 ]
 
 import typing as tp
 
 import bpy
 
-from .misc import get_or_create_collection, remove_dupe_suffix
+from .misc import remove_dupe_suffix
 from .bpy_types import ObjectType, SoulstructType
 
 if tp.TYPE_CHECKING:
@@ -214,15 +215,45 @@ def copy_obj_property_group(
         setattr(dest_props, prop_name, getattr(source_props, prop_name))
 
 
-def copy_armature_pose(source_armature: bpy.types.ArmatureObject, dest_armature: bpy.types.ArmatureObject):
+def copy_armature_pose(
+    source_armature: bpy.types.ArmatureObject,
+    dest_armature: bpy.types.ArmatureObject,
+    ignore_bone_names: tp.Collection[str] = (),
+):
     """Copy pose bone transforms.
 
     NOTE: You need to call `context.view_layer.update()` between creating an `Armature` and accessing its `pose`.
     """
 
     for pose_bone in dest_armature.pose.bones:
+        if pose_bone.name in ignore_bone_names:
+            continue  # e.g. '<PART_ROOT>'
         source_bone = source_armature.pose.bones[pose_bone.name]
         pose_bone.rotation_mode = "QUATERNION"  # should be default but being explicit
         pose_bone.location = source_bone.location
         pose_bone.rotation_quaternion = source_bone.rotation_quaternion
         pose_bone.scale = source_bone.scale
+
+
+def get_or_create_collection(root_collection: bpy.types.Collection, *names: str) -> bpy.types.Collection:
+    """Find or create Collection `names[-1]`. If it doesn't exist, create it, nested inside the given `names` hierarchy,
+    starting at `root_collection`.
+
+    `hide_viewport` is only used if a new Collection is created.
+    """
+    names = list(names)
+    if not names:
+        raise ValueError("At least one Collection name must be provided.")
+    target_name = names.pop()
+    try:
+        return bpy.data.collections[target_name]
+    except KeyError:
+        collection = bpy.data.collections.new(target_name)
+        if not names:
+            # Reached top of hierarchy.
+            if root_collection:
+                root_collection.children.link(collection)
+            return collection
+        parent_collection = get_or_create_collection(root_collection, *names)
+        parent_collection.children.link(collection)
+        return collection

@@ -23,7 +23,9 @@ import bpy
 
 from soulstruct.base.maps.msb.enums import BaseMSBRegionSubtype
 from soulstruct.base.maps.msb.region_shapes import RegionShapeType
+from soulstruct.games import *
 
+from io_soulstruct.bpy_base.property_group import SoulstructPropertyGroup
 from io_soulstruct.msb.utilities import *
 from io_soulstruct.utilities import ObjectType
 
@@ -41,11 +43,28 @@ class BlenderMSBRegionSubtype(StrEnum):
             raise ValueError(f"Unsupported Blender MSB Region subtype: {subtype}")
 
 
-class MSBRegionProps(bpy.types.PropertyGroup):
-    entity_id: bpy.props.IntProperty(
-        name="Entity ID",
-        default=-1
-    )
+class MSBRegionProps(SoulstructPropertyGroup):
+
+    GAME_PROP_NAMES = {
+        DEMONS_SOULS: (
+            "entry_subtype",
+
+            "entity_id",
+            "shape_type",
+            "shape_x",
+            "shape_y",
+            "shape_z",
+        ),
+        DARK_SOULS_PTDE: (
+            "entry_subtype",
+
+            "entity_id",
+            "shape_type",
+            "shape_x",
+            "shape_y",
+            "shape_z",
+        ),
+    }
 
     entry_subtype: bpy.props.EnumProperty(
         name="Region Subtype",
@@ -56,6 +75,11 @@ class MSBRegionProps(bpy.types.PropertyGroup):
             # TODO: ER subtypes...
         ],
         default="NONE",
+    )
+
+    entity_id: bpy.props.IntProperty(
+        name="Entity ID",
+        default=-1
     )
 
     @property

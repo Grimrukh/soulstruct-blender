@@ -8,8 +8,10 @@ __all__ = [
 
 import bpy
 
+from io_soulstruct.bpy_base.property_group import SoulstructPropertyGroup
 
-class NVMProps(bpy.types.PropertyGroup):
+
+class NVMProps(SoulstructPropertyGroup):
     """No properties currently."""
     pass
 
@@ -24,7 +26,9 @@ class NVMFaceIndex(bpy.types.PropertyGroup):
     )
 
 
-class NVMEventEntityProps(bpy.types.PropertyGroup):
+class NVMEventEntityProps(SoulstructPropertyGroup):
+
+    # No game-specific properties.
 
     entity_id: bpy.props.IntProperty(
         name="Entity ID",
