@@ -9,7 +9,7 @@ __all__ = [
     "find_obj_or_create_empty",
     "copy_obj_property_group",
     "copy_armature_pose",
-    "get_or_create_collection",
+    "find_or_create_collection",
 ]
 
 import typing as tp
@@ -235,7 +235,7 @@ def copy_armature_pose(
         pose_bone.scale = source_bone.scale
 
 
-def get_or_create_collection(root_collection: bpy.types.Collection, *names: str) -> bpy.types.Collection:
+def find_or_create_collection(root_collection: bpy.types.Collection, *names: str) -> bpy.types.Collection:
     """Find or create Collection `names[-1]`. If it doesn't exist, create it, nested inside the given `names` hierarchy,
     starting at `root_collection`.
 
@@ -254,6 +254,6 @@ def get_or_create_collection(root_collection: bpy.types.Collection, *names: str)
             if root_collection:
                 root_collection.children.link(collection)
             return collection
-        parent_collection = get_or_create_collection(root_collection, *names)
+        parent_collection = find_or_create_collection(root_collection, *names)
         parent_collection.children.link(collection)
         return collection

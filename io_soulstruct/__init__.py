@@ -346,6 +346,10 @@ CLASSES = (
     FindMSBParts,
     FindEntityID,
     ColorMSBEvents,
+    RestoreActivePartInitialTransform,
+    RestoreSelectedPartsInitialTransforms,
+    UpdateActiveMSBPartInitialTransform,
+    UpdateSelectedPartsInitialTransforms,
 
     MSBPartProps,
     MSBMapPieceProps,

@@ -16,7 +16,7 @@ from io_soulstruct.msb.properties import MSBRegionProps, BlenderMSBRegionSubtype
 from io_soulstruct.msb.types.adapters import *
 from io_soulstruct.msb.utilities import *
 from io_soulstruct.types import *
-from io_soulstruct.utilities import LoggingOperator, get_or_create_collection
+from io_soulstruct.utilities import LoggingOperator, find_or_create_collection
 
 from .entry import BaseBlenderMSBEntry, MSB_T
 
@@ -108,7 +108,7 @@ class BaseBlenderMSBRegion(BaseBlenderMSBEntry[REGION_T, MSBRegionProps, None, M
 
     @classmethod
     def get_msb_subcollection(cls, msb_collection: bpy.types.Collection, msb_stem: str) -> bpy.types.Collection:
-        return get_or_create_collection(msb_collection, f"{msb_stem} Regions")
+        return find_or_create_collection(msb_collection, f"{msb_stem} Regions")
 
     @classmethod
     def new_from_shape_type(

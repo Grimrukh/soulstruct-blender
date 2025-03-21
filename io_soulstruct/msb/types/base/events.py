@@ -20,7 +20,7 @@ from soulstruct.base.maps.msb.events import BaseMSBEvent
 from io_soulstruct.msb.properties import BlenderMSBEventSubtype, MSBEventProps
 from io_soulstruct.msb.types.adapters import *
 from io_soulstruct.types import ObjectType, SoulstructType
-from io_soulstruct.utilities import get_or_create_collection
+from io_soulstruct.utilities import find_or_create_collection
 
 from .entry import BaseBlenderMSBEntry, SUBTYPE_PROPS_T, MSB_T
 
@@ -58,7 +58,7 @@ class BaseBlenderMSBEvent(BaseBlenderMSBEntry[EVENT_T, MSBEventProps, SUBTYPE_PR
 
     @classmethod
     def get_msb_subcollection(cls, msb_collection: bpy.types.Collection, msb_stem: str) -> bpy.types.Collection:
-        return get_or_create_collection(
+        return find_or_create_collection(
             msb_collection, f"{msb_stem} Events", f"{msb_stem} {cls.MSB_ENTRY_SUBTYPE.get_nice_name()} Events"
         )
 

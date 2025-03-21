@@ -14,7 +14,7 @@ from soulstruct.base.maps.navmesh.nvm import NVM
 
 from io_soulstruct.exceptions import NVMImportError
 from io_soulstruct.navmesh.nvm.types import BlenderNVM
-from io_soulstruct.utilities import LoggingOperator, get_or_create_collection
+from io_soulstruct.utilities import LoggingOperator, find_or_create_collection
 
 from .base import BaseBlenderMSBModelImporter, MODEL_T
 
@@ -51,7 +51,7 @@ class BlenderMSBNavmeshModelImporter(BaseBlenderMSBModelImporter):
         nvm = nvm_entry.to_binary_file(NVM)
 
         if not model_collection:
-            model_collection = get_or_create_collection(
+            model_collection = find_or_create_collection(
                 context.scene.collection,
                 "Models",
                 f"{map_stem} Models",
@@ -93,7 +93,7 @@ class BlenderMSBNavmeshModelImporter(BaseBlenderMSBModelImporter):
         """
         settings = operator.settings(context)
 
-        model_collection = get_or_create_collection(
+        model_collection = find_or_create_collection(
             context.scene.collection,
             "Models",
             f"{map_stem} Models",

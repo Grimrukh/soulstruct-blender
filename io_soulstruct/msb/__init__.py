@@ -26,6 +26,10 @@ __all__ = [
     "FindMSBParts",
     "FindEntityID",
     "ColorMSBEvents",
+    "RestoreActivePartInitialTransform",
+    "RestoreSelectedPartsInitialTransforms",
+    "UpdateActiveMSBPartInitialTransform",
+    "UpdateSelectedPartsInitialTransforms",
 
     # PART
     "BlenderMSBPartSubtype",

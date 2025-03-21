@@ -149,7 +149,7 @@ class BaseBlenderMSBPart(
 
     @classmethod
     def get_msb_subcollection(cls, msb_collection: bpy.types.Collection, msb_stem: str) -> bpy.types.Collection:
-        return get_or_create_collection(
+        return find_or_create_collection(
             msb_collection, f"{msb_stem} Parts", f"{msb_stem} {cls.MSB_ENTRY_SUBTYPE.get_nice_name()} Parts"
         )
 
@@ -160,12 +160,12 @@ class BaseBlenderMSBPart(
         mode: MSBPartArmatureMode,
         exists_ok=True,
         copy_pose=True,  # default is that this isn't batched
-    ):
+    ) -> bool:
         if self._MODEL_ADAPTER.bl_model_type != SoulstructType.FLVER:
             raise TypeError("Only FLVER-based Parts can have their model Armature duplicated.")
         if self.armature:
             if exists_ok:
-                return  # fine
+                return True  # fine
             raise ValueError("Part already has an Armature parent (and `exists_ok = False`).")
         if not self.model:
             raise ValueError("Part has no model to duplicate Armature from.")
@@ -176,6 +176,8 @@ class BaseBlenderMSBPart(
         if copy_pose and created:
             context.view_layer.update()  # SLOW
             self.copy_model_armature_pose()
+
+        return created
 
     def copy_model_armature_pose(self):
         if self._MODEL_ADAPTER.bl_model_type != SoulstructType.FLVER:

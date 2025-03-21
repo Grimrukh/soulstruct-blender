@@ -8,18 +8,27 @@ __all__ = [
     "get_armature_frames",
     "get_root_motion",
     "get_animation_name",
+    "get_active_flver_or_part_armature",
 ]
 
 import typing as tp
+from pathlib import Path
+
+import bpy
 
 import numpy as np
-from pathlib import Path
+
 from soulstruct_havok.core import HKX
 from soulstruct_havok.utilities.maths import TRSTransform
 from soulstruct_havok.fromsoft.base import BaseAnimationHKX, BaseSkeletonHKX
 from soulstruct_havok.fromsoft import demonssouls, darksouls1ptde, darksouls1r, bloodborne, eldenring
 from soulstruct.containers import BinderEntry
-from io_soulstruct.exceptions import UnsupportedGameError
+
+from io_soulstruct.exceptions import UnsupportedGameError, SoulstructTypeError
+from io_soulstruct.flver.models.types import BlenderFLVER
+from io_soulstruct.msb.properties.parts import BlenderMSBPartSubtype
+from io_soulstruct.msb.types.base.parts import BaseBlenderMSBPart
+from io_soulstruct.utilities import get_model_name
 
 ANIMATION_TYPING = tp.Union[
     demonssouls.AnimationHKX,
@@ -140,3 +149,32 @@ def get_animation_name(animation_id: int, template: str, prefix="a"):
         animation_id = animation_id[:-length]
 
     return prefix + '_'.join(reversed(string_parts))
+
+
+def get_active_flver_or_part_armature(
+    context: bpy.types.Context
+) -> tuple[bpy.types.ArmatureObject | None, bpy.types.MeshObject | None, str, bool]:
+    """Get Armature, Mesh, model name, and `is_part` of active FLVER or MSB Part (Character or Object only)."""
+    obj = context.active_object
+    if not obj:
+        return None, None, "", False
+
+    try:
+        armature, mesh = BlenderFLVER.parse_flver_obj(obj)
+    except SoulstructTypeError:
+        pass
+    else:
+        if armature:
+            return armature, mesh, get_model_name(mesh.name), False
+
+    try:
+        armature, mesh = BaseBlenderMSBPart.parse_msb_part_obj(obj)
+    except SoulstructTypeError:
+        pass
+    else:
+        if armature and mesh.MSB_PART.model and mesh.MSB_PART.entry_subtype_enum in {
+            BlenderMSBPartSubtype.Character, BlenderMSBPartSubtype.Object
+        }:
+            return armature, mesh, get_model_name(mesh.MSB_PART.model.name), True
+
+    return None, None, "", False

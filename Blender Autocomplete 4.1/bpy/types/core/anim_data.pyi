@@ -14,7 +14,7 @@ GenericType2 = typing.TypeVar("GenericType2")
 class AnimData(bpy_struct):
     """Animation data for data-block"""
 
-    action: Action
+    action: Action | None
     """ Active Action for this data-block
 
     :type: Action

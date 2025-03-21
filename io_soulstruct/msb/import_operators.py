@@ -74,7 +74,7 @@ def _import_msb(
     bl_part_classes = BLENDER_MSB_PART_CLASSES[settings.game]
     bl_event_classes = BLENDER_MSB_EVENT_CLASSES[settings.game]
 
-    msb_collection = get_or_create_collection(context.scene.collection, "MSBs", f"{msb_stem} MSB")
+    msb_collection = find_or_create_collection(context.scene.collection, "MSBs", f"{msb_stem} MSB")
 
     # TODO: Delete all created objects if/when an error is raised.
 
@@ -180,7 +180,7 @@ def _import_msb(
         """
         nonlocal missing_collection
         if missing_collection is None:  # first missing MSB reference encountered
-            missing_collection = get_or_create_collection(msb_collection, f"{msb_stem} Missing References")
+            missing_collection = find_or_create_collection(msb_collection, f"{msb_stem} Missing References")
         missing_collection.objects.link(missing_obj)
 
     p = time.perf_counter()

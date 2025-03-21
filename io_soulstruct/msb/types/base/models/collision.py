@@ -15,7 +15,7 @@ from soulstruct_havok.fromsoft.shared import BothResHKXBHD, MapCollisionModel
 from io_soulstruct import SoulstructSettings
 from io_soulstruct.collision.types import BlenderMapCollision
 from io_soulstruct.exceptions import MapCollisionImportError
-from io_soulstruct.utilities import get_or_create_collection, LoggingOperator
+from io_soulstruct.utilities import find_or_create_collection, LoggingOperator
 
 from .base import BaseBlenderMSBModelImporter, MODEL_T
 
@@ -94,7 +94,7 @@ class BlenderMSBCollisionModelImporter(BaseBlenderMSBModelImporter):
 
     @staticmethod
     def _get_collision_model_map_collection(context: bpy.types.Context, map_stem: str) -> bpy.types.Collection:
-        return get_or_create_collection(
+        return find_or_create_collection(
             context.scene.collection,
             "Models",
             f"{map_stem} Models",

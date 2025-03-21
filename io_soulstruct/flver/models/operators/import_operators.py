@@ -128,7 +128,8 @@ class BaseFLVERImportOperator(LoggingImportOperator):
         return {"FINISHED"}
 
     def post_process_flver(
-        self, context: bpy.types.Context,
+        self,
+        context: bpy.types.Context,
         settings: SoulstructSettings,
         import_settings: FLVERImportSettings,
         bl_flver: BlenderFLVER,
@@ -215,7 +216,7 @@ class ImportMapPieceFLVER(BaseFLVERImportOperator):
 
     def get_collection(self, context: bpy.types.Context, file_directory_name: str):
         """Assumes file directory name is a map stem."""
-        return get_or_create_collection(
+        return find_or_create_collection(
             context.scene.collection, f"{file_directory_name} Models", f"{file_directory_name} Map Piece Models"
         )
 
@@ -288,20 +289,17 @@ class ImportCharacterFLVER(BaseFLVERImportOperator):
     ):
         if import_settings.add_name_suffix:
             if settings.is_game_ds1():
-                # Add character description to model name.
-                try:
-                    model_id = int(bl_flver.name[1:5])
-                    model_desc = DS1_CHARACTER_MODELS[model_id]
-                    # Don't trigger full rename.
-                    bl_flver.obj.name += f" <{model_desc}>"
-                    bl_flver.armature.name += f" <{model_desc}>"
-                except (ValueError, KeyError):
-                    pass
+                model_dict = DS1_CHARACTER_MODELS
             elif settings.is_game("DEMONS_SOULS"):
+                model_dict = DES_CHARACTER_MODELS
+            else:
+                model_dict = {}
+
+            if model_dict:
                 # Add character description to model name.
                 try:
                     model_id = int(bl_flver.name[1:5])
-                    model_desc = DES_CHARACTER_MODELS[model_id]
+                    model_desc = model_dict[model_id]
                     # Don't trigger full rename.
                     bl_flver.obj.name += f" <{model_desc}>"
                     bl_flver.armature.name += f" <{model_desc}>"
@@ -309,7 +307,7 @@ class ImportCharacterFLVER(BaseFLVERImportOperator):
                     pass
 
     def get_collection(self, context: bpy.types.Context, file_directory_name: str):
-        return get_or_create_collection(context.scene.collection, "Models", "Character Models")
+        return find_or_create_collection(context.scene.collection, "Models", "Character Models")
 
     # We do NOT look anywhere else for character textures.
 
@@ -347,7 +345,7 @@ class ImportObjectFLVER(BaseFLVERImportOperator):
     # Base `execute` method is fine.
 
     def get_collection(self, context: bpy.types.Context, file_directory_name: str):
-        return get_or_create_collection(context.scene.collection, "Models", "Object Models")
+        return find_or_create_collection(context.scene.collection, "Models", "Object Models")
 
     def find_extra_textures(self, flver_source_path: Path, flver: FLVER, image_import_manager: ImageImportManager):
         """Some Objects lazily use textures from the map area they expect to be placed in."""
@@ -388,7 +386,7 @@ class ImportAssetFLVER(BaseFLVERImportOperator):
     # Base `execute` method is fine.
 
     def get_collection(self, context: bpy.types.Context, file_directory_name: str):
-        return get_or_create_collection(context.scene.collection, "Models", "Asset Models")
+        return find_or_create_collection(context.scene.collection, "Models", "Asset Models")
 
 
 class ImportEquipmentFLVER(BaseFLVERImportOperator):
@@ -429,6 +427,6 @@ class ImportEquipmentFLVER(BaseFLVERImportOperator):
     # Base `execute` method is fine.
 
     def get_collection(self, context: bpy.types.Context, file_directory_name: str):
-        return get_or_create_collection(context.scene.collection, "Models", "Equipment Models")
+        return find_or_create_collection(context.scene.collection, "Models", "Equipment Models")
 
 # endregion

@@ -24,7 +24,7 @@ from io_soulstruct.flver.image.image_import_manager import ImageImportManager
 from io_soulstruct.flver.models.types import BlenderFLVER
 from io_soulstruct.flver.utilities import get_flvers_from_binder
 from io_soulstruct.types import ObjectType, SoulstructType
-from io_soulstruct.utilities import get_or_create_collection, LoggingOperator, get_model_name, find_obj
+from io_soulstruct.utilities import find_or_create_collection, LoggingOperator, get_model_name, find_obj
 
 from .base import BaseBlenderMSBModelImporter, MODEL_T
 
@@ -36,9 +36,10 @@ class BaseBlenderMSBFLVERModelImporter(BaseBlenderMSBModelImporter, abc.ABC):
     MODEL_SUBTYPE_TITLE: tp.ClassVar[str]
     USE_MAP_COLLECTION: tp.ClassVar[bool] = False
 
-    @classmethod
+    model_name_dict: dict[int, str] = None  # for adding character descriptions to model names
+
     def _import_flver_model_mesh(
-        cls,
+        self,
         operator: LoggingOperator,
         context: bpy.types.Context,
         flver: FLVER,
@@ -47,17 +48,20 @@ class BaseBlenderMSBFLVERModelImporter(BaseBlenderMSBModelImporter, abc.ABC):
         image_import_manager: ImageImportManager = None,
     ) -> bpy.types.MeshObject:
         try:
-            return BlenderFLVER.new_from_soulstruct_obj(
+            bl_flver = BlenderFLVER.new_from_soulstruct_obj(
                 operator,
                 context,
                 flver,
                 name=model_name,
                 image_import_manager=image_import_manager,
                 collection=model_collection,
-            ).mesh  # returns Blender object
+            )  # returns Blender object
         except Exception as ex:
             traceback.print_exc()  # for inspection in Blender console
-            raise FLVERImportError(f"Cannot import {cls.MODEL_SUBTYPE_TITLE} FLVER: {model_name}. Error: {ex}")
+            raise FLVERImportError(f"Cannot import {self.MODEL_SUBTYPE_TITLE} FLVER: {model_name}. Error: {ex}")
+
+        self.post_process_flver(context, bl_flver)
+        return bl_flver.mesh
 
     @classmethod
     def _batch_import_flver_models(
@@ -177,7 +181,7 @@ class BaseBlenderMSBFLVERModelImporter(BaseBlenderMSBModelImporter, abc.ABC):
         p = time.perf_counter()
 
         if cls.USE_MAP_COLLECTION:
-            model_collection = get_or_create_collection(
+            model_collection = find_or_create_collection(
                 context.scene.collection,
                 "Models",
                 f"{map_stem} Models",
@@ -185,7 +189,7 @@ class BaseBlenderMSBFLVERModelImporter(BaseBlenderMSBModelImporter, abc.ABC):
             )
         else:
             # Not map-specific.
-            model_collection = get_or_create_collection(
+            model_collection = find_or_create_collection(
                 context.scene.collection,
                 "Models",
                 "Game Models",
@@ -226,6 +230,18 @@ class BaseBlenderMSBFLVERModelImporter(BaseBlenderMSBModelImporter, abc.ABC):
         operator.info(
             f"Imported {len(flvers)} {cls.MODEL_SUBTYPE_TITLE} FLVERs in {time.perf_counter() - p:.2f} seconds."
         )
+
+    def post_process_flver(self, context: bpy.types.Context, bl_flver: BlenderFLVER):
+        """Add model description to Blender name."""
+        if self.model_name_dict and context.scene.flver_import_settings.add_name_suffix:
+            try:
+                model_id = int(bl_flver.name[1:5])
+                model_desc = self.model_name_dict[model_id]
+                # Don't trigger full rename.
+                bl_flver.obj.name += f" <{model_desc}>"
+                bl_flver.armature.name += f" <{model_desc}>"
+            except (ValueError, KeyError):
+                pass
 
     @staticmethod
     def does_model_exist(model_name: str) -> bool:
@@ -270,7 +286,7 @@ class BlenderMSBMapPieceModelImporter(BaseBlenderMSBFLVERModelImporter):
             image_import_manager = None
 
         if not model_collection:
-            model_collection = get_or_create_collection(
+            model_collection = find_or_create_collection(
                 context.scene.collection,
                 "Models",
                 f"{map_stem} Models",
@@ -372,7 +388,7 @@ class BlenderMSBObjectModelImporter(BaseBlenderMSBFLVERModelImporter):
             image_import_manager = None
 
         if not model_collection:
-            model_collection = get_or_create_collection(context.scene.collection, "Models", "Object Models")
+            model_collection = find_or_create_collection(context.scene.collection, "Models", "Object Models")
 
         return self._import_flver_model_mesh(
             operator, context, flver, model_name, model_collection, image_import_manager
@@ -455,7 +471,7 @@ class BlenderMSBCharacterModelImporter(BaseBlenderMSBFLVERModelImporter):
         settings = operator.settings(context)
 
         if not model_collection:
-            model_collection = get_or_create_collection(context.scene.collection, "Models", "Character Models")
+            model_collection = find_or_create_collection(context.scene.collection, "Models", "Character Models")
 
         import_settings = context.scene.flver_import_settings
         image_import_manager = ImageImportManager(operator, context) if import_settings.import_textures else None

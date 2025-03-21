@@ -438,7 +438,7 @@ class ImportMapHKXMapCollision(LoggingOperator):
         map_stem = settings.get_oldest_map_stem_version()
         # NOTE: Currently no Map Collision model import settings.
 
-        collection = get_or_create_collection(
+        collection = find_or_create_collection(
             context.scene.collection, "Models", f"{map_stem} Models", f"{map_stem} Collision Models"
         )
 

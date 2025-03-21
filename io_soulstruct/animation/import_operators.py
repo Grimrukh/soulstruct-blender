@@ -21,11 +21,9 @@ from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
 from soulstruct.eldenring.containers import DivBinder
 from soulstruct_havok.core import HKX
 
-from io_soulstruct.exceptions import AnimationImportError, UnsupportedGameError, SoulstructTypeError
-from io_soulstruct.flver.models.types import BlenderFLVER
-from io_soulstruct.msb.properties.parts import BlenderMSBPartSubtype
-from io_soulstruct.msb.types.base.parts import BaseBlenderMSBPart
+from io_soulstruct.exceptions import AnimationImportError, UnsupportedGameError
 from io_soulstruct.utilities import *
+
 from .types import SoulstructAnimation
 from .utilities import *
 
@@ -36,35 +34,6 @@ GEOMBND_RE = re.compile(r"^.*?\.geombnd(\.dcx)?$")
 SKELETON_ENTRY_RE = re.compile(r"skeleton\.hkx(\.dcx)?", flags=re.IGNORECASE)
 
 
-def _get_active_flver_or_part_armature(
-    context: bpy.types.Context
-) -> tuple[bpy.types.ArmatureObject | None, str, str]:
-    """Get Armature, model name, and root motion bone name of active FLVER or MSB Part (Character or Object only)."""
-    obj = context.active_object
-    if not obj:
-        return None, "", ""
-
-    try:
-        armature, mesh = BlenderFLVER.parse_flver_obj(obj)
-    except SoulstructTypeError:
-        pass
-    else:
-        if armature:
-            return armature, get_model_name(mesh.name), ""  # root motion assigned to transform
-
-    try:
-        armature, mesh = BaseBlenderMSBPart.parse_msb_part_obj(obj)
-    except SoulstructTypeError:
-        pass
-    else:
-        if armature and mesh.MSB_PART.model and mesh.MSB_PART.entry_subtype_enum in {
-            BlenderMSBPartSubtype.Character, BlenderMSBPartSubtype.Object
-        }:
-            return armature, get_model_name(mesh.MSB_PART.model.name), "<PART_ROOT>"  # root motion assigned to new root
-
-    return None, "", ""
-
-
 class BaseImportHKXAnimation(LoggingOperator):
     """NOTE: Not all subclasses are `ImportHelper` operators."""
 
@@ -73,8 +42,8 @@ class BaseImportHKXAnimation(LoggingOperator):
         """Must have an active FLVER or Part with an Armature and be working on a game that supports animations."""
         if not context.scene.soulstruct_settings.game_config.supports_animation:
             return False
-        armature_obj, _, _ = _get_active_flver_or_part_armature(context)
-        return bool(armature_obj)
+        armature_obj, _, _, _ = get_active_flver_or_part_armature(context)
+        return armature_obj is not None
 
     def get_anibnd_skeleton_compendium(
         self, context: bpy.types.Context, model_name: str
@@ -118,8 +87,8 @@ class ImportHKXAnimationWithBinderChoice(BaseImportHKXAnimation, BinderEntrySele
     # Class attributes set by `run()` before manual invocation.
     BINDER: tp.ClassVar[tp.Optional[Binder]] = None  # `get_binder()` just returns this
     ARMATURE_OBJ: tp.ClassVar[bpy.types.Object | None] = None  # can't use my `ArmatureObject` type hint here
+    PART_MESH_OBJ: tp.ClassVar[bpy.types.Object | None] = None  # can't use my `MeshObject` type hint here
     MODEL_NAME: tp.ClassVar[str] = ""
-    ROOT_MOTION_BONE_NAME: tp.ClassVar[str] = ""
     SKELETON_HKX: tp.ClassVar[SKELETON_TYPING | None] = None
     HKX_COMPENDIUM: tp.ClassVar[HKX | None] = None
 
@@ -141,6 +110,12 @@ class ImportHKXAnimationWithBinderChoice(BaseImportHKXAnimation, BinderEntrySele
         self.info(f"Read `AnimationHKX` Binder entry '{entry.name}' in {time.perf_counter() - p:.3f} s.")
         # `skeleton_hkx` already set to operator.
 
+        if self.PART_MESH_OBJ and not self.ARMATURE_OBJ.animation_data:
+            # First time creating animation data on MSB Part. We record its last transform for MSB export.
+            self.PART_MESH_OBJ["MSB Translate"] = self.ARMATURE_OBJ.location
+            self.PART_MESH_OBJ["MSB Rotate"] = self.ARMATURE_OBJ.rotation_euler
+            self.PART_MESH_OBJ["MSB Scale"] = self.ARMATURE_OBJ.scale
+
         anim_name = entry.name.split(".")[0]
         try:
             self.info(f"Creating animation '{anim_name}' in Blender.")
@@ -153,7 +128,6 @@ class ImportHKXAnimationWithBinderChoice(BaseImportHKXAnimation, BinderEntrySele
                 name=anim_name,
                 armature_obj=self.ARMATURE_OBJ,
                 model_name=self.MODEL_NAME,
-                root_motion_bone_name=self.ROOT_MOTION_BONE_NAME
             )
         except Exception as ex:
             traceback.print_exc()
@@ -169,15 +143,15 @@ class ImportHKXAnimationWithBinderChoice(BaseImportHKXAnimation, BinderEntrySele
         cls,
         binder: Binder,
         armature_obj: bpy.types.ArmatureObject,
+        part_mesh_obj: bpy.types.MeshObject | None,
         model_name: str,
-        root_motion_bone_name: str,
         skeleton_hkx: SKELETON_TYPING,
         compendium: HKX | None,
     ) -> set[str]:
         cls.BINDER = binder
         cls.ARMATURE_OBJ = armature_obj
+        cls.PART_MESH_OBJ = part_mesh_obj
         cls.MODEL_NAME = model_name
-        cls.ROOT_MOTION_BONE_NAME = root_motion_bone_name
         cls.SKELETON_HKX = skeleton_hkx
         cls.HKX_COMPENDIUM = compendium
 
@@ -220,7 +194,7 @@ class ImportAnyHKXAnimation(BaseImportHKXAnimation, LoggingImportOperator):
 
     def execute(self, context):
 
-        armature_obj, model_name, root_motion_bone_name = _get_active_flver_or_part_armature(context)
+        armature_obj, mesh_obj, model_name, is_part = get_active_flver_or_part_armature(context)
 
         binder_path = Path(self.filepath)
 
@@ -265,8 +239,8 @@ class ImportAnyHKXAnimation(BaseImportHKXAnimation, LoggingImportOperator):
         return ImportHKXAnimationWithBinderChoice.run(
             binder=anibnd,
             armature_obj=armature_obj,
+            part_mesh_obj=mesh_obj if is_part else None,
             model_name=model_name,
-            root_motion_bone_name=root_motion_bone_name,
             skeleton_hkx=skeleton_hkx,
             compendium=compendium,
         )
@@ -276,7 +250,7 @@ class BaseImportTypedHKXAnimation(BaseImportHKXAnimation):
     """Base class for importing character, object, and asset FLVER animations from their specific ANIBND sources."""
 
     def execute(self, context):
-        armature_obj, model_name, root_motion_bone_name = _get_active_flver_or_part_armature(context)
+        armature_obj, mesh_obj, model_name, is_part = get_active_flver_or_part_armature(context)
 
         # Find animation HKX entry/entries.
         try:
@@ -287,14 +261,14 @@ class BaseImportTypedHKXAnimation(BaseImportHKXAnimation):
         anim_hkx_entries = anibnd.find_entries_matching_name(r"a.*\.hkx(\.dcx)?")
         if not anim_hkx_entries:
             raise AnimationImportError(
-                f"Cannot find any HKX animation files in '{anibnd.path_name}' for FLVER '{model_name}'."
+                f"Cannot find any HKX animation files in '{anibnd.path_name}' for FLVER model '{model_name}'."
             )
 
         return ImportHKXAnimationWithBinderChoice.run(
             binder=anibnd,
             armature_obj=armature_obj,
+            part_mesh_obj=mesh_obj if is_part else None,
             model_name=model_name,
-            root_motion_bone_name=root_motion_bone_name,
             skeleton_hkx=skeleton_hkx,
             compendium=compendium,
         )
@@ -325,7 +299,7 @@ class ImportCharacterHKXAnimation(BaseImportTypedHKXAnimation):
         return super().poll(context) and context.active_object.name[0] == "c"
 
     def invoke(self, context, _event):
-        _, model_name, _ = _get_active_flver_or_part_armature(context)
+        _, _, model_name, _ = get_active_flver_or_part_armature(context)
 
         if model_name == "c0000":
             self._invoke_c0000(context)

@@ -200,6 +200,27 @@ class MSBPartPanel(SoulstructPanel):
         prop_names = props.get_game_prop_names(context)
         handled = set()
 
+        # First, we draw the custom transform operators. (Also draw current custom transform, if present.)
+        if obj.parent and obj.parent.type == "ARMATURE" and obj.parent.animation_data:
+            box = layout.box()
+            box.label(text="MSB Part is animated. Stored MSB Transform:")
+            for label, prop in (
+                    ("Position", '["MSB Translate"]'),
+                    ("Rotation", '["MSB Rotate"]'),
+                    ("Scale", '["MSB Scale"]'),
+            ):
+                row = box.row()
+                row.prop(obj, prop, text=label)
+                row.enabled = False
+                # try:
+                #     vector = obj[prop]  # or Euler, technically
+                #     prop_str = f"{label}: ({vector[0]:.2f}, {vector[1]:.2f}, {vector[2]:.2f})"
+                # except KeyError:
+                #     prop_str = f"{label}: <MISSING>"
+                # box.label(text=prop_str)
+            box.operator(RestoreActivePartInitialTransform.bl_idname, text="Restore + Clear Animation")
+            box.operator(UpdateActiveMSBPartInitialTransform.bl_idname, text="Update Stored Transform")
+
         for pre_prop in ("entry_subtype", "model", "entity_id"):
             layout.prop(props, pre_prop)
             handled.add(pre_prop)

@@ -273,6 +273,7 @@ class BaseBlenderSoulstructObject(abc.ABC, tp.Generic[SOULSTRUCT_T, TYPE_PROPS_T
 
     @classmethod
     def find_in_data(cls: type[SELF_T], name: str, only_in_collections: list[bpy.types.Collection]) -> SELF_T:
+        # TODO: Should be able to provide a name-matching callback, e.g. `get_part_game_name`.
         try:
             obj = bpy.data.objects[name]
         except KeyError:

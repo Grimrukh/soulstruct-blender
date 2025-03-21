@@ -337,7 +337,7 @@ class ImportMapNVM(BinderEntrySelectOperator):
         nvm = entry.to_binary_file(NVM)
         model_name = entry.minimal_stem
 
-        collection = get_or_create_collection(
+        collection = find_or_create_collection(
             context.scene.collection,
             "Models",
             f"{map_stem} Models",

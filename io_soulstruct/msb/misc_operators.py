@@ -18,10 +18,13 @@ __all__ = [
     "FindMSBParts",
     "FindEntityID",
     "ColorMSBEvents",
+    "RestoreActivePartInitialTransform",
+    "RestoreSelectedPartsInitialTransforms",
+    "UpdateActiveMSBPartInitialTransform",
+    "UpdateSelectedPartsInitialTransforms",
 ]
 
 import ast
-import typing as tp
 
 import bpy
 from mathutils import Matrix
@@ -37,11 +40,10 @@ from io_soulstruct.msb.operator_config import BLENDER_MSB_PART_CLASSES
 from io_soulstruct.msb.properties.parts import MSBPartArmatureMode
 from io_soulstruct.navmesh.nvm.types import BlenderNVM
 from io_soulstruct.utilities import *
-from .properties import BlenderMSBPartSubtype
-from .utilities import primitive_cube
 
-if tp.TYPE_CHECKING:
-    from .types.base import *
+from .properties import BlenderMSBPartSubtype
+from .types.base.parts import BaseBlenderMSBPart
+from .utilities import primitive_cube
 
 
 class EnableAllImportModels(LoggingOperator):
@@ -417,7 +419,7 @@ class CreateMSBPart(LoggingOperator):
         # TODO: Detect map stem from part! Don't just use global setting.
         #   - Operator setting can default to model's collection (for geo) or selected map stem (for non-geo).
 
-        part_collection = get_or_create_collection(
+        part_collection = find_or_create_collection(
             context.scene.collection,
             "MSBs",
             f"{map_stem} MSB",
@@ -489,7 +491,7 @@ class CreateMSBRegion(LoggingOperator):
         if settings.game not in {DEMONS_SOULS, DARK_SOULS_PTDE, DARK_SOULS_DSR}:
             return self.error(f"Cannot create MSB Region for game {settings.game.name}.")
 
-        region_collection = get_or_create_collection(
+        region_collection = find_or_create_collection(
             context.scene.collection,
             "MSBs",
             f"{settings.map_stem} MSB",
@@ -567,13 +569,13 @@ class CreateMSBEnvironmentEvent(LoggingOperator):
                 continue
 
             # All Regions go in the same Collection for now. TODO: Elden Ring will use subcollections.
-            regions_collection = get_or_create_collection(
+            regions_collection = find_or_create_collection(
                 context.scene.collection,
                 "MSBs",
                 f"{msb_stem} MSB",
                 f"{msb_stem} Regions",
             )
-            env_event_collection = get_or_create_collection(
+            env_event_collection = find_or_create_collection(
                 context.scene.collection,
                 "MSBs",
                 f"{msb_stem} MSB",
@@ -1052,7 +1054,7 @@ class CreateConnectCollision(LoggingOperator):
 
             map_stem = get_collection_map_stem(collision_part_obj)
 
-            collection = get_or_create_collection(
+            collection = find_or_create_collection(
                 context.scene.collection,
                 "MSBs",
                 f"{map_stem} MSB",
@@ -1239,4 +1241,138 @@ class ColorMSBEvents(LoggingOperator):
 
         self.info(f"Colored {len(objects)} MSB Event objects and their parents.")
 
+        return {"FINISHED"}
+
+
+def _restore_initial_transform(bl_part_obj: bpy.types.Object, bl_part_transform_obj: bpy.types.Object):
+    try:
+        translate = bl_part_obj["MSB Translate"]
+        rotate = bl_part_obj["MSB Rotate"]
+        scale = bl_part_obj["MSB Scale"]
+    except KeyError:
+        return
+
+    for prop in ("MSB Translate", "MSB Rotate", "MSB Scale"):
+        del bl_part_obj[prop]  # we know these are all present from above
+
+    if bl_part_transform_obj.type == "ARMATURE" and bl_part_transform_obj.animation_data:
+        bl_part_transform_obj.animation_data.action = None  # required for Outliner to drop Action reference
+        bl_part_transform_obj.animation_data_clear()  # clear before setting transform
+        print(f"Cleared animation data: {bl_part_transform_obj.name}")
+    bl_part_transform_obj.location = translate
+    bl_part_transform_obj.rotation_euler = rotate
+    bl_part_transform_obj.scale = scale
+
+
+def _update_initial_transform(bl_part_obj: bpy.types.Object, bl_part_transform_obj: bpy.types.Object):
+    bl_part_obj["MSB Translate"] = bl_part_transform_obj.location
+    bl_part_obj["MSB Rotate"] = bl_part_transform_obj.rotation_euler
+    bl_part_obj["MSB Scale"] = bl_part_transform_obj.scale
+
+
+class RestoreActivePartInitialTransform(LoggingOperator):
+
+    bl_idname = "object.restore_active_part_initial_transform"
+    bl_label = "Restore Active MSB Part Initial Transform"
+    bl_description = (
+        "If active MSB Part has custom 'MSB Translate', 'MSB Rotate', and 'MSB Scale' properties, restore the Part's "
+        "local transform (Armature preferred) to match those properties, clear any animation data, and remove the "
+        "custom properties"
+    )
+
+    @classmethod
+    def poll(cls, context):
+        if not context.active_object:
+            return False
+        return BaseBlenderMSBPart.is_obj_type(context.active_object)
+
+    def execute(self, context):
+        armature, mesh = BaseBlenderMSBPart.parse_msb_part_obj(context.active_object)
+        transform_obj = armature or mesh  # armature probably exists but not required
+        _restore_initial_transform(mesh, transform_obj)
+        return {"FINISHED"}
+
+
+class RestoreSelectedPartsInitialTransforms(LoggingOperator):
+
+    bl_idname = "object.restore_selected_parts_initial_transforms"
+    bl_label = "Restore Selected MSB Parts Initial Transforms"
+    bl_description = (
+        "For each selected MSB Part, if it has custom 'MSB Translate', 'MSB Rotate', and 'MSB Scale' properties, "
+        "restore the Part's local transform (Armature preferred) to match those properties, clear any animation data, "
+        "and remove the custom properties"
+    )
+
+    @classmethod
+    def poll(cls, context):
+        if not context.selected_objects:
+            return False
+        for obj in context.selected_objects:
+            if not BaseBlenderMSBPart.is_obj_type(obj):
+                return False
+        return True
+
+    def execute(self, context):
+        handled_mesh_obj_names = set()
+        for obj in context.selected_objects:
+            armature, mesh = BaseBlenderMSBPart.parse_msb_part_obj(obj)
+            if mesh.name in handled_mesh_obj_names:
+                continue
+            transform_obj = armature or mesh  # armature probably exists but not required
+            handled_mesh_obj_names.add(mesh.name)  # in case Armature and Mesh of same MSB Part are selected
+            _restore_initial_transform(mesh, transform_obj)
+        return {"FINISHED"}
+
+
+class UpdateActiveMSBPartInitialTransform(LoggingOperator):
+
+    bl_idname = "object.update_active_msb_part_initial_transform"
+    bl_label = "Update Active MSB Part Initial Transform"
+    bl_description = (
+        "Record MSB Part's current transform to custom properties. These properties, if they exist, will be preferred "
+        "over the Part's actual transform when the MSB is exported, which allows the Part to be freely animated/moved "
+        "without affecting MSB export (e.g. via model or cutscene animation root motion)"
+    )
+
+    @classmethod
+    def poll(cls, context):
+        if not context.active_object:
+            return False
+        return BaseBlenderMSBPart.is_obj_type(context.active_object)
+
+    def execute(self, context):
+        armature, mesh = BaseBlenderMSBPart.parse_msb_part_obj(context.active_object)
+        transform_obj = armature or mesh  # armature probably exists but not required
+        _update_initial_transform(mesh, transform_obj)
+        return {"FINISHED"}
+
+
+class UpdateSelectedPartsInitialTransforms(LoggingOperator):
+
+    bl_idname = "object.update_selected_parts_initial_transforms"
+    bl_label = "Update Selected MSB Parts Initial Transforms"
+    bl_description = (
+        "For each selected MSB Part, record its current transform to custom properties. These properties, if they "
+        "exist, will be preferred over the Part's actual transform when the MSB is exported, which allows the Part to "
+        "be freely animated/moved without affecting MSB export (e.g. via model or cutscene animation root motion)"
+    )
+
+    @classmethod
+    def poll(cls, context):
+        if not context.selected_objects:
+            return False
+        for obj in context.selected_objects:
+            if not BaseBlenderMSBPart.is_obj_type(obj):
+                return False
+        return True
+
+    def execute(self, context):
+        handled_mesh_obj_names = set()
+        for obj in context.selected_objects:
+            armature, mesh = BaseBlenderMSBPart.parse_msb_part_obj(obj)
+            if mesh.name in handled_mesh_obj_names:
+                continue
+            transform_obj = armature or mesh  # armature probably exists but not required
+            handled_mesh_obj_names.add(mesh.name)  # in case Armature and Mesh of same MSB Part are selected
+            _update_initial_transform(mesh, transform_obj)
         return {"FINISHED"}
