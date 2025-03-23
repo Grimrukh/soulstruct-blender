@@ -10,7 +10,7 @@ from pathlib import Path
 import bpy
 
 from soulstruct.base.models.flver import *
-from soulstruct.games import DARK_SOULS_DSR
+from soulstruct.games import DARK_SOULS_DSR, DARK_SOULS_PTDE, DEMONS_SOULS
 
 from io_soulstruct.exceptions import MaterialImportError, FLVERExportError
 from io_soulstruct.types.utilities import add_auto_type_props
@@ -18,6 +18,7 @@ from io_soulstruct.utilities import LoggingOperator, get_bl_custom_prop, remove_
 from io_soulstruct.flver.image import DDSTexture, DDSTextureCollection
 from io_soulstruct.flver.image.utilities import find_or_create_image
 from .shaders import NodeTreeBuilder, NodeTreeBuilder_DS1R
+from .shaders.desptde_node_tree_builder import NodeTreeBuilder_DESPTDE
 
 if tp.TYPE_CHECKING:
     from soulstruct.base.models.shaders import MatDef
@@ -220,6 +221,9 @@ class BlenderFLVERMaterial:
             # Try to build shader nodetree.
             if context.scene.soulstruct_settings.is_game(DARK_SOULS_DSR):
                 builder_class = NodeTreeBuilder_DS1R
+            elif (context.scene.soulstruct_settings.is_game(DARK_SOULS_PTDE)
+                  or context.scene.soulstruct_settings.is_game(DEMONS_SOULS)):
+                builder_class = NodeTreeBuilder_DESPTDE
             else:
                 builder_class = NodeTreeBuilder
             try:

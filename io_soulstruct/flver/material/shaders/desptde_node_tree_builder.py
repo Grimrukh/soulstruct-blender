@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 __all__ = [
-    "NodeTreeBuilder_DS1R",
+    "NodeTreeBuilder_DESPTDE",
 ]
 
 from dataclasses import dataclass
@@ -14,10 +14,10 @@ from .utilities import TEX_SAMPLER_RE
 
 
 @dataclass(slots=True)
-class NodeTreeBuilder_DS1R(NodeTreeBuilder):
-    """Node tree builder for Dark Souls: Remastered.
-    
-    Thanks to @thegreatgramcracker for implementing the pre-baked node groups and build logic for DS1R.
+class NodeTreeBuilder_DESPTDE(NodeTreeBuilder):
+    """Node tree builder for Dark Souls: Prepare to Die Edition and Demon's Souls.
+
+    Thanks to @thegreatgramcracker for implementing the pre-baked node groups and build logic.
     """
 
     @property
@@ -29,44 +29,32 @@ class NodeTreeBuilder_DS1R(NodeTreeBuilder):
     def _specular_map_color(self):
         return tuple(float(x) for x in self.get_mtd_param("g_SpecularMapColor", default=(1.0, 1.0, 1.0))) + (1.0,)
 
-    def _build_shader(self):
-        if "FRPG_Phn_ColDif" in self.matdef.shader_stem:
+    @property
+    def _specular_power(self) -> float:
+        """Blinn-phong specularity"""
+        return self.get_mtd_param("g_SpecularPower", default=2)
 
+    def _build_shader(self):
+        if "_Phn_ColDif" in self.matdef.shader_stem:
             if self.get_mtd_param("g_LightingType", default=1) == 0:
                 # This i
                 self._build_diffuse_only_shader("Generic Diffuse Only")
                 return
-
-            if self.get_mtd_param("g_MaterialWorkflow", default=0) == 1:
-                # Using legacy specular workflow with added roughness in the alpha channel.
-                self._build_ds1r_shader(node_group_name="DS1R Basic Colored Spec")
-                return
-
-            # Regular PBR workflow.
-            self._build_ds1r_shader(node_group_name="DS1R Basic PBR")
+            self._build_desptde_shader(node_group_name="DeS/PTDE Basic Shader")
             return
-
         if self.matdef.shader_category == "NormalToAlpha":
             # Used by fog, lightshafts, and some tree leaves. Fades out the object when viewed side-on.
             self._build_ds1_normal_to_alpha_shader()
             return
-        
         # Fall back to base catch-all shader.
-        super(NodeTreeBuilder_DS1R, self)._build_shader()
+        super(NodeTreeBuilder_DESPTDE, self)._build_shader()
         return
 
-    def _build_ds1r_shader(self, node_group_name: str = "DS1R Basic PBR"):
-        """Builds the common surface shaders for DS1R.
-        
-        Might be expanded/repurposed to build node group shaders from other games depending on how different they are.
+    def _build_desptde_shader(self, node_group_name: str = "DeS/PTDE Basic Shader"):
+        """Builds the common surface shaders for DeS and DS1 PTDE.
 
-        TODO: Implement UV scroll and parallax occlusion mapping. These should probably happen outside the node group,
-         similar to UV Scale, since they just modify the UVs.
-
-        Shader references:
-            https://github.com/AltimorTASDK/dsr-shader-mods
-            https://github.com/magcius/noclip.website/blob/main/src/DarkSouls/render.ts
-            StaydMcMuffin
+           Shader model for these games is Blinn-phong, which is not supported in Blender,
+           but these shaders can do at least some approximation.
         """
         node_groups = {}  # type: dict[str, bpy.types.ShaderNodeGroup]
         mix_fac_input = 0.5
@@ -78,13 +66,13 @@ class NodeTreeBuilder_DS1R(NodeTreeBuilder):
             # TODO: Currently doesn't handle case of invalid `node_group_name` (not in packaged Blend file).
             node_group_inputs = {}
             if lightmap_node is not None:
-                # Link lightmap node to each new node group. This is probably not accurate for lightmap display
-                # but at least it gives some approximation. TODO: gram working on an Emissive group for this?
+                # Link lightmap node to each new node group.
                 node_group_inputs["Light Map Influence"] = 1
                 node_group_inputs["Light Map"] = lightmap_node.outputs["Color"]
             if self.vertex_colors_nodes:
                 # Link vertex colors to each new node group.
                 node_group_inputs["Vertex Colors"] = self.vertex_colors_nodes[0].outputs["Color"]
+            node_group_inputs["Specular Power"] = self._specular_power
 
             node_groups[node_group_key] = self._new_bsdf_shader_node_group(node_group_name, inputs=node_group_inputs)
             return node_groups[node_group_key]
@@ -101,8 +89,6 @@ class NodeTreeBuilder_DS1R(NodeTreeBuilder):
                     node_group = _create_node_group()
 
                 if map_type == "Albedo":
-                    # This could be changed to linear (non-color) space, since the shaders use it as linear for all
-                    # calculations, then transforms it to sRGB at the very end using x^2.2
                     self.link(tex_node.outputs["Color"], node_group.inputs["Diffuse Map"])
                     node_group.inputs["Diffuse Map Color"].default_value = self._diffuse_map_color
                     node_group.inputs["Diffuse Map Color Power"].default_value = self.get_mtd_param(
@@ -129,7 +115,6 @@ class NodeTreeBuilder_DS1R(NodeTreeBuilder):
 
                 if map_type == "Specular":
                     self.link(tex_node.outputs["Color"], node_group.inputs["Specular Map"])
-                    self.link(tex_node.outputs["Alpha"], node_group.inputs["Specular Map Alpha"])
                     node_group.inputs["Specular Map Color"].default_value = self._specular_map_color
                     node_group.inputs["Specular Map Color Power"].default_value = self.get_mtd_param(
                         "g_SpecularMapColorPower", default=1
@@ -138,7 +123,6 @@ class NodeTreeBuilder_DS1R(NodeTreeBuilder):
         if self.vertex_colors_nodes:
             mix_fac_input = self.vertex_colors_nodes[0].outputs["Alpha"]
 
-        # NOTE: No 3-group setup to handle in DS1R (snow shader handled separately).
         if len(node_groups) == 2:
             # TODO: Should probably mix each sampler pair of texture maps rather than mixing two BSDFs.
             mix_node = self._mix_shader_nodes(
@@ -152,6 +136,7 @@ class NodeTreeBuilder_DS1R(NodeTreeBuilder):
             if self.matdef.edge or self.matdef.alpha:
                 self.link(self.vertex_colors_nodes[0].outputs["Alpha"], out_node.inputs["Vertex Colors Alpha"])
             self.link(out_node.outputs[0], self.output_surface)
+
 
     def _build_diffuse_only_shader(self, node_group_name: str) -> bpy.types.ShaderNodeGroup:
         """This shader is used for objects that only use diffuse, and for lighting type = 0 objects.
