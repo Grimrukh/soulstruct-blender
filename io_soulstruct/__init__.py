@@ -213,7 +213,7 @@ CLASSES = (
     # region Havok Collision
     GlobalSettingsPanel_CollisionView,
 
-    ImportHKXMapCollision,
+    ImportAnyHKXMapCollision,
     ImportHKXMapCollisionWithBinderChoice,
     ImportMapHKXMapCollision,
 
@@ -440,7 +440,7 @@ CLASSES = (
 
 # noinspection PyUnusedLocal
 def havok_menu_func_import(self, context):
-    self.layout.operator(ImportHKXMapCollision.bl_idname, text="HKX Collision (.hkx/.hkxbhd)")
+    self.layout.operator(ImportAnyHKXMapCollision.bl_idname, text="HKX Collision (.hkx/.hkxbhd)")
     self.layout.operator(ImportAnyHKXAnimation.bl_idname, text="HKX Animation (.hkx/.hkxbhd)")
     # self.layout.operator(ImportHKXCutscene.bl_idname, text="HKX Cutscene (.remobnd)")
 

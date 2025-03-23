@@ -174,23 +174,9 @@ class ImportAnyHKXAnimation(BaseImportHKXAnimation, LoggingImportOperator):
 
     directory: bpy.props.StringProperty(options={'HIDDEN'})
 
+    DEFAULT_SUBDIR = "chr"
+
     # Same `poll` method.
-
-    def invoke(self, context, _event):
-        """Set the initial directory based on Global Settings.
-
-        We prefer 'chr' over 'obj' based on the assumption that characters are more likely to be animated.
-        """
-        settings = self.settings(context)
-        try:
-            chr_path = settings.get_import_dir_path("chr")
-        except NotADirectoryError:
-            return super().invoke(context, _event)
-
-        # Start in 'chr' directory.
-        self.directory = str(chr_path)
-        context.window_manager.fileselect_add(self)
-        return {"RUNNING_MODAL"}
 
     def execute(self, context):
 

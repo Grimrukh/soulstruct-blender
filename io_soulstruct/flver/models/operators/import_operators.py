@@ -166,15 +166,6 @@ class ImportFLVER(BaseFLVERImportOperator):
     files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'})
     directory: bpy.props.StringProperty(options={'HIDDEN'})
 
-    def invoke(self, context, _event):
-        """Set the initial directory based on Global Settings."""
-        game_directory = self.settings(context).game_root_path
-        if is_path_and_dir(game_directory):
-            self.directory = str(game_directory)
-            context.window_manager.fileselect_add(self)
-            return {"RUNNING_MODAL"}
-        return super().invoke(context, _event)
-
 
 # region Game Folder Importers
 
@@ -204,13 +195,12 @@ class ImportMapPieceFLVER(BaseFLVERImportOperator):
     def invoke(self, context, _event):
         """Set the initial directory based on Global Settings."""
         settings = self.settings(context)
-        # Map Piece FLVERs come from the oldest version of the map in DS1.
-        map_piece_map_stem = settings.get_oldest_map_stem_version() if settings.is_game_ds1() else settings.map_stem
+        map_piece_map_stem = settings.get_oldest_map_stem_version()
         try:
             map_dir = settings.get_import_map_dir_path(map_stem=map_piece_map_stem)
         except NotADirectoryError:
             return super().invoke(context, _event)
-        self.directory = str(map_dir)
+        self.filepath = str(map_dir)
         context.window_manager.fileselect_add(self)
         return {"RUNNING_MODAL"}
 
@@ -238,20 +228,11 @@ class ImportCharacterFLVER(BaseFLVERImportOperator):
         maxlen=255,
     )
 
+    DEFAULT_SUBDIR = "chr"
+    POLL_DEFAULT_SUBDIR = True
+
     files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'})
     directory: bpy.props.StringProperty(options={'HIDDEN'})
-
-    @classmethod
-    def poll(cls, context) -> bool:
-        return cls.settings(context).has_import_dir_path("chr")
-
-    def invoke(self, context, _event):
-        chr_dir = self.settings(context).get_import_dir_path("chr")
-        if chr_dir and chr_dir.is_dir():
-            self.directory = str(chr_dir)
-            context.window_manager.fileselect_add(self)
-            return {"RUNNING_MODAL"}
-        return super().invoke(context, _event)
 
     def draw(self, context):
         """Draw name of selected model, if known."""
@@ -324,23 +305,17 @@ class ImportObjectFLVER(BaseFLVERImportOperator):
         maxlen=255,
     )
 
+    DEFAULT_SUBDIR = "obj"
+
     files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'})
     directory: bpy.props.StringProperty(options={'HIDDEN'})
 
     @classmethod
     def poll(cls, context) -> bool:
         settings = cls.settings(context)
-        if settings.game_variable_name == "ELDEN_RING":
+        if settings.is_game("ELDEN_RING"):
             return False  # has 'assets' instead
         return settings.has_import_dir_path("obj")
-
-    def invoke(self, context, _event):
-        obj_dir = self.settings(context).get_import_dir_path("obj")
-        if obj_dir and obj_dir.is_dir():
-            self.directory = str(obj_dir)
-            context.window_manager.fileselect_add(self)
-            return {"RUNNING_MODAL"}
-        return super().invoke(context, _event)
 
     # Base `execute` method is fine.
 
@@ -365,6 +340,8 @@ class ImportAssetFLVER(BaseFLVERImportOperator):
         maxlen=255,
     )
 
+    DEFAULT_SUBDIR = "asset/aeg"
+
     files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'})
     directory: bpy.props.StringProperty(options={'HIDDEN'})
 
@@ -374,14 +351,6 @@ class ImportAssetFLVER(BaseFLVERImportOperator):
         if settings.game_variable_name != "ELDEN_RING":
             return False  # only Elden Ring has 'assets'
         return settings.has_import_dir_path("asset/aeg")
-
-    def invoke(self, context, _event):
-        asset_dir = self.settings(context).get_import_dir_path("asset/aeg")
-        if asset_dir and asset_dir.is_dir():
-            self.directory = str(asset_dir)
-            context.window_manager.fileselect_add(self)
-            return {"RUNNING_MODAL"}
-        return super().invoke(context, _event)
 
     # Base `execute` method is fine.
 
@@ -409,20 +378,11 @@ class ImportEquipmentFLVER(BaseFLVERImportOperator):
         maxlen=255,
     )
 
+    DEFAULT_SUBDIR = "parts"
+    POLL_DEFAULT_SUBDIR = True
+
     files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'}, )
     directory: bpy.props.StringProperty(options={'HIDDEN'})
-
-    @classmethod
-    def poll(cls, context) -> bool:
-        return cls.settings(context).has_import_dir_path("parts")
-
-    def invoke(self, context, _event):
-        parts_dir = self.settings(context).get_import_dir_path("parts")
-        if parts_dir and parts_dir.is_dir():
-            self.directory = str(parts_dir)
-            context.window_manager.fileselect_add(self)
-            return {"RUNNING_MODAL"}
-        return super().invoke(context, _event)
 
     # Base `execute` method is fine.
 

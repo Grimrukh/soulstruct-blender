@@ -99,20 +99,25 @@ class PartArmatureDuplicator:
 
             # Create a new Bone called '<PART_ROOT>' and parent all other root bones to it.
             # This is to allow for root motion in the future.
-            context.view_layer.objects.active = armature_obj
-            bpy.ops.object.mode_set(mode="EDIT")
-            root_bone = armature_obj.data.edit_bones.new("<PART_ROOT>")
-            base_edit_bone_length = context.scene.flver_import_settings.base_edit_bone_length
-            root_bone.tail = (0, base_edit_bone_length, 0)
-            root_bone.use_connect = False
-            root_bone.use_local_location = True
-            root_bone.inherit_scale = "NONE"
-            for bone in armature_obj.data.edit_bones:
-                if not bone.parent:
-                    bone.parent = root_bone
-            bpy.ops.object.mode_set(mode="OBJECT")
+            # TODO: This is super slow and we don't need it for Cutscenes. Find a better way to animate Parts.
+            # PartArmatureDuplicator._create_part_root_bone(context, armature_obj)
 
             bl_part.obj.modifiers["FLVER Armature"].name = "Part Armature"
 
         # Finish moving local transform to new Armature.
         armature_obj.matrix_local = matrix_local
+
+    @staticmethod
+    def _create_part_root_bone(context: bpy.types.Context, armature_obj: bpy.types.ArmatureObject) -> None:
+        context.view_layer.objects.active = armature_obj
+        bpy.ops.object.mode_set(mode="EDIT")
+        root_bone = armature_obj.data.edit_bones.new("<PART_ROOT>")
+        base_edit_bone_length = context.scene.flver_import_settings.base_edit_bone_length
+        root_bone.tail = (0, base_edit_bone_length, 0)
+        root_bone.use_connect = False
+        root_bone.use_local_location = True
+        root_bone.inherit_scale = "NONE"
+        for bone in armature_obj.data.edit_bones:
+            if not bone.parent:
+                bone.parent = root_bone
+        bpy.ops.object.mode_set(mode="OBJECT")

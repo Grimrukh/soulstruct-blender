@@ -36,7 +36,7 @@ class MapCollisionImportExportPanel(SoulstructPanel):
 
         import_box = layout.box()
         import_box.operator(ImportMapHKXMapCollision.bl_idname)
-        import_box.operator(ImportHKXMapCollision.bl_idname, text="Import Any Map Collision")
+        import_box.operator(ImportAnyHKXMapCollision.bl_idname, text="Import Any Map Collision")
 
         export_box = self.layout.box()
         try:

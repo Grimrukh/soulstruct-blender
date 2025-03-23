@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 __all__ = [
-    "ImportHKXMapCollision",
+    "ImportAnyHKXMapCollision",
     "ImportHKXMapCollisionWithBinderChoice",
     "ImportMapHKXMapCollision",
 

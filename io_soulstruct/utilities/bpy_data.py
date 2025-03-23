@@ -43,7 +43,7 @@ def new_armature_object(
     return armature_obj
 
 
-def new_empty_object(name: str, soulstruct_type: SoulstructType = SoulstructType.NONE) -> bpy.types.Object:
+def new_empty_object(name: str, soulstruct_type: SoulstructType = SoulstructType.NONE) -> bpy.types.EmptyObject:
     # noinspection PyTypeChecker
     empty_obj = bpy.data.objects.new(name, None)
     empty_obj.soulstruct_type = soulstruct_type

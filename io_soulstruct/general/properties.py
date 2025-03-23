@@ -379,6 +379,14 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
             return self.project_root, self.game_root
         return self.game_root, self.project_root
 
+    def get_first_existing_import_root(self) -> Path | None:
+        """Return the first existing import root directory, or `None` if neither is set/exists."""
+        if self.prefer_import_from_project and is_path_and_dir(self.project_root_path):
+            return self.project_root_path
+        if is_path_and_dir(self.game_root_path):
+            return self.game_root_path
+        return None
+
     @staticmethod
     def get_first_existing_file_path(
         *parts: str | Path, roots: tp.Sequence[GameStructure], dcx_type: DCXType = None
@@ -551,6 +559,14 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
         if self.game_root_path and self.also_export_to_game:
             return True  # can export to game, even if project not set
         return False
+
+    def get_first_existing_export_root(self) -> Path | None:
+        """Return the first existing export root directory, or `None` if neither is set/exists."""
+        if is_path_and_dir(self.project_root_path):
+            return self.project_root_path
+        if self.also_export_to_game and is_path_and_dir(self.game_root_path):
+            return self.game_root_path
+        return None
 
     def export_file(
         self, operator: LoggingOperator, file: BaseBinaryFile, relative_path: Path, class_name=""

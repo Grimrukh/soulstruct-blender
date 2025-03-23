@@ -119,19 +119,34 @@ class LoggingOperator(bpy.types.Operator):
 
 
 class LoggingImportOperator(LoggingOperator, ImportHelper):
-    """Includes default `invoke()` class method that defaults to selected game directory."""
+    """Includes default `invoke()` method that defaults to selected project/game (sub)directory."""
+
+    # If non-empty, operator browser will default to this subdirectory within project or game root (depending on which
+    # is defined and whether project import is preferred).
+    DEFAULT_SUBDIR: tp.ClassVar[str] = ""
+    # If `True`, then `DEFAULT_SUBDIR` must be an importable directory for this operator to `poll()` True.
+    POLL_DEFAULT_SUBDIR: tp.ClassVar[bool] = False
 
     # Type hints for `ImportHelper` properties (must be defined by each `Operator` leaf class).
     files: tp.Collection[bpy.types.OperatorFileListElement]
     directory: str
+    filter_glob: str
+
+    @classmethod
+    def poll(cls, context) -> bool:
+        if cls.POLL_DEFAULT_SUBDIR:
+            return cls.settings(context).has_import_dir_path(cls.DEFAULT_SUBDIR)
+        return True  # default
 
     def invoke(self, context, _event):
-        """Set the initial directory based on Global Settings."""
-        game_directory = context.scene.soulstruct_settings.game_root_path
-        if game_directory and game_directory.is_dir():
-            self.directory = str(game_directory)
-            context.window_manager.fileselect_add(self)
-            return {"RUNNING_MODAL"}
+        """Set the initial directory in preferred (existing) import root and `DEFAULT_SUBDIR`."""
+        root = self.settings(context).get_first_existing_import_root()
+        if root:
+            subdir = Path(root, self.DEFAULT_SUBDIR)
+            if subdir.is_dir():
+                self.filepath = subdir.as_posix() + "/"
+                context.window_manager.fileselect_add(self)
+                return {"RUNNING_MODAL"}
         return super().invoke(context, _event)
 
     @property
@@ -140,18 +155,25 @@ class LoggingImportOperator(LoggingOperator, ImportHelper):
 
 
 class LoggingExportOperator(LoggingOperator, ExportHelper):
-    """Includes default `invoke()` class method that defaults to selected game directory."""
+    """Includes default `invoke()` method that defaults to selected project/game (sub)directory."""
+
+    # If non-empty, operator browser will default to this subdirectory within project or game root (depending on which
+    # is defined and whether game export is enabled).
+    DEFAULT_SUBDIR: tp.ClassVar[str] = ""
+    # Subdirectory existence is never required for export (will be created).
 
     # Type hints for `ExportHelper` properties (must be defined by each `Operator` leaf class).
     directory: str
 
     def invoke(self, context, _event):
-        """Set the initial directory based on Global Settings."""
-        project_directory = context.scene.soulstruct_settings.project_root_path
-        if project_directory and Path(project_directory).is_dir():
-            self.directory = str(project_directory)
-            context.window_manager.fileselect_add(self)
-            return {"RUNNING_MODAL"}
+        """Set the initial directory in preferred (existing) export root and `DEFAULT_SUBDIR`."""
+        root = self.settings(context).get_first_existing_export_root()
+        if root:
+            subdir = Path(root, self.DEFAULT_SUBDIR)
+            if subdir.is_dir():
+                self.filepath = subdir.as_posix() + "/"
+                context.window_manager.fileselect_add(self)
+                return {"RUNNING_MODAL"}
         return super().invoke(context, _event)
 
 
@@ -229,7 +251,7 @@ class BinderEntrySelectOperator(LoggingOperator):
                 f.write(entry.name)
 
         # No subdirectories used.
-        self.directory = self.temp_directory
+        self.filepath = self.temp_directory
         context.window_manager.fileselect_add(self)
         return {"RUNNING_MODAL"}
 

@@ -338,6 +338,7 @@ class ImportAnyMSB(_BaseImportMSB, LoggingImportOperator):
 
     All entries must be imported and exported at once. However, Part models are optional, and may be empty.
     """
+    DEFAULT_SUBDIR = "map/MapStudio"
 
     bl_idname = "import_scene.any_msb"
     bl_label = "Import Any MSB"

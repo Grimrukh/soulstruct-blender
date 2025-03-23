@@ -108,10 +108,10 @@ class BaseMSBEntrySelectOperator(LoggingOperator):
 
         if len(entry_list_names) == 1:
             # Start inside sole subtype.
-            self.directory = self.temp_directory + f"/{entry_list_names[0]}"
+            self.filepath = self.temp_directory + f"/{entry_list_names[0]}"
         else:
             # User chooses subtype directory first.
-            self.directory = self.temp_directory
+            self.filepath = self.temp_directory
         context.window_manager.fileselect_add(self)
         return {"RUNNING_MODAL"}
 

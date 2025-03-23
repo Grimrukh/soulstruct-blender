@@ -29,8 +29,8 @@ class ExportHelper:
 
 class ImportHelper:
 
-    # Only sets `filepath`. Subclass should set `directory`, `files`, `filepaths`, `filename_ext`, `filter_glob`
-    # as needed for that case.
+    # Only sets `filepath`. Subclass should defined properties for `directory`, `files`, `filepaths`, `filename_ext`,
+    # and/or `filter_glob` as needed for that Operator.
     filepath: str
 
     def check(self, _context):
