@@ -6,9 +6,9 @@ import typing as tp
 import bpy
 from bpy.types import Collection
 
-from io_soulstruct.types import SoulstructType
-from io_soulstruct.utilities.misc import MAP_STEM_RE
-from io_soulstruct.msb.properties import BlenderMSBPartSubtype
+from soulstruct.blender.types import SoulstructType
+from soulstruct.blender.utilities.misc import MAP_STEM_RE
+from soulstruct.blender.msb.properties import BlenderMSBPartSubtype
 
 
 def main(source_map_stem: str, dest_map_stem: str, entry_filter_func: tp.Callable[[bpy.types.Object], bool]):

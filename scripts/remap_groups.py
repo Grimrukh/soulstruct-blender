@@ -22,7 +22,7 @@ def _get_remapped_groups(remap_dict: dict[int, int], bit_set):
 
 def remap_groups(map_stem: str, remap_dict: dict[int, int], region_tag: str, doit=False):
 
-    from io_soulstruct.msb.darksouls1ptde.parts import BlenderMSBPart
+    from soulstruct.blender.msb.darksouls1ptde.parts import BlenderMSBPart
 
     # Error raised here if Parts collection is absent.
     parts_col = bpy.data.collections[f"{map_stem} Parts"]

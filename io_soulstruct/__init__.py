@@ -2,29 +2,125 @@
 
 Primarily tested and maintained for Dark Souls Remastered. Other games and file versions may gradually be supported.
 
-NOTE: some of the tools in this add-on require my additional `soulstruct_havok` Python package, which is provided
+Requires:
+    soulstruct
+    soulstruct-havok
+
+NOTE: Some of the tools in this add-on require my additional `soulstruct-havok` Python package, which is provided
 separately.
 """
 from __future__ import annotations
 
 import importlib
+import os
+import site
+import subprocess
 import sys
 from pathlib import Path
 
 import bpy
 
-# Add 'modules' subdirectory to Python path. We simply bundle them with the addon.
-# Note that Blender 4.1+ finally upgraded to Python 3.11, so we deploy two versions here.
-addon_modules_path = str((Path(__file__).parent / "../io_soulstruct_lib").resolve())
-if addon_modules_path not in sys.path:
-    sys.path.append(addon_modules_path)
 
-addon_modules_path_scipy = str((Path(__file__).parent / "../io_soulstruct_lib_311").resolve())
-if addon_modules_path_scipy not in sys.path:
-    sys.path.append(addon_modules_path_scipy)
+def stream(cmd, *, cwd=None, env=None, shell=False) -> int:
+    """
+    Run *cmd* and stream its combined stdout+stderr to this process in real time.
+
+    Returns the child’s exit code.
+    """
+    # -u (unbuffered) prevents child Python scripts from block-buffering stdout
+    if isinstance(cmd, list) and cmd[:3] == [sys.executable, "-m", "pip"]:
+        cmd.insert(1, "-u")       # python -u -m pip …
+
+    proc = subprocess.Popen(
+        cmd,
+        cwd=cwd,
+        env=env,
+        shell=shell,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,   # merge streams → single read loop
+        text=True,                  # auto-decode bytes→str
+        bufsize=1,                  # line-buffered
+    )
+
+    assert proc.stdout is not None        # for type checkers
+    for line in proc.stdout:
+        # Trim super-long progress bars if you want:
+        # if "\r" in line: line = line.split("\r")[-1]
+        sys.stdout.write(line)
+        sys.stdout.flush()
+
+    return proc.wait()
 
 
-def try_reload(_module_name: str):
+# Add 'io_soulstruct_lib' sibling directory to Python path. We simply bundle them with the addon.
+# Note that Blender 4.1+ finally upgraded to Python 3.11. Earlier versions are not supported.
+io_soulstruct_path = str(Path(__file__).parent.resolve())
+if io_soulstruct_path not in sys.path:
+    sys.path.append(io_soulstruct_path)  # TODO: obviously this directory should already be in the path
+io_soulstruct_lib_path = str((Path(__file__).parent / "../io_soulstruct_lib").resolve())
+if io_soulstruct_lib_path not in sys.path:
+    sys.path.append(io_soulstruct_lib_path)
+
+
+def _check_deps():
+    """Check that required modules are available."""
+
+    try:
+        import soulstruct.base
+        import soulstruct.havok
+    except ImportError as ex:
+        # Reintall below.
+        print(f"Import error: {ex}")
+        print(
+            "Could not detect `soulstruct` and/or `soulstruct-havok` modules in Blender's Python environment. "
+            "Will reinstall now to user 'modules' folder."
+        )
+    else:
+        return
+
+
+    user_modules = bpy.utils.user_resource("SCRIPTS", path="modules")
+
+    env = os.environ.copy()
+    env["PYTHONPATH"] = os.pathsep.join(
+        [str(user_modules), env.get("PYTHONPATH", "")]
+    )
+
+    print("Pip-installing editable `soulstruct` and `soulstruct-havok` modules into Blender's Python environment...")
+
+    try:
+        stream(
+            [
+                sys.executable, "-m", "pip", "install",
+                "-e", f"{io_soulstruct_lib_path}/soulstruct",
+                "-e", f"{io_soulstruct_lib_path}/soulstruct-havok",
+                "--target", user_modules,
+            ],
+            env=env,
+        )
+    except subprocess.CalledProcessError as ex:
+        print(ex.stdout)
+        print(ex.stderr)
+        raise ImportError(f"Failed to install `soulstruct` module. Error: {ex}") from ex
+
+    print("Installed `soulstruct` and `soulstruct-havok` modules into Blender's Python environment.")
+
+    site.addsitedir(user_modules)
+
+    try:
+        import soulstruct.base
+        import soulstruct.havok
+    except ImportError as ex:
+        raise ImportError(
+            "Required modules 'soulstruct' and 'soulstruct-havok' could not be imported, even after attempted install. "
+            "Please ensure they are installed in Blender's Python environment (in user's local `modules`)."
+        ) from ex
+
+
+_check_deps()
+
+
+def _try_reload(_module_name: str):
     try:
         importlib.reload(sys.modules[_module_name])
     except (KeyError, ImportError):
@@ -41,23 +137,22 @@ def try_reload(_module_name: str):
 #         try_reload(module_name)
 
 for module_name in list(sys.modules.keys()):
-    if module_name != "io_soulstruct" and "io_soulstruct" in module_name.split(".")[0]:  # don't reload THIS module
-        try_reload(module_name)
+    if "soulstruct.blender" in module_name:
+        _try_reload(module_name)
 
-import io_soulstruct._logging
 
-from io_soulstruct.general import *
-from io_soulstruct.misc import *
+from soulstruct.blender.general import *
+from soulstruct.blender.misc import *
 
-from io_soulstruct.animation import *
-from io_soulstruct.collision import *
-from io_soulstruct.cutscene import *
-from io_soulstruct.flver import *
-from io_soulstruct.msb import *
-from io_soulstruct.nav_graph import *
-from io_soulstruct.navmesh import *
-from io_soulstruct.types import SoulstructType, SoulstructCollectionType
-from io_soulstruct.utilities import ViewSelectedAtDistanceZero
+from soulstruct.blender.animation import *
+from soulstruct.blender.collision import *
+from soulstruct.blender.cutscene import *
+from soulstruct.blender.flver import *
+from soulstruct.blender.msb import *
+from soulstruct.blender.nav_graph import *
+from soulstruct.blender.navmesh import *
+from soulstruct.blender.types import SoulstructType, SoulstructCollectionType
+from soulstruct.blender.utilities import ViewSelectedAtDistanceZero
 
 
 bl_info = {
