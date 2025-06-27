@@ -12,57 +12,30 @@ separately.
 from __future__ import annotations
 
 import importlib
-import os
 import site
 import subprocess
 import sys
 from pathlib import Path
 
-import bpy
-
-
-def stream(cmd, *, cwd=None, env=None, shell=False) -> int:
-    """
-    Run *cmd* and stream its combined stdout+stderr to this process in real time.
-
-    Returns the child’s exit code.
-    """
-    # -u (unbuffered) prevents child Python scripts from block-buffering stdout
-    if isinstance(cmd, list) and cmd[:3] == [sys.executable, "-m", "pip"]:
-        cmd.insert(1, "-u")       # python -u -m pip …
-
-    proc = subprocess.Popen(
-        cmd,
-        cwd=cwd,
-        env=env,
-        shell=shell,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,   # merge streams → single read loop
-        text=True,                  # auto-decode bytes→str
-        bufsize=1,                  # line-buffered
+try:
+    import bpy
+except ModuleNotFoundError:
+    raise ModuleNotFoundError(
+        "This module requires Blender (`bpy`, etc.) to be run in order to import it. "
+        "Please ensure you are running this code inside Blender's Python environment."
     )
 
-    assert proc.stdout is not None        # for type checkers
-    for line in proc.stdout:
-        # Trim super-long progress bars if you want:
-        # if "\r" in line: line = line.split("\r")[-1]
-        sys.stdout.write(line)
-        sys.stdout.flush()
+# Add this directory to the Python path so that `soulstruct.blender` can be imported.
+io_soulstruct_path_str = str(Path(__file__).parent)
+if io_soulstruct_path_str not in sys.path:
+    sys.path.append(io_soulstruct_path_str)
 
-    return proc.wait()
-
-
-# Add 'io_soulstruct_lib' sibling directory to Python path. We simply bundle them with the addon.
-# Note that Blender 4.1+ finally upgraded to Python 3.11. Earlier versions are not supported.
-io_soulstruct_path = str(Path(__file__).parent.resolve())
-if io_soulstruct_path not in sys.path:
-    sys.path.append(io_soulstruct_path)  # TODO: obviously this directory should already be in the path
-io_soulstruct_lib_path = str((Path(__file__).parent / "../io_soulstruct_lib").resolve())
-if io_soulstruct_lib_path not in sys.path:
-    sys.path.append(io_soulstruct_lib_path)
+user_addon_modules = bpy.utils.user_resource("SCRIPTS", path="addons/modules")
+# Make sure editable `soulstruct` and `soulstruct-havok` modules are found.
+site.addsitedir(user_addon_modules)
 
 
-def _check_deps():
+def _ensure_soulstruct_installed():
     """Check that required modules are available."""
 
     try:
@@ -78,34 +51,37 @@ def _check_deps():
     else:
         return
 
+    # Install editable `soulstruct` and `soulstruct-havok` modules into Python environment from `io_soulstruct_lib`.
+    io_soulstruct_lib_path = (Path(__file__).parent / "../io_soulstruct_lib").resolve()
 
-    user_modules = bpy.utils.user_resource("SCRIPTS", path="modules")
-
-    env = os.environ.copy()
-    env["PYTHONPATH"] = os.pathsep.join(
-        [str(user_modules), env.get("PYTHONPATH", "")]
-    )
+    if not io_soulstruct_lib_path.is_dir():
+        raise ImportError(
+            f"Cannot find `io_soulstruct_lib` directory at {io_soulstruct_lib_path} to install `soulstruct`. "
+            "Please ensure that the add-on is installed correctly."
+        )
 
     print("Pip-installing editable `soulstruct` and `soulstruct-havok` modules into Blender's Python environment...")
 
     try:
-        stream(
+        subprocess.run(
             [
                 sys.executable, "-m", "pip", "install",
                 "-e", f"{io_soulstruct_lib_path}/soulstruct",
                 "-e", f"{io_soulstruct_lib_path}/soulstruct-havok",
-                "--target", user_modules,
+                "--target", user_addon_modules,
             ],
-            env=env,
+            stdout=sys.stdout,
+            stderr=sys.stderr,
         )
     except subprocess.CalledProcessError as ex:
         print(ex.stdout)
         print(ex.stderr)
-        raise ImportError(f"Failed to install `soulstruct` module. Error: {ex}") from ex
+        raise ImportError(f"Failed to install `soulstruct` and/or `soulstruct-havok` modules. Error: {ex}") from ex
 
     print("Installed `soulstruct` and `soulstruct-havok` modules into Blender's Python environment.")
 
-    site.addsitedir(user_modules)
+    # Find editable installs.
+    site.addsitedir(user_addon_modules)
 
     try:
         import soulstruct.base
@@ -117,8 +93,12 @@ def _check_deps():
         ) from ex
 
 
-_check_deps()
+_ensure_soulstruct_installed()
 
+
+# Reload all Soulstruct modules, then all modules in this add-on (except this script).
+# NOTE: This is IMPORTANT when using 'Reload Scripts' in Blender, as it is otherwise prone to partial re-imports of
+# Soulstruct that duplicate classes and cause wild bugs with `isinstance`, object ID equality, etc.
 
 def _try_reload(_module_name: str):
     try:
@@ -126,15 +106,6 @@ def _try_reload(_module_name: str):
     except (KeyError, ImportError):
         pass
 
-
-# Reload all Soulstruct modules, then all modules in this add-on (except this script).
-# NOTE: This is IMPORTANT when using 'Reload Scripts' in Blender, as it is otherwise prone to partial re-imports of
-# Soulstruct that duplicate classes and cause wild bugs with `isinstance`, object ID equality, etc.
-
-# TODO: `soulstruct` reload doesn't seem to be complete; `Vector has no attribute 'ndim'` appears.
-# for module_name in list(sys.modules.keys()):
-#     if "io_soulstruct" not in module_name and "soulstruct" in module_name.split(".")[0]:
-#         try_reload(module_name)
 
 for module_name in list(sys.modules.keys()):
     if "soulstruct.blender" in module_name:
@@ -154,11 +125,13 @@ from soulstruct.blender.navmesh import *
 from soulstruct.blender.types import SoulstructType, SoulstructCollectionType
 from soulstruct.blender.utilities import ViewSelectedAtDistanceZero
 
+from .version import __version_tuple__
+
 
 bl_info = {
     "name": "Soulstruct",
     "author": "Scott Mooney (Grimrukh)",
-    "version": (2, 4, 0),
+    "version": __version_tuple__,
     "blender": (4, 3, 0),
     "location": "File > Import-Export",
     "description": "Import, manipulate, and export FromSoftware/Havok assets",
