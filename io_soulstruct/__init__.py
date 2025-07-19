@@ -125,14 +125,12 @@ from soulstruct.blender.navmesh import *
 from soulstruct.blender.types import SoulstructType, SoulstructCollectionType
 from soulstruct.blender.utilities import ViewSelectedAtDistanceZero
 
-from .version import __version_tuple__
-
 
 bl_info = {
     "name": "Soulstruct",
     "author": "Scott Mooney (Grimrukh)",
-    "version": __version_tuple__,
-    "blender": (4, 3, 0),
+    "version": (2, 5, 0),  # SOURCE OF TRUTH
+    "blender": (4, 5, 0),
     "location": "File > Import-Export",
     "description": "Import, manipulate, and export FromSoftware/Havok assets",
     "warning": "",

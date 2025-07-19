@@ -62,7 +62,7 @@ def install_addon(addons_dir: str | Path, install_soulstruct=True, editable_soul
     else:
         _LOGGER.info("Copying Soulstruct modules to `io_soulstruct_lib`...")
         soulstruct_install_path = dest_io_soulstruct_lib_dir / "soulstruct"
-        shutil.rmtree(soulstruct_root_path, ignore_errors=True)
+        shutil.rmtree(soulstruct_install_path, ignore_errors=True)
         _LOGGER.info("Copying Soulstruct module...")
         shutil.copytree(
             soulstruct_root_path,
