@@ -67,7 +67,7 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
     obj: bpy.types.MeshObject  # type override
     data: bpy.types.Mesh  # type override
 
-    AUTO_FLVER_PROPS: tp.ClassVar[str] = [
+    AUTO_FLVER_PROPS: tp.ClassVar[list[str]] = [
         "big_endian",
         "version",
         "unicode",

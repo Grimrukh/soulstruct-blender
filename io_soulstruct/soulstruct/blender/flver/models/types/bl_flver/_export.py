@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 __all__ = [
-    "BlenderFLVER",
+    "create_flver_from_bl_flver",
 ]
 
 import re
@@ -786,6 +786,7 @@ def _get_des_texture_path_prefix_getter(model_name: str, flver_model_type: FLVER
     """We use the texture prefix ('mAA_', 'cXXXX_', 'oXXXX_') to determine the path prefix where possible,
     and rely on the model type being exported for the default template."""
 
+    template = ""
     match flver_model_type:
         case FLVERModelType.MapPiece:
             # TODO: Kind of want access to map stem (for area), but we'll guess it from the texture name prefix.
@@ -800,6 +801,7 @@ def _get_des_texture_path_prefix_getter(model_name: str, flver_model_type: FLVER
 
         case FLVERModelType.Equipment:
 
+            subdir = ""
             match model_name[:2]:
                 case "AM":
                     subdir = f"Arm\\{model_name.upper()}\\"
@@ -813,13 +815,8 @@ def _get_des_texture_path_prefix_getter(model_name: str, flver_model_type: FLVER
                     subdir = f"Leg\\{model_name.upper()}\\"
                 case "WP":
                     subdir = f"Weapon\\{model_name.upper()}\\"
-                case _:
-                    subdir = ""
 
             template = f"N:\\DemonsSoul\\data\\Model\\parts\\{subdir}tex\\"
-
-        case _:
-            template = ""
 
     def get_prefix(texture_stem: str, default_template=template, model_type=flver_model_type):
         if re.match(r"^m\d\d_.*", texture_stem):

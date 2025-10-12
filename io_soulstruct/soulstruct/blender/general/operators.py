@@ -9,7 +9,6 @@ __all__ = [
     "LoadCollectionsFromBlend",
 ]
 
-import abc
 import typing as tp
 from pathlib import Path
 
@@ -53,9 +52,8 @@ class _SelectMapDirectory(LoggingOperator):
     map_choice: str  # EnumProperty
 
     @classmethod
-    @abc.abstractmethod
     def get_root(cls, context) -> GameStructure | None:
-        ...
+        raise NotImplementedError(f"Subclass of {cls.__name__} must implement `get_root` method.")
 
     @classmethod
     def poll(cls, context) -> bool:
@@ -99,7 +97,8 @@ class _SelectMapDirectory(LoggingOperator):
                     return 30 <= int(map_stem[1:3]) < 60
             else:
                 extra_filter = None
-            return self.set_map_options(map_dir, extra_filter=extra_filter, get_map_desc=get_map_desc)
+            self.set_map_options(map_dir, extra_filter=extra_filter, get_map_desc=get_map_desc)
+            return
 
         if filter_mode.startswith("OVERWORLD"):
             # Check 'm60' subfolder.
@@ -121,7 +120,7 @@ class _SelectMapDirectory(LoggingOperator):
         elif "OVERWORLD_LARGE" in filter_mode:
             glob_str += "2"
 
-        return self.set_map_options(map_dir, glob_str, get_map_desc=get_map_desc)
+        self.set_map_options(map_dir, glob_str, get_map_desc=get_map_desc)
 
     def invoke(self, context, _event):
         """Set the initial directory."""
