@@ -299,10 +299,9 @@ class BinderEntrySelectOperator(LoggingOperator):
             entries.append(entry)
         return entries
 
-    @abc.abstractmethod
     def _import_entry(self, context, entry: BinderEntry):
         """Subclass must implement this function to handle the chosen Binder entry."""
-        ...
+        raise NotImplementedError(f"{self.__class__.__name__} must implement `_import_entry()` method.")
 
 
 class ViewSelectedAtDistanceZero(bpy.types.Operator):

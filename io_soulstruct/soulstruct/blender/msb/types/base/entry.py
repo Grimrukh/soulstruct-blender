@@ -23,7 +23,7 @@ from soulstruct.blender.utilities.operators import LoggingOperator
 
 
 class BlenderMSBEntryProps(tp.Protocol):
-    entry_subtype: bpy.props.EnumProperty
+    entry_subtype: bpy.props.EnumProperty() | str
 
 
 ENTRY_T = tp.TypeVar("ENTRY_T", bound=MSBEntry)
@@ -76,10 +76,9 @@ class BaseBlenderMSBEntry(
         return self.SOULSTRUCT_CLASS(name=self.game_name)
 
     @classmethod
-    @abc.abstractmethod
     def get_msb_subcollection(cls, msb_collection: bpy.types.Collection, msb_stem: str) -> bpy.types.Collection:
         """Get or create the subcollection for this MSB Entry type in the given MSB collection."""
-        ...
+        raise NotImplementedError(f"{cls.__name__} must implement `get_msb_subcollection()`.")
 
     def _read_props_from_soulstruct_obj(
         self,

@@ -157,7 +157,7 @@ class BaseMSBEntrySelectOperator(LoggingOperator):
 
     def _import_entry(self, context: Context, entry: MSBEntry):
         """Subclass must implement this function to handle the chosen MSB entry."""
-        raise NotImplementedError(f"Operator `{self.__class__.__name__} must define `_import_entry()`.")
+        raise NotImplementedError(f"Operator `{self.__class__.__name__} must implement `_import_entry()`.")
 
 
 def primitive_circle(mesh: bpy.types.Mesh):
