@@ -80,9 +80,7 @@ class ImportAnyHKXMapCollision(LoggingImportOperator):
         except NotADirectoryError:
             return super().invoke(context, _event)
 
-        self.filepath = str(map_dir)
-        context.window_manager.fileselect_add(self)
-        return {"RUNNING_MODAL"}
+        return self.run_modal_in_directory(context, map_dir)
 
     def execute(self, context):
 
@@ -331,7 +329,7 @@ class ImportMapHKXMapCollision(LoggingOperator):
                 map_dir = settings.get_import_map_dir_path(map_stem=settings.get_oldest_map_stem_version())
             except NotADirectoryError as ex:
                 return self.error(f"Could not find map directory. Error: {ex}")
-            self.filepath = str(map_dir)
+            self.directory = str(map_dir)
             context.window_manager.fileselect_add(self)
             return {"RUNNING_MODAL"}
 
@@ -350,7 +348,7 @@ class ImportMapHKXMapCollision(LoggingOperator):
                 f.write(entry.name)
 
         # No subdirectories used.
-        self.filepath = self.temp_directory
+        self.directory = self.temp_directory
         context.window_manager.fileselect_add(self)
         return {"RUNNING_MODAL"}
 

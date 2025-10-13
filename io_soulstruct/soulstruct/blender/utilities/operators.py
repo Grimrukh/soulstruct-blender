@@ -144,10 +144,16 @@ class LoggingImportOperator(LoggingOperator, ImportHelper):
         if root:
             subdir = Path(root, self.DEFAULT_SUBDIR)
             if subdir.is_dir():
-                self.filepath = subdir.as_posix() + "/"
+                self.directory = subdir.as_posix() + "/"
                 context.window_manager.fileselect_add(self)
                 return {"RUNNING_MODAL"}
         return super().invoke(context, _event)
+
+    def run_modal_in_directory(self, context: Context, directory: str | Path) -> set[str]:
+        """Run the operator in a modal file selector in the given directory."""
+        self.directory = str(directory)
+        context.window_manager.fileselect_add(self)
+        return {"RUNNING_MODAL"}
 
     @property
     def file_paths(self) -> list[Path]:
@@ -171,7 +177,7 @@ class LoggingExportOperator(LoggingOperator, ExportHelper):
         if root:
             subdir = Path(root, self.DEFAULT_SUBDIR)
             if subdir.is_dir():
-                self.filepath = subdir.as_posix() + "/"
+                self.directory = subdir.as_posix() + "/"
                 context.window_manager.fileselect_add(self)
                 return {"RUNNING_MODAL"}
         return super().invoke(context, _event)
@@ -213,10 +219,9 @@ class BinderEntrySelectOperator(LoggingOperator):
     ENTRY_NAME_RE = re.compile(r"\((\d+)\) (.+)")
 
     @classmethod
-    @abc.abstractmethod
     def get_binder(cls, context) -> Binder | None:
         """Subclass must implement this function to find the relevant Binder file to unpack and offer."""
-        ...
+        raise NotImplementedError(f"{cls.__name__} must implement `get_binder()` class method.")
 
     @classmethod
     def filter_binder_entry(cls, context, entry: BinderEntry) -> bool:
@@ -252,7 +257,7 @@ class BinderEntrySelectOperator(LoggingOperator):
                 f.write(entry.name)
 
         # No subdirectories used.
-        self.filepath = self.temp_directory
+        self.directory = self.temp_directory
         context.window_manager.fileselect_add(self)
         return {"RUNNING_MODAL"}
 

@@ -200,7 +200,7 @@ class ImportMapPieceFLVER(BaseFLVERImportOperator):
             map_dir = settings.get_import_map_dir_path(map_stem=map_piece_map_stem)
         except NotADirectoryError:
             return super().invoke(context, _event)
-        self.filepath = str(map_dir)
+        self.directory = str(map_dir)
         context.window_manager.fileselect_add(self)
         return {"RUNNING_MODAL"}
 

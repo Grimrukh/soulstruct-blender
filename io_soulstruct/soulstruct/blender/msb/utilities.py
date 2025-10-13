@@ -60,10 +60,9 @@ class BaseMSBEntrySelectOperator(LoggingOperator):
     ENTRY_NAME_RE = re.compile(r"\((\d+)\) (.+)")
 
     @classmethod
-    @abc.abstractmethod
     def get_msb_list_names(cls, context) -> list[str]:
         """Subclass must implement this function to retrieve MSB list names to unpack and offer."""
-        ...
+        raise NotImplementedError("MSB Entry Select operator has not defined `get_msb_list_names()`.")
 
     @classmethod
     def poll(cls, context) -> bool:
@@ -109,10 +108,10 @@ class BaseMSBEntrySelectOperator(LoggingOperator):
 
         if len(entry_list_names) == 1:
             # Start inside sole subtype.
-            self.filepath = self.temp_directory + f"/{entry_list_names[0]}"
+            self.directory = self.temp_directory + f"/{entry_list_names[0]}"
         else:
             # User chooses subtype directory first.
-            self.filepath = self.temp_directory
+            self.directory = self.temp_directory
         context.window_manager.fileselect_add(self)
         return {"RUNNING_MODAL"}
 
@@ -156,10 +155,9 @@ class BaseMSBEntrySelectOperator(LoggingOperator):
 
         return entry_list[entry_id]
 
-    @abc.abstractmethod
     def _import_entry(self, context: Context, entry: MSBEntry):
         """Subclass must implement this function to handle the chosen MSB entry."""
-        ...
+        raise NotImplementedError(f"Operator `{self.__class__.__name__} must define `_import_entry()`.")
 
 
 def primitive_circle(mesh: bpy.types.Mesh):

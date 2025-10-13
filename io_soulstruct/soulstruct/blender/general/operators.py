@@ -213,11 +213,11 @@ class SelectImageCacheDirectory(LoggingImportOperator):
         settings = self.settings(context)
         default_dir = settings.get_import_dir_path()
         if default_dir:
-            self.filepath = str(default_dir)
+            self.directory = str(default_dir)
         else:
             for steam_common_location in STEAM_COMMON_LOCATIONS:
                 if steam_common_location.is_dir():
-                    self.filepath = str(steam_common_location)
+                    self.directory = str(steam_common_location)
                     break
         context.window_manager.fileselect_add(self)
         return {"RUNNING_MODAL"}
