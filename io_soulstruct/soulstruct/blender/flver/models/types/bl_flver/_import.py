@@ -7,16 +7,15 @@ __all__ = [
 import typing as tp
 from dataclasses import dataclass, field
 
-import math
 import numpy as np
 import time
 
 import bpy
-from mathutils import Vector
 
 from soulstruct.flver import *
 from soulstruct.base.models.shaders import MatDefError
 
+from soulstruct.blender.exceptions import FLVERImportError
 from soulstruct.blender.flver.material.types import BlenderFLVERMaterial
 from soulstruct.blender.flver.models.properties import FLVERImportSettings
 from soulstruct.blender.utilities import *
@@ -24,6 +23,7 @@ from soulstruct.blender.utilities import *
 from ..bl_flver_dummy import BlenderFLVERDummy
 from ..enums import FLVERBoneDataType
 from ._create_materials import create_materials
+from ._import_bones import *
 
 if tp.TYPE_CHECKING:
     from soulstruct.blender.flver.image.image_import_manager import ImageImportManager
@@ -452,143 +452,36 @@ def _create_bl_bones(
     command.operator.to_edit_mode(command.context)
 
     # Create all edit bones. Head/tail are not set yet (depends on `bl_bone_data_type` below).
-    edit_bones = _create_edit_bones(armature.data, command.flver, bl_bone_names)
+    edit_bones = create_edit_bones(command.flver, armature.data, bl_bone_names)
 
     # NOTE: Bones that have no vertices weighted to them are left as 'unused' root bones in the FLVER skeleton.
     # They may be animated by HKX animations (and will affect their children appropriately) but will not actually
     # affect any vertices in the mesh.
 
     if bl_bone_data_type == FLVERBoneDataType.EDIT:
-        _write_data_to_edit_bones(
-            command.operator, command.flver, edit_bones, command.import_settings.base_edit_bone_length
+        write_flver_rest_pose_to_edit_bones(
+            command.operator, command.flver, edit_bones,
         )
-        del edit_bones  # clear references to edit bones as we exit EDIT mode
-        if bpy.ops.object.mode_set.poll():
-            bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
-    elif bl_bone_data_type == FLVERBoneDataType.CUSTOM:
-        # We record the bone transforms in custom properties and also write them to PoseBone data for correct static
-        # viewing. If animated, this Pose data may be overwritten, but the custom properties will remain for export.
-        # This function will change back to OBJECT mode internally before setting pose bone data.
-        _write_data_to_custom_bone_prop_and_pose(
-            command,
-            armature,
-            edit_bones,
-        )
-    else:
-        # Unreachable.
-        raise ValueError(f"Invalid `bl_bone_data_type`: {bl_bone_data_type}")
 
-    return bl_bone_data_type  # can only be EDIT or POSE
-
-
-def _create_edit_bones(
-    armature_data: bpy.types.Armature,
-    flver: FLVER,
-    bl_bone_names: list[str],
-) -> list[bpy.types.EditBone]:
-    """Create all edit bones from FLVER bones in `bl_armature`."""
-    edit_bones = []  # all bones
-    for game_bone, bl_bone_name in zip(flver.bones, bl_bone_names, strict=True):
-        game_bone: FLVERBone
-        edit_bone = armature_data.edit_bones.new(bl_bone_name)  # '<DUPE>' suffixes already added to names
-        edit_bone: bpy.types.EditBone
-
-        # Storing 'Unused' flag for now. TODO: If later games' other flags can't be safely auto-detected, store too.
-        edit_bone.FLVER_BONE.is_unused = bool(game_bone.usage_flags & FLVERBoneUsageFlags.UNUSED)
-
-        # If this is `False`, then a bone's rest pose rotation will NOT affect its relative pose basis translation.
-        # That is, a standard TRS transform becomes an 'RTS' transform instead. We don't want such behavior,
-        # particularly for FLVER root bones like 'Pelvis'.
-        edit_bone.use_local_location = True
-
-        # FLVER bones never inherit scale.
-        edit_bone.inherit_scale = "NONE"
-
-        # We don't bother storing child or sibling bones. They are generated from parents on export.
-        edit_bones.append(edit_bone)
-    return edit_bones
-
-
-def _write_data_to_edit_bones(
-    operator: LoggingOperator,
-    flver: FLVER,
-    edit_bones: list[bpy.types.EditBone],
-    base_edit_bone_length: float,
-):
-    game_arma_transforms = flver.get_bone_armature_space_transforms()
-
-    for game_bone, edit_bone, game_arma_transform in zip(
-        flver.bones, edit_bones, game_arma_transforms, strict=True
-    ):
-        game_bone: FLVERBone
-        game_translate, game_rotmat, game_scale = game_arma_transform
-
-        if not is_uniform(game_scale, rel_tol=0.001):
-            operator.warning(
-                f"Bone {game_bone.name} in FLVER {flver.path_stem} has non-uniform scale: {game_scale}. "
-                f"This is unsupported in Blender. Left as identity."
-            )
-            bone_length = base_edit_bone_length
-        elif any(c < 0.0 for c in game_scale):
-            operator.warning(
-                f"Bone {game_bone.name} in FLVER {flver.path_stem} has negative scale: {game_scale}. "
-                f"This is unsupported in Blender. Left as identity."
-            )
-            bone_length = base_edit_bone_length
-        elif math.isclose(game_scale.x, 1.0, rel_tol=0.001):
-            # Bone scale is ALMOST uniform and 1. Correct it.
-            bone_length = base_edit_bone_length
-        else:
-            # Bone scale is uniform and not close to 1, which we can support (though it should be rare/never).
-            bone_length = game_scale.x * base_edit_bone_length
-
-        bl_translate = GAME_TO_BL_VECTOR(game_translate)
-        # We need to set an initial head/tail position with non-zero length for the `matrix` setter to act upon.
-        edit_bone.head = bl_translate
-        edit_bone.tail = bl_translate + Vector((0.0, bone_length, 0.0))  # default tail position, rotated below
-
-        bl_rot_mat3 = GAME_TO_BL_MAT3(game_rotmat)
-        bl_lrs_mat = bl_rot_mat3.to_4x4()
-        bl_lrs_mat.translation = bl_translate
-        edit_bone.matrix = bl_lrs_mat
-        edit_bone.length = bone_length  # does not interact with `matrix`
-
-        if game_bone.parent_bone is not None:
-            parent_bone_index = game_bone.parent_bone.get_bone_index(flver.bones)
-            parent_edit_bone = edit_bones[parent_bone_index]
-            edit_bone.parent = parent_edit_bone
-            # edit_bone.use_connect = True
-
-
-def _write_data_to_custom_bone_prop_and_pose(
-    command: _CreateBlenderFLVERCommand,
-    armature: bpy.types.ArmatureObject,
-    edit_bones: list[bpy.types.EditBone],
-):
-    bl_bone_transforms = []
-    for game_bone in command.flver.bones:
-        bl_bone_location = GAME_TO_BL_VECTOR(game_bone.translate)
-        bl_bone_rotation_euler = GAME_TO_BL_EULER(game_bone.rotate)
-        bl_bone_scale = GAME_TO_BL_VECTOR(game_bone.scale)
-        bl_bone_transforms.append((bl_bone_location, bl_bone_rotation_euler, bl_bone_scale))
-    
-    for bl_bone_transform, edit_bone in zip(bl_bone_transforms, edit_bones, strict=True):
-        # All edit bones are just Blender-Y-direction ("forward") stubs of base length.
-        # This rigging makes map piece 'pose' bone data transform as expected for showing accurate vertex positions.
-        edit_bone.head = Vector((0, 0, 0))
-        edit_bone.tail = Vector((0, command.import_settings.base_edit_bone_length, 0))
-        edit_bone.FLVER_BONE.flver_translate = bl_bone_transform[0]
-        edit_bone.FLVER_BONE.flver_rotate = bl_bone_transform[1]  # Euler angles (Blender coordinates)
-        edit_bone.FLVER_BONE.flver_scale = bl_bone_transform[2]
-
+    # We're done with EditBones now.
     del edit_bones  # clear references to edit bones as we exit EDIT mode
     command.operator.to_object_mode(command.context)
 
-    pose_bones = armature.pose.bones
-    for bl_bone_transform, pose_bone in zip(bl_bone_transforms, pose_bones):
-        # TODO: Pose bone transforms are relative to parent (in both FLVER and Blender).
-        #  Confirm map pieces still behave as expected, though (they shouldn't even have child bones).
-        pose_bone.rotation_mode = "QUATERNION"  # should already be default, but being explicit
-        pose_bone.location = bl_bone_transform[0]
-        pose_bone.rotation_quaternion = bl_bone_transform[1].to_quaternion()
-        pose_bone.scale = bl_bone_transform[2]
+    # Check for silently deleted (invalid) bones.
+    missing_bones = set(b.name for b in command.flver.bones) - set(b.name for b in armature.data.bones)
+    if missing_bones:
+        raise FLVERImportError(f"Failed to create some FLVER bones: {', '.join(missing_bones)}")
+
+    if bl_bone_data_type == FLVERBoneDataType.CUSTOM:
+        # We record the bone transforms in custom properties and also write them to PoseBone data for correct static
+        # viewing. If animated, this Pose data may be overwritten, but the custom properties will remain for export.
+        write_data_to_custom_bone_prop_and_pose(command.flver, armature)
+
+    for game_bone, bl_bone in zip(command.flver.bones, armature.data.bones, strict=True):
+        # Storing 'Unused' flag for now. TODO: If later games' other flags can't be safely auto-detected, store too.
+        bl_bone.FLVER_BONE.is_unused = bool(game_bone.usage_flags & FLVERBoneUsageFlags.UNUSED)
+        if bl_bone_data_type == FLVERBoneDataType.EDIT:
+            # We always write (local) bone scale data to custom properties, as EditBones do not support it.
+            bl_bone.FLVER_BONE.flver_scale = to_blender(game_bone.scale)
+
+    return bl_bone_data_type  # can only be EDIT or CUSTOM here

@@ -71,7 +71,7 @@ class ImportAnyHKXMapCollision(LoggingImportOperator):
     )
 
     files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'})
-    directory: bpy.props.StringProperty(options={'HIDDEN'})
+    directory: bpy.props.StringProperty(options={'HIDDEN'}, subtype="DIR_PATH")
 
     def invoke(self, context, _event):
         """Set the initial directory based on Global Settings."""
@@ -275,6 +275,7 @@ class ImportMapHKXMapCollision(LoggingOperator):
         description="Temporary directory containing hi-res HKXBHD entry choices",
         default="",
         options={'HIDDEN'},
+        subtype="DIR_PATH",
     )
 
     filter_glob: bpy.props.StringProperty(
@@ -290,7 +291,7 @@ class ImportMapHKXMapCollision(LoggingOperator):
         subtype="FILE_PATH",
     )
     files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'})
-    directory: bpy.props.StringProperty(options={'HIDDEN'})
+    directory: bpy.props.StringProperty(options={'HIDDEN'}, subtype="DIR_PATH")
 
     ENTRY_NAME_RE = re.compile(r"\((\d+)\) (.+)")
 

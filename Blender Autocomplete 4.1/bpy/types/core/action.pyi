@@ -64,6 +64,9 @@ class Action(ID, bpy_struct):
     :type: ActionPoseMarkers
     """
 
+    slots: typing.Any
+    """ Action slots (Blender 4.4 and later) """
+
     use_cyclic: bool
     """ The action is intended to be used as a cycle looping over its manually set playback frame range (enabling this doesn't automatically make it loop)
 

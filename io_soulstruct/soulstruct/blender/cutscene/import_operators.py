@@ -13,7 +13,7 @@ from pathlib import Path
 
 import bpy
 
-from soulstruct.base.animations.sibcam import CameraFrameTransform, FoVKeyframe
+from soulstruct.base.animations.sibcam import CameraFrameTransform
 
 from soulstruct.havok.fromsoft.darksouls1r.remobnd import *
 
@@ -402,8 +402,8 @@ class ImportHKXCutscene(LoggingImportOperator):
 
             for cut_frame_index, camera_transform in enumerate(cut_camera_transforms):
                 bl_frame_index = cutscene_frame_index * 2 if to_60_fps else cutscene_frame_index
-                bl_translate = GAME_TO_BL_VECTOR(camera_transform.position)
-                bl_euler = GAME_TO_BL_EULER(camera_transform.rotation)
+                bl_translate = to_blender(camera_transform.position)
+                bl_euler = to_blender(camera_transform.rotation)
                 camera.location = bl_translate
                 camera.rotation_euler = bl_euler
                 camera.keyframe_insert(data_path="location", frame=bl_frame_index)

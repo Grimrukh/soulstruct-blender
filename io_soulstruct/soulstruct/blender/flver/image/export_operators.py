@@ -108,7 +108,7 @@ class ExportTexturesIntoBinderOrTPF(LoggingImportOperator):
         maxlen=255,
     )
 
-    directory: bpy.props.StringProperty(options={'HIDDEN'})
+    directory: bpy.props.StringProperty(options={'HIDDEN'}, subtype="DIR_PATH")
 
     dcx_type: get_dcx_enum_property(
         description="Type of DCX compression to apply to any new TPF inside an uncompressed TPFBHD",

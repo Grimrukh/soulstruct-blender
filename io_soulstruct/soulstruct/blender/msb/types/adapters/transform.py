@@ -54,13 +54,13 @@ class MSBTransformFieldAdapter(FieldAdapter):
     ):
         field_names = self._get_field_names()
         if "translate" in field_names:
-            bl_translate = GAME_TO_BL_VECTOR(getattr(soulstruct_obj, "translate"))
+            bl_translate = to_blender(getattr(soulstruct_obj, "translate"))
             bl_obj.transform_obj.location = bl_translate  # local
         if "rotate" in field_names:
-            bl_rotate = GAME_TO_BL_EULER(math.pi / 180.0 * getattr(soulstruct_obj, "rotate"))  # degrees to radians
+            bl_rotate = to_blender(math.pi / 180.0 * getattr(soulstruct_obj, "rotate"))  # degrees to radians
             bl_obj.transform_obj.rotation_euler = bl_rotate  # local
         if "scale" in field_names:
-            bl_scale = GAME_TO_BL_VECTOR(getattr(soulstruct_obj, "scale"))
+            bl_scale = to_blender(getattr(soulstruct_obj, "scale"))
             bl_obj.transform_obj.scale = bl_scale  # local
 
     def blender_to_soulstruct(
@@ -80,11 +80,11 @@ class MSBTransformFieldAdapter(FieldAdapter):
             bl_scale = bl_obj.transform_obj.scale
 
         if "translate" in field_names:
-            soulstruct_value = BL_TO_GAME_VECTOR3(bl_translate)
+            soulstruct_value = to_game(bl_translate)
             setattr(soulstruct_obj, "translate", soulstruct_value)
         if "rotate" in field_names:
-            soulstruct_value = 180.0 / math.pi * BL_TO_GAME_EULER(bl_rotate)  # radians to degrees
+            soulstruct_value = to_game(bl_rotate).to_deg()  # Blender radians -> MSB degrees
             setattr(soulstruct_obj, "rotate", soulstruct_value)
         if "scale" in field_names:
-            soulstruct_value = BL_TO_GAME_VECTOR3(bl_scale)
+            soulstruct_value = to_game(bl_scale)
             setattr(soulstruct_obj, "scale", soulstruct_value)

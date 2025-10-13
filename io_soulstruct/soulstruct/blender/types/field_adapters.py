@@ -13,6 +13,8 @@ from dataclasses import dataclass, KW_ONLY
 
 import bpy
 
+from soulstruct.utilities.maths import EulerDeg
+
 from soulstruct.blender.utilities.operators import LoggingOperator
 from soulstruct.blender.utilities.conversion import *
 
@@ -123,7 +125,7 @@ class SpatialVectorFieldAdapter(FieldAdapter):
         soulstruct_obj: SOULSTRUCT_T,
         bl_obj: BaseBlenderSoulstructObject[SOULSTRUCT_T, TYPE_PROPS_T],
     ):
-        bl_value = GAME_TO_BL_VECTOR(getattr(soulstruct_obj, self.soulstruct_field_name))
+        bl_value = to_blender(getattr(soulstruct_obj, self.soulstruct_field_name))
         setattr(bl_obj, self.bl_prop_name, bl_value)
 
     def blender_to_soulstruct(
@@ -133,13 +135,13 @@ class SpatialVectorFieldAdapter(FieldAdapter):
         bl_obj: BaseBlenderSoulstructObject[SOULSTRUCT_T, TYPE_PROPS_T],
         soulstruct_obj: SOULSTRUCT_T,
     ):
-        soulstruct_value = BL_TO_GAME_VECTOR3(getattr(bl_obj, self.bl_prop_name))
+        soulstruct_value = to_game(getattr(bl_obj, self.bl_prop_name))
         setattr(soulstruct_obj, self.soulstruct_field_name, soulstruct_value)
 
 
 @dataclass(slots=True, frozen=True)
 class EulerAnglesFieldAdapter(FieldAdapter):
-    """Convert Euler rotation angles between Blender and Soulstruct coordinates (both radians)."""
+    """Convert Euler rotation angles between Blender (radians) and Soulstruct (degrees)."""
 
     def soulstruct_to_blender(
         self,
@@ -148,7 +150,10 @@ class EulerAnglesFieldAdapter(FieldAdapter):
         soulstruct_obj: SOULSTRUCT_T,
         bl_obj: BaseBlenderSoulstructObject[SOULSTRUCT_T, TYPE_PROPS_T],
     ):
-        bl_value = GAME_TO_BL_EULER(getattr(soulstruct_obj, self.soulstruct_field_name))
+        game_euler_deg = getattr(soulstruct_obj, self.soulstruct_field_name)
+        if not isinstance(game_euler_deg, EulerDeg):
+            raise TypeError(f"Soulstruct field '{self.soulstruct_field_name}' is not an EulerDeg.")
+        bl_value = to_blender(game_euler_deg.to_rad())  # `to_blender()` would also convert, but we are explicit
         setattr(bl_obj, self.bl_prop_name, bl_value)
 
     def blender_to_soulstruct(
@@ -158,8 +163,8 @@ class EulerAnglesFieldAdapter(FieldAdapter):
         bl_obj: BaseBlenderSoulstructObject[SOULSTRUCT_T, TYPE_PROPS_T],
         soulstruct_obj: SOULSTRUCT_T,
     ):
-        soulstruct_value = BL_TO_GAME_EULER(getattr(bl_obj, self.bl_prop_name))
-        setattr(soulstruct_obj, self.soulstruct_field_name, soulstruct_value)
+        game_euler_deg = to_game(getattr(bl_obj, self.bl_prop_name)).to_deg()
+        setattr(soulstruct_obj, self.soulstruct_field_name, game_euler_deg)
 
 
 def soulstruct_adapter(cls: type[SOULSTRUCT_OBJECT_T]) -> type[SOULSTRUCT_OBJECT_T]:

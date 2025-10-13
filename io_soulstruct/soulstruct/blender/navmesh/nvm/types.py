@@ -48,7 +48,7 @@ class BlenderNVM(BaseBlenderSoulstructObject[NVM, NVMProps]):
 
         # Create mesh.
         mesh = bpy.data.meshes.new(name=name)
-        vertices = GAME_TO_BL_ARRAY(nvm.vertices)
+        vertices = game_vector_array_to_bl_vector_array(nvm.vertices)
         edges = []  # no edges in NVM
         faces = [triangle.vertex_indices for triangle in nvm.triangles]
         mesh.from_pydata(vertices, edges, faces)
@@ -248,8 +248,8 @@ class BlenderNVM(BaseBlenderSoulstructObject[NVM, NVMProps]):
     @staticmethod
     def create_box(context: bpy.types.Context, box: NVMBox, index: int):
         """Create an AABB prism representing `box`. Position is baked into mesh data fully, just like the navmesh."""
-        start_vec = GAME_TO_BL_VECTOR(box.start_corner)
-        end_vec = GAME_TO_BL_VECTOR(box.end_corner)
+        start_vec = to_blender(box.start_corner)
+        end_vec = to_blender(box.end_corner)
         bpy.ops.mesh.primitive_cube_add()
         bl_box = context.active_object
         # noinspection PyTypeChecker

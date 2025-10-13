@@ -93,7 +93,7 @@ class ImportTextures(LoggingImportOperator):
     )
 
     files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'})
-    directory: bpy.props.StringProperty(options={'HIDDEN'})
+    directory: bpy.props.StringProperty(options={'HIDDEN'}, subtype="DIR_PATH")
 
     def invoke(self, context, _event):
         """Offer Operator options with dialog."""

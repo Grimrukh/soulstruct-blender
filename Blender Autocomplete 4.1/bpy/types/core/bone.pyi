@@ -10,9 +10,16 @@ from .bone_color import BoneColor
 GenericType1 = typing.TypeVar("GenericType1")
 GenericType2 = typing.TypeVar("GenericType2")
 
+if typing.TYPE_CHECKING:
+    from io_soulstruct import *
+
 
 class Bone(bpy_struct):
     """Bone in an Armature data-block"""
+
+    # region Soulstruct Extensions
+    FLVER_BONE: FLVERBoneProps
+    # endregion
 
     bbone_curveinx: float
     """ X-axis handle offset for start of the B-Bone's curve, adjusts curvature
@@ -225,7 +232,7 @@ class Bone(bpy_struct):
     """
 
     matrix_local: mathutils.Matrix
-    """ 4×4 bone matrix relative to armature
+    """ 4×4 bone matrix relative to armature (NOT parent bone)
 
     :type: mathutils.Matrix
     """

@@ -351,7 +351,7 @@ class ImportAnyMSB(_BaseImportMSB, LoggingImportOperator):
         maxlen=255,
     )
 
-    directory: bpy.props.StringProperty(options={'HIDDEN'})
+    directory: bpy.props.StringProperty(options={'HIDDEN'}, subtype="DIR_PATH")
 
     @classmethod
     def poll(cls, context) -> bool:

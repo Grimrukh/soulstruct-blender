@@ -1,6 +1,7 @@
 __all__ = [
     "FLVERPropsPanel",
     "FLVERDummyPropsPanel",
+    "FLVERBonePropsPanel",
     "FLVERImportPanel",
     "FLVERExportPanel",
     "FLVERMaterialSettingsPanel",

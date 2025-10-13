@@ -1,4 +1,5 @@
 """Install all scripts into Blender, along with `soulstruct`, `soulstruct-havok`, and required third-party modules."""
+import argparse
 import logging
 import shutil
 import subprocess
@@ -18,7 +19,12 @@ _ALWAYS_IGNORE = [
 ]
 
 
-def install_addon(addons_dir: str | Path, install_soulstruct=True, editable_soulstruct=False):
+def install_addon(
+    addons_dir: str | Path,
+    install_soulstruct=True,
+    editable_soulstruct=False,
+    refresh_only: bool | None = None,
+):
     """Copy `io_soulstruct` and (by default) `io_soulstruct_lib` into given `addons_dir` parent directory."""
 
     addons_dir = Path(addons_dir)
@@ -90,6 +96,14 @@ def install_addon(addons_dir: str | Path, install_soulstruct=True, editable_soul
             dirs_exist_ok=True,
         )
 
+    if refresh_only is None:
+        soulstruct_pths = dest_modules_dir.glob("modules/*soulstruct*.pth")
+        refresh_only = bool(list(soulstruct_pths))
+    if refresh_only:
+        # No need to call `pip` below (we assume dependencies are already installed and point to correct paths).
+        _LOGGER.info("Refreshing Soulstruct module paths only (no pip install).")
+        return
+
     try:
         subprocess.run(
             [
@@ -97,6 +111,8 @@ def install_addon(addons_dir: str | Path, install_soulstruct=True, editable_soul
                 "-e", str(soulstruct_install_path),
                 "-e", str(havok_install_path),
                 "--target", str(dest_modules_dir),
+                "--exists-action", "i",
+                "--upgrade-strategy", "only-if-needed",
             ],
             stdout=sys.stdout,
             stderr=sys.stderr,
@@ -109,19 +125,28 @@ def install_addon(addons_dir: str | Path, install_soulstruct=True, editable_soul
         )
 
 
+PARSER = argparse.ArgumentParser(
+    description="Install Soulstruct Blender add-on and (optionally) Soulstruct modules.",
+)
+PARSER.add_argument("addonsDirectory", help="Path to Blender's `addons` directory.")
+PARSER.add_argument("--installSoulstruct", action="store_true", help="Also install Soulstruct modules.")
+PARSER.add_argument("-e", "--editable", action="store_true",
+                    help="Install Soulstruct modules in editable mode (pointing to current environment).")
+PARSER.add_argument("-r", "--refreshOnly", action="store_true", default=None,
+                    help="Refresh the Soulstruct modules only; do not run `pip` or install dependencies. "
+                         "Defaults to `true` if any files 'modules/*soulstruct*.pth' exist in `addons_directory`.")
+
+
 def main(args):
-    match args:
-        case [addons_directory, "--installSoulstruct", "-e"]:
-            install_addon(addons_directory, install_soulstruct=True, editable_soulstruct=True)
-        case [addons_directory, "--installSoulstruct"]:
-            install_addon(addons_directory, install_soulstruct=True, editable_soulstruct=False)
-        case [addons_directory]:
-            install_addon(addons_directory, install_soulstruct=False, editable_soulstruct=False)
-        case _:
-            _LOGGER.error(
-                f"INVALID ARGUMENTS: {sys.argv}\n"
-                f"Usage: `python install_addon.py [addons_directory] [--installSoulstruct] [-e]`"
-            )
+
+    parsed = PARSER.parse_args(args)
+
+    install_addon(
+        parsed.addonsDirectory,
+        install_soulstruct=parsed.installSoulstruct,
+        editable_soulstruct=parsed.editable,
+        refresh_only=parsed.refreshOnly,
+    )
 
 
 if __name__ == '__main__':

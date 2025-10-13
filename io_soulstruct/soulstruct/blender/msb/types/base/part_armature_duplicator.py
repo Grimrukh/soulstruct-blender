@@ -112,8 +112,7 @@ class PartArmatureDuplicator:
         context.view_layer.objects.active = armature_obj
         bpy.ops.object.mode_set(mode="EDIT")
         root_bone = armature_obj.data.edit_bones.new("<PART_ROOT>")
-        base_edit_bone_length = context.scene.flver_import_settings.base_edit_bone_length
-        root_bone.tail = (0, base_edit_bone_length, 0)
+        root_bone.tail = (0, 0.2, 0)
         root_bone.use_connect = False
         root_bone.use_local_location = True
         root_bone.inherit_scale = "NONE"

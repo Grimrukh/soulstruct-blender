@@ -43,7 +43,7 @@ class NVMHKTImporter:
         # Create mesh.
         bl_mesh = bpy.data.meshes.new(name=name)
         mesh = nvmhkt.get_simple_mesh(merge_dist=vertex_merge_dist)
-        vertices = GAME_TO_BL_ARRAY(mesh.vertices)
+        vertices = game_vector_array_to_bl_vector_array(mesh.vertices)
         bl_mesh.from_pydata(vertices, [], mesh.faces)
         # noinspection PyTypeChecker
         mesh_obj = bpy.data.objects.new(name, bl_mesh)  # type: bpy.types.MeshObject

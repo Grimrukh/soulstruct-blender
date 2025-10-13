@@ -200,7 +200,7 @@ class SelectImageCacheDirectory(LoggingImportOperator):
     bl_label = "Select Image Cache Directory"
     bl_description = "Select image texture cache directory with browser"
 
-    directory: bpy.props.StringProperty(options={'HIDDEN'})
+    directory: bpy.props.StringProperty(options={'HIDDEN'}, subtype="DIR_PATH")
 
     filter_glob: bpy.props.StringProperty(
         default="",

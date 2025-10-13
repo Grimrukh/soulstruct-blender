@@ -32,7 +32,6 @@ class FLVERExportPanel(SoulstructPanel):
             panel.prop(export_settings, "allow_missing_textures")
             panel.prop(export_settings, "allow_unknown_texture_types")
             panel.prop(export_settings, "create_lod_face_sets")
-            panel.prop(export_settings, "base_edit_bone_length")
             panel.prop(export_settings, "normal_tangent_dot_max")
 
         if not context.selected_objects:

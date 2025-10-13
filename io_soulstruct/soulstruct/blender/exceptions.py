@@ -15,6 +15,7 @@ __all__ = [
     "CutsceneImportError",
     "CutsceneExportError",
     "NVMImportError",
+    "NVMExportError",
     "NavGraphImportError",
     "NavGraphMissingNavmeshError",
     "NavGraphExportError",

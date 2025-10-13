@@ -16,6 +16,11 @@ from soulstruct.utilities.maths import Vector3
 from soulstruct.blender.exceptions import *
 from soulstruct.blender.types import *
 from soulstruct.blender.utilities import *
+from soulstruct.blender.flver.utilities import (
+    BONE_CoB_4x4,
+    game_forward_up_vectors_to_bl_euler,
+    bl_rotmat_to_game_forward_up_vectors,
+)
 
 from ..properties import *
 
@@ -117,11 +122,11 @@ class BlenderFLVERDummy(BaseBlenderSoulstructObject[Dummy, FLVERDummyProps]):
         bl_dummy.unk_x34 = soulstruct_obj.unk_x34
 
         if soulstruct_obj.use_upward_vector:
-            bl_euler = GAME_FORWARD_UP_VECTORS_TO_BL_EULER(soulstruct_obj.forward, soulstruct_obj.upward)
+            bl_euler = game_forward_up_vectors_to_bl_euler(soulstruct_obj.forward, soulstruct_obj.upward)
         else:  # use default upward
-            bl_euler = GAME_FORWARD_UP_VECTORS_TO_BL_EULER(soulstruct_obj.forward, Vector3((0, 1, 0)))
+            bl_euler = game_forward_up_vectors_to_bl_euler(soulstruct_obj.forward, Vector3((0, 1, 0)))
 
-        bl_location = GAME_TO_BL_VECTOR(soulstruct_obj.translate)
+        bl_location = to_blender(soulstruct_obj.translate)
         # This initial transform may still be in 'parent bone' space.
         bl_dummy_transform = Matrix.LocRotScale(bl_location, bl_euler, (1, 1, 1))
 
@@ -131,16 +136,17 @@ class BlenderFLVERDummy(BaseBlenderSoulstructObject[Dummy, FLVERDummyProps]):
             # controls how the dummy moves during armature animations. This Dummy 'parent bone' is more for grouping and
             # is generally a non-animated bone like 'Model_dmy' or 'Sfx'.
             bl_parent_bone = armature.data.bones[soulstruct_obj.parent_bone_index]
-            bl_dummy.parent_bone = bl_parent_bone
-            bl_parent_bone_matrix = bl_parent_bone.matrix_local
+            bl_dummy.parent_bone = bl_parent_bone  # custom Soulstruct property
+            bl_parent_bone_matrix = bl_parent_bone.matrix_local @ BONE_CoB_4x4  # undo bone CoB (self-inverse)
             bl_dummy_transform = bl_parent_bone_matrix @ bl_dummy_transform
 
         # Dummy moves with this bone during animations.
         if soulstruct_obj.attach_bone_index != -1:
             # Set true Blender parent. We manually compute the `matrix_local` of the Dummy to be relative to this bone.
             bl_attach_bone = armature.data.bones[soulstruct_obj.attach_bone_index]
-            bl_dummy_transform = bl_attach_bone.matrix_local.inverted() @ bl_dummy_transform
-            bl_dummy.obj.parent_bone = bl_attach_bone.name  # note NAME, not Bone itself
+            bl_attach_bone_matrix = bl_attach_bone.matrix_local @ BONE_CoB_4x4  # undo bone CoB (self-inverse)
+            bl_dummy_transform = bl_attach_bone_matrix.inverted() @ bl_dummy_transform
+            bl_dummy.obj.parent_bone = bl_attach_bone.name  # true Blender property (note *name*, not Bone itself)
             bl_dummy.obj.parent_type = "BONE"
 
         bl_dummy.obj.matrix_local = bl_dummy_transform
@@ -192,7 +198,8 @@ class BlenderFLVERDummy(BaseBlenderSoulstructObject[Dummy, FLVERDummyProps]):
             # Use attach bone transform to convert Dummy transform to Armature space. We do this even if
             # `follows_attach_bone` is False, because this is resolving a genuine Blender parent-child relation.
             bl_attach_bone = armature.data.bones[attach_bone_index]
-            bl_dummy_transform = bl_attach_bone.matrix_local @ bl_dummy_transform
+            bl_attach_bone_matrix = bl_attach_bone.matrix_local @ BONE_CoB_4x4  # undo bone CoB (self-inverse)
+            bl_dummy_transform = bl_attach_bone_matrix @ bl_dummy_transform
         else:
             # Dummy has no attach bone.
             dummy.attach_bone_index = -1
@@ -209,14 +216,15 @@ class BlenderFLVERDummy(BaseBlenderSoulstructObject[Dummy, FLVERDummyProps]):
             dummy.parent_bone_index = parent_bone_index
             # Make Dummy transform relative to parent bone transform:
             bl_parent_bone = armature.data.bones[parent_bone_index]
-            bl_dummy_transform = bl_parent_bone.matrix_local.inverted() @ bl_dummy_transform
+            bl_parent_bone_matrix = bl_parent_bone.matrix_local @ BONE_CoB_4x4  # undo bone CoB (self-inverse)
+            bl_dummy_transform = bl_parent_bone_matrix.inverted() @ bl_dummy_transform
         else:
             # Dummy has no parent bone. Its FLVER transform will be in the model space.
             dummy.parent_bone_index = -1
 
         # Extract translation and rotation from final transform.
-        dummy.translate = BL_TO_GAME_VECTOR3(bl_dummy_transform.translation)
-        forward, up = BL_ROTMAT_TO_GAME_FORWARD_UP_VECTORS(bl_dummy_transform.to_3x3())
+        dummy.translate = to_game(bl_dummy_transform.translation)
+        forward, up = bl_rotmat_to_game_forward_up_vectors(bl_dummy_transform.to_3x3())
         dummy.forward = forward
         dummy.upward = up if dummy.use_upward_vector else Vector3.zero()
 

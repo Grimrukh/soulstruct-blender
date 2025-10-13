@@ -242,6 +242,7 @@ CLASSES = (
 
     FLVERPropsPanel,
     FLVERDummyPropsPanel,
+    FLVERBonePropsPanel,
     FLVERImportPanel,
     FLVERExportPanel,
     FLVERMaterialSettingsPanel,
@@ -601,7 +602,7 @@ IMAGE_POINTERS = dict(
 )
 
 
-EDIT_BONE_POINTERS = dict(
+BONE_POINTERS = dict(
     FLVER_BONE=FLVERBoneProps,
 )
 
@@ -611,7 +612,7 @@ OBJECT_ATTRIBUTES = []
 COLLECTION_ATTRIBUTES = []
 MATERIAL_ATTRIBUTES = []
 IMAGE_ATTRIBUTES = []
-EDIT_BONE_ATTRIBUTES = []
+BONE_ATTRIBUTES = []
 
 LOAD_POST_HANDLERS = []
 SPACE_VIEW_3D_HANDLERS = []
@@ -684,9 +685,9 @@ def register():
         setattr(bpy.types.Image, prop_name, bpy.props.PointerProperty(type=prop_type))
         IMAGE_ATTRIBUTES.append(prop_name)
 
-    for prop_name, prop_type in EDIT_BONE_POINTERS.items():
-        setattr(bpy.types.EditBone, prop_name, bpy.props.PointerProperty(type=prop_type))
-        EDIT_BONE_ATTRIBUTES.append(prop_name)
+    for prop_name, prop_type in BONE_POINTERS.items():
+        setattr(bpy.types.Bone, prop_name, bpy.props.PointerProperty(type=prop_type))
+        BONE_ATTRIBUTES.append(prop_name)
 
     SPACE_VIEW_3D_HANDLERS.append(
         bpy.types.SpaceView3D.draw_handler_add(draw_dummy_ids, (), "WINDOW", "POST_PIXEL")
@@ -742,9 +743,9 @@ def unregister():
         delattr(bpy.types.Image, prop_name)
     IMAGE_ATTRIBUTES.clear()
 
-    for prop_name in EDIT_BONE_ATTRIBUTES:
-        delattr(bpy.types.EditBone, prop_name)
-    EDIT_BONE_ATTRIBUTES.clear()
+    for prop_name in BONE_ATTRIBUTES:
+        delattr(bpy.types.Bone, prop_name)
+    BONE_ATTRIBUTES.clear()
 
     for handler in LOAD_POST_HANDLERS:
         bpy.app.handlers.load_post.remove(handler)

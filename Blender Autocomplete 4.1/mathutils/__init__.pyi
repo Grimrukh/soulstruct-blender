@@ -585,7 +585,7 @@ class Matrix:
     def LocRotScale(
         cls,
         location: Vector | collections.abc.Sequence[float] | None,
-        rotation: Euler | Quaternion | collections.abc.Sequence[float] | None,
+        rotation: Euler | Quaternion | Matrix | collections.abc.Sequence[float] | None,
         scale: Vector | collections.abc.Sequence[float] | None,
     ) -> Matrix:
         """Create a matrix combining translation, rotation and scale,

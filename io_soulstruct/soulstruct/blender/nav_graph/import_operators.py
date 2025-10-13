@@ -49,7 +49,7 @@ class ImportAnyMCG(LoggingImportOperator):
     )
 
     files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'})
-    directory: bpy.props.StringProperty(options={'HIDDEN'})
+    directory: bpy.props.StringProperty(options={'HIDDEN'}, subtype="DIR_PATH")
 
     def execute(self, context):
         self.info("Executing MCG import...")
@@ -177,7 +177,7 @@ class ImportAnyMCP(LoggingImportOperator):
     )
 
     files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'})
-    directory: bpy.props.StringProperty(options={'HIDDEN'})
+    directory: bpy.props.StringProperty(options={'HIDDEN'}, subtype="DIR_PATH")
 
     def execute(self, context):
         file_paths = [Path(self.directory, file.name) for file in self.files]
@@ -243,8 +243,8 @@ def import_mcp(
 
 def create_aabb(context: bpy.types.Context, aabb: NavmeshAABB):
     """Create an AABB prism representing `aabb`. Position is baked into mesh data fully, just like the navmesh."""
-    start_vec = GAME_TO_BL_VECTOR(aabb.aabb_start)
-    end_vec = GAME_TO_BL_VECTOR(aabb.aabb_end)
+    start_vec = to_blender(aabb.aabb_start)
+    end_vec = to_blender(aabb.aabb_end)
     bpy.ops.mesh.primitive_cube_add()
     bl_box = context.active_object
     # noinspection PyTypeChecker

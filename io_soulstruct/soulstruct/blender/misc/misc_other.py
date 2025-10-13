@@ -5,7 +5,7 @@ __all__ = [
     "PrintGameTransform",
 ]
 
-from soulstruct.blender.utilities import BlenderTransform, LoggingOperator
+from soulstruct.blender.utilities import BLTransform, LoggingOperator
 
 
 class PrintGameTransform(LoggingOperator):
@@ -20,7 +20,7 @@ class PrintGameTransform(LoggingOperator):
     # noinspection PyMethodMayBeStatic
     def execute(self, context):
         obj = context.active_object
-        bl_transform = BlenderTransform(obj.location, obj.rotation_euler, obj.scale)
+        bl_transform = BLTransform(obj.location, obj.rotation_euler, obj.scale)
         print(
             f"FromSoftware game transform of object '{obj.name}':\n"
             f"    translate = {repr(bl_transform.game_translate)}\n"

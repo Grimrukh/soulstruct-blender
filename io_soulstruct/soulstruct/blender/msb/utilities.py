@@ -39,6 +39,7 @@ class BaseMSBEntrySelectOperator(LoggingOperator):
         description="Temporary directory containing MSB entry choices",
         default="",
         options={'HIDDEN'},
+        subtype="DIR_PATH",
     )
 
     filter_glob: bpy.props.StringProperty(
@@ -54,7 +55,7 @@ class BaseMSBEntrySelectOperator(LoggingOperator):
         subtype="FILE_PATH",
     )
     files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'})
-    directory: bpy.props.StringProperty(options={'HIDDEN'})
+    directory: bpy.props.StringProperty(options={'HIDDEN'}, subtype="DIR_PATH")
 
     ENTRY_NAME_RE = re.compile(r"\((\d+)\) (.+)")
 

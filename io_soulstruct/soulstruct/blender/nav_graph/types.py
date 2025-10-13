@@ -375,7 +375,7 @@ class BlenderMCGNode(BaseBlenderSoulstructObject[MCGNode, MCGNodeProps]):
 
         bl_node = cls.new(name, data=None, collection=collection)  # type: BlenderMCGNode
         bl_node.obj.empty_display_type = "SPHERE"
-        bl_node.obj.location = GAME_TO_BL_VECTOR(soulstruct_obj.translate)
+        bl_node.obj.location = to_blender(soulstruct_obj.translate)
 
         # Since MCG nodes in Blender reference the two navmeshes they connect, dead-end navmeshes can be
         # auto-detected from single-node navmeshes and don't need to be stored in Blender. However, we do check the
@@ -426,7 +426,7 @@ class BlenderMCGNode(BaseBlenderSoulstructObject[MCGNode, MCGNodeProps]):
         node_navmesh_info: dict[str, list[int]] = None,
     ) -> MCGNode:
         node = MCGNode(
-            translate=BL_TO_GAME_VECTOR3(self.location),
+            translate=to_game(self.location),
             unknown_offset=self.type_properties.unknown_offset,
             dead_end_navmesh_index=-1,  # may be set below
         )

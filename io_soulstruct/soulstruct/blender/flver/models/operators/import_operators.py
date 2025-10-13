@@ -164,7 +164,7 @@ class ImportFLVER(BaseFLVERImportOperator):
     )
 
     files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'})
-    directory: bpy.props.StringProperty(options={'HIDDEN'})
+    directory: bpy.props.StringProperty(options={'HIDDEN'}, subtype="DIR_PATH")
 
 
 # region Game Folder Importers
@@ -182,7 +182,7 @@ class ImportMapPieceFLVER(BaseFLVERImportOperator):
     )
 
     files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'})
-    directory: bpy.props.StringProperty(options={'HIDDEN'})
+    directory: bpy.props.StringProperty(options={'HIDDEN'}, subtype="DIR_PATH")
 
     @classmethod
     def poll(cls, context) -> bool:
@@ -232,7 +232,7 @@ class ImportCharacterFLVER(BaseFLVERImportOperator):
     POLL_DEFAULT_SUBDIR = True
 
     files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'})
-    directory: bpy.props.StringProperty(options={'HIDDEN'})
+    directory: bpy.props.StringProperty(options={'HIDDEN'}, subtype="DIR_PATH")
 
     def draw(self, context):
         """Draw name of selected model, if known."""
@@ -308,7 +308,7 @@ class ImportObjectFLVER(BaseFLVERImportOperator):
     DEFAULT_SUBDIR = "obj"
 
     files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'})
-    directory: bpy.props.StringProperty(options={'HIDDEN'})
+    directory: bpy.props.StringProperty(options={'HIDDEN'}, subtype="DIR_PATH")
 
     @classmethod
     def poll(cls, context) -> bool:
@@ -343,7 +343,7 @@ class ImportAssetFLVER(BaseFLVERImportOperator):
     DEFAULT_SUBDIR = "asset/aeg"
 
     files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'})
-    directory: bpy.props.StringProperty(options={'HIDDEN'})
+    directory: bpy.props.StringProperty(options={'HIDDEN'}, subtype="DIR_PATH")
 
     @classmethod
     def poll(cls, context) -> bool:
@@ -382,7 +382,7 @@ class ImportEquipmentFLVER(BaseFLVERImportOperator):
     POLL_DEFAULT_SUBDIR = True
 
     files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'}, )
-    directory: bpy.props.StringProperty(options={'HIDDEN'})
+    directory: bpy.props.StringProperty(options={'HIDDEN'}, subtype="DIR_PATH")
 
     # Base `execute` method is fine.
 

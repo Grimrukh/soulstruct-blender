@@ -222,7 +222,10 @@ class FLVERDummyProps(SoulstructPropertyGroup):
 
 
 class FLVERBoneProps(SoulstructPropertyGroup):
-    """Extension properties for Blender Bones that represent FLVER bones."""
+    """Extension properties for Blender Bones that represent FLVER bones.
+
+    Stored on standard Bones, NOT EditBones, which are transient.
+    """
 
     # No game-specific properties.
 
@@ -328,13 +331,6 @@ class FLVERImportSettings(SoulstructPropertyGroup):
         default="HASHED",
     )
 
-    base_edit_bone_length: bpy.props.FloatProperty(
-        name="Base Edit Bone Length",
-        description="Length of edit bones corresponding to bone scale 1",
-        default=0.2,
-        min=0.01,
-    )
-
 
 class FLVERExportSettings(SoulstructPropertyGroup):
     """Common FLVER export settings. Drawn manually in operator browser windows."""
@@ -355,13 +351,6 @@ class FLVERExportSettings(SoulstructPropertyGroup):
                     "each material's 'Face Set Count'. Acceptable for older games but not recommended for later games "
                     "with high-res meshes (unfortunately no good solution for this yet)",
         default=False,
-    )
-
-    base_edit_bone_length: bpy.props.FloatProperty(
-        name="Base Edit Bone Length",
-        description="Length of edit bones corresponding to bone scale 1",
-        default=0.2,
-        min=0.01,
     )
 
     allow_missing_textures: bpy.props.BoolProperty(

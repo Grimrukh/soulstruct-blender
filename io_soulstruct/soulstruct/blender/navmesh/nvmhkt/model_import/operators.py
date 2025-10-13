@@ -540,14 +540,14 @@ class ImportAllNVMHKTsFromNVMHKTBND(ImportAllNVMHKTBase):
                         if dungeon_to_overworld[1] is None:
                             continue  # source point not known for this connection
                         source_connection_point = bpy.data.objects.new(f"{map_stem} -- {dungeon_to_overworld[0]}", None)
-                        source_connection_point.location = GAME_TO_BL_VECTOR(dungeon_to_overworld[1])
+                        source_connection_point.location = to_blender(dungeon_to_overworld[1])
                         connection_points.append(source_connection_point)
                         collection.objects.link(source_connection_point)
 
                 # Use first connection to move dungeon to tile.
                 overworld_tile_map_stem, _, dungeon_to_overworld = overworld_connections[0]
 
-                location = GAME_TO_BL_VECTOR(dungeon_to_overworld)
+                location = to_blender(dungeon_to_overworld)
                 if import_settings.dungeon_transform_mode == "TILE":
                     # Just apply the dungeon-to-tile transform, not tile-to-world.
                     # This will look correct if that tile is imported with no transform applied.

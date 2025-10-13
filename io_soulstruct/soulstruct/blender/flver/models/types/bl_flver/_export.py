@@ -17,7 +17,6 @@ import numpy as np
 from soulstruct.flver import *
 from soulstruct.base.models.shaders import MatDef
 from soulstruct.games import DEMONS_SOULS
-from soulstruct.utilities.maths import Vector3, Matrix3
 
 from soulstruct.blender.exceptions import *
 from soulstruct.blender.flver.image.types import DDSTextureCollection
@@ -28,6 +27,7 @@ from soulstruct.blender.general import BLENDER_GAME_CONFIG, SoulstructSettings
 from soulstruct.blender.utilities import *
 
 from ..enums import FLVERModelType, FLVERBoneDataType
+from ._export_bones import create_flver_bones
 
 if tp.TYPE_CHECKING:
     from soulstruct.base.models.mtd import MTDBND
@@ -131,7 +131,7 @@ def create_flver_from_bl_flver(
 
     _clear_temp_flver()
     try:
-        flver = _create_flver_from_bl_flver(context, command)
+        flver = _create_flver_from_bl_flver(command)
     except Exception:
         # NOTE: Would use `finally` for this, but PyCharm can't handle the return type at the moment.
         _clear_temp_flver()
@@ -153,11 +153,8 @@ def _clear_temp_flver():
         pass
 
 
-def _create_flver_from_bl_flver(
-    context: bpy.types.Context,
-    command: _CreateFLVERCommand,
-) -> FLVER:
-    """`FLVER` exporter. By far the most complicated function in the add-on!"""
+def _create_flver_from_bl_flver(command: _CreateFLVERCommand) -> FLVER:
+    """`FLVER` exporter. By far the most complicated single function in the add-on!"""
 
     if command.bl_flver.armature:
         bl_dummies = command.bl_flver.get_dummies(command.operator)
@@ -174,14 +171,11 @@ def _create_flver_from_bl_flver(
         )
         default_bone = FLVERBone(name=command.bl_flver.game_name)  # default transform and other fields
         command.flver.bones.append(default_bone)
-        bl_bone_names = [default_bone.name]
         using_default_bone = True
     else:
-        command.flver.bones, bl_bone_names, bone_arma_transforms = _create_flver_bones(
-            context, command, bl_bone_data_type
+        create_flver_bones(
+            command.operator, command.context, command.bl_flver.armature, command.flver, bl_bone_data_type
         )
-        command.flver.set_bone_children_siblings()  # only parents set in `create_bones`
-        command.flver.set_bone_armature_space_transforms(bone_arma_transforms)
         using_default_bone = False
 
     # Make Mesh the active object again.
@@ -226,7 +220,7 @@ def _create_flver_from_bl_flver(
 
     _create_flver_meshes(
         command,
-        bl_bone_names=bl_bone_names,
+        bl_bone_names=[bone.name for bone in command.flver.bones],
         use_map_piece_layout=use_map_piece_layout,
         matdefs=matdefs,
         using_default_bone=using_default_bone,
@@ -673,113 +667,6 @@ def _create_triangulated_mesh(
 
     # Return the mesh data.
     return tri_mesh_obj.data
-
-
-def _create_flver_bones(
-    context: bpy.types.Context,
-    command: _CreateFLVERCommand,
-    read_bone_type: FLVERBoneDataType,
-) -> tuple[list[FLVERBone], list[str], list[tuple[Vector3, Matrix3, Vector3]]]:
-    """Create `FLVER` bones from Blender `armature` bones and get their armature space transforms.
-
-    Bone transform data may be read from either EDIT mode (typical for characters and objects) or POSE mode (typical
-    for map pieces). This is inferred from all materials and specified by `read_bone_type`.
-    """
-
-    # We need `EditBone` mode to retrieve custom properties, even if reading the actual transforms from pose later.
-    # TODO: Still true for extension properties?
-    armature = command.bl_flver.armature
-    command.context.view_layer.objects.active = armature
-    command.operator.to_edit_mode(context)
-
-    edit_bone_names = [edit_bone.name for edit_bone in armature.data.edit_bones]
-
-    game_bones = []
-    game_bone_parent_indices = []  # type: list[int]
-    game_arma_transforms = []  # type: list[tuple[Vector3, Matrix3, Vector3]]  # translate, rotate matrix, scale
-
-    if len(set(edit_bone_names)) != len(edit_bone_names):
-        raise FLVERExportError("Bone names in Blender Armature are not all unique.")
-
-    for edit_bone in armature.data.edit_bones:
-
-        if edit_bone.name not in edit_bone_names:
-            continue  # ignore this bone (e.g. c0000 bones not used by equipment FLVER being exported)
-
-        game_bone_name = edit_bone.name
-        while re.match(r".*\.\d\d\d$", game_bone_name):
-            # Bone names can be repeated in the FLVER. Remove Blender duplicate suffixes.
-            game_bone_name = game_bone_name[:-4]
-        while game_bone_name.endswith(" <DUPE>"):
-            # Bone names can be repeated in the FLVER.
-            game_bone_name = game_bone_name.removesuffix(" <DUPE>")
-
-        bone_usage_flags = edit_bone.FLVER_BONE.get_flags()
-        if (bone_usage_flags & FLVERBoneUsageFlags.UNUSED) != 0 and bone_usage_flags != 1:
-            raise FLVERExportError(
-                f"Bone '{edit_bone.name}' has 'Is Unused' enabled, but also has other usage flags set!"
-            )
-        game_bone = FLVERBone(name=game_bone_name, usage_flags=bone_usage_flags)
-
-        if edit_bone.parent:
-            parent_bone_name = edit_bone.parent.name
-            parent_bone_index = edit_bone_names.index(parent_bone_name)
-        else:
-            parent_bone_index = -1
-
-        if read_bone_type == FLVERBoneDataType.EDIT:
-            # Get armature-space bone transform from rigged `EditBone` (characters and objects, typically).
-            bl_translate = edit_bone.matrix.translation
-            bl_rotmat = edit_bone.matrix.to_3x3()  # get rotation submatrix
-            game_arma_translate = BL_TO_GAME_VECTOR3(bl_translate)
-            game_arma_rotmat = BL_TO_GAME_MAT3(bl_rotmat)
-            s = edit_bone.length / command.export_settings.base_edit_bone_length
-            # NOTE: only uniform scale is supported for these "is_bind_pose" mesh bones
-            game_arma_scale = s * Vector3.one()
-            game_arma_transforms.append((game_arma_translate, game_arma_rotmat, game_arma_scale))
-
-        game_bones.append(game_bone)
-        game_bone_parent_indices.append(parent_bone_index)
-
-    # Assign game bone parent references. Child and sibling bones are done by caller using FLVER method.
-    for game_bone, parent_index in zip(game_bones, game_bone_parent_indices):
-        game_bone.parent_bone = game_bones[parent_index] if parent_index >= 0 else None
-
-    command.operator.to_object_mode(command.context)
-
-    if read_bone_type == FLVERBoneDataType.CUSTOM:
-        # Get armature-space bone transform from PoseBone (map pieces).
-        # Note that non-uniform bone scale is supported here (and is actually used in some old vanilla map pieces).
-        for game_bone, bl_bone_name in zip(game_bones, edit_bone_names):
-
-            pose_bone = armature.pose.bones[bl_bone_name]
-
-            game_arma_translate = BL_TO_GAME_VECTOR3(pose_bone.location)
-            if pose_bone.rotation_mode == "QUATERNION":
-                bl_rot_quat = pose_bone.rotation_quaternion
-                bl_rotmat = bl_rot_quat.to_matrix()
-                game_arma_rotmat = BL_TO_GAME_MAT3(bl_rotmat)
-            elif pose_bone.rotation_mode == "XYZ":
-                # TODO: Could this cause the same weird Blender gimbal lock errors as I was seeing with characters?
-                #  If so, I may want to make sure I always set pose bone rotation to QUATERNION mode.
-                bl_rot_euler = pose_bone.rotation_euler
-                bl_rotmat = bl_rot_euler.to_matrix()
-                game_arma_rotmat = BL_TO_GAME_MAT3(bl_rotmat)
-            else:
-                raise FLVERExportError(
-                    f"Unsupported rotation mode '{pose_bone.rotation_mode}' for bone '{pose_bone.name}'. Must be "
-                    f"'QUATERNION' or 'XYZ' (Euler)."
-                )
-            game_arma_scale = BL_TO_GAME_VECTOR3(pose_bone.scale)  # can be non-uniform
-            game_arma_transforms.append(
-                (
-                    game_arma_translate,
-                    game_arma_rotmat,
-                    game_arma_scale,
-                )
-            )
-
-    return game_bones, edit_bone_names, game_arma_transforms
 
 
 def _get_des_texture_path_prefix_getter(model_name: str, flver_model_type: FLVERModelType) -> tp.Callable[[str], str]:

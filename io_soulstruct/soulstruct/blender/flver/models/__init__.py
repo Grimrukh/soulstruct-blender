@@ -45,6 +45,7 @@ __all__ = [
 
     "FLVERPropsPanel",
     "FLVERDummyPropsPanel",
+    "FLVERBonePropsPanel",
     "FLVERImportPanel",
     "FLVERExportPanel",
     "FLVERMaterialSettingsPanel",
@@ -71,6 +72,7 @@ __all__ = [
     # region GUI
     "FLVERPropsPanel",
     "FLVERDummyPropsPanel",
+    "FLVERBonePropsPanel",
     "FLVERImportPanel",
     "FLVERExportPanel",
     "FLVERModelToolsPanel",

@@ -172,7 +172,7 @@ class ImportAnyHKXAnimation(BaseImportHKXAnimation, LoggingImportOperator):
         maxlen=255,  # Max internal buffer length, longer would be clamped.
     )
 
-    directory: bpy.props.StringProperty(options={'HIDDEN'})
+    directory: bpy.props.StringProperty(options={'HIDDEN'}, subtype="DIR_PATH")
 
     DEFAULT_SUBDIR = "chr"
 
