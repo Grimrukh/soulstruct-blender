@@ -240,9 +240,7 @@ class MSBPartProps(SoulstructPropertyGroup):
         return BlenderMSBPartSubtype(self.entry_subtype)
 
     def is_subtype(self, subtype: BlenderMSBPartSubtype | str):
-        if isinstance(subtype, str):
-            return self.entry_subtype == subtype
-        return self.entry_subtype == subtype.value
+        return self.entry_subtype == subtype
 
     model: bpy.props.PointerProperty(
         name="Model",
