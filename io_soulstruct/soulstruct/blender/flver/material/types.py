@@ -261,7 +261,8 @@ class BlenderFLVERMaterial:
 
                     # Update Image colorspace from node label. (If image is used with multiple sampler types, this will
                     # be the last one found.) TODO: Would be better to do this upon `Image` creation, based on name.
-                    if "Albedo" not in tex_nodes_by_name[sampler_name].label:
+                    if ("Albedo" not in tex_nodes_by_name[sampler_name].label and
+                            "Lightmap" not in tex_nodes_by_name[sampler_name].label):
                         bl_image.colorspace_settings.name = "Non-Color"
 
         return material

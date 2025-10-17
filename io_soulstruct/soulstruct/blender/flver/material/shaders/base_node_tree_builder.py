@@ -21,7 +21,7 @@ from soulstruct.blender.utilities.files import ADDON_PACKAGE_PATH
 from soulstruct.blender.utilities.operators import LoggingOperator
 
 from .enums import *
-from .node_groups import create_node_groups
+from .node_groups import create_node_groups, try_add_node_group
 from .node_tree import new_shader_node
 
 
@@ -157,7 +157,7 @@ class NodeTreeBuilder:
 
             # We take this opportunity to change the Color Space of non-Albedo textures to 'Non-Color'.
             # NOTE: If the texture is used inconsistently across materials, this could change repeatedly.
-            if bl_image and "Albedo" not in node_label:
+            if bl_image and "Albedo" not in node_label and "Lightmap" not in node_label:
                 bl_image.colorspace_settings.name = "Non-Color"
             if uv_layer_name:
                 # Connect to appropriate UV node, creating it if necessary.
@@ -534,6 +534,78 @@ class NodeTreeBuilder:
         self.mix_y -= 100
         return mix_node
 
+    def _mix_value_nodes(
+        self,
+        input_1: NodeSocket,
+        input_2: NodeSocket,
+        node_y: int,
+        mix_fac_input: NodeSocket | float = 0.5,
+        mix_data_type: str = "VECTOR"
+    ) -> bpy.types.ShaderNodeMix:
+        mix_node = new_shader_node(
+            self.tree,
+            bpy.types.ShaderNodeMix,
+            (self.POST_TEX_X, node_y),
+            inputs={
+                "Factor": mix_fac_input,
+                "A": input_1,
+                "B": input_2,
+            },
+            data_type=mix_data_type
+        )
+
+        return mix_node
+
+    def _get_single_or_mixed_samplers(self, pattern: str, mix_fac_input: NodeSocket | float = 0.5, alpha: bool = False, normal: bool = False):
+        matches = self.matdef.get_matching_samplers(re.compile(pattern), match_alias=True)
+        if len(matches) >= 2:
+            tex_node1 = self.tex_image_nodes.get(matches[0][1].alias)
+            tex_node2 = self.tex_image_nodes.get(matches[1][1].alias)
+            if alpha:
+                return self._mix_value_nodes(tex_node1.outputs["Alpha"], tex_node2.outputs["Alpha"],
+                                             tex_node1.location[1] - 50,
+                                             mix_fac_input, "FLOAT").outputs["Result"]
+            elif normal:
+                _, normal_map_node1 = self._normal_tex_to_normal_input(
+                    y=tex_node1.location[1],
+                    color_input_from=tex_node1.outputs["Color"],
+                    normal_output_to=None,
+                    uv_layer_name=matches[0][1].uv_layer_name
+                )
+                _, normal_map_node2 = self._normal_tex_to_normal_input(
+                    y=tex_node2.location[1],
+                    color_input_from=tex_node2.outputs["Color"],
+                    normal_output_to=None,
+                    uv_layer_name=matches[1][1].uv_layer_name
+                )
+
+                return self._mix_value_nodes(normal_map_node1.outputs["Normal"], normal_map_node2.outputs["Normal"],
+                                             tex_node1.location[1],
+                                             mix_fac_input, "VECTOR").outputs["Result"]
+            else:
+                return self._mix_value_nodes(tex_node1.outputs["Color"], tex_node2.outputs["Color"],
+                                             tex_node1.location[1],
+                                             mix_fac_input, "RGBA").outputs["Result"]
+        elif len(matches) == 1:
+            match = self.tex_image_nodes.get(matches[0][1].alias)
+            if alpha:
+                return self.tex_image_nodes.get(matches[0][1].alias).outputs["Alpha"]
+            elif normal:
+                _, normal_map_node = self._normal_tex_to_normal_input(
+                    y=match.location[1],
+                    color_input_from=match.outputs["Color"],
+                    normal_output_to=None,
+                    uv_layer_name=matches[0][1].uv_layer_name
+                )
+                return normal_map_node.outputs["Normal"]
+            else:
+                return match.outputs["Color"]
+        else:
+            return None
+
+
+
+
     def get_sampler_bl_image(self, sampler_name: str) -> bpy.types.Image | None:
         """All Blender Images from textures (cached or DDS) are lower-case names. FLVER paths are not case-sensitive."""
         texture_stem = self.sampler_texture_stems[sampler_name].lower()
@@ -683,15 +755,16 @@ class NodeTreeBuilder:
         inputs: dict[str | int, tp.Any] = None,
         outputs: dict[str | int, tp.Any] = None,
     ):
+        try_add_node_group("Combine Detail")
         node = new_shader_node(
             self.tree,
-            bpy.types.ShaderNodeVectorMath,
+            bpy.types.ShaderNodeGroup,
             location=(self.POST_TEX_X, node_y),
-            operation="ADD",
-            label="Combine Detail",
             inputs=inputs,
             outputs=outputs,
+            node_tree=bpy.data.node_groups["Combine Detail"],
         )
+        node: bpy.types.ShaderNodeGroup
         return node
 
     def _new_tex_image_node(
@@ -753,32 +826,21 @@ class NodeTreeBuilder:
 
         Positions group node at the current BSDF_X and bsdf_y, and decrements bsdf_y by 1000.
         """
-        if node_group_name in bpy.data.node_groups:
-            # Node group already exists.
-            node = new_shader_node(
-                self.tree,
-                bpy.types.ShaderNodeGroup,
-                location=(self.BSDF_X, self.bsdf_y),
-                inputs=inputs,
-                outputs=outputs,
-                node_tree=bpy.data.node_groups[node_group_name],
-            )
-        else:            
-            # Import node groups from packaged blend file.
-            shaders_blend_path = ADDON_PACKAGE_PATH("Shaders.blend")
-            with bpy.data.libraries.load(str(shaders_blend_path)) as (data_from, data_to):
-                data_to.node_groups = [node_group_name]
-            node = new_shader_node(
-                self.tree,
-                bpy.types.ShaderNodeGroup,
-                location=(self.BSDF_X, self.bsdf_y),
-                inputs=inputs,
-                outputs=outputs,
-                node_tree=data_to.node_groups[0],
-            )
-
+        try_add_node_group(node_group_name)
+        node = new_shader_node(
+            self.tree,
+            bpy.types.ShaderNodeGroup,
+            location=(self.BSDF_X, self.bsdf_y),
+            inputs=inputs,
+            outputs=outputs,
+            node_tree=bpy.data.node_groups[node_group_name],
+        )
         node: bpy.types.ShaderNodeGroup
         self.bsdf_y -= 1000
         return node
+
+
+
+
 
     # endregion
