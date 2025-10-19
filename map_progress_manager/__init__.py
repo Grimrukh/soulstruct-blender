@@ -1,14 +1,12 @@
-# SPDX-License-Identifier: MIT
-# flake8: noqa
-"""Soulstruct Map Progress Manager (package)
+"""Soulstruct Map Progress Manager
 
-Split version with TODO SCENERY state and material-based viewport tint.
+Requires main Soulstruct for Blender add-on.
 """
 
 bl_info = {
     "name": "Soulstruct Map Progress Manager",
     "author": "Scott Mooney (Grimrukh)",
-    "version": (1, 0, 0),
+    "version": (1, 0, 1),
     "blender": (4, 4, 0),
     "location": "3D View > N-Panel > MapTools > Map Progress",
     "description": "Per-object progress tags with visual overlay, edit lock, queue, CSV export, and injected shader tinting.",
@@ -17,7 +15,6 @@ bl_info = {
 
 import bpy
 
-from .properties import MapProgressManagerSettings, MapProgressProps
 from .operators import (
     MapProgressSelectObject,
     SetMapProgressState,
@@ -26,13 +23,12 @@ from .operators import (
     MapProgressBulkInit,
     RefreshMapProgressVisuals,
 )
+from .panel import MapProgressPanel
+from .properties import MapProgressManagerSettings, MapProgressProps
 from .tint import (
     ApplyProgressTintToMaterials,
     RemoveProgressTintFromMaterials,
-    on_global_tint_toggle,
-    get_or_make_tint_node_group,  # used implicitly by Apply operator
 )
-from .panel import MapProgressPanel
 
 CLASSES = (
     MapProgressManagerSettings,

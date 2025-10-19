@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 __all__ = [
-
+    "ApplyProgressTintToMaterials",
+    "RemoveProgressTintFromMaterials",
 ]
 
 import bpy
@@ -12,6 +13,61 @@ from .config import TINT_GROUP_NAME, TINT_WRAP_LABEL, PROGRESS_PASS_INDICES
 from .properties import on_global_tint_toggle
 from .utils import iter_tracked_objects
 
+
+# region Tint operators
+
+class ApplyProgressTintToMaterials(LoggingOperator):
+    bl_idname = "mapprog.apply_tint_materials"
+    bl_label = "Apply Progress Tint (Materials)"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+
+        # Sync indices for masks.
+        for obj in iter(bpy.data.objects):
+            if hasattr(obj, "map_progress"):
+                obj.map_progress.sync_pass_index(obj)
+
+        _get_or_make_tint_node_group(context)
+
+        mats = set()
+        for obj in iter_tracked_objects():
+            for slot in (obj.material_slots or []):
+                if slot.material:
+                    mats.add(slot.material)
+
+        applied = 0
+        for mat in mats:
+            if _inject_tint_into_material(context, mat):
+                applied += 1
+
+        # make sure Enable flag propagates
+        on_global_tint_toggle(self, context)
+        self.info(f"Applied tint injection to {applied} material(s).")
+        return {"FINISHED"}
+
+
+class RemoveProgressTintFromMaterials(LoggingOperator):
+    bl_idname = "mapprog.remove_tint_materials"
+    bl_label = "Remove Progress Tint (Materials)"
+    bl_options = {"REGISTER", "UNDO"}
+
+    def execute(self, context):
+        mats = set()
+        for obj in iter_tracked_objects():
+            for slot in (obj.material_slots or []):
+                if slot.material:
+                    mats.add(slot.material)
+
+        removed = 0
+        for mat in mats:
+            if _remove_tint_from_material(mat):
+                removed += 1
+
+        self.info(f"Removed tint injection from {removed} material(s).")
+        return {"FINISHED"}
+
+# endregion
 
 # region Interface helpers
 
@@ -44,7 +100,7 @@ def _get_or_make_node(ng: bpy.types.NodeTree, bl_idname: str, name: str, loc=(0,
 
 # region Tint node group builder
 
-def get_or_make_tint_node_group(
+def _get_or_make_tint_node_group(
     context: bpy.types.Context,
 ) -> bpy.types.NodeTree:
     settings = context.scene.map_progress_manager_settings
@@ -192,64 +248,9 @@ def get_or_make_tint_node_group(
 
 # endregion
 
-# region Tint operators
-
-class ApplyProgressTintToMaterials(LoggingOperator):
-    bl_idname = "mapprog.apply_tint_materials"
-    bl_label = "Apply Progress Tint (Materials)"
-    bl_options = {"REGISTER", "UNDO"}
-
-    def execute(self, context):
-
-        # Sync indices for masks.
-        for obj in iter(bpy.data.objects):
-            if hasattr(obj, "map_progress"):
-                obj.map_progress.sync_pass_index(obj)
-
-        get_or_make_tint_node_group(context)
-
-        mats = set()
-        for obj in iter_tracked_objects():
-            for slot in (obj.material_slots or []):
-                if slot.material:
-                    mats.add(slot.material)
-
-        applied = 0
-        for mat in mats:
-            if inject_tint_into_material(context, mat):
-                applied += 1
-
-        # make sure Enable flag propagates
-        on_global_tint_toggle(self, context)
-        self.info(f"Applied tint injection to {applied} material(s).")
-        return {"FINISHED"}
-
-
-class RemoveProgressTintFromMaterials(LoggingOperator):
-    bl_idname = "mapprog.remove_tint_materials"
-    bl_label = "Remove Progress Tint (Materials)"
-    bl_options = {"REGISTER", "UNDO"}
-
-    def execute(self, context):
-        mats = set()
-        for obj in iter_tracked_objects():
-            for slot in (obj.material_slots or []):
-                if slot.material:
-                    mats.add(slot.material)
-
-        removed = 0
-        for mat in mats:
-            if remove_tint_from_material(mat):
-                removed += 1
-
-        self.info(f"Removed tint injection from {removed} material(s).")
-        return {"FINISHED"}
-
-# endregion
-
 # region Tint injection / removal
 
-def inject_tint_into_material(context: bpy.types.Context, mat: bpy.types.Material) -> bool:
+def _inject_tint_into_material(context: bpy.types.Context, mat: bpy.types.Material) -> bool:
     if not mat or not mat.use_nodes or not mat.node_tree:
         return False
     nt = mat.node_tree
@@ -273,7 +274,7 @@ def inject_tint_into_material(context: bpy.types.Context, mat: bpy.types.Materia
         orig_out = orig.outputs["BSDF"]
 
     # group
-    ng = get_or_make_tint_node_group(context)
+    ng = _get_or_make_tint_node_group(context)
     grp = nt.nodes.new("ShaderNodeGroup"); grp.node_tree = ng; grp.label = TINT_GROUP_NAME; grp.location = (orig.location.x, orig.location.y - 220)
 
     # set Enable from Scene
@@ -295,7 +296,7 @@ def inject_tint_into_material(context: bpy.types.Context, mat: bpy.types.Materia
     return True
 
 
-def remove_tint_from_material(mat: bpy.types.Material) -> bool:
+def _remove_tint_from_material(mat: bpy.types.Material) -> bool:
     if not mat or not mat.use_nodes or not mat.node_tree:
         return False
     nt = mat.node_tree
