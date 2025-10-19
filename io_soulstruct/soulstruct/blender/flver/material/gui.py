@@ -11,7 +11,7 @@ import typing as tp
 import bpy
 
 from soulstruct.blender.bpy_base.panel import SoulstructPanel
-from soulstruct.blender.types import ObjectType
+from soulstruct.blender.types import ObjectType, SoulstructType
 from soulstruct.blender.flver.image.import_operators import ImportTextures
 from soulstruct.blender.flver.image.misc_operators import FindMissingTexturesInImageCache
 
@@ -66,7 +66,7 @@ class FLVERMaterialPropsPanel(SoulstructPanel):
     @classmethod
     def poll(cls, context):
         obj = context.active_object
-        if obj is None or obj.type != ObjectType.MESH:
+        if obj is None or obj.soulstruct_type != SoulstructType.FLVER:
             return False
         return obj.active_material is not None
 

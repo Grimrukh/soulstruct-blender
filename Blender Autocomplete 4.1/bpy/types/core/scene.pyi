@@ -40,6 +40,7 @@ GenericType2 = typing.TypeVar("GenericType2")
 
 if typing.TYPE_CHECKING:
     from io_soulstruct import *
+    from map_progress_manager import *
 
 
 class Scene(ID, bpy_struct):
@@ -70,6 +71,9 @@ class Scene(ID, bpy_struct):
     animation_export_settings: AnimationExportSettings
     cutscene_import_settings: CutsceneImportSettings
     cutscene_export_settings: CutsceneExportSettings
+
+    # Map Progress Manager
+    map_progress_manager_settings: MapProgressManagerSettings
     # endregion
 
     active_clip: MovieClip | None
