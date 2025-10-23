@@ -42,7 +42,7 @@ GenericType2 = typing.TypeVar("GenericType2")
 
 if typing.TYPE_CHECKING:
     from io_soulstruct import *
-    from map_progress_manager import *
+    from experimental import *
 
 
 class Object(ID, bpy_struct):

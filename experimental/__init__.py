@@ -1,15 +1,15 @@
-"""Soulstruct Map Progress Manager
+"""Soulstruct Experimental
 
 Requires main Soulstruct for Blender add-on.
 """
 
 bl_info = {
-    "name": "Soulstruct Map Progress Manager",
+    "name": "Soulstruct Experimental",
     "author": "Scott Mooney (Grimrukh)",
     "version": (1, 0, 1),
     "blender": (4, 4, 0),
-    "location": "3D View > N-Panel > MapTools > Map Progress",
-    "description": "Per-object progress tags with visual overlay, edit lock, queue, CSV export, and injected shader tinting.",
+    "location": "3D View > N-Panel > Experimental",
+    "description": "Experimental features for Soulstruct: map progress, material debugging tools, ...",
     "category": "Object",
 }
 
