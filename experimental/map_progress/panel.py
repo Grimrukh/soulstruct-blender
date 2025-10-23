@@ -14,21 +14,22 @@ from .operators import (
     MapProgressBulkInit,
     RefreshMapProgressVisuals,
 )
-from .tint import ApplyProgressTintToMaterials, RemoveProgressTintFromMaterials
+
 from .utils import count_states, objects_by_state
 
 
 class MapProgressPanel(bpy.types.Panel):
     bl_label = "Map Progress"
-    bl_idname = "MAPPROG_PT_panel"
+    bl_idname = "MAPPROG_PT_progress"
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
-    bl_category = "MapTools"
+    bl_category = "Experimental"
 
     def draw(self, context):
         layout = self.layout
         col = layout.column(align=True)
 
+        # Active object block
         box = col.box()
         box.label(text="Active Object")
         obj = context.object
@@ -36,13 +37,15 @@ class MapProgressPanel(bpy.types.Panel):
             row = box.row(align=True)
             row.prop(obj.map_progress, "state", text="")
             for state in ("TODO", "TODO_SCENERY", "WIP", "DONE"):
-                row.operator(SetMapProgressState.bl_idname, text=state).state = state
+                op = row.operator(SetMapProgressState.bl_idname, text=state)
+                op.state = state
             box.prop(obj.map_progress, "note", text="Note")
             if obj.map_progress.last_edit:
                 box.label(text=f"Last Edit: {obj.map_progress.last_edit}")
         else:
             box.label(text="No active tracked object")
 
+        # Summary
         t, ts, w, d, total = count_states()
         prog = col.box()
         prog.label(text="Summary")
@@ -51,10 +54,10 @@ class MapProgressPanel(bpy.types.Panel):
             pct = int(round(100 * d / total))
             prog.label(text=f"Completion: {pct}%")
 
-        # Next Up lists
         col.separator()
 
-        settings = context.scene.map_progress_manager_settings
+        # Next Up lists (use map_progress_settings for filters)
+        settings = context.scene.map_progress_settings
 
         flt = col.box()
         flt.label(text="Next Up (TODO)")
@@ -89,24 +92,6 @@ class MapProgressPanel(bpy.types.Panel):
 
         col.separator()
 
-        # Material-based viewport tint
-        matbx = col.box()
-        matbx.label(text="Viewport Tint (Material Injection)")
-        row = matbx.row(align=True)
-        row.operator(ApplyProgressTintToMaterials.bl_idname, icon="SHADING_TEXTURE")
-        row.operator(RemoveProgressTintFromMaterials.bl_idname, icon="X")
-        matbx.prop(settings, "tint_enabled", text="Enable viewport tint")
-
-        tint = matbx.column(align=True)
-        tint.label(text="Tint Colors & Strengths")
-        r = tint.row(align=True); r.prop(settings, "todo_color", text="TODO"); r.prop(settings, "todo_strength", text="Strength")
-        r = tint.row(align=True); r.prop(settings, "todo_sc_color", text="TODO SCENERY"); r.prop(settings, "todo_sc_strength", text="Strength")
-        r = tint.row(align=True); r.prop(settings, "wip_color",  text="WIP");  r.prop(settings, "wip_strength",  text="Strength")
-        r = tint.row(align=True); r.prop(settings, "done_color", text="DONE"); r.prop(settings, "done_strength", text="Strength")
-        tint.label(text="(Click Apply to push defaults into the shared node group)")
-
-        col.separator()
-
         # Tools
         tools = col.box()
         tools.label(text="Tools")
@@ -115,6 +100,20 @@ class MapProgressPanel(bpy.types.Panel):
         row.operator(RefreshMapProgressVisuals.bl_idname, icon="FILE_REFRESH")
         row = tools.row(align=True)
         row.operator(ExportMapProgressCSV.bl_idname, icon="EXPORT")
+
+        col.separator()
+
+        # Progress colors/strengths for material debug node group
+        tint = col.box()
+        tint.label(text="Progress Tint (Colors & Strengths)")
+        r = tint.row(align=True); r.prop(settings, "todo_color", text="TODO")
+        r.prop(settings, "todo_strength", text="Strength")
+        r = tint.row(align=True); r.prop(settings, "todo_sc_color", text="TODO SCENERY")
+        r.prop(settings, "todo_sc_strength", text="Strength")
+        r = tint.row(align=True); r.prop(settings, "wip_color",  text="WIP")
+        r.prop(settings, "wip_strength",  text="Strength")
+        r = tint.row(align=True); r.prop(settings, "done_color", text="DONE")
+        r.prop(settings, "done_strength", text="Strength")
 
         col.separator()
 

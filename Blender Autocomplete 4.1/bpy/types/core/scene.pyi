@@ -72,8 +72,9 @@ class Scene(ID, bpy_struct):
     cutscene_import_settings: CutsceneImportSettings
     cutscene_export_settings: CutsceneExportSettings
 
-    # Map Progress Manager
-    map_progress_manager_settings: MapProgressManagerSettings
+    # Soulstruct Experimental Extensions
+    material_debug_settings: MaterialDebugSettings
+    map_progress_settings: MapProgressSettings
     # endregion
 
     active_clip: MovieClip | None

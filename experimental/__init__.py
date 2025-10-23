@@ -15,7 +15,7 @@ bl_info = {
 
 import bpy
 
-from .operators import (
+from .map_progress.operators import (
     MapProgressSelectObject,
     SetMapProgressState,
     ToggleMapProgressOverlay,
@@ -23,15 +23,18 @@ from .operators import (
     MapProgressBulkInit,
     RefreshMapProgressVisuals,
 )
-from .panel import MapProgressPanel
-from .properties import MapProgressManagerSettings, MapProgressProps
-from .tint import (
-    ApplyProgressTintToMaterials,
-    RemoveProgressTintFromMaterials,
+from .map_progress.panel import MapProgressPanel
+from .map_progress.properties import MapProgressSettings, MapProgressProps
+
+from .material_debug import (
+    MaterialDebugSettings,
+    AddDebugNodeGroupToMaterials,
+    RemoveDebugNodeGroupFromMaterials,
+    MaterialDebugPanel,
 )
 
 CLASSES = (
-    MapProgressManagerSettings,
+    MapProgressSettings,
     MapProgressProps,
     MapProgressSelectObject,
     SetMapProgressState,
@@ -39,9 +42,12 @@ CLASSES = (
     ExportMapProgressCSV,
     MapProgressBulkInit,
     RefreshMapProgressVisuals,
-    ApplyProgressTintToMaterials,
-    RemoveProgressTintFromMaterials,
     MapProgressPanel,
+
+    MaterialDebugSettings,
+    AddDebugNodeGroupToMaterials,
+    RemoveDebugNodeGroupFromMaterials,
+    MaterialDebugPanel,
 )
 
 
@@ -50,9 +56,8 @@ def register():
         bpy.utils.register_class(cls)
 
     # Global add-on settings stored in Scene
-    bpy.types.Scene.map_progress_manager_settings = bpy.props.PointerProperty(
-        type=MapProgressManagerSettings,
-    )
+    bpy.types.Scene.map_progress_settings = bpy.props.PointerProperty(type=MapProgressSettings)
+    bpy.types.Scene.material_debug_settings = bpy.props.PointerProperty(type=MaterialDebugSettings)
 
     # Per-object progress properties
     bpy.types.Object.map_progress = bpy.props.PointerProperty(type=MapProgressProps)
@@ -62,8 +67,10 @@ def unregister():
     # Remove scene/wm scratch props
     if hasattr(bpy.types.Object, "map_progress"):
         del bpy.types.Object.map_progress
-    if hasattr(bpy.types.Scene, "map_progress_manager_settings"):
-        del bpy.types.Scene.map_progress_manager_settings
+    if hasattr(bpy.types.Scene, "material_debug_settings"):
+        del bpy.types.Scene.material_debug_settings
+    if hasattr(bpy.types.Scene, "map_progress_settings"):
+        del bpy.types.Scene.map_progress_settings
 
     for cls in reversed(CLASSES):
         bpy.utils.unregister_class(cls)

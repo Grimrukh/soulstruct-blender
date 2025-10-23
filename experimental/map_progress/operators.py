@@ -19,7 +19,7 @@ from .utils import export_csv
 
 
 class MapProgressSelectObject(LoggingOperator):
-    bl_idname = "mapprog.select_object"
+    bl_idname = "soulstruct.select_object"
     bl_label = "Select Object"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -37,7 +37,7 @@ class MapProgressSelectObject(LoggingOperator):
 
 
 class SetMapProgressState(LoggingOperator):
-    bl_idname = "mapprog.set_state"
+    bl_idname = "soulstruct.set_state"
     bl_label = "Set State"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -65,7 +65,7 @@ class SetMapProgressState(LoggingOperator):
 
 
 class ToggleMapProgressOverlay(LoggingOperator):
-    bl_idname = "mapprog.toggle_overlay"
+    bl_idname = "soulstruct.toggle_overlay"
     bl_label = "Enable Object-Color Shading"
     bl_options = {"REGISTER"}
 
@@ -81,7 +81,7 @@ class ToggleMapProgressOverlay(LoggingOperator):
 
 
 class ExportMapProgressCSV(LoggingOperator):
-    bl_idname = "mapprog.export_csv"
+    bl_idname = "soulstruct.export_csv"
     bl_label = "Export Progress CSV"
     bl_options = {"REGISTER"}
 
@@ -108,7 +108,7 @@ class ExportMapProgressCSV(LoggingOperator):
 
 
 class MapProgressBulkInit(LoggingOperator):
-    bl_idname = "mapprog.bulk_init"
+    bl_idname = "soulstruct.bulk_init"
     bl_label = "Mark all untracked MSB geometry progress as TODO"
     bl_options = {"REGISTER", "UNDO"}
 
@@ -189,7 +189,7 @@ class MapProgressBulkInit(LoggingOperator):
 
 
 class RefreshMapProgressVisuals(LoggingOperator):
-    bl_idname = "mapprog.refresh_visuals"
+    bl_idname = "soulstruct.refresh_visuals"
     bl_label = "Refresh Visuals"
     bl_options = {"REGISTER"}
 

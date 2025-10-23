@@ -1,45 +1,48 @@
 from __future__ import annotations
 
 __all__ = [
-    "MapProgressManagerSettings",
+    "MapProgressSettings",
     "MapProgressProps",
-    "on_state_changed",
-    "on_global_tint_toggle",
 ]
 
 from datetime import datetime
 
 import bpy
 
-from .config import SUPPORTED_TYPES, PROGRESS_COLORS, PROGRESS_PASS_INDICES, TINT_GROUP_NAME
-
-def set_tint_group_enable_on_all_mats(value: float):
-    ng = bpy.data.node_groups.get(TINT_GROUP_NAME)
-    if not ng:
-        return
-    for mat in bpy.data.materials:
-        if not (mat and mat.use_nodes and mat.node_tree):
-            continue
-        for node in mat.node_tree.nodes:
-            if isinstance(node, bpy.types.ShaderNodeGroup) and node.node_tree == ng:
-                if "Enable" in node.inputs:
-                    node.inputs["Enable"].default_value = value
-
+from .config import SUPPORTED_TYPES
 
 # noinspection PyUnusedLocal
-def on_global_tint_toggle(self, context):
-    set_tint_group_enable_on_all_mats(1.0 if context.scene.map_progress_manager_settings.tint_enabled else 0.0)
+def _on_state_changed(self: MapProgressProps, ctx):
+    obj = getattr(ctx, "object", None) if ctx else None
+    if not obj or not hasattr(obj, "map_progress"):
+        return
+    obj: bpy.types.Object
+    if obj.type in SUPPORTED_TYPES:
+        obj.map_progress.apply_visual_state(obj)
+        obj.map_progress.sync_pass_index(obj)
+        obj.map_progress.set_timestamp()
 
 
-class MapProgressManagerSettings(bpy.types.PropertyGroup):
+
+class MapProgressSettings(bpy.types.PropertyGroup):
     """Global add-on settings stored in Scene."""
 
-    tint_enabled: bpy.props.BoolProperty(
-        name="Enable Progress Tint Overlay",
-        description="Enable viewport tint overlay based on object progress state",
-        default=True,
-        update=on_global_tint_toggle,
-    )
+    # Internal object-pass mapping that we won't want to break if enum items change:
+    PROGRESS_STATE_INDICES = {
+        "NONE": 0,
+        "TODO": 1,
+        "TODO_SCENERY": 2,
+        "WIP": 3,
+        "DONE": 4,
+    }
+
+    PROGRESS_STATE_COLORS = {
+        "NONE": (1.0, 1.0, 1.0, 0.0),  # white/transparent
+        "TODO": (1.0, 0.15, 0.15, 0.35),  # red
+        "TODO_SCENERY": (0.75, 0.4, 1.0, 0.35),  # purple
+        "WIP": (1.0, 1.0, 0.15, 0.35),  # yellow
+        "DONE": (0.20, 1.0, 0.20, 0.25),  # green
+    }
 
     todo_color: bpy.props.FloatVectorProperty(
         name="TODO Color", subtype="COLOR", size=4,
@@ -102,7 +105,7 @@ class MapProgressProps(bpy.types.PropertyGroup):
             ("DONE", "DONE", "Completed"),
         ],
         default="NONE",
-        update=lambda self, ctx: on_state_changed(self, ctx),
+        update=_on_state_changed,
     )
     note: bpy.props.StringProperty(
         name="Note", description="Optional note for this object", default=""
@@ -116,21 +119,9 @@ class MapProgressProps(bpy.types.PropertyGroup):
 
     def apply_visual_state(self, obj: bpy.types.Object):
         """Sets viewport object color + selection lock based on state."""
-        obj.color = PROGRESS_COLORS.get(self.state, (1.0, 1.0, 1.0, 0.0))
+        obj.color = MapProgressSettings.PROGRESS_STATE_COLORS.get(self.state, (1.0, 1.0, 1.0, 0.0))
         obj.hide_select = self.state == "DONE"
 
     def sync_pass_index(self, obj: bpy.types.Object):
         """Keep Object.pass_index aligned with our enum for tint masks."""
-        obj.pass_index = PROGRESS_PASS_INDICES.get(self.state, 0)
-
-
-# noinspection PyUnusedLocal
-def on_state_changed(self: MapProgressProps, ctx):
-    obj = getattr(ctx, "object", None) if ctx else None
-    if not obj or not hasattr(obj, "map_progress"):
-        return
-    obj: bpy.types.Object
-    if obj.type in SUPPORTED_TYPES:
-        obj.map_progress.apply_visual_state(obj)
-        obj.map_progress.sync_pass_index(obj)
-        obj.map_progress.set_timestamp()
+        obj.pass_index = MapProgressSettings.PROGRESS_STATE_INDICES.get(self.state, 0)
