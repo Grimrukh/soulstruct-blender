@@ -74,25 +74,7 @@ class NodeTreeBuilder:
     def build(self):
         """Build a shader node tree using shader/sampler information from given `MatDef`."""
 
-        # Remove all node links.
-        self.tree.links.clear()
-        # Remove all nodes except Material Output.
-        for node in tuple(self.tree.nodes):
-            if node.name != "Material Output":
-                self.tree.nodes.remove(self.tree.nodes["Principled BSDF"])
-
-        # Build vertex color nodes.
-        self.vertex_colors_nodes = [
-            self._add_vertex_colors_node(i) for i in range(self.vertex_color_count)
-        ]
-
-        try:
-            self.build_shader_uv_texture_nodes()
-        except KeyError as ex:
-            raise MaterialImportError(
-                f"Could not build UV coordinate nodes for material '{self.matdef.name}' with shader "
-                f"'{self.matdef.shader_stem}'. Error:\n    {ex}"
-            )
+        self._initialize_node_tree()
 
         try:
             if self.matdef.shader_category == "Water":
@@ -116,6 +98,7 @@ class NodeTreeBuilder:
                 f"Error building shader for material '{self.matdef.name}' with shader '{self.matdef.shader_stem}'. "
                 f"Error:\n    {ex}"
             )
+
 
     # pow(2.0 / (max(fSpecPower * 4.0, 1.0) + 2.0), 0.25) for converting spec power to roughness from StaydMcMuffin
 
@@ -471,6 +454,56 @@ class NodeTreeBuilder:
         for bsdf_node in bsdf_nodes.values():
             if not bsdf_node.inputs["Base Color"].is_linked:
                 bsdf_node.inputs["Base Color"].default_value = (0.0, 0.0, 0.0, 1.0)
+
+    def _build_primary_shader(self,
+                              node_group_name: str,
+                              node_inputs: dict,
+                              mtd_param_values: dict,
+                              ):
+        """
+        Outline for this:
+            Generalize all the logic for connecting values into a node group. Really, all that happens is:
+            - image color outputs get connected.
+            - normal map gets processed, then connected
+            - image alpha outputs get connected
+            - vertex color gets linked
+            - vertex alpha gets linked
+            - mtd params/lightmap influence/other values get filled directly
+            To be even more general, it's just node links, and static values to be set.
+            This is to prevent duplicating/maintaining duplicate code.
+        """
+
+        node_group_inputs = {}
+        for key in node_inputs:
+            if node_inputs[key] is not None:
+                node_group_inputs[key] = node_inputs[key]
+
+        node_group = self._new_bsdf_shader_node_group(node_group_name, inputs=node_group_inputs)
+        for key in mtd_param_values:
+            node_group.inputs[key].default_value = mtd_param_values[key]
+
+        self.link(node_group.outputs[0], self.output_surface)
+
+    def _initialize_node_tree(self):
+        # Remove all node links.
+        self.tree.links.clear()
+        # Remove all nodes except Material Output.
+        for node in tuple(self.tree.nodes):
+            if node.name != "Material Output":
+                self.tree.nodes.remove(self.tree.nodes["Principled BSDF"])
+
+        # Build vertex color nodes.
+        self.vertex_colors_nodes = [
+            self._add_vertex_colors_node(i) for i in range(self.vertex_color_count)
+        ]
+
+        try:
+            self.build_shader_uv_texture_nodes()
+        except KeyError as ex:
+            raise MaterialImportError(
+                f"Could not build UV coordinate nodes for material '{self.matdef.name}' with shader "
+                f"'{self.matdef.shader_stem}'. Error:\n    {ex}"
+            )
 
     def _color_tex_to_bsdf_node(
         self,
