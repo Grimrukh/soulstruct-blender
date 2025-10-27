@@ -53,14 +53,15 @@ class SetMapProgressState(LoggingOperator):
     target_name: bpy.props.StringProperty(default="")
 
     def execute(self, context):
-        obj = bpy.data.objects.get(self.target_name) if self.target_name else context.object
-        if not obj:
-            return self.error("No target object")
-        if not hasattr(obj, "map_progress"):
-            return self.error(f"Object '{obj.name}' has no progress properties")
-        obj.map_progress.state = self.state
-        _update_visuals_for_object(obj, set_timestamp=True)
-        obj.map_progress.sync_pass_index(obj)
+        objs = [bpy.data.objects.get(self.target_name)] if self.target_name else context.selected_objects
+        if not objs:
+            return self.error("No target or selected objects")
+        for obj in objs:
+            if not hasattr(obj, "map_progress"):
+                self.warning(f"Object '{obj.name}' has no progress properties")
+            obj.map_progress.state = self.state
+            _update_visuals_for_object(obj, set_timestamp=True)
+            obj.map_progress.sync_pass_index(obj)
         return {"FINISHED"}
 
 
@@ -180,7 +181,7 @@ class MapProgressBulkInit(LoggingOperator):
                 continue
 
             obj.map_progress.state = self.set_state
-            _update_visuals_for_object(obj, set_timestamp=True)
+            _update_visuals_for_object(context, obj, set_timestamp=True)
             obj.map_progress.sync_pass_index(obj)
             count += 1
 
@@ -194,22 +195,22 @@ class RefreshMapProgressVisuals(LoggingOperator):
     bl_options = {"REGISTER"}
 
     def execute(self, context):
-        _update_all_visuals()
+        _update_all_visuals(context)
         self.info("Map progress visuals refreshed")
         return {"FINISHED"}
 
 
-def _update_visuals_for_object(obj: bpy.types.Object, set_timestamp=False):
+def _update_visuals_for_object(context: bpy.types.Context, obj: bpy.types.Object, set_timestamp=False):
     if obj is None or obj.type != "MESH":
         return
     obj: bpy.types.Object
-    obj.map_progress.apply_visual_state(obj)
+    obj.map_progress.apply_visual_state(context, obj)
     if set_timestamp:
         obj.map_progress.set_timestamp()
 
 
-def _update_all_visuals():
+def _update_all_visuals(context: bpy.types.Context):
     for obj in bpy.data.objects:
         if not hasattr(obj, "map_progress"):
             continue
-        obj.map_progress.apply_visual_state(obj)
+        obj.map_progress.apply_visual_state(context, obj)

@@ -83,6 +83,10 @@ def main(source_map_stem: str, dest_map_stem: str, entry_filter_func: tp.Callabl
 
         armature_parent = None
         if obj.soulstruct_type == SoulstructType.MSB_PART:
+            if obj.MSB_PART.entry_subtype == "NONE":
+                print(f"Skipping Part with NONE subtype: {obj.name}")
+                continue
+
             part_subtype = obj.MSB_PART.entry_subtype_enum
 
             if part_subtype in model_obj_names and obj.MSB_PART.model:

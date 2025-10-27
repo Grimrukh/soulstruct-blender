@@ -121,7 +121,7 @@ def _is_part(_, obj: bpy.types.Object):
 def _is_collision(_, obj: bpy.types.Object):
     return (
         obj.soulstruct_type == SoulstructType.MSB_PART
-        and obj.MSB_PART.entry_subtype_enum == BlenderMSBPartSubtype.Collision
+        and obj.MSB_PART.entry_subtype == BlenderMSBPartSubtype.Collision
     )
 
 
@@ -235,8 +235,12 @@ class MSBPartProps(SoulstructPropertyGroup):
 
     @property
     def entry_subtype_enum(self) -> BlenderMSBPartSubtype:
+        """Get the Part subtype as a `BlenderMSBPartSubtype` enum.
+
+        Raises a `ValueError` if the subtype is not set. This should only be used in contexts where that can be handled.
+        """
         if self.entry_subtype == "NONE":
-            raise ValueError("MSB Part subtype is not set.")
+            raise ValueError(f"MSB Part subtype is not set for object '{self.id_data.name}'.")
         return BlenderMSBPartSubtype(self.entry_subtype)
 
     def is_subtype(self, subtype: BlenderMSBPartSubtype | str):

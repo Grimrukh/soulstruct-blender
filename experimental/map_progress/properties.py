@@ -12,16 +12,23 @@ import bpy
 from .config import SUPPORTED_TYPES
 
 # noinspection PyUnusedLocal
-def _on_state_changed(self: MapProgressProps, ctx):
-    obj = getattr(ctx, "object", None) if ctx else None
+def _on_state_changed(self: MapProgressProps, context: bpy.types.Context):
+    obj = self.id_data
     if not obj or not hasattr(obj, "map_progress"):
         return
     obj: bpy.types.Object
     if obj.type in SUPPORTED_TYPES:
-        obj.map_progress.apply_visual_state(obj)
+        obj.map_progress.apply_visual_state(context, obj)
         obj.map_progress.sync_pass_index(obj)
         obj.map_progress.set_timestamp()
 
+
+def _on_hide_select_done_changed(self: MapProgressSettings, context: bpy.types.Context):
+    for obj in bpy.data.objects:
+        if not hasattr(obj, "map_progress"):
+            continue
+        if obj.map_progress.state == "DONE":
+            obj.hide_select = self.hide_select_done
 
 
 class MapProgressSettings(bpy.types.PropertyGroup):
@@ -78,6 +85,18 @@ class MapProgressSettings(bpy.types.PropertyGroup):
         description="Filter objects by name substring in selection lists",
         default="",
     )
+    next_up_visible_only: bpy.props.BoolProperty(
+        name="Next Up: Visible Only",
+        description="Only show visible objects in the Next Up lists",
+        default=True,
+    )
+
+    hide_select_done: bpy.props.BoolProperty(
+        name="Hide Select DONE Objects",
+        description="Make DONE objects unselectable in the viewport",
+        default=True,
+        update=_on_hide_select_done_changed,
+    )
 
     # Bulk Init operation settings:
     init_collection_name: bpy.props.StringProperty(
@@ -117,10 +136,13 @@ class MapProgressProps(bpy.types.PropertyGroup):
     def set_timestamp(self):
         self.last_edit = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-    def apply_visual_state(self, obj: bpy.types.Object):
+    def apply_visual_state(self, context: bpy.types.Context, obj: bpy.types.Object):
         """Sets viewport object color + selection lock based on state."""
         obj.color = MapProgressSettings.PROGRESS_STATE_COLORS.get(self.state, (1.0, 1.0, 1.0, 0.0))
-        obj.hide_select = self.state == "DONE"
+        if self.state == "DONE":
+            obj.hide_select = context.scene.map_progress_settings.hide_select_done
+        else:
+            obj.hide_select = False
 
     def sync_pass_index(self, obj: bpy.types.Object):
         """Keep Object.pass_index aligned with our enum for tint masks."""

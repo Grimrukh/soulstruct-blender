@@ -32,10 +32,12 @@ def count_states():
         total += 1
     return t, ts, w, d, total
 
-def objects_by_state(state: str, name_filter: str = ""):
+def objects_by_state(state: str, name_filter: str = "", visible_only: bool = False) -> tp.List[bpy.types.Object]:
     nf = (name_filter or "").strip().lower()
     items = []
     for obj in iter_tracked_objects():
+        if visible_only and not obj.visible_get():
+            continue
         if obj.map_progress.state == state:
             if nf and nf not in obj.name.lower():
                 continue

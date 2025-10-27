@@ -260,7 +260,7 @@ class _MSBPartSubtypePanelMixin:
     @classmethod
     def poll(cls, context) -> bool:
         obj = get_active_part_obj(context)
-        return obj is not None and obj.MSB_PART.entry_subtype_enum == cls.PART_SUBTYPE
+        return obj is not None and obj.MSB_PART.entry_subtype == cls.PART_SUBTYPE
 
     def draw(self, context):
         layout = self.layout
@@ -566,7 +566,7 @@ class _MSBEventSubtypePanelMixin:
     @classmethod
     def poll(cls, context) -> bool:
         obj = get_active_event_obj(context)
-        return obj is not None and obj.MSB_EVENT.entry_subtype_enum == cls.EVENT_SUBTYPE
+        return obj is not None and obj.MSB_EVENT.entry_subtype == cls.EVENT_SUBTYPE
 
     def draw(self, context):
         layout = self.layout

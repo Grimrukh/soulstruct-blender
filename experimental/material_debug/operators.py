@@ -13,12 +13,12 @@ from soulstruct.blender.utilities.operators import LoggingOperator
 from .nodes import *
 
 
-def _get_scene_msb_geometry_objects(context: bpy.types.Context) -> list[bpy.types.MeshObject]:
-    """Get all objects in the scene that an MSB Part geometry subtype."""
+def _get_selected_msb_geometry_objects(context: bpy.types.Context) -> list[bpy.types.MeshObject]:
+    """Get all selected objects that have an MSB Part geometry subtype."""
     objs = []
-    for obj in context.scene.objects:
+    for obj in context.selected_objects:
         if obj.soulstruct_type == SoulstructType.MSB_PART:
-            if obj.MSB_PART.entry_subtype_enum in {
+            if obj.MSB_PART.entry_subtype in {
                 BlenderMSBPartSubtype.MapPiece,
                 BlenderMSBPartSubtype.Collision,
                 BlenderMSBPartSubtype.Navmesh,
@@ -31,19 +31,18 @@ class AddDebugNodeGroupToMaterials(LoggingOperator):
     bl_idname = "soulstruct.add_debug_nodes_materials"
     bl_label = "Add Material Debug Nodes"
     bl_options = {"REGISTER", "UNDO"}
+    bl_description = (
+        "Add the Soulstruct debug node group to all materials on all selected MSB geometry objects (Map Piece, "
+        "Collision, and Navmesh MSB parts)"
+    )
 
     def execute(self, context):
-
-        # TODO: I don't think I need to do this here.
-        # for obj in iter(bpy.data.objects):
-        #     if hasattr(obj, "map_progress"):
-        #         obj.map_progress.sync_pass_index(obj)
 
         ensure_debug_node_group(context)
 
         # Collect all MSB geometry materials.
         mats = set()
-        for obj in _get_scene_msb_geometry_objects(context):
+        for obj in _get_selected_msb_geometry_objects(context):
             for slot in obj.material_slots:
                 if slot.material:
                     mats.add(slot.material)
@@ -65,10 +64,14 @@ class RemoveDebugNodeGroupFromMaterials(LoggingOperator):
     bl_idname = "soulstruct.remove_debug_node_group"
     bl_label = "Remove Material Debug Nodes"
     bl_options = {"REGISTER", "UNDO"}
+    bl_description = (
+        "Remove the Soulstruct debug node group from all materials on all selected MSB geometry objects (Map Piece, "
+        "Collision, and Navmesh MSB parts)"
+    )
 
     def execute(self, context):
         mats = set()
-        for obj in _get_scene_msb_geometry_objects(context):
+        for obj in _get_selected_msb_geometry_objects(context):
             for slot in (obj.material_slots or []):
                 if slot.material:
                     mats.add(slot.material)
