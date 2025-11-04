@@ -461,16 +461,12 @@ class NodeTreeBuilder:
                               mtd_param_values: dict,
                               ):
         """
-        Outline for this:
-            Generalize all the logic for connecting values into a node group. Really, all that happens is:
-            - image color outputs get connected.
-            - normal map gets processed, then connected
-            - image alpha outputs get connected
-            - vertex color gets linked
-            - vertex alpha gets linked
-            - mtd params/lightmap influence/other values get filled directly
-            To be even more general, it's just node links, and static values to be set.
-            This is to prevent duplicating/maintaining duplicate code.
+        Constructs a shader node group by appending the node group with the specified name to the open blender scene.
+        Then, links the shader node sockets that are the values in node_inputs to the input of the node group which
+        matches the key of that value. Then, set the default value of the node group inputs with names matching the keys
+        in the mtd_param_values dictionary to the values in tha dictionary.
+
+        Made to generalize the logic of plugging in inputs to the sockets of node_groups.
         """
 
         node_group_inputs = {}
@@ -490,7 +486,7 @@ class NodeTreeBuilder:
         # Remove all nodes except Material Output.
         for node in tuple(self.tree.nodes):
             if node.name != "Material Output":
-                self.tree.nodes.remove(self.tree.nodes["Principled BSDF"])
+                self.tree.nodes.remove(self.tree.nodes[node.name])
 
         # Build vertex color nodes.
         self.vertex_colors_nodes = [
@@ -590,6 +586,10 @@ class NodeTreeBuilder:
         return mix_node
 
     def _get_single_or_mixed_samplers(self, pattern: str, mix_fac_input: NodeSocket | float = 0.5, alpha: bool = False, normal: bool = False):
+        """Searches the matdef for samplers that match the pattern, and returns a single socket output for it. If there
+        are two or more samplers, it creates the necessary nodes to combine the first 2, then returns the combined
+        output. If normal=True, it processes the normal maps first. If alpha=True, it uses the alpha output of the
+        texture node instead."""
         matches = self.matdef.get_matching_samplers(re.compile(pattern), match_alias=True)
         if len(matches) >= 2:
             tex_node1 = self.tex_image_nodes.get(matches[0][1].alias)
@@ -871,9 +871,5 @@ class NodeTreeBuilder:
         node: bpy.types.ShaderNodeGroup
         self.bsdf_y -= 1000
         return node
-
-
-
-
 
     # endregion
