@@ -12,7 +12,6 @@ __all__ = [
     "create_region_scale_driver",
 ]
 
-import abc
 import re
 import shutil
 import tempfile

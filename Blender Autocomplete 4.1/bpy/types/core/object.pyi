@@ -42,6 +42,7 @@ GenericType2 = typing.TypeVar("GenericType2")
 
 if typing.TYPE_CHECKING:
     from io_soulstruct import *
+    from experimental import *
 
 
 class Object(ID, bpy_struct):
@@ -71,6 +72,9 @@ class Object(ID, bpy_struct):
     MSB_REGION: MSBRegionProps
 
     MSB_EVENT: MSBEventProps
+
+    # Map Progress Manager
+    map_progress: MapProgressProps
     # endregion
 
     active_material: Material | None

@@ -10,7 +10,6 @@ __all__ = [
     "get_dcx_enum_property",
 ]
 
-import abc
 import logging
 import re
 import shutil

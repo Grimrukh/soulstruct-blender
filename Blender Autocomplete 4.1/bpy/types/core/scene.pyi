@@ -40,6 +40,7 @@ GenericType2 = typing.TypeVar("GenericType2")
 
 if typing.TYPE_CHECKING:
     from io_soulstruct import *
+    from experimental import *
 
 
 class Scene(ID, bpy_struct):
@@ -70,6 +71,10 @@ class Scene(ID, bpy_struct):
     animation_export_settings: AnimationExportSettings
     cutscene_import_settings: CutsceneImportSettings
     cutscene_export_settings: CutsceneExportSettings
+
+    # Soulstruct Experimental Extensions
+    material_debug_settings: MaterialDebugSettings
+    map_progress_settings: MapProgressSettings
     # endregion
 
     active_clip: MovieClip | None

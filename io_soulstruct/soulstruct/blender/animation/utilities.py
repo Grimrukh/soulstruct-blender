@@ -172,7 +172,7 @@ def get_active_flver_or_part_armature(
     except SoulstructTypeError:
         pass
     else:
-        if armature and mesh.MSB_PART.model and mesh.MSB_PART.entry_subtype_enum in {
+        if armature and mesh.MSB_PART.model and mesh.MSB_PART.entry_subtype in {
             BlenderMSBPartSubtype.Character, BlenderMSBPartSubtype.Object
         }:
             return armature, mesh, get_model_name(mesh.MSB_PART.model.name), True

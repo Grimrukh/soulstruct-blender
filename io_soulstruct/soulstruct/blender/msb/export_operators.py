@@ -47,6 +47,8 @@ def _export_msb(
 
     Given `map_stem` will be the map stem that is baked into MSB entries, e.g. for SIB paths. It should match the
     MSB's written file stem, obviously (up to caller).
+
+    A ValueError will be raised if any MSB collection objects have no subtype set.
     """
     settings = operator.settings(context)
     export_settings = context.scene.msb_export_settings
@@ -84,9 +86,12 @@ def _export_msb(
                 continue
 
             if obj.soulstruct_type == SoulstructType.MSB_PART:
+                if obj.MSB_PART.entry_subtype == "NONE":
+                    raise ValueError(f"MSB Part object '{obj.name}' has no subtype set; cannot export MSB.")
+
                 if (
                     export_settings.skip_connect_collisions
-                    and obj.MSB_PART.entry_subtype_enum == BlenderMSBPartSubtype.ConnectCollision
+                    and obj.MSB_PART.entry_subtype == BlenderMSBPartSubtype.ConnectCollision
                 ):
                     # Ignore Connect Collisions.
                     continue

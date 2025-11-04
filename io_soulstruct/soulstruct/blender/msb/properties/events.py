@@ -68,6 +68,8 @@ class BlenderMSBEventSubtype(StrEnum):
     NPCInvasion = "MSB_NPC_INVASION"
 
     def get_nice_name(self) -> str:
+        if self == BlenderMSBEventSubtype.VFX:
+            return "VFX"  # preserve upper case
         return f"{self.value.replace('MSB_', '').replace('_', ' ').title()}"
 
     @classmethod

@@ -1,0 +1,3 @@
+from .properties import MaterialDebugSettings
+from .operators import AddDebugNodeGroupToMaterials, RemoveDebugNodeGroupFromMaterials
+from .panel import MaterialDebugPanel
