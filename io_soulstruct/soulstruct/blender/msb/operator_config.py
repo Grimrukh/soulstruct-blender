@@ -54,6 +54,9 @@ BLENDER_MSB_REGION_CLASSES = {
         # No subtypes, only shapes.
         BlenderMSBRegionSubtype.All: darksouls1ptde.BlenderMSBRegion,
     },
+    DEMONS_SOULS: {
+        BlenderMSBRegionSubtype.All: demonssouls.BlenderMSBRegion,
+    }
 }  # type: dict[Game, dict[BlenderMSBRegionSubtype, type[BaseBlenderMSBRegion]]]
 
 

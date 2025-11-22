@@ -634,7 +634,16 @@ class NodeTreeBuilder:
             else:
                 return match.outputs["Color"]
         else:
-            return None
+            if normal:
+                #Need to supply a tangent space normal vector, or else node groups get confused
+                normal_map_node = self._new_normal_map_node(
+                    "UVTexture0",
+                    self.mix_y,
+                    strength=1.0
+                )
+                normal_map_node.hide = True
+                normal_map_node.inputs["Color"].default_value = (0.5, 0.5, 1, 1)
+                return normal_map_node.outputs["Normal"]
 
 
 
