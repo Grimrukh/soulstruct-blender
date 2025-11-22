@@ -45,6 +45,9 @@ _IMPORT_MODEL_BOOLS = {
     "PlayerModel": "import_character_models",  # same
     "CollisionModel": "import_collision_models",
     "NavmeshModel": "import_navmesh_models",
+    "DummyObjectModel": "import_object_models",
+    "DummyCharacterModel": "import_character_models",
+    "ConnectCollisionModel": "import_collision_models",  # same
 }
 
 
