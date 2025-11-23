@@ -60,7 +60,7 @@ class SetMapProgressState(LoggingOperator):
             if not hasattr(obj, "map_progress"):
                 self.warning(f"Object '{obj.name}' has no progress properties")
             obj.map_progress.state = self.state
-            _update_visuals_for_object(obj, set_timestamp=True)
+            _update_visuals_for_object(context, obj, set_timestamp=True)
             obj.map_progress.sync_pass_index(obj)
         return {"FINISHED"}
 
