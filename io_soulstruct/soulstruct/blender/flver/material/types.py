@@ -10,14 +10,14 @@ from pathlib import Path
 import bpy
 
 from soulstruct.flver import *
-from soulstruct.games import DARK_SOULS_DSR
+from soulstruct.games import DARK_SOULS_DSR, DEMONS_SOULS, DARK_SOULS_PTDE
 
 from soulstruct.blender.exceptions import MaterialImportError, FLVERExportError
 from soulstruct.blender.types.utilities import add_auto_type_props
 from soulstruct.blender.utilities import LoggingOperator, get_bl_custom_prop, remove_dupe_suffix
 from soulstruct.blender.flver.image import DDSTexture, DDSTextureCollection
 from soulstruct.blender.flver.image.utilities import find_or_create_image
-from .shaders import NodeTreeBuilder, NodeTreeBuilder_DS1R
+from .shaders import NodeTreeBuilder, NodeTreeBuilder_DS1R, NodeTreeBuilder_DeS, NodeTreeBuilder_PTDE
 
 if tp.TYPE_CHECKING:
     from soulstruct.base.models.shaders import MatDef
@@ -217,9 +217,14 @@ class BlenderFLVERMaterial:
             sampler_texture_stems[sampler_name] = texture_stem.lower()
 
         if not copied:
+            print (context.scene.soulstruct_settings.game)
             # Try to build shader nodetree.
             if context.scene.soulstruct_settings.is_game(DARK_SOULS_DSR):
                 builder_class = NodeTreeBuilder_DS1R
+            elif context.scene.soulstruct_settings.is_game(DEMONS_SOULS):
+                builder_class = NodeTreeBuilder_DeS
+            elif context.scene.soulstruct_settings.is_game(DARK_SOULS_PTDE):
+                builder_class = NodeTreeBuilder_PTDE
             else:
                 builder_class = NodeTreeBuilder
             try:
@@ -261,7 +266,8 @@ class BlenderFLVERMaterial:
 
                     # Update Image colorspace from node label. (If image is used with multiple sampler types, this will
                     # be the last one found.) TODO: Would be better to do this upon `Image` creation, based on name.
-                    if "Albedo" not in tex_nodes_by_name[sampler_name].label:
+                    if ("Albedo" not in tex_nodes_by_name[sampler_name].label and
+                            "Lightmap" not in tex_nodes_by_name[sampler_name].label):
                         bl_image.colorspace_settings.name = "Non-Color"
 
         return material

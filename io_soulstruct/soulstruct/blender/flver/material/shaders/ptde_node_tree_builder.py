@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 __all__ = [
-    "NodeTreeBuilder_DS1R",
+    "NodeTreeBuilder_PTDE",
 ]
 
 import re
@@ -18,10 +18,8 @@ from .utilities import TEX_SAMPLER_RE
 
 
 @dataclass(slots=True)
-class NodeTreeBuilder_DS1R(NodeTreeBuilder):
-    """Node tree builder for Dark Souls: Remastered.
-    
-    Thanks to @thegreatgramcracker for implementing the pre-baked node groups and build logic for DS1R.
+class NodeTreeBuilder_PTDE(NodeTreeBuilder):
+    """Node tree builder for Demon's Souls. Basically the same as DeS but with more shaders and added detail bumpmap.
     """
 
     @property
@@ -42,41 +40,37 @@ class NodeTreeBuilder_DS1R(NodeTreeBuilder):
         try:
             if self.matdef.shader_category == "Water":
                 # Used by water surfaces.
-                self._build_ds1r_water_shader()
-                return
-            if self.matdef.shader_category == "Snow":
-                # Used by water surfaces.
-                self._build_ds1r_snow_shader()
+                self._build_ds1_water_shader()
                 return
             if self.matdef.shader_category == "NormalToAlpha":
                 # Used by fog, lightshafts, and some tree leaves. Fades out the object when viewed side-on.
-                self._build_ds1r_normal_to_alpha_shader()
+                self._build_ds1_normal_to_alpha_shader()
                 return
-            if "FRPG_Phn_ColDif" in self.matdef.shader_stem or "FRPG_Sfx_ColDif" in self.matdef.shader_stem:
+            if "FRPG_Phn_ColDif" in self.matdef.shader_stem:
                 if self.get_mtd_param("g_LightingType", default=1) == 0:
                     # If `g_LightingType == 0`, nothing matters but the final surface image.
                     # This shader is probably fine for all games, but should be verified.
-                    self._build_ds1r_diffuse_no_light_shader()
+                    self._build_ptde_diffuse_no_light_shader()
                     return
                 else:
-                    # PBR or Specular surface shader
-                    self._build_ds1r_standard_shader()
+                    # Dir3 or Env surface shader
+                    self._build_ptde_standard_shader()
                     return
         except MaterialImportError as ex:
             self.operator.warning(
-                f"Error building Dark Souls Remastered special shader for material '{self.matdef.name}' with shader "
+                f"Error building Prepare to Die Edition special shader for material '{self.matdef.name}' with shader "
                 f"'{self.matdef.shader_stem}'. Error:\n    {ex}"
             )
             return
         # Fall back to base node tree builder.
-        super(NodeTreeBuilder_DS1R, self).build()
+        super(NodeTreeBuilder_PTDE, self).build()
 
-    def _build_ds1r_standard_shader(self):
-        # PBR or Legacy workflow.
+    def _build_ptde_standard_shader(self):
+        # Tri-directional phong lighting, or cubemap environmental lighting shader (Dir3 or Env)
         self._build_primary_shader(node_group_name=
-                                   "DS1R Basic PBR"
-                                   if self.get_mtd_param("g_MaterialWorkflow", default=0) == 0
-                                   else "DS1R Basic Colored Spec",
+                                   "DS1 Standard Env Shader"
+                                   if self.get_mtd_param("g_LightingType", default=1) == 3
+                                   else "DS1 Standard Dir3 Shader",
                                    node_inputs=
                                    {
                                        "Diffuse Map": self._get_single_or_mixed_samplers(
@@ -91,11 +85,6 @@ class NodeTreeBuilder_DS1R(NodeTreeBuilder):
                                        "Specular Map": self._get_single_or_mixed_samplers(
                                            r"Main \d+ Specular",
                                            self.vertex_colors_nodes[0].outputs["Alpha"],
-                                       ),
-                                       "Specular Map Alpha": self._get_single_or_mixed_samplers(
-                                           r"Main \d+ Specular",
-                                           self.vertex_colors_nodes[0].outputs["Alpha"],
-                                           alpha=True
                                        ),
                                        "Normal": self._get_single_or_mixed_samplers(
                                            r"Main \d+ Normal",
@@ -129,13 +118,15 @@ class NodeTreeBuilder_DS1R(NodeTreeBuilder):
                                        "Specular Map Color": self._specular_map_color,
                                        "Specular Map Color Power": self.get_mtd_param(
                                            "g_SpecularMapColorPower", default=1),
+                                       "Specular Power": self.get_mtd_param(
+                                           "g_SpecularPower", default=2),
                                        "Light Map Influence":
                                            1 if self.tex_image_nodes.get("Lightmap", None)
                                            else 0
                                    },
                                    )
 
-    def _build_ds1r_diffuse_no_light_shader(self):
+    def _build_ptde_diffuse_no_light_shader(self):
         """This shader is used for objects that don't receive lighting, like the skybox.
         """
         self._build_primary_shader(node_group_name="Generic Diffuse No Light",
@@ -164,7 +155,7 @@ class NodeTreeBuilder_DS1R(NodeTreeBuilder):
                                    }
                                    )
 
-    def _build_ds1r_water_shader(self) -> bpy.types.ShaderNodeGroup:
+    def _build_ds1_water_shader(self) -> bpy.types.ShaderNodeGroup:
         """Water shader. Uses the texture in the normal map sampler as a heightmap, sampled at 3 different tile scales.
         """
         tile_image = self.tex_image_nodes.get("Main 0 Normal").image
@@ -205,73 +196,7 @@ class NodeTreeBuilder_DS1R(NodeTreeBuilder):
             outputs={0: self.output_surface},
         )
 
-    def _build_ds1r_snow_shader(self):
-        """Builds the DS1R Snow shader. The most complex one by far in terms of weird inputs. The subsurface scattering
-        and parallax occlusion are not accurately depicted (maybe in blender 5 when parallax is a built-in node)"""
-        height_image = self.tex_image_nodes.get("Main 0 Normal").image
-        uv_node = self.uv_nodes["UVTexture0"]
-        node_inputs = {
-            "Diffuse Map" : self._get_single_or_mixed_samplers(r"Main 0 Albedo"),
-            "Specular Map": self._get_single_or_mixed_samplers(r"Main 0 Specular"),
-            "Normal": self._get_single_or_mixed_samplers(r"Main 2 Normal", normal=True),
-            "Snow Detail": self._get_single_or_mixed_samplers(r"Main 1 Normal", normal=True),
-            "Light Map" : self._get_single_or_mixed_samplers(r"Lightmap"),
-        }
-        val_inputs = {
-            "Diffuse Map Color" : self._diffuse_map_color,
-            "Diffuse Map Color Power" : self.get_mtd_param("g_DiffuseMapColorPower", default=1),
-            "Specular Map Color": self._specular_map_color,
-            "Specular Map Color Power": self.get_mtd_param("g_SpecularMapColorPower", default=1),
-            "Snow Color" : self.get_mtd_param("g_SnowColor", default=(1, 1, 1, 1)),
-            "Snow Height" : self.get_mtd_param("g_SnowHeight", default=0.6),
-            "Diffuse Top Height": self.get_mtd_param("g_SnowDiffuseBlendTopHeight", default=0.15),
-            "Diffuse Bottom Height": self.get_mtd_param("g_SnowDiffuseBlendBottomHeight", default=0.1),
-            "Snow Delta Height Limit": self.get_mtd_param("g_SnowDeltaHeightLimit", default=0.02),
-        }
-        for i in range(0,3):
-            heightmap_node = self._new_tex_image_node("Snow Tile " + str(i), height_image)
-            uv_scale_node = self._new_tex_scale_node(
-                Vector2(
-                [self.get_mtd_param("g_SnowTileScale_" + str(i), default=1),
-                  self.get_mtd_param("g_SnowTileScale_" + str(i), default=1)]
-            )
-            , heightmap_node.location.y
-            )
-            self.link(uv_node.outputs["Vector"], uv_scale_node.inputs[0])
-            self.link(uv_scale_node.outputs["Vector"], heightmap_node.inputs[0])
-            node_inputs["Snow Tile Height " + str(i)] = heightmap_node.outputs["Color"]
-            val_inputs["Snow Tile Blend " + str(i)] = self.get_mtd_param("g_SnowTileBlend_" + str(i), default=0.1)
-
-        if "Lightmap" in self.tex_image_nodes:
-            #Reroute UVTexture1 to lightmap node. It's weird, but uv lightmap is NOT being used based on testing.
-            self.link(self.uv_nodes["UVTexture1"].outputs["Vector"], self.tex_image_nodes["Lightmap"].inputs["Vector"])
-            val_inputs["Light Map Influence"] = 1.0
-
-        if node_inputs["Snow Detail"]:
-            snow_detail_samp = self.tex_image_nodes["Main 1 Normal"]
-            uv_scale_node = self._new_tex_scale_node(
-                Vector2(
-                    [self.get_mtd_param("g_SnowDetailBumpTileScale", default=1),
-                     self.get_mtd_param("g_SnowDetailBumpTileScale", default=1)]
-                )
-                , snow_detail_samp.location.y
-            )
-            # Despite the mtd saying the detail bumpmap in g_Bumpmap_2 is UV #2 (UVTexture1), for some reason it
-            # actually uses UVTexture0 based on testing
-            self.link(uv_node.outputs["Vector"], uv_scale_node.inputs[0])
-            self.link(uv_scale_node.outputs["Vector"], snow_detail_samp.inputs[0])
-            #also means we have to set the normal map UV Map to UVTexture0
-            normal_node = node_inputs["Snow Detail"].node
-            normal_node.inputs["Strength"].default_value = self.get_mtd_param("g_SnowDetailBumpPower", default=0)
-            normal_node.uv_map = "UVTexture0"
-
-        if len(self.vertex_colors_nodes) > 0:
-            node_inputs["Vertex Colors Alpha"] = self.vertex_colors_nodes[0].outputs["Alpha"]
-        self._build_primary_shader("DS1 Snow Shader",
-                                   node_inputs=node_inputs,
-                                   mtd_param_values=val_inputs)
-
-    def _build_ds1r_normal_to_alpha_shader(self):
+    def _build_ds1_normal_to_alpha_shader(self):
         """Same as the diffuse no-light shader, but also fades out the object past certain viewing angles."""
         self._build_primary_shader(node_group_name="DS1R Normal to Alpha",
                                    node_inputs=
@@ -323,5 +248,3 @@ class NodeTreeBuilder_DS1R(NodeTreeBuilder):
         )
         combine_detail_node.hide = True
         return combine_detail_node.outputs[0]
-
-
