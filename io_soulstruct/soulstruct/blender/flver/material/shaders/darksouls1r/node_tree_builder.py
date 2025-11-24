@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from soulstruct.utilities.maths import Vector2
 
 from soulstruct.blender.exceptions import MaterialImportError
-from soulstruct.blender.flver.material.shaders.darksouls1ptde.ptde_node_tree_builder import NodeTreeBuilder as PTDENodeTreeBuilder
+from ..darksouls1ptde.node_tree_builder import NodeTreeBuilder as PTDENodeTreeBuilder
 
 
 @dataclass(slots=True)
