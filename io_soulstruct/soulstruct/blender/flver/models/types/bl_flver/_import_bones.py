@@ -51,6 +51,17 @@ def create_edit_bones(
 
         # We don't bother storing child or sibling bones. They are generated from parents on export.
         edit_bones.append(edit_bone)
+
+    # Set parent relationships. Any FLVER can have a true bone hierarchy. (For Map Pieces, this just means that child
+    # bone transforms are relative to parents.)
+    for game_bone, edit_bone in zip(flver.bones, edit_bones, strict=True):
+        if game_bone.parent_bone:
+            # Set bone parent in Blender.
+            parent_bone_index = game_bone.parent_bone.get_bone_index(flver.bones)
+            parent_edit_bone = edit_bones[parent_bone_index]
+            edit_bone.parent = parent_edit_bone
+            # edit_bone.use_connect = True
+
     return edit_bones
 
 
@@ -102,22 +113,23 @@ def write_flver_rest_pose_to_edit_bones(
                 # Unknown stub (slightly larger as it may actually be posed later).
                 edit_bone.length = 0.1
 
-        if game_bone.parent_bone:
-            # Set bone parent in Blender.
-            parent_bone_index = game_bone.parent_bone.get_bone_index(flver.bones)
-            parent_edit_bone = edit_bones[parent_bone_index]
-            edit_bone.parent = parent_edit_bone
-            # edit_bone.use_connect = True
-
 
 def write_data_to_custom_bone_prop_and_pose(
     flver: FLVER,
     armature: bpy.types.ArmatureObject,
 ):
+    """
+    Write FLVER bone rest pose data to custom bone properties (to ensure correct transfer) and pose bones for immediate
+    correct model display.
+
+    Typically used by Map Pieces, which often use bones to position vertex groups such as copy-pasted plants. Some
+    annoying map pieces also use bones for larger components like buildings. These bones may also be in a true hierarchy
+    (e.g. in m12_01_00_00 in Dark Souls), not just flat.
+    """
     bl_bone_transforms = []
     for game_bone in flver.bones:
-        # Note that we store the local bone transforms directly, without accumulating parent transforms.
-        # Typically, the FLVERs that use this have a flat hierarchy of root bones anyway.
+        # Note that we store the local bone transforms directly, without accumulating parent transforms (unlike when
+        # writing Edit Bone transforms). Final pose calculations will be done by Blender automatically.
         bl_bone_location = to_blender(game_bone.translate)
         bl_bone_rotation_euler = to_blender(game_bone.rotate)
         bl_bone_scale = to_blender(game_bone.scale)
