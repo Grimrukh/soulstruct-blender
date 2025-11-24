@@ -10,7 +10,6 @@ __all__ = [
     "clear_cached_matdefs",
 ]
 
-
 import typing as tp
 from pathlib import Path
 

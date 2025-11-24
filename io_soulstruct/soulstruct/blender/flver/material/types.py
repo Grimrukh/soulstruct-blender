@@ -17,7 +17,7 @@ from soulstruct.blender.types.utilities import add_auto_type_props
 from soulstruct.blender.utilities import LoggingOperator, get_bl_custom_prop, remove_dupe_suffix
 from soulstruct.blender.flver.image import DDSTexture, DDSTextureCollection
 from soulstruct.blender.flver.image.utilities import find_or_create_image
-from .shaders import NodeTreeBuilder, NodeTreeBuilder_DS1R, NodeTreeBuilder_DeS, NodeTreeBuilder_PTDE
+from . import shaders
 
 if tp.TYPE_CHECKING:
     from soulstruct.base.models.shaders import MatDef
@@ -217,16 +217,17 @@ class BlenderFLVERMaterial:
             sampler_texture_stems[sampler_name] = texture_stem.lower()
 
         if not copied:
-            print (context.scene.soulstruct_settings.game)
             # Try to build shader nodetree.
-            if context.scene.soulstruct_settings.is_game(DARK_SOULS_DSR):
-                builder_class = NodeTreeBuilder_DS1R
-            elif context.scene.soulstruct_settings.is_game(DEMONS_SOULS):
-                builder_class = NodeTreeBuilder_DeS
+            if context.scene.soulstruct_settings.is_game(DEMONS_SOULS):
+                builder_class = shaders.demonssouls.NodeTreeBuilder
             elif context.scene.soulstruct_settings.is_game(DARK_SOULS_PTDE):
-                builder_class = NodeTreeBuilder_PTDE
+                builder_class = shaders.darksouls1ptde.NodeTreeBuilder
+            elif context.scene.soulstruct_settings.is_game(DARK_SOULS_DSR):
+                builder_class = shaders.darksouls1r.NodeTreeBuilder
             else:
-                builder_class = NodeTreeBuilder
+                # No special shaders.
+                builder_class = shaders.BaseNodeTreeBuilder
+
             try:
                 builder = builder_class(
                     operator=operator,

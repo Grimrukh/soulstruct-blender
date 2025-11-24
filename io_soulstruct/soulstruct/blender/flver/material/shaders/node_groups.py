@@ -2,13 +2,14 @@ from __future__ import annotations
 
 __all__ = [
     "create_node_groups",
+    "try_add_node_group",
 ]
 
 import bpy
 
-from .enums import MathOperation
-from .node_tree import new_shader_math_node
 from soulstruct.blender.utilities.files import ADDON_PACKAGE_PATH
+from .enums import MathOperation
+from .utilities import new_shader_math_node
 
 
 def create_node_groups():
@@ -35,6 +36,18 @@ def create_node_groups():
         group = bpy.data.node_groups.new("Flip Green", 'ShaderNodeTree')
         group.use_fake_user = True
         _build_flip_green_node_group_tree(group)
+
+
+def try_add_node_group(node_group_name: str):
+    """Tries to add a node group to your file from the 'Shaders.blend' file, if it is not already added."""
+    if node_group_name in bpy.data.node_groups:
+        return
+    try:
+        shaders_blend_path = ADDON_PACKAGE_PATH("Shaders.blend")
+        with bpy.data.libraries.load(str(shaders_blend_path)) as (data_from, data_to):
+            data_to.node_groups = [node_group_name]
+    except:
+        raise Exception("Could not locate the specified node group inside the 'Shaders.blend' file.")
 
 
 def _build_specular_processing_node_group(tree: bpy.types.NodeTree, is_metallic: bool):
@@ -193,14 +206,3 @@ def _build_rg_normal_processing_node_group_tree(tree: bpy.types.NodeTree):
 
     # Output the resulting normal.
     tree.links.new(combine_rgb.outputs[0], group_out.inputs["Normal"])
-
-def try_add_node_group(node_group_name: str):
-    # Tries to add a node group to your file from the 'Shaders.blend' file, if it is not already added.
-    if node_group_name in bpy.data.node_groups:
-        return
-    try:
-        shaders_blend_path = ADDON_PACKAGE_PATH("Shaders.blend")
-        with bpy.data.libraries.load(str(shaders_blend_path)) as (data_from, data_to):
-            data_to.node_groups = [node_group_name]
-    except:
-        raise Exception("Could not locate the specified node group inside the 'Shaders.blend' file.")
