@@ -160,7 +160,7 @@ class NodeTreeBuilder(BaseNodeTreeBuilder):
             shader_inputs["Vertex Colors Alpha"] = self.vertex_colors_nodes[0].outputs["Alpha"]
 
         return self._new_bsdf_shader_node_group(
-            "DS1 Water",
+            "PTDE Water",
             inputs=shader_inputs,
             outputs={0: self.output_surface},
         )
@@ -169,7 +169,7 @@ class NodeTreeBuilder(BaseNodeTreeBuilder):
         """Same as the diffuse no-light shader, but also fades out the object past certain viewing angles."""
         vc_alpha = self.vertex_colors_nodes[0].outputs["Alpha"]
         self._build_primary_shader(
-            node_group_name="DS1 Normal to Alpha",
+            node_group_name="PTDE Normal to Alpha",
             node_inputs={
                 "Diffuse Map": self._get_mixed_texture_color(r"Main \d+ Albedo", vc_alpha),
                 "Diffuse Map Alpha": self._get_mixed_texture_alpha(r"Main \d+ Albedo", vc_alpha),
