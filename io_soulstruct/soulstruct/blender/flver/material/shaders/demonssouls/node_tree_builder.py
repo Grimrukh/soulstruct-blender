@@ -53,9 +53,9 @@ class NodeTreeBuilder(BaseNodeTreeBuilder):
     def _build_des_standard_shader(self):
         """Tri-directional Phong lighting, or cubemap environmental lighting shader (Dir3 or Env)."""
         node_group_name = (
-            "DS1 Standard Env Shader"
+            "PTDE Standard Env Shader"
             if self.get_mtd_param("g_LightingType", default=1) == 3
-            else "DS1 Standard Dir3 Shader"
+            else "PTDE Standard Dir3 Shader"
         )
         vc_alpha = self.vertex_colors_nodes[0].outputs["Alpha"]
 

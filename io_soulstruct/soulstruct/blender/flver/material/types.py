@@ -449,7 +449,7 @@ class BlenderFLVERMaterial:
         if use_map_piece_layout:
             array_layout = matdef.get_map_piece_layout()
         else:
-            array_layout = matdef.get_non_map_piece_layout()
+            array_layout = matdef.get_non_map_piece_layout(self.is_bind_pose)
 
         # We only respect 'Face Set Count' if requested in export options. (Duplicating the main face set is only
         # viable in older games with low-res meshes, but those same games don't even really need LODs anyway.)
