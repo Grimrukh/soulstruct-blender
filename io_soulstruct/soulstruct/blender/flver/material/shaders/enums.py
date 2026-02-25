@@ -34,9 +34,9 @@ class ShaderNodeType(StrEnum):
     CameraData = "ShaderNodeCameraData"
     Clamp = "ShaderNodeClamp"
     CombineColor = "ShaderNodeCombineColor"
-    CombineHSV = "ShaderNodeCombineHSV"
-    CombineRGB = "ShaderNodeCombineRGB"
-    CombineXYZ = "ShaderNodeCombineXYZ"
+    # CombineHSV = "ShaderNodeCombineHSV"  # REMOVED in Blender 5.0 (deprecated since Blender 3.3)
+    # CombineRGB = "ShaderNodeCombineRGB"  # REMOVED in Blender 5.0 (deprecated since Blender 3.3)
+    # CombineXYZ = "ShaderNodeCombineXYZ"  # REMOVED in Blender 5.0 (deprecated since Blender 3.3)
     CustomGroup = "ShaderNodeCustomGroup"
     Displacement = "ShaderNodeDisplacement"
     EeveeSpecular = "ShaderNodeEeveeSpecular"
@@ -74,9 +74,9 @@ class ShaderNodeType(StrEnum):
     RGBToBW = "ShaderNodeRGBToBW"
     Script = "ShaderNodeScript"
     SeparateColor = "ShaderNodeSeparateColor"
-    SeparateHSV = "ShaderNodeSeparateHSV"
-    SeparateRGB = "ShaderNodeSeparateRGB"
-    SeparateXYZ = "ShaderNodeSeparateXYZ"
+    # SeparateHSV = "ShaderNodeSeparateHSV"  # REMOVED in Blender 5.0 (deprecated since Blender 3.3)
+    # SeparateRGB = "ShaderNodeSeparateRGB"  # REMOVED in Blender 5.0 (deprecated since Blender 3.3)
+    # SeparateXYZ = "ShaderNodeSeparateXYZ"  # REMOVED in Blender 5.0 (deprecated since Blender 3.3)
     ShaderToRGB = "ShaderNodeShaderToRGB"
     Squeeze = "ShaderNodeSqueeze"
     SubsurfaceScattering = "ShaderNodeSubsurfaceScattering"

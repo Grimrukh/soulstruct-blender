@@ -5,49 +5,21 @@ __all__ = [
     "try_add_node_group",
 ]
 
+from enum import StrEnum
+
 import bpy
 
 from soulstruct.blender.utilities.files import ADDON_PACKAGE_PATH
-from .enums import MathOperation
+from .enums import ShaderNodeType, MathOperation
 from .utilities import new_shader_math_node
 
 
-def create_node_groups():
-    """One-off function for creating node groups for game-specific normal processing."""
-
-    if "Process Specular" not in bpy.data.node_groups:
-        group = bpy.data.node_groups.new("Process Specular", 'ShaderNodeTree')
-        group.use_fake_user = True
-        _build_specular_processing_node_group(group, is_metallic=False)
-
-    if "Process Specular (Metallic)" not in bpy.data.node_groups:
-        group = bpy.data.node_groups.new("Process Specular (Metallic)", 'ShaderNodeTree')
-        group.use_fake_user = True
-        _build_specular_processing_node_group(group, is_metallic=True)
-
-    if "Flip Green, Compute Blue" not in bpy.data.node_groups:
-        # For DSR.
-        group = bpy.data.node_groups.new("Flip Green, Compute Blue", 'ShaderNodeTree')
-        group.use_fake_user = True
-        _build_rg_normal_processing_node_group_tree(group)
-
-    if "Flip Green" not in bpy.data.node_groups:
-        # For most games.
-        group = bpy.data.node_groups.new("Flip Green", 'ShaderNodeTree')
-        group.use_fake_user = True
-        _build_flip_green_node_group_tree(group)
-
-
-def try_add_node_group(node_group_name: str):
-    """Tries to add a node group to your file from the 'Shaders.blend' file, if it is not already added."""
-    if node_group_name in bpy.data.node_groups:
-        return
-    try:
-        shaders_blend_path = ADDON_PACKAGE_PATH("Shaders.blend")
-        with bpy.data.libraries.load(str(shaders_blend_path)) as (data_from, data_to):
-            data_to.node_groups = [node_group_name]
-    except:
-        raise Exception("Could not locate the specified node group inside the 'Shaders.blend' file.")
+class SoulstructNodeGroup(StrEnum):
+    """All custom node groups defined by Soulstruct for game-specific shader processing."""
+    ProcessSpecular = "Process Specular"
+    ProcessSpecularMetallic = "Process Specular (Metallic)"
+    FlipGreenComputeBlue = "Flip Green, Compute Blue"
+    FlipGreen = "Flip Green"
 
 
 def _build_specular_processing_node_group(tree: bpy.types.NodeTree, is_metallic: bool):
@@ -79,18 +51,18 @@ def _build_specular_processing_node_group(tree: bpy.types.NodeTree, is_metallic:
     group_out.location = (200, 0)
 
     # Separate the incoming color into R, G, B.
-    sep_rgb = tree.nodes.new('ShaderNodeSeparateRGB')
+    sep_rgb = tree.nodes.new(ShaderNodeType.SeparateColor)  # default RGB
     sep_rgb.location = (-200, 0)
     tree.links.new(group_in.outputs["Color"], sep_rgb.inputs[0])
 
-    red_flip = new_shader_math_node(tree, MathOperation.SUBTRACT, (0, 150), 1.0, sep_rgb.outputs["R"])
+    red_flip = new_shader_math_node(tree, MathOperation.SUBTRACT, (0, 150), 1.0, sep_rgb.outputs["Red"])
     red_flip.name = red_flip.label = "Red Flip"
-    green_flip = new_shader_math_node(tree, MathOperation.SUBTRACT, (0, 0), 1.0, sep_rgb.outputs["G"])
+    green_flip = new_shader_math_node(tree, MathOperation.SUBTRACT, (0, 0), 1.0, sep_rgb.outputs["Green"])
     green_flip.name = green_flip.label = "Green Flip"
 
     tree.links.new(red_flip.outputs[0], group_out.inputs["Metallic" if is_metallic else "Specular IOR Level"])
     tree.links.new(green_flip.outputs[0], group_out.inputs["Roughness"])
-    tree.links.new(sep_rgb.outputs["B"], group_out.inputs["Transmission Weight"])  # not flipped
+    tree.links.new(sep_rgb.outputs["Blue"], group_out.inputs["Transmission Weight"])  # not flipped
 
 
 def _build_flip_green_node_group_tree(tree: bpy.types.NodeTree):
@@ -112,23 +84,23 @@ def _build_flip_green_node_group_tree(tree: bpy.types.NodeTree):
     group_out.location = (400, 0)
 
     # Separate the incoming color into R, G, B.
-    sep_rgb = tree.nodes.new('ShaderNodeSeparateRGB')
-    sep_rgb.location = (-200, 0)
-    tree.links.new(group_in.outputs["Color"], sep_rgb.inputs[0])
+    sep_color = tree.nodes.new(ShaderNodeType.SeparateColor)  # default RGB
+    sep_color.location = (-200, 0)
+    tree.links.new(group_in.outputs["Color"], sep_color.inputs[0])
 
     # Flip the G channel:
-    flip_g = new_shader_math_node(tree, MathOperation.SUBTRACT, (0, 0), 1.0, sep_rgb.outputs["G"])
+    flip_g = new_shader_math_node(tree, MathOperation.SUBTRACT, (0, 0), 1.0, sep_color.outputs["Green"])
     flip_g.label = "Flip"
 
     # Recombine R, flipped G, and B channels.
-    combine_rgb = tree.nodes.new('ShaderNodeCombineRGB')
-    combine_rgb.location = (200, 0)
-    tree.links.new(sep_rgb.outputs["R"], combine_rgb.inputs['R'])
-    tree.links.new(flip_g.outputs[0], combine_rgb.inputs['G'])  # flipped
-    tree.links.new(sep_rgb.outputs["B"], combine_rgb.inputs['B'])
+    combine_color = tree.nodes.new(ShaderNodeType.CombineColor)  # default RGB
+    combine_color.location = (200, 0)
+    tree.links.new(sep_color.outputs["Red"], combine_color.inputs["Red"])
+    tree.links.new(flip_g.outputs[0], combine_color.inputs["Green"])  # flipped
+    tree.links.new(sep_color.outputs["Blue"], combine_color.inputs["Blue"])
 
     # Output the resulting normal.
-    tree.links.new(combine_rgb.outputs[0], group_out.inputs["Normal"])
+    tree.links.new(combine_color.outputs[0], group_out.inputs["Normal"])
 
 
 def _build_rg_normal_processing_node_group_tree(tree: bpy.types.NodeTree):
@@ -153,20 +125,20 @@ def _build_rg_normal_processing_node_group_tree(tree: bpy.types.NodeTree):
     group_out.location = (2200, 0)
 
     # Separate the incoming color into R, G, B.
-    sep_rgb = tree.nodes.new('ShaderNodeSeparateRGB')
+    sep_rgb = tree.nodes.new(ShaderNodeType.SeparateColor)  # default RGB
     sep_rgb.location = (-200, 0)
     tree.links.new(group_in.outputs["Color"], sep_rgb.inputs[0])
 
     # Process the Red channel (X):
     #    X_temp = 2*R - 1
-    mult_r = new_shader_math_node(tree, MathOperation.MULTIPLY, (0, ry), input_0=sep_rgb.outputs["R"], input_1=2.0)
+    mult_r = new_shader_math_node(tree, MathOperation.MULTIPLY, (0, ry), input_0=sep_rgb.outputs["Red"], input_1=2.0)
     sub_r = new_shader_math_node(tree, MathOperation.SUBTRACT, (200, ry), input_0=mult_r.outputs[0], input_1=1.0)
     # sub_r output is X in [-1,1].
 
     # Process the Green channel:
     #    First flip: G' = 1 - G
     flip_g = new_shader_math_node(
-        tree, MathOperation.SUBTRACT, (0, gy), 1.0, sep_rgb.outputs["G"]
+        tree, MathOperation.SUBTRACT, (0, gy), 1.0, sep_rgb.outputs["Green"]
     )
     flip_g.label = "Flip"
     #    Then convert to [-1,1]: Y = 2*G' - 1
@@ -198,11 +170,41 @@ def _build_rg_normal_processing_node_group_tree(tree: bpy.types.NodeTree):
     output_b = new_shader_math_node(tree, MathOperation.MULTIPLY, (1800, -200), add_z.outputs[0], 0.5)
 
     # Recombine the remapped channels into one vector.
-    combine_rgb = tree.nodes.new('ShaderNodeCombineRGB')
+    combine_rgb = tree.nodes.new(ShaderNodeType.CombineColor)  # default RGB
     combine_rgb.location = (2000, 0)
-    tree.links.new(output_r.outputs[0], combine_rgb.inputs['R'])
-    tree.links.new(output_g.outputs[0], combine_rgb.inputs['G'])  # flipped
-    tree.links.new(output_b.outputs[0], combine_rgb.inputs['B'])  # computed
+    tree.links.new(output_r.outputs[0], combine_rgb.inputs["Red"])
+    tree.links.new(output_g.outputs[0], combine_rgb.inputs["Green"])  # flipped
+    tree.links.new(output_b.outputs[0], combine_rgb.inputs["Blue"])  # computed
 
     # Output the resulting normal.
     tree.links.new(combine_rgb.outputs[0], group_out.inputs["Normal"])
+
+
+# Soulstruct node groups, mapped to their builder functions (new groups should be passed in).
+_NODE_GROUP_BUILDERS = {
+    SoulstructNodeGroup.ProcessSpecular: lambda group: _build_specular_processing_node_group(group, is_metallic=False),
+    SoulstructNodeGroup.ProcessSpecularMetallic: lambda group: _build_specular_processing_node_group(group, is_metallic=True),
+    SoulstructNodeGroup.FlipGreenComputeBlue: _build_rg_normal_processing_node_group_tree,
+    SoulstructNodeGroup.FlipGreen: _build_flip_green_node_group_tree,
+}
+
+
+def create_node_groups():
+    """One-off function for creating node groups for game-specific normal processing."""
+    for soulstruct_node_group, builder in _NODE_GROUP_BUILDERS.items():
+        if soulstruct_node_group not in bpy.data.node_groups:
+            group = bpy.data.node_groups.new(soulstruct_node_group, 'ShaderNodeTree')
+            group.use_fake_user = True
+            builder(group)
+
+
+def try_add_node_group(node_group_name: str):
+    """Tries to add a node group to your file from the 'Shaders.blend' file, if it is not already added."""
+    if node_group_name in bpy.data.node_groups:
+        return
+    try:
+        shaders_blend_path = ADDON_PACKAGE_PATH("Shaders.blend")
+        with bpy.data.libraries.load(str(shaders_blend_path)) as (data_from, data_to):
+            data_to.node_groups = [node_group_name]
+    except:
+        raise Exception("Could not locate the specified node group inside the 'Shaders.blend' file.")
