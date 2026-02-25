@@ -11,6 +11,7 @@ from mathutils import Matrix, Quaternion, Vector
 
 from soulstruct.blender.exceptions import SoulstructTypeError
 from soulstruct.blender.flver.models.types import BlenderFLVER
+from soulstruct.blender.flver.models.types.enums import FLVERBoneDataType
 from soulstruct.blender.utilities import LoggingOperator
 
 
@@ -39,7 +40,7 @@ class BakeBonePoseToVertices(LoggingOperator):
         except SoulstructTypeError:
             return False
 
-        if not bl_flver.armature or bl_flver.bone_data_type != "PoseBone":
+        if not bl_flver.armature or bl_flver.bone_data_type != FLVERBoneDataType.CUSTOM:
             return False
 
         # At least one bone must be selected.
@@ -84,6 +85,8 @@ class BakeBonePoseToVertices(LoggingOperator):
             pose_bone.location = Vector((0.0, 0.0, 0.0))
             pose_bone.rotation_quaternion = Quaternion((1.0, 0.0, 0.0, 0.0))
             pose_bone.scale = Vector((1.0, 1.0, 1.0))
+
+        # TODO: Find any MSB Map Piece Part users and re-sync their Armatures too (by setting pose to origin).
 
         self.info(f"Baked pose of {len(affected_vertices)} vertices into mesh and reset bone pose(s) to origin.")
 
