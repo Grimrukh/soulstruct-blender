@@ -1,6 +1,7 @@
 """Install all scripts into Blender, along with `soulstruct`, `soulstruct-havok`, and required third-party modules."""
 import argparse
 import logging
+import os
 import shutil
 import subprocess
 import sys
@@ -24,7 +25,7 @@ def install_addon(
     install_soulstruct=True,
     editable_soulstruct=False,
     refresh_only: bool | None = None,
-):
+) -> int:
     """Copy `io_soulstruct` and (by default) `io_soulstruct_lib` into given `addons_dir` parent directory."""
 
     addons_dir = Path(addons_dir)
@@ -49,7 +50,7 @@ def install_addon(
     _LOGGER.info(f"Blender addon `io_soulstruct` installed to '{addons_dir}'.")
 
     if not install_soulstruct:
-        return  # done, just installing Blender scripts
+        return 0  # done, just installing Blender scripts
 
     # Full Soulstruct install.
 
@@ -102,7 +103,7 @@ def install_addon(
     if refresh_only:
         # No need to call `pip` below (we assume dependencies are already installed and point to correct paths).
         _LOGGER.info("Refreshing Soulstruct module paths only (no pip install).")
-        return
+        return 0
 
     try:
         subprocess.run(
@@ -113,9 +114,14 @@ def install_addon(
                 "--target", str(dest_modules_dir),
                 "--exists-action", "i",
                 "--upgrade-strategy", "only-if-needed",
+                "--disable-pip-version-check",
+                "--no-input",
+                "--retries", "10",
+                "--timeout", "60",
             ],
             stdout=sys.stdout,
             stderr=sys.stderr,
+            check=True,
         )
     except subprocess.CalledProcessError as ex:
         _LOGGER.error(
@@ -123,7 +129,9 @@ def install_addon(
             f"Ensure that `pip` is installed and available in your Python environment.\n"
             f"Error: {ex}"
         )
+        return 1
 
+    return 0
 
 PARSER = argparse.ArgumentParser(
     description="Install Soulstruct Blender add-on and (optionally) Soulstruct modules.",

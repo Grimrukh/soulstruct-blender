@@ -117,7 +117,7 @@ def zip_addon_release():
         zip_path,
         (src_io_soulstruct_dir, "io_soulstruct"),
         (soulstruct_root_path, "io_soulstruct_lib/soulstruct"),
-        # (havok_root_path, "io_soulstruct_lib/soulstruct-havok"),
+        (havok_root_path, "io_soulstruct_lib/soulstruct-havok"),
         ignore=_ALWAYS_IGNORE,
     )
     _LOGGER.info(f"Release created: {zip_path}")
