@@ -83,7 +83,7 @@ class MSBPartModelAdapter:
 
         # Create placeholder icosphere.
         mesh = bpy.data.meshes.new(model_name)
-        self._build_placeholder_mesh_pyramid_arrow(mesh)
+        self._build_placeholder_hedron(mesh)
         model = new_mesh_object(model_name, mesh, SoulstructType.MSB_MODEL_PLACEHOLDER)
         model.show_axis = True  # hard to tell orientation of placeholder icosphere otherwise
         placeholder_model_collection = find_or_create_collection(
@@ -93,7 +93,7 @@ class MSBPartModelAdapter:
         return model
 
     @staticmethod
-    def _build_placeholder_mesh_pyramid_arrow(mesh: bpy.types.Mesh):
+    def _build_placeholder_hedron(mesh: bpy.types.Mesh):
         verts = [
             (-0.2500, -0.2500, 0.0000),
             (0.2500, -0.2500, 0.0000),
