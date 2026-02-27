@@ -72,11 +72,17 @@ class SoulstructPanel(bpy.types.Panel):
     def draw_map_stem_choice(self, context: bpy.types.Context, layout: bpy.types.UILayout = None):
         layout = layout or self.layout
         map_box = layout.box()
+
         map_box.label(text="Choose Active Map:")
         map_box.prop(context.scene.soulstruct_settings, "map_stem", text="")
+
+
+        if context.scene.soulstruct_settings.is_game("ELDEN_RING"):
+            map_box.label(text="ER Map Selection Filter:")
+            map_box.prop(context.scene.soulstruct_settings, "er_map_filter_mode", text="")
+
         row = map_box.row()
         split = row.split(factor=0.5)
-
         # We avoid module circularity by using the raw `bl_idname`.
         split.column().operator("soulstruct.select_game_map_directory", text="Select Game Map")
         split.column().operator("soulstruct.select_project_map_directory", text="Select Project Map")

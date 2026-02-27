@@ -16,6 +16,7 @@ import bpy
 
 from soulstruct.blender.general.game_config import BLENDER_GAME_CONFIG
 from soulstruct.blender.utilities import *
+from soulstruct.games import ELDEN_RING
 
 if tp.TYPE_CHECKING:
     from .game_structure import GameStructure
@@ -66,6 +67,8 @@ class _SelectMapDirectory(LoggingOperator):
         extra_filter: tp.Callable[[str], bool] = None,
         get_map_desc: tp.Callable[[str], str] = None,
     ):
+        global _DETECTED_MAP_ENUM_ITEMS
+
         _DETECTED_MAP_ENUM_ITEMS.clear()
         for map_stem_folder in map_dir.glob(glob_str):
             map_stem = map_stem_folder.name
@@ -81,11 +84,17 @@ class _SelectMapDirectory(LoggingOperator):
 
             _DETECTED_MAP_ENUM_ITEMS.append((map_stem, map_stem, desc))
 
-    def set_map_options_eldenring(self, map_dir: Path, filter_mode: str):
+    @staticmethod
+    def set_map_options_eldenring(
+        map_dir: Path,
+        filter_mode: str,
+    ):
         """Elden Ring nests overworld maps under m60/m61, and checks an extra filter enum."""
 
+        global _DETECTED_MAP_ENUM_ITEMS
+
         def get_map_desc(map_stem: str):
-            return BLENDER_GAME_CONFIG["ELDEN_RING"].map_constants.get_map(map_stem).verbose_name
+            return BLENDER_GAME_CONFIG[ELDEN_RING].map_constants.get_map(map_stem).verbose_name
 
         if filter_mode.endswith("DUNGEONS"):
             # Dungeons. Possible extra area check.
@@ -97,30 +106,36 @@ class _SelectMapDirectory(LoggingOperator):
                     return 30 <= int(map_stem[1:3]) < 60
             else:
                 extra_filter = None
-            self.set_map_options(map_dir, extra_filter=extra_filter, get_map_desc=get_map_desc)
-            return
 
-        if filter_mode.startswith("OVERWORLD"):
-            # Check 'm60' subfolder.
-            glob_str = "m60/m60_??_??_"
-        elif filter_mode.startswith("DLC_OVERWORLD"):
-            # Check 'm61' subfolder.
-            glob_str = "m61/m61_??_??_"
-        else:
-            # Unrecognized.
-            return
+            # Glob with 'm??' subfolder.
+            glob_str = "m??/m??_??_??_??"
 
-        if filter_mode.endswith("_V1"):
-            glob_str += "1"
+        else:  # Overworld
+            if filter_mode.startswith("BASE_OVERWORLD"):
+                # Check 'm60' subfolder.
+                glob_str = "m60/m60_??_??_"
+            elif filter_mode.startswith("DLC_OVERWORLD"):
+                # Check 'm61' subfolder.
+                glob_str = "m61/m61_??_??_"
+            else:
+                # Unrecognized.
+                _DETECTED_MAP_ENUM_ITEMS.clear()
+                return
 
-        if "OVERWORLD_SMALL" in filter_mode:
-            glob_str += "0"
-        elif "OVERWORLD_MEDIUM" in filter_mode:
-            glob_str += "1"
-        elif "OVERWORLD_LARGE" in filter_mode:
-            glob_str += "2"
+            # Add version digit.
+            glob_str += "1" if filter_mode.endswith("_V1") else "0"
 
-        self.set_map_options(map_dir, glob_str, get_map_desc=get_map_desc)
+            # Add tile size digit.
+            if "OVERWORLD_SMALL" in filter_mode:
+                glob_str += "0"
+            elif "OVERWORLD_MEDIUM" in filter_mode:
+                glob_str += "1"
+            elif "OVERWORLD_LARGE" in filter_mode:
+                glob_str += "2"
+
+            extra_filter = None
+
+        _SelectMapDirectory.set_map_options(map_dir, glob_str, extra_filter=extra_filter, get_map_desc=get_map_desc)
 
     def invoke(self, context, _event):
         """Set the initial directory."""
@@ -133,7 +148,7 @@ class _SelectMapDirectory(LoggingOperator):
         map_dir = root.get_dir_path("map", if_exist=True)  # type: Path | None
         if not map_dir:
             return self.error(f"{self.SOURCE} 'map' directory not found.")
-        if settings.is_game("ELDEN_RING"):
+        if settings.is_game(ELDEN_RING):
             self.set_map_options_eldenring(map_dir, settings.er_map_filter_mode)
         else:
 

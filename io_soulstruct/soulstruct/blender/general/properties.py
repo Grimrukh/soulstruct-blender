@@ -235,24 +235,37 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
         name="Elden Ring Map Filter",
         description="Filter mode for Map Stem dropdown. Only used by Elden Ring",
         items=[
-            ("ALL_DUNGEONS", "All Dungeons Only (m10-m59)", "Show only dungeons (with DLC"),
-            ("LEGACY_DUNGEONS", "Legacy Dungeons Only (m10-m29)", "Show only legacy dungeons (with DLC)"),
-            ("GENERIC_DUNGEONS", "Generic Dungeons Only (m30-m59)", "Show only generic dungeons (with DLC)"),
+            ("ALL_DUNGEONS", "All Dungeons (m10-m59)", "Show all dungeons"),
+            ("LEGACY_DUNGEONS", "Legacy Dungeons (m10-m29)", "Show all legacy dungeons"),
+            ("GENERIC_DUNGEONS", "Generic Dungeons (m30-m59)", "Show all generic dungeons"),
+            ("ALL_BASE_DUNGEONS", "Base-Game Dungeons (m10-m59)", "Show all base-game dungeons"),
+            ("LEGACY_BASE_DUNGEONS", "Legacy Base Dungeons (m10-m29)", "Show all base-game legacy dungeons"),
+            ("GENERIC_BASE_DUNGEONS", "Generic Base Dungeons (m30-m59)", "Show all base-game generic dungeons"),
+            ("ALL_DLC_DUNGEONS", "All Dungeons (m10-m59)", "Show all DLC dungeons"),
+            ("LEGACY_DLC_DUNGEONS", "Legacy Dungeons (m10-m29)", "Show all DLC legacy dungeons"),
+            ("GENERIC_DLC_DUNGEONS", "Generic Dungeons (m30-m59)", "Show all DLC generic dungeons"),
 
-            ("OVERWORLD_SMALL", "Overworld (Small) Only", "Show only overworld small tiles"),
-            ("OVERWORLD_MEDIUM", "Overworld (Medium) Only", "Show only overworld medium tiles"),
-            ("OVERWORLD_LARGE", "Overworld (Large) Only", "Show only overworld large tiles"),
-            ("OVERWORLD_SMALL_V1", "Overworld (Small V1) Only", "Show only small tiles (version 1)"),
-            ("OVERWORLD_MEDIUM_V1", "Overworld (Medium V1) Only", "Show only medium tiles (version 1)"),
-            ("OVERWORLD_LARGE_V1", "Overworld (Large V1) Only", "Show only large tiles (version 1)"),
+            ("BASE_OVERWORLD_SMALL", "Base Overworld (Small)", "Show base-game overworld small tiles"),
+            ("BASE_OVERWORLD_MEDIUM", "Base Overworld (Medium)", "Show base-game overworld medium tiles"),
+            ("BASE_OVERWORLD_LARGE", "Base Overworld (Large)", "Show base-game overworld large tiles"),
+            ("BASE_OVERWORLD_SMALL_V1", "Base Overworld (Small V1)", "Show base-game overworld small tiles (version 1)"),
+            ("BASE_OVERWORLD_MEDIUM_V1", "Base Overworld (Medium V1)", "Show base-game overworld medium tiles (version 1)"),
+            ("BASE_OVERWORLD_LARGE_V1", "Base Overworld (Large V1)", "Show base-game overworld large tiles (version 1)"),
 
-            ("DLC_OVERWORLD_SMALL", "DLC Overworld (Small) Only", "Show only overworld small tiles"),
-            ("DLC_OVERWORLD_MEDIUM", "DLC Overworld (Medium) Only", "Show only overworld medium tiles"),
-            ("DLC_OVERWORLD_LARGE", "DLC Overworld (Large) Only", "Show only overworld large tiles"),
-            ("DLC_OVERWORLD_SMALL_V1", "DLC Overworld (Small) Only", "Show only overworld small tiles (version 1"),
-            ("DLC_OVERWORLD_MEDIUM_V1", "DLC Overworld (Medium) Only", "Show only overworld medium tiles (version 1"),
-            ("DLC_OVERWORLD_LARGE_V1", "DLC Overworld (Large) Only", "Show only overworld large tiles (version 1"),
+            ("DLC_OVERWORLD_SMALL", "DLC Overworld (Small)", "Show DLC overworld small tiles"),
+            ("DLC_OVERWORLD_MEDIUM", "DLC Overworld (Medium)", "Show DLC overworld medium tiles"),
+            ("DLC_OVERWORLD_LARGE", "DLC Overworld (Large)", "Show DLC overworld large tiles"),
+            ("DLC_OVERWORLD_SMALL_V1", "DLC Overworld (Small)", "Show DLC overworld small tiles (version 1"),
+            ("DLC_OVERWORLD_MEDIUM_V1", "DLC Overworld (Medium)", "Show DLC overworld medium tiles (version 1"),
+            ("DLC_OVERWORLD_LARGE_V1", "DLC Overworld (Large)", "Show DLC overworld large tiles (version 1"),
         ],
+    )
+
+    er_map_extra_filter_glob: bpy.props.StringProperty(
+        name="Elden Ring Map Extra Filter Glob",
+        description="Additional glob filter for Map Stem dropdown. Only used by Elden Ring and only applies to map stems "
+                    "that pass the standard filter.",
+        default="",
     )
 
     er_include_empty_map_tiles: bpy.props.BoolProperty(
