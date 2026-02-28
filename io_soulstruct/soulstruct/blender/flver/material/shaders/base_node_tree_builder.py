@@ -26,10 +26,6 @@ from .utilities import new_shader_node
 
 NODE_INPUT_VALUE_TYPING = tp.Union[str, int, tuple[int, ...], float, tuple[float, ...]]
 
-# Name of color output socket changed in Blender 5.0.
-_COLOR_OUTPUT_NAME = "Color" if bpy.app.version >= (5, 0, 0) else "RGBA"
-
-
 @dataclass(slots=True)
 class BaseNodeTreeBuilder:
     """Wraps a Blender `NodeTree` and adds utility methods for creating/linking nodes for FLVER materials.
@@ -617,7 +613,7 @@ class BaseNodeTreeBuilder:
                 tex_node2.outputs["Color"],
                 tex_node1.location[1],
                 mix_fac_input,
-                _COLOR_OUTPUT_NAME,
+                "RGBA",
             ).outputs["Result"]
 
         elif len(matches) == 1:
