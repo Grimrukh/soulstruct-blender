@@ -26,7 +26,6 @@ from .utilities import new_shader_node
 
 NODE_INPUT_VALUE_TYPING = tp.Union[str, int, tuple[int, ...], float, tuple[float, ...]]
 
-
 @dataclass(slots=True)
 class BaseNodeTreeBuilder:
     """Wraps a Blender `NodeTree` and adds utility methods for creating/linking nodes for FLVER materials.
