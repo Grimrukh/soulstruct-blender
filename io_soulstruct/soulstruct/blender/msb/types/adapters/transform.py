@@ -57,7 +57,7 @@ class MSBTransformFieldAdapter(FieldAdapter):
             bl_translate = to_blender(getattr(soulstruct_obj, "translate"))
             bl_obj.transform_obj.location = bl_translate  # local
         if "rotate" in field_names:
-            bl_rotate = to_blender(math.pi / 180.0 * getattr(soulstruct_obj, "rotate"))  # degrees to radians
+            bl_rotate = to_blender(getattr(soulstruct_obj, "rotate"))  # degrees
             bl_obj.transform_obj.rotation_euler = bl_rotate  # local
         if "scale" in field_names:
             bl_scale = to_blender(getattr(soulstruct_obj, "scale"))
