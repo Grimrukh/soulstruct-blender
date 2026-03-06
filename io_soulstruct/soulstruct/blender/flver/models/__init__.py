@@ -29,6 +29,7 @@ __all__ = [
     "CopyToNewFLVER",
     "RenameFLVER",
     "SelectMeshChildren",
+    "SyncMSBPartArmatures",
 
     "ActivateUVMap",
     "FastUVUnwrap",

@@ -23,6 +23,7 @@ from soulstruct.blender.utilities import *
 from ..bl_flver_dummy import BlenderFLVERDummy
 from ..enums import FLVERBoneDataType
 from ._create_materials import create_materials
+from ._duplicate import duplicate_armature
 from ._import_bones import *
 
 if tp.TYPE_CHECKING:
@@ -83,12 +84,31 @@ def create_bl_flver_from_flver(
         existing_bl_materials=existing_bl_materials,
     )
 
-    armature, bl_bone_data_type, bl_bone_names = _create_armature(command)
+    operator.to_object_mode(context)
 
-    if bpy.ops.object.mode_set.poll():
-        bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
+    import_settings = context.scene.flver_import_settings
+    existing_placeholder_msb_parts = []  # type: list[bpy.types.MeshObject]
+    placeholder_model = None  # type: bpy.types.MeshObject | None
+    if import_settings.replace_placeholder_model:
+        # Look for a Placeholder model to replace.
+        placeholder_model = find_obj(
+            name,
+            object_type=ObjectType.MESH,
+            soulstruct_type=SoulstructType.MSB_MODEL_PLACEHOLDER,
+            bl_name_func=get_model_name,
+        )
+        if placeholder_model:
+            operator.info(f"Replacing existing placeholder model '{placeholder_model.name}' with FLVER '{name}'.")
+            mesh_data = placeholder_model.data
+            # Clear mesh placeholder geometry. There should be no other data on it.
+            mesh_data.clear_geometry()
+            mesh_data.materials.clear()
+        else:
+            mesh_data = bpy.data.meshes.new(name=name)
+    else:
+        mesh_data = bpy.data.meshes.new(name=name)
 
-    mesh_data = bpy.data.meshes.new(name=command.name)
+    armature, bl_bone_data_type, bl_bone_names = _create_armature_if_needed(command)
 
     bl_materials, mesh = _create_bl_mesh(command, armature, bl_bone_names, mesh_data)
 
@@ -114,6 +134,8 @@ def create_bl_flver_from_flver(
             )
 
     bl_flver = cls(mesh)
+
+    # Assign bone data type, which will determine where exported bone data comes from.
     bl_flver.obj.FLVER.bone_data_type = bl_bone_data_type.value
 
     # Assign FLVER header properties.
@@ -149,15 +171,33 @@ def create_bl_flver_from_flver(
 
     bl_flver.mesh_vertices_merged = command.import_settings.merge_mesh_vertices
 
+    if placeholder_model:
+        # Sync with any MSB Part armatures that were using the Placeholder model's data.
+        # TODO: Sync needs to follow the same Part Armature rules, e.g. CUSTOM_ONLY.
+        #  In general, only Map Pieces need Part armatures to show their static pose.
+        #  Other parts only need Armatures if desired for part-specific animation (e.g. cutscenes).
+        synced_msb_parts = bl_flver.sync_msb_part_armatures(context)
+        if synced_msb_parts:
+            operator.info(
+                f"Updated {len(existing_placeholder_msb_parts)} MSB Parts that were using placeholder model '{name}'."
+            )
+        # Delete old Placeholder model object.
+        if placeholder_model:
+            bpy.data.objects.remove(placeholder_model)
+
     return bl_flver  # might be used by other importers
 
 
 def _create_bl_mesh(
     command: _CreateBlenderFLVERCommand,
-    armature: bpy.types.ArmatureObject,
+    armature: bpy.types.ArmatureObject | None,
     bl_bone_names: list[str],
     mesh_data: bpy.types.Mesh,
 ) -> tuple[list[BlenderFLVERMaterial], bpy.types.MeshObject]:
+    """Create Blender Mesh from FLVER sub-meshes.
+
+    This is the main workhorse function of FLVER import in Blender.
+    """
     if not command.flver.meshes:
         # FLVER has no meshes (e.g. c0000). Leave empty.
         mesh = new_mesh_object(f"{command.name} <EMPTY>", mesh_data, SoulstructType.FLVER)
@@ -222,7 +262,7 @@ def _create_bl_mesh(
     return bl_materials, mesh
 
 
-def _create_armature(
+def _create_armature_if_needed(
     command: _CreateBlenderFLVERCommand
 ) -> tuple[bpy.types.ArmatureObject | None, FLVERBoneDataType, list[str]]:
     if (

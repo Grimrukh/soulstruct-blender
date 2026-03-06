@@ -189,6 +189,7 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
         self,
         context: bpy.types.Context,
         child_mesh_obj: bpy.types.MeshObject,
+        as_data_instance=False,
         copy_pose=False,
     ) -> bpy.types.ArmatureObject:
         """Duplicate just the `armature` of this FLVER model. Mostly used internally during full duplication.
@@ -200,7 +201,7 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
 
         Does not rename anything.
         """
-        new_armature_obj = duplicate_armature(self, context, child_mesh_obj)
+        new_armature_obj = duplicate_armature(self, context, child_mesh_obj, as_data_instance)
         if copy_pose:
             context.view_layer.update()  # SLOW
             copy_armature_pose(self.armature, new_armature_obj)
@@ -235,6 +236,53 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
         As with `duplicate()`, nothing is renamed; the caller can do that as desired.
         """
         return duplicate_edit_mode(self, context, make_materials_single_user, copy_pose)
+
+    def sync_msb_part_armatures(self, context: bpy.types.Context) -> list[bpy.types.MeshObject]:
+        """Find all MSB Part instances that use this FLVER as their model, and sync their Armatures to this FLVER's
+        Armature. This may involve creating a new Armature for the Part."""
+
+        if not self.armature:
+            return []  # nothing to sync if no Armature (we don't delete out-of-sync MSB Part armatures)
+        bl_msb_part_users = self.find_msb_part_users()
+        if not bl_msb_part_users:
+            return []
+
+        # First pass: create any missing Armatures.
+        bl_msb_part_armatures = []
+        for bl_msb_part in bl_msb_part_users:
+            if bl_msb_part.parent and bl_msb_part.parent.type == "ARMATURE":
+                bl_msb_part_arma = bl_msb_part.parent
+                bl_msb_part_arma.data = self.armature.data  # assign new Armature data to existing Armature object
+            else:
+                if self.bone_data_type != FLVERBoneDataType.CUSTOM:
+                    # TODO: Baked policy: only create new Armatures for CUSTOM bone data (e.g. static Map Piece pose).
+                    continue
+
+                # Create Armature, name it, and move Part's transform from Mesh to it.
+                bl_msb_part_arma = self.duplicate_armature(context, bl_msb_part, as_data_instance=True, copy_pose=False)
+                bl_msb_part_arma.name = f"{bl_msb_part.name} Armature"
+                bl_msb_part_arma.location = bl_msb_part.location
+                bl_msb_part.location = (0, 0, 0)
+                bl_msb_part_arma.rotation_euler = bl_msb_part.rotation_euler
+                bl_msb_part.rotation_euler = (0, 0, 0)
+                bl_msb_part_arma.scale = bl_msb_part.scale
+                bl_msb_part.scale = (1, 1, 1)
+
+            bl_msb_part_armatures.append(bl_msb_part_arma)
+        if bl_msb_part_armatures:
+            # Update view layer ONCE to capture any newly-created armatures.
+            context.view_layer.update()  # SLOW
+        for bl_msb_part_arma in bl_msb_part_armatures:
+            copy_armature_pose(self.armature, bl_msb_part_arma)
+        return bl_msb_part_users
+
+    def find_msb_part_users(self) -> list[bpy.types.MeshObject]:
+        """Find all MSB Part objects using this FLVER's mesh as their data block."""
+        # noinspection PyTypeChecker
+        return [
+            obj for obj in bpy.data.objects
+            if obj.soulstruct_type == SoulstructType.MSB_PART and obj.data is self.data
+        ]
 
     @staticmethod
     def create_default_armature_parent(
@@ -282,12 +330,12 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
         If the FLVER has only a single bone with all-default properties for this game, and no Dummies, no Armature will
         be created and the Mesh will be the root object. This is useful for simple static models like map pieces.
 
-        `merged_mesh` can be created in advance (e.g. in parallel) and passed in directly for the corresponding `FLVER`.
-        If so, `bl_materials` must also be given, and should have been created in advance to get the `MergedMesh`
-        arguments anyway.
+        `existing_merged_mesh` can be created in advance (e.g. in parallel) and passed in directly for the corresponding
+        `FLVER`. If so, `existing_bl_materials` must also be given, and should have been created in advance to get the
+        `MergedMesh` arguments anyway.
 
         NOTE: FLVER (for DS1 at least) supports a maximum of 38 bones per sub-mesh. When this maximum is reached, a new
-        FLVER mesh is created. All of these sub-meshes are unified in Blender under the same material slot, and will
+        FLVER sub-mesh is created. All of these sub-meshes are unified in Blender under the same material slot, and will
         be split again on export as needed.
 
         Some FLVER meshes also use the same material, but have different `Mesh` or `FaceSet` properties such as

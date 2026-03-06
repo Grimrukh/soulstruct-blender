@@ -62,6 +62,7 @@ class FLVERModelToolsPanel(SoulstructPanel):
                 # noinspection PyTypeChecker
                 panel.prop_search(flver_tool_settings, "rebone_target_bone", bl_flver.armature.data, "bones")
                 panel.operator(ReboneVertices.bl_idname)
+                panel.operator(SyncMSBPartArmatures.bl_idname)
             elif bl_flver:
                 panel.label(text="Active FLVER model does not have an Armature parent.")
             else:

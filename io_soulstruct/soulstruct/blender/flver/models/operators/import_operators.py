@@ -81,6 +81,8 @@ class BaseFLVERImportOperator(LoggingImportOperator):
                         self.find_extra_textures(source_path, flver, image_import_manager)
                 for flver in binder_flvers:
                     # TODO: Sekiro does NOT use MATBIN, so this test needs to change.
+                    #  Unsure if there is a way to generically distinguish these FLVER files, though.
+                    #  Also, does AC6+ use MATBINBND?
                     if flver.version == FLVERVersion.Sekiro_EldenRing:
                         use_matbinbnd = True
                     flvers.append((flver.path_minimal_stem, flver))
@@ -92,9 +94,9 @@ class BaseFLVERImportOperator(LoggingImportOperator):
                 flvers.append((source_path.name.split(".")[0], flver))
 
         if use_matbinbnd:
-            self.info("Using MATBINBND for Elden Ring FLVERs.")
+            self.info("Using MATBINBND (FLVER is Elden Ring or newer).")
         else:
-            self.info("Using MTDBND for pre-Elden Ring FLVERs.")
+            self.info("Using MTDBND (FLVER is pre-Elden Ring).")
 
         settings = self.settings(context)
         collection = self.get_collection(context, Path(self.directory).name)

@@ -23,16 +23,20 @@ def duplicate_armature(
     bl_flver: BlenderFLVER,
     context: bpy.types.Context,
     child_mesh_obj: bpy.types.MeshObject,
+    as_data_instance=False,
 ) -> bpy.types.ArmatureObject:
     if not bl_flver.armature:
         # TODO: Could copy 'implicit Armature' by creating a single-bone Armature with the same name as the model.
         raise FLVERError("No Armature to duplicate for FLVER model.")
 
-    new_armature_obj = new_armature_object(bl_flver.armature.name, data=bl_flver.armature.data.copy())
+    new_armature_obj = new_armature_object(
+        bl_flver.armature.name,
+        data=bl_flver.armature.data if as_data_instance else bl_flver.armature.copy(),
+    )
     for collection in child_mesh_obj.users_collection:
         collection.objects.link(new_armature_obj)
     # No properties taken from Armature.
-    context.view_layer.objects.active = new_armature_obj
+    context.view_layer.objects.active = new_armature_obj  # TODO: remove? probably for old modifier strategy
 
     # We don't copy `PoseBone` data here, as it will be copied separately after all objects are duplicated.
 
@@ -81,7 +85,7 @@ def duplicate(
             new_mesh_obj.data.materials[i] = mat.copy()
 
     if bl_flver.armature:
-        new_armature_obj = bl_flver.duplicate_armature(context, new_mesh_obj, copy_pose)
+        new_armature_obj = bl_flver.duplicate_armature(context, new_mesh_obj, False, copy_pose)
     else:
         new_armature_obj = None
 
@@ -124,7 +128,7 @@ def duplicate_edit_mode(
             new_mesh_obj.data.materials[i] = mat.copy()
 
     if bl_flver.armature:
-        new_armature_obj = bl_flver.duplicate_armature(context, new_mesh_obj, copy_pose)
+        new_armature_obj = bl_flver.duplicate_armature(context, new_mesh_obj, False, copy_pose)
     else:
         new_armature_obj = None
 

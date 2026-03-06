@@ -331,6 +331,13 @@ class FLVERImportSettings(SoulstructPropertyGroup):
         default="HASHED",
     )
 
+    replace_placeholder_model: bpy.props.BoolProperty(
+        name="Replace Placeholder Model",
+        description="If a mesh in the 'Models > Placeholder Models' collection already exists in Blender for this "
+                    "FLVER, replace it with this imported model data and update any MSB Part users of the model. This "
+                    "may still involve creating a new Armature parent for the FLVER and MSB Parts",
+        default=True,
+    )
 
 class FLVERExportSettings(SoulstructPropertyGroup):
     """Common FLVER export settings. Drawn manually in operator browser windows."""

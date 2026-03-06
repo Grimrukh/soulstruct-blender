@@ -94,6 +94,7 @@ class MSBPartModelAdapter:
 
     @staticmethod
     def _build_placeholder_hedron(mesh: bpy.types.Mesh):
+        """This is a simple tall square pyramid with a forward-arrow (local -Z in game coordinates) on top."""
         verts = [
             (-0.2500, -0.2500, 0.0000),
             (0.2500, -0.2500, 0.0000),

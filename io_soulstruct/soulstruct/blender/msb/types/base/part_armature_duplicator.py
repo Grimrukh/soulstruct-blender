@@ -29,7 +29,7 @@ class PartArmatureDuplicator:
     """
 
     @classmethod
-    def maybe_duplicate_flver_model_armature(
+    def maybe_instance_flver_model_armature(
         cls,
         operator: LoggingOperator,
         context: bpy.types.Context,
@@ -37,7 +37,7 @@ class PartArmatureDuplicator:
         bl_part: BaseBlenderMSBPart,
         model: bpy.types.MeshObject,
     ) -> bool:
-        """Check `armature_mode` (and presence of `model`) and duplicate model Armature to Part accordingly."""
+        """Check `armature_mode` (and presence of `model`) and instance model Armature to Part accordingly."""
         if not model:
             # I don't think we need to log a warning here, as the missing Model will already be reported.
             return False
@@ -48,7 +48,7 @@ class PartArmatureDuplicator:
 
         if model.soulstruct_type != SoulstructType.FLVER:
             operator.warning(
-                f"MSB Part '{bl_part.name}' does not have a FLVER model to duplicate Armature from. (This non-FLVER "
+                f"MSB Part '{bl_part.name}' does not have a FLVER model to instance Armature from. (This non-FLVER "
                 f"Part class should not have a `PartArmatureDuplicator` instance!)"
             )
             return False  # definitely do not duplicate
@@ -71,11 +71,11 @@ class PartArmatureDuplicator:
         # TODO: To animate Parts "in place" in the MSB, need their root motion to ADD to Armature's transform.
         #  Easiest solution here is to give the Part Armature a "<ROOT>" bone to write root motion to.
         #  Harmless because we never export the Part Armature... except for the mythical Cutscene Export.
-        cls._duplicate_flver_model_armature(context, bl_part, bl_flver)
+        cls._instance_flver_model_armature(context, bl_part, bl_flver)
         return True
 
     @staticmethod
-    def _duplicate_flver_model_armature(
+    def _instance_flver_model_armature(
         context: bpy.types.Context,
         bl_part: BaseBlenderMSBPart,
         bl_flver: BlenderFLVER,
@@ -93,9 +93,9 @@ class PartArmatureDuplicator:
         else:
             # Duplicate model's Armature. This handles parenting, rigging, etc. We always copy the current Pose
             # (remember that the true FLVER static pose data is stored in custom `EditBone` properties).
-            armature_obj = bl_flver.duplicate_armature(context, bl_part.obj)
+            armature_obj = bl_flver.duplicate_armature(context, bl_part.obj, as_data_instance=True, copy_pose=False)
             # Rename duplicated Armature and new modifier (name always set to 'FLVER Armature' initially).
-            armature_obj.name = armature_obj.data.name = f"{bl_part.game_name} Armature"
+            armature_obj.name = f"{bl_part.game_name} Armature"
 
             # Create a new Bone called '<PART_ROOT>' and parent all other root bones to it.
             # This is to allow for root motion in the future.

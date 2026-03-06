@@ -135,7 +135,7 @@ class BaseBlenderMSBPart(
 
         if cls._MODEL_ADAPTER.bl_model_type == SoulstructType.FLVER:  # FLVER-based Parts only
             # Check if we should duplicate model's Armature to Part. We do this BEFORE setting the Part transform.
-            PartArmatureDuplicator.maybe_duplicate_flver_model_armature(
+            PartArmatureDuplicator.maybe_instance_flver_model_armature(
                 operator, context, armature_mode, bl_part, model
             )
 
@@ -171,7 +171,7 @@ class BaseBlenderMSBPart(
             raise ValueError("Part has no model to duplicate Armature from.")
 
         # If Armature is created, this will move the current local transform of the Mesh to the Armature.
-        created = PartArmatureDuplicator.maybe_duplicate_flver_model_armature(operator, context, mode, self, self.model)
+        created = PartArmatureDuplicator.maybe_instance_flver_model_armature(operator, context, mode, self, self.model)
 
         if copy_pose and created:
             context.view_layer.update()  # SLOW

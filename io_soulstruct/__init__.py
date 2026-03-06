@@ -223,6 +223,7 @@ CLASSES = (
     RotateUVMapCounterClockwise90,
     FindMissingTexturesInImageCache,
     SelectMeshChildren,
+    SyncMSBPartArmatures,
 
     FLVERMaterialSettings,
     MaterialToolSettings,

@@ -5,6 +5,7 @@ __all__ = [
     "CopyToNewFLVER",
     "RenameFLVER",
     "SelectMeshChildren",
+    "SyncMSBPartArmatures",
 ]
 
 import bpy
@@ -142,5 +143,38 @@ class SelectMeshChildren(LoggingOperator):
         if context.selected_objects[0]:
             # Set active object to first selected object.
             bpy.context.view_layer.objects.active = context.selected_objects[0]
+
+        return {"FINISHED"}
+
+
+class SyncMSBPartArmatures(LoggingOperator):
+    """Sync the Armature of all FLVER models that are instanced by MSB Parts. Only works for MSB Map Piece ('m*') parts
+    currently."""
+    bl_idname = "object.sync_msb_part_armatures"
+    bl_label = "Sync MSB Part Armatures"
+    bl_description = (
+        "For all MSB Parts that instance the selected FLVER model's mesh, set the Part's Armature to the same "
+        "as the FLVER and copy over any pose set in the FLVER. This may create a new Armature"
+    )
+
+    @classmethod
+    def poll(cls, context) -> bool:
+        if not context.mode == "OBJECT":
+            return False
+        bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
+        if not bl_flver:
+            return False
+        if not bl_flver.armature:
+            return False  # no Armature to sync with
+        return True
+
+    def execute(self, context):
+        bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
+        if not bl_flver.armature:
+            return self.error("Active FLVER model has no Armature to sync.")
+
+        msb_parts = bl_flver.sync_msb_part_armatures(context)
+
+        self.info(f"Synchronized Armatures of {len(msb_parts)} MSB Parts to FLVER model '{bl_flver.name}'.")
 
         return {"FINISHED"}
