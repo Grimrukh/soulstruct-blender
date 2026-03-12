@@ -36,7 +36,20 @@ class FLVERPropsPanel(SoulstructPanel):
         elif FLVERVersion[bl_flver.version].is_flver0():
             prop_names = flver_props.FLVER0_PROP_NAMES
         else:
-            prop_names = flver_props.FLVER2_PROP_NAMES
+            prop_names = list(flver_props.FLVER2_PROP_NAMES)
+            # Put `f2_unk_*` props under a collapsed section.
+            header, panel = self.layout.panel("FLVER2 Unknowns", default_closed=True)
+            header.label(text="FLVER2 Unknowns")
+            for f2_unk_prop in (
+                "f2_unk_x4a",
+                "f2_unk_x4c",
+                "f2_unk_x5c",
+                "f2_unk_x5d",
+                "f2_unk_x68",
+            ):
+                prop_names.remove(f2_unk_prop)
+                if panel:
+                    panel.prop(flver_props, f2_unk_prop)
 
         for prop in prop_names:
             if prop == "mesh_vertices_merged":
