@@ -18,6 +18,8 @@ from pathlib import Path
 
 import bpy
 
+from soulstruct.flver import FLVERVersion
+
 from soulstruct.blender.bpy_base.property_group import SoulstructPropertyGroup
 from soulstruct.blender.types import SoulstructType, is_active_obj_typed_mesh_obj
 from soulstruct.blender.utilities import LoggingOperator
@@ -38,8 +40,8 @@ class MaterialToolSettings(SoulstructPropertyGroup):
 
     use_model_stem_in_material_name: bpy.props.BoolProperty(
         name="Use Model Stem in Material Name",
-        description="Include the model stem in the auto-generated material name (if no other FLVERs use it). Can "
-                    "easily exceed 63-chr limit",
+        description="Include the model stem in the auto-generated material name (if no other FLVERs use it). This "
+                    "can easily exceed the 63-chr name limit",
         default=False,
     )
 
@@ -54,12 +56,6 @@ class MaterialToolSettings(SoulstructPropertyGroup):
         description="If the material with the auto-generated name already exists and is identical to the one on this "
                     "object, change this material to the existing one rather than renaming",
         default=True,
-    )
-
-    clean_up_ignores_face_set_count: bpy.props.BoolProperty(
-        name="Clean Up Ignores Face Set Count",
-        description="Ignore material (FLVER mesh) Face Set Count when considering identical materials",
-        default=False,
     )
 
 
@@ -216,7 +212,8 @@ class MergeFLVERMaterials(LoggingOperator):
 
         # Maps material hashes to their single merged instances (copied from first instance found).
         merged_materials = {}
-        # Merged material created if it already appears in this set.
+        # First material found for each hash. Merged material created if it already appears in this set
+        # (and is not literally the same material already).
         found_materials = {}
 
         # Store all material hashes for all objects. List index will be used to replace `obj.data.materials[i]` later.
@@ -229,20 +226,35 @@ class MergeFLVERMaterials(LoggingOperator):
                 if not material:
                     continue  # empty slot
                 flver_material = BlenderFLVERMaterial(material)
-                material_hash = self.get_material_hash(flver_material)
+                # TODO: May want to assert FLVER2 hash here, as otherwise this is destructive for switching back to
+                #  FLVER2 using the same materials (probably rare/difficult already).
+                if obj.FLVER.version == "DEFAULT":
+                    is_flver0 = context.scene.soulstruct_settings.is_game("DEMONS_SOULS")
+                else:
+                    is_flver0 = FLVERVersion[obj.FLVER.version].is_flver0()
+                material_hash = flver_material.get_hash(is_flver0=is_flver0)
+
                 obj_material_hashes.append(material_hash)
 
                 if material_hash in merged_materials:
                     continue  # merged material already created; will be replaced in second pass
-                if material_hash in found_materials:
-                    # Create merged material.
-                    merged_materials[material_hash] = merged_material = material.copy()
-                    merged_material.name = self.get_merged_material_name(flver_material)
-                    self.info(f"Created merged material: {merged_material.name}")
+
+                if material_hash not in found_materials:
+                    # Hash found for the first time. We store the material in case we still want to rename it below.
+                    found_materials[material_hash] = material
                     continue
 
-                # Hash found for the first time. We store the material in case we still want to rename it below.
-                found_materials[material_hash] = material
+                if material is found_materials[material_hash]:
+                    # Already exact same material. Do not create merged material yet. If a merged material ends up
+                    # being made because of a same-hash, different-material user found later, this will still be
+                    # redirected to the new merged material based on its hash in the second pass.
+                    continue
+
+                # Two (or more) different materials found with same hash. Create merged material.
+                merged_materials[material_hash] = merged_material = material.copy()
+                merged_material.name = self.get_merged_material_name(flver_material)
+                self.info(f"Created merged material: {merged_material.name}")
+                continue
 
         # Now replace all appropriate materials with merged materials.
         for obj in flver_objects:
@@ -256,6 +268,7 @@ class MergeFLVERMaterials(LoggingOperator):
                 if material_hash in merged_materials:
                     continue  # merged material was created above
                 # This is a unique material that was not merged with any other material. We rename it anyway as asked.
+                # Note that there may be multiple users of this unique material - all will see the name change.
                 material.name = self.get_merged_material_name(BlenderFLVERMaterial(material))
 
         self.info(f"Created {len(merged_materials)} merged materials across {len(flver_objects)} objects.")
@@ -301,33 +314,6 @@ class MergeFLVERMaterials(LoggingOperator):
         mat_name += ">"
 
         return mat_name
-
-    @staticmethod
-    def get_material_hash(material: BlenderFLVERMaterial) -> int:
-        """Hash all FLVER material properties and texture names.
-
-        Rules for hash equality:
-            - All `FLVER_MATERIAL` properties must be the same, including "face_set_count".
-            - `use_backface_culling` must be the same.
-            - All texture slots AND names must be the same.
-            - Any materials with ANY GXItems are considered different. TODO: Not that hard to check, though.
-        """
-        hash_list = [material.use_backface_culling]  # type: list[bool | int | float | tuple]
-
-        for mat_prop in (
-            "flags",
-            "mat_def_path",
-            "f2_unk_x18",
-            "is_bind_pose",
-            "default_bone_index",
-            "face_set_count",
-        ):
-            hash_list.append(getattr(material, mat_prop))
-
-        for sampler_name, texture_name in material.get_texture_name_dict().items():
-            hash_list.append((sampler_name, texture_name))
-
-        return hash(tuple(hash_list))
 
 
 class AddMaterialGXItem(bpy.types.Operator):

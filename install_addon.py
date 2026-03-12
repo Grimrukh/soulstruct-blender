@@ -1,7 +1,6 @@
 """Install all scripts into Blender, along with `soulstruct`, `soulstruct-havok`, and required third-party modules."""
 import argparse
 import logging
-import os
 import shutil
 import subprocess
 import sys
@@ -113,7 +112,7 @@ def install_addon(
                 "-e", str(havok_install_path),
                 "--target", str(dest_modules_dir),
                 "--exists-action", "i",
-                "--upgrade-strategy", "only-if-needed",
+                "--upgrade",
                 "--disable-pip-version-check",
                 "--no-input",
                 "--retries", "10",

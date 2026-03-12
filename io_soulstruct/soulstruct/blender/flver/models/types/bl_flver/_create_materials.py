@@ -80,17 +80,15 @@ def create_materials(
             operator.info("No imported textures or PNG cache folder given. No textures loaded for FLVER.")
 
     # Maps FLVER meshes to their Blender material index to store per-face in the merged mesh.
-    # Meshes that originally indexed the same FLVER material may have different Blender 'variant' materials that
-    # hold certain Mesh/FaceSet properties like `use_backface_culling`.
-    # Conversely, Meshes that only serve to handle per-mesh bone maximums (e.g. 38 in DS1) will use the same
-    # Blender material and be split again automatically on export (but likely not in an indentical way!).
+    # FLVER meshes that only serve to handle per-mesh bone maximums (e.g. 38 in DS1) will use the same
+    # Blender material and be split again automatically on export (but likely not in an identical way!).
     mesh_bl_material_indices = []
     # UV layer names used by each Blender material index (NOT each FLVER mesh).
     bl_material_uv_layer_names = []  # type: list[tuple[str, ...]]
 
-    # Map FLVER material hashes to the indices of variant Blender materials sourced from them, which hold distinct
-    # Mesh/FaceSet properties.
-    flver_material_hash_variants = {}
+    # Map FLVER material hashes to the index of the Blender material sourced from them.
+    # If the hash matches AND backface culling matches, this material can be shared across submeshes.
+    flver_material_hash_first_mat = {}  # type: dict[int, int]
 
     # Map FLVER material hashes to their generated `MatDef` instances.
     flver_matdefs = {}  # type: dict[int, MatDef | None]
@@ -126,13 +124,11 @@ def create_materials(
         material_hash = hash(material)  # NOTE: if there are duplicate FLVER materials, this will combine them
         vertex_color_count = len([f for f in mesh.vertices.dtype.names if "color" in f])
 
-        if material_hash not in flver_material_hash_variants:
+        if material_hash not in flver_material_hash_first_mat:
             # First time this FLVER material has been encountered. Create it in Blender now.
             # NOTE: Vanilla material names are unused and essentially worthless. They can also be the same for
-            #  materials that actually use different lightmaps, EVEN INSIDE the same FLVER model. Names are changed
-            #  here to just reflect the index. The original name is NOT kept to avoid stacking up formatting on
-            #  export/import and because it is so useless anyway.
-            flver_material_index = len(flver_material_hash_variants)
+            #  materials that actually use different lightmaps, EVEN INSIDE the same FLVER model.
+            flver_material_index = len(flver_material_hash_first_mat)
             bl_material_index = len(new_materials)
             matdef = flver_matdefs[material_hash]
 
@@ -157,7 +153,7 @@ def create_materials(
             )
 
             mesh_bl_material_indices.append(bl_material_index)
-            flver_material_hash_variants[material_hash] = [bl_material_index]
+            flver_material_hash_first_mat[material_hash] = bl_material_index
 
             new_materials.append(bl_material)
             if matdef:
@@ -169,47 +165,20 @@ def create_materials(
                 bl_material_uv_layer_names.append(())
             continue
 
-        existing_variant_bl_indices = flver_material_hash_variants[material_hash]
-
-        # Check if Blender material needs to be duplicated as a variant with different Mesh properties.
-        found_existing_material = False
-        for existing_bl_material_index in existing_variant_bl_indices:
-            # NOTE: We do not care about enforcing any maximum mesh local bone count in Blender! The FLVER
-            # exporter will create additional split meshes as necessary for that.
-            existing_bl_material = new_materials[existing_bl_material_index]
-            if (
-                existing_bl_material.is_bind_pose == mesh.is_bind_pose
-                and existing_bl_material.default_bone_index == mesh.default_bone_index
-                and existing_bl_material.face_set_count == len(mesh.face_sets)
-                and existing_bl_material.use_backface_culling == mesh.use_backface_culling
-            ):
-                # Blender material already exists with the same Mesh properties. No new variant neeed.
-                mesh_bl_material_indices.append(existing_bl_material_index)
-                found_existing_material = True
-                break
-
-        if found_existing_material:
+        # Check if material can be re-used (backface culling matches).
+        existing_bl_material_index = flver_material_hash_first_mat[material_hash]
+        existing_bl_material = new_materials[existing_bl_material_index]
+        if existing_bl_material.use_backface_culling == mesh.use_backface_culling:
+            # Backface culling matches. This material can be shared across submeshes, even if other properties differ.
+            mesh_bl_material_indices.append(existing_bl_material_index)
             continue
 
-        # No match found. New Blender material variant is needed to hold unique mesh data.
-        # Since the most common cause of a variant is backface culling being enabled vs. disabled, that difference
-        # gets its own prefix: we add ' <BC>' to the end of whichever variant has backface culling enabled.
-        variant_index = len(existing_variant_bl_indices)
-        first_material = new_materials[existing_variant_bl_indices[0]]
-        variant_name = first_material.name + f" <V{variant_index}>"  # may be replaced below
-
-        if (
-            first_material.is_bind_pose == mesh.is_bind_pose
-            and first_material.default_bone_index == mesh.default_bone_index
-            and first_material.face_set_count == len(mesh.face_sets)
-            and first_material.use_backface_culling != mesh.use_backface_culling
-        ):
-            # Only difference is backface culling. We mark 'BC' on the one that has it enabled.
-            if first_material.use_backface_culling:
-                variant_name = first_material.name  # swap with first material's name (no BC)
-                first_material.name += f" <V{variant_index}, BC>"
-            else:
-                variant_name = first_material.name + f" <V{variant_index}, BC>"  # instead of just variant index
+        if mesh.use_backface_culling:
+            # Retroactively mark the existing material as backface-culling variant.
+            variant_name = existing_bl_material.name
+            existing_bl_material.name += " <BC>"
+        else:
+            variant_name = existing_bl_material.name + " <BC>"
 
         bl_material = BlenderFLVERMaterial.new_from_flver_material(
             operator,
@@ -226,7 +195,6 @@ def create_materials(
 
         new_bl_material_index = len(new_materials)
         mesh_bl_material_indices.append(new_bl_material_index)
-        flver_material_hash_variants[material_hash].append(new_bl_material_index)
         new_materials.append(bl_material)
         if flver_matdefs[material_hash] is not None:
             bl_material_uv_layer_names.append(

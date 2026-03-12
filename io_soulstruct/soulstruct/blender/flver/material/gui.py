@@ -21,6 +21,14 @@ if tp.TYPE_CHECKING:
     from .properties import FLVERGXItemProps
 
 
+def is_flver_or_flver_msb_part(obj: bpy.types.Object) -> bool:
+    if obj.soulstruct_type == SoulstructType.FLVER:
+        return True
+    if obj.soulstruct_type == SoulstructType.MSB_PART and obj.MSB_PART.entry_subtype_enum.is_flver():
+        return True
+    return False
+
+
 class FLVERGXItemUIList(bpy.types.UIList):
     """Draws a list of `GXItem` elements."""
 
@@ -66,7 +74,10 @@ class FLVERMaterialPropsPanel(SoulstructPanel):
     @classmethod
     def poll(cls, context):
         obj = context.active_object
-        if obj is None or obj.soulstruct_type != SoulstructType.FLVER:
+        if obj is None:
+            return False
+        # Show for FLVERs or MSB FLVER instances only.
+        if not is_flver_or_flver_msb_part(obj):
             return False
         return obj.active_material is not None
 
@@ -129,7 +140,6 @@ class FLVERMaterialToolsPanel(SoulstructPanel):
             material_tool_settings = context.scene.material_tool_settings
             panel.prop(material_tool_settings, "use_model_stem_in_material_name")
             panel.prop(material_tool_settings, "clean_up_identical")
-            panel.prop(material_tool_settings, "clean_up_ignores_face_set_count")
             panel.operator(AutoRenameMaterials.bl_idname)
             panel.operator(MergeFLVERMaterials.bl_idname)
             active_object = context.active_object

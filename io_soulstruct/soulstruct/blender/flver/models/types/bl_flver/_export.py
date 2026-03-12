@@ -228,10 +228,10 @@ def _create_flver_from_bl_flver(command: _CreateFLVERCommand) -> FLVER:
 
     # TODO: Bone bounding box space seems to be always local to the bone for characters and always in armature space
     #  for map pieces. Not sure about objects, could be some of each (haven't found any non-origin bones that any
-    #  vertices are weighted to with `is_bind_pose=True`). This is my temporary hack since we are already using
+    #  vertices are weighted to with `is_dynamic=True`). This is my temporary hack since we are already using
     #  'read_bone_type == FLVERBoneDataType.POSE' as a marker for map pieces.
     # TODO: Better heuristic is likely to use the bone weights themselves (missing or all zero -> armature space).
-    # TODO: At least one object with all `is_bind_pose = False` (o1154 in DSR) has 'undefined' bone bounding boxes (i.e.
+    # TODO: At least one object with all `is_dynamic = False` (o1154 in DSR) has 'undefined' bone bounding boxes (i.e.
     #  SINGLE_MAX for min and SINGLE_MIN for max).
     command.flver.refresh_bone_bounding_boxes(in_local_space=bl_bone_data_type == FLVERBoneDataType.EDIT)
 
@@ -256,6 +256,9 @@ def _create_flver_meshes(
 
     Also creates `Material` and `VertexArrayLayout` instances for each Blender material, and assigns them to the
     appropriate `FLVERMesh` instances. Any duplicate instances here will be merged when FLVER is packed.
+
+    We only respect Face Set Count > 1 if requested in export options. (Duplicating the main face set is only
+    viable in older games with low-res meshes, but those same games don't even really need LODs anyway.)
     """
 
     # 1. Create per-mesh info. Note that every Blender material index is guaranteed to be mapped to AT LEAST ONE
@@ -264,6 +267,40 @@ def _create_flver_meshes(
     split_mesh_defs = []  # type: list[SplitMeshDef]
 
     bl_materials = command.bl_flver.get_materials()
+    if len(matdefs) != len(bl_materials):
+        raise FLVERExportError(
+            f"Number of Blender materials ({len(bl_materials)}) does not match number of material definitions "
+            f"({len(matdefs)}). This should never happen, please report this to Grimrukh!"
+        )
+
+    # Decide if we should use per-submesh properties or global submesh properties.
+    flver_props = command.bl_flver.type_properties
+    flver_mesh_kwargs = []
+    if len(flver_props.submesh_props) > 0:
+        if len(flver_props.submesh_props) != len(bl_materials):
+            raise FLVERExportError(
+                f"Number of submesh properties ({len(flver_props.submesh_props)}) does not match number of Blender materials "
+                f"({len(bl_materials)})."
+            )
+        for i, s in enumerate(flver_props.submesh_props):
+            flver_mesh_kwargs.append({
+                "is_dynamic": s.is_dynamic,
+                "default_bone_index": s.default_bone_index,
+                "face_set_count": s.face_set_count if command.export_settings.create_lod_face_sets else 1,
+                "use_backface_culling": s.resolve_use_backface_culling(bl_materials[i].material.use_backface_culling),
+                "f0_unk_x46": 0,  # TODO: not sure what this is yet and haven't seen non-zero
+                "uses_bounding_boxes": True,  # enabled even for FLVER0 versions
+            })
+    else:
+        # Same kwargs for all FLVER meshes.
+        flver_mesh_kwargs = [{
+            "is_dynamic": flver_props.global_is_dynamic,
+            "default_bone_index": flver_props.global_default_bone_index,
+            "face_set_count": flver_props.global_face_set_count if command.export_settings.create_lod_face_sets else 1,
+            "use_backface_culling": bl_materials[i].material.use_backface_culling,  # always use material
+            "f0_unk_x46": 0,
+            "uses_bounding_boxes": True,
+        } for i in range(len(bl_materials))]
 
     if command.settings.is_game(DEMONS_SOULS):
         # Use absolute texture path prefix, featuring model stem and other subdirectories.
@@ -273,16 +310,16 @@ def _create_flver_meshes(
         # Paths in later games are just naked file names.
         get_texture_path_prefix = None
 
-    for matdef, bl_material in zip(matdefs, bl_materials, strict=True):
+    for matdef, bl_material, mesh_kwargs in zip(matdefs, bl_materials, flver_mesh_kwargs, strict=True):
         bl_material: BlenderFLVERMaterial
         split_mesh_def = bl_material.to_split_mesh_def(
             command.operator,
             command.context,
-            command.export_settings.create_lod_face_sets,
             matdef,
-            use_map_piece_layout,
-            command.texture_collection,
-            get_texture_path_prefix,
+            use_map_piece_layout=use_map_piece_layout,
+            mesh_kwargs=mesh_kwargs,
+            texture_collection=command.texture_collection,
+            get_texture_path_prefix=get_texture_path_prefix,
         )
         split_mesh_defs.append(split_mesh_def)
 

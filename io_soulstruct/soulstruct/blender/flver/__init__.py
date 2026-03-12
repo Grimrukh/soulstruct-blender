@@ -61,6 +61,8 @@ __all__ = [
     "RenameFLVER",
     "SelectMeshChildren",
     "SyncMSBPartArmatures",
+    "ClearFLVERSubmeshProperties",
+    "AddFLVERSubmeshProperties",
 
     "ActivateUVMap",
     "FastUVUnwrap",
@@ -86,11 +88,13 @@ __all__ = [
     # endregion
 
     # region Properties
+    "FLVERSubmeshProps",
     "FLVERProps",
     "FLVERDummyProps",
     "FLVERBoneProps",
     "FLVERImportSettings",
     "FLVERExportSettings",
+    "flver_submesh_sync_handler",
     # endregion
 
     # region Types

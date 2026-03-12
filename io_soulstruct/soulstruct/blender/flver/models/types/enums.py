@@ -9,8 +9,8 @@ from enum import Enum, StrEnum
 class FLVERBoneDataType(StrEnum):
     """Indicates where FLVER bone data is kept in Blender:
 
-        Edit bones ('is_bind_pose = True' rigged meshes - Characters, Equipment, and most Objects)
-        Custom FLVER bone data ('is_bind_pose = False' unrigged meshes - Map Pieces and some Objects)
+        Edit bones ('is_dynamic = True' rigged meshes - Characters, Equipment, and most Objects)
+        Custom FLVER bone data ('is_dynamic = False' unrigged meshes - Map Pieces and some Objects)
         Omitted (ignored) - FLVER has one default bone that can be ignored for simplicity (most Map Pieces)
     """
     EDIT = "EditBone"

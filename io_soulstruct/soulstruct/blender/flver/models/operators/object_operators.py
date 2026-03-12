@@ -6,6 +6,8 @@ __all__ = [
     "RenameFLVER",
     "SelectMeshChildren",
     "SyncMSBPartArmatures",
+    "ClearFLVERSubmeshProperties",
+    "AddFLVERSubmeshProperties",
 ]
 
 import bpy
@@ -130,7 +132,8 @@ class SelectMeshChildren(LoggingOperator):
 
     @classmethod
     def poll(cls, context) -> bool:
-        return context.active_object and context.active_object.type in {"ARMATURE", "MESH"}
+        """Requires at least one object selected."""
+        return context.selected_objects and all(obj.type in {"ARMATURE", "MESH"} for obj in context.selected_objects)
 
     def execute(self, context):
         for obj in context.selected_objects:
@@ -177,4 +180,54 @@ class SyncMSBPartArmatures(LoggingOperator):
 
         self.info(f"Synchronized Armatures of {len(msb_parts)} MSB Parts to FLVER model '{bl_flver.name}'.")
 
+        return {"FINISHED"}
+
+
+class ClearFLVERSubmeshProperties(LoggingOperator):
+    """Clear all submesh properties on the active FLVER model, so that it will use global properties instead."""
+    bl_idname = "flver.clear_submesh_props"
+    bl_label = "Clear Submesh Properties"
+    bl_description = "Clear all submesh properties on the active FLVER model, so that it will use global properties instead"
+
+    @classmethod
+    def poll(cls, context) -> bool:
+        if not context.active_object or context.active_object.type != "MESH":
+            return False
+        return BlenderFLVER.is_obj_type(context.active_object)
+
+    def execute(self, context):
+        bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
+        bl_flver.type_properties.submesh_props.clear()
+        self.info(f"Cleared per-submesh properties on FLVER model '{bl_flver.name}'.")
+        return {"FINISHED"}
+
+
+class AddFLVERSubmeshProperties(LoggingOperator):
+    """Add per-submesh properties on the active FLVER model, to use instead of global properties."""
+    bl_idname = "flver.add_submesh_props"
+    bl_label = "Add Submesh Properties"
+    bl_description = "Add per-submesh properties on the active FLVER model, to use instead of global properties"
+
+    @classmethod
+    def poll(cls, context) -> bool:
+        if not context.active_object or context.active_object.type != "MESH":
+            return False
+        return BlenderFLVER.is_obj_type(context.active_object)
+
+    def execute(self, context):
+        bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
+        for material_slot in bl_flver.obj.material_slots:
+            material = material_slot.material
+            if not material:
+                continue  # empty slot, skip
+            submesh_props = bl_flver.type_properties.submesh_props.add()
+            submesh_props.material = material
+            submesh_props.is_dynamic = bl_flver.type_properties.global_is_dynamic
+            submesh_props.default_bone_index = bl_flver.type_properties.global_default_bone_index
+            submesh_props.face_set_count = bl_flver.type_properties.global_face_set_count
+            submesh_props.use_backface_culling = "MATERIAL"  # default
+        self.info(
+            f"Added per-submesh properties for {len(bl_flver.type_properties.submesh_props)} materials on "
+            f"FLVER model '{bl_flver.name}'."
+        )
         return {"FINISHED"}

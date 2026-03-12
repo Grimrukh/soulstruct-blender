@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 __all__ = [
+    "FLVERSubmeshProps",
     "FLVERProps",
     "FLVERDummyProps",
     "FLVERBoneProps",
     "FLVERImportSettings",
     "FLVERExportSettings",
+    "flver_submesh_sync_handler",
 ]
+
+import typing as tp
 
 import bpy
 
@@ -14,6 +18,74 @@ from soulstruct.flver import FLVERBoneUsageFlags, FLVERVersion
 from soulstruct.games import *
 
 from soulstruct.blender.bpy_base.property_group import SoulstructPropertyGroup
+from soulstruct.blender.utilities.bpy_types import SoulstructType
+
+
+class CollectedSubmeshProps(tp.NamedTuple):
+    """Named tuple for collecting submesh properties for a single material slot."""
+    is_dynamic: bool
+    default_bone_index: int
+    face_set_count: int
+    use_backface_culling: bool
+
+
+class FLVERSubmeshProps(SoulstructPropertyGroup):
+    """Blender properties specified per FLVER material slot that determine submesh properties."""
+
+    # No game-specific properties.
+
+    material: bpy.props.PointerProperty(
+        type=bpy.types.Material,
+        name="Material",
+        description="Material linked to this submesh definition",
+    )
+
+    is_dynamic: bpy.props.BoolProperty(
+        name="Is Dynamic",
+        description="If enabled, this submesh is a rigged mesh for animating and uses vertex bone indices/weights. "
+                    "Otherwise, it is a static mesh with uniform bone indices (older games) or NormalW (newer games). "
+                    "Typically only disabled for Map Piece FLVERs",
+        default=True,
+    )
+    default_bone_index: bpy.props.IntProperty(
+        name="Default Bone Index",
+        description="Index of default bone for this submesh (if applicable). Sometimes junk in vanilla FLVERs",
+        default=0,
+    )
+    face_set_count: bpy.props.IntProperty(
+        name="Face Set Count",
+        description="Number of face sets in this submesh. This is NOT a real FLVER property, but tells "
+                    "Blender how many duplicate FLVER face sets to make for this mesh. Typically used only for Map "
+                    "Piece level of detail. Soulstruct cannot yet auto-generate simplified/decimated LoD face sets "
+                    "that share a common vertex set",
+        default=3,
+        min=1,
+        max=9,  # surely safe
+    )
+    use_backface_culling: bpy.props.EnumProperty(
+        name="Backface Culling",
+        description="Backface culling mode to use for this submesh. Can be synced to material or explicitly set",
+        items=[
+            ("MATERIAL", "Sync to Material", "Use the backface culling setting of the material linked to this submesh"),
+            ("ON", "On", "Enable backface culling for this submesh regardless of material setting"),
+            ("OFF", "Off", "Disable backface culling for this submesh regardless of material setting"),
+        ],
+        default="MATERIAL",
+    )
+
+    def resolve_use_backface_culling(self, material_setting: bool):
+        if self.use_backface_culling == "MATERIAL":
+            return material_setting
+        if self.use_backface_culling == "ON":
+            return True
+        if self.use_backface_culling == "OFF":
+            return False
+        raise ValueError(f"Invalid backface culling option: {self.use_backface_culling}")
+
+    @classmethod
+    def get_all_prop_names(cls) -> list[str]:
+        """Get property names, ignoring 'material' internal property."""
+        return ["is_dynamic", "default_bone_index", "face_set_count"]
 
 
 class FLVERProps(SoulstructPropertyGroup):
@@ -143,6 +215,35 @@ class FLVERProps(SoulstructPropertyGroup):
         default=0,
     )
 
+    # TODO: Submesh properties, synced to material slots (difficult). Remove from Material properties...
+    submesh_props: bpy.props.CollectionProperty(
+        type=FLVERSubmeshProps,
+        name="Submesh Properties",
+    )
+
+    global_is_dynamic: bpy.props.BoolProperty(
+        name="Is Dynamic [Global]",
+        description="If enabled, all submeshes are rigged for animating and use vertex bone indices/weights. "
+                    "Otherwise, they are static meshes with uniform bone indices (older games) or NormalW (newer "
+                    "games). Typically only disabled for Map Piece FLVERs",
+        default=True,
+    )
+    global_default_bone_index: bpy.props.IntProperty(
+        name="Default Bone Index [Global]",
+        description="Index of default bone for all submeshes",
+        default=0,
+    )
+    global_face_set_count: bpy.props.IntProperty(
+        name="Face Set Count [Globa]",
+        description="Number of face sets in all submeshes. This is NOT a real FLVER property, but tells "
+                    "Blender how many duplicate FLVER face sets to make for each mesh. Typically used only for Map "
+                    "Piece level of detail. Soulstruct cannot yet auto-generate simplified/decimated LoD face sets "
+                    "that share a common vertex set",
+        default=3,
+        min=1,
+        max=9,  # surely safe
+    )
+
     # INTERNAL USE
     bone_data_type: bpy.props.EnumProperty(
         name="Bone Data Type",
@@ -177,6 +278,10 @@ class FLVERProps(SoulstructPropertyGroup):
                     "edit). For import posterity only; does not affect export",
         default=False,
     )
+
+    def get_submesh_props(self) -> tuple[CollectedSubmeshProps]:
+        """Generate effect submesh properties (for FLVER export) from materials or global settings."""
+        
 
 
 class FLVERDummyProps(SoulstructPropertyGroup):
@@ -313,9 +418,24 @@ class FLVERImportSettings(SoulstructPropertyGroup):
         default=True,
     )
 
+    ignore_default_bone_index: bpy.props.BoolProperty(
+        name="Ignore Default Bone Index",
+        description="Ignore the default bone index in each FLVER mesh, which is almost always unused and is "
+                    "annoying to track (as it can still vary across meshes)",
+        default=True,
+    )
+
     add_name_suffix: bpy.props.BoolProperty(
         name="Add Model Description Suffix",
         description="Add '<Description>' (if known) to the object name (e.g. character model names)",
+        default=True,
+    )
+
+    replace_placeholder_model: bpy.props.BoolProperty(
+        name="Replace Placeholder Model",
+        description="If a mesh in the 'Models > Placeholder Models' collection already exists in Blender for this "
+                    "FLVER, replace it with this imported model data and update any MSB Part users of the model. This "
+                    "may still involve creating a new Armature parent for the FLVER and MSB Parts",
         default=True,
     )
 
@@ -331,13 +451,6 @@ class FLVERImportSettings(SoulstructPropertyGroup):
         default="HASHED",
     )
 
-    replace_placeholder_model: bpy.props.BoolProperty(
-        name="Replace Placeholder Model",
-        description="If a mesh in the 'Models > Placeholder Models' collection already exists in Blender for this "
-                    "FLVER, replace it with this imported model data and update any MSB Part users of the model. This "
-                    "may still involve creating a new Armature parent for the FLVER and MSB Parts",
-        default=True,
-    )
 
 class FLVERExportSettings(SoulstructPropertyGroup):
     """Common FLVER export settings. Drawn manually in operator browser windows."""
@@ -384,3 +497,103 @@ class FLVERExportSettings(SoulstructPropertyGroup):
         min=0.0,
         max=1.0,
     )
+
+
+def _sync_submesh_props(bl_flver_obj: bpy.types.Object):
+    """Sync FLVER submesh properties collection to match the current materials in the FLVER object's material slots."""
+
+    props = bl_flver_obj.FLVER.submesh_props  # type: bpy.types.CollectionProperty
+
+    # If props is empty, ignore this object (uses global FLVER submesh settings).
+    if not props:
+        return
+
+    slots = bl_flver_obj.material_slots
+
+    # Build current material list from slots.
+    current = [s.material for s in slots]  # type: list[bpy.types.Material]
+    # Build stored material list from our collection.
+    stored = [p.material for p in props]  # type: list[bpy.types.Material]
+
+    if current == stored:
+        return  # materials have not changed (in a way we can detect, at least)
+
+    diff = len(current) - len(stored)
+
+    if diff == -1:
+        # Material deletion: find the index present in stored but missing in current.
+        for i in range(len(stored)):
+            # Check if removing index i from stored gives us current.
+            if stored[:i] + stored[i + 1:] == current:
+                props.remove(i)
+                return
+
+    elif diff == 1:
+        print("DETECTED ADDED MATERIAL")
+        # Material addition. Iterate through current and stored until we find the first index where they differ,
+        # which should be the new material. But first check the usual case of the addition being at the end.
+        if current[:-1] == stored:
+            print("  ADDED TO END")
+            entry = props.add()
+            entry.material = current[-1]
+            return
+        for i in range(len(stored)):
+            if current[i] != stored[i]:
+                entry = props.add()
+                entry.material = current[i]
+                # Move the new entry to index i.
+                props.move(len(props) - 1, i)
+                print(f"  ADDED AT SLOT {i}")
+                return
+        print("  COULD NOT FIND SLOT")
+
+    elif diff == 0:
+
+        # Check for case where a previously unassigned material is now assigned.
+        for current_mat, stored_mat in zip(current, stored):
+            if current_mat != stored_mat:
+                if current_mat and not stored_mat:
+                    # Material was assigned at this slot.
+                    props[current.index(current_mat)].material = current_mat
+                    return
+                elif not current_mat and stored_mat:
+                    # Material was unassigned at this slot.
+                    props[current.index(stored_mat)].material = None
+                    return
+
+        if len(current) >= 2:
+            # Swap: find the one pair of adjacent indices that differs
+            mismatches = [i for i in range(len(current)) if current[i] != stored[i]]
+            if (
+                len(mismatches) == 2
+                and mismatches[1] == mismatches[0] + 1
+            ):
+                i = mismatches[0]
+                props.move(i, i + 1)
+                return
+
+    # Fallback: couldn't identify the change cleanly.
+    # Rebuild from scratch (loses submesh data for ambiguous cases).
+    props.clear()
+    print(
+        f"# WARNING: Could not track material changes for submesh properties on FLVER object '{bl_flver_obj.name}'. "
+        f"Rebuilding submesh properties from current materials, but any custom submesh property values will be lost."
+    )
+    for mat in current:
+        entry = props.add()
+        entry.material = mat
+        entry.is_dynamic = bl_flver_obj.FLVER.global_is_dynamic
+        entry.default_bone_index = bl_flver_obj.FLVER.global_default_bone_index
+        entry.face_set_count = bl_flver_obj.FLVER.global_face_set_count
+        entry.use_backface_culling = "MATERIAL"
+
+
+def flver_submesh_sync_handler(scene: bpy.types.Scene):
+    """Scan scene for FLVER objects and synchronize their submesh properties to their materials."""
+    for obj in scene.objects:
+        if (
+            obj.type == "MESH"
+            and obj.soulstruct_type == SoulstructType.FLVER
+            and len(obj.FLVER.submesh_props) > 0  # ignore objects using global submesh properties
+        ):
+            _sync_submesh_props(obj)

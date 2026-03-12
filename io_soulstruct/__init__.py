@@ -129,7 +129,7 @@ from soulstruct.blender.utilities import ViewSelectedAtDistanceZero
 bl_info = {
     "name": "Soulstruct",
     "author": "Scott Mooney (Grimrukh)",
-    "version": (2, 5, 2),  # SOURCE OF TRUTH
+    "version": (2, 6, 0),  # SOURCE OF TRUTH
     "blender": (4, 5, 0),
     "location": "File > Import-Export",
     "description": "Import, manipulate, and export FromSoftware/Havok assets",
@@ -200,6 +200,7 @@ CLASSES = (
     ExportObjectFLVER,
     ExportEquipmentFLVER,
 
+    FLVERSubmeshProps,
     FLVERProps,
     FLVERDummyProps,
     FLVERGXItemProps,  # must be registered before `FLVERMaterialProps`
@@ -224,6 +225,8 @@ CLASSES = (
     FindMissingTexturesInImageCache,
     SelectMeshChildren,
     SyncMSBPartArmatures,
+    ClearFLVERSubmeshProperties,
+    AddFLVERSubmeshProperties,
 
     FLVERMaterialSettings,
     MaterialToolSettings,
@@ -617,6 +620,7 @@ BONE_ATTRIBUTES = []
 
 LOAD_POST_HANDLERS = []
 SPACE_VIEW_3D_HANDLERS = []
+DEPSGRAPH_UPDATE_POST_HANDLERS = []
 
 
 def register():
@@ -690,10 +694,12 @@ def register():
         setattr(bpy.types.Bone, prop_name, bpy.props.PointerProperty(type=prop_type))
         BONE_ATTRIBUTES.append(prop_name)
 
+    # FLVER dummy draw handler
     SPACE_VIEW_3D_HANDLERS.append(
         bpy.types.SpaceView3D.draw_handler_add(draw_dummy_ids, (), "WINDOW", "POST_PIXEL")
     )
 
+    # MCG draw handlers
     SPACE_VIEW_3D_HANDLERS.append(
         bpy.types.SpaceView3D.draw_handler_add(update_mcg_draw_caches, (), "WINDOW", "POST_VIEW")
     )
@@ -707,8 +713,14 @@ def register():
         bpy.types.SpaceView3D.draw_handler_add(draw_mcg_edge_cost_labels, (), "WINDOW", "POST_PIXEL")
     )
 
+    # MSB region draw handler
     SPACE_VIEW_3D_HANDLERS.append(
         bpy.types.SpaceView3D.draw_handler_add(draw_msb_regions, (), "WINDOW", "POST_VIEW")
+    )
+
+    # FLVER submesh sync handler
+    DEPSGRAPH_UPDATE_POST_HANDLERS.append(
+        bpy.app.handlers.depsgraph_update_post.append(flver_submesh_sync_handler)
     )
 
     bpy.types.TOPBAR_MT_file_import.append(havok_menu_func_import)
@@ -753,8 +765,13 @@ def unregister():
     LOAD_POST_HANDLERS.clear()
 
     for handler in SPACE_VIEW_3D_HANDLERS:
+        # All added to WINDOW region.
         bpy.types.SpaceView3D.draw_handler_remove(handler, "WINDOW")
     SPACE_VIEW_3D_HANDLERS.clear()
+
+    for handler in DEPSGRAPH_UPDATE_POST_HANDLERS:
+        bpy.app.handlers.depsgraph_update_post.remove(handler)
+    DEPSGRAPH_UPDATE_POST_HANDLERS.clear()
 
 
 if __name__ == "__main__":

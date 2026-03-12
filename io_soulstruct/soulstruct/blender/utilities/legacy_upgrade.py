@@ -45,7 +45,7 @@ def get_old_material_props(old_material: bpy.types.Material):
 def get_new_material_props(new_material: bpy.types.Material):
     bl_material = BlenderFLVERMaterial(new_material)
     return dict(
-        default_bone_index=bl_material.default_bone_index,
+        # default_bone_index=bl_material.default_bone_index,
         # face_set_count=bl_material.face_set_count,
         flags=bl_material.flags,
         is_bind_pose=bl_material.is_bind_pose,

@@ -28,6 +28,9 @@ from soulstruct.blender.utilities import find_or_create_collection, LoggingOpera
 
 from .base import BaseBlenderMSBModelImporter, MODEL_T
 
+if tp.TYPE_CHECKING:
+    from soulstruct.blender.flver.material.types import BlenderFLVERMaterial
+
 
 @dataclass(slots=True)
 class BaseBlenderMSBFLVERModelImporter(BaseBlenderMSBModelImporter, abc.ABC):
@@ -101,7 +104,7 @@ class BaseBlenderMSBFLVERModelImporter(BaseBlenderMSBModelImporter, abc.ABC):
             model_name: flver
             for model_name, flver in zip(flver_sources.keys(), flvers_list)
             if flver is not None
-        }
+        }  # type: dict[str, FLVER]
 
         operator.info(
             f"Imported {len(flvers)} {cls.MODEL_SUBTYPE_TITLE} FLVERs in {time.perf_counter() - p:.2f} seconds."
@@ -129,7 +132,8 @@ class BaseBlenderMSBFLVERModelImporter(BaseBlenderMSBModelImporter, abc.ABC):
             image_import_manager = None
 
         # Brief non-parallel excursion: create Blender materials and `MergedMesh` arguments for each `FLVER`.
-        flver_bl_materials = {}
+        flver_bl_materials = {}  # type: dict[str, tuple[BlenderFLVERMaterial, ...]]
+        flver_mesh_bl_material_indices = {}  # type: dict[str, tuple[int, ...]]
         flver_names_to_merge = []
         flvers_to_merge = []
         flver_merged_mesh_args = []
@@ -155,6 +159,7 @@ class BaseBlenderMSBFLVERModelImporter(BaseBlenderMSBModelImporter, abc.ABC):
                 flvers.pop(model_name)  # drop failed FLVER
                 continue
             flver_bl_materials[model_name] = bl_materials
+            flver_mesh_bl_material_indices[model_name] = mesh_bl_material_indices
 
             flver_names_to_merge.append(model_name)
             flvers_to_merge.append(flver)
@@ -208,9 +213,11 @@ class BaseBlenderMSBFLVERModelImporter(BaseBlenderMSBModelImporter, abc.ABC):
                     continue
                 merged_mesh = flver_merged_meshes[model_name]
                 bl_materials = flver_bl_materials[model_name]
+                mesh_bl_material_indices = flver_mesh_bl_material_indices[model_name]
             else:
                 merged_mesh = None
                 bl_materials = None
+                mesh_bl_material_indices = None
 
             try:
                 BlenderFLVER.new_from_soulstruct_obj(
@@ -222,6 +229,7 @@ class BaseBlenderMSBFLVERModelImporter(BaseBlenderMSBModelImporter, abc.ABC):
                     collection=model_collection,
                     existing_merged_mesh=merged_mesh,
                     existing_bl_materials=bl_materials,
+                    existing_mesh_bl_material_indices=mesh_bl_material_indices,
                 )
             except Exception as ex:
                 traceback.print_exc()  # for inspection in Blender console

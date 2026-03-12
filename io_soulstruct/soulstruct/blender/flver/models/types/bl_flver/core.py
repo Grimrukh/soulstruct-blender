@@ -324,6 +324,7 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
         image_import_manager: ImageImportManager | None = None,
         existing_merged_mesh: MergedMesh = None,
         existing_bl_materials: tp.Sequence[BlenderFLVERMaterial] = None,
+        existing_mesh_bl_material_indices: tp.Sequence[int] = None,
     ) -> BlenderFLVER:
         """Read a FLVER into a managed Blender Armature/Mesh.
 
@@ -331,8 +332,8 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
         be created and the Mesh will be the root object. This is useful for simple static models like map pieces.
 
         `existing_merged_mesh` can be created in advance (e.g. in parallel) and passed in directly for the corresponding
-        `FLVER`. If so, `existing_bl_materials` must also be given, and should have been created in advance to get the
-        `MergedMesh` arguments anyway.
+        `FLVER`. If so, `existing_bl_materials` and `existing_mesh_bl_material_indices` must also be given, and should
+        have been created in advance to get the `MergedMesh` arguments anyway.
 
         NOTE: FLVER (for DS1 at least) supports a maximum of 38 bones per sub-mesh. When this maximum is reached, a new
         FLVER sub-mesh is created. All of these sub-meshes are unified in Blender under the same material slot, and will
@@ -342,7 +343,7 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
         `use_backface_culling`. Backface culling is a material option in Blender, so these meshes will use different
         Blender material 'variants' even though they use the same FLVER material. The FLVER exporter will start by
         creating a FLVER material for every Blender material slot, then unify any identical FLVER material instances and
-        redirect any differences like `use_backface_culling` or `is_bind_pose` to the FLVER mesh.
+        redirect any differences like `use_backface_culling` or `is_dynamic` to the FLVER mesh.
 
         Breakdown:
             - Blender stores POSITION, BONE WEIGHTS, and BONE INDICES on vertices. Any differences here will require
@@ -366,6 +367,7 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
             image_import_manager=image_import_manager,
             existing_merged_mesh=existing_merged_mesh,
             existing_bl_materials=existing_bl_materials,
+            existing_mesh_bl_material_indices=existing_mesh_bl_material_indices,
         )
 
     @classmethod

@@ -23,7 +23,6 @@ from soulstruct.blender.utilities import *
 from ..bl_flver_dummy import BlenderFLVERDummy
 from ..enums import FLVERBoneDataType
 from ._create_materials import create_materials
-from ._duplicate import duplicate_armature
 from ._import_bones import *
 
 if tp.TYPE_CHECKING:
@@ -46,14 +45,21 @@ class _CreateBlenderFLVERCommand:
     image_import_manager: ImageImportManager | None = None
     existing_merged_mesh: MergedMesh = None
     existing_bl_materials: tp.Sequence[BlenderFLVERMaterial] = None
+    existing_mesh_bl_material_indices: tp.Sequence[int] = None
 
     import_settings: FLVERImportSettings = field(default=None, init=False)
 
     def __post_init__(self):
-        if self.existing_merged_mesh and not self.existing_bl_materials:
-            raise ValueError("If `existing_merged_mesh` is given, `existing_bl_materials` must also be given.")
-        elif not self.existing_merged_mesh and self.existing_bl_materials:
-            raise ValueError("If `existing_bl_materials` are given, `existing_merged_mesh` must also be given.")
+        existing_props = [
+            self.existing_merged_mesh,
+            self.existing_bl_materials,
+            self.existing_mesh_bl_material_indices,
+        ]
+        if any(existing_props) and not all(existing_props):
+            raise ValueError(
+                "If any 'existing' FLVER props are given, all must be given (merged_mesh, bl_materials, and material "
+                "indices)."
+            )
 
         if not self.collection:
             self.collection = self.context.scene.collection
@@ -71,6 +77,7 @@ def create_bl_flver_from_flver(
     image_import_manager: ImageImportManager | None = None,
     existing_merged_mesh: MergedMesh = None,
     existing_bl_materials: tp.Sequence[BlenderFLVERMaterial] = None,
+    existing_mesh_bl_material_indices: tp.Sequence[int] = None,
 ) -> BlenderFLVER:
 
     command = _CreateBlenderFLVERCommand(
@@ -82,14 +89,14 @@ def create_bl_flver_from_flver(
         image_import_manager=image_import_manager,
         existing_merged_mesh=existing_merged_mesh,
         existing_bl_materials=existing_bl_materials,
+        existing_mesh_bl_material_indices=existing_mesh_bl_material_indices,
     )
 
     operator.to_object_mode(context)
 
-    import_settings = context.scene.flver_import_settings
     existing_placeholder_msb_parts = []  # type: list[bpy.types.MeshObject]
     placeholder_model = None  # type: bpy.types.MeshObject | None
-    if import_settings.replace_placeholder_model:
+    if command.import_settings.replace_placeholder_model:
         # Look for a Placeholder model to replace.
         placeholder_model = find_obj(
             name,
@@ -110,7 +117,7 @@ def create_bl_flver_from_flver(
 
     armature, bl_bone_data_type, bl_bone_names = _create_armature_if_needed(command)
 
-    bl_materials, mesh = _create_bl_mesh(command, armature, bl_bone_names, mesh_data)
+    mesh, bl_materials, mesh_bl_material_indices = _create_bl_mesh(command, armature, bl_bone_names, mesh_data)
 
     command.collection.objects.link(mesh)
     for bl_material in bl_materials:
@@ -140,6 +147,14 @@ def create_bl_flver_from_flver(
 
     # Assign FLVER header properties.
     bl_flver.big_endian = command.flver.big_endian
+
+    _set_submesh_props(
+        bl_flver,
+        bl_materials,
+        command.flver.meshes,
+        mesh_bl_material_indices,
+        command.import_settings.ignore_default_bone_index,
+    )
 
     if command.flver.version in {FLVERVersion.DemonsSouls_0x10, FLVERVersion.DemonsSouls_0x14}:
         # We convert this to "DemonsSouls", since we can't export non-strip triangles for old versions (AFAIK).
@@ -188,12 +203,60 @@ def create_bl_flver_from_flver(
     return bl_flver  # might be used by other importers
 
 
+def _set_submesh_props(
+    bl_flver: BlenderFLVER,
+    bl_materials: list[BlenderFLVERMaterial],
+    flver_meshes: list[FLVERMesh],
+    mesh_bl_material_indices: list[int],
+    ignore_default_bone_indices: bool,
+):
+    # Set sensible global submesh properties and determine if we need per-submesh props.
+    create_per_submesh_props = False
+    if all(mesh.is_dynamic for mesh in flver_meshes):
+        bl_flver.type_properties.global_is_dynamic = True
+    elif any(mesh.is_dynamic for mesh in flver_meshes):
+        bl_flver.type_properties.global_is_dynamic = True
+        create_per_submesh_props = True
+    else:  # none
+        bl_flver.type_properties.global_is_dynamic = False
+
+    if ignore_default_bone_indices:
+        bl_flver.type_properties.global_default_bone_index = 0
+    else:
+        default_bone_indices = {mesh.default_bone_index for mesh in flver_meshes}
+        if len(default_bone_indices) == 1:
+            bl_flver.type_properties.global_default_bone_index = default_bone_indices.pop()
+        else:
+            bl_flver.type_properties.global_default_bone_index = 0
+            create_per_submesh_props = True
+
+    face_set_counts = [len(mesh.face_sets) for mesh in flver_meshes]
+    if len(set(face_set_counts)) == 1:
+        bl_flver.type_properties.global_face_set_count = face_set_counts[0]
+    else:
+        bl_flver.type_properties.global_face_set_count = max(set(face_set_counts), key=face_set_counts.count)
+        create_per_submesh_props = True
+
+    if create_per_submesh_props:
+        for submesh, bl_material_index in zip(flver_meshes, mesh_bl_material_indices, strict=True):
+            bl_material = bl_materials[bl_material_index].material
+            submesh_props = bl_flver.obj.FLVER.submesh_props.add()
+            submesh_props.material = bl_material
+            submesh_props.is_dynamic = submesh.is_dynamic
+            submesh_props.default_bone_index = submesh.default_bone_index
+            # TODO: We only track the number of face sets, as we cannot currently represent or export
+            #  varying face sets (just the appropriate number of duplicates of the main face set).
+            submesh_props.face_set_count = len(submesh.face_sets)
+            # BC and non-BC variants of materials are created, so we can set this to MATERIAL.
+            submesh_props.use_backface_culling = "MATERIAL"
+
+
 def _create_bl_mesh(
     command: _CreateBlenderFLVERCommand,
     armature: bpy.types.ArmatureObject | None,
     bl_bone_names: list[str],
     mesh_data: bpy.types.Mesh,
-) -> tuple[list[BlenderFLVERMaterial], bpy.types.MeshObject]:
+) -> tuple[bpy.types.MeshObject, list[BlenderFLVERMaterial], list[int]]:
     """Create Blender Mesh from FLVER sub-meshes.
 
     This is the main workhorse function of FLVER import in Blender.
@@ -201,12 +264,12 @@ def _create_bl_mesh(
     if not command.flver.meshes:
         # FLVER has no meshes (e.g. c0000). Leave empty.
         mesh = new_mesh_object(f"{command.name} <EMPTY>", mesh_data, SoulstructType.FLVER)
-        return [], mesh
+        return mesh, [], []
 
     if any(mesh.invalid_layout for mesh in command.flver.meshes):
         # Corrupted meshes (e.g. some DS1R map pieces) that couldn't be fixed by `FLVER` class. Leave empty.
         mesh = new_mesh_object(f"{command.name} <INVALID>", mesh_data, SoulstructType.FLVER)
-        return [], mesh
+        return mesh, [], []
 
     if command.existing_merged_mesh:
         # Merged mesh already given. Implies that Blender materials are handled manually as well.
@@ -216,7 +279,7 @@ def _create_bl_mesh(
         mesh = new_mesh_object(command.name, mesh_data, SoulstructType.FLVER)
         if armature:
             _create_bone_vertex_groups(mesh, bl_bone_names, bl_vert_bone_weights, bl_vert_bone_indices)
-        return list(command.existing_bl_materials), mesh
+        return mesh, list(command.existing_bl_materials), list(command.existing_mesh_bl_material_indices)
 
     # Create materials and `MergedMesh` now.
     try:
@@ -230,11 +293,8 @@ def _create_bl_mesh(
             # No cached MatDef materials to pass in.
         )
 
-    except MatDefError:
-        # No materials will be created! TODO: Surely not.
-        bl_materials = []
-        mesh_bl_material_indices = ()
-        bl_material_uv_layer_names = ()
+    except MatDefError as ex:
+        raise FLVERImportError(f"Failed to create materials for FLVER import. Error: {ex}")
 
     p = time.perf_counter()
     # Create merged mesh.
@@ -259,7 +319,7 @@ def _create_bl_mesh(
     if armature:
         _create_bone_vertex_groups(mesh, bl_bone_names, bl_vert_bone_weights, bl_vert_bone_indices)
 
-    return bl_materials, mesh
+    return mesh, bl_materials, mesh_bl_material_indices
 
 
 def _create_armature_if_needed(
@@ -456,9 +516,9 @@ def _create_bl_bones(
     armor/weapons), they are also occasionally used in a fairly basic way by map pieces to position certain vertices
     in certain meshes. When this happens, so far, the bones have always been root bones, and basically function as
     shifted origins for the coordinates of certain vertices. I strongly suspect, but have not absolutely confirmed,
-    that the `is_bind_pose` attribute of each mesh indicates whether FLVER bone data should be written to the
-    EditBone (`is_bind_pose=True`) or PoseBone (`is_bind_pose=False`). Of course, we have to decide for each BONE,
-    not each mesh, so currently I am enforcing that `is_bind_pose=False` for ALL meshes in order to write the bone
+    that the `is_dynamic` attribute of each mesh indicates whether FLVER bone data should be written to the
+    EditBone (`is_dynamic=True`) or PoseBone (`is_dynamic=False`). Of course, we have to decide for each BONE,
+    not each mesh, so currently I am enforcing that `is_dynamic=False` for ALL meshes in order to write the bone
     transforms to PoseBone rather than EditBone. A warning will be logged if only some of them are `False`.
 
     The AABB of each bone is presumably generated to include all vertices that use that bone as a weight.
@@ -467,24 +527,23 @@ def _create_bl_bones(
     `PoseBones`. This is saved to FLVER properties in Blender for export.
     """
 
-    # Detect bone data type (storage location) based on FLVER mesh `is_bind_pose` state.
-    if command.flver.any_bind_pose():
-        if not command.flver.all_bind_pose():
+    # Detect bone data type (storage location) based on FLVER mesh `is_dynamic` state.
+    if command.flver.any_dynamic():
+        if not command.flver.all_dynamic():
             # Happens for rare objects (e.g. o0150 in DS1). In these cases, my observation is that the meshes do want
             # to be statically posed in Blender for viewing.
-            # TODO: Could theoretically handle this per-Bone IFF no Bone is used by both bind pose and non-bind pose
-            #  meshes.
+            # TODO: Could theoretically handle this per-Bone IFF no Bone is used by both dynamic/static meshes.
             command.operator.warning(
-                f"Some meshes in FLVER '{command.name}' are in bind pose and some are not. Cannot currently handle "
+                f"Some meshes in FLVER '{command.name}' are dynamic and some are not. Cannot currently handle "
                 f"this properly in Blender. Will store bone data in custom Bone properties ('Custom' mode). FLVER may "
                 f"not appear correct when static and/or animated, but FLVER export should be unaffected."
             )
             bl_bone_data_type = FLVERBoneDataType.CUSTOM
         else:
-            # Only used if ALL FLVER meshes are in bind pose.
+            # Only used if ALL FLVER meshes are dynamic.
             bl_bone_data_type = FLVERBoneDataType.EDIT
     else:
-        # No bind pose.
+        # All static meshes.
         bl_bone_data_type = FLVERBoneDataType.CUSTOM
 
     # We need edit mode to create `EditBones` below.

@@ -10,6 +10,7 @@ from soulstruct.flver import FLVERVersion
 
 from soulstruct.blender.bpy_base.panel import SoulstructPanel
 from ..types import BlenderFLVER, BlenderFLVERDummy
+from ..properties import FLVERProps, FLVERSubmeshProps
 
 
 class FLVERPropsPanel(SoulstructPanel):
@@ -28,13 +29,14 @@ class FLVERPropsPanel(SoulstructPanel):
 
     def draw(self, context):
         bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
+        flver_props = bl_flver.type_properties  # type: FLVERProps
         if bl_flver.version == "DEFAULT":
             # Use active game's properties.
-            prop_names = bl_flver.type_properties.get_game_prop_names(context)
+            prop_names = flver_props.get_game_prop_names(context)
         elif FLVERVersion[bl_flver.version].is_flver0():
-            prop_names = bl_flver.type_properties.FLVER0_PROP_NAMES
+            prop_names = flver_props.FLVER0_PROP_NAMES
         else:
-            prop_names = bl_flver.type_properties.FLVER2_PROP_NAMES
+            prop_names = flver_props.FLVER2_PROP_NAMES
 
         for prop in prop_names:
             if prop == "mesh_vertices_merged":
@@ -42,7 +44,29 @@ class FLVERPropsPanel(SoulstructPanel):
                 txt = f"Meshes were {'' if bl_flver.mesh_vertices_merged else 'NOT '}merged on import."
                 self.layout.label(text=txt)
             else:
-                self.layout.prop(bl_flver.type_properties, prop)
+                self.layout.prop(flver_props, prop)
+
+        # Draw submesh properties, either global or as a list.
+        if flver_props.submesh_props:
+            submeshes_box = self.layout.box()
+            for submesh_props in flver_props.submesh_props:
+                submesh_props: FLVERSubmeshProps
+                submesh_box = submeshes_box.box()
+                # Show material name text.
+                submesh_box.label(text=submesh_props.material.name if submesh_props.material else "<LOST MATERIAL>")
+                for prop in submesh_props.get_all_prop_names():
+                    submesh_box.prop(submesh_props, prop)
+            # Draw button to clear all submesh properties (to use global instead).
+            self.layout.operator("flver.clear_submesh_props", text="Clear Submesh Properties")
+        else:
+            submeshes_box = self.layout.box()
+            submeshes_box.label(text="Global Submesh Properties:")
+            submeshes_box.prop(flver_props, "global_is_dynamic", text="Is Dynamic")
+            submeshes_box.prop(flver_props, "global_default_bone_index", text="Default Bone Index")
+            submeshes_box.prop(flver_props, "global_face_set_count", text="Face Set Count")
+            submeshes_box.label(text="Use Backface Culling: <From Material>")
+            # Draw button to add per-submesh properties (to use instead of global).
+            self.layout.operator("flver.add_submesh_props", text="Add Per-Material Submesh Properties")
 
 
 class FLVERDummyPropsPanel(SoulstructPanel):

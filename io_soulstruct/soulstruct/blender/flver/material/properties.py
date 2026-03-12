@@ -118,7 +118,7 @@ class FLVERMaterialProps(SoulstructPropertyGroup):
         DEMONS_SOULS: (
             "flags",
             "mat_def_path",
-            "is_bind_pose",
+            "is_dynamic",
             "default_bone_index",
             "face_set_count",
             "sampler_prefix",
@@ -127,7 +127,7 @@ class FLVERMaterialProps(SoulstructPropertyGroup):
             "flags",
             "mat_def_path",
             "f2_unk_x18",
-            "is_bind_pose",
+            "is_dynamic",
             "default_bone_index",
             "face_set_count",
             "sampler_prefix",
@@ -136,7 +136,7 @@ class FLVERMaterialProps(SoulstructPropertyGroup):
             "flags",
             "mat_def_path",
             "f2_unk_x18",
-            "is_bind_pose",
+            "is_dynamic",
             "default_bone_index",
             "face_set_count",
             "gx_items",
@@ -161,24 +161,26 @@ class FLVERMaterialProps(SoulstructPropertyGroup):
         description="Unknown integer at material offset 0x18 (ignored in Demon's Souls)",
         default=0,
     )
-    is_bind_pose: bpy.props.BoolProperty(
-        name="Is Bind Pose [Mesh]",
-        description="If enabled, mesh using this material is a rigged mesh. Typically disabled for Map Piece "
-                    "FLVERs and enabled for everything else",
-        default=False,
-    )
-    default_bone_index: bpy.props.IntProperty(
-        name="Default Bone Index [Mesh]",
-        description="Index of default bone for this mesh (if applicable). Sometimes junk in vanilla FLVERs",
-        default=-1,
-    )
-    face_set_count: bpy.props.IntProperty(
-        name="Face Set Count [Mesh]",
-        description="Number of face sets in mesh using this material. This is NOT a real FLVER property, but tells "
-                    "Blender how many duplicate FLVER face sets to make for this mesh. Typically used only for Map "
-                    "Piece level of detail. Soulstruct cannot yet auto-generate simplified/decimated LoD face sets",
-        default=0,
-    )
+
+    # TODO: Move to FLVERSubmeshProps.
+    # is_dynamic: bpy.props.BoolProperty(
+    #     name="Is Dynamic [Mesh]",
+    #     description="If enabled, mesh using this material is a rigged mesh. Typically disabled for Map Piece "
+    #                 "FLVERs and enabled for everything else",
+    #     default=False,
+    # )
+    # default_bone_index: bpy.props.IntProperty(
+    #     name="Default Bone Index [Mesh]",
+    #     description="Index of default bone for this mesh (if applicable). Sometimes junk in vanilla FLVERs",
+    #     default=-1,
+    # )
+    # face_set_count: bpy.props.IntProperty(
+    #     name="Face Set Count [Mesh]",
+    #     description="Number of face sets in mesh using this material. This is NOT a real FLVER property, but tells "
+    #                 "Blender how many duplicate FLVER face sets to make for this mesh. Typically used only for Map "
+    #                 "Piece level of detail. Soulstruct cannot yet auto-generate simplified/decimated LoD face sets",
+    #     default=0,
+    # )
 
     gx_items: bpy.props.CollectionProperty(
         name="GX Items",

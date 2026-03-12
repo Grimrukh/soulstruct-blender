@@ -1260,8 +1260,7 @@ class MSBNavmeshProps(SoulstructPropertyGroup):
     )
 
     def get_navmesh_groups_props(self, bit_count: int) -> list[bpy.types.CollectionProperty]:
-        """Get the appropriate number of navmesh group properties for the given bit count (always 128).
-        """
+        """Get the appropriate number of navmesh group properties for the given bit count (always 128)."""
         if bit_count == 128:
             return [
                 self.navmesh_groups_0,

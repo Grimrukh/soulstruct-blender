@@ -57,16 +57,10 @@ class BlenderFLVERMaterial:
         "flags",
         "mat_def_path",
         "f2_unk_x18",
-        "is_bind_pose",
-        "default_bone_index",
-        "face_set_count",
         "sampler_prefix",
     ]
 
-    is_bind_pose: bool
     mat_def_path: str
-    default_bone_index: int
-    face_set_count: int
 
     # FLVER2 only:
     flags: int
@@ -156,21 +150,15 @@ class BlenderFLVERMaterial:
                     bl_material.blend_method = blend_mode
 
         material = cls(bl_material)
-        # Real Material properties:
-        material.default_bone_index = mesh.default_bone_index
 
         material.mat_def_path = flver_material.mat_def_path  # str
         if isinstance(flver_material, Material):
             material.flags = flver_material.flags  # int
             material.f2_unk_x18 = flver_material.f2_unk_x18  # int
             material.gx_items = flver_material.get_non_terminator_gx_items()  # final dummy `GXItem` not held in Blender
-            # TODO: Currently, main face set is simply copied to all additional face sets on export. This is fine for
-            #  early games, but probably not for, say, Elden Ring map pieces. Some kind of auto-decimator is in order.
-            material.face_set_count = len(mesh.face_sets)
 
         # Mesh properties:
         material.use_backface_culling = mesh.use_backface_culling  # wraps `face_set[0].use_backface_culling`
-        material.is_bind_pose = mesh.is_bind_pose
 
         # NOTE: Texture path prefixes not stored, as they aren't actually needed in the TPFBHDs.
         # NOTE: This index is sometimes invalid for vanilla map FLVERs (e.g., 1 when there is only one bone).
@@ -434,14 +422,17 @@ class BlenderFLVERMaterial:
         self,
         operator: LoggingOperator,
         context: bpy.types.Context,
-        create_lod_face_sets: bool,
         matdef: MatDef,
         use_map_piece_layout: bool,
+        mesh_kwargs: dict[str, int | bool | None],
         texture_collection: DDSTextureCollection = None,
         get_texture_path_prefix: tp.Callable[[str], str] | None = None,
     ) -> SplitMeshDef:
         """Use given `matdef` to create a `SplitMeshDef` for the given Blender material with either a character
-        layout or a map piece layout, depending on `use_chr_layout`."""
+        layout or a map piece layout, depending on `use_map_piece_layout`.
+
+        TODO: Remove `use_map_piece_layout` manual switch and generate smarter vertex array layouts.
+        """
 
         # Some Blender materials may be variants representing distinct Mesh/FaceSet properties; these will be
         # mapped to the same FLVER `Material`/`VertexArrayLayout` combo (created here).
@@ -449,19 +440,7 @@ class BlenderFLVERMaterial:
         if use_map_piece_layout:
             array_layout = matdef.get_map_piece_layout()
         else:
-            array_layout = matdef.get_non_map_piece_layout(self.is_bind_pose)
-
-        # We only respect 'Face Set Count' if requested in export options. (Duplicating the main face set is only
-        # viable in older games with low-res meshes, but those same games don't even really need LODs anyway.)
-        face_set_count = self.face_set_count if create_lod_face_sets else 1
-        mesh_kwargs = {
-            "is_bind_pose": self.is_bind_pose,
-            "default_bone_index": self.default_bone_index,
-            "use_backface_culling": self.use_backface_culling,
-            "face_set_count": face_set_count,
-            "f0_unk_x46": 0,  # TODO: not sure what this is yet and haven't seen non-zero
-            "uses_bounding_boxes": True,  # enabled even for FLVER0 versions
-        }
+            array_layout = matdef.get_non_map_piece_layout(mesh_kwargs["is_dynamic"])
 
         used_uv_layer_names = [layer.name for layer in matdef.get_used_uv_layers()]
         operator.debug(f"Created FLVER material '{flver_material.name}' with UV layers: {used_uv_layer_names}")
@@ -469,7 +448,7 @@ class BlenderFLVERMaterial:
         return SplitMeshDef(
             flver_material,
             array_layout,
-            is_bind_pose=self.is_bind_pose,
+            is_dynamic=mesh_kwargs["is_dynamic"],
             kwargs=mesh_kwargs,
             uv_layer_names=used_uv_layer_names,
         )
@@ -491,18 +470,25 @@ class BlenderFLVERMaterial:
             for node in self.get_image_texture_nodes(with_image_only=False)
         }
 
-    def get_hash(self, include_face_set_count=True, is_flver0=False) :
-        """Hash based on all FLVER material properties, with `face_set_count` optional (used by default)."""
-        hashed = [self.is_bind_pose, self.mat_def_path, self.default_bone_index]  # type: list[bool | str | int | tuple]
-        if not is_flver0:
-            hashed.extend([self.flags, self.f2_unk_x18])
-        if include_face_set_count:
-            hashed.append(self.face_set_count)
+    def get_hash(self, is_flver0=False) :
+        """Hash based on all FLVER material properties (for FLVER major version).
+
+        TODO: Should backface culling be included?
+        """
+        if is_flver0:
+            hashed = [self.mat_def_path]
+        else:
+            hashed = [self.mat_def_path, self.flags, self.f2_unk_x18]
+        hashed: list[bool | str | int | tuple]
 
         texture_name_dict = self.get_texture_name_dict()
         for sampler_name in sorted(texture_name_dict.keys()):
             texture_name = self.sampler_prefix + texture_name_dict[sampler_name]
             hashed.append((sampler_name, texture_name))
+
+        if not is_flver0:
+            for gx_item in self.gx_items:
+                hashed.append((gx_item.category, gx_item.index, gx_item.data))
 
         return hash(tuple(hashed))
 
