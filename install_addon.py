@@ -108,7 +108,7 @@ def install_addon(
         subprocess.run(
             [
                 sys.executable, "-m", "pip", "install",
-                "scipy==1.16.0",  # TODO: locking version until 1.17.1 read-only array bug fixed
+                "scipy==1.16.3",  # TODO: locking version until 1.17.1 read-only array bug fixed
                 "-e", str(soulstruct_install_path),
                 "-e", str(havok_install_path),
                 "--target", str(dest_modules_dir),
