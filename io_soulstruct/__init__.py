@@ -66,6 +66,7 @@ def _ensure_soulstruct_installed():
         subprocess.run(
             [
                 sys.executable, "-m", "pip", "install",
+                "scipy==1.16.0",  # TODO: locking version until 1.17.1 read-only array bug fixed
                 "-e", f"{io_soulstruct_lib_path}/soulstruct",
                 "-e", f"{io_soulstruct_lib_path}/soulstruct-havok",
                 "--target", user_addon_modules,
