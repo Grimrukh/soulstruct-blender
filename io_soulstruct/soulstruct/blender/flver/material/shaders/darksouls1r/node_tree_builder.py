@@ -120,7 +120,9 @@ class NodeTreeBuilder(PTDENodeTreeBuilder):
             "Snow Delta Height Limit": self.get_mtd_param("g_SnowDeltaHeightLimit", default=0.02),
         }
         for i in range(0,3):
-            heightmap_node = self._new_tex_image_node(f"Snow Tile {i}", height_image)
+            heightmap_node = self._new_tex_image_node(
+                f"[No Export] Snow Tile {i}", height_image, label=f"Snow Tile {i}"
+            )
             uv_scale_node = self._new_tex_scale_node(
                 Vector2([
                     self.get_mtd_param(f"g_SnowTileScale_{i}", default=1),
@@ -134,8 +136,7 @@ class NodeTreeBuilder(PTDENodeTreeBuilder):
             input_default_values[f"Snow Tile Blend {i}"] = self.get_mtd_param(f"g_SnowTileBlend_{i}", default=0.1)
 
         if "Lightmap" in self.tex_image_nodes:
-            #Reroute UVTexture1 to lightmap node. It's weird, but uv lightmap is NOT being used based on testing.
-            self.link(self.uv_nodes["UVTexture1"].outputs["Vector"], self.tex_image_nodes["Lightmap"].inputs["Vector"])
+            self.link(self.uv_nodes["UVLightmap"].outputs["Vector"], self.tex_image_nodes["Lightmap"].inputs["Vector"])
             input_default_values["Light Map Influence"] = 1.0
 
         if node_inputs["Snow Detail"]:

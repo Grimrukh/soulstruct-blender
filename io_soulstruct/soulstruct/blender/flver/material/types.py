@@ -18,6 +18,7 @@ from soulstruct.blender.utilities import LoggingOperator, get_bl_custom_prop, re
 from soulstruct.blender.flver.image import DDSTexture, DDSTextureCollection
 from soulstruct.blender.flver.image.utilities import find_or_create_image
 from . import shaders
+from .shaders.enums import ShaderNodeType
 
 if tp.TYPE_CHECKING:
     from soulstruct.base.models.shaders import MatDef
@@ -340,6 +341,7 @@ class BlenderFLVERMaterial:
             node.name: node
             for node in self.node_tree.nodes
             if node.type == "TEX_IMAGE"
+            and not node.name.startswith("[No Export]")  # ignore nodes explicitly marked as not for export
         }  # type: dict[str, bpy.types.ShaderNodeTexImage]
 
         for sampler in matdef.samplers:
@@ -452,6 +454,103 @@ class BlenderFLVERMaterial:
             kwargs=mesh_kwargs,
             uv_layer_names=used_uv_layer_names,
         )
+
+    def rebuild_node_tree(
+        self,
+        operator: LoggingOperator,
+        context: bpy.types.Context,
+        matdef: MatDef,
+        vertex_color_count: int = -1,
+        blend_mode="HASHED",
+    ):
+        """Rebuild the shader node tree for this material using the latest builder, without changing any material
+        properties. Texture stems are collected from existing Image Texture nodes and `Path[sampler]` custom
+        properties, exactly as export does.
+
+        This allows old Blend files to take advantage of improved shader node trees without needing to re-import
+        the FLVER model.
+
+        If `vertex_color_count == -1` (default), it will be guessed from existing nodes.
+        """
+        bl_material = self.material
+
+        if vertex_color_count == -1:
+            # Count number of 'VertexColors{i}' attributes that appear in nodes.
+            vertex_colors_seen = set()
+            for node in self.material.node_tree.nodes:
+                if node.type == ShaderNodeType.Attribute:
+                    if node.attribute_name.startswith("VertexColors"):
+                        vertex_colors_seen.add(node.attribute_name)
+            vertex_color_count = len(vertex_colors_seen)
+
+        # Collect texture stems from existing material: first from `Path[sampler]` custom properties, then
+        # from Image Texture nodes. This mirrors the sampler resolution logic in `to_flver_material`.
+        existing_texture_stems = {}  # type: dict[str, str]
+
+        # Gather `Path[sampler]` custom properties.
+        for key in list(bl_material.keys()):
+            if key.startswith("Path[") and key.endswith("]"):
+                sampler_name = key[5:-1]
+                existing_texture_stems[sampler_name] = bl_material[key]
+
+        # Gather from Image Texture nodes (node name is sampler name).
+        for node in self.get_image_texture_nodes(with_image_only=False):
+            if node.name not in existing_texture_stems:
+                existing_texture_stems[node.name] = Path(node.image.name).stem if node.image else ""
+
+        # Build combined `sampler_texture_stems` using MatDef samplers as the base (for MATBIN defaults),
+        # then override with existing material textures (same logic as `new_from_flver_material`).
+        sampler_texture_stems = {
+            sampler.name: sampler.matbin_texture_stem.lower() for sampler in matdef.samplers
+        }
+        for sampler_name, texture_stem in existing_texture_stems.items():
+            if not texture_stem:
+                continue
+            sampler_texture_stems[sampler_name] = texture_stem.lower()
+
+        # Update blend mode.
+        if blend_mode:
+            if matdef.edge:
+                bl_material.blend_method = "CLIP"
+                bl_material.alpha_threshold = 0.5
+            else:
+                bl_material.blend_method = blend_mode
+
+        # Clear existing node tree entirely (keeping the material and its properties).
+        bl_material.node_tree.nodes.clear()
+
+        # Re-add Material Output node (builders expect it).
+        output_node = bl_material.node_tree.nodes.new("ShaderNodeOutputMaterial")
+        output_node.name = "Material Output"
+
+        # Select appropriate builder class for the game.
+        if context.scene.soulstruct_settings.is_game(DEMONS_SOULS):
+            builder_class = shaders.demonssouls.NodeTreeBuilder
+        elif context.scene.soulstruct_settings.is_game(DARK_SOULS_PTDE):
+            builder_class = shaders.darksouls1ptde.NodeTreeBuilder
+        elif context.scene.soulstruct_settings.is_game(DARK_SOULS_DSR):
+            builder_class = shaders.darksouls1r.NodeTreeBuilder
+        else:
+            builder_class = shaders.BaseNodeTreeBuilder
+
+        try:
+            builder = builder_class(
+                operator=operator,
+                context=context,
+                material=bl_material,
+                matdef=matdef,
+                sampler_texture_stems=sampler_texture_stems,
+                vertex_color_count=vertex_color_count,
+            )
+            builder.build()
+        except (MaterialImportError, KeyError, ValueError, IndexError) as ex:
+            operator.warning(
+                f"Error rebuilding shader for material '{self.name}'. Textures written to custom properties. "
+                f"Error:\n  {ex}"
+            )
+            # Fall back: store texture paths as custom properties.
+            for sampler_name, texture_stem in existing_texture_stems.items():
+                bl_material[f"Path[{sampler_name}]"] = texture_stem
 
     def get_image_texture_nodes(self, with_image_only=False) -> list[bpy.types.ShaderNodeTexImage]:
         # noinspection PyTypeChecker,PyUnresolvedReferences
