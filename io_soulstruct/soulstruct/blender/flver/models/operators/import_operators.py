@@ -43,6 +43,7 @@ from soulstruct.eldenring.constants import CHARACTER_MODELS as ER_CHARACTER_MODE
 from soulstruct.blender.flver.image.image_import_manager import ImageImportManager
 from soulstruct.blender.flver.utilities import *
 from soulstruct.blender.general import SoulstructSettings
+from soulstruct.blender.types import ArmatureObject
 from soulstruct.blender.utilities import *
 from ..types import BlenderFLVER
 from ..properties import FLVERImportSettings
@@ -147,7 +148,7 @@ class BaseFLVERImportOperator(LoggingImportOperator):
         """Can be overridden by importers for specific FLVER model types that know where their textures are."""
         pass
 
-    def set_blender_parent(self, context, bl_flver_armature: bpy.types.ArmatureObject):
+    def set_blender_parent(self, context, bl_flver_armature: ArmatureObject):
         """Set parent of imported FLVER armature, if needed."""
         pass
 

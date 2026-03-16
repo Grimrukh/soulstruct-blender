@@ -24,6 +24,7 @@ from pathlib import Path
 
 import bpy
 from mathutils import Vector
+
 from soulstruct.utilities.maths import Vector3
 
 MAP_STEM_RE = re.compile(r"^m(?P<area>\d\d)_(?P<block>\d\d)_(?P<cc>\d\d)_(?P<dd>\d\d)$")

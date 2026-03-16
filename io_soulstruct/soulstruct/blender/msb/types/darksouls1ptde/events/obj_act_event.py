@@ -4,13 +4,11 @@ __all__ = [
     "BlenderMSBObjActEvent",
 ]
 
-import bpy
-
-from soulstruct.darksouls1ptde.maps.msb import MSBObjActEvent
+from soulstruct.darksouls1ptde.maps.events import MSBObjActEvent
 
 from soulstruct.blender.msb.properties import BlenderMSBEventSubtype, MSBObjActEventProps
 from soulstruct.blender.msb.types.adapters import *
-from soulstruct.blender.types import SoulstructType
+from soulstruct.blender.types import MeshObject, SoulstructType
 
 from .base import BaseBlenderMSBEvent_DS1
 
@@ -31,7 +29,7 @@ class BlenderMSBObjActEvent(BaseBlenderMSBEvent_DS1[MSBObjActEvent, MSBObjActEve
         FieldAdapter("obj_act_flag"),
     )
 
-    obj_act_part: bpy.types.MeshObject | None
+    obj_act_part: MeshObject | None
     obj_act_entity_id: int
     obj_act_param_id: int
     obj_act_state: int

@@ -7,7 +7,8 @@ __all__ = [
 
 import bpy
 
-from soulstruct.blender.utilities import LoggingOperator, ObjectType, is_path_and_file
+from soulstruct.blender.types import *
+from soulstruct.blender.utilities import LoggingOperator, is_path_and_file
 
 
 class FindMissingTexturesInImageCache(LoggingOperator):
@@ -35,7 +36,7 @@ class FindMissingTexturesInImageCache(LoggingOperator):
         checked_image_stems = set()  # to avoid looking for the same image twice
 
         for obj in context.selected_objects:
-            obj: bpy.types.MeshObject
+            obj: MeshObject
 
             for material in obj.data.materials:
                 # noinspection PyUnresolvedReferences,PyTypeChecker

@@ -8,6 +8,7 @@ __all__ = [
     "MSBCharacterProps",
     "MSBPlayerStartProps",
     "MSBCollisionProps",
+    "MSBProtobossProps",
     "MSBNavmeshProps",
     "MSBConnectCollisionProps",
 

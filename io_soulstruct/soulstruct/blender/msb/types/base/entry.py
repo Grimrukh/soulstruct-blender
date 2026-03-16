@@ -17,13 +17,13 @@ import bpy
 from soulstruct.base.maps.msb import MSB as BaseMSB
 from soulstruct.base.maps.msb.msb_entry import MSBEntry
 
+from soulstruct.blender.base import BaseBlenderSoulstructObject
 from soulstruct.blender.msb.types.adapters import MSBReferenceFieldAdapter
-from soulstruct.blender.types import BaseBlenderSoulstructObject
 from soulstruct.blender.utilities.operators import LoggingOperator
 
 
 class BlenderMSBEntryProps(tp.Protocol):
-    entry_subtype: bpy.props.EnumProperty() | str
+    entry_subtype: bpy.types.EnumProperty | str
 
 
 ENTRY_T = tp.TypeVar("ENTRY_T", bound=MSBEntry)

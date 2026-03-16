@@ -29,6 +29,7 @@ __all__ = [
 import bpy
 
 from soulstruct.blender.flver.material import BlenderFLVERMaterial
+from soulstruct.blender.types import MeshObject
 
 
 def get_old_material_props(old_material: bpy.types.Material):
@@ -45,16 +46,16 @@ def get_old_material_props(old_material: bpy.types.Material):
 def get_new_material_props(new_material: bpy.types.Material):
     bl_material = BlenderFLVERMaterial(new_material)
     return dict(
+        # is_dynamic=bl_material.is_dynamic,
         # default_bone_index=bl_material.default_bone_index,
         # face_set_count=bl_material.face_set_count,
         flags=bl_material.flags,
-        is_bind_pose=bl_material.is_bind_pose,
         mat_def_path=bl_material.mat_def_path,
         unk_x18=bl_material.f2_unk_x18,
     )
 
 
-def inject_old_flver_mesh(old_flver_obj: bpy.types.MeshObject, new_bl_flver: bpy.types.MeshObject):
+def inject_old_flver_mesh(old_flver_obj: MeshObject, new_bl_flver: MeshObject):
     """Inject old FLVER mesh data into new FLVER object.
 
     - Tries to map old materials to new ones on `new_bl_flver`.

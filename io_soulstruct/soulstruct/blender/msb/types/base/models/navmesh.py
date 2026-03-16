@@ -15,6 +15,7 @@ from soulstruct.base.maps.navmesh.nvm import NVM
 from soulstruct.blender.exceptions import NVMImportError
 from soulstruct.blender.navmesh.nvm.types import BlenderNVM
 from soulstruct.blender.utilities import LoggingOperator, find_or_create_collection
+from soulstruct.blender.types import MeshObject
 
 from .base import BaseBlenderMSBModelImporter, MODEL_T
 
@@ -29,7 +30,7 @@ class BlenderMSBNavmeshModelImporter(BaseBlenderMSBModelImporter):
         model_name: str,
         map_stem: str,
         model_collection: bpy.types.Collection = None,
-    ) -> bpy.types.MeshObject:
+    ) -> MeshObject:
         """Import the Navmesh NVM model of the given name into a collection in the current scene.
 
         NOTE: `map_stem` should already be set to latest version if option is enabled. This function is agnostic.

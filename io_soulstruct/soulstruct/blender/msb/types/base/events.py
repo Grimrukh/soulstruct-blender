@@ -7,6 +7,7 @@ from __future__ import annotations
 
 __all__ = [
     "BaseBlenderMSBEvent",
+    "EVENT_T",
 ]
 
 import abc
@@ -19,7 +20,7 @@ from soulstruct.base.maps.msb.events import BaseMSBEvent
 
 from soulstruct.blender.msb.properties import BlenderMSBEventSubtype, MSBEventProps
 from soulstruct.blender.msb.types.adapters import *
-from soulstruct.blender.types import ObjectType, SoulstructType
+from soulstruct.blender.types import *
 from soulstruct.blender.utilities import find_or_create_collection
 
 from .entry import BaseBlenderMSBEntry, SUBTYPE_PROPS_T, MSB_T
@@ -43,7 +44,7 @@ class BaseBlenderMSBEvent(BaseBlenderMSBEntry[EVENT_T, MSBEventProps, SUBTYPE_PR
     PARENT_PROP_NAME: tp.ClassVar[str] = ""  # name of property to use as Blender parent, if any ('attached_part', etc.)
 
     __slots__ = []
-    obj: bpy.types.EmptyObject
+    obj: EmptyObject
     data: None
 
     TYPE_FIELDS = (
@@ -53,8 +54,8 @@ class BaseBlenderMSBEvent(BaseBlenderMSBEntry[EVENT_T, MSBEventProps, SUBTYPE_PR
     )
 
     entity_id: int
-    attached_part: bpy.types.MeshObject | None
-    attached_region: bpy.types.MeshObject | None
+    attached_part: MeshObject | None
+    attached_region: MeshObject | None
 
     @classmethod
     def get_msb_subcollection(cls, msb_collection: bpy.types.Collection, msb_stem: str) -> bpy.types.Collection:

@@ -13,6 +13,7 @@ import typing as tp
 import bpy
 
 from soulstruct.blender.exceptions import *
+from soulstruct.blender.types import *
 from soulstruct.blender.utilities import *
 
 if tp.TYPE_CHECKING:
@@ -22,9 +23,9 @@ if tp.TYPE_CHECKING:
 def duplicate_armature(
     bl_flver: BlenderFLVER,
     context: bpy.types.Context,
-    child_mesh_obj: bpy.types.MeshObject,
+    child_mesh_obj: MeshObject,
     as_data_instance=False,
-) -> bpy.types.ArmatureObject:
+) -> ArmatureObject:
     if not bl_flver.armature:
         # TODO: Could copy 'implicit Armature' by creating a single-bone Armature with the same name as the model.
         raise FLVERError("No Armature to duplicate for FLVER model.")
@@ -111,7 +112,7 @@ def duplicate_edit_mode(
     bpy.ops.mesh.separate(type="SELECTED")  # new data-block; also copies properties, materials, data layers, etc.
 
     # noinspection PyTypeChecker
-    new_mesh_obj = context.selected_objects[-1]  # type: bpy.types.MeshObject
+    new_mesh_obj = context.selected_objects[-1]  # type: MeshObject
     if not new_mesh_obj.name.startswith(bl_flver.mesh.name):
         # Tells us that `separate()` was unsuccessful.
         raise FLVERError(f"Could not duplicate and separate selected part of mesh into new object.")

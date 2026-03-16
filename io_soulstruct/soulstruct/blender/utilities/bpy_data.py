@@ -16,8 +16,8 @@ import typing as tp
 
 import bpy
 
+from soulstruct.blender.types import *
 from .misc import remove_dupe_suffix
-from .bpy_types import ObjectType, SoulstructType
 
 if tp.TYPE_CHECKING:
     PROPS_TYPE = tp.Union[tp.Dict[str, tp.Any], bpy.types.Object, None]
@@ -25,7 +25,7 @@ if tp.TYPE_CHECKING:
 
 def new_mesh_object(
     name: str, data: bpy.types.Mesh, soulstruct_type: SoulstructType = SoulstructType.NONE
-) -> bpy.types.MeshObject:
+) -> MeshObject:
     mesh_obj = bpy.data.objects.new(name, data)
     mesh_obj.soulstruct_type = soulstruct_type
     # noinspection PyTypeChecker
@@ -36,14 +36,14 @@ def new_armature_object(
     name: str,
     data: bpy.types.Armature,
     soulstruct_type: SoulstructType = SoulstructType.NONE,
-) -> bpy.types.ArmatureObject:
+) -> ArmatureObject:
     armature_obj = bpy.data.objects.new(name, data)
     armature_obj.soulstruct_type = soulstruct_type
     # noinspection PyTypeChecker
     return armature_obj
 
 
-def new_empty_object(name: str, soulstruct_type: SoulstructType = SoulstructType.NONE) -> bpy.types.EmptyObject:
+def new_empty_object(name: str, soulstruct_type: SoulstructType = SoulstructType.NONE) -> EmptyObject:
     # noinspection PyTypeChecker
     empty_obj = bpy.data.objects.new(name, None)
     empty_obj.soulstruct_type = soulstruct_type
@@ -57,7 +57,7 @@ def find_obj(
     soulstruct_type: SoulstructType | None = None,
     bl_name_func: tp.Callable[[str], str] | None = None,
     objects: tp.Iterable[bpy.types.Object] | None = None,
-) -> bpy.types.MeshObject | None:
+) -> MeshObject | None:
     ...
 
 
@@ -68,7 +68,7 @@ def find_obj(
     soulstruct_type: SoulstructType | None = None,
     bl_name_func: tp.Callable[[str], str] | None = None,
     objects: tp.Iterable[bpy.types.Object] | None = None,
-) -> bpy.types.ArmatureObject | None:
+) -> ArmatureObject | None:
     ...
 
 
@@ -79,7 +79,7 @@ def find_obj(
     soulstruct_type: SoulstructType | None = None,
     bl_name_func: tp.Callable[[str], str] | None = None,
     objects: tp.Iterable[bpy.types.Object] | None = None,
-) -> bpy.types.EmptyObject | None:
+) -> EmptyObject | None:
     ...
 
 
@@ -131,7 +131,7 @@ def find_obj_or_create_empty(
     bl_name_func: tp.Callable[[str], str] | None = None,
     objects: tp.Iterable[bpy.types.Object] | None = None,
     missing_reference_callback: tp.Callable[[bpy.types.Object], None] = None,
-) -> tuple[bool, bpy.types.MeshObject]:
+) -> tuple[bool, MeshObject]:
     ...
 
 
@@ -143,7 +143,7 @@ def find_obj_or_create_empty(
     bl_name_func: tp.Callable[[str], str] | None = None,
     objects: tp.Iterable[bpy.types.Object] | None = None,
     process_new_object: tp.Callable[[bpy.types.Object], None] = None,
-) -> tuple[bool, bpy.types.ArmatureObject]:
+) -> tuple[bool, ArmatureObject]:
     ...
 
 
@@ -155,7 +155,7 @@ def find_obj_or_create_empty(
     bl_name_func: tp.Callable[[str], str] | None = None,
     objects: tp.Iterable[bpy.types.Object] | None = None,
     process_new_object: tp.Callable[[bpy.types.Object], None] = None,
-) -> tuple[bool, bpy.types.EmptyObject]:
+) -> tuple[bool, EmptyObject]:
     ...
 
 
@@ -216,8 +216,8 @@ def copy_obj_property_group(
 
 
 def copy_armature_pose(
-    source_armature: bpy.types.ArmatureObject,
-    dest_armature: bpy.types.ArmatureObject,
+    source_armature: ArmatureObject,
+    dest_armature: ArmatureObject,
     ignore_bone_names: tp.Collection[str] = (),
 ):
     """Copy pose bone transforms.

@@ -4,7 +4,7 @@ __all__ = [
     "BlenderMSBPlayerStart",
 ]
 
-from soulstruct.darksouls1ptde.maps.msb import MSBPlayerStart
+from soulstruct.darksouls1ptde.maps.parts import MSBPlayerStart
 from soulstruct.darksouls1ptde.maps.models import MSBCharacterModel
 
 from soulstruct.blender.msb.types.adapters import *

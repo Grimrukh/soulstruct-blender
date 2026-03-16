@@ -9,16 +9,16 @@ import bpy
 from bpy.types import Context
 
 from soulstruct.blender.exceptions import ObjectTypeError
-from .bpy_types import ObjectType
+from soulstruct.blender.types.bpy_types import ArmatureObject, MeshObject, ObjectType
 
 
 @tp.overload
-def get_active_obj(context: Context, obj_type: tp.Literal[ObjectType.MESH]) -> bpy.types.MeshObject:
+def get_active_obj(context: Context, obj_type: tp.Literal[ObjectType.MESH]) -> MeshObject:
     ...
 
 
 @tp.overload
-def get_active_obj(context: Context, obj_type: tp.Literal[ObjectType.ARMATURE]) -> bpy.types.ArmatureObject:
+def get_active_obj(context: Context, obj_type: tp.Literal[ObjectType.ARMATURE]) -> ArmatureObject:
     ...
 
 

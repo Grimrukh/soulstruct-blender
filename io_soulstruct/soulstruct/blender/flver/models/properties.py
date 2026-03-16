@@ -13,12 +13,13 @@ __all__ = [
 import typing as tp
 
 import bpy
+from bpy.app.handlers import persistent
 
 from soulstruct.flver import FLVERBoneUsageFlags, FLVERVersion
 from soulstruct.games import *
 
 from soulstruct.blender.bpy_base.property_group import SoulstructPropertyGroup
-from soulstruct.blender.utilities.bpy_types import SoulstructType
+from soulstruct.blender.types import SoulstructType
 
 
 class CollectedSubmeshProps(tp.NamedTuple):
@@ -529,11 +530,9 @@ def _sync_submesh_props(bl_flver_obj: bpy.types.Object):
                 return
 
     elif diff == 1:
-        print("DETECTED ADDED MATERIAL")
         # Material addition. Iterate through current and stored until we find the first index where they differ,
         # which should be the new material. But first check the usual case of the addition being at the end.
         if current[:-1] == stored:
-            print("  ADDED TO END")
             entry = props.add()
             entry.material = current[-1]
             return
@@ -543,9 +542,7 @@ def _sync_submesh_props(bl_flver_obj: bpy.types.Object):
                 entry.material = current[i]
                 # Move the new entry to index i.
                 props.move(len(props) - 1, i)
-                print(f"  ADDED AT SLOT {i}")
                 return
-        print("  COULD NOT FIND SLOT")
 
     elif diff == 0:
 
@@ -588,7 +585,8 @@ def _sync_submesh_props(bl_flver_obj: bpy.types.Object):
         entry.use_backface_culling = "MATERIAL"
 
 
-def flver_submesh_sync_handler(scene: bpy.types.Scene):
+@persistent  # prevent Blender from unloading handler when a new file is loaded
+def flver_submesh_sync_handler(scene: bpy.types.Scene, _depsgraph: bpy.types.Depsgraph):
     """Scan scene for FLVER objects and synchronize their submesh properties to their materials."""
     for obj in scene.objects:
         if (

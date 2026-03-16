@@ -22,6 +22,7 @@ from soulstruct.eldenring.containers import DivBinder
 from soulstruct.havok.core import HKX
 
 from soulstruct.blender.exceptions import AnimationImportError, UnsupportedGameError
+from soulstruct.blender.types import *
 from soulstruct.blender.utilities import *
 
 from .types import SoulstructAnimation
@@ -142,8 +143,8 @@ class ImportHKXAnimationWithBinderChoice(BaseImportHKXAnimation, BinderEntrySele
     def run(
         cls,
         binder: Binder,
-        armature_obj: bpy.types.ArmatureObject,
-        part_mesh_obj: bpy.types.MeshObject | None,
+        armature_obj: ArmatureObject,
+        part_mesh_obj: MeshObject | None,
         model_name: str,
         skeleton_hkx: SKELETON_TYPING,
         compendium: HKX | None,

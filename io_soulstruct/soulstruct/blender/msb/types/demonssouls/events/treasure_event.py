@@ -4,13 +4,11 @@ __all__ = [
     "BlenderMSBTreasureEvent",
 ]
 
-import bpy
-
-from soulstruct.demonssouls.maps.msb import MSBTreasureEvent
+from soulstruct.demonssouls.maps.events import MSBTreasureEvent
 
 from soulstruct.blender.msb.properties import BlenderMSBEventSubtype, MSBTreasureEventProps
 from soulstruct.blender.msb.types.adapters import *
-from soulstruct.blender.types import SoulstructType
+from soulstruct.blender.types import MeshObject, SoulstructType
 
 from .base import BaseBlenderMSBEvent_DES
 
@@ -32,7 +30,7 @@ class BlenderMSBTreasureEvent(BaseBlenderMSBEvent_DES[MSBTreasureEvent, MSBTreas
         FieldAdapter("item_lot_5"),
     )
 
-    treasure_part: bpy.types.MeshObject | None
+    treasure_part: MeshObject | None
     item_lot_1: int
     item_lot_2: int
     item_lot_3: int

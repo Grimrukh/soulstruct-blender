@@ -4,13 +4,11 @@ __all__ = [
     "BlenderMSBNavigationEvent",
 ]
 
-import bpy
-
-from soulstruct.darksouls1ptde.maps.msb import MSBNavigationEvent
+from soulstruct.darksouls1ptde.maps.events import MSBNavigationEvent
 
 from soulstruct.blender.msb.properties import BlenderMSBEventSubtype, MSBNavigationEventProps
 from soulstruct.blender.msb.types.adapters import *
-from soulstruct.blender.types import SoulstructType
+from soulstruct.blender.types import MeshObject, SoulstructType
 
 from .base import BaseBlenderMSBEvent_DS1
 
@@ -27,4 +25,4 @@ class BlenderMSBNavigationEvent(BaseBlenderMSBEvent_DS1[MSBNavigationEvent, MSBN
         MSBReferenceFieldAdapter("navigation_region", ref_type=SoulstructType.MSB_REGION),
     )
 
-    navigation_region: bpy.types.MeshObject | None
+    navigation_region: MeshObject | None

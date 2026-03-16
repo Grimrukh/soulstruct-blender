@@ -118,7 +118,7 @@ from soulstruct.blender.misc import *
 
 from soulstruct.blender.animation import *
 from soulstruct.blender.collision import *
-from soulstruct.blender.cutscene import *
+# from soulstruct.blender.cutscene import *
 from soulstruct.blender.flver import *
 from soulstruct.blender.msb import *
 from soulstruct.blender.nav_graph import *
@@ -720,9 +720,8 @@ def register():
     )
 
     # FLVER submesh sync handler
-    DEPSGRAPH_UPDATE_POST_HANDLERS.append(
-        bpy.app.handlers.depsgraph_update_post.append(flver_submesh_sync_handler)
-    )
+    bpy.app.handlers.depsgraph_update_post.append(flver_submesh_sync_handler)
+    DEPSGRAPH_UPDATE_POST_HANDLERS.append(flver_submesh_sync_handler)
 
     bpy.types.TOPBAR_MT_file_import.append(havok_menu_func_import)
     bpy.types.TOPBAR_MT_file_export.append(havok_menu_func_export)

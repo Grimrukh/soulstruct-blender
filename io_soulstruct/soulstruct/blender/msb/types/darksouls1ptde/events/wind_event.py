@@ -6,7 +6,7 @@ __all__ = [
 
 from mathutils import Vector
 
-from soulstruct.darksouls1ptde.maps.msb import MSBWindEvent
+from soulstruct.darksouls1ptde.maps.events import MSBWindEvent
 from soulstruct.utilities.maths import Vector3
 
 from soulstruct.blender.msb.properties import BlenderMSBEventSubtype, MSBWindEventProps

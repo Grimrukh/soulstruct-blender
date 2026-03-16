@@ -4,8 +4,6 @@ __all__ = [
     "FLVERUVMapsPanel",
 ]
 
-import bpy
-
 from soulstruct.blender.bpy_base.panel import SoulstructPanel
 from soulstruct.blender.flver.models.operators.uv_operators import *
 

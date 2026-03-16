@@ -135,7 +135,7 @@ class ExportTexturesIntoBinderOrTPF(LoggingImportOperator):
         sel_tex_nodes = [
             node for node in context.active_object.active_material.node_tree.nodes
             if node.select and node.bl_idname == "ShaderNodeTexImage"
-        ]  # type: bpy.types.ShaderNodeTexImage
+        ]  # type: list[bpy.types.ShaderNodeTexImage]
 
         if not sel_tex_nodes:
             return self.error("No Image Texture material node selected.")

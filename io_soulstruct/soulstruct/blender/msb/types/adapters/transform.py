@@ -4,7 +4,6 @@ __all__ = [
     "MSBTransformFieldAdapter",
 ]
 
-import math
 import typing as tp
 from dataclasses import dataclass
 

@@ -9,13 +9,16 @@ __all__ = [
 import typing as tp
 
 import bpy
+
+from soulstruct.base.maps.navmesh import MCG, MCGNode
+from soulstruct.base.maps.navmesh import MCGEdge
+from soulstruct.utilities.text import natural_keys
+
+from soulstruct.blender.base import BaseBlenderSoulstructObject
 from soulstruct.blender.exceptions import *
 from soulstruct.blender.navmesh.nvm.types import BlenderNVM
 from soulstruct.blender.types import *
 from soulstruct.blender.utilities import *
-from soulstruct.base.maps.navmesh import MCG, MCGNode
-from soulstruct.base.maps.navmesh import MCGEdge
-from soulstruct.utilities.text import natural_keys
 from .properties import *
 
 
@@ -320,11 +323,11 @@ class BlenderMCGNode(BaseBlenderSoulstructObject[MCGNode, MCGNodeProps]):
         self.type_properties.unknown_offset = value
 
     @property
-    def navmesh_a(self) -> bpy.types.MeshObject | None:
+    def navmesh_a(self) -> MeshObject | None:
         return self.type_properties.navmesh_a
 
     @navmesh_a.setter
-    def navmesh_a(self, value: bpy.types.MeshObject | None):
+    def navmesh_a(self, value: MeshObject | None):
         self.type_properties.navmesh_a = value
 
     @property
@@ -338,11 +341,11 @@ class BlenderMCGNode(BaseBlenderSoulstructObject[MCGNode, MCGNodeProps]):
             self.type_properties.navmesh_a_triangles.add().index = index
 
     @property
-    def navmesh_b(self) -> bpy.types.MeshObject | None:
+    def navmesh_b(self) -> MeshObject | None:
         return self.type_properties.navmesh_b
 
     @navmesh_b.setter
-    def navmesh_b(self, value: bpy.types.MeshObject | None):
+    def navmesh_b(self, value: MeshObject | None):
         self.type_properties.navmesh_b = value
 
     @property
@@ -493,11 +496,11 @@ class BlenderMCGEdge(BaseBlenderSoulstructObject[MCGEdge, MCGEdgeProps]):
         self.type_properties.node_b = value
 
     @property
-    def navmesh_part(self) -> bpy.types.MeshObject | None:
+    def navmesh_part(self) -> MeshObject | None:
         return self.type_properties.navmesh_part
 
     @navmesh_part.setter
-    def navmesh_part(self, value: bpy.types.MeshObject | None):
+    def navmesh_part(self, value: MeshObject | None):
         self.type_properties.navmesh_part = value
 
     @property

@@ -20,6 +20,7 @@ from soulstruct.havok.fromsoft.base import BaseSkeletonHKX, BaseAnimationHKX
 
 from soulstruct.blender.exceptions import *
 from soulstruct.blender.flver.models import BlenderFLVER
+from soulstruct.blender.types import *
 from soulstruct.blender.utilities import *
 from .utilities import *
 from .types import SoulstructAnimation
@@ -28,7 +29,7 @@ from .types import SoulstructAnimation
 SKELETON_ENTRY_RE = re.compile(r"skeleton\.hkx", re.IGNORECASE)
 
 
-def _is_bl_flver_with_animation_data(obj: bpy.types.Object) -> tp.TypeGuard[bpy.types.MeshObject]:
+def _is_bl_flver_with_animation_data(obj: bpy.types.Object) -> tp.TypeGuard[MeshObject]:
     if not obj:
         return False
     try:

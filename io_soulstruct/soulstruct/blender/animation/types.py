@@ -18,6 +18,7 @@ from soulstruct.havok.utilities.maths import TRSTransform
 
 from soulstruct.blender.flver.utilities import get_basis_matrix, game_bone_transform_to_bl_bone_matrix
 from soulstruct.blender.exceptions import *
+from soulstruct.blender.types import *
 from soulstruct.blender.utilities import *
 from .utilities import *
 
@@ -161,7 +162,7 @@ class SoulstructAnimation:
             raise ValueError(f"Could not parse animation ID from Action name '{self.name}'.")
 
     @classmethod
-    def from_armature_animation_data(cls, armature: bpy.types.ArmatureObject) -> SoulstructAnimation:
+    def from_armature_animation_data(cls, armature: ArmatureObject) -> SoulstructAnimation:
         """Load from current animation data of given `armature`."""
         if not armature.animation_data:
             raise ValueError(f"Armature '{armature.name}' has no animation data.")
@@ -179,7 +180,7 @@ class SoulstructAnimation:
         animation_hkx: ANIMATION_TYPING,
         skeleton_hkx: SKELETON_TYPING,
         name: str,
-        armature_obj: bpy.types.ArmatureObject,
+        armature_obj: ArmatureObject,
         model_name: str,
     ) -> SoulstructAnimation:
         """Create a new wrapped Blender Action from the given HKX animation data.
@@ -247,7 +248,7 @@ class SoulstructAnimation:
         cls,
         context: Context,
         action_name: str,
-        armature_obj: bpy.types.ArmatureObject,
+        armature_obj: ArmatureObject,
         arma_frames: list[dict[str, TRSTransform]] | None,
         root_motion: np.ndarray | None = None,  # shape (n_frames, 4) or None
         root_motion_bone_name="",
@@ -317,11 +318,13 @@ class SoulstructAnimation:
         action = None  # type: bpy.types.Action | None
         original_location = armature_obj.location.copy()  # TODO: not necessary with batch method?
         try:
-            # NOTE: Blender 4.4 introduced Action Slots. However, Blender will just create a 'Legacy Slot' and use
-            # that if we don't use slots. Since we're only animation object data (transform, pose), we rely on that.
             armature_obj.animation_data_create()
             action = bpy.data.actions.new(name=action_name)
-            action.id_root = "OBJECT"
+            action_slot = action.slots.new(id_type="OBJECT", name=armature_obj.name)
+            # Create layer and strips (both unique).
+            layer = action.layers.new("Layer")
+            strip = layer.strips.new(type="KEYFRAME")
+            channelbag = strip.channelbag(action_slot, ensure=True)
 
             if arma_frames:
                 bone_basis_samples = cls.get_bone_basis_samples(
@@ -334,7 +337,7 @@ class SoulstructAnimation:
                 bone_basis_samples = {}
 
             cls._add_keyframes_batch(
-                action,
+                channelbag,
                 bone_basis_samples,
                 root_motion,
                 root_motion_bone_name,
@@ -346,15 +349,13 @@ class SoulstructAnimation:
             armature_obj.location = original_location  # reset location (i.e. erase last root motion)
             raise
 
-        # Set Action on Armature object (NOT Armature data).
+        # Set Action and Slot on Armature object (NOT Armature data).
         armature_obj.animation_data.action = action
-        # Blender 4.4+: Set action slot explicitly (required).
-        if bpy.app.version >= (4, 4, 0):
-            armature_obj.animation_data.action_slot = action.slots[0]  # "Legacy Slot"
+        armature_obj.animation_data.action_slot = action_slot
         # Ensure action is not deleted when not in use.
         action.use_fake_user = True
         # Update all F-curves and make them cycle.
-        for fcurve in action.fcurves:
+        for fcurve in action.layers[0].strips[0].channelbag(action_slot, ensure=True).fcurves:
             fcurve.modifiers.new("CYCLES")  # default settings are fine
             fcurve.update()
         # Update Blender timeline start/stop times.
@@ -369,11 +370,15 @@ class SoulstructAnimation:
         cls,
         context: Context,
         action_name: str,
-        armature_or_dummy: bpy.types.EmptyObject | bpy.types.ArmatureObject,
+        armature_or_dummy: EmptyObject | ArmatureObject,
         arma_cuts: list[list[RemoPartAnimationFrame] | int],
         is_root_motion_only=False,
     ) -> SoulstructAnimation:
-        """Create a Blender Action that combines all the given cuts in `all_cut_arma_frames`, read from RemoBND."""
+        """Create a Blender Action that combines all the given cuts in `all_cut_arma_frames`, read from RemoBND.
+
+        TODO: Blender 4.4+ now supports action slots, so a single cutscene Action can be created and shared across all
+         member Armature/Empty objects of the cutscene using their own slots.
+        """
         to_60_fps = context.scene.cutscene_import_settings.to_60_fps
         bl_frames_per_game_frame = 2.0 if to_60_fps else 1.0
 
@@ -394,14 +399,18 @@ class SoulstructAnimation:
         try:
             armature_or_dummy.animation_data_create()
             action = bpy.data.actions.new(name=action_name)
-            action.id_root = "OBJECT"
+            action_slot = action.slots.new(id_type="OBJECT", name=armature_or_dummy.name)
+            # Create layer and strips (both unique).
+            layer = action.layers.new("Layer")
+            strip = layer.strips.new(type="KEYFRAME")
+            channelbag = strip.channelbag(action_slot, ensure=True)
 
             if not is_root_motion_only:
                 if armature_or_dummy.type != "ARMATURE":
                     raise ValueError(
                         "Cutscene animation can only be applied to an Empty (Dummy) with `is_root_motion_only=True`."
                     )
-                armature_or_dummy: bpy.types.ArmatureObject
+                armature_or_dummy: ArmatureObject
                 arma_local_inv_matrices = cls.get_armature_local_inv_matrices(armature_or_dummy)  # used by every frame
             else:
                 arma_local_inv_matrices = {}  # unused
@@ -456,7 +465,7 @@ class SoulstructAnimation:
             root_motion = np.array(root_motion_rows)
 
             cls._add_keyframes_batch(
-                action,
+                channelbag,
                 bone_basis_samples,
                 root_motion=root_motion,
                 root_motion_bone_name="",  # root motion drives Armature transform directly
@@ -467,13 +476,11 @@ class SoulstructAnimation:
             armature_or_dummy.location = original_location  # reset location (i.e. erase last root motion)
             raise
 
-        # Set Action on Armature object (NOT Armature data).
+        # Set Action and Slot on Armature/Dummy object.
         armature_or_dummy.animation_data.action = action
-        # Blender 4.4+: Set action slot explicitly (required).
-        if bpy.app.version >= (4, 4, 0):
-            armature_or_dummy.animation_data.action_slot = action.slots[0]  # "Legacy Slot"
+        armature_or_dummy.animation_data.action_slot = action_slot
         # Set constant interpolation at the ends of cuts.
-        for fcurve in action.fcurves:
+        for fcurve in action.layers[0].strips[0].channelbag(action_slot, ensure=True).fcurves:
             for keyframe in fcurve.keyframe_points:
                 if int(keyframe.co.x) in cut_end_keyframe_x:
                     keyframe.interpolation = "CONSTANT"
@@ -490,7 +497,7 @@ class SoulstructAnimation:
         return cls(action)
 
     @staticmethod
-    def get_armature_local_inv_matrices(armature: bpy.types.ArmatureObject) -> dict[str, Matrix]:
+    def get_armature_local_inv_matrices(armature: ArmatureObject) -> dict[str, Matrix]:
         """Return a dictionary mapping Blender bone names to their inverted `matrix_local` transforms.
 
         NOTE: We stay in our custom 'FromSoft bone space' coordinates here (X-forward), since this is intended only for
@@ -503,7 +510,7 @@ class SoulstructAnimation:
 
     @staticmethod
     def get_bone_basis_samples(
-        armature: bpy.types.ArmatureObject,
+        armature: ArmatureObject,
         arma_frames: list[dict[str, TRSTransform]],
         arma_local_inv_matrices: dict[str, Matrix],
         bl_frames_per_game_frame: float,
@@ -578,7 +585,7 @@ class SoulstructAnimation:
 
     @staticmethod
     def _add_keyframes_batch(
-        action: bpy.types.Action,
+        channelbag: bpy.types.ActionChannelbag,
         bone_basis_samples: dict[str, np.ndarray],
         root_motion: np.ndarray | None,
         root_motion_bone_name: str = "",
@@ -594,8 +601,12 @@ class SoulstructAnimation:
         when converting 30 to 60 FPS.
 
         If `root_motion_bone_name` is given (non-empty), root motion will be applied to the bone with that name.
-        Otherwise it will be applied directly to the object's local transform (location and Z-axis rotation).
+        Otherwise, it will be applied directly to the object's local transform (location and Z-axis rotation).
         """
+
+        def _new_fcurve(data_path_: str, index_: int) -> bpy.types.FCurve:
+            """Helper to create an FCurve for the given data path and index."""
+            return channelbag.fcurves.new(data_path=data_path_, index=index_)
 
         # Initialize FCurves for root motion and bones.
         if root_motion is not None:
@@ -607,11 +618,19 @@ class SoulstructAnimation:
             if root_motion_bone_name:
                 # We animate the given bone name with root motion instead of the Armature transform.
                 data_path = f"pose.bones[\"{root_motion_bone_name}\"]"
-                root_fcurves = [action.fcurves.new(data_path=f"{data_path}.location", index=i) for i in range(3)]
-                root_fcurves.append(action.fcurves.new(data_path=f"{data_path}.rotation_euler", index=2))  # Z
+                root_fcurves = [
+                    _new_fcurve(f"{data_path}.location", i) for i in range(3)
+                ]
+                root_fcurves.append(
+                    _new_fcurve(f"{data_path}.rotation_euler", 2)
+                )  # Z
             else:
-                root_fcurves = [action.fcurves.new(data_path="location", index=i) for i in range(3)]
-                root_fcurves.append(action.fcurves.new(data_path="rotation_euler", index=2))  # Z
+                root_fcurves = [
+                    _new_fcurve("location", i) for i in range(3)
+                ]
+                root_fcurves.append(
+                    _new_fcurve("rotation_euler", 2)
+                )  # Z
         else:
             root_fcurves = []
 
@@ -620,16 +639,13 @@ class SoulstructAnimation:
         for bone_name in bone_basis_samples.keys():
             bone_fcurves[bone_name] = []  # ten FCurves per bone
             bone_fcurves[bone_name] += [
-                action.fcurves.new(data_path=f"pose.bones[\"{bone_name}\"].location", index=i)
-                for i in range(3)
+                _new_fcurve(f"pose.bones[\"{bone_name}\"].location", i) for i in range(3)
             ]
             bone_fcurves[bone_name] += [
-                action.fcurves.new(data_path=f"pose.bones[\"{bone_name}\"].rotation_quaternion", index=i)
-                for i in range(4)
+                _new_fcurve(f"pose.bones[\"{bone_name}\"].rotation_quaternion", i) for i in range(4)
             ]
             bone_fcurves[bone_name] += [
-                action.fcurves.new(data_path=f"pose.bones[\"{bone_name}\"].scale", index=i)
-                for i in range(3)
+                _new_fcurve(f"pose.bones[\"{bone_name}\"].scale", i) for i in range(3)
             ]
 
         # Build lists of FCurve keyframe points by initializing their size and using `foreach_set`.
@@ -664,7 +680,7 @@ class SoulstructAnimation:
         self,
         operator: LoggingOperator,
         context: Context,
-        armature: bpy.types.ArmatureObject,
+        armature: ArmatureObject,
         skeleton_hkx: BaseSkeletonHKX,
         animation_hkx_class: type[BaseAnimationHKX],
     ) -> ANIMATION_TYPING | BaseAnimationHKX:
@@ -776,7 +792,7 @@ class SoulstructAnimation:
         self,
         operator: LoggingOperator,
         context: Context,
-        armature: bpy.types.ArmatureObject,
+        armature: ArmatureObject,
         skeleton_hkx: DES_SkeletonHKX,
         animation_hkx_class: type[DES_AnimationHKX],
     ) -> DES_AnimationHKX:
@@ -790,7 +806,7 @@ class SoulstructAnimation:
         self,
         operator: LoggingOperator,
         context: Context,
-        armature: bpy.types.ArmatureObject,
+        armature: ArmatureObject,
         skeleton_hkx: BaseSkeletonHKX,
         animation_hkx_class: type[BaseAnimationHKX],
     ) -> ANIMATION_TYPING:
@@ -804,7 +820,7 @@ class SoulstructAnimation:
         operator: LoggingOperator,
         context: Context,
         game: Game,
-        armature: bpy.types.ArmatureObject,
+        armature: ArmatureObject,
         skeleton_hkx: BaseSkeletonHKX,
         animation_hkx_class: type[BaseAnimationHKX],
         force_interleaved=False,

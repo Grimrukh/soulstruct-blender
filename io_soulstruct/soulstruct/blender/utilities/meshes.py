@@ -4,9 +4,8 @@ __all__ = []
 
 import typing as tp
 
-import bpy
 import bmesh
-from bmesh.types import BMesh, BMVert, BMEdge, BMFace
+from bmesh.types import BMVert, BMEdge, BMFace
 
 
 def visit_connected_bmesh_islands(

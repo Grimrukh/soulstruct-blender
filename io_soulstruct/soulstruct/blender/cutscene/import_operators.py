@@ -22,6 +22,7 @@ from soulstruct.blender.exceptions import CutsceneImportError, SoulstructTypeErr
 from soulstruct.blender.msb.properties.parts import MSBPartArmatureMode
 from soulstruct.blender.msb.types.adapters import get_part_game_name
 from soulstruct.blender.msb.types.darksouls1r import *
+from soulstruct.blender.types import *
 from soulstruct.blender.utilities import *
 
 if tp.TYPE_CHECKING:
@@ -306,13 +307,13 @@ class ImportHKXCutscene(LoggingImportOperator):
         context: bpy.types.Context,
         remobnd: RemoBND,
         to_60_fps: bool,
-    ) -> bpy.types.CameraObject:
+    ) -> CameraObject:
         """Create a new Blender camera object for the cutscene."""
         camera_name = self.camera_name.format(CutsceneName=remobnd.cutscene_name)
         camera_data = bpy.data.cameras.new(self.camera_name.format(CutsceneName=remobnd.cutscene_name))
         camera_data.sensor_width = 35  # mm (seems to match game FoV appearance)
         # noinspection PyTypeChecker
-        camera = bpy.data.objects.new(camera_name, camera_data)  # type: bpy.types.CameraObject
+        camera = bpy.data.objects.new(camera_name, camera_data)  # type: CameraObject
 
         # Add motion to camera.
         camera_transforms = [cut.sibcam.get_clipped_camera_animation() for cut in remobnd.cuts]
@@ -330,7 +331,7 @@ class ImportHKXCutscene(LoggingImportOperator):
 
     def create_camera_actions(
         self,
-        camera: bpy.types.CameraObject,
+        camera: CameraObject,
         cutscene_name: str,
         camera_transforms: list[list[CameraFrameTransform]],
         camera_fov_keyframes: list[list[tuple[float, float]]],
@@ -381,7 +382,7 @@ class ImportHKXCutscene(LoggingImportOperator):
 
     @staticmethod
     def add_camera_keyframes(
-        camera: bpy.types.CameraObject,
+        camera: CameraObject,
         camera_transforms: list[list[CameraFrameTransform]],
         camera_fov_keyframes: list[list[tuple[float, float]]],
         to_60_fps: bool,

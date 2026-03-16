@@ -13,15 +13,15 @@ __all__ = [
 
 from pathlib import Path
 
-import bpy
 from mathutils import Euler, Matrix
 
 from soulstruct.containers import Binder
 from soulstruct.flver import FLVER
 from soulstruct.utilities.maths import EulerRad, Vector3, Matrix3
 
-from soulstruct.blender.utilities.conversion import to_blender, to_game
 from soulstruct.blender.exceptions import *
+from soulstruct.blender.types import ArmatureObject
+from soulstruct.blender.utilities.conversion import to_blender, to_game
 
 
 def get_flvers_from_binder(
@@ -71,7 +71,7 @@ def game_bone_transform_to_bl_bone_matrix(
     return bl_transform @ BONE_CoB_4x4
 
 
-def get_armature_matrix(armature: bpy.types.ArmatureObject, bone_name: str, basis=None) -> Matrix:
+def get_armature_matrix(armature: ArmatureObject, bone_name: str, basis=None) -> Matrix:
     """Demonstrates how Blender calculates `pose_bone.matrix` (armature matrix) for `bone_name`.
 
     This function is not used by Soulstruct (as `pose_bone.matrix` can simply be read directly), but it is informative
@@ -95,7 +95,7 @@ def get_armature_matrix(armature: bpy.types.ArmatureObject, bone_name: str, basi
 
 
 def get_basis_matrix(
-    armature: bpy.types.ArmatureObject,
+    armature: ArmatureObject,
     bone_name: str,
     armature_matrix: Matrix,
     armature_inv_matrices: dict[str, Matrix],

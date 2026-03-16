@@ -8,7 +8,7 @@ import math
 
 from mathutils import Vector
 
-from soulstruct.darksouls1ptde.maps.msb import MSBMapOffsetEvent
+from soulstruct.darksouls1ptde.maps.events import MSBMapOffsetEvent
 
 from soulstruct.blender.msb.properties import BlenderMSBEventSubtype, MSBMapOffsetEventProps
 from soulstruct.blender.msb.types.adapters import *

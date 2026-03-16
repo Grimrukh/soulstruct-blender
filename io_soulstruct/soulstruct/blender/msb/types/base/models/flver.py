@@ -23,7 +23,7 @@ from soulstruct.blender.exceptions import FLVERImportError
 from soulstruct.blender.flver.image.image_import_manager import ImageImportManager
 from soulstruct.blender.flver.models.types import BlenderFLVER
 from soulstruct.blender.flver.utilities import get_flvers_from_binder
-from soulstruct.blender.types import ObjectType, SoulstructType
+from soulstruct.blender.types import *
 from soulstruct.blender.utilities import find_or_create_collection, LoggingOperator, get_model_name, find_obj
 
 from .base import BaseBlenderMSBModelImporter, MODEL_T
@@ -49,7 +49,7 @@ class BaseBlenderMSBFLVERModelImporter(BaseBlenderMSBModelImporter, abc.ABC):
         model_name: str,
         model_collection: bpy.types.Collection,
         image_import_manager: ImageImportManager = None,
-    ) -> bpy.types.MeshObject:
+    ) -> MeshObject:
         try:
             bl_flver = BlenderFLVER.new_from_soulstruct_obj(
                 operator,
@@ -270,7 +270,7 @@ class BlenderMSBMapPieceModelImporter(BaseBlenderMSBFLVERModelImporter):
         model_name: str,
         map_stem: str,  # required for Map Pieces
         model_collection: bpy.types.Collection = None,
-    ) -> bpy.types.MeshObject:
+    ) -> MeshObject:
         """Import the model of the given name into a collection in the current scene.
 
         TODO: Will need to check MAPBNDs for Elden Ring MSBs.
@@ -371,7 +371,7 @@ class BlenderMSBObjectModelImporter(BaseBlenderMSBFLVERModelImporter):
         model_name: str,
         map_stem="",  # not used
         model_collection: bpy.types.Collection = None,
-    ) -> bpy.types.MeshObject:
+    ) -> MeshObject:
         """Import the model of the given name into a collection in the current scene."""
         settings = operator.settings(context)
 
@@ -474,7 +474,7 @@ class BlenderMSBCharacterModelImporter(BaseBlenderMSBFLVERModelImporter):
         model_name: str,
         map_stem="",  # not used
         model_collection: bpy.types.Collection = None,
-    ) -> bpy.types.MeshObject:
+    ) -> MeshObject:
         """Import the model of the given name into a collection in the current scene."""
         settings = operator.settings(context)
 

@@ -210,7 +210,7 @@ class SetNodeNavmeshTriangles(LoggingOperator):
         try:
             bl_node = BlenderMCGNode(context.selected_objects[0])
             # noinspection PyTypeChecker
-            mesh = context.edit_object  # type: bpy.types.MeshObject
+            mesh = context.edit_object  # type: MeshObject
             if mesh is not bl_node.navmesh_a and mesh is not bl_node.navmesh_b:
                 return self.error("Edited mesh must be the Navmesh A or B mesh for the selected MCG node.")
             bm = bmesh.from_edit_mesh(mesh.data)
@@ -412,7 +412,7 @@ class FindCheapestPath(LoggingOperator):
         obj = context.active_object
         if obj is None or obj.type != 'MESH':
             return self.error("No active edit mesh object.")
-        obj: bpy.types.MeshObject
+        obj: MeshObject
 
         bm = bmesh.from_edit_mesh(obj.data)
 

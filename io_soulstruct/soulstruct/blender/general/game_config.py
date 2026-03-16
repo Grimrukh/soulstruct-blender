@@ -18,8 +18,8 @@ from soulstruct.games import *
 
 from soulstruct import demonssouls, darksouls1ptde, darksouls1r, bloodborne, darksouls3, eldenring
 
-from soulstruct.havok.core import HavokModule
 from soulstruct.havok import fromsoft as hk_fromsoft
+from soulstruct.havok.enums import HavokModule
 from soulstruct.havok.fromsoft.base import BaseSkeletonHKX, BaseAnimationHKX
 
 

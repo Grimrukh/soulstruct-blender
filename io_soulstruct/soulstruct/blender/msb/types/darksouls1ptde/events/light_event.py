@@ -4,7 +4,7 @@ __all__ = [
     "BlenderMSBLightEvent",
 ]
 
-from soulstruct.darksouls1ptde.maps.msb import MSBLightEvent
+from soulstruct.darksouls1ptde.maps.events import MSBLightEvent
 
 from soulstruct.blender.msb.properties import BlenderMSBEventSubtype, MSBLightEventProps
 from soulstruct.blender.msb.types.adapters import *

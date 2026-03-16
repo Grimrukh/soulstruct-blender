@@ -22,8 +22,8 @@ from soulstruct.base.events.enums import NavmeshFlag
 
 from soulstruct.blender.bpy_base.property_group import SoulstructPropertyGroup
 from soulstruct.blender.exceptions import SoulstructTypeError
-from soulstruct.blender.types import SoulstructType
-from soulstruct.blender.utilities import ObjectType, LoggingOperator, replace_shared_prefix
+from soulstruct.blender.types import *
+from soulstruct.blender.utilities import LoggingOperator, replace_shared_prefix
 from .types import BlenderNVM
 from .utilities import set_face_material, get_navmesh_material
 
@@ -138,7 +138,7 @@ class AddNVMFaceFlags(LoggingOperator):
         if obj is None or obj.type != ObjectType.MESH:
             return self.error("No Mesh selected.")
 
-        obj: bpy.types.MeshObject
+        obj: MeshObject
         bm = bmesh.from_edit_mesh(obj.data)
 
         props = context.scene.navmesh_face_settings
@@ -174,7 +174,7 @@ class RemoveNVMFaceFlags(LoggingOperator):
         if obj is None or obj.type != ObjectType.MESH:
             return self.error("No Mesh selected.")
 
-        obj: bpy.types.MeshObject
+        obj: MeshObject
         bm = bmesh.from_edit_mesh(obj.data)
 
         props = context.scene.navmesh_face_settings
@@ -210,7 +210,7 @@ class SetNVMFaceFlags(LoggingOperator):
         if obj is None or obj.type != ObjectType.MESH:
             return self.error("No Mesh selected.")
 
-        obj: bpy.types.MeshObject
+        obj: MeshObject
         bm = bmesh.from_edit_mesh(obj.data)
 
         props = context.scene.navmesh_face_settings
@@ -246,7 +246,7 @@ class SetNVMFaceObstacleCount(LoggingOperator):
         if obj is None or obj.type != ObjectType.MESH:
             return {"CANCELLED"}
 
-        obj: bpy.types.MeshObject
+        obj: MeshObject
         bm = bmesh.from_edit_mesh(obj.data)
 
         props = context.scene.navmesh_face_settings
@@ -285,7 +285,7 @@ class ResetNVMFaceInfo(LoggingOperator):
         if obj is None or obj.type != ObjectType.MESH:
             return {"CANCELLED"}
 
-        obj: bpy.types.MeshObject
+        obj: MeshObject
         bm = bmesh.from_edit_mesh(obj.data)
 
         # TODO: Can probably use `verify()`.
@@ -418,7 +418,7 @@ class GenerateNavmeshFromCollision(LoggingOperator):
     def execute(self, context):
         # Assume the active object is the collision mesh.
         # noinspection PyTypeChecker
-        collision_obj = context.active_object  # type: bpy.types.MeshObject
+        collision_obj = context.active_object  # type: MeshObject
 
         # Ensure we are in Edit mode so we can use bmesh.
         bpy.ops.object.mode_set(mode='EDIT')
@@ -479,7 +479,7 @@ class GenerateNavmeshFromCollision(LoggingOperator):
         for obj in context.selected_objects:
             if obj != collision_obj and obj.type == 'MESH':
                 # noinspection PyTypeChecker
-                navmesh_obj = obj  # type: bpy.types.MeshObject
+                navmesh_obj = obj  # type: MeshObject
                 break
         else:
             return self.error("Failed to separate walkable faces into a new object.")

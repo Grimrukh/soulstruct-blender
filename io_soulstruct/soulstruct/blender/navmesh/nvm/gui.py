@@ -20,6 +20,7 @@ from soulstruct.blender.bpy_base.panel import SoulstructPanel
 from soulstruct.blender.exceptions import SoulstructTypeError
 from soulstruct.blender.misc.misc_mesh import ApplyLocalMatrixToMesh
 from soulstruct.blender.types import *
+from soulstruct.blender.types import MeshObject
 
 from .import_operators import *
 from .export_operators import *
@@ -108,7 +109,7 @@ class NVMNavmeshToolsPanel(SoulstructPanel):
             obj.soulstruct_type == SoulstructType.MSB_PART and obj.MSB_PART.entry_subtype == "MSB_NAVMESH"
         )):
             self.layout.operator(ResetNVMFaceInfo.bl_idname)
-            obj: bpy.types.MeshObject
+            obj: MeshObject
             bm = bmesh.from_edit_mesh(obj.data)
             try:
                 layout_selected_faces(bm, self.layout, context, selected_faces_box)

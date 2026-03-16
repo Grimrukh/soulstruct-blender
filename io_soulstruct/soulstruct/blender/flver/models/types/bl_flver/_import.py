@@ -18,6 +18,7 @@ from soulstruct.base.models.shaders import MatDefError
 from soulstruct.blender.exceptions import FLVERImportError
 from soulstruct.blender.flver.material.types import BlenderFLVERMaterial
 from soulstruct.blender.flver.models.properties import FLVERImportSettings
+from soulstruct.blender.types import *
 from soulstruct.blender.utilities import *
 
 from ..bl_flver_dummy import BlenderFLVERDummy
@@ -94,8 +95,8 @@ def create_bl_flver_from_flver(
 
     operator.to_object_mode(context)
 
-    existing_placeholder_msb_parts = []  # type: list[bpy.types.MeshObject]
-    placeholder_model = None  # type: bpy.types.MeshObject | None
+    existing_placeholder_msb_parts = []  # type: list[MeshObject]
+    placeholder_model = None  # type: MeshObject | None
     if command.import_settings.replace_placeholder_model:
         # Look for a Placeholder model to replace.
         placeholder_model = find_obj(
@@ -253,10 +254,10 @@ def _set_submesh_props(
 
 def _create_bl_mesh(
     command: _CreateBlenderFLVERCommand,
-    armature: bpy.types.ArmatureObject | None,
+    armature: ArmatureObject | None,
     bl_bone_names: list[str],
     mesh_data: bpy.types.Mesh,
-) -> tuple[bpy.types.MeshObject, list[BlenderFLVERMaterial], list[int]]:
+) -> tuple[MeshObject, list[BlenderFLVERMaterial], list[int]]:
     """Create Blender Mesh from FLVER sub-meshes.
 
     This is the main workhorse function of FLVER import in Blender.
@@ -324,7 +325,7 @@ def _create_bl_mesh(
 
 def _create_armature_if_needed(
     command: _CreateBlenderFLVERCommand
-) -> tuple[bpy.types.ArmatureObject | None, FLVERBoneDataType, list[str]]:
+) -> tuple[ArmatureObject | None, FLVERBoneDataType, list[str]]:
     if (
         command.import_settings.omit_default_bone
         and not command.flver.dummies
@@ -355,7 +356,7 @@ def _create_armature_if_needed(
     return armature, bl_bone_data_type, bl_bone_names
 
 
-def _create_mesh_armature_modifier(bl_mesh: bpy.types.MeshObject, bl_armature: bpy.types.ArmatureObject):
+def _create_mesh_armature_modifier(bl_mesh: MeshObject, bl_armature: ArmatureObject):
     armature_mod = bl_mesh.modifiers.new(name="FLVER Armature", type="ARMATURE")
     armature_mod.object = bl_armature
     armature_mod.show_in_editmode = True
@@ -452,7 +453,7 @@ def _create_bl_mesh_from_merged_mesh(
 
 
 def _create_bone_vertex_groups(
-    mesh: bpy.types.MeshObject,
+    mesh: MeshObject,
     bl_bone_names: list[str],
     bl_vert_bone_weights: np.ndarray,
     bl_vert_bone_indices: np.ndarray,
@@ -493,7 +494,7 @@ def _create_bone_vertex_groups(
 
 def _create_bl_bones(
     command: _CreateBlenderFLVERCommand,
-    armature: bpy.types.ArmatureObject,
+    armature: ArmatureObject,
     bl_bone_names: list[str],
 ) -> FLVERBoneDataType:
     """Create FLVER bones on given `bl_armature_obj` in Blender.

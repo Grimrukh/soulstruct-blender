@@ -19,12 +19,19 @@ from soulstruct.blender.utilities.operators import LoggingOperator
 from soulstruct.blender.utilities.conversion import *
 
 if tp.TYPE_CHECKING:
-    from .soulstruct_object import BaseBlenderSoulstructObject, SOULSTRUCT_T, TYPE_PROPS_T
+    from soulstruct.blender.base.soulstruct_object import BaseBlenderSoulstructObject, SOULSTRUCT_T, TYPE_PROPS_T
     SOULSTRUCT_OBJECT_T = tp.TypeVar("SOULSTRUCT_OBJECT_T", bound=BaseBlenderSoulstructObject)
 
 
 @dataclass(slots=True, frozen=True)
 class FieldAdapter:
+    """Adapter for converting a property between a Soulstruct type and a Blender wrapper property.
+
+    Also provides a default getter and setter for the Blender wrapper property, which can be used in `auto_prop` mode.
+    If `auto_prop=False`, you must define the property on the `BaseBlenderSoulstructObject` wrapper class and implement
+    the getter/setter.
+    """
+
     soulstruct_field_name: str
     _: KW_ONLY
     bl_prop_name: str = None  # defaults to `soulstruct_field_name`
@@ -89,8 +96,10 @@ class CustomFieldAdapter(FieldAdapter):
     def __post_init__(self):
         super(CustomFieldAdapter, self).__post_init__()
         if self.read_func is None:
+            # Define default 1:1 read function.
             object.__setattr__(self, "read_func", lambda x: x)
         if self.write_func is None:
+            # Define default 1:1 write function.
             object.__setattr__(self, "write_func", lambda x: x)
 
     def soulstruct_to_blender(
@@ -100,6 +109,9 @@ class CustomFieldAdapter(FieldAdapter):
         soulstruct_obj: SOULSTRUCT_T,
         bl_obj: BaseBlenderSoulstructObject[SOULSTRUCT_T, TYPE_PROPS_T],
     ):
+        if self.read_func is None:
+            # For IDE analysis (should not happen due to __post_init__ default).
+            raise ValueError("CustomFieldAdapter requires a read_func to convert from Soulstruct to Blender.")
         bl_value = self.read_func(getattr(soulstruct_obj, self.soulstruct_field_name))
         setattr(bl_obj, self.bl_prop_name, bl_value)
 
@@ -110,6 +122,9 @@ class CustomFieldAdapter(FieldAdapter):
         bl_obj: BaseBlenderSoulstructObject[SOULSTRUCT_T, TYPE_PROPS_T],
         soulstruct_obj: SOULSTRUCT_T,
     ):
+        if self.write_func is None:
+            # For IDE analysis (should not happen due to __post_init__ default).
+            raise ValueError("CustomFieldAdapter requires a write_func to convert from Blender to Soulstruct.")
         soulstruct_value = self.write_func(getattr(bl_obj, self.bl_prop_name))
         setattr(soulstruct_obj, self.soulstruct_field_name, soulstruct_value)
 

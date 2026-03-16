@@ -7,13 +7,13 @@ __all__ = [
 
 import bpy
 from soulstruct.blender.msb.properties.parts import BlenderMSBPartSubtype
-from soulstruct.blender.utilities.bpy_types import SoulstructType
+from soulstruct.blender.types import MeshObject, SoulstructType
 from soulstruct.blender.utilities.operators import LoggingOperator
 
 from .nodes import *
 
 
-def _get_selected_msb_geometry_objects(context: bpy.types.Context) -> list[bpy.types.MeshObject]:
+def _get_selected_msb_geometry_objects(context: bpy.types.Context) -> list[MeshObject]:
     """Get all selected objects that have an MSB Part geometry subtype."""
     objs = []
     for obj in context.selected_objects:

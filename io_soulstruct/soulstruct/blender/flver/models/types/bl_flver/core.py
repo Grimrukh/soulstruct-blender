@@ -16,6 +16,7 @@ import bpy
 from soulstruct.flver import *
 from soulstruct.utilities.text import natural_keys
 
+from soulstruct.blender.base import BaseBlenderSoulstructObject, add_auto_type_props
 from soulstruct.blender.exceptions import *
 from soulstruct.blender.flver.image.types import DDSTextureCollection
 from soulstruct.blender.flver.material.types import BlenderFLVERMaterial
@@ -64,7 +65,7 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
     BL_OBJ_TYPE = ObjectType.MESH
 
     __slots__ = []
-    obj: bpy.types.MeshObject  # type override
+    obj: MeshObject  # type override
     data: bpy.types.Mesh  # type override
 
     AUTO_FLVER_PROPS: tp.ClassVar[list[str]] = [
@@ -116,7 +117,7 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
         self.type_properties.bone_data_type = FLVERBoneDataType(value)
 
     @property
-    def armature(self) -> bpy.types.ArmatureObject | None:
+    def armature(self) -> ArmatureObject | None:
         """Detect parent Armature of wrapped Mesh object."""
         if self.obj.parent and self.obj.parent.type == "ARMATURE":
             # noinspection PyTypeChecker
@@ -132,7 +133,7 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
         return cls(mesh)
 
     @property
-    def mesh(self) -> bpy.types.MeshObject:
+    def mesh(self) -> MeshObject:
         """Alias for `obj` that makes the type clear."""
         return self.obj
 
@@ -188,10 +189,10 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
     def duplicate_armature(
         self,
         context: bpy.types.Context,
-        child_mesh_obj: bpy.types.MeshObject,
+        child_mesh_obj: MeshObject,
         as_data_instance=False,
         copy_pose=False,
-    ) -> bpy.types.ArmatureObject:
+    ) -> ArmatureObject:
         """Duplicate just the `armature` of this FLVER model. Mostly used internally during full duplication.
 
         If `child_mesh_obj` is given (e.g. one just created/duplicated), it is parented to the new Armature and rigged
@@ -237,7 +238,7 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
         """
         return duplicate_edit_mode(self, context, make_materials_single_user, copy_pose)
 
-    def sync_msb_part_armatures(self, context: bpy.types.Context) -> list[bpy.types.MeshObject]:
+    def sync_msb_part_armatures(self, context: bpy.types.Context) -> list[MeshObject]:
         """Find all MSB Part instances that use this FLVER as their model, and sync their Armatures to this FLVER's
         Armature. This may involve creating a new Armature for the Part."""
 
@@ -276,7 +277,7 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
             copy_armature_pose(self.armature, bl_msb_part_arma)
         return bl_msb_part_users
 
-    def find_msb_part_users(self) -> list[bpy.types.MeshObject]:
+    def find_msb_part_users(self) -> list[MeshObject]:
         """Find all MSB Part objects using this FLVER's mesh as their data block."""
         # noinspection PyTypeChecker
         return [
@@ -288,8 +289,8 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
     def create_default_armature_parent(
         context: bpy.types.Context,
         model_name: str,
-        mesh_child_obj: bpy.types.MeshObject = None,
-    ) -> bpy.types.ArmatureObject:
+        mesh_child_obj: MeshObject = None,
+    ) -> ArmatureObject:
         """Create a default Blender Armature for `mesh_child_obj` with a single default, origin, eponymous bone.
 
         This isn't needed for export, as the same Armature will be created for exported FLVER automatically.
@@ -448,7 +449,7 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
         return True
 
     @staticmethod
-    def parse_flver_obj(obj: bpy.types.Object) -> tuple[bpy.types.ArmatureObject | None, bpy.types.MeshObject]:
+    def parse_flver_obj(obj: bpy.types.Object) -> tuple[ArmatureObject | None, MeshObject]:
         """Parse a Blender object into a Mesh and (optional) Armature object."""
         if obj.type == "MESH" and obj.soulstruct_type == SoulstructType.FLVER:
             mesh = obj

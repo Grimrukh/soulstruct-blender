@@ -156,7 +156,7 @@ class AutoRenameMaterials(LoggingOperator):
 
     def execute(self, context):
         # noinspection PyTypeChecker
-        obj = context.active_object  # type: bpy.types.MeshObject
+        obj = context.active_object  # type: MeshObject
 
         for i, material in enumerate(obj.data.materials):
             flver_material = BlenderFLVERMaterial(material)
@@ -206,7 +206,7 @@ class MergeFLVERMaterials(LoggingOperator):
         flver_objects = [
             obj for obj in selected_objects
             if obj.type == "MESH" and obj.soulstruct_type == SoulstructType.FLVER
-        ]  # type: list[bpy.types.MeshObject]
+        ]  # type: list[MeshObject]
         if len(flver_objects) < 2:
             return self.error("At least two FLVER Mesh model objects must be selected.")
 

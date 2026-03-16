@@ -28,6 +28,7 @@ from soulstruct.blender.exceptions import UnsupportedGameError, SoulstructTypeEr
 from soulstruct.blender.flver.models.types import BlenderFLVER
 from soulstruct.blender.msb.properties.parts import BlenderMSBPartSubtype
 from soulstruct.blender.msb.types.base.parts import BaseBlenderMSBPart
+from soulstruct.blender.types import ArmatureObject, MeshObject
 from soulstruct.blender.utilities import get_model_name
 
 ANIMATION_TYPING = tp.Union[
@@ -153,7 +154,7 @@ def get_animation_name(animation_id: int, template: str, prefix="a"):
 
 def get_active_flver_or_part_armature(
     context: bpy.types.Context
-) -> tuple[bpy.types.ArmatureObject | None, bpy.types.MeshObject | None, str, bool]:
+) -> tuple[ArmatureObject | None, MeshObject | None, str, bool]:
     """Get Armature, Mesh, model name, and `is_part` of active FLVER or MSB Part (Character or Object only)."""
     obj = context.active_object
     if not obj:

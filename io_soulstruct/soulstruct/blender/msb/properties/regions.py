@@ -27,7 +27,7 @@ from soulstruct.games import *
 
 from soulstruct.blender.bpy_base.property_group import SoulstructPropertyGroup
 from soulstruct.blender.msb.utilities import *
-from soulstruct.blender.utilities import ObjectType
+from soulstruct.blender.types import ObjectType
 
 
 class BlenderMSBRegionSubtype(StrEnum):
@@ -130,7 +130,7 @@ class MSBRegionProps(SoulstructPropertyGroup):
     def _auto_shape_mesh(self, _):
         """Fully replace mesh when a new shape is selected."""
         shape = RegionShapeType[self.shape_type]
-        obj = self.id_data  # type: bpy.types.MeshObject
+        obj = self.id_data  # type: MeshObject
         if obj.type != ObjectType.MESH:
             return  # unsupported region object
         mesh = obj.data  # type: bpy.types.Mesh

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 __all__ = [
     "BaseBlenderMSBPart",
+    "PART_T",
 ]
 
 import abc
@@ -16,6 +17,7 @@ from soulstruct.blender.exceptions import SoulstructTypeError
 from soulstruct.blender.flver.models.types import BlenderFLVER
 from soulstruct.blender.msb.properties import BlenderMSBPartSubtype, MSBPartArmatureMode, MSBPartProps
 from soulstruct.blender.msb.types.adapters import *
+from soulstruct.blender.types import *
 from soulstruct.blender.utilities import *
 
 from .entry import BaseBlenderMSBEntry, SUBTYPE_PROPS_T, MSB_T
@@ -47,7 +49,7 @@ class BaseBlenderMSBPart(
     _MODEL_ADAPTER: tp.ClassVar[MSBPartModelAdapter]
 
     __slots__ = []
-    obj: bpy.types.MeshObject
+    obj: MeshObject
 
     TYPE_FIELDS = (
         # NOTE: `model` and `sib_path` are handled 100% manually.
@@ -65,7 +67,7 @@ class BaseBlenderMSBPart(
         return self.obj.data
 
     @property
-    def armature(self) -> bpy.types.ArmatureObject | None:
+    def armature(self) -> ArmatureObject | None:
         """Parts with FLVER models may have an Armature parent, which is useful for posing Map Pieces and for Cutscenes
         to animate individual characters, objects, etc."""
         if self._MODEL_ADAPTER.bl_model_type != SoulstructType.FLVER:
@@ -84,11 +86,11 @@ class BaseBlenderMSBPart(
     # region Manual MSB Part Properties
 
     @property
-    def model(self) -> bpy.types.MeshObject | None:
+    def model(self) -> MeshObject | None:
         return self.type_properties.model
 
     @model.setter
-    def model(self, value: bpy.types.MeshObject | None):
+    def model(self, value: MeshObject | None):
         self.type_properties.model = value
 
     @property
@@ -228,7 +230,7 @@ class BaseBlenderMSBPart(
         return True
 
     @staticmethod
-    def parse_msb_part_obj(obj: bpy.types.Object) -> tuple[bpy.types.ArmatureObject | None, bpy.types.MeshObject]:
+    def parse_msb_part_obj(obj: bpy.types.Object) -> tuple[ArmatureObject | None, MeshObject]:
         """Parse a Blender object into an MSB Part Mesh and (optional) Armature object."""
         if obj.type == "MESH" and obj.soulstruct_type == SoulstructType.MSB_PART:
             mesh = obj

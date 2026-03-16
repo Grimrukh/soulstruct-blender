@@ -65,7 +65,7 @@ class ActivateUVMap(LoggingOperator):
 
         uv_layer_name = self.uv_layer_name
         # noinspection PyTypeChecker
-        obj = context.active_object  # type: bpy.types.MeshObject
+        obj = context.active_object  # type: MeshObject
 
         # Check if the active object and material are valid
         if not obj or obj.type != 'MESH' or not obj.active_material:

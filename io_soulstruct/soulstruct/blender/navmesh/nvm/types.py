@@ -14,6 +14,8 @@ import bpy
 from mathutils import Vector
 
 from soulstruct.base.maps.navmesh.nvm import *
+
+from soulstruct.blender.base import BaseBlenderSoulstructObject
 from soulstruct.blender.exceptions import NVMExportError
 from soulstruct.blender.types import *
 from soulstruct.blender.utilities import *
@@ -29,7 +31,7 @@ class BlenderNVM(BaseBlenderSoulstructObject[NVM, NVMProps]):
 
     __slots__ = []
 
-    obj: bpy.types.MeshObject
+    obj: MeshObject
     data: bpy.types.Mesh
 
     @classmethod

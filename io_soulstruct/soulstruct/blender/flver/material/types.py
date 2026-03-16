@@ -12,11 +12,12 @@ import bpy
 from soulstruct.flver import *
 from soulstruct.games import DARK_SOULS_DSR, DEMONS_SOULS, DARK_SOULS_PTDE
 
+from soulstruct.blender.base import add_auto_type_props
 from soulstruct.blender.exceptions import MaterialImportError, FLVERExportError
-from soulstruct.blender.types.utilities import add_auto_type_props
-from soulstruct.blender.utilities import LoggingOperator, get_bl_custom_prop, remove_dupe_suffix
 from soulstruct.blender.flver.image import DDSTexture, DDSTextureCollection
 from soulstruct.blender.flver.image.utilities import find_or_create_image
+from soulstruct.blender.types import MeshObject
+from soulstruct.blender.utilities import LoggingOperator, get_bl_custom_prop, remove_dupe_suffix
 from . import shaders
 from .shaders.enums import ShaderNodeType
 
@@ -98,7 +99,7 @@ class BlenderFLVERMaterial:
             gx_item_prop.from_gx_item(gx_item)
 
     @classmethod
-    def from_all_mesh_materials(cls, mesh: bpy.types.MeshObject) -> list[tp.Self]:
+    def from_all_mesh_materials(cls, mesh: MeshObject) -> list[tp.Self]:
         return [cls(mat) for mat in mesh.data.materials]
 
     @classmethod

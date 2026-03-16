@@ -10,6 +10,7 @@ from pathlib import Path
 import bmesh
 import bpy
 import numpy as np
+from soulstruct.blender.base import BaseBlenderSoulstructObject
 from soulstruct.blender.exceptions import MapCollisionExportError
 from soulstruct.blender.types import *
 from soulstruct.blender.utilities import *
@@ -27,7 +28,7 @@ class BlenderMapCollision(BaseBlenderSoulstructObject[MapCollisionModel, MapColl
     BL_OBJ_TYPE = ObjectType.MESH
     SOULSTRUCT_CLASS = MapCollisionModel
 
-    obj: bpy.types.MeshObject
+    obj: MeshObject
     data: bpy.types.Mesh
 
     __slots__ = []

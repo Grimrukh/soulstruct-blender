@@ -4,7 +4,7 @@ __all__ = [
     "BlenderMSBNPCInvasionEvent",
 ]
 
-from soulstruct.darksouls1ptde.maps.msb import MSBNPCInvasionEvent
+from soulstruct.darksouls1ptde.maps.events import MSBNPCInvasionEvent
 
 from soulstruct.blender.msb.properties import BlenderMSBEventSubtype, MSBNPCInvasionEventProps
 from soulstruct.blender.msb.types.adapters import *

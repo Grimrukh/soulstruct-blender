@@ -9,6 +9,7 @@ from dataclasses import dataclass
 
 import bpy
 
+from soulstruct.blender.types import *
 from soulstruct.blender.utilities import *
 
 if tp.TYPE_CHECKING:
@@ -36,7 +37,7 @@ class MSBPartModelAdapter:
         self,
         context: bpy.types.Context,
         model_name: str,
-    ) -> bpy.types.MeshObject:
+    ) -> MeshObject:
         """Find or create actual Blender model mesh. Not necessarily a FLVER mesh!"""
         model = find_obj(model_name, ObjectType.MESH, self.bl_model_type, bl_name_func=get_model_name)
 
@@ -58,7 +59,7 @@ class MSBPartModelAdapter:
     def set_msb_model(
         self,
         operator: LoggingOperator,
-        model: bpy.types.MeshObject,
+        model: MeshObject,
         part: BaseMSBPart,
         msb: BaseMSB,
         map_stem: str,
@@ -79,7 +80,7 @@ class MSBPartModelAdapter:
         msb_model_name = self.msb_model_class.model_file_stem_to_model_name(model_stem)
         msb.auto_model(part, msb_model_name, map_stem)
 
-    def _create_placeholder_model_obj(self, context: bpy.types.Context, model_name: str) -> bpy.types.MeshObject:
+    def _create_placeholder_model_obj(self, context: bpy.types.Context, model_name: str) -> MeshObject:
 
         # Create placeholder icosphere.
         mesh = bpy.data.meshes.new(model_name)

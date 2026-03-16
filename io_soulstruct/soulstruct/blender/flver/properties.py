@@ -9,7 +9,7 @@ import bpy
 from soulstruct.flver.material import Material
 
 from soulstruct.blender.bpy_base.property_group import SoulstructPropertyGroup
-from soulstruct.blender.utilities import ObjectType
+from soulstruct.blender.types import ObjectType
 
 _MASK_ID_STRINGS = []
 

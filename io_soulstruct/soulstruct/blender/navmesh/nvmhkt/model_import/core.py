@@ -10,6 +10,7 @@ import bpy
 
 from soulstruct.havok.fromsoft.eldenring import NavmeshHKX
 
+from soulstruct.blender.types import *
 from soulstruct.blender.utilities import *
 
 
@@ -29,7 +30,7 @@ class NVMHKTImporter:
 
     def import_nvmhkt(
         self, nvmhkt: NavmeshHKX, name: str, use_material=True, vertex_merge_dist=0.0,
-    ) -> bpy.types.MeshObject:
+    ) -> MeshObject:
         """Read a NVMHKT into a Blender mesh object."""
 
         # Set mode to OBJECT and deselect all objects.
@@ -46,7 +47,7 @@ class NVMHKTImporter:
         vertices = game_vector_array_to_bl_vector_array(mesh.vertices)
         bl_mesh.from_pydata(vertices, [], mesh.faces)
         # noinspection PyTypeChecker
-        mesh_obj = bpy.data.objects.new(name, bl_mesh)  # type: bpy.types.MeshObject
+        mesh_obj = bpy.data.objects.new(name, bl_mesh)  # type: MeshObject
         self.collection.objects.link(mesh_obj)
         self.all_bl_objs = [mesh_obj]
 

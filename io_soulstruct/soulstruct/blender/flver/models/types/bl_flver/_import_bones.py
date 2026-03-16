@@ -20,6 +20,7 @@ from soulstruct.blender.flver.utilities import game_bone_transform_to_bl_bone_ma
 from soulstruct.blender.utilities.conversion import to_blender
 from soulstruct.blender.utilities.operators import LoggingOperator
 from soulstruct.blender.utilities.misc import is_uniform
+from soulstruct.blender.types import ArmatureObject
 
 
 def create_edit_bones(
@@ -116,7 +117,7 @@ def write_flver_rest_pose_to_edit_bones(
 
 def write_data_to_custom_bone_prop_and_pose(
     flver: FLVER,
-    armature: bpy.types.ArmatureObject,
+    armature: ArmatureObject,
 ):
     """
     Write FLVER bone rest pose data to custom bone properties (to ensure correct transfer) and pose bones for immediate

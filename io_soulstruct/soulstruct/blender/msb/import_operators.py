@@ -24,8 +24,8 @@ from soulstruct.games import *
 from soulstruct.blender.msb.types import darksouls1ptde, darksouls1r, demonssouls
 from soulstruct.blender.flver.models.properties import FLVERImportSettings
 from soulstruct.blender.general.cached import get_cached_file
+from soulstruct.blender.types import SoulstructCollectionType
 from soulstruct.blender.utilities import *
-from soulstruct.blender.utilities.operators import LoggingOperator, LoggingImportOperator
 from .misc_operators import EnableAllImportModels, DisableAllImportModels
 from .operator_config import *
 from .properties import BlenderMSBRegionSubtype, BlenderMSBPartSubtype, BlenderMSBEventSubtype

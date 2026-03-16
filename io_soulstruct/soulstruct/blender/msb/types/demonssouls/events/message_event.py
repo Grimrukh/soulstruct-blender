@@ -4,7 +4,7 @@ __all__ = [
     "BlenderMSBMessageEvent",
 ]
 
-from soulstruct.demonssouls.maps.msb import MSBMessageEvent
+from soulstruct.demonssouls.maps.events import MSBMessageEvent
 
 from soulstruct.blender.msb.properties import BlenderMSBEventSubtype, MSBMessageEventProps
 from soulstruct.blender.msb.types.adapters import *

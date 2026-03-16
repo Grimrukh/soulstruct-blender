@@ -18,6 +18,7 @@ from soulstruct.utilities.files import create_bak
 
 from soulstruct.havok.fromsoft.shared import BothResHKXBHD, HKXBHD
 
+from soulstruct.blender.types import SoulstructType
 from soulstruct.blender.utilities import *
 from .types import *
 
@@ -81,7 +82,7 @@ class ExportAnyHKXMapCollision(LoggingExportOperator):
             return self.error("Cannot use operator at this time. Try selected a single HKX mesh model.")
 
         # noinspection PyTypeChecker
-        hkx_model = context.active_object  # type: bpy.types.MeshObject
+        hkx_model = context.active_object  # type: MeshObject
         settings = self.settings(context)
         if settings.is_game(DEMONS_SOULS, DARK_SOULS_PTDE, DARK_SOULS_DSR):
             bl_map_collision = BlenderMapCollision(hkx_model)
@@ -201,7 +202,7 @@ class ExportHKXMapCollisionIntoAnyBinder(LoggingImportOperator):
             return self.error("This operator only supports games with Havok support.")
 
         # noinspection PyTypeChecker
-        hkx_model = context.active_object  # type: bpy.types.MeshObject
+        hkx_model = context.active_object  # type: MeshObject
         bl_map_collision = BlenderMapCollision(hkx_model)
 
         model_name = bl_map_collision.game_name

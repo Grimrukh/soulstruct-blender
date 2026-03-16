@@ -39,6 +39,7 @@ from soulstruct.blender.flver.models import BlenderFLVER
 from soulstruct.blender.msb.operator_config import BLENDER_MSB_PART_CLASSES
 from soulstruct.blender.msb.properties.parts import MSBPartArmatureMode
 from soulstruct.blender.navmesh.nvm.types import BlenderNVM
+from soulstruct.blender.types import *
 from soulstruct.blender.utilities import *
 
 from .properties import BlenderMSBPartSubtype
@@ -264,7 +265,7 @@ class CreateMSBPart(LoggingOperator):
 
     def invoke(self, context, event):
         # noinspection PyTypeChecker
-        model_obj = context.active_object  # type: bpy.types.MeshObject
+        model_obj = context.active_object  # type: MeshObject
 
         try:
             part_subtype = self._get_part_subtype(model_obj)
@@ -323,7 +324,7 @@ class CreateMSBPart(LoggingOperator):
             self.layout.label(text=f"Invalid MSB Part subtype: {self.part_subtype}")
 
     @staticmethod
-    def _get_part_subtype(model_obj: bpy.types.MeshObject) -> BlenderMSBPartSubtype:
+    def _get_part_subtype(model_obj: MeshObject) -> BlenderMSBPartSubtype:
         """Detect Part subtype that given model object should be used for.
 
         Uses prefix of FLVER model name to resolve FLVER part subtype.
@@ -360,7 +361,7 @@ class CreateMSBPart(LoggingOperator):
     def execute(self, context):
 
         # noinspection PyTypeChecker
-        model_obj = context.active_object  # type: bpy.types.MeshObject
+        model_obj = context.active_object  # type: MeshObject
 
         game = self.settings(context).game
         map_stem = self.msb_map_stem
@@ -670,7 +671,7 @@ class DuplicateMSBPartModel(LoggingOperator):
     def _duplicate_part_model(self, context, part: bpy.types.Object):
         settings = self.settings(context)
 
-        old_model = part.MSB_PART.model  # type: bpy.types.MeshObject  # already validated
+        old_model = part.MSB_PART.model  # type: MeshObject  # already validated
         # Find all collections containing source model.
         source_collections = old_model.users_collection
 
@@ -957,7 +958,7 @@ class ApplyPartTransformToModel(LoggingOperator):
 
         success_count = 0
         for obj in context.selected_objects:
-            obj: bpy.types.MeshObject
+            obj: MeshObject
             try:
                 self._apply_matrix_local_to_mesh(obj)
             except Exception as ex:
@@ -975,7 +976,7 @@ class ApplyPartTransformToModel(LoggingOperator):
         return {"FINISHED"}
 
     @staticmethod
-    def _apply_matrix_local_to_mesh(part: bpy.types.MeshObject):
+    def _apply_matrix_local_to_mesh(part: MeshObject):
         mesh = part.data
         local_transform = part.matrix_local.copy()
         mesh.transform(local_transform)  # applies to mesh data
@@ -1050,7 +1051,7 @@ class CreateConnectCollision(LoggingOperator):
 
         bl_connect_collisions = []
         for collision_part_obj in context.selected_objects:
-            collision_part_obj: bpy.types.MeshObject
+            collision_part_obj: MeshObject
 
             map_stem = get_collection_map_stem(collision_part_obj)
 

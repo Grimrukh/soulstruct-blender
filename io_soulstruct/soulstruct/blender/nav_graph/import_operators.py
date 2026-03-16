@@ -121,7 +121,7 @@ class ImportMapMCG(LoggingOperator):
             return self.error("Game MSB class not known. Cannot import MCG files.")
         map_stem = settings.get_latest_map_stem_version()  # MCG uses latest
         if not map_stem:
-            return
+            return self.error("No game map selected. Cannot import MCG files.")
         try:
             mcg_path = settings.get_import_map_file_path(f"{map_stem}.mcg", map_stem=map_stem)
         except FileNotFoundError:

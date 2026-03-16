@@ -34,6 +34,8 @@ class MSBPartGroupsAdapter(FieldAdapter, tp.Generic[BIT_SET_T]):
             raise ValueError("Must provide a `BitSet` type for MSBPartGroupsAdapter.")
 
     def getter(self, bl_obj: BaseBlenderMSBPart, is_subtype=False) -> BIT_SET_T:
+        if self.bit_set_type is None:
+            raise ValueError("MSBPartGroupsAdapter must have a `BitSet` type to get groups.")
         props = bl_obj.subtype_properties if is_subtype else bl_obj.type_properties
         bit_vector_32s = self._get_groups_props(props, self.soulstruct_field_name, self.bit_set_type.BIT_COUNT)
         groups = set()

@@ -17,8 +17,8 @@ from soulstruct.havok.fromsoft.shared.map_collision import MapCollisionMaterial
 
 from soulstruct.blender.collision.types import BlenderMapCollision
 from soulstruct.blender.collision.utilities import HKX_MATERIAL_NAME_RE
-from soulstruct.blender.types import SoulstructType
-from soulstruct.blender.utilities import get_collection_map_stem, replace_shared_prefix, ObjectType
+from soulstruct.blender.types import *
+from soulstruct.blender.utilities import get_collection_map_stem, replace_shared_prefix
 from soulstruct.blender.utilities.operators import LoggingOperator
 
 
@@ -178,14 +178,14 @@ class GenerateCollisionFromMesh(LoggingOperator):
     def execute(self, context):
 
         # noinspection PyTypeChecker
-        source_meshes = context.objects_in_mode  # type: list[bpy.types.MeshObject]
+        source_meshes = context.objects_in_mode  # type: list[MeshObject]
         if any(obj.type != ObjectType.MESH for obj in source_meshes):
             return self.error("All objects being edited must be meshes.")
         if any(obj.soulstruct_type == SoulstructType.MSB_PART for obj in source_meshes):
             return self.error("Cannot generate collision from MSB Part meshes. Use their model meshes instead.")
 
         # Validate existing collision, if chosen.
-        existing_collision_obj = None  # type: bpy.types.MeshObject | None
+        existing_collision_obj = None  # type: MeshObject | None
         if self.into_existing_collision:
             if not self.collision_model_name:
                 return self.error("Must provide a name for the existing Collision model.")
@@ -228,7 +228,7 @@ class GenerateCollisionFromMesh(LoggingOperator):
         context.view_layer.objects.active = new_objs[0]  # join target
         bpy.ops.object.join()
         # noinspection PyTypeChecker
-        new_model = new_objs[0]  # type: bpy.types.MeshObject
+        new_model = new_objs[0]  # type: MeshObject
 
         # Delete all vertex groups.
         # TODO: This won't bake out pose bones in Map Pieces...
@@ -354,7 +354,7 @@ class SelectHiResFaces(LoggingOperator):
     def execute(self, context):
         bpy.ops.mesh.select_all(action="DESELECT")
         # noinspection PyTypeChecker
-        obj = context.edit_object  # type: bpy.types.MeshObject
+        obj = context.edit_object  # type: MeshObject
         bpy.ops.object.mode_set(mode="OBJECT")
         if obj.type != "MESH":
             return self.error("Selected object is not a mesh.")
@@ -377,7 +377,7 @@ class SelectLoResFaces(LoggingOperator):
     def execute(self, context):
         bpy.ops.mesh.select_all(action="DESELECT")
         # noinspection PyTypeChecker
-        obj = context.edit_object  # type: bpy.types.MeshObject
+        obj = context.edit_object  # type: MeshObject
         bpy.ops.object.mode_set(mode="OBJECT")
         if obj.type != "MESH":
             return self.error("Selected object is not a mesh.")

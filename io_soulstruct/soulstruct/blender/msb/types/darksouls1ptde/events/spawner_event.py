@@ -4,13 +4,11 @@ __all__ = [
     "BlenderMSBSpawnerEvent",
 ]
 
-import bpy
-
-from soulstruct.darksouls1ptde.maps.msb import MSBSpawnerEvent
+from soulstruct.darksouls1ptde.maps.events import MSBSpawnerEvent
 
 from soulstruct.blender.msb.properties import BlenderMSBEventSubtype, MSBSpawnerEventProps
 from soulstruct.blender.msb.types.adapters import *
-from soulstruct.blender.types import SoulstructType
+from soulstruct.blender.types import *
 
 from .base import BaseBlenderMSBEvent_DS1
 
@@ -36,8 +34,8 @@ class BlenderMSBSpawnerEvent(BaseBlenderMSBEvent_DS1[MSBSpawnerEvent, MSBSpawner
         FieldAdapter("initial_spawn_count"),
     )
 
-    spawn_parts: list[bpy.types.MeshObject | None]
-    spawn_regions: list[bpy.types.MeshObject | None]
+    spawn_parts: list[MeshObject | None]
+    spawn_regions: list[MeshObject | None]
     max_count: int
     spawner_type: int
     limit_count: int

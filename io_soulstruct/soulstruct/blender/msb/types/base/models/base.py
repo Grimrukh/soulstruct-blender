@@ -20,6 +20,7 @@ import bpy
 from soulstruct.base.maps.msb.models import BaseMSBModel
 
 from soulstruct.blender.utilities.operators import LoggingOperator
+from soulstruct.blender.types import MeshObject
 
 
 MODEL_T = tp.TypeVar("MODEL_T", bound=BaseMSBModel)
@@ -48,7 +49,7 @@ class BaseBlenderMSBModelImporter(abc.ABC, tp.Generic[MODEL_T]):
         model_name: str,
         map_stem: str,  # not required by all subtypes
         model_collection: bpy.types.Collection = None,
-    ) -> bpy.types.MeshObject:
+    ) -> MeshObject:
         """Use other Soulstruct for Blender submodules to import model for this MSB Part."""
         ...
 

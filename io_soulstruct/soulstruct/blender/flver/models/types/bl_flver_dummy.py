@@ -13,14 +13,15 @@ from mathutils import Matrix
 from soulstruct.flver import *
 from soulstruct.utilities.maths import Vector3
 
+from soulstruct.blender.base import BaseBlenderSoulstructObject, add_auto_type_props
 from soulstruct.blender.exceptions import *
-from soulstruct.blender.types import *
-from soulstruct.blender.utilities import *
 from soulstruct.blender.flver.utilities import (
     BONE_CoB_4x4,
     game_forward_up_vectors_to_bl_euler,
     bl_rotmat_to_game_forward_up_vectors,
 )
+from soulstruct.blender.types import *
+from soulstruct.blender.utilities import *
 
 from ..properties import *
 
@@ -55,7 +56,7 @@ class BlenderFLVERDummy(BaseBlenderSoulstructObject[Dummy, FLVERDummyProps]):
         if not self.parent or self.parent.type != "ARMATURE":
             raise ValueError("Cannot get parent bone of Dummy without an Armature parent.")
         # noinspection PyTypeChecker
-        armature = self.parent  # type: bpy.types.ArmatureObject
+        armature = self.parent  # type: ArmatureObject
         try:
             return armature.data.bones[self.type_properties.parent_bone_name]
         except KeyError:
@@ -70,7 +71,7 @@ class BlenderFLVERDummy(BaseBlenderSoulstructObject[Dummy, FLVERDummyProps]):
         if not self.parent or self.parent.type != "ARMATURE":
             raise ValueError("Cannot set parent bone of Dummy without an Armature parent.")
         # noinspection PyTypeChecker
-        armature = self.parent  # type: bpy.types.ArmatureObject
+        armature = self.parent  # type: ArmatureObject
         if isinstance(value, bpy.types.Bone):
             self.type_properties.parent_bone_name = value.name
         elif isinstance(value, str):
@@ -93,7 +94,7 @@ class BlenderFLVERDummy(BaseBlenderSoulstructObject[Dummy, FLVERDummyProps]):
         context: bpy.types.Context,
         soulstruct_obj: Dummy,
         name: str,
-        armature: bpy.types.ArmatureObject = None,
+        armature: ArmatureObject = None,
         collection: bpy.types.Collection = None,
     ) -> BlenderFLVERDummy:
         """Create a wrapped Blender Dummy empty object from FLVER `Dummy`.
@@ -167,7 +168,7 @@ class BlenderFLVERDummy(BaseBlenderSoulstructObject[Dummy, FLVERDummyProps]):
         self,
         operator: LoggingOperator,
         context: bpy.types.Context,
-        armature: bpy.types.ArmatureObject = None,
+        armature: ArmatureObject = None,
     ) -> Dummy:
         """Create a new `Dummy`."""
         if not armature:

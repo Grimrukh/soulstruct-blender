@@ -15,6 +15,7 @@ from soulstruct.havok.fromsoft.shared import BothResHKXBHD, MapCollisionModel
 from soulstruct.blender.general import SoulstructSettings
 from soulstruct.blender.collision.types import BlenderMapCollision
 from soulstruct.blender.exceptions import MapCollisionImportError
+from soulstruct.blender.types import MeshObject
 from soulstruct.blender.utilities import find_or_create_collection, LoggingOperator
 
 from .base import BaseBlenderMSBModelImporter, MODEL_T
@@ -33,7 +34,7 @@ class BlenderMSBCollisionModelImporter(BaseBlenderMSBModelImporter):
         model_name: str,
         map_stem: str,
         model_collection: bpy.types.Collection = None,
-    ) -> bpy.types.MeshObject:
+    ) -> MeshObject:
         """Import the Map Collison HKX model of the given name into a collection in the current scene.
 
         NOTE: `map_stem` should already be set to oldest version if option is enabled. This function is agnostic.

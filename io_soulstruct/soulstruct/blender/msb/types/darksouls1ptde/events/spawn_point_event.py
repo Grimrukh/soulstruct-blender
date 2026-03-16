@@ -4,13 +4,11 @@ __all__ = [
     "BlenderMSBSpawnPointEvent",
 ]
 
-import bpy
-
-from soulstruct.darksouls1ptde.maps.msb import MSBSpawnPointEvent
+from soulstruct.darksouls1ptde.maps.events import MSBSpawnPointEvent
 
 from soulstruct.blender.msb.properties import BlenderMSBEventSubtype, MSBSpawnPointEventProps
 from soulstruct.blender.msb.types.adapters import *
-from soulstruct.blender.types import SoulstructType
+from soulstruct.blender.types import MeshObject, SoulstructType
 
 from .base import BaseBlenderMSBEvent_DS1
 
@@ -27,4 +25,4 @@ class BlenderMSBSpawnPointEvent(BaseBlenderMSBEvent_DS1[MSBSpawnPointEvent, MSBS
         MSBReferenceFieldAdapter("spawn_point_region", ref_type=SoulstructType.MSB_REGION),
     )
 
-    spawn_point_region: bpy.types.MeshObject | None
+    spawn_point_region: MeshObject | None

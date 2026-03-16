@@ -11,6 +11,7 @@ from mathutils import Matrix
 
 from soulstruct.blender.flver.models.types import BlenderFLVER, FLVERBoneDataType
 from soulstruct.blender.msb.properties import MSBPartArmatureMode
+from soulstruct.blender.types import *
 from soulstruct.blender.utilities import *
 
 if tp.TYPE_CHECKING:
@@ -35,7 +36,7 @@ class PartArmatureDuplicator:
         context: bpy.types.Context,
         armature_mode: MSBPartArmatureMode,
         bl_part: BaseBlenderMSBPart,
-        model: bpy.types.MeshObject,
+        model: MeshObject,
     ) -> bool:
         """Check `armature_mode` (and presence of `model`) and instance model Armature to Part accordingly."""
         if not model:
@@ -108,7 +109,7 @@ class PartArmatureDuplicator:
         armature_obj.matrix_local = matrix_local
 
     @staticmethod
-    def _create_part_root_bone(context: bpy.types.Context, armature_obj: bpy.types.ArmatureObject) -> None:
+    def _create_part_root_bone(context: bpy.types.Context, armature_obj: ArmatureObject) -> None:
         context.view_layer.objects.active = armature_obj
         bpy.ops.object.mode_set(mode="EDIT")
         root_bone = armature_obj.data.edit_bones.new("<PART_ROOT>")

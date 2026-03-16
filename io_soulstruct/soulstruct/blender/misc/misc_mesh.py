@@ -23,7 +23,8 @@ import bmesh
 import bpy
 from mathutils import Matrix, Vector, kdtree
 
-from soulstruct.blender.utilities.operators import LoggingOperator
+from soulstruct.blender.types import MeshObject
+from soulstruct.blender.utilities import LoggingOperator
 
 
 def move_mesh_selection(
@@ -35,11 +36,11 @@ def move_mesh_selection(
 
     # Identify edited and non-edited meshes
     # noinspection PyTypeChecker
-    source_mesh = context.edit_object  # type: bpy.types.MeshObject
+    source_mesh = context.edit_object  # type: MeshObject
     # noinspection PyTypeChecker
     dest_mesh = [
         obj for obj in context.selected_objects if obj != source_mesh
-    ][0]  # type: bpy.types.MeshObject
+    ][0]  # type: MeshObject
 
     # Duplicate selected vertices, edges, and faces in the edited mesh
     bpy.ops.object.mode_set(mode="EDIT")
@@ -54,7 +55,7 @@ def move_mesh_selection(
         temp_obj = [
             obj for obj in context.selected_objects
             if obj != source_mesh and obj != dest_mesh
-        ][0]  # type: bpy.types.MeshObject
+        ][0]  # type: MeshObject
     except IndexError:
         return operator.error("Could not identify temporary mesh object used for copy operation.")
 
@@ -140,7 +141,7 @@ class BooleanMeshCut(LoggingOperator):
 
         # Get the active object (in Edit Mode).
         # noinspection PyTypeChecker
-        cut_source_obj = bpy.context.object  # type: bpy.types.MeshObject
+        cut_source_obj = bpy.context.object  # type: MeshObject
 
         if not cut_source_obj or cut_source_obj.type != 'MESH':
             return self.error("The active object must be a mesh.")
@@ -241,7 +242,7 @@ class ApplyLocalMatrixToMesh(LoggingOperator):
     def execute(self, context):
         success_count = 0
         for obj in context.selected_objects:
-            obj: bpy.types.MeshObject
+            obj: MeshObject
             try:
                 self._apply_matrix_local_to_mesh(obj)
             except Exception as ex:
@@ -259,7 +260,7 @@ class ApplyLocalMatrixToMesh(LoggingOperator):
         return {"FINISHED"}
 
     @staticmethod
-    def _apply_matrix_local_to_mesh(part: bpy.types.MeshObject):
+    def _apply_matrix_local_to_mesh(part: MeshObject):
         mesh = part.data
         local_transform = part.matrix_local.copy()
         mesh.transform(local_transform)  # applies to mesh data
@@ -291,7 +292,7 @@ class ScaleMeshIslands(LoggingOperator):
     def execute(self, context):
 
         # noinspection PyTypeChecker
-        obj = context.edit_object  # type: bpy.types.MeshObject
+        obj = context.edit_object  # type: MeshObject
 
         bm = bmesh.from_edit_mesh(obj.data)
         bm.faces.ensure_lookup_table()
@@ -368,19 +369,19 @@ class SelectActiveMeshVerticesNearSelected(LoggingOperator):
         if context.mode == "OBJECT":
             bm = bmesh.new()
             # noinspection PyTypeChecker
-            active_obj = context.active_object  # type: bpy.types.MeshObject
+            active_obj = context.active_object  # type: MeshObject
             bm.from_mesh(active_obj.data)
             is_edit_mode = False
         elif context.mode == "EDIT_MESH":
             # noinspection PyTypeChecker
-            active_obj = context.edit_object  # type: bpy.types.MeshObject
+            active_obj = context.edit_object  # type: MeshObject
             bm = bmesh.from_edit_mesh(active_obj.data)
             is_edit_mode = True
         else:
             return self.error("Active object must be a mesh in Object or Edit Mesh mode.")
 
         # noinspection PyTypeChecker
-        other_objs = [obj for obj in context.selected_objects if obj != active_obj]  # type: list[bpy.types.MeshObject]
+        other_objs = [obj for obj in context.selected_objects if obj != active_obj]  # type: list[MeshObject]
 
         # Build a KD-tree from the other object's vertices (in global space)
         kd_trees = []
@@ -469,7 +470,7 @@ class ConvexHullOnEachMeshIsland(LoggingOperator):
     def execute(self, context):
 
         # noinspection PyTypeChecker
-        obj = context.edit_object  # type: bpy.types.MeshObject
+        obj = context.edit_object  # type: MeshObject
         if not obj or obj.type != "MESH":
             raise Exception("Active object must be a mesh in Edit Mode.")
 
@@ -648,14 +649,14 @@ class SpawnObjectIntoMeshAtFaces(LoggingOperator):
 
     def execute(self, context):
 
-        source_obj = bpy.data.objects.get(self.object_name)  # type: bpy.types.MeshObject
+        source_obj = bpy.data.objects.get(self.object_name)  # type: MeshObject
         if source_obj is None:
             return self.error(f"Source object '{self.object_name}' not found.")
         if source_obj.type != 'MESH':
             return self.error(f"Source object '{self.object_name}' is not a Mesh.")
 
         # noinspection PyTypeChecker
-        dest_obj = bpy.context.edit_object  # type: bpy.types.MeshObject
+        dest_obj = bpy.context.edit_object  # type: MeshObject
         if dest_obj is None or dest_obj.type != 'MESH':
             return self.error("Active object must be a mesh in Edit Mode.")
 
@@ -770,7 +771,7 @@ class WeightVerticesWithFalloff(LoggingOperator):
     def execute(self, context):
 
         # noinspection PyTypeChecker
-        obj = context.edit_object  # type: bpy.types.MeshObject
+        obj = context.edit_object  # type: MeshObject
 
         mesh = obj.data
         bm = bmesh.from_edit_mesh(mesh)
@@ -849,7 +850,7 @@ class ApplyModifierNonSingleUser(LoggingOperator):
 
     def execute(self, context):
         # noinspection PyTypeChecker
-        obj = context.active_object  # type: bpy.types.MeshObject
+        obj = context.active_object  # type: MeshObject
         modifier_name = obj.modifiers.active.name
 
         original_data = obj.data

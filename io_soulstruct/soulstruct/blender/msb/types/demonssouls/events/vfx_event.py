@@ -4,7 +4,7 @@ __all__ = [
     "BlenderMSBVFXEvent",
 ]
 
-from soulstruct.demonssouls.maps.msb import MSBVFXEvent
+from soulstruct.demonssouls.maps.events import MSBVFXEvent
 
 from soulstruct.blender.msb.properties import BlenderMSBEventSubtype, MSBVFXEventProps
 from soulstruct.blender.msb.types.adapters import *

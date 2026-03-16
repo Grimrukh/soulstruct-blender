@@ -7,6 +7,7 @@ import typing as tp
 import bpy
 
 from soulstruct.blender.utilities.operators import LoggingOperator
+from soulstruct.blender.types import ArmatureObject, MeshObject
 
 from .types import SoulstructAnimation
 from .utilities import get_active_flver_or_part_armature
@@ -60,8 +61,8 @@ class ArmatureActionChoiceOperator(LoggingOperator):
     @classmethod
     def run(
         cls,
-        armature_obj: bpy.types.ArmatureObject,
-        mesh_obj: bpy.types.MeshObject,
+        armature_obj: ArmatureObject,
+        mesh_obj: MeshObject,
         model_name: str,
     ):
         cls.ARMATURE_OBJ = armature_obj

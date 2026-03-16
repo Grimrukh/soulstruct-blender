@@ -19,12 +19,13 @@ from soulstruct.blender.flver.models.types.enums import FLVERBoneDataType
 from soulstruct.blender.flver.utilities import BONE_CoB_4x4
 from soulstruct.blender.utilities.conversion import to_game
 from soulstruct.blender.utilities.operators import LoggingOperator
+from soulstruct.blender.types import ArmatureObject
 
 
 def create_flver_bones(
     operator: LoggingOperator,
     context: bpy.types.Context,
-    armature: bpy.types.ArmatureObject,
+    armature: ArmatureObject,
     flver: FLVER,
     bone_data_type: FLVERBoneDataType,
 ):

@@ -66,7 +66,7 @@ class ExportAnyNVM(LoggingExportOperator):
             return self.error("No valid Mesh selected for NVM export.")
 
         # noinspection PyTypeChecker
-        nvm_model = context.selected_objects[0]  # type: bpy.types.MeshObject
+        nvm_model = context.selected_objects[0]  # type: MeshObject
 
         try:
             nvm = BlenderNVM(nvm_model).to_soulstruct_obj(self, context)

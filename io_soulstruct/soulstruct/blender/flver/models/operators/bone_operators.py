@@ -118,13 +118,13 @@ class ReboneVertices(LoggingOperator):
         bpy.ops.object.mode_set(mode="OBJECT")
 
         # noinspection PyTypeChecker
-        mesh = context.active_object  # type: bpy.types.MeshObject
+        mesh = context.active_object  # type: MeshObject
         if mesh is None or mesh.type != "MESH":
             return self.error("Please select a Mesh object.")
 
         # TODO: Should check that Mesh has an Armature modifier attached to parent?
         # noinspection PyTypeChecker
-        armature = mesh.parent  # type: bpy.types.ArmatureObject
+        armature = mesh.parent  # type: ArmatureObject
         if not armature or armature.type != "ARMATURE":
             return self.error("Mesh is not parented to an Armature.")
 

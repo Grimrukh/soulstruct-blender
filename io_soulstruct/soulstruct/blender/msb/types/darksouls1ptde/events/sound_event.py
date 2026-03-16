@@ -5,7 +5,7 @@ __all__ = [
 ]
 
 from soulstruct.darksouls1ptde.events.enums import SoundType
-from soulstruct.darksouls1ptde.maps.msb import MSBSoundEvent
+from soulstruct.darksouls1ptde.maps.events import MSBSoundEvent
 
 from soulstruct.blender.msb.properties import BlenderMSBEventSubtype, MSBSoundEventProps
 from soulstruct.blender.msb.types.adapters import *
