@@ -176,8 +176,10 @@ class BlenderNVM(BaseBlenderSoulstructObject[NVM, NVMProps]):
             for nvm_event_entity in self.get_nvm_event_entities()
         ]
 
+        big_endian = context.scene.soulstruct_settings.is_game("DEMONS_SOULS")
+
         nvm = NVM(
-            big_endian=False,
+            big_endian=big_endian,
             vertices=nvm_verts,
             triangles=nvm_triangles,
             event_entities=event_entities,
