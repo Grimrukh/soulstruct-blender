@@ -13,6 +13,7 @@ __all__ = [
     "MergeFLVERMaterials",
     "AddMaterialGXItem",
     "RemoveMaterialGXItem",
+    "RegenerateFLVERMaterialShaders",
     # endregion
 
     # region Types

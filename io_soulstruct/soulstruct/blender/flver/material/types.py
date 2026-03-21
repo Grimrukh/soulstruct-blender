@@ -479,7 +479,7 @@ class BlenderFLVERMaterial:
             # Count number of 'VertexColors{i}' attributes that appear in nodes.
             vertex_colors_seen = set()
             for node in self.material.node_tree.nodes:
-                if node.type == ShaderNodeType.Attribute:
+                if node.type == "ATTRIBUTE":
                     if node.attribute_name.startswith("VertexColors"):
                         vertex_colors_seen.add(node.attribute_name)
             vertex_color_count = len(vertex_colors_seen)

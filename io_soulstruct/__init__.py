@@ -237,6 +237,7 @@ CLASSES = (
     MergeFLVERMaterials,
     AddMaterialGXItem,
     RemoveMaterialGXItem,
+    RegenerateFLVERMaterialShaders,
 
     DDSTextureProps,
     ImportTextures,

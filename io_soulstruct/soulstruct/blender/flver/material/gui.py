@@ -142,6 +142,7 @@ class FLVERMaterialToolsPanel(SoulstructPanel):
             panel.prop(material_tool_settings, "clean_up_identical")
             panel.operator(AutoRenameMaterials.bl_idname)
             panel.operator(MergeFLVERMaterials.bl_idname)
+            panel.operator(RegenerateFLVERMaterialShaders.bl_idname)
             active_object = context.active_object
             if active_object and active_object.active_material:
                 panel.label(text=active_object.active_material.name)

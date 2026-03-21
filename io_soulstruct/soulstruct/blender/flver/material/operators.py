@@ -9,6 +9,7 @@ __all__ = [
     "MergeFLVERMaterials",
     "AddMaterialGXItem",
     "RemoveMaterialGXItem",
+    "RegenerateFLVERMaterialShaders",
 ]
 
 import os
@@ -18,11 +19,14 @@ from pathlib import Path
 
 import bpy
 
+from soulstruct.base.models.shaders import MatDefError
 from soulstruct.flver import FLVERVersion
 
 from soulstruct.blender.bpy_base.property_group import SoulstructPropertyGroup
-from soulstruct.blender.types import SoulstructType, is_active_obj_typed_mesh_obj
+from soulstruct.blender.general.game_config import BLENDER_GAME_CONFIG
+from soulstruct.blender.types import MeshObject, SoulstructType, is_active_obj_typed_mesh_obj
 from soulstruct.blender.utilities import LoggingOperator
+from .properties import get_cached_matbinbnd, get_cached_mtdbnd
 from .types import BlenderFLVERMaterial
 
 _AREA_PREFIX_RE = re.compile(r"m\d\d_")
@@ -316,7 +320,7 @@ class MergeFLVERMaterials(LoggingOperator):
         return mat_name
 
 
-class AddMaterialGXItem(bpy.types.Operator):
+class AddMaterialGXItem(LoggingOperator):
     bl_idname = "material.add_gx_item"
     bl_label = "Add GX Item"
     bl_description = "Add a new GX Item to the active material"
@@ -331,7 +335,7 @@ class AddMaterialGXItem(bpy.types.Operator):
         return {"FINISHED"}
 
 
-class RemoveMaterialGXItem(bpy.types.Operator):
+class RemoveMaterialGXItem(LoggingOperator):
     bl_idname = "material.remove_gx_item"
     bl_label = "Remove GX Item"
     bl_description = "Remove the selected GX Item from the active material"
@@ -352,6 +356,65 @@ class RemoveMaterialGXItem(bpy.types.Operator):
         material.FLVER_MATERIAL.gx_item_index = max(0, index - 1)
         return {"FINISHED"}
 
+
+class RegenerateFLVERMaterialShaders(LoggingOperator):
+    bl_idname = "material.regenerate_flver_shaders"
+    bl_label = "Regenerate Material Shaders"
+    bl_description = "Regenerate Soulstruct shader node tree for all materials on selected FLVERs"
+
+    @classmethod
+    def poll(cls, context) -> bool:
+        return all(
+            obj.type == "MESH" and obj.soulstruct_type == SoulstructType.FLVER for obj in context.selected_objects
+        )
+
+    def execute(self, context):
+        """Rebuild the node tree of a single Blender material using the latest shader builder.
+
+        `vertex_color_count` can be determined from the owning mesh's color attributes if needed.
+        """
+        settings = context.scene.soulstruct_settings
+
+        matdef_class = settings.game_config.matdef_class
+        if matdef_class is None:
+            return self.error(f"No MatDef class for game {settings.game.name}. Cannot upgrade materials.")
+
+        if BLENDER_GAME_CONFIG[settings.game].uses_matbin:
+            mtdbnd = None
+            matbinbnd = get_cached_matbinbnd(self, context)
+        else:
+            mtdbnd = get_cached_mtdbnd(self, context)
+            matbinbnd = None
+
+        for bl_flver in context.selected_objects:
+            for mat in bl_flver.data.materials:
+
+                flver_mat = BlenderFLVERMaterial(mat)
+                mat_def_path = flver_mat.mat_def_path
+                if not mat_def_path:
+                    self.warning(f"Material '{mat.name}' has no mat_def_path set. Skipping.")
+                    continue
+
+                mat_def_name = Path(mat_def_path).name
+
+                # Look up MatDef from MTDBND or MATBINBND, just as import/export does.
+                try:
+                    if matbinbnd:
+                        matdef = matdef_class.from_matbinbnd_or_name(mat_def_name, matbinbnd)
+                    else:
+                        matdef = matdef_class.from_mtdbnd_or_name(mat_def_name, mtdbnd)
+
+                except MatDefError as ex:
+                    self.warning(
+                        f"Could not create MatDef for material '{mat.name}' (mat_def: '{mat_def_name}'). "
+                        f"Skipping. Error:\n  {ex}"
+                    )
+                    continue
+
+                flver_mat.rebuild_node_tree(self, context, matdef, vertex_color_count=-1, blend_mode="")
+                self.info(f"Upgraded material: {mat.name}")
+
+        return {"FINISHED"}
 
 # TODO:
 #   - Material Creator (dropdown of basic known MTD names like 'M[DB][M]')
