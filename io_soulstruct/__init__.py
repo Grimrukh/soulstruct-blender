@@ -46,7 +46,7 @@ def _ensure_soulstruct_installed():
         print(f"Import error: {ex}")
         print(
             "Could not detect `soulstruct` and/or `soulstruct-havok` modules in Blender's Python environment. "
-            "Will reinstall now to user 'modules' folder."
+            "Will reinstall now to Blender's local user 'scripts/addons/modules' folder."
         )
     else:
         return
@@ -62,27 +62,31 @@ def _ensure_soulstruct_installed():
 
     print("Pip-installing editable `soulstruct` and `soulstruct-havok` modules into Blender's Python environment...")
 
-    try:
-        subprocess.run(
-            [
-                sys.executable, "-m", "pip", "install",
-                "scipy==1.16.3",  # TODO: locking version until 1.17.1 read-only array bug fixed
-                "-e", f"{io_soulstruct_lib_path}/soulstruct",
-                "-e", f"{io_soulstruct_lib_path}/soulstruct-havok",
-                "--target", user_addon_modules,
-            ],
-            stdout=sys.stdout,
-            stderr=sys.stderr,
-        )
-    except subprocess.CalledProcessError as ex:
-        print(ex.stdout)
-        print(ex.stderr)
-        raise ImportError(f"Failed to install `soulstruct` and/or `soulstruct-havok` modules. Error: {ex}") from ex
+    def _call_python_module(purpose: str, *args: str):
+        try:
+            subprocess.run([sys.executable, "-m", *args], stdout=sys.stdout, stderr=sys.stderr, check=True)
+        except subprocess.CalledProcessError as _ex:
+            print(_ex.stdout)
+            print(_ex.stderr)
+            raise RuntimeError(f"Failed to {purpose} in Blender Python. Error: {_ex}") from _ex
+
+    _call_python_module("call `ensurepip`", "ensurepip")
+    _call_python_module("upgrade `pip`", "pip", "install", "--upgrade", "pip")
+    _call_python_module(
+        "install `soulstruct` and its dependencies",
+        "pip", "install",
+            "scipy==1.16.3",  # TODO: locking version until 1.17.1 read-only array bug fixed
+            "-e", f"{io_soulstruct_lib_path}/soulstruct",
+            "-e", f"{io_soulstruct_lib_path}/soulstruct-havok",
+            "--target", user_addon_modules,
+    )
 
     print("Installed `soulstruct` and `soulstruct-havok` modules into Blender's Python environment.")
 
     # Find editable installs.
     site.addsitedir(user_addon_modules)
+    # Force importlib's pathfinders to check modules again.
+    importlib.invalidate_caches()
 
     try:
         import soulstruct.base
@@ -90,7 +94,8 @@ def _ensure_soulstruct_installed():
     except ImportError as ex:
         raise ImportError(
             "Required modules 'soulstruct' and 'soulstruct-havok' could not be imported, even after attempted install. "
-            "Please ensure they are installed in Blender's Python environment (in user's local `modules`)."
+            "Please ensure they are installed in Blender's Python environment (in user's local `modules`). "
+            "Restarting Blender and trying again may also fix this."
         ) from ex
 
 
@@ -131,7 +136,7 @@ bl_info = {
     "name": "Soulstruct",
     "author": "Scott Mooney (Grimrukh)",
     "version": (2, 6, 0),  # SOURCE OF TRUTH
-    "blender": (4, 5, 0),
+    "blender": (4, 5, 0),  # MINIMUM SUPPORTED VERSION
     "location": "File > Import-Export",
     "description": "Import, manipulate, and export FromSoftware/Havok assets",
     "warning": "",
