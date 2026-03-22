@@ -3,11 +3,12 @@
 Primarily tested and maintained for Dark Souls Remastered. Other games and file versions may gradually be supported.
 
 Requires:
-    soulstruct
-    soulstruct-havok
+    soulstruct (most `soulstruct.*` packages)
+    soulstruct-havok (`soulstruct.havok` package)
 
-NOTE: Some of the tools in this add-on require my additional `soulstruct-havok` Python package, which is provided
-separately.
+If import of these modules fails, this script will look in a directory called `io_soulstruct_lib` next to this file's
+parent directory, and attempt to do an editable install from there into Blender user `addons/modules`. This pip install
+command will also install third-party dependencies into `addons/modules`.
 """
 from __future__ import annotations
 
