@@ -16,7 +16,7 @@ import sys
 REQUIREMENTS = {
     "scipy": "1.16.3",  # TODO: locking old version until 1.17.x 'read-only array' bug fixed in Rotation
     "soulstruct": "2.3.2",
-    "soulstruct-havok": "1.2.1",
+    "soulstruct-havok": "1.2.2",
 }
 
 
