@@ -1,5 +1,7 @@
 """Install all scripts into Blender, along with `soulstruct`, `soulstruct-havok`, and required third-party modules."""
 import argparse
+import importlib
+import importlib.util
 import logging
 import shutil
 import subprocess
@@ -22,8 +24,7 @@ _ALWAYS_IGNORE = [
 def install_addon(
     addons_dir: str | Path,
     install_soulstruct=True,
-    editable_soulstruct=False,
-    refresh_only: bool | None = None,
+    use_current_soulstruct=False,
 ) -> int:
     """Copy `io_soulstruct` and (by default) `io_soulstruct_lib` into given `addons_dir` parent directory."""
 
@@ -33,10 +34,23 @@ def install_addon(
     src_io_soulstruct_dir = this_dir / "io_soulstruct"
 
     dest_io_soulstruct_dir = addons_dir / "io_soulstruct"
-    dest_io_soulstruct_lib_dir = addons_dir / "io_soulstruct_lib"
     dest_modules_dir = addons_dir / "modules"
 
     ignore_patterns = shutil.ignore_patterns(*_ALWAYS_IGNORE)
+
+
+    # Import 'io_soulstruct/_dependencies.py' module directly (no addon '__init__.py').
+    dep_spec = importlib.util.spec_from_file_location(
+        "io_soulstruct._dependencies", Path(__file__).parent / "io_soulstruct" / "_dependencies.py"
+    )
+    dep_module = importlib.util.module_from_spec(dep_spec)
+    dep_spec.loader.exec_module(dep_module)
+
+    # Get required versions of Soulstruct.
+    required_soulstruct_version = dep_module.REQUIREMENTS["soulstruct"]
+    print(f"Required `soulstruct` version: {required_soulstruct_version}")
+    required_soulstruct_havok_version = dep_module.REQUIREMENTS["soulstruct-havok"]
+    print(f"Required `soulstruct-havok` version: {required_soulstruct_havok_version}")
 
     # Install actual Blender scripts.
     if dest_io_soulstruct_dir.is_dir():
@@ -54,71 +68,65 @@ def install_addon(
     # Full Soulstruct install.
 
     # Two modes: an editable install pointing to THIS environment's `soulstruct` and `soulstruct-havok` modules, or
-    # copying the modules from the package into `io_soulstruct_lib` and performing an editable install from there.
-    # (The latter is what the add-on will attempt to do itself if it detects that the modules are not installed.)
+    # doing a full Soulstruct pip install from PyPI.
 
     soulstruct_root_path = SOULSTRUCT_PATH("../..")  # step out of `src/soulstruct`
     havok_root_path = SOULSTRUCT_HAVOK_PATH("../..")  # step out of `src/soulstruct` (in `soulstruct-havok`)
 
-    if editable_soulstruct:
+    pip_cmd = [
+        sys.executable, "-m", "pip", "install",
+        "scipy==1.16.3",  # TODO: locking version until 1.17.1 read-only array bug fixed
+    ]
+
+    if use_current_soulstruct:
         # Get the current environment's `soulstruct` and `soulstruct-havok` module paths.
+
+        # Verify versions match.
+        from soulstruct.version import __version__ as editable_soulstruct_version
+        if editable_soulstruct_version != required_soulstruct_version:
+            raise RuntimeError(
+                f"Cannot do an editable install of `soulstruct` version {editable_soulstruct_version}. "
+                f"Required version for `io_soulstruct` is {required_soulstruct_version}."
+            )
+
+        from soulstruct.havok.version import __version__ as editable_soulstruct_havok_version
+        if editable_soulstruct_havok_version != required_soulstruct_havok_version:
+            raise RuntimeError(
+                f"Cannot do an editable install of `soulstruct-havok` version {editable_soulstruct_havok_version}. "
+                f"Required version for `io_soulstruct` is {required_soulstruct_havok_version}."
+            )
+
         _LOGGER.info("Installing Soulstruct modules in editable mode...")
         soulstruct_install_path = soulstruct_root_path
         havok_install_path = havok_root_path
+        pip_cmd += [
+            "-e", str(soulstruct_install_path),
+            "-e", str(havok_install_path),
+        ]
     else:
-        _LOGGER.info("Copying Soulstruct modules to `io_soulstruct_lib`...")
-        soulstruct_install_path = dest_io_soulstruct_lib_dir / "soulstruct"
-        shutil.rmtree(soulstruct_install_path, ignore_errors=True)
-        _LOGGER.info("Copying Soulstruct module...")
-        shutil.copytree(
-            soulstruct_root_path,
-            soulstruct_install_path,
-            # NOTE: this is the container of `src`, not the package itself
-            dirs_exist_ok=True,
-            ignore=shutil.ignore_patterns(*_ALWAYS_IGNORE, "oo2core_6_win64.dll"),  # handled manually
-        )
+        # Pip-install Soulstruct. Read required versions from addon `__init__.py`.
 
-        # Copy over `oo2core_6_win64.dll` if it exists and isn't already in destination folder.
-        # (It may already be in use by Blender.)
-        oo2core_dll = SOULSTRUCT_PATH("oo2core_6_win64.dll")
-        if oo2core_dll.is_file() and not (
-            soulstruct_install_path / "src/soulstruct/oo2core_6_win64.dll").is_file():
-            shutil.copy(oo2core_dll, dest_io_soulstruct_lib_dir / "soulstruct/src/soulstruct")
+        _LOGGER.info("Pip-installing Soulstruct modules to `addons/modules`...")
+        pip_cmd += [
+            f"soulstruct=={required_soulstruct_version}",
+            f"soulstruct-havok=={required_soulstruct_havok_version}",
+        ]
 
-        _LOGGER.info("Copying Soulstruct-Havok module...")
-        havok_install_path = dest_io_soulstruct_lib_dir / "soulstruct-havok"
-        shutil.rmtree(havok_install_path, ignore_errors=True)
-        # Removal may not be complete if Blender is open, particularly as `soulstruct.log` may not be deleted.
-        shutil.copytree(
-            havok_root_path,
-            havok_install_path,
-            ignore=ignore_patterns,
-            dirs_exist_ok=True,
-        )
+    pip_cmd += [
+        "--target", str(dest_modules_dir),
+        "--exists-action", "i",
+        "--upgrade",
+        "--disable-pip-version-check",
+        "--no-input",
+        "--retries", "10",
+        "--timeout", "60",
+    ]
 
-    if refresh_only is None:
-        soulstruct_pths = dest_modules_dir.glob("modules/*soulstruct*.pth")
-        refresh_only = bool(list(soulstruct_pths))
-    if refresh_only:
-        # No need to call `pip` below (we assume dependencies are already installed and point to correct paths).
-        _LOGGER.info("Refreshing Soulstruct module paths only (no pip install).")
-        return 0
+    _LOGGER.info(f"pip cmd: {pip_cmd}")
 
     try:
         subprocess.run(
-            [
-                sys.executable, "-m", "pip", "install",
-                "scipy==1.16.3",  # TODO: locking version until 1.17.1 read-only array bug fixed
-                "-e", str(soulstruct_install_path),
-                "-e", str(havok_install_path),
-                "--target", str(dest_modules_dir),
-                "--exists-action", "i",
-                "--upgrade",
-                "--disable-pip-version-check",
-                "--no-input",
-                "--retries", "10",
-                "--timeout", "60",
-            ],
+            pip_cmd,
             stdout=sys.stdout,
             stderr=sys.stderr,
             check=True,
@@ -140,9 +148,6 @@ PARSER.add_argument("addonsDirectory", help="Path to Blender's `addons` director
 PARSER.add_argument("--installSoulstruct", action="store_true", help="Also install Soulstruct modules.")
 PARSER.add_argument("-e", "--editable", action="store_true",
                     help="Install Soulstruct modules in editable mode (pointing to current environment).")
-PARSER.add_argument("-r", "--refreshOnly", action="store_true", default=None,
-                    help="Refresh the Soulstruct modules only; do not run `pip` or install dependencies. "
-                         "Defaults to `true` if any files 'modules/*soulstruct*.pth' exist in `addons_directory`.")
 
 
 def main(args):
@@ -152,8 +157,7 @@ def main(args):
     install_addon(
         parsed.addonsDirectory,
         install_soulstruct=parsed.installSoulstruct,
-        editable_soulstruct=parsed.editable,
-        refresh_only=parsed.refreshOnly,
+        use_current_soulstruct=parsed.editable,
     )
 
 

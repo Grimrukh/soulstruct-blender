@@ -6,15 +6,22 @@ Requires:
     soulstruct (most `soulstruct.*` packages)
     soulstruct-havok (`soulstruct.havok` package)
 
-If import of these modules fails, this script will look in a directory called `io_soulstruct_lib` next to this file's
-parent directory, and attempt to do an editable install from there into Blender user `addons/modules`. This pip install
-command will also install third-party dependencies into `addons/modules`.
+On startup this script verifies that the exact required versions of `soulstruct` and `soulstruct-havok` are
+installed (via `importlib.metadata`).  If they are missing or at the wrong version it will pip-install them:
+  1. From the bundled `io_soulstruct_lib/` directory (present in release zip builds).
+  2. From PyPI, as a fallback (for users who installed the add-on without the bundled libraries).
+
+Editable (development) installs are fully supported — as long as the installed version string matches the required
+version declared below, no reinstall is triggered.
+
+Any stale `sys.path` entries pointing to a different Blender version's `addons/modules` are cleaned up before
+the version check to prevent shadowing by older installs.
 """
 from __future__ import annotations
 
 import importlib
+import importlib.util
 import site
-import subprocess
 import sys
 from pathlib import Path
 
@@ -31,77 +38,17 @@ io_soulstruct_path_str = str(Path(__file__).parent)
 if io_soulstruct_path_str not in sys.path:
     sys.path.append(io_soulstruct_path_str)
 
+# Import and call dependency support functions.
+from ._dependencies import clean_stale_blender_module_paths, ensure_soulstruct_installed_in_blender
+
+# Clean stale paths BEFORE adding the current Blender version's modules directory.
+clean_stale_blender_module_paths()
+
+# Ensure 'addons/modules' is in search path.
 user_addon_modules = bpy.utils.user_resource("SCRIPTS", path="addons/modules")
-# Make sure editable `soulstruct` and `soulstruct-havok` modules are found.
 site.addsitedir(user_addon_modules)
 
-
-def _ensure_soulstruct_installed():
-    """Check that required modules are available."""
-
-    try:
-        import soulstruct.base
-        import soulstruct.havok
-    except ImportError as ex:
-        # Reintall below.
-        print(f"Import error: {ex}")
-        print(
-            "Could not detect `soulstruct` and/or `soulstruct-havok` modules in Blender's Python environment. "
-            "Will reinstall now to Blender's local user 'scripts/addons/modules' folder."
-        )
-    else:
-        return
-
-    # Install editable `soulstruct` and `soulstruct-havok` modules into Python environment from `io_soulstruct_lib`.
-    io_soulstruct_lib_path = (Path(__file__).parent / "../io_soulstruct_lib").resolve()
-
-    if not io_soulstruct_lib_path.is_dir():
-        raise ImportError(
-            f"Cannot find `io_soulstruct_lib` directory at {io_soulstruct_lib_path} to install `soulstruct`. "
-            "Please ensure that the add-on is installed correctly."
-        )
-
-    print("Pip-installing editable `soulstruct` and `soulstruct-havok` modules into Blender's Python environment...")
-
-    def _call_python_module(purpose: str, *args: str):
-        try:
-            subprocess.run([sys.executable, "-m", *args], stdout=sys.stdout, stderr=sys.stderr, check=True)
-        except subprocess.CalledProcessError as _ex:
-            print(_ex.stdout)
-            print(_ex.stderr)
-            raise RuntimeError(f"Failed to {purpose} in Blender Python. Error: {_ex}") from _ex
-
-    _call_python_module("call `ensurepip`", "ensurepip")
-    _call_python_module("upgrade `pip`", "pip", "install", "--upgrade", "pip")
-    _call_python_module(
-        "install `soulstruct` and its dependencies",
-        "pip", "install",
-            "scipy==1.16.3",  # TODO: locking version until 1.17.1 read-only array bug fixed
-            "-e", f"{io_soulstruct_lib_path}/soulstruct",
-            "-e", f"{io_soulstruct_lib_path}/soulstruct-havok",
-            "--target", user_addon_modules,
-    )
-
-    print("Installed `soulstruct` and `soulstruct-havok` modules into Blender's Python environment.")
-
-    # Find editable installs.
-    site.addsitedir(user_addon_modules)
-    # Force importlib's pathfinders to check modules again.
-    importlib.invalidate_caches()
-
-    try:
-        import soulstruct.base
-        import soulstruct.havok
-    except ImportError as ex:
-        raise ImportError(
-            "Required modules 'soulstruct' and 'soulstruct-havok' could not be imported, even after attempted install. "
-            "Please ensure they are installed in Blender's Python environment (in user's local `modules`). "
-            "Restarting Blender and trying again may also fix this."
-        ) from ex
-
-
-_ensure_soulstruct_installed()
-
+ensure_soulstruct_installed_in_blender()
 
 # Reload all Soulstruct modules, then all modules in this add-on (except this script).
 # NOTE: This is IMPORTANT when using 'Reload Scripts' in Blender, as it is otherwise prone to partial re-imports of
@@ -136,7 +83,7 @@ from soulstruct.blender.utilities import ViewSelectedAtDistanceZero
 bl_info = {
     "name": "Soulstruct",
     "author": "Scott Mooney (Grimrukh)",
-    "version": (2, 6, 0),  # SOURCE OF TRUTH
+    "version": (2, 6, 0),
     "blender": (4, 5, 0),  # MINIMUM SUPPORTED VERSION
     "location": "File > Import-Export",
     "description": "Import, manipulate, and export FromSoftware/Havok assets",
