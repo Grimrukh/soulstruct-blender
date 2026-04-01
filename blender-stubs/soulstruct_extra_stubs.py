@@ -31,6 +31,9 @@ class Scene:
     # cutscene_import_settings: CutsceneImportSettings
     # cutscene_export_settings: CutsceneExportSettings
 
+    map_progress_settings: MapProgressSettings
+    material_debug_settings: MaterialDebugSettings
+
 
 class Object:
     FLVER: FLVERProps
@@ -71,6 +74,8 @@ class Object:
     MSB_NAVIGATION: MSBNavigationEventProps
     MSB_ENVIRONMENT: MSBEnvironmentEventProps
     MSB_NPC_INVASION: MSBNPCInvasionEventProps
+
+    map_progress: MapProgressProps
 
 
 class Material:
