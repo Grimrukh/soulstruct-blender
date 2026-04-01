@@ -32,11 +32,6 @@ except ModuleNotFoundError:
         "Please ensure you are running this code inside Blender's Python environment."
     )
 
-# Add this directory to the Python path so that `soulstruct.blender` can be imported.
-# Otherwise, Blender's extension guidelines force us to use relative imports and `__package__` everywhere.
-io_soulstruct_path_str = str(Path(__file__).parent)
-if io_soulstruct_path_str not in sys.path:
-    sys.path.append(io_soulstruct_path_str)
 
 # Reload all Soulstruct modules, then all modules in this add-on (except this script).
 # NOTE: This is IMPORTANT when using 'Reload Scripts' in Blender, as it is otherwise prone to partial re-imports of
