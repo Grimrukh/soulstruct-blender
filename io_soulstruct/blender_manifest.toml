@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "io_soulstruct"
-version = "2.6.0"
+version = "3.0.0"
 name = "Soulstruct"
 tagline = "Import, manipulate, and export FromSoftware/Havok assets"
 maintainer = "Scott Mooney (Grimrukh)"
