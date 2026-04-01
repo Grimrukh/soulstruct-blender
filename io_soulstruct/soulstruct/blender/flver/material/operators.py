@@ -22,10 +22,10 @@ import bpy
 from soulstruct.base.models.shaders import MatDefError
 from soulstruct.flver import FLVERVersion
 
-from soulstruct.blender.bpy_base.property_group import SoulstructPropertyGroup
-from soulstruct.blender.general.game_config import BLENDER_GAME_CONFIG
-from soulstruct.blender.types import MeshObject, SoulstructType, is_active_obj_typed_mesh_obj
-from soulstruct.blender.utilities import LoggingOperator
+from ...bpy_base.property_group import SoulstructPropertyGroup
+from ...general.game_config import BLENDER_GAME_CONFIG
+from ...types import MeshObject, SoulstructType, is_active_obj_typed_mesh_obj
+from ...utilities import LoggingOperator
 from .properties import get_cached_matbinbnd, get_cached_mtdbnd
 from .types import BlenderFLVERMaterial
 

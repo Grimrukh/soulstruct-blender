@@ -16,7 +16,7 @@ import typing as tp
 
 import bpy
 
-from soulstruct.blender.types import *
+from ..types import *
 from .misc import remove_dupe_suffix
 
 if tp.TYPE_CHECKING:

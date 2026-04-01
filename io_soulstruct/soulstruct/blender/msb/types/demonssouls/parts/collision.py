@@ -9,9 +9,9 @@ from soulstruct.demonssouls.maps.enums import CollisionHitFilter
 from soulstruct.demonssouls.maps.models import MSBCollisionModel
 from soulstruct.demonssouls.maps.parts import MSBCollision
 
-from soulstruct.blender.msb.types.adapters import *
-from soulstruct.blender.msb.properties.parts import BlenderMSBPartSubtype, MSBCollisionProps
-from soulstruct.blender.types import SoulstructType
+from ...adapters import *
+from ....properties.parts import BlenderMSBPartSubtype, MSBCollisionProps
+from .....types import SoulstructType
 
 from .base import BaseBlenderMSBPart_DES
 

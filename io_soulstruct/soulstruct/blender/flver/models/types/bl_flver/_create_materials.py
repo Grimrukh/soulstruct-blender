@@ -14,17 +14,17 @@ from soulstruct.flver import *
 from soulstruct.base.models.shaders import MatDef, MatDefError
 from soulstruct.containers.tpf import TPFTexture
 
-from soulstruct.blender.flver.image.enums import BlenderImageFormat
-from soulstruct.blender.flver.image.import_operators import *
-from soulstruct.blender.flver.image.types import DDSTexture, DDSTextureCollection
-from soulstruct.blender.flver.material.types import BlenderFLVERMaterial
-from soulstruct.blender.flver.material.properties import get_cached_mtdbnd, get_cached_matbinbnd
-from soulstruct.blender.general import BLENDER_GAME_CONFIG
-from soulstruct.blender.utilities import *
+from .....flver.image.enums import BlenderImageFormat
+from .....flver.image.import_operators import *
+from .....flver.image.types import DDSTexture, DDSTextureCollection
+from .....flver.material.types import BlenderFLVERMaterial
+from .....flver.material.properties import get_cached_mtdbnd, get_cached_matbinbnd
+from .....general import BLENDER_GAME_CONFIG
+from .....utilities import *
 
 if tp.TYPE_CHECKING:
     from soulstruct.base.models.matbin import MATBINBND
-    from soulstruct.blender.flver.image.image_import_manager import ImageImportManager
+    from .....flver.image.image_import_manager import ImageImportManager
 
 
 class CreatedFLVERMaterials(tp.NamedTuple):

@@ -8,9 +8,9 @@ import abc
 
 from soulstruct.demonssouls.maps.msb import MSB, BitSet128
 
-from soulstruct.blender.msb.types.adapters import FieldAdapter, MSBPartGroupsAdapter
-from soulstruct.blender.msb.types.base.entry import SUBTYPE_PROPS_T
-from soulstruct.blender.msb.types.base.parts import BaseBlenderMSBPart, PART_T
+from .....msb.types.adapters import FieldAdapter, MSBPartGroupsAdapter
+from .....msb.types.base.entry import SUBTYPE_PROPS_T
+from .....msb.types.base.parts import BaseBlenderMSBPart, PART_T
 
 
 class BaseBlenderMSBPart_DES(BaseBlenderMSBPart[PART_T, SUBTYPE_PROPS_T, MSB, BitSet128], abc.ABC):

@@ -23,18 +23,17 @@ from soulstruct.games import *
 from soulstruct.utilities.text import natural_keys
 from soulstruct.havok.fromsoft.shared import HKXBHD, BothResHKXBHD
 
-from soulstruct.blender.general.game_config import BLENDER_GAME_CONFIG
-from soulstruct.blender.collision.types import BlenderMapCollision
-from soulstruct.blender.navmesh.nvm.types import BlenderNVM
-from soulstruct.blender.types import SoulstructType
-from soulstruct.blender.utilities.operators import LoggingOperator, LoggingExportOperator
-
+from ..general.game_config import BLENDER_GAME_CONFIG
+from ..collision.types import BlenderMapCollision
+from ..navmesh.nvm.types import BlenderNVM
+from ..types import SoulstructType
+from ..utilities.operators import LoggingOperator, LoggingExportOperator
 from .operator_config import *
 from .properties import BlenderMSBPartSubtype
 from .utilities import MSB_COLLECTION_RE
 
 if tp.TYPE_CHECKING:
-    from soulstruct.blender.msb.types.base import *
+    from ..msb.types.base import *
     MSB_TYPING = tp.Union[MSB_PTDE, MSB_DSR, MSB_DES]
 
 

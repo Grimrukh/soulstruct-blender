@@ -5,7 +5,7 @@ __all__ = [
     "PrintGameTransform",
 ]
 
-from soulstruct.blender.utilities import BLTransform, LoggingOperator
+from ..utilities import BLTransform, LoggingOperator
 
 
 class PrintGameTransform(LoggingOperator):

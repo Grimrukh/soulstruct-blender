@@ -17,8 +17,8 @@ from bpy_extras.view3d_utils import location_3d_to_region_2d
 from gpu_extras.batch import batch_for_shader
 from mathutils import Vector
 
-from soulstruct.blender.exceptions import SoulstructTypeError
-from soulstruct.blender.bpy_base.property_group import SoulstructPropertyGroup
+from ..exceptions import SoulstructTypeError
+from ..bpy_base.property_group import SoulstructPropertyGroup
 
 from .types import *
 

@@ -13,15 +13,15 @@ from mathutils import Matrix
 from soulstruct.flver import *
 from soulstruct.utilities.maths import Vector3
 
-from soulstruct.blender.base import BaseBlenderSoulstructObject, add_auto_type_props
-from soulstruct.blender.exceptions import *
-from soulstruct.blender.flver.utilities import (
+from ....base import BaseBlenderSoulstructObject, add_auto_type_props
+from ....exceptions import *
+from ...utilities import (
     BONE_CoB_4x4,
     game_forward_up_vectors_to_bl_euler,
     bl_rotmat_to_game_forward_up_vectors,
 )
-from soulstruct.blender.types import *
-from soulstruct.blender.utilities import *
+from ....types import *
+from ....utilities import *
 
 from ..properties import *
 

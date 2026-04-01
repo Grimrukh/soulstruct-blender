@@ -16,13 +16,13 @@ import bpy
 from soulstruct.flver import *
 from soulstruct.utilities.text import natural_keys
 
-from soulstruct.blender.base import BaseBlenderSoulstructObject, add_auto_type_props
-from soulstruct.blender.exceptions import *
-from soulstruct.blender.flver.image.types import DDSTextureCollection
-from soulstruct.blender.flver.material.types import BlenderFLVERMaterial
-from soulstruct.blender.flver.models.properties import *
-from soulstruct.blender.types import *
-from soulstruct.blender.utilities import *
+from .....base import BaseBlenderSoulstructObject, add_auto_type_props
+from .....exceptions import *
+from .....flver.image.types import DDSTextureCollection
+from .....flver.material.types import BlenderFLVERMaterial
+from .....flver.models.properties import *
+from .....types import *
+from .....utilities import *
 from ..bl_flver_dummy import BlenderFLVERDummy
 from ..enums import FLVERModelType, FLVERBoneDataType
 
@@ -34,7 +34,7 @@ from ._export import create_flver_from_bl_flver
 from ._import import create_bl_flver_from_flver
 
 if tp.TYPE_CHECKING:
-    from soulstruct.blender.flver.image.image_import_manager import ImageImportManager
+    from .....flver.image.image_import_manager import ImageImportManager
 
 
 class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):

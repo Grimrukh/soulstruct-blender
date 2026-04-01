@@ -7,9 +7,9 @@ __all__ = [
 from soulstruct.demonssouls.maps.models import MSBNavmeshModel
 from soulstruct.demonssouls.maps.parts import MSBNavmesh
 
-from soulstruct.blender.msb.types.adapters import *
-from soulstruct.blender.msb.properties import BlenderMSBPartSubtype, MSBNavmeshProps
-from soulstruct.blender.types import SoulstructType
+from ...adapters import *
+from ....properties import BlenderMSBPartSubtype, MSBNavmeshProps
+from .....types import SoulstructType
 
 from .base import BaseBlenderMSBPart_DES
 

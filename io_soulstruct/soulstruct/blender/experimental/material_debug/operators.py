@@ -6,9 +6,10 @@ __all__ = [
 ]
 
 import bpy
-from soulstruct.blender.msb.properties.parts import BlenderMSBPartSubtype
-from soulstruct.blender.types import MeshObject, SoulstructType
-from soulstruct.blender.utilities.operators import LoggingOperator
+
+from ...msb.properties.parts import BlenderMSBPartSubtype
+from ...types import MeshObject, SoulstructType
+from ...utilities.operators import LoggingOperator
 
 from .nodes import *
 

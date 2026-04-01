@@ -7,10 +7,10 @@ __all__ = [
 from soulstruct.darksouls1ptde.maps.msb import MSB
 from soulstruct.darksouls1ptde.maps.regions import *
 
-from soulstruct.blender.msb.types.adapters import *
-from soulstruct.blender.msb.types.base.regions import BaseBlenderMSBRegion
-from soulstruct.blender.msb.properties import BlenderMSBRegionSubtype
-from soulstruct.blender.types import *
+from ..adapters import *
+from ..base.regions import BaseBlenderMSBRegion
+from ...properties import BlenderMSBRegionSubtype
+from ....types import *
 
 
 @soulstruct_adapter

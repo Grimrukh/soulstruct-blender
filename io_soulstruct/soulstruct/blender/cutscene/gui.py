@@ -4,7 +4,7 @@ __all__ = [
     "CutsceneImportExportPanel",
 ]
 
-from soulstruct.blender.bpy_base.panel import SoulstructPanel
+from ..bpy_base.panel import SoulstructPanel
 from .import_operators import *
 
 

@@ -9,7 +9,7 @@ __all__ = [
 
 import bpy
 
-from soulstruct.blender.bpy_base.panel import SoulstructPanel
+from ..bpy_base.panel import SoulstructPanel
 from .misc_mesh import *
 from .misc_other import *
 from .misc_outliner import *

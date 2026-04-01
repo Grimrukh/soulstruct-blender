@@ -13,12 +13,12 @@ import bpy
 from soulstruct.base.maps.msb.parts import BaseMSBPart
 from soulstruct.base.maps.msb.utils import BitSet
 
-from soulstruct.blender.exceptions import SoulstructTypeError
-from soulstruct.blender.flver.models.types import BlenderFLVER
-from soulstruct.blender.msb.properties import BlenderMSBPartSubtype, MSBPartArmatureMode, MSBPartProps
-from soulstruct.blender.msb.types.adapters import *
-from soulstruct.blender.types import *
-from soulstruct.blender.utilities import *
+from ....exceptions import SoulstructTypeError
+from ....flver.models.types import BlenderFLVER
+from ....msb.properties import BlenderMSBPartSubtype, MSBPartArmatureMode, MSBPartProps
+from ....msb.types.adapters import *
+from ....types import *
+from ....utilities import *
 
 from .entry import BaseBlenderMSBEntry, SUBTYPE_PROPS_T, MSB_T
 from .part_armature_duplicator import PartArmatureDuplicator

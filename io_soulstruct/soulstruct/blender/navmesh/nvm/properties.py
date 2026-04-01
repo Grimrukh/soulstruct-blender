@@ -8,7 +8,7 @@ __all__ = [
 
 import bpy
 
-from soulstruct.blender.bpy_base.property_group import SoulstructPropertyGroup
+from ...bpy_base.property_group import SoulstructPropertyGroup
 
 
 class NVMProps(SoulstructPropertyGroup):

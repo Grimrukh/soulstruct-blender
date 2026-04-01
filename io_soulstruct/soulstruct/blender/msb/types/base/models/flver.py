@@ -19,17 +19,17 @@ import bpy
 from soulstruct.containers import Binder, BinderEntry
 from soulstruct.flver import FLVER, MergedMesh
 
-from soulstruct.blender.exceptions import FLVERImportError
-from soulstruct.blender.flver.image.image_import_manager import ImageImportManager
-from soulstruct.blender.flver.models.types import BlenderFLVER
-from soulstruct.blender.flver.utilities import get_flvers_from_binder
-from soulstruct.blender.types import *
-from soulstruct.blender.utilities import find_or_create_collection, LoggingOperator, get_model_name, find_obj
+from .....exceptions import FLVERImportError
+from .....flver.image.image_import_manager import ImageImportManager
+from .....flver.models.types import BlenderFLVER
+from .....flver.utilities import get_flvers_from_binder
+from .....types import *
+from .....utilities import find_or_create_collection, LoggingOperator, get_model_name, find_obj
 
 from .base import BaseBlenderMSBModelImporter, MODEL_T
 
 if tp.TYPE_CHECKING:
-    from soulstruct.blender.flver.material.types import BlenderFLVERMaterial
+    from .....flver.material.types import BlenderFLVERMaterial
 
 
 @dataclass(slots=True)

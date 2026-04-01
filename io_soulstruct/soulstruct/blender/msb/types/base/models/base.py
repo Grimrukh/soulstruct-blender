@@ -19,8 +19,8 @@ import bpy
 
 from soulstruct.base.maps.msb.models import BaseMSBModel
 
-from soulstruct.blender.utilities.operators import LoggingOperator
-from soulstruct.blender.types import MeshObject
+from .....utilities.operators import LoggingOperator
+from .....types import MeshObject
 
 
 MODEL_T = tp.TypeVar("MODEL_T", bound=BaseMSBModel)

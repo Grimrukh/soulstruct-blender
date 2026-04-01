@@ -10,10 +10,10 @@ import typing as tp
 
 import bpy
 
-from soulstruct.blender.bpy_base.panel import SoulstructPanel
-from soulstruct.blender.types import ObjectType, SoulstructType
-from soulstruct.blender.flver.image.import_operators import ImportTextures
-from soulstruct.blender.flver.image.misc_operators import FindMissingTexturesInImageCache
+from ...bpy_base.panel import SoulstructPanel
+from ...types import ObjectType, SoulstructType
+from ...flver.image.import_operators import ImportTextures
+from ...flver.image.misc_operators import FindMissingTexturesInImageCache
 
 from .operators import *
 

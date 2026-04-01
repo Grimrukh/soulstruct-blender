@@ -14,7 +14,7 @@ import bpy
 
 from soulstruct.games import *
 
-from soulstruct.blender.bpy_base.property_group import SoulstructPropertyGroup
+from ...bpy_base.property_group import SoulstructPropertyGroup
 from .events import BlenderMSBEventSubtype
 from .parts import MSBPartArmatureMode
 

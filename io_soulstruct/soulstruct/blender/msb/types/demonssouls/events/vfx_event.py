@@ -6,8 +6,8 @@ __all__ = [
 
 from soulstruct.demonssouls.maps.events import MSBVFXEvent
 
-from soulstruct.blender.msb.properties import BlenderMSBEventSubtype, MSBVFXEventProps
-from soulstruct.blender.msb.types.adapters import *
+from .....msb.properties import BlenderMSBEventSubtype, MSBVFXEventProps
+from .....msb.types.adapters import *
 
 from .base import BaseBlenderMSBEvent_DES
 

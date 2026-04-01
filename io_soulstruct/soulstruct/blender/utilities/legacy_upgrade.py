@@ -6,7 +6,7 @@ Usage script in Blender:
 
 # INJECT OLD MAP PIECE
 import bpy
-from soulstruct.blender.utilities.legacy_upgrade import inject_old_flver_mesh
+from .legacy_upgrade import inject_old_flver_mesh
 
 objs = bpy.context.selected_objects
 if len(objs) != 2:
@@ -28,8 +28,8 @@ __all__ = [
 
 import bpy
 
-from soulstruct.blender.flver.material import BlenderFLVERMaterial
-from soulstruct.blender.types import MeshObject
+from ..flver.material import BlenderFLVERMaterial
+from ..types import MeshObject
 
 
 def get_old_material_props(old_material: bpy.types.Material):

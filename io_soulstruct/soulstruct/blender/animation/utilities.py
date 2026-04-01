@@ -24,12 +24,12 @@ from soulstruct.havok.fromsoft.base import BaseAnimationHKX, BaseSkeletonHKX
 from soulstruct.havok.fromsoft import demonssouls, darksouls1ptde, darksouls1r, bloodborne, eldenring
 from soulstruct.containers import BinderEntry
 
-from soulstruct.blender.exceptions import UnsupportedGameError, SoulstructTypeError
-from soulstruct.blender.flver.models.types import BlenderFLVER
-from soulstruct.blender.msb.properties.parts import BlenderMSBPartSubtype
-from soulstruct.blender.msb.types.base.parts import BaseBlenderMSBPart
-from soulstruct.blender.types import ArmatureObject, MeshObject
-from soulstruct.blender.utilities import get_model_name
+from ..exceptions import UnsupportedGameError, SoulstructTypeError
+from ..flver.models.types import BlenderFLVER
+from ..msb.properties.parts import BlenderMSBPartSubtype
+from ..msb.types.base.parts import BaseBlenderMSBPart
+from ..types import ArmatureObject, MeshObject
+from ..utilities import get_model_name
 
 ANIMATION_TYPING = tp.Union[
     demonssouls.AnimationHKX,

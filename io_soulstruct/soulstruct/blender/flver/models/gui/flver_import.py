@@ -4,7 +4,7 @@ __all__ = [
     "FLVERImportPanel",
 ]
 
-from soulstruct.blender.bpy_base.panel import SoulstructPanel
+from ....bpy_base.panel import SoulstructPanel
 
 from ..operators.import_operators import *
 

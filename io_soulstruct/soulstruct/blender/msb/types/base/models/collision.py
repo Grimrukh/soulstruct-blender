@@ -12,11 +12,11 @@ import bpy
 from soulstruct.containers import EntryNotFoundError
 from soulstruct.havok.fromsoft.shared import BothResHKXBHD, MapCollisionModel
 
-from soulstruct.blender.general import SoulstructSettings
-from soulstruct.blender.collision.types import BlenderMapCollision
-from soulstruct.blender.exceptions import MapCollisionImportError
-from soulstruct.blender.types import MeshObject
-from soulstruct.blender.utilities import find_or_create_collection, LoggingOperator
+from .....general import SoulstructSettings
+from .....collision.types import BlenderMapCollision
+from .....exceptions import MapCollisionImportError
+from .....types import MeshObject
+from .....utilities import find_or_create_collection, LoggingOperator
 
 from .base import BaseBlenderMSBModelImporter, MODEL_T
 

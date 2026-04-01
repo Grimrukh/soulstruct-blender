@@ -9,7 +9,7 @@ import bpy
 
 from soulstruct.containers.tpf import TPFPlatform
 
-from soulstruct.blender.bpy_base.property_group import SoulstructPropertyGroup
+from ...bpy_base.property_group import SoulstructPropertyGroup
 from .enums import *
 
 

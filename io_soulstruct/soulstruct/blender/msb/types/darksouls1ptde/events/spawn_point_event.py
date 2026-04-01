@@ -6,9 +6,9 @@ __all__ = [
 
 from soulstruct.darksouls1ptde.maps.events import MSBSpawnPointEvent
 
-from soulstruct.blender.msb.properties import BlenderMSBEventSubtype, MSBSpawnPointEventProps
-from soulstruct.blender.msb.types.adapters import *
-from soulstruct.blender.types import MeshObject, SoulstructType
+from ....properties import BlenderMSBEventSubtype, MSBSpawnPointEventProps
+from ...adapters import *
+from .....types import MeshObject, SoulstructType
 
 from .base import BaseBlenderMSBEvent_DS1
 

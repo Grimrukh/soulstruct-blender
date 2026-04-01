@@ -23,13 +23,13 @@ from soulstruct.dcx import DCXType, compress, decompress
 from soulstruct.games import *
 from soulstruct.utilities.files import create_bak
 
-from soulstruct.blender.exceptions import *
-from soulstruct.blender.utilities import *
+from ..exceptions import *
+from ..utilities import *
 from .game_config import BLENDER_GAME_CONFIG, BlenderGameConfig
 from .game_structure import GameStructure
 
 if tp.TYPE_CHECKING:
-    from soulstruct.blender.utilities import LoggingOperator
+    from ..utilities import LoggingOperator
 
 
 _LOGGER = logging.getLogger("soulstruct.io_soulstruct")

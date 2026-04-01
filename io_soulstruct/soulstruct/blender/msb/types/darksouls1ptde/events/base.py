@@ -8,9 +8,9 @@ import abc
 
 from soulstruct.darksouls1ptde.maps.msb import MSB
 
-from soulstruct.blender.msb.types.adapters import CustomFieldAdapter
-from soulstruct.blender.msb.types.base.entry import SUBTYPE_PROPS_T
-from soulstruct.blender.msb.types.base.events import BaseBlenderMSBEvent, EVENT_T
+from ...adapters import CustomFieldAdapter
+from ...base.entry import SUBTYPE_PROPS_T
+from ...base.events import BaseBlenderMSBEvent, EVENT_T
 
 
 class BaseBlenderMSBEvent_DS1(BaseBlenderMSBEvent[EVENT_T, SUBTYPE_PROPS_T, MSB], abc.ABC):

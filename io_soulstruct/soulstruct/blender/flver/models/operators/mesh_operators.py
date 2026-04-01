@@ -14,7 +14,7 @@ import bmesh
 
 from soulstruct.flver import Material
 
-from soulstruct.blender.utilities import LoggingOperator
+from ....utilities import LoggingOperator
 
 
 class SelectDisplayMaskID(LoggingOperator):

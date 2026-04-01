@@ -24,6 +24,7 @@ license = [
 platforms = ["windows-x64", "windows-arm64"]
 
 # https://docs.blender.org/manual/en/dev/advanced/extensions/python_wheels.html
+# WHEELS START
 wheels = [
   "./wheels/annotated_doc-0.0.4-py3-none-any.whl",
   "./wheels/click-8.3.1-py3-none-any.whl",
@@ -34,13 +35,14 @@ wheels = [
   "./wheels/numpy-2.4.4-cp313-cp313-win_amd64.whl",
   "./wheels/pygments-2.20.0-py3-none-any.whl",
   "./wheels/rich-14.3.3-py3-none-any.whl",
-  "./wheels/scipy-1.16.3-cp313-cp313-win_amd64.whl",
+  "./wheels/scipy-1.16.3-cp313-cp313-win_amd64.whl",  # TOP-LEVEL
   "./wheels/shellingham-1.5.4-py2.py3-none-any.whl",
-  "./wheels/soulstruct-2.3.2-py3-none-any.whl",
-  "./wheels/soulstruct_havok-1.2.2-py3-none-any.whl",
+  "./wheels/soulstruct-2.3.3-py3-none-any.whl",  # TOP-LEVEL
+  "./wheels/soulstruct_havok-1.2.2-py3-none-any.whl",  # TOP-LEVEL
   "./wheels/typer-0.24.1-py3-none-any.whl",
   "./wheels/zstandard-0.25.0-cp313-cp313-win_amd64.whl",
 ]
+# WHEELS END
 
 [permissions]
 files = "Import/export game files from/to disk"

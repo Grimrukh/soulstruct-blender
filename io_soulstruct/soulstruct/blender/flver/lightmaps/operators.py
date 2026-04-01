@@ -14,11 +14,11 @@ from soulstruct.base.models.mtd import MTDBND
 from soulstruct.darksouls1r.models.shaders import MatDef as DS1R_MatDef
 from soulstruct.games import DARK_SOULS_DSR
 
-from soulstruct.blender.bpy_base.property_group import SoulstructPropertyGroup
-from soulstruct.blender.exceptions import SoulstructTypeError
-from soulstruct.blender.flver.material.types import BlenderFLVERMaterial
-from soulstruct.blender.flver.models.types import BlenderFLVER
-from soulstruct.blender.utilities import LoggingOperator
+from ...bpy_base.property_group import SoulstructPropertyGroup
+from ...exceptions import SoulstructTypeError
+from ..material.types import BlenderFLVERMaterial
+from ..models.types import BlenderFLVER
+from ...utilities import LoggingOperator
 
 
 class BakeLightmapSettings(SoulstructPropertyGroup):

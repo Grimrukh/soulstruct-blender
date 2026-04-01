@@ -5,9 +5,9 @@ __all__ = [
     "MapCollisionToolsPanel",
 ]
 
-from soulstruct.blender.bpy_base.panel import SoulstructPanel
-from soulstruct.blender.exceptions import SoulstructTypeError
-from soulstruct.blender.misc.misc_mesh import *
+from ..bpy_base.panel import SoulstructPanel
+from ..exceptions import SoulstructTypeError
+from ..misc.misc_mesh import *
 from .import_operators import *
 from .export_operators import *
 from .misc_operators import *

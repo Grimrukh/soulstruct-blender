@@ -14,12 +14,12 @@ from soulstruct.flver import FLVER, FLVERBone, FLVERBoneUsageFlags
 from soulstruct.utilities.maths import Vector3, Matrix3
 from soulstruct.utilities.misc import IDList
 
-from soulstruct.blender.exceptions import FLVERExportError
-from soulstruct.blender.flver.models.types.enums import FLVERBoneDataType
-from soulstruct.blender.flver.utilities import BONE_CoB_4x4
-from soulstruct.blender.utilities.conversion import to_game
-from soulstruct.blender.utilities.operators import LoggingOperator
-from soulstruct.blender.types import ArmatureObject
+from .....exceptions import FLVERExportError
+from ..enums import FLVERBoneDataType
+from ....utilities import BONE_CoB_4x4
+from .....utilities.conversion import to_game
+from .....utilities.operators import LoggingOperator
+from .....types import ArmatureObject
 
 
 def create_flver_bones(

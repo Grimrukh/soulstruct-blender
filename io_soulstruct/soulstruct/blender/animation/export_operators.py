@@ -18,10 +18,10 @@ from soulstruct.containers import Binder, EntryNotFoundError
 from soulstruct.dcx import DCXType
 from soulstruct.havok.fromsoft.base import BaseSkeletonHKX, BaseAnimationHKX
 
-from soulstruct.blender.exceptions import *
-from soulstruct.blender.flver.models import BlenderFLVER
-from soulstruct.blender.types import *
-from soulstruct.blender.utilities import *
+from ..exceptions import *
+from ..flver.models import BlenderFLVER
+from ..types import *
+from ..utilities import *
 from .utilities import *
 from .types import SoulstructAnimation
 

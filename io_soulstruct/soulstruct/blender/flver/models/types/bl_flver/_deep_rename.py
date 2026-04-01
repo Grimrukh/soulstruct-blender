@@ -6,7 +6,7 @@ __all__ = [
 
 import typing as tp
 
-from soulstruct.blender.utilities import remove_dupe_suffix
+from .....utilities import remove_dupe_suffix
 
 if tp.TYPE_CHECKING:
     from .core import BlenderFLVER

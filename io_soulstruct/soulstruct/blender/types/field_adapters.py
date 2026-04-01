@@ -15,11 +15,11 @@ import bpy
 
 from soulstruct.utilities.maths import EulerDeg
 
-from soulstruct.blender.utilities.operators import LoggingOperator
-from soulstruct.blender.utilities.conversion import *
+from ..utilities.operators import LoggingOperator
+from ..utilities.conversion import *
 
 if tp.TYPE_CHECKING:
-    from soulstruct.blender.base.soulstruct_object import BaseBlenderSoulstructObject, SOULSTRUCT_T, TYPE_PROPS_T
+    from ..base.soulstruct_object import BaseBlenderSoulstructObject, SOULSTRUCT_T, TYPE_PROPS_T
     SOULSTRUCT_OBJECT_T = tp.TypeVar("SOULSTRUCT_OBJECT_T", bound=BaseBlenderSoulstructObject)
 
 

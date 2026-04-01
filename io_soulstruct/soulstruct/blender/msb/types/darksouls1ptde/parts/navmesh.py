@@ -8,9 +8,9 @@ from soulstruct.darksouls1ptde.maps.msb import BitSet128
 from soulstruct.darksouls1ptde.maps.models import MSBNavmeshModel
 from soulstruct.darksouls1ptde.maps.parts import MSBNavmesh
 
-from soulstruct.blender.msb.types.adapters import *
-from soulstruct.blender.msb.properties import BlenderMSBPartSubtype, MSBNavmeshProps
-from soulstruct.blender.types import SoulstructType
+from .....msb.types.adapters import *
+from .....msb.properties import BlenderMSBPartSubtype, MSBNavmeshProps
+from .....types import SoulstructType
 
 from .base import BaseBlenderMSBPart_DS1
 

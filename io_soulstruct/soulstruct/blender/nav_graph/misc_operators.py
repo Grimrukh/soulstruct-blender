@@ -22,10 +22,10 @@ from mathutils import Vector
 
 from soulstruct.base.events.enums import NavmeshFlag
 
-from soulstruct.blender.exceptions import SoulstructTypeError, MCGEdgeCreationError
-from soulstruct.blender.msb.types.darksouls1r import BlenderMSBNavmesh
-from soulstruct.blender.types import *
-from soulstruct.blender.utilities import LoggingOperator
+from ..exceptions import SoulstructTypeError, MCGEdgeCreationError
+from ..msb.types.darksouls1r import BlenderMSBNavmesh
+from ..types import *
+from ..utilities import LoggingOperator
 from .utilities import *
 from .types import *
 

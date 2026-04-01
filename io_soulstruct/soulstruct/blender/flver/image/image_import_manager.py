@@ -15,7 +15,7 @@ from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
 from soulstruct.containers.tpf import TPF, TPFTexture, TPFPlatform
 from soulstruct.games import *
 
-from soulstruct.blender.utilities import LoggingOperator, CheckDCXMode, MAP_STEM_RE
+from ...utilities import LoggingOperator, CheckDCXMode, MAP_STEM_RE
 
 if tp.TYPE_CHECKING:
     from soulstruct.flver import FLVER

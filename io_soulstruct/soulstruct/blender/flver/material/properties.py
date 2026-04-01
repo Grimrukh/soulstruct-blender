@@ -20,15 +20,15 @@ from soulstruct.base.models.matbin import MATBINBND
 from soulstruct.base.models.mtd import MTDBND
 from soulstruct.games import *
 
-from soulstruct.blender.bpy_base.property_group import SoulstructPropertyGroup
-from soulstruct.blender.exceptions import InternalSoulstructBlenderError
-from soulstruct.blender.flver.image.enums import BlenderImageFormat
-from soulstruct.blender.general import SoulstructSettings
-from soulstruct.blender.utilities import *
+from ...bpy_base.property_group import SoulstructPropertyGroup
+from ...exceptions import InternalSoulstructBlenderError
+from ...flver.image.enums import BlenderImageFormat
+from ...general import SoulstructSettings
+from ...utilities import *
 
 if tp.TYPE_CHECKING:
     from soulstruct.games import Game
-    from soulstruct.blender.utilities import LoggingOperator
+    from ...utilities import LoggingOperator
 
 
 # noinspection PyUnusedLocal

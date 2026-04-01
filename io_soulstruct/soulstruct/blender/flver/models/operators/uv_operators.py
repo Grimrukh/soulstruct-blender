@@ -21,7 +21,7 @@ import bpy
 import bmesh
 from mathutils import Matrix, Vector
 
-from soulstruct.blender.utilities import LoggingOperator
+from ....utilities import LoggingOperator
 
 
 # noinspection PyUnusedLocal

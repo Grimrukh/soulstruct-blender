@@ -6,8 +6,8 @@ __all__ = [
 
 from dataclasses import dataclass
 
-from soulstruct.blender.exceptions import MaterialImportError
-from soulstruct.blender.flver.material.shaders.base_node_tree_builder import BaseNodeTreeBuilder
+from .....exceptions import MaterialImportError
+from ..base_node_tree_builder import BaseNodeTreeBuilder
 
 
 @dataclass(slots=True)

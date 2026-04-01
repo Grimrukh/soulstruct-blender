@@ -23,8 +23,8 @@ import bmesh
 import bpy
 from mathutils import Matrix, Vector, kdtree
 
-from soulstruct.blender.types import MeshObject
-from soulstruct.blender.utilities import LoggingOperator
+from ..types import MeshObject
+from ..utilities import LoggingOperator
 
 
 def move_mesh_selection(

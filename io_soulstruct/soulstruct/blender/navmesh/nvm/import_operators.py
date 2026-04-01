@@ -25,10 +25,10 @@ import bpy
 from soulstruct.containers import Binder, BinderEntry
 from soulstruct.base.maps.navmesh.nvm import NVM
 
-from soulstruct.blender.exceptions import NVMImportError
-from soulstruct.blender.utilities import *
-from soulstruct.blender.navmesh.nvm.types import *
-from soulstruct.blender.navmesh.nvm.utilities import *
+from ...exceptions import NVMImportError
+from ...utilities import *
+from .types import *
+from .utilities import *
 
 
 class NVMImportChoiceInfo(tp.NamedTuple):

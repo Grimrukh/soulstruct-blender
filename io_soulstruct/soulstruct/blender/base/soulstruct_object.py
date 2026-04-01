@@ -15,14 +15,14 @@ from mathutils import Vector, Euler
 
 from soulstruct.utilities.text import natural_keys
 
-from soulstruct.blender.exceptions import SoulstructTypeError
-from soulstruct.blender.types import ObjectType, SoulstructType
-from soulstruct.blender.types.field_adapters import FieldAdapter
-from soulstruct.blender.utilities.bpy_data import copy_obj_property_group
-from soulstruct.blender.utilities.misc import remove_dupe_suffix
+from ..exceptions import SoulstructTypeError
+from ..types import ObjectType, SoulstructType
+from ..types.field_adapters import FieldAdapter
+from ..utilities.bpy_data import copy_obj_property_group
+from ..utilities.misc import remove_dupe_suffix
 
 if tp.TYPE_CHECKING:
-    from soulstruct.blender.utilities import LoggingOperator
+    from ..utilities import LoggingOperator
 
 
 SOULSTRUCT_T = tp.TypeVar("SOULSTRUCT_T", bound=object)  # does not have to be a `GameFile` (e.g. `MSBMapPiece`)

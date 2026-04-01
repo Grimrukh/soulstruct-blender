@@ -19,10 +19,10 @@ from soulstruct.darksouls1ptde.maps.navmesh import NVMBND as NVMBND_PTDE
 from soulstruct.demonssouls.maps.navmesh import NVMBND as NVMBND_DES
 from soulstruct.games import DARK_SOULS_PTDE, DARK_SOULS_DSR, DEMONS_SOULS
 
-from soulstruct.blender.exceptions import SoulstructTypeError
-from soulstruct.blender.types import SoulstructType
-from soulstruct.blender.utilities.operators import *
-from soulstruct.blender.utilities.misc import *
+from ...exceptions import SoulstructTypeError
+from ...types import SoulstructType
+from ...utilities.operators import *
+from ...utilities.misc import *
 from .types import *
 
 

@@ -23,12 +23,12 @@ import bpy
 
 from soulstruct.base.maps.navmesh import MCG, MCP, NavmeshAABB
 
-from soulstruct.blender.exceptions import NavGraphMissingNavmeshError
-from soulstruct.blender.utilities import *
+from ..exceptions import NavGraphMissingNavmeshError
+from ..utilities import *
 from .types import BlenderMCG
 
 if tp.TYPE_CHECKING:
-    from soulstruct.blender.type_checking import *
+    from ..type_checking import *
 
 
 class ImportAnyMCG(LoggingImportOperator):

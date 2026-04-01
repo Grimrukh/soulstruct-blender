@@ -18,8 +18,8 @@ from bpy.app.handlers import persistent
 from soulstruct.flver import FLVERBoneUsageFlags, FLVERVersion
 from soulstruct.games import *
 
-from soulstruct.blender.bpy_base.property_group import SoulstructPropertyGroup
-from soulstruct.blender.types import SoulstructType
+from ...bpy_base.property_group import SoulstructPropertyGroup
+from ...types import SoulstructType
 
 
 class CollectedSubmeshProps(tp.NamedTuple):

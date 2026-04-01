@@ -39,8 +39,8 @@ import bpy
 
 from soulstruct.base.maps.msb.region_shapes import RegionShapeType
 
-from soulstruct.blender.types import SoulstructType
-from soulstruct.blender.bpy_base import SoulstructPanel, SoulstructPropertyGroup
+from ..types import SoulstructType
+from ..bpy_base import SoulstructPanel, SoulstructPropertyGroup
 from .import_operators import *
 from .export_operators import *
 from .misc_operators import *

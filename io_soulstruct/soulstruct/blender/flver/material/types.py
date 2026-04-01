@@ -12,14 +12,13 @@ import bpy
 from soulstruct.flver import *
 from soulstruct.games import DARK_SOULS_DSR, DEMONS_SOULS, DARK_SOULS_PTDE
 
-from soulstruct.blender.base import add_auto_type_props
-from soulstruct.blender.exceptions import MaterialImportError, FLVERExportError
-from soulstruct.blender.flver.image import DDSTexture, DDSTextureCollection
-from soulstruct.blender.flver.image.utilities import find_or_create_image
-from soulstruct.blender.types import MeshObject
-from soulstruct.blender.utilities import LoggingOperator, get_bl_custom_prop, remove_dupe_suffix
+from ...base import add_auto_type_props
+from ...exceptions import MaterialImportError, FLVERExportError
+from ...flver.image import DDSTexture, DDSTextureCollection
+from ...flver.image.utilities import find_or_create_image
+from ...types import MeshObject
+from ...utilities import LoggingOperator, get_bl_custom_prop, remove_dupe_suffix
 from . import shaders
-from .shaders.enums import ShaderNodeType
 
 if tp.TYPE_CHECKING:
     from soulstruct.base.models.shaders import MatDef

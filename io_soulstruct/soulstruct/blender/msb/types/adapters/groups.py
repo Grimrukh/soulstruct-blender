@@ -11,7 +11,7 @@ import bpy
 
 from soulstruct.base.maps.msb.utils import BitSet
 
-from soulstruct.blender.types.field_adapters import FieldAdapter
+from ....types.field_adapters import FieldAdapter
 
 BIT_SET_T = tp.TypeVar("BIT_SET_T", bound=BitSet)
 

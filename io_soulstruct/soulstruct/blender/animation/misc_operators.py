@@ -6,8 +6,8 @@ import typing as tp
 
 import bpy
 
-from soulstruct.blender.utilities.operators import LoggingOperator
-from soulstruct.blender.types import ArmatureObject, MeshObject
+from ..utilities.operators import LoggingOperator
+from ..types import ArmatureObject, MeshObject
 
 from .types import SoulstructAnimation
 from .utilities import get_active_flver_or_part_armature

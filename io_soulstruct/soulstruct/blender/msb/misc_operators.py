@@ -32,15 +32,15 @@ from mathutils import Matrix
 from soulstruct.base.maps.msb.region_shapes import RegionShapeType
 from soulstruct.games import DEMONS_SOULS, DARK_SOULS_PTDE, DARK_SOULS_DSR
 
-from soulstruct.blender.exceptions import FLVERError
-from soulstruct.blender.general import SoulstructSettings
-from soulstruct.blender.collision.types import BlenderMapCollision
-from soulstruct.blender.flver.models import BlenderFLVER
-from soulstruct.blender.msb.operator_config import BLENDER_MSB_PART_CLASSES
-from soulstruct.blender.msb.properties.parts import MSBPartArmatureMode
-from soulstruct.blender.navmesh.nvm.types import BlenderNVM
-from soulstruct.blender.types import *
-from soulstruct.blender.utilities import *
+from ..exceptions import FLVERError
+from ..general import SoulstructSettings
+from ..collision.types import BlenderMapCollision
+from ..flver.models import BlenderFLVER
+from .operator_config import BLENDER_MSB_PART_CLASSES
+from .properties.parts import MSBPartArmatureMode
+from ..navmesh.nvm.types import BlenderNVM
+from ..types import *
+from ..utilities import *
 
 from .properties import BlenderMSBPartSubtype
 from .types.base.parts import BaseBlenderMSBPart

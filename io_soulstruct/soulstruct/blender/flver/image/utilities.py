@@ -7,7 +7,7 @@ __all__ = [
 
 import bpy
 
-from soulstruct.blender.utilities.operators import LoggingOperator
+from ...utilities.operators import LoggingOperator
 
 
 def get_possible_image_names(image_stem: str) -> tuple[str, ...]:

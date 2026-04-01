@@ -15,10 +15,10 @@ from mathutils import Vector
 
 from soulstruct.base.maps.navmesh.nvm import *
 
-from soulstruct.blender.base import BaseBlenderSoulstructObject
-from soulstruct.blender.exceptions import NVMExportError
-from soulstruct.blender.types import *
-from soulstruct.blender.utilities import *
+from ...base import BaseBlenderSoulstructObject
+from ...exceptions import NVMExportError
+from ...types import *
+from ...utilities import *
 from .properties import *
 from .utilities import set_face_material
 

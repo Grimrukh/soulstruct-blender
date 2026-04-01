@@ -8,7 +8,7 @@ from soulstruct.darksouls1ptde.maps.enums import MSBModelSubtype
 from soulstruct.darksouls1ptde.maps.models import *
 from soulstruct.darksouls1ptde.constants import CHARACTER_MODELS
 
-from soulstruct.blender.msb.types.base.models import *
+from ..base.models import *
 
 
 MSB_MODEL_IMPORTERS = {

@@ -17,8 +17,10 @@ import bpy
 import gpu
 from gpu_extras.batch import batch_for_shader
 from mathutils import Matrix
-from soulstruct.blender.types import SoulstructType
+
 from soulstruct.base.maps.msb.region_shapes import RegionShapeType
+
+from ..types import SoulstructType
 
 
 class RegionDrawSettings(bpy.types.PropertyGroup):

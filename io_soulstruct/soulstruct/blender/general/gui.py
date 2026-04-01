@@ -15,8 +15,8 @@ __all__ = [
 import bpy
 from soulstruct.games import DEMONS_SOULS
 
-from soulstruct.blender.bpy_base.panel import SoulstructPanel
-from soulstruct.blender.types import SoulstructType
+from ..bpy_base.panel import SoulstructPanel
+from ..types import SoulstructType
 from .properties import SoulstructSettings
 
 

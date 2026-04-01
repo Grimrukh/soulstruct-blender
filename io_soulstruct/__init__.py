@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
-import site
 import sys
 from pathlib import Path
 
@@ -34,21 +33,10 @@ except ModuleNotFoundError:
     )
 
 # Add this directory to the Python path so that `soulstruct.blender` can be imported.
+# Otherwise, Blender's extension guidelines force us to use relative imports and `__package__` everywhere.
 io_soulstruct_path_str = str(Path(__file__).parent)
 if io_soulstruct_path_str not in sys.path:
     sys.path.append(io_soulstruct_path_str)
-
-# Import and call dependency support functions.
-from ._dependencies import clean_stale_blender_module_paths, ensure_soulstruct_installed_in_blender
-
-# Clean stale paths BEFORE adding the current Blender version's modules directory.
-clean_stale_blender_module_paths()
-
-# Ensure 'addons/modules' is in search path.
-user_addon_modules = bpy.utils.user_resource("SCRIPTS", path="addons/modules")
-site.addsitedir(user_addon_modules)
-
-ensure_soulstruct_installed_in_blender()
 
 # Reload all Soulstruct modules, then all modules in this add-on (except this script).
 # NOTE: This is IMPORTANT when using 'Reload Scripts' in Blender, as it is otherwise prone to partial re-imports of
@@ -66,32 +54,20 @@ for module_name in list(sys.modules.keys()):
         _try_reload(module_name)
 
 
-from soulstruct.blender.general import *
-from soulstruct.blender.misc import *
+from .soulstruct.blender.general import *
+from .soulstruct.blender.misc import *
 
-from soulstruct.blender.animation import *
-from soulstruct.blender.collision import *
-# from soulstruct.blender.cutscene import *
-from soulstruct.blender.flver import *
-from soulstruct.blender.msb import *
-from soulstruct.blender.nav_graph import *
-from soulstruct.blender.navmesh import *
-from soulstruct.blender.types import SoulstructType, SoulstructCollectionType
-from soulstruct.blender.utilities import ViewSelectedAtDistanceZero
+from .soulstruct.blender.animation import *
+from .soulstruct.blender.collision import *
+# from .soulstruct.blender.cutscene import *
+from .soulstruct.blender.flver import *
+from .soulstruct.blender.msb import *
+from .soulstruct.blender.nav_graph import *
+from .soulstruct.blender.navmesh import *
+from .soulstruct.blender.types import SoulstructType, SoulstructCollectionType
+from .soulstruct.blender.utilities import ViewSelectedAtDistanceZero
 
-
-bl_info = {
-    "name": "Soulstruct",
-    "author": "Scott Mooney (Grimrukh)",
-    "version": (2, 6, 0),
-    "blender": (4, 5, 0),  # MINIMUM SUPPORTED VERSION
-    "location": "File > Import-Export",
-    "description": "Import, manipulate, and export FromSoftware/Havok assets",
-    "warning": "",
-    "doc_url": "https://github.com/Grimrukh/soulstruct-blender",
-    "support": "COMMUNITY",
-    "category": "Import-Export",
-}
+from .soulstruct.blender.experimental import *
 
 
 # TODO: Add more operators to menu functions.
@@ -461,6 +437,23 @@ CLASSES = (
     # region Utility Operators
     ViewSelectedAtDistanceZero,
     # endregion
+
+    # region Experimental
+    MapProgressSettings,
+    MapProgressProps,
+    MapProgressSelectObject,
+    SetMapProgressState,
+    ToggleMapProgressOverlay,
+    ExportMapProgressCSV,
+    MapProgressBulkInit,
+    RefreshMapProgressVisuals,
+    MapProgressPanel,
+
+    MaterialDebugSettings,
+    AddDebugNodeGroupToMaterials,
+    RemoveDebugNodeGroupFromMaterials,
+    MaterialDebugPanel,
+    # endregion
 )
 
 
@@ -480,8 +473,9 @@ def havok_menu_func_export(self, context):
     # self.layout.operator(ExportHKXCutscene.bl_idname, text="HKX Cutscene (.remobnd)")
 
 
+# TODO: Put all of these pointers under a common group like `context.scene.soulstruct` for the add-on.
 SCENE_POINTERS = dict(
-    soulstruct_settings=SoulstructSettings,
+    soulstruct_settings=SoulstructSettings,  # TODO: -> `context.scene.soulstruct.general_settings`
     flver_import_settings=FLVERImportSettings,
     flver_export_settings=FLVERExportSettings,
     texture_export_settings=TextureExportSettings,
@@ -506,6 +500,10 @@ SCENE_POINTERS = dict(
     # TODO: Cutscene disabled.
     # cutscene_import_settings=CutsceneImportSettings,
     # cutscene_export_settings=CutsceneExportSettings,
+
+    # EXPERIMENTAL
+    map_progress_settings=MapProgressSettings,
+    material_debug_settings=MaterialDebugSettings,
 )
 
 
@@ -548,6 +546,8 @@ OBJECT_POINTERS = dict(
     MSB_NAVIGATION=MSBNavigationEventProps,
     MSB_ENVIRONMENT=MSBEnvironmentEventProps,
     MSB_NPC_INVASION=MSBNPCInvasionEventProps,
+
+    map_progress=MapProgressProps,
 )
 
 

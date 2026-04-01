@@ -6,8 +6,8 @@ __all__ = [
 
 from soulstruct.darksouls1ptde.maps.events import MSBEnvironmentEvent
 
-from soulstruct.blender.msb.properties import BlenderMSBEventSubtype, MSBEnvironmentEventProps
-from soulstruct.blender.msb.types.adapters import *
+from ....properties import BlenderMSBEventSubtype, MSBEnvironmentEventProps
+from ...adapters import *
 
 from .base import BaseBlenderMSBEvent_DS1
 

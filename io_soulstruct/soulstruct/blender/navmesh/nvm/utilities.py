@@ -16,7 +16,7 @@ import bpy
 
 from soulstruct.base.events.enums import NavmeshFlag
 
-from soulstruct.blender.utilities.materials import hsv_color, create_basic_material
+from ...utilities.materials import hsv_color, create_basic_material
 
 ANY_NVM_NAME_RE = re.compile(r"^(?P<stem>.*)\.nvm(?P<dcx>\.dcx)?$")
 STANDARD_NVM_STEM_RE = re.compile(r"^n(\d{4})B(?P<B>\d)A(?P<A>\d{2})$")  # no extensions

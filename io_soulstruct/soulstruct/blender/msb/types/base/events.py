@@ -14,14 +14,13 @@ import abc
 import typing as tp
 
 import bpy
-from soulstruct.blender.utilities import remove_dupe_suffix
 
 from soulstruct.base.maps.msb.events import BaseMSBEvent
 
-from soulstruct.blender.msb.properties import BlenderMSBEventSubtype, MSBEventProps
-from soulstruct.blender.msb.types.adapters import *
-from soulstruct.blender.types import *
-from soulstruct.blender.utilities import find_or_create_collection
+from ....msb.properties import BlenderMSBEventSubtype, MSBEventProps
+from ....msb.types.adapters import *
+from ....types import *
+from ....utilities import find_or_create_collection, remove_dupe_suffix
 
 from .entry import BaseBlenderMSBEntry, SUBTYPE_PROPS_T, MSB_T
 

@@ -8,7 +8,7 @@ __all__ = [
 
 from soulstruct.flver import FLVERVersion
 
-from soulstruct.blender.bpy_base.panel import SoulstructPanel
+from ....bpy_base.panel import SoulstructPanel
 from ..types import BlenderFLVER, BlenderFLVERDummy
 from ..properties import FLVERProps, FLVERSubmeshProps
 

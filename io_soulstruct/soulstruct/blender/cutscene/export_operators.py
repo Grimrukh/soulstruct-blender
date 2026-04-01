@@ -6,7 +6,7 @@ from bpy.props import StringProperty
 
 from soulstruct.dcx import DCXType
 
-from soulstruct.blender.utilities import *
+from ..utilities import *
 
 
 class ExportHKXCutscene(LoggingExportOperator):

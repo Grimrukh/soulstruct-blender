@@ -14,8 +14,8 @@ from pathlib import Path
 
 import bpy
 
-from soulstruct.blender.general.game_config import BLENDER_GAME_CONFIG
-from soulstruct.blender.utilities import *
+from .game_config import BLENDER_GAME_CONFIG
+from ..utilities import *
 from soulstruct.games import ELDEN_RING
 
 if tp.TYPE_CHECKING:

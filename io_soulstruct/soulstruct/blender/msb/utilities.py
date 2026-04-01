@@ -21,8 +21,8 @@ import bpy
 
 from soulstruct.base.maps.msb import MSB, MSBEntry  # must not be imported under `TYPE_CHECKING` guard
 
-from soulstruct.blender.general.cached import get_cached_file
-from soulstruct.blender.utilities import *
+from ..general.cached import get_cached_file
+from ..utilities import *
 
 
 MSB_COLLECTION_RE = re.compile(r"^(m\d\d_\d\d_\d\d_\d\d) MSB$")

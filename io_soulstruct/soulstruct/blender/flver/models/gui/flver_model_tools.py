@@ -4,11 +4,11 @@ __all__ = [
     "FLVERModelToolsPanel",
 ]
 
-from soulstruct.blender.bpy_base.panel import SoulstructPanel
-from soulstruct.blender.exceptions import SoulstructTypeError
-from soulstruct.blender.misc.misc_mesh import *
-from soulstruct.blender.flver.models.operators import *
-from soulstruct.blender.flver.models.types import BlenderFLVER
+from ....bpy_base.panel import SoulstructPanel
+from ....exceptions import SoulstructTypeError
+from ....misc.misc_mesh import *
+from ..operators import *
+from ..types import BlenderFLVER
 
 
 class FLVERModelToolsPanel(SoulstructPanel):

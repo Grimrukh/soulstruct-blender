@@ -11,12 +11,12 @@ import bpy
 from soulstruct.base.maps.msb.region_shapes import *
 from soulstruct.base.maps.msb.regions import BaseMSBRegion
 
-from soulstruct.blender.exceptions import MSBRegionImportError, SoulstructTypeError
-from soulstruct.blender.msb.properties import MSBRegionProps, BlenderMSBRegionSubtype
-from soulstruct.blender.msb.types.adapters import *
-from soulstruct.blender.msb.utilities import *
-from soulstruct.blender.types import *
-from soulstruct.blender.utilities import LoggingOperator, find_or_create_collection
+from ....exceptions import MSBRegionImportError, SoulstructTypeError
+from ....msb.properties import MSBRegionProps, BlenderMSBRegionSubtype
+from ....msb.types.adapters import *
+from ....msb.utilities import *
+from ....types import *
+from ....utilities import LoggingOperator, find_or_create_collection
 
 from .entry import BaseBlenderMSBEntry, MSB_T
 

@@ -17,9 +17,9 @@ import bpy
 from soulstruct.base.maps.msb import MSB as BaseMSB
 from soulstruct.base.maps.msb.msb_entry import MSBEntry
 
-from soulstruct.blender.base import BaseBlenderSoulstructObject
-from soulstruct.blender.msb.types.adapters import MSBReferenceFieldAdapter
-from soulstruct.blender.utilities.operators import LoggingOperator
+from ....base import BaseBlenderSoulstructObject
+from ....msb.types.adapters import MSBReferenceFieldAdapter
+from ....utilities.operators import LoggingOperator
 
 
 class BlenderMSBEntryProps(tp.Protocol):

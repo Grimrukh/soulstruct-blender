@@ -12,9 +12,9 @@ __all__ = [
 
 import bpy
 
-from soulstruct.blender.flver.models.types import BlenderFLVER
-from soulstruct.blender.types import SoulstructType
-from soulstruct.blender.utilities import LoggingOperator, replace_shared_prefix
+from ..types import BlenderFLVER
+from ....types import SoulstructType
+from ....utilities import LoggingOperator, replace_shared_prefix
 
 
 class CopyToNewFLVER(LoggingOperator):

@@ -12,9 +12,9 @@ import typing as tp
 
 import bpy
 
-from soulstruct.blender.exceptions import *
-from soulstruct.blender.types import *
-from soulstruct.blender.utilities import *
+from .....exceptions import *
+from .....types import *
+from .....utilities import *
 
 if tp.TYPE_CHECKING:
     from .core import BlenderFLVER

@@ -16,10 +16,10 @@ from soulstruct.havok.fromsoft.darksouls1r.remobnd import *
 from soulstruct.havok.fromsoft.demonssouls import AnimationHKX as DES_AnimationHKX, SkeletonHKX as DES_SkeletonHKX
 from soulstruct.havok.utilities.maths import TRSTransform
 
-from soulstruct.blender.flver.utilities import get_basis_matrix, game_bone_transform_to_bl_bone_matrix
-from soulstruct.blender.exceptions import *
-from soulstruct.blender.types import *
-from soulstruct.blender.utilities import *
+from ..flver.utilities import get_basis_matrix, game_bone_transform_to_bl_bone_matrix
+from ..exceptions import *
+from ..types import *
+from ..utilities import *
 from .utilities import *
 
 

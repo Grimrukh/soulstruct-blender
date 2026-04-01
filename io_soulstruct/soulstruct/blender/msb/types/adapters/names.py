@@ -7,7 +7,7 @@ __all__ = [
     "get_region_game_name",
 ]
 
-from soulstruct.blender.utilities.misc import remove_dupe_suffix, get_model_name
+from ...utilities.misc import remove_dupe_suffix, get_model_name
 
 
 def get_part_game_name(obj_name: str) -> str:

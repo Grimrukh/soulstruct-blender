@@ -34,8 +34,8 @@ import bpy
 from soulstruct.base.maps.msb.enums import BaseMSBPartSubtype
 from soulstruct.games import *
 
-from soulstruct.blender.types import SoulstructType, ObjectType
-from soulstruct.blender.bpy_base.property_group import SoulstructPropertyGroup
+from ...types import SoulstructType, ObjectType
+from ...bpy_base.property_group import SoulstructPropertyGroup
 from .events import BlenderMSBEventSubtype
 
 

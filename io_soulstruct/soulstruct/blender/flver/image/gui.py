@@ -6,7 +6,7 @@ __all__ = [
 
 import bpy
 
-from soulstruct.blender.bpy_base.panel import SoulstructPanel
+from ...bpy_base.panel import SoulstructPanel
 from .types import DDSTexture
 
 

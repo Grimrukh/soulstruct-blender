@@ -7,9 +7,9 @@ __all__ = [
 from soulstruct.demonssouls.maps.models import MSBCharacterModel
 from soulstruct.demonssouls.maps.parts import MSBPlayerStart
 
-from soulstruct.blender.msb.types.adapters import *
-from soulstruct.blender.msb.properties import BlenderMSBPartSubtype, MSBPlayerStartProps
-from soulstruct.blender.types import SoulstructType
+from .....msb.types.adapters import *
+from .....msb.properties import BlenderMSBPartSubtype, MSBPlayerStartProps
+from .....types import SoulstructType
 
 from .base import BaseBlenderMSBPart_DES
 

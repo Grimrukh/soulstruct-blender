@@ -7,8 +7,8 @@ __all__ = [
 from soulstruct.demonssouls.events.enums import SoundType
 from soulstruct.demonssouls.maps.events import MSBSoundEvent
 
-from soulstruct.blender.msb.properties import BlenderMSBEventSubtype, MSBSoundEventProps
-from soulstruct.blender.msb.types.adapters import *
+from ....properties import BlenderMSBEventSubtype, MSBSoundEventProps
+from ...adapters import *
 
 from .base import BaseBlenderMSBEvent_DES
 

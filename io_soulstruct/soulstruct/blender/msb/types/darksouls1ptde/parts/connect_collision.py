@@ -7,9 +7,9 @@ __all__ = [
 from soulstruct.darksouls1ptde.maps.models import MSBCollisionModel
 from soulstruct.darksouls1ptde.maps.parts import MSBConnectCollision
 
-from soulstruct.blender.msb.types.adapters import *
-from soulstruct.blender.msb.properties import BlenderMSBPartSubtype, MSBConnectCollisionProps
-from soulstruct.blender.types import SoulstructType
+from ...adapters import *
+from ....properties import BlenderMSBPartSubtype, MSBConnectCollisionProps
+from .....types import SoulstructType
 
 from .base import BaseBlenderMSBPart_DS1
 

@@ -18,7 +18,7 @@ __all__ = [
     "get_region_game_name",
 ]
 
-from soulstruct.blender.types.field_adapters import FieldAdapter, CustomFieldAdapter, soulstruct_adapter
+from ....types.field_adapters import FieldAdapter, CustomFieldAdapter, soulstruct_adapter
 from .groups import MSBPartGroupsAdapter
 from .model import MSBPartModelAdapter
 from .reference import MSBReferenceFieldAdapter

@@ -11,9 +11,9 @@ __all__ = [
 
 import bpy
 
-from soulstruct.blender.utilities.operators import LoggingOperator
-from soulstruct.blender.types import SoulstructType
-from soulstruct.blender.msb.properties.parts import BlenderMSBPartSubtype
+from ...utilities.operators import LoggingOperator
+from ...types import SoulstructType
+from ...msb.properties.parts import BlenderMSBPartSubtype
 
 from .utils import export_csv
 

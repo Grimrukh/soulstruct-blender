@@ -16,8 +16,8 @@ from soulstruct.darksouls1r.maps.map_area_texture_manager import MapAreaTextureM
 from soulstruct.dcx import DCXType
 from soulstruct.base.textures import *
 
-from soulstruct.blender.exceptions import UnsupportedGameError, SoulstructTypeError, TextureExportError
-from soulstruct.blender.utilities import *
+from ...exceptions import UnsupportedGameError, SoulstructTypeError, TextureExportError
+from ...utilities import *
 from .enums import *
 from .properties import *
 

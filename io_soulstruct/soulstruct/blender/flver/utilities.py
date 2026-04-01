@@ -19,9 +19,9 @@ from soulstruct.containers import Binder
 from soulstruct.flver import FLVER
 from soulstruct.utilities.maths import EulerRad, Vector3, Matrix3
 
-from soulstruct.blender.exceptions import *
-from soulstruct.blender.types import ArmatureObject
-from soulstruct.blender.utilities.conversion import to_blender, to_game
+from ..exceptions import *
+from ..types import ArmatureObject
+from ..utilities.conversion import to_blender, to_game
 
 
 def get_flvers_from_binder(

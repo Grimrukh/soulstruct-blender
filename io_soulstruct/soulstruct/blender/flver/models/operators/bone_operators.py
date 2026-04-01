@@ -9,10 +9,10 @@ __all__ = [
 import bpy
 from mathutils import Matrix, Quaternion, Vector
 
-from soulstruct.blender.exceptions import SoulstructTypeError
-from soulstruct.blender.flver.models.types import BlenderFLVER
-from soulstruct.blender.flver.models.types.enums import FLVERBoneDataType
-from soulstruct.blender.utilities import LoggingOperator
+from ....exceptions import SoulstructTypeError
+from ..types import BlenderFLVER
+from ..types.enums import FLVERBoneDataType
+from ....utilities import LoggingOperator
 
 
 class BakeBonePoseToVertices(LoggingOperator):

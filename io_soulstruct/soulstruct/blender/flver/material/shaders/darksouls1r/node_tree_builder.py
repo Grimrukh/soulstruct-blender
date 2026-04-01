@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 from soulstruct.utilities.maths import Vector2
 
-from soulstruct.blender.exceptions import MaterialImportError
+from .....exceptions import MaterialImportError
 from ..darksouls1ptde.node_tree_builder import NodeTreeBuilder as PTDENodeTreeBuilder
 
 

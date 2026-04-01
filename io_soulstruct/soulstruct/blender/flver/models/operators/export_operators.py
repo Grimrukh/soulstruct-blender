@@ -21,15 +21,15 @@ from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError, TPF
 from soulstruct.dcx import DCXType
 from soulstruct.games import *
 
-from soulstruct.blender.exceptions import *
-from soulstruct.blender.general import *
-from soulstruct.blender.utilities import *
-from soulstruct.blender.flver.image import *
-from soulstruct.blender.flver.image.export_operators import export_map_area_textures
+from ....exceptions import *
+from ....general import *
+from ....utilities import *
+from ...image import *
+from ...image.export_operators import export_map_area_textures
 from ..types import BlenderFLVER, FLVERModelType
 
 if tp.TYPE_CHECKING:
-    from soulstruct.blender.type_checking import CHRBND_TYPING, OBJBND_TYPING, PARTSBND_TYPING
+    from ....type_checking import CHRBND_TYPING, OBJBND_TYPING, PARTSBND_TYPING
 
 
 # region Generic Exporters

@@ -10,8 +10,8 @@ from bpy.types import NodeSocket, ShaderNodeGroup
 
 from soulstruct.utilities.maths import Vector2
 
-from soulstruct.blender.exceptions import MaterialImportError
-from soulstruct.blender.flver.material.shaders.base_node_tree_builder import BaseNodeTreeBuilder, NODE_INPUT_VALUE_TYPING
+from .....exceptions import MaterialImportError
+from ..base_node_tree_builder import BaseNodeTreeBuilder, NODE_INPUT_VALUE_TYPING
 
 
 @dataclass(slots=True)

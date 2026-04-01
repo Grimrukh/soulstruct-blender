@@ -26,7 +26,7 @@ from soulstruct.dcx import DCXType
 from soulstruct.containers import Binder, BinderEntry
 
 if tp.TYPE_CHECKING:
-    from soulstruct.blender.general.properties import SoulstructSettings
+    from ..general.properties import SoulstructSettings
 
 _LOGGER = logging.getLogger("soulstruct.io")
 

@@ -15,11 +15,11 @@ import bpy
 
 from soulstruct.havok.fromsoft.shared.map_collision import MapCollisionMaterial
 
-from soulstruct.blender.collision.types import BlenderMapCollision
-from soulstruct.blender.collision.utilities import HKX_MATERIAL_NAME_RE
-from soulstruct.blender.types import *
-from soulstruct.blender.utilities import get_collection_map_stem, replace_shared_prefix
-from soulstruct.blender.utilities.operators import LoggingOperator
+from .types import BlenderMapCollision
+from .utilities import HKX_MATERIAL_NAME_RE
+from ..types import *
+from ..utilities import get_collection_map_stem, replace_shared_prefix
+from ..utilities.operators import LoggingOperator
 
 
 class RenameCollision(LoggingOperator):

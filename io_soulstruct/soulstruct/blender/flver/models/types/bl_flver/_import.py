@@ -15,11 +15,11 @@ import bpy
 from soulstruct.flver import *
 from soulstruct.base.models.shaders import MatDefError
 
-from soulstruct.blender.exceptions import FLVERImportError
-from soulstruct.blender.flver.material.types import BlenderFLVERMaterial
-from soulstruct.blender.flver.models.properties import FLVERImportSettings
-from soulstruct.blender.types import *
-from soulstruct.blender.utilities import *
+from .....exceptions import FLVERImportError
+from ....material.types import BlenderFLVERMaterial
+from ...properties import FLVERImportSettings
+from .....types import *
+from .....utilities import *
 
 from ..bl_flver_dummy import BlenderFLVERDummy
 from ..enums import FLVERBoneDataType
@@ -27,7 +27,7 @@ from ._create_materials import create_materials
 from ._import_bones import *
 
 if tp.TYPE_CHECKING:
-    from soulstruct.blender.flver.image.image_import_manager import ImageImportManager
+    from ....image.image_import_manager import ImageImportManager
     from .core import BlenderFLVER
 
 

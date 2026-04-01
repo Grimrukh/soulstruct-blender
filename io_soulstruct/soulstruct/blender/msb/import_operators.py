@@ -21,18 +21,18 @@ from soulstruct.darksouls1r.maps import MSB as DSR_MSB
 from soulstruct.demonssouls.maps import MSB as DES_MSB
 from soulstruct.games import *
 
-from soulstruct.blender.msb.types import darksouls1ptde, darksouls1r, demonssouls
-from soulstruct.blender.flver.models.properties import FLVERImportSettings
-from soulstruct.blender.general.cached import get_cached_file
-from soulstruct.blender.types import SoulstructCollectionType
-from soulstruct.blender.utilities import *
+from ..msb.types import darksouls1ptde, darksouls1r, demonssouls
+from ..flver.models.properties import FLVERImportSettings
+from ..general.cached import get_cached_file
+from ..types import SoulstructCollectionType
+from ..utilities import *
 from .misc_operators import EnableAllImportModels, DisableAllImportModels
 from .operator_config import *
 from .properties import BlenderMSBRegionSubtype, BlenderMSBPartSubtype, BlenderMSBEventSubtype
 
 if tp.TYPE_CHECKING:
-    from soulstruct.blender.type_checking import *
-    from soulstruct.blender.msb.types.base import *
+    from ..type_checking import *
+    from ..msb.types.base import *
     from .types.base.models import BaseBlenderMSBModelImporter
 
 

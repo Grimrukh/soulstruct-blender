@@ -11,7 +11,7 @@ import re
 
 import bpy
 
-from soulstruct.blender.utilities import LoggingOperator
+from ..utilities import LoggingOperator
 
 
 class ShowCollectionOperator(LoggingOperator):

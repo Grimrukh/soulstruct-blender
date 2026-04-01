@@ -7,9 +7,9 @@ __all__ = [
 from soulstruct.darksouls1ptde.maps.models import MSBMapPieceModel
 from soulstruct.darksouls1ptde.maps.parts import MSBMapPiece
 
-from soulstruct.blender.msb.types.adapters import *
-from soulstruct.blender.msb.properties import BlenderMSBPartSubtype, MSBMapPieceProps
-from soulstruct.blender.types import SoulstructType
+from ...adapters import *
+from ....properties import BlenderMSBPartSubtype, MSBMapPieceProps
+from .....types import SoulstructType
 
 from .base import BaseBlenderMSBPart_DS1
 

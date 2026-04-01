@@ -25,9 +25,9 @@ from soulstruct.base.maps.msb.enums import BaseMSBRegionSubtype
 from soulstruct.base.maps.msb.region_shapes import RegionShapeType
 from soulstruct.games import *
 
-from soulstruct.blender.bpy_base.property_group import SoulstructPropertyGroup
-from soulstruct.blender.msb.utilities import *
-from soulstruct.blender.types import ObjectType
+from ...bpy_base.property_group import SoulstructPropertyGroup
+from ..utilities import *
+from ...types import ObjectType
 
 
 class BlenderMSBRegionSubtype(StrEnum):

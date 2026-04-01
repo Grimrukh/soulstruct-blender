@@ -10,9 +10,9 @@ from mathutils import Vector
 
 from soulstruct.darksouls1ptde.maps.events import MSBMapOffsetEvent
 
-from soulstruct.blender.msb.properties import BlenderMSBEventSubtype, MSBMapOffsetEventProps
-from soulstruct.blender.msb.types.adapters import *
-from soulstruct.blender.utilities import to_game, to_blender
+from ....properties import BlenderMSBEventSubtype, MSBMapOffsetEventProps
+from ...adapters import *
+from .....utilities import to_game, to_blender
 
 from .base import BaseBlenderMSBEvent_DS1
 

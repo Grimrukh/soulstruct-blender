@@ -6,8 +6,8 @@ __all__ = [
     "ShowAllDummiesOperator",
 ]
 
-from soulstruct.blender.flver.models.types import BlenderFLVER
-from soulstruct.blender.utilities import LoggingOperator
+from ..types import BlenderFLVER
+from ....utilities import LoggingOperator
 
 
 class HideAllDummiesOperator(LoggingOperator):

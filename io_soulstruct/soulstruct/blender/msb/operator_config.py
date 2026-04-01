@@ -8,7 +8,7 @@ __all__ = [
 
 from soulstruct.games import *
 
-from soulstruct.blender.msb.types import darksouls1ptde, darksouls1r, demonssouls
+from ..msb.types import darksouls1ptde, darksouls1r, demonssouls
 from .properties import BlenderMSBPartSubtype, BlenderMSBRegionSubtype, BlenderMSBEventSubtype
 from .types.base import BaseBlenderMSBPart, BaseBlenderMSBRegion, BaseBlenderMSBEvent
 

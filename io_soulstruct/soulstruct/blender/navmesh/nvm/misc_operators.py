@@ -20,10 +20,10 @@ from mathutils import Vector
 
 from soulstruct.base.events.enums import NavmeshFlag
 
-from soulstruct.blender.bpy_base.property_group import SoulstructPropertyGroup
-from soulstruct.blender.exceptions import SoulstructTypeError
-from soulstruct.blender.types import *
-from soulstruct.blender.utilities import LoggingOperator, replace_shared_prefix
+from ...bpy_base.property_group import SoulstructPropertyGroup
+from ...exceptions import SoulstructTypeError
+from ...types import *
+from ...utilities import LoggingOperator, replace_shared_prefix
 from .types import BlenderNVM
 from .utilities import set_face_material, get_navmesh_material
 

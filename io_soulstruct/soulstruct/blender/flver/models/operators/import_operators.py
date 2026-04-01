@@ -40,11 +40,11 @@ from soulstruct.demonssouls.constants import CHARACTER_MODELS as DES_CHARACTER_M
 from soulstruct.darksouls1ptde.constants import CHARACTER_MODELS as DS1_CHARACTER_MODELS
 from soulstruct.eldenring.constants import CHARACTER_MODELS as ER_CHARACTER_MODELS
 
-from soulstruct.blender.flver.image.image_import_manager import ImageImportManager
-from soulstruct.blender.flver.utilities import *
-from soulstruct.blender.general import SoulstructSettings
-from soulstruct.blender.types import ArmatureObject
-from soulstruct.blender.utilities import *
+from ...image.image_import_manager import ImageImportManager
+from ...utilities import *
+from ....general import SoulstructSettings
+from ....types import ArmatureObject
+from ....utilities import *
 from ..types import BlenderFLVER
 from ..properties import FLVERImportSettings
 

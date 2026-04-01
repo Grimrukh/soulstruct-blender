@@ -9,17 +9,17 @@ from dataclasses import dataclass
 
 import bpy
 
-from soulstruct.blender.exceptions import MissingMSBEntryError, SoulstructTypeError
-from soulstruct.blender.msb.types.adapters.names import *
-from soulstruct.blender.types import ObjectType, SoulstructType
-from soulstruct.blender.types.field_adapters import FieldAdapter
-from soulstruct.blender.utilities.bpy_data import find_obj_or_create_empty
-from soulstruct.blender.utilities.operators import LoggingOperator
+from ....exceptions import MissingMSBEntryError, SoulstructTypeError
+from ....msb.types.adapters.names import *
+from ....types import ObjectType, SoulstructType
+from ....types.field_adapters import FieldAdapter
+from ....utilities.bpy_data import find_obj_or_create_empty
+from ....utilities.operators import LoggingOperator
 
 if tp.TYPE_CHECKING:
     from soulstruct.base.maps.msb import MSB as BaseMSB
     from soulstruct.base.maps.msb.msb_entry import MSBEntry
-    from soulstruct.blender.msb.types.base import BaseBlenderMSBEntry, ENTRY_T, TYPE_PROPS_T, SUBTYPE_PROPS_T, MSB_T
+    from ....msb.types.base import BaseBlenderMSBEntry, ENTRY_T, TYPE_PROPS_T, SUBTYPE_PROPS_T, MSB_T
     REF_TYPING = tp.Literal[SoulstructType.MSB_PART, SoulstructType.MSB_REGION, SoulstructType.MSB_EVENT]
 
 

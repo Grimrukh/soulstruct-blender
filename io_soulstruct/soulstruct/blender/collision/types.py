@@ -10,10 +10,10 @@ from pathlib import Path
 import bmesh
 import bpy
 import numpy as np
-from soulstruct.blender.base import BaseBlenderSoulstructObject
-from soulstruct.blender.exceptions import MapCollisionExportError
-from soulstruct.blender.types import *
-from soulstruct.blender.utilities import *
+from ..base import BaseBlenderSoulstructObject
+from ..exceptions import MapCollisionExportError
+from ..types import *
+from ..utilities import *
 
 from soulstruct.havok.enums import HavokModule
 from soulstruct.havok.fromsoft.shared.map_collision import *

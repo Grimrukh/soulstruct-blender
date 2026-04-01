@@ -17,16 +17,16 @@ from soulstruct.base.animations.sibcam import CameraFrameTransform
 
 from soulstruct.havok.fromsoft.darksouls1r.remobnd import *
 
-from soulstruct.blender.animation.types import SoulstructAnimation
-from soulstruct.blender.exceptions import CutsceneImportError, SoulstructTypeError
-from soulstruct.blender.msb.properties.parts import MSBPartArmatureMode
-from soulstruct.blender.msb.types.adapters import get_part_game_name
-from soulstruct.blender.msb.types.darksouls1r import *
-from soulstruct.blender.types import *
-from soulstruct.blender.utilities import *
+from ..animation.types import SoulstructAnimation
+from ..exceptions import CutsceneImportError, SoulstructTypeError
+from ..msb.properties.parts import MSBPartArmatureMode
+from ..msb.types.adapters import get_part_game_name
+from ..msb.types.darksouls1r import *
+from ..types import *
+from ..utilities import *
 
 if tp.TYPE_CHECKING:
-    from soulstruct.blender.msb.types.base.parts import BaseBlenderMSBPart
+    from ..msb.types.base.parts import BaseBlenderMSBPart
 
 REMOBND_RE = re.compile(r"^.*?\.remobnd(\.dcx)?$")
 

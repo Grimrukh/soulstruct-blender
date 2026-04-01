@@ -18,8 +18,8 @@ from soulstruct.utilities.files import create_bak
 
 from soulstruct.havok.fromsoft.shared import BothResHKXBHD, HKXBHD
 
-from soulstruct.blender.types import SoulstructType
-from soulstruct.blender.utilities import *
+from ..types import SoulstructType
+from ..utilities import *
 from .types import *
 
 

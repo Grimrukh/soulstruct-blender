@@ -9,12 +9,12 @@ from dataclasses import dataclass
 
 import bpy
 
-from soulstruct.blender.types.field_adapters import FieldAdapter
-from soulstruct.blender.utilities.operators import LoggingOperator
-from soulstruct.blender.utilities.conversion import *
+from ....types.field_adapters import FieldAdapter
+from ....utilities.operators import LoggingOperator
+from ....utilities.conversion import *
 
 if tp.TYPE_CHECKING:
-    from soulstruct.blender.msb.types.base import BaseBlenderMSBEntry, ENTRY_T, TYPE_PROPS_T, SUBTYPE_PROPS_T, MSB_T
+    from ....msb.types.base import BaseBlenderMSBEntry, ENTRY_T, TYPE_PROPS_T, SUBTYPE_PROPS_T, MSB_T
 
 
 @dataclass(slots=True, frozen=True)

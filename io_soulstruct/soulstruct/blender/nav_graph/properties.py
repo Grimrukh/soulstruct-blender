@@ -10,8 +10,8 @@ __all__ = [
 
 import bpy
 
-from soulstruct.blender.navmesh.nvm.properties import NVMFaceIndex
-from soulstruct.blender.bpy_base.property_group import SoulstructPropertyGroup
+from ..navmesh.nvm.properties import NVMFaceIndex
+from ..bpy_base.property_group import SoulstructPropertyGroup
 
 
 class MCGProps(SoulstructPropertyGroup):

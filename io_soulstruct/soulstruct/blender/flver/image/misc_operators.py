@@ -7,8 +7,8 @@ __all__ = [
 
 import bpy
 
-from soulstruct.blender.types import *
-from soulstruct.blender.utilities import LoggingOperator, is_path_and_file
+from ...types import *
+from ...utilities import LoggingOperator, is_path_and_file
 
 
 class FindMissingTexturesInImageCache(LoggingOperator):

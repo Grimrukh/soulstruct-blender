@@ -15,8 +15,8 @@ import typing as tp
 
 import bpy
 
-from soulstruct.blender.bpy_base.panel import SoulstructPanel
-from soulstruct.blender.types import SoulstructType
+from ..bpy_base.panel import SoulstructPanel
+from ..types import SoulstructType
 
 from .import_operators import *
 from .export_operators import *

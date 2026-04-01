@@ -9,7 +9,7 @@ from enum import StrEnum
 
 import bpy
 
-from soulstruct.blender.utilities.files import ADDON_PACKAGE_PATH
+from ....utilities.files import ADDON_PACKAGE_PATH
 from .enums import ShaderNodeType, MathOperation
 from .utilities import new_shader_math_node
 

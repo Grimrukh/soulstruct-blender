@@ -10,8 +10,8 @@ import bpy
 from soulstruct.base.maps.navmesh.mcp import MCP
 from soulstruct.dcx import DCXType
 
-from soulstruct.blender.exceptions import SoulstructTypeError
-from soulstruct.blender.utilities import *
+from ..exceptions import SoulstructTypeError
+from ..utilities import *
 from .types import BlenderMCG
 
 

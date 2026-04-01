@@ -7,7 +7,7 @@ __all__ = [
 from soulstruct.darksouls1r.maps.enums import MSBModelSubtype
 from soulstruct.darksouls1r.maps.models import *
 
-from soulstruct.blender.msb.types.base.models import *
+from ..base.models import *
 
 
 class BlenderMSBCollisionModelImporter_DSR(BlenderMSBCollisionModelImporter):

@@ -11,7 +11,7 @@ import bpy
 from soulstruct.containers import Binder
 from soulstruct.containers.tpf import TPF
 from soulstruct.dcx import DCXType
-from soulstruct.blender.utilities import *
+from ...utilities import *
 from .types import *
 
 

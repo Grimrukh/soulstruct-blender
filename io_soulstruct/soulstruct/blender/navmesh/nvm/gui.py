@@ -16,11 +16,11 @@ import bpy
 from soulstruct.base.events.enums import NavmeshFlag
 from soulstruct.games import DEMONS_SOULS, DARK_SOULS_PTDE, DARK_SOULS_DSR
 
-from soulstruct.blender.bpy_base.panel import SoulstructPanel
-from soulstruct.blender.exceptions import SoulstructTypeError
-from soulstruct.blender.misc.misc_mesh import ApplyLocalMatrixToMesh
-from soulstruct.blender.types import *
-from soulstruct.blender.types import MeshObject
+from ...bpy_base.panel import SoulstructPanel
+from ...exceptions import SoulstructTypeError
+from ...misc.misc_mesh import ApplyLocalMatrixToMesh
+from ...types import *
+from ...types import MeshObject
 
 from .import_operators import *
 from .export_operators import *

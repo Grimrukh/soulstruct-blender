@@ -14,11 +14,11 @@ from soulstruct.base.maps.navmesh import MCG, MCGNode
 from soulstruct.base.maps.navmesh import MCGEdge
 from soulstruct.utilities.text import natural_keys
 
-from soulstruct.blender.base import BaseBlenderSoulstructObject
-from soulstruct.blender.exceptions import *
-from soulstruct.blender.navmesh.nvm.types import BlenderNVM
-from soulstruct.blender.types import *
-from soulstruct.blender.utilities import *
+from ..base import BaseBlenderSoulstructObject
+from ..exceptions import *
+from ..navmesh.nvm.types import BlenderNVM
+from ..types import *
+from ..utilities import *
 from .properties import *
 
 

@@ -28,8 +28,8 @@ from soulstruct.containers import BinderEntry, EntryNotFoundError
 from soulstruct.games import DARK_SOULS_PTDE, DEMONS_SOULS
 from soulstruct.havok.fromsoft.shared import MapCollisionModel, BothResHKXBHD
 
-from soulstruct.blender.exceptions import MapCollisionImportError
-from soulstruct.blender.utilities import *
+from ..exceptions import MapCollisionImportError
+from ..utilities import *
 from .types import BlenderMapCollision
 
 HKX_NAME_RE = re.compile(r".*\.hkx(\.dcx)?")

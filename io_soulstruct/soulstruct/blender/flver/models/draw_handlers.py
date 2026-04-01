@@ -9,8 +9,8 @@ import blf
 import bpy
 from bpy_extras.view3d_utils import location_3d_to_region_2d
 
-from soulstruct.blender.exceptions import SoulstructTypeError
-from soulstruct.blender.types import SoulstructType
+from ...exceptions import SoulstructTypeError
+from ...types import SoulstructType
 
 from .types import BlenderFLVER
 

@@ -9,10 +9,10 @@ import typing as tp
 import bpy
 from mathutils import Matrix
 
-from soulstruct.blender.flver.models.types import BlenderFLVER, FLVERBoneDataType
-from soulstruct.blender.msb.properties import MSBPartArmatureMode
-from soulstruct.blender.types import *
-from soulstruct.blender.utilities import *
+from ....flver.models.types import BlenderFLVER, FLVERBoneDataType
+from ....msb.properties import MSBPartArmatureMode
+from ....types import *
+from ....utilities import *
 
 if tp.TYPE_CHECKING:
     from .parts import BaseBlenderMSBPart

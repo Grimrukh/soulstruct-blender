@@ -25,10 +25,10 @@ from mathutils import Vector
 
 from soulstruct.havok.fromsoft.eldenring.file_types import NavmeshHKX
 
-from soulstruct.blender.exceptions import NVMHKTImportError
-from soulstruct.blender.navmesh.nvmhkt.utilities import get_dungeons_to_overworld_dict
-from soulstruct.blender.types import *
-from soulstruct.blender.utilities import *
+from ....exceptions import NVMHKTImportError
+from ..utilities import get_dungeons_to_overworld_dict
+from ....types import *
+from ....utilities import *
 from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
 from .core import *
 

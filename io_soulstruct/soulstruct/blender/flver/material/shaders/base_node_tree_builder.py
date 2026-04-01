@@ -16,9 +16,9 @@ from soulstruct.base.models.shaders import MatDef, MatDefSampler
 from soulstruct.games import *
 from soulstruct.utilities.maths import Vector2
 
-from soulstruct.blender.exceptions import MaterialImportError
-from soulstruct.blender.flver.image.utilities import find_or_create_image
-from soulstruct.blender.utilities.operators import LoggingOperator
+from ....exceptions import MaterialImportError
+from ...image.utilities import find_or_create_image
+from ....utilities.operators import LoggingOperator
 
 from .enums import *
 from .node_groups import create_node_groups, try_add_node_group

@@ -18,13 +18,13 @@ from soulstruct.flver import *
 from soulstruct.base.models.shaders import MatDef
 from soulstruct.games import DEMONS_SOULS
 
-from soulstruct.blender.exceptions import *
-from soulstruct.blender.flver.image.types import DDSTextureCollection
-from soulstruct.blender.flver.material.properties import get_cached_mtdbnd, get_cached_matbinbnd
-from soulstruct.blender.flver.material.types import BlenderFLVERMaterial
-from soulstruct.blender.flver.models.properties import FLVERExportSettings
-from soulstruct.blender.general import BLENDER_GAME_CONFIG, SoulstructSettings
-from soulstruct.blender.utilities import *
+from .....exceptions import *
+from .....flver.image.types import DDSTextureCollection
+from .....flver.material.properties import get_cached_mtdbnd, get_cached_matbinbnd
+from .....flver.material.types import BlenderFLVERMaterial
+from .....flver.models.properties import FLVERExportSettings
+from .....general import BLENDER_GAME_CONFIG, SoulstructSettings
+from .....utilities import *
 
 from ..enums import FLVERModelType, FLVERBoneDataType
 from ._export_bones import create_flver_bones

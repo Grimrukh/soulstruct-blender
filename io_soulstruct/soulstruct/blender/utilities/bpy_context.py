@@ -8,8 +8,8 @@ import typing as tp
 import bpy
 from bpy.types import Context
 
-from soulstruct.blender.exceptions import ObjectTypeError
-from soulstruct.blender.types.bpy_types import ArmatureObject, MeshObject, ObjectType
+from ..exceptions import ObjectTypeError
+from ..types.bpy_types import ArmatureObject, MeshObject, ObjectType
 
 
 @tp.overload

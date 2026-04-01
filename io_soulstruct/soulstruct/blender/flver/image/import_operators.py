@@ -13,7 +13,7 @@ import typing as tp
 from pathlib import Path
 
 import bpy
-from soulstruct.blender.utilities.operators import LoggingImportOperator
+from ...utilities.operators import LoggingImportOperator
 from soulstruct.base.textures.dds import DDS
 from soulstruct.base.textures.texconv import texconv
 from soulstruct.containers.tpf import TPF, batch_get_tpf_texture_png_data, batch_get_tpf_texture_tga_data, TPFPlatform

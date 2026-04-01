@@ -8,7 +8,7 @@ import bpy
 
 from soulstruct.games import *
 
-from soulstruct.blender.exceptions import InternalSoulstructBlenderError
+from ...blender.exceptions import InternalSoulstructBlenderError
 
 
 _ALL_ABBREV_NAMES = {game.abbreviated_name for game in GAMES}

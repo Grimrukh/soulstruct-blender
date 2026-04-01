@@ -39,8 +39,8 @@ from soulstruct.base.maps.msb.enums import BaseMSBEventSubtype
 from soulstruct.darksouls1ptde.events.enums import SoundType
 from soulstruct.games import *
 
-from soulstruct.blender.bpy_base.property_group import SoulstructPropertyGroup
-from soulstruct.blender.types import SoulstructType
+from ...bpy_base.property_group import SoulstructPropertyGroup
+from ...types import SoulstructType
 
 
 def _is_part(_, obj: bpy.types.Object):
