@@ -51,6 +51,7 @@ import argparse
 import ast
 import math
 import re
+import site
 import sys
 from pathlib import Path
 
@@ -466,32 +467,21 @@ def write_init(
 
 def find_bpy_package_dir() -> Path:
     """
-    Import bpy and return the Path to its package directory inside site-packages.
-    Aborts with a clear message if bpy is not importable.
+    Find the Path to 'bpy-stubs' directory inside site-packages.
     """
-    try:
-        import bpy  # noqa: PLC0415
-    except ImportError:
-        print(
-            "[ERROR] Could not import bpy. Run this script with the same Python "
-            "interpreter that has fake-bpy-module installed.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
 
-    bpy_path = getattr(bpy, "__path__", None)
-    try:
-        bpy_dir = Path(bpy_path[0])
-    except (TypeError, IndexError):
-        print(
-            "[ERROR] Could not determine bpy package directory from bpy.__path__. "
-            f"Got: {bpy_path!r}",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+    for site_package in site.getsitepackages():
+        candidate = Path(site_package) / "bpy-stubs"
+        if candidate.is_dir():
+            print(f"[INFO] Found bpy-stubs package at: {candidate}")
+            return candidate
 
-    print(f"[INFO] Detected bpy package at: {bpy_dir}")
-    return bpy_dir
+    print(
+        "[ERROR] Could not find 'bpy-stubs' in any site-packages. Run this script with the same Python "
+        "interpreter that has fake-bpy-module installed.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 
 # ---------------------------------------------------------------------------
