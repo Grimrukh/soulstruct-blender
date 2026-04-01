@@ -1,5 +1,7 @@
 # Soulstruct for Blender
 
+**TODO: The installation section of this README is outdated. Soulstruct for Blender is now a full Extension.**
+
 This Blender add-on enables you to import and export a large number of different FromSoftware file formats.
 
 It's powered by [Soulstruct](https://github.com/Grimrukh/soulstruct), my giant Python library of FromSoftware formats, and Soulstruct Havok, an 
