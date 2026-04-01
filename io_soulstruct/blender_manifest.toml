@@ -4,7 +4,7 @@ id = "io_soulstruct"
 version = "2.6.0"
 name = "Soulstruct"
 tagline = "Import, manipulate, and export FromSoftware/Havok assets"
-maintainer = "Scott Mooney (Grimruk)"
+maintainer = "Scott Mooney (Grimrukh)"
 type = "add-on"
 
 # Optional: link to documentation, support, source files, etc
@@ -21,7 +21,7 @@ license = [
   "SPDX:GPL-3.0-or-later",
 ]
 
-platforms = ["windows-x64", "windows-arm64"]
+platforms = ["windows-x64"]
 
 # https://docs.blender.org/manual/en/dev/advanced/extensions/python_wheels.html
 # WHEELS START
