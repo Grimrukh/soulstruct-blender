@@ -2,6 +2,7 @@ venv*/
 .idea/
 Releases/
 *.lnk
+io_soulstruct/io_soulstruct-*.zip
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
