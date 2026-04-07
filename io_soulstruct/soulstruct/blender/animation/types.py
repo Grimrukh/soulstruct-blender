@@ -161,6 +161,17 @@ class SoulstructAnimation:
         except ValueError:
             raise ValueError(f"Could not parse animation ID from Action name '{self.name}'.")
 
+    @property
+    def action_slot(self) -> bpy.types.ActionSlot:
+        """Return first action slot."""
+        return self.action.slots[0]
+
+    @property
+    def channelbag(self) -> bpy.types.ActionChannelbag:
+        """Return channelbag of first layer, strip, and action slot."""
+        strip = self.action.layers[0].strips[0]
+        return strip.channelbag(self.action.slots[0], ensure=True)
+
     @classmethod
     def from_armature_animation_data(cls, armature: ArmatureObject) -> SoulstructAnimation:
         """Load from current animation data of given `armature`."""
@@ -196,7 +207,7 @@ class SoulstructAnimation:
         # In Elden Ring, some HKX skeletons also animate 'Twist' bones that are not actually present in the FLVER. We
         # handle and warn about these cases, rather than throwing.
         hk_bone_names = [b.name for b in skeleton_hkx.skeleton.bones]
-        track_bone_indices = animation_hkx.animation_container.hkx_binding.transformTrackToBoneIndices
+        track_bone_indices = animation_hkx.animation_container.get_track_bone_indices()
         track_bone_names = [hk_bone_names[i] for i in track_bone_indices]
         bl_bone_names = [b.name for b in armature_obj.data.bones]
 
@@ -318,13 +329,7 @@ class SoulstructAnimation:
         action = None  # type: bpy.types.Action | None
         original_location = armature_obj.location.copy()  # TODO: not necessary with batch method?
         try:
-            armature_obj.animation_data_create()
-            action = bpy.data.actions.new(name=action_name)
-            action_slot = action.slots.new(id_type="OBJECT", name=armature_obj.name)
-            # Create layer and strips (both unique).
-            layer = action.layers.new("Layer")
-            strip = layer.strips.new(type="KEYFRAME")
-            channelbag = strip.channelbag(action_slot, ensure=True)
+            action, action_slot, channelbag = create_action_slot_channelbag(armature_obj, action_name)
 
             if arma_frames:
                 bone_basis_samples = cls.get_bone_basis_samples(
@@ -349,21 +354,23 @@ class SoulstructAnimation:
             armature_obj.location = original_location  # reset location (i.e. erase last root motion)
             raise
 
+        # Action has been set.
+        action: bpy.types.Action
+
         # Set Action and Slot on Armature object (NOT Armature data).
         armature_obj.animation_data.action = action
         armature_obj.animation_data.action_slot = action_slot
         # Ensure action is not deleted when not in use.
         action.use_fake_user = True
         # Update all F-curves and make them cycle.
-        for fcurve in action.layers[0].strips[0].channelbag(action_slot, ensure=True).fcurves:
+        for fcurve in channelbag.fcurves:
             fcurve.modifiers.new("CYCLES")  # default settings are fine
             fcurve.update()
-        # Update Blender timeline start/stop times.
-        context.scene.frame_start = int(action.frame_range[0])
-        context.scene.frame_end = int(action.frame_range[1])
-        context.scene.frame_set(context.scene.frame_start)
 
-        return cls(action)
+        animation = cls(action)
+        # Update Blender timeline start/stop times.
+        animation.set_scene_frame_range(context, reset_current_frame=True)
+        return animation
 
     @classmethod
     def new_from_cutscene_cuts(
@@ -397,13 +404,7 @@ class SoulstructAnimation:
             cut_end_keyframe_x.append(int(bl_frames_per_game_frame * (frame_count - 1)))
 
         try:
-            armature_or_dummy.animation_data_create()
-            action = bpy.data.actions.new(name=action_name)
-            action_slot = action.slots.new(id_type="OBJECT", name=armature_or_dummy.name)
-            # Create layer and strips (both unique).
-            layer = action.layers.new("Layer")
-            strip = layer.strips.new(type="KEYFRAME")
-            channelbag = strip.channelbag(action_slot, ensure=True)
+            action, action_slot, channelbag = create_action_slot_channelbag(armature_or_dummy, action_name)
 
             if not is_root_motion_only:
                 if armature_or_dummy.type != "ARMATURE":
@@ -476,23 +477,23 @@ class SoulstructAnimation:
             armature_or_dummy.location = original_location  # reset location (i.e. erase last root motion)
             raise
 
+        # Action has been set.
+        action: bpy.types.Action
+
         # Set Action and Slot on Armature/Dummy object.
         armature_or_dummy.animation_data.action = action
         armature_or_dummy.animation_data.action_slot = action_slot
+        # Ensure action is not deleted when not in use.
+        action.use_fake_user = True
+
         # Set constant interpolation at the ends of cuts.
-        for fcurve in action.layers[0].strips[0].channelbag(action_slot, ensure=True).fcurves:
+        for fcurve in channelbag.fcurves:
             for keyframe in fcurve.keyframe_points:
                 if int(keyframe.co.x) in cut_end_keyframe_x:
                     keyframe.interpolation = "CONSTANT"
-
-        # Ensure action is not deleted when not in use.
-        action.use_fake_user = True
         # No CYCLES modifier.
-        # Update Blender timeline start/stop times.
-        # TODO: Don't bother doing this here. The caller should set the range to the maximal cutscene range after.
-        context.scene.frame_start = int(action.frame_range[0])
-        context.scene.frame_end = int(action.frame_range[1])
-        context.scene.frame_set(context.scene.frame_start)
+
+        # Caller will set Blender timeline start/stop times across all animated components.
 
         return cls(action)
 
@@ -705,8 +706,9 @@ class SoulstructAnimation:
             start_frame = context.scene.frame_start
             end_frame = context.scene.frame_end
         else:
-            start_frame = int(min(fcurve.range()[0] for fcurve in self.action.fcurves))
-            end_frame = int(max(fcurve.range()[1] for fcurve in self.action.fcurves))
+            fcurves = self.channelbag.fcurves
+            start_frame = int(min(fcurve.range()[0] for fcurve in fcurves))
+            end_frame = int(max(fcurve.range()[1] for fcurve in fcurves))
 
         # All frame interleaved transforms, in armature space.
         root_motion_samples = []  # type: list[tuple[float, float, float, float]]

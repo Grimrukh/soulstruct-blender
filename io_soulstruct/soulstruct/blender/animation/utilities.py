@@ -9,6 +9,8 @@ __all__ = [
     "get_root_motion",
     "get_animation_name",
     "get_active_flver_or_part_armature",
+    "get_or_create_action_strip",
+    "create_action_slot_channelbag",
 ]
 
 import typing as tp
@@ -32,6 +34,7 @@ from ..types import ArmatureObject, MeshObject
 from ..utilities import get_model_name
 
 ANIMATION_TYPING = tp.Union[
+    BaseAnimationHKX,
     demonssouls.AnimationHKX,
     darksouls1ptde.AnimationHKX,
     darksouls1r.AnimationHKX,
@@ -39,6 +42,7 @@ ANIMATION_TYPING = tp.Union[
     eldenring.AnimationHKX,
 ]
 SKELETON_TYPING = tp.Union[
+    BaseAnimationHKX,
     demonssouls.SkeletonHKX,
     darksouls1ptde.SkeletonHKX,
     darksouls1r.SkeletonHKX,
@@ -47,58 +51,54 @@ SKELETON_TYPING = tp.Union[
 ]
 
 
-def read_animation_hkx_entry(hkx_entry: BinderEntry, compendium: HKX = None) -> ANIMATION_TYPING:
-    """Read animation HKX file from a Binder entry and return the appropriate `AnimationHKX` subclass instance."""
+# Map `(is_tagfile, bytes)` to `soulstruct.havok.fromsoft` subpackage.
+_HKX_GAME_PACKAGE_MAP = {
+    (False, b"Havok-4.5.0-r1"): demonssouls,  # DeS (c9900)
+    (False, b"Havok-5.5.0-r1"): demonssouls,  # DeS
+    (False, b"hk_2010.2.0-r1"): darksouls1ptde,  # PTDE
+    (True, b"20150100"): darksouls1r,  # DSR
+    (False, b"hk_2014.1.0-r1"): bloodborne,  # BB
+    # TODO: Sekiro support.
+    (True, b"20180100"): eldenring,  # ER
+}
+
+
+def _guess_hkx_class(hkx_entry: BinderEntry, class_name: str) -> type[HKX]:
+    """Find game-specific HKX subclass from HKX file of unknown packfile/tagfile type."""
     data = hkx_entry.get_uncompressed_data()
     packfile_version = data[0x28:0x38]
     tagfile_version = data[0x10:0x18]
-    if packfile_version.startswith(b"Havok-4.5.0-r1"):  # DeS (c9900)
-        hkx = demonssouls.AnimationHKX.from_bytes(data, compendium=compendium)
-    elif packfile_version.startswith(b"Havok-5.5.0-r1"):  # DeS
-        hkx = demonssouls.AnimationHKX.from_bytes(data, compendium=compendium)
-    elif packfile_version.startswith(b"hk_2010.2.0-r1"):  # PTDE
-        hkx = darksouls1ptde.AnimationHKX.from_bytes(data, compendium=compendium)
-    elif tagfile_version == b"20150100":  # DSR
-        hkx = darksouls1r.AnimationHKX.from_bytes(data, compendium=compendium)
-    elif packfile_version.startswith(b"hk_2014.1.0-r1"):  # BB
-        hkx = bloodborne.AnimationHKX.from_bytes(data, compendium=compendium)
-    elif tagfile_version == b"20180100":  # ER
-        hkx = eldenring.AnimationHKX.from_bytes(data, compendium=compendium)
-    else:
-        raise UnsupportedGameError(
-            f"Cannot support this HKX skeleton file version in Soulstruct and/or Blender.\n"
-            f"   Possible packfile version: {packfile_version}\n"
-            f"   Possible tagfile version: {tagfile_version}"
-        )
-    hkx.path = Path(hkx_entry.name)
-    return hkx
+    for (is_tagfile, expected_data), game_package in _HKX_GAME_PACKAGE_MAP.items():
+        if is_tagfile and expected_data == tagfile_version:
+            try:
+                return getattr(game_package, class_name)  # type: type[HKX]
+            except AttributeError:
+                raise UnsupportedGameError(
+                    f"Havok game package '{game_package.__name__}' has no `{class_name}` class."
+                )
+    raise UnsupportedGameError(
+        f"Cannot find a `{class_name}` class match for this HKX file version in Soulstruct and/or Blender.\n"
+        f"   Possible packfile version: {packfile_version}\n"
+        f"   Possible tagfile version: {tagfile_version}"
+    )
+
+
+def read_animation_hkx_entry(hkx_entry: BinderEntry, compendium: HKX = None) -> ANIMATION_TYPING:
+    """Read animation HKX file from a Binder entry and return the appropriate `AnimationHKX` subclass instance."""
+    animation_hkx_class = _guess_hkx_class(hkx_entry, "AnimationHKX")
+    animation_hkx = animation_hkx_class.from_bytes(hkx_entry.get_uncompressed_data(), compendium=compendium)
+    animation_hkx.path = Path(hkx_entry.name)
+    # noinspection PyTypeChecker
+    return animation_hkx
 
 
 def read_skeleton_hkx_entry(hkx_entry: BinderEntry, compendium: HKX = None) -> SKELETON_TYPING:
     """Read skeleton HKX file from a Binder entry and return the appropriate `SkeletonHKX` subclass instance."""
-    data = hkx_entry.get_uncompressed_data()
-    packfile_version = data[0x28:0x38]
-    tagfile_version = data[0x10:0x18]
-    if packfile_version.startswith(b"Havok-4.5.0-r1"):  # DeS (c9900)
-        hkx = demonssouls.SkeletonHKX.from_bytes(data, compendium=compendium)
-    elif packfile_version.startswith(b"Havok-5.5.0-r1"):  # DeS
-        hkx = demonssouls.SkeletonHKX.from_bytes(data, compendium=compendium)
-    elif packfile_version.startswith(b"hk_2010.2.0-r1"):  # PTDE
-        hkx = darksouls1ptde.SkeletonHKX.from_bytes(data, compendium=compendium)
-    elif tagfile_version == b"20150100":  # DSR
-        hkx = darksouls1r.SkeletonHKX.from_bytes(data, compendium=compendium)
-    elif packfile_version.startswith(b"hk_2014.1.0-r1"):  # BB
-        hkx = bloodborne.SkeletonHKX.from_bytes(data, compendium=compendium)
-    elif tagfile_version == b"20180100":  # ER
-        hkx = eldenring.SkeletonHKX.from_bytes(data, compendium=compendium)
-    else:
-        raise UnsupportedGameError(
-            f"Cannot support this HKX skeleton file version in Soulstruct and/or Blender.\n"
-            f"   Possible packfile version: {packfile_version}\n"
-            f"   Possible tagfile version: {tagfile_version}"
-        )
-    hkx.path = Path(hkx_entry.name)
-    return hkx
+    skeleton_hkx_class = _guess_hkx_class(hkx_entry, "SkeletonHKX")
+    skeleton_hkx = skeleton_hkx_class.from_bytes(hkx_entry.get_uncompressed_data(), compendium=compendium)
+    skeleton_hkx.path = Path(hkx_entry.name)
+    # noinspection PyTypeChecker
+    return skeleton_hkx
 
 
 def get_root_motion(animation_hkx: BaseAnimationHKX, swap_yz=True) -> np.ndarray | None:
@@ -137,17 +137,17 @@ def get_animation_name(animation_id: int, template: str, prefix="a"):
     """Takes a template like '##_####' and converts `animation_id` int (e.g. 13000) to a string (e.g. 'a01_3000')."""
     parts = template.split('_')
     string_parts = []
-    animation_id = str(animation_id)
+    animation_id_str = str(animation_id)
 
-    if len(template.replace("_", "")) < len(animation_id):
+    if len(template.replace("_", "")) < len(animation_id_str):
         raise ValueError(
-            f"Animation ID '{animation_id}' is too long for template '{template}'."
+            f"Animation ID '{animation_id_str}' is too long for template '{template}'."
         )
 
     for part in reversed(parts):
         length = len(part)  # number of digits we want to take from the end of the animation ID
-        string_parts.append(animation_id[-length:].zfill(length))
-        animation_id = animation_id[:-length]
+        string_parts.append(animation_id_str[-length:].zfill(length))
+        animation_id_str = animation_id_str[:-length]
 
     return prefix + '_'.join(reversed(string_parts))
 
@@ -179,3 +179,34 @@ def get_active_flver_or_part_armature(
             return armature, mesh, get_model_name(mesh.MSB_PART.model.name), True
 
     return None, None, "", False
+
+
+def get_or_create_action_strip(action: bpy.types.Action) -> bpy.types.ActionKeyframeStrip:
+    """Return the unique layer/strip used by all Soulstruct-imported Actions."""
+    if action.layers:
+        layer = action.layers[0]
+    else:
+        layer = action.layers.new("Layer")
+
+    if layer.strips:
+        return layer.strips[0]
+    return layer.strips.new(type="KEYFRAME")
+
+
+def create_action_slot_channelbag(
+    obj: bpy.types.Object, action_name: str
+) -> tuple[bpy.types.Action, bpy.types.ActionSlot, bpy.types.ActionChannelbag]:
+    """Modern Blender (4.4+) has moved FCurves from the `Action` to a nested `ActionSlot`-specific channelbag:
+
+    `action.fcurves`
+    becomes
+    `action.layers[0].strips[0].channelbag(action_slot).fcurves`
+
+    This helper function creates the action, action slot, and nested channelbag, and returns all three.
+    """
+    obj.animation_data_create()
+    action = bpy.data.actions.new(name=action_name)
+    action_slot = action.slots.new(id_type="OBJECT", name=obj.name)
+    strip = get_or_create_action_strip(action)
+    channelbag = strip.channelbag(action_slot, ensure=True)
+    return action, action_slot, channelbag

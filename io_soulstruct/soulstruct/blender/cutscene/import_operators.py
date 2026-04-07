@@ -5,7 +5,6 @@ __all__ = [
     "ImportHKXCutscene",
 ]
 
-import math
 import re
 import traceback
 import typing as tp
@@ -13,17 +12,15 @@ from pathlib import Path
 
 import bpy
 
-from soulstruct.base.animations.sibcam import CameraFrameTransform
-
 from soulstruct.havok.fromsoft.darksouls1r.remobnd import *
 
-from ..animation.types import SoulstructAnimation
 from ..exceptions import CutsceneImportError, SoulstructTypeError
 from ..msb.properties.parts import MSBPartArmatureMode
 from ..msb.types.adapters import get_part_game_name
 from ..msb.types.darksouls1r import *
 from ..types import *
 from ..utilities import *
+from .types import SoulstructCutsceneAnimation
 
 if tp.TYPE_CHECKING:
     from ..msb.types.base.parts import BaseBlenderMSBPart
@@ -76,13 +73,25 @@ class ImportHKXCutscene(LoggingImportOperator):
         except Exception as ex:
             raise CutsceneImportError(f"Could not parse RemoBND file '{remobnd_path}': {ex}")
 
+        cutscene_animation = SoulstructCutsceneAnimation.new(remobnd.cutscene_name)
+
+        map_cutscene_collection = find_or_create_collection(
+            context.scene.collection, f"{remobnd.get_msb_stem()} Cutscenes"
+        )
+        cutscene_collection = bpy.data.collections.new(f"Cutscene {remobnd.cutscene_name}")
+        map_cutscene_collection.children.link(cutscene_collection)
+
         try:
-            camera = self.create_camera(context, remobnd, import_settings.to_60_fps)
+            camera = self.create_camera(remobnd, cutscene_animation, import_settings.to_60_fps)
         except Exception as ex:
+            bpy.data.actions.remove(cutscene_animation.action)
             traceback.print_exc()  # for inspection in Blender console
             return self.error(f"Cannot import HKX cutscene camera data from {remobnd_path.name}. Error: {ex}")
 
+        cutscene_collection.objects.link(camera)
+
         if import_settings.camera_data_only:
+            cutscene_animation.set_scene_frame_range(context, reset_current_frame=True)
             self.info("Imported HKX cutscene camera data only.")
             return {"FINISHED"}
 
@@ -91,29 +100,19 @@ class ImportHKXCutscene(LoggingImportOperator):
 
         self.info(f"Importing HKX cutscene: {remobnd.cutscene_name}")
 
-        map_cutscene_collection = find_or_create_collection(
-            context.scene.collection, f"{remobnd.get_msb_stem()} Cutscenes"
-        )
-        cutscene_collection = bpy.data.collections.new(f"Cutscene {remobnd.cutscene_name}")
-        map_cutscene_collection.children.link(cutscene_collection)
-
-        cutscene_collection.objects.link(camera)
-        all_animations = [SoulstructAnimation(camera.animation_data.action)]
-
         for remo_part_type, remo_parts_dict in remobnd.all_remo_parts.items():
             
             if remo_part_type == RemoPartType.Dummy:
                 for remo_part in remo_parts_dict.values():
                     if remo_part_type == RemoPartType.Dummy:
                         # Create an Empty and animate its transform.
-                        dummy_anim = self.create_cutscene_dummy(
+                        self.create_cutscene_dummy(
                             context,
                             remobnd,
                             remo_part,
                             cutscene_collection,
+                            cutscene_animation,
                         )
-                        if dummy_anim:
-                            all_animations.append(dummy_anim)
                 continue  # next `RemoPartType`
 
             try:
@@ -136,7 +135,7 @@ class ImportHKXCutscene(LoggingImportOperator):
                 # Link to cutscene collection (additively; still in MSB collection).
                 cutscene_collection.objects.link(bl_part.obj)
 
-                if bl_part._MODEL_ADAPTER.bl_model_type != SoulstructType.FLVER:
+                if bl_part.bl_model_type != SoulstructType.FLVER:
                     # e.g. Collisions. Not animated, only used for display groups.
                     continue  # next RemoPart
 
@@ -168,14 +167,17 @@ class ImportHKXCutscene(LoggingImportOperator):
                         self.warning(f"MSB Part '{remo_part.map_part_name}' does not have an Armature. Cannot animate.")
                     continue  # next RemoPart
 
-                if bl_part.armature.name not in cutscene_collection.objects:
-                    cutscene_collection.objects.link(bl_part.armature)
+                # noinspection PyTypeChecker
+                armature = bl_part.armature  # type: ArmatureObject
+
+                if armature.name not in cutscene_collection.objects:
+                    cutscene_collection.objects.link(armature)
 
                 # Get bone names from first cut that includes this part.
                 first_cut_frames = next(iter(remo_part.cut_arma_frames.values()))
                 animated_bone_names = list(first_cut_frames[0].bone_transforms.keys())
 
-                bl_bone_names = [b.name for b in bl_part.armature.data.bones]
+                bl_bone_names = [b.name for b in armature.data.bones]
                 # Check that all cutscene part bone names are present in Blender Armature.
                 # We ignore the FLVER 'master' bone, which does not appear in cutscene data (it's replaced by the
                 # root of the amalgamated cutscene 'skeleton').
@@ -195,10 +197,9 @@ class ImportHKXCutscene(LoggingImportOperator):
                 # TODO: When scaling up frame rate, CONSTANT interpolation on final frame leaves the NEXT frame fixed
                 #  before the next cut. Just a tiny visual quirk that wouldn't affect export.
                 try:
-                    part_anim = SoulstructAnimation.new_from_cutscene_cuts(
+                    cutscene_animation.add_cutscene_cuts(
                         context,
-                        action_name=f"{remobnd.cutscene_name}[{bl_part.game_name}]",
-                        armature_or_dummy=bl_part.armature,
+                        armature_or_dummy=armature,
                         arma_cuts=all_cut_frames,
                     )
                 except Exception as ex:
@@ -209,15 +210,9 @@ class ImportHKXCutscene(LoggingImportOperator):
                     )
                     continue  # next RemoPart
 
-                all_animations.append(part_anim)
-
-        if all_animations:
-            frame_start = min(anim.action.frame_range[0] for anim in all_animations)
-            frame_end = max(anim.action.frame_range[1] for anim in all_animations)
-            context.scene.frame_start = int(frame_start)
-            context.scene.frame_end = int(frame_end)
-            context.scene.frame_set(context.scene.frame_start)
-            self.info(f"Set cutscene start/end frames to: {frame_start}, {frame_end}")
+        cutscene_animation.set_scene_frame_range(context, reset_current_frame=True)
+        frame_start, frame_end = cutscene_animation.action.frame_range
+        self.info(f"Set cutscene start/end frames to: {frame_start}, {frame_end}")
 
         return {"FINISHED"}
 
@@ -225,7 +220,8 @@ class ImportHKXCutscene(LoggingImportOperator):
     def _get_remo_part_cut_arma_frames_or_counts(
         remobnd: RemoBND, remo_part: RemoPart
     ) -> list[list[RemoPartAnimationFrame] | int]:
-        """For each cut, get the Armature-space frames for the given `remo_part` or a frame count if not in cut.
+        """For each cut, get the Armature-space frames for the given `remo_part` or a frame count if that part
+        is not in that cut (so we know how many keyframes to skip if it reappears in a later cut).
 
         Each frame maps bone names to a `TRSTransform` in armature space. Cuts are just lists of frames.
         Separate cuts are maintained so that we can disable interpolation between them as keyframes are added.
@@ -281,15 +277,15 @@ class ImportHKXCutscene(LoggingImportOperator):
         remobnd: RemoBND,
         remo_part: RemoPart,
         cutscene_collection: bpy.types.Collection,
-    ) -> SoulstructAnimation | None:
+        cutscene_animation: SoulstructCutsceneAnimation,
+    ) -> None:
         dummy_obj = new_empty_object(f"{remobnd.cutscene_name} {remo_part.name}")
         cutscene_collection.objects.link(dummy_obj)
         all_cut_frames = self._get_remo_part_cut_arma_frames_or_counts(remobnd, remo_part)
 
         try:
-            return SoulstructAnimation.new_from_cutscene_cuts(
+            cutscene_animation.add_cutscene_cuts(
                 context,
-                action_name=f"{remobnd.cutscene_name}[{remo_part.name}]",
                 armature_or_dummy=dummy_obj,
                 arma_cuts=all_cut_frames,
                 is_root_motion_only=True,
@@ -300,12 +296,11 @@ class ImportHKXCutscene(LoggingImportOperator):
                 f"Cannot create cutscene animation for Dummy '{remo_part.name}' "
                 f"from cutscene at path '{remobnd.path.name}'. Error: {ex}"
             )
-            return None
 
     def create_camera(
         self,
-        context: bpy.types.Context,
         remobnd: RemoBND,
+        cutscene_animation: SoulstructCutsceneAnimation,
         to_60_fps: bool,
     ) -> CameraObject:
         """Create a new Blender camera object for the cutscene."""
@@ -319,127 +314,11 @@ class ImportHKXCutscene(LoggingImportOperator):
         camera_transforms = [cut.sibcam.get_clipped_camera_animation() for cut in remobnd.cuts]
         camera_fov_keyframes = [cut.sibcam.get_fov_keyframes_scaled_to_clip() for cut in remobnd.cuts]
 
-        self.create_camera_actions(
-            camera,
-            cutscene_name=remobnd.cutscene_name,
-            camera_transforms=camera_transforms,
-            camera_fov_keyframes=camera_fov_keyframes,
-            to_60_fps=to_60_fps,
-        )
-
-        return camera
-
-    def create_camera_actions(
-        self,
-        camera: CameraObject,
-        cutscene_name: str,
-        camera_transforms: list[list[CameraFrameTransform]],
-        camera_fov_keyframes: list[list[tuple[float, float]]],
-        to_60_fps: bool,
-    ) -> tuple[bpy.types.Action, bpy.types.Action]:
-        """Creates and returns two new actions
-            - action on Camera object for location and rotation animation
-            - action on Camera data for focal length animation
-        """
-        camera_data = camera.data
-
-        obj_action_name = f"{cutscene_name}[Camera]"
-        obj_action = None
-        data_action_name = f"{cutscene_name}[CameraData]"
-        data_action = None
-
-        original_location = camera.location.copy()
-        original_rotation = camera.rotation_euler.copy()
-        original_focal_length = camera_data.lens
-
         try:
-            camera.animation_data_create()
-            camera.animation_data.action = obj_action = bpy.data.actions.new(name=obj_action_name)
-            camera_data.animation_data_create()
-            camera_data.animation_data.action = data_action = bpy.data.actions.new(name=data_action_name)
-            self.add_camera_keyframes(camera, camera_transforms, camera_fov_keyframes, to_60_fps)
+            cutscene_animation.add_camera_cuts(camera, camera_transforms, camera_fov_keyframes, to_60_fps)
         except Exception:
-            if obj_action:
-                bpy.data.actions.remove(obj_action)
-            if data_action:
-                bpy.data.actions.remove(data_action)
-            # Reset camera to original state. (NOTE: Redundant since camera is always created by cutscene!)
-            camera.location = original_location
-            camera.rotation_euler = original_rotation
-            camera_data.lens = original_focal_length
+            bpy.data.objects.remove(camera)
+            bpy.data.cameras.remove(camera_data)
             raise
 
-        # Ensure actions are not deleted when not in use.
-        obj_action.use_fake_user = True
-        data_action.use_fake_user = True
-        # Update all F-curves (they do NOT cycle).
-        for fcurve in obj_action.fcurves:
-            fcurve.update()
-        for fcurve in data_action.fcurves:
-            fcurve.update()
-
-        return obj_action, data_action
-
-    @staticmethod
-    def add_camera_keyframes(
-        camera: CameraObject,
-        camera_transforms: list[list[CameraFrameTransform]],
-        camera_fov_keyframes: list[list[tuple[float, float]]],
-        to_60_fps: bool,
-    ):
-        """Add keyframes for camera object and data (focal length)."""
-        camera_data = camera.data  # type: bpy.types.Camera
-
-        final_frame_indices = set()
-
-        # TODO: Fix any camera rotation discontinuities first?
-
-        # NOT reset across cuts.
-        cutscene_frame_index = 0
-
-        # TODO: Use array `foreach_set`, not `keyframe_insert`.
-
-        for cut_camera_transforms in camera_transforms:
-
-            for cut_frame_index, camera_transform in enumerate(cut_camera_transforms):
-                bl_frame_index = cutscene_frame_index * 2 if to_60_fps else cutscene_frame_index
-                bl_translate = to_blender(camera_transform.position)
-                bl_euler = to_blender(camera_transform.rotation)
-                camera.location = bl_translate
-                camera.rotation_euler = bl_euler
-                camera.keyframe_insert(data_path="location", frame=bl_frame_index)
-                camera.keyframe_insert(data_path="rotation_euler", frame=bl_frame_index)
-                if cut_frame_index == len(cut_camera_transforms) - 1:
-                    final_frame_indices.add(bl_frame_index)
-                cutscene_frame_index += 1
-
-        for fcurve in camera.animation_data.action.fcurves:
-            for keyframe in fcurve.keyframe_points:
-                if int(keyframe.co.x) in final_frame_indices:
-                    keyframe.interpolation = "CONSTANT"
-                else:
-                    keyframe.interpolation = "LINEAR"
-
-        cut_fov_t_offset = 0
-        camera_final_t = set()
-        sensor_width = camera_data.sensor_width
-        for cut_fov_keyframes, cut_camera_transforms in zip(camera_fov_keyframes, camera_transforms, strict=True):
-
-            bl_t = -1
-            for t, fov in cut_fov_keyframes:
-                camera_data.lens = sensor_width / (2 * math.tan(fov / 2.0))
-                bl_t = (cut_fov_t_offset + t) * 2 if to_60_fps else (cut_fov_t_offset + t)
-                camera_data.keyframe_insert(data_path="lens", frame=bl_t)
-            if bl_t >= 0:
-                camera_final_t.add(bl_t)
-
-            # Add transform frame count to `t` offset for next cut.
-            cut_fov_t_offset += len(cut_camera_transforms)
-
-        # Make all keyframes in `final_frame_indices` 'CONSTANT' interpolation.
-        for fcurve in camera_data.animation_data.action.fcurves:
-            for keyframe in fcurve.keyframe_points:
-                if int(keyframe.co.x) in camera_final_t:
-                    keyframe.interpolation = "CONSTANT"
-                else:
-                    keyframe.interpolation = "LINEAR"
+        return camera

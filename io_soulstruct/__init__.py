@@ -22,7 +22,6 @@ from __future__ import annotations
 import importlib
 import importlib.util
 import sys
-from pathlib import Path
 
 try:
     import bpy
@@ -54,7 +53,7 @@ from .soulstruct.blender.misc import *
 
 from .soulstruct.blender.animation import *
 from .soulstruct.blender.collision import *
-# from .soulstruct.blender.cutscene import *
+from .soulstruct.blender.cutscene import *
 from .soulstruct.blender.flver import *
 from .soulstruct.blender.msb import *
 from .soulstruct.blender.nav_graph import *
@@ -231,13 +230,12 @@ CLASSES = (
     # endregion
 
     # region Cutscenes
-    # TODO: Not quite ready.
-    # GlobalSettingsPanel_CutsceneView,
-    # ImportHKXCutscene,
-    # ExportHKXCutscene,
-    # CutsceneImportSettings,
-    # CutsceneExportSettings,
-    # CutsceneImportExportPanel,
+    GlobalSettingsPanel_CutsceneView,
+    ImportHKXCutscene,
+    ExportHKXCutscene,
+    CutsceneImportSettings,
+    CutsceneExportSettings,
+    CutsceneImportExportPanel,
     # endregion
 
     # region Navmesh
@@ -456,7 +454,7 @@ CLASSES = (
 def havok_menu_func_import(self, context):
     self.layout.operator(ImportAnyHKXMapCollision.bl_idname, text="HKX Collision (.hkx/.hkxbhd)")
     self.layout.operator(ImportAnyHKXAnimation.bl_idname, text="HKX Animation (.hkx/.hkxbhd)")
-    # self.layout.operator(ImportHKXCutscene.bl_idname, text="HKX Cutscene (.remobnd)")
+    self.layout.operator(ImportHKXCutscene.bl_idname, text="HKX Cutscene (.remobnd)")
 
 
 # noinspection PyUnusedLocal
@@ -465,7 +463,7 @@ def havok_menu_func_export(self, context):
     self.layout.operator(ExportHKXMapCollisionIntoAnyBinder.bl_idname, text="HKX Collision to Binder (.hkxbhd)")
     self.layout.operator(ExportAnyHKXAnimation.bl_idname, text="HKX Animation (.hkx)")
     self.layout.operator(ExportHKXAnimationIntoAnyBinder.bl_idname, text="HKX Animation to Binder (.hkxbhd)")
-    # self.layout.operator(ExportHKXCutscene.bl_idname, text="HKX Cutscene (.remobnd)")
+    self.layout.operator(ExportHKXCutscene.bl_idname, text="HKX Cutscene (.remobnd)")
 
 
 # TODO: Put all of these pointers under a common group like `context.scene.soulstruct` for the add-on.
@@ -492,9 +490,8 @@ SCENE_POINTERS = dict(
     region_draw_settings=RegionDrawSettings,
     animation_import_settings=AnimationImportSettings,
     animation_export_settings=AnimationExportSettings,
-    # TODO: Cutscene disabled.
-    # cutscene_import_settings=CutsceneImportSettings,
-    # cutscene_export_settings=CutsceneExportSettings,
+    cutscene_import_settings=CutsceneImportSettings,
+    cutscene_export_settings=CutsceneExportSettings,
 
     # EXPERIMENTAL
     map_progress_settings=MapProgressSettings,
