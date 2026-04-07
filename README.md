@@ -1,21 +1,19 @@
-# Soulstruct for Blender
+# Soulstruct Extension for Blender
 
-**TODO: The installation section of this README is outdated. Soulstruct for Blender is now a full Extension.**
+**Get it here: **
 
-This Blender add-on enables you to import and export a large number of different FromSoftware file formats.
+This Blender Extension add-on enables you to import a large number of different FromSoftware file formats,
+manipulate their data in Blender, and export them back to game files.
 
-It's powered by [Soulstruct](https://github.com/Grimrukh/soulstruct), my giant Python library of FromSoftware formats, and Soulstruct Havok, an 
-experimental expansion library.
+It's powered by [Soulstruct](https://github.com/Grimrukh/soulstruct), my giant Python library of FromSoftware formats, 
+and [Soulstruct Havok](https://github.com/Grimrukh/soulstruct-havok), an experimental expansion library for Havok 
+formats.
 
 I developed these tools over the years in parallel with the development of Dark Souls: Nightfall, and finally put aside
 some time to polish and release them. I hope they serve you well and anticipate whatever mods they enable :)
 
-**Blender 4.1 or later is required.** Earlier Blender versions use Python 3.10 (released in 2021), which I sadly do not
-have the bandwidth or inclination to support any longer in Soulstruct. Surface vertex normal handling was also greatly
-improved in Blender 4.1, making FLVER import/export significantly easier.
-
-Older releases (<=1.9.3) are still available in the Releases section, which support Blender versions all the
-way back to 3.7, but lack many features and are no longer updated.
+**Blender 4.5 or later is required.** Internal API changes introduced in Blender 4.5 have prevented me from supporting
+earlier versions. The maximum tested version is **Blender 5.1** (the latest release as of April 2026).
 
 ## Table of Contents
 
@@ -66,9 +64,13 @@ happy to consider it as a commission (which is how Demon's Souls support was add
 However, before you ask, it's **unlikely that Collision export support will expand much further**. Havok's collision
 physics system changed radically in 2014 (Bloodborne onwards) and I don't have the tools (or expensive Havok SDK) to be
 able to regenerate the bounding volume tree structures in these newer files (`hkcd` and `hknp` Havok classes). I may
-eventually add import support so you can at least view the collision meshes in Blender, though.
+eventually add import support so you can at least view the collision meshes in Blender, though. (Other modders such as
+InfernoPlus have apparently had success creating new Elden Ring navmeshes, so perhaps it will eventually happen...)
 
 # Installation
+
+As of version 3.0.0, Soulstruct for Blender is an official Blender Extension add-on that is available in the Blender
+Extensions marketplace. Previous versions
 
 This is an experimental add-on that is not yet published to Blender. To install the add-on manually, follow these steps:
 
