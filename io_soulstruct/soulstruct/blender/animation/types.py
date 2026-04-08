@@ -17,7 +17,7 @@ from soulstruct.havok.fromsoft.demonssouls import AnimationHKX as DES_AnimationH
 from soulstruct.havok.utilities.maths import TRSTransform
 
 from ..base.operators import *
-from ..flver.utilities import get_basis_matrix, game_bone_transform_to_bl_bone_matrix
+from ..flver.utilities import get_basis_matrix, game_bone_transform_to_bl_bone_matrix, BONE_CoB_4x4
 from ..exceptions import *
 from ..types import *
 from ..utilities import *
@@ -762,7 +762,8 @@ class SoulstructAnimation:
                     # raise AnimationExportError(f"Bone '{bone.name}' in HKX skeleton not found in Blender armature.")
                     armature_space_transform = TRSTransform.identity()
                 else:
-                    armature_space_transform = bl_matrix_to_game_trs(bl_bone.matrix)
+                    # Undo bone CoB first.
+                    armature_space_transform = bl_matrix_to_game_trs(bl_bone.matrix @ BONE_CoB_4x4)
                     if i > 0:
                         # Negate rotation quaternion if dot with last rotation is negative (first frame ignored).
                         dot = np.dot(armature_space_transform.rotation.data, last_bone_trs[bone.name].rotation.data)
