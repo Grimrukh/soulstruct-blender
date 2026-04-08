@@ -144,7 +144,7 @@ class GameStructure:
 
         Returns `None` if no `map_stem` is given or set in Soulstruct settings.
         """
-        dir_path = self.get_map_dir_path_if_exists(map_stem=map_stem)
+        dir_path = self.get_map_dir_path(map_stem=map_stem)
         if not dir_path or not dir_path.is_dir():
             return None
         return dir_path
