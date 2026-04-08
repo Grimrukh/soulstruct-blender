@@ -285,7 +285,7 @@ class _BaseImportMSB(LoggingOperator):
 
         self.layout.separator()
         self.layout.label(text="FLVER Material Settings:")
-        draw_material_image_settings(layout, context)
+        draw_material_image_settings(context, layout)
 
 
 @io_soulstruct_class
