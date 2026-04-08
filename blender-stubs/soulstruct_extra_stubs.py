@@ -2,6 +2,13 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from io_soulstruct import *
+    from io_soulstruct.soulstruct.blender.animation import *
+    from io_soulstruct.soulstruct.blender.collision import *
+    from io_soulstruct.soulstruct.blender.experimental import *
+    from io_soulstruct.soulstruct.blender.flver import *
+    from io_soulstruct.soulstruct.blender.general import *
+    from io_soulstruct.soulstruct.blender.msb import *
+    from io_soulstruct.soulstruct.blender.navmesh import *
 
 
 class Scene:
@@ -27,9 +34,8 @@ class Scene:
     region_draw_settings: RegionDrawSettings
     animation_import_settings: AnimationImportSettings
     animation_export_settings: AnimationExportSettings
-    # TODO: Cutscene disabled.
-    # cutscene_import_settings: CutsceneImportSettings
-    # cutscene_export_settings: CutsceneExportSettings
+    cutscene_import_settings: CutsceneImportSettings
+    cutscene_export_settings: CutsceneExportSettings
 
     map_progress_settings: MapProgressSettings
     material_debug_settings: MaterialDebugSettings
@@ -61,19 +67,19 @@ class Object:
     # No real subtypes yet.
 
     MSB_EVENT: MSBEventProps
-    MSB_LIGHT: MSBLightEventProps
-    MSB_SOUND: MSBSoundEventProps
-    MSB_VFX: MSBVFXEventProps
-    MSB_WIND: MSBWindEventProps
-    MSB_TREASURE: MSBTreasureEventProps
-    MSB_SPAWNER: MSBSpawnerEventProps
-    MSB_MESSAGE: MSBMessageEventProps
-    MSB_OBJ_ACT: MSBObjActEventProps
-    MSB_SPAWN_POINT: MSBSpawnPointEventProps
-    MSB_MAP_OFFSET: MSBMapOffsetEventProps
-    MSB_NAVIGATION: MSBNavigationEventProps
-    MSB_ENVIRONMENT: MSBEnvironmentEventProps
-    MSB_NPC_INVASION: MSBNPCInvasionEventProps
+    MSB_LIGHT_EVENT: MSBLightEventProps
+    MSB_SOUND_EVENT: MSBSoundEventProps
+    MSB_VFX_EVENT: MSBVFXEventProps
+    MSB_WIND_EVENT: MSBWindEventProps
+    MSB_TREASURE_EVENT: MSBTreasureEventProps
+    MSB_SPAWNER_EVENT: MSBSpawnerEventProps
+    MSB_MESSAGE_EVENT: MSBMessageEventProps
+    MSB_OBJ_ACT_EVENT: MSBObjActEventProps
+    MSB_SPAWN_POINT_EVENT: MSBSpawnPointEventProps
+    MSB_MAP_OFFSET_EVENT: MSBMapOffsetEventProps
+    MSB_NAVIGATION_EVENT: MSBNavigationEventProps
+    MSB_ENVIRONMENT_EVENT: MSBEnvironmentEventProps
+    MSB_NPC_INVASION_EVENT: MSBNPCInvasionEventProps
 
     map_progress: MapProgressProps
 
