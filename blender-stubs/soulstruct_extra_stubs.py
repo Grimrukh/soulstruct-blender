@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from io_soulstruct.soulstruct.blender.general import *
     from io_soulstruct.soulstruct.blender.msb import *
     from io_soulstruct.soulstruct.blender.navmesh import *
+    from io_soulstruct.soulstruct.blender.types import SoulstructType
 
 
 class Scene:
@@ -42,6 +43,8 @@ class Scene:
 
 
 class Object:
+    soulstruct_type: SoulstructType
+
     FLVER: FLVERProps
     FLVER_DUMMY: FLVERDummyProps
 

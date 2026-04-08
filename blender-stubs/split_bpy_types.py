@@ -7,6 +7,10 @@ into multiple smaller files organised under a bpy/types/ package, then
 generates an __init__.pyi that re-exports everything. PyCharm can then index
 each smaller file independently without hitting its file size limit.
 
+Also patches bpy/props/__init__.pyi so that the property factory functions
+(BoolProperty, IntProperty, etc.) return the correct bpy.types property class
+instead of None, enabling proper annotation type checking.
+
 The script auto-detects the bpy package location by importing it, so it must
 be run with the same Python interpreter that has fake-bpy-module installed.
 
@@ -45,6 +49,8 @@ What it does:
        ignores it (underscore-prefixed files are skipped by PyCharm's indexer)
        while the original is preserved for --undo.
     6. Writes a new bpy/types/__init__.pyi that re-exports from the chunks.
+    7. Patches bpy/props/__init__.pyi so property factory functions return
+       their matching bpy.types property class instead of None.
 """
 
 import argparse
@@ -69,6 +75,22 @@ CHUNK_PREFIX = "_chunk_"
 
 # Name of the optional extra stubs file to look for alongside this script.
 EXTRA_STUBS_FILENAME = "soulstruct_extra_stubs.py"
+
+# Mapping from bpy.props factory function names to the bpy.types class they
+# should return.  Vector variants have no dedicated type in bpy.types, so we
+# map them to the corresponding scalar property type.
+PROP_RETURN_TYPES: dict[str, str] = {
+    "BoolProperty": "bpy.types.BoolProperty",
+    "BoolVectorProperty": "bpy.types.BoolProperty",
+    "CollectionProperty": "bpy.types.CollectionProperty",
+    "EnumProperty": "bpy.types.EnumProperty",
+    "FloatProperty": "bpy.types.FloatProperty",
+    "FloatVectorProperty": "bpy.types.FloatProperty",
+    "IntProperty": "bpy.types.IntProperty",
+    "IntVectorProperty": "bpy.types.IntProperty",
+    "PointerProperty": "bpy.types.PointerProperty",
+    "StringProperty": "bpy.types.StringProperty",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -242,6 +264,16 @@ def parse_top_level_blocks(source: str) -> list[dict]:
         elif isinstance(node, (ast.Import, ast.ImportFrom)):
             kind = "import"
             name = None
+        elif (
+            isinstance(node, ast.Expr)
+            and isinstance(getattr(node, "value", None), ast.Constant)
+            and isinstance(node.value.value, str)
+        ):
+            # Module-level string expression (docstring).  These can be
+            # enormous in fake-bpy-module stubs and serve no purpose in
+            # the chunked output.
+            kind = "docstring"
+            name = None
         else:
             kind = "other"
             name = None
@@ -340,9 +372,18 @@ def group_blocks_into_chunks(
     header_blocks = []
     body_blocks = []
 
+    found_first_class = False
     for block in blocks:
-        if block["kind"] in ("import", "assign") and not body_blocks:
-            # Treat leading imports and module-level assignments as header material
+        if block["kind"] == "class":
+            found_first_class = True
+
+        if not found_first_class:
+            if block["kind"] == "docstring":
+                # Discard module-level docstrings -- they can be enormous in
+                # fake-bpy-module stubs and serve no purpose in the output.
+                continue
+            # Everything else before the first class (imports, assigns, etc.)
+            # is header material that gets replicated in every chunk.
             header_blocks.append(block)
         else:
             body_blocks.append(block)
@@ -404,6 +445,13 @@ def write_chunk(
         # Write the standard generated header (imports etc.)
         for block in header_blocks:
             fh.writelines(block["lines"])
+
+        # Add TYPE_CHECKING wildcard import so that bare type names
+        # referencing classes defined in other chunks resolve correctly.
+        # In .pyi stubs type checkers always evaluate TYPE_CHECKING as True
+        # and handle the circular import between __init__ and chunks fine.
+        fh.write("\nif typing.TYPE_CHECKING:\n")
+        fh.write("    from bpy.types import *  # noqa: F403\n")
 
         fh.write("\n")
 
@@ -467,17 +515,17 @@ def write_init(
 
 def find_bpy_package_dir() -> Path:
     """
-    Find the Path to 'bpy-stubs' directory inside site-packages.
+    Find the Path to 'bpy' directory inside site-packages.
     """
 
     for site_package in site.getsitepackages():
-        candidate = Path(site_package) / "bpy-stubs"
+        candidate = Path(site_package) / "bpy"
         if candidate.is_dir():
-            print(f"[INFO] Found bpy-stubs package at: {candidate}")
+            print(f"[INFO] Found bpy package at: {candidate}")
             return candidate
 
     print(
-        "[ERROR] Could not find 'bpy-stubs' in any site-packages. Run this script with the same Python "
+        "[ERROR] Could not find 'bpy' in any site-packages. Run this script with the same Python "
         "interpreter that has fake-bpy-module installed.",
         file=sys.stderr,
     )
@@ -512,6 +560,54 @@ def undo(bpy_dir: Path) -> None:
     hidden.rename(original)
     print(f"[INFO] Restored {original}")
     print("[DONE] Undo complete.")
+
+
+# ---------------------------------------------------------------------------
+# bpy.props return-type fix
+# ---------------------------------------------------------------------------
+
+def fix_bpy_props(bpy_dir: Path) -> None:
+    """Patch bpy/props/__init__.pyi so property factories return proper types.
+
+    Each factory function (BoolProperty, IntProperty, …) is declared as
+    returning ``None`` in fake-bpy-module.  This rewrites the return
+    annotations to the matching ``bpy.types.*Property`` class so that
+    type-checkers resolve property annotations correctly.
+    """
+    props_init = bpy_dir / "props" / "__init__.pyi"
+    if not props_init.exists():
+        print(f"[WARN] {props_init} not found -- skipping bpy.props return-type fix.")
+        return
+
+    print(f"[INFO] Patching bpy.props return types in {props_init}")
+    source = props_init.read_text(encoding="utf-8")
+    lines = source.splitlines(keepends=True)
+
+    current_func: str | None = None
+    count = 0
+    new_lines: list[str] = []
+
+    for line in lines:
+        # Detect the start of a property factory function definition.
+        m = re.match(r"def\s+(\w+Property)\s*[\[\(]", line)
+        if m:
+            current_func = m.group(1)
+
+        # Replace `-> None:` with the correct return type.
+        if current_func and current_func in PROP_RETURN_TYPES and ") -> None:" in line:
+            return_type = PROP_RETURN_TYPES[current_func]
+            line = line.replace(") -> None:", f") -> {return_type}:")
+            print(f"[INFO]   {current_func} -> {return_type}")
+            count += 1
+            current_func = None
+
+        new_lines.append(line)
+
+    if count:
+        props_init.write_text("".join(new_lines), encoding="utf-8")
+        print(f"[INFO] Patched {count} return type(s) in bpy/props/__init__.pyi")
+    else:
+        print("[INFO] No return types needed patching in bpy/props/__init__.pyi")
 
 
 # ---------------------------------------------------------------------------
@@ -587,7 +683,11 @@ def main() -> None:
     blocks = parse_top_level_blocks(source)
 
     class_count = sum(1 for b in blocks if b["kind"] == "class")
+    docstring_count = sum(1 for b in blocks if b["kind"] == "docstring")
     print(f"[INFO] Found {len(blocks)} top-level blocks ({class_count} classes)")
+    if docstring_count:
+        docstring_lines = sum(len(b["lines"]) for b in blocks if b["kind"] == "docstring")
+        print(f"[INFO] Stripping {docstring_count} module-level docstring(s) ({docstring_lines} lines)")
 
     header_blocks, chunks = group_blocks_into_chunks(blocks, args.chunk_size)
     print(f"[INFO] Splitting into {len(chunks)} chunks of ~{args.chunk_size} classes each")
@@ -619,8 +719,15 @@ def main() -> None:
 
     total_exported = sum(len(names) for _, names in chunk_files)
     print(
-        f"\n[DONE] {total_exported} classes exported across {len(chunks)} files.\n"
-        f"       Invalidate PyCharm's caches (File -> Invalidate Caches) to pick up the changes.\n"
+        f"\n[DONE] {total_exported} classes exported across {len(chunks)} files."
+    )
+
+    # --- Patch bpy.props return types ----------------------------------------
+
+    fix_bpy_props(bpy_dir)
+
+    print(
+        f"\n       Invalidate PyCharm's caches (File -> Invalidate Caches) to pick up the changes.\n"
         f"       Run with --undo to restore the original state."
     )
 
