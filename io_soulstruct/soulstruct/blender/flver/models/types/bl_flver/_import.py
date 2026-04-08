@@ -234,7 +234,10 @@ def _set_submesh_props(
             create_per_submesh_props = True
 
     face_set_counts = [len(mesh.face_sets) for mesh in flver_meshes]
-    if len(set(face_set_counts)) == 1:
+    if not face_set_counts:
+        # Empty FLVER.
+        bl_flver.type_properties.global_face_set_count = 0
+    elif len(set(face_set_counts)) == 1:
         bl_flver.type_properties.global_face_set_count = face_set_counts[0]
     else:
         bl_flver.type_properties.global_face_set_count = max(set(face_set_counts), key=face_set_counts.count)
