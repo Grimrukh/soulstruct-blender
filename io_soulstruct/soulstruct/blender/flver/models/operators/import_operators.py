@@ -193,10 +193,9 @@ class ImportMapPieceFLVER(_BaseFLVERImportOperator):
     @classmethod
     def poll(cls, context) -> bool:
         try:
-            print(cls.settings(context).get_import_map_dir_path())
+            cls.settings(context).get_import_map_dir_path()
             return True
         except NotADirectoryError:
-            print("NOT A DIR")
             return False
 
     def invoke(self, context, _event):
