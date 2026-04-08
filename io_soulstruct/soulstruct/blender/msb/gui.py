@@ -602,7 +602,7 @@ class _MSBEventSubtypePanelMixin:
 class MSBLightEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate Light fields for active object."""
     bl_label = "MSB Light Settings"
-    bl_idname = "OBJECT_PT_msb_light"
+    bl_idname = "OBJECT_PT_msb_light_event"
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
     bl_context = "object"
@@ -615,7 +615,7 @@ class MSBLightEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
 class MSBSoundEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate Sound fields for active object."""
     bl_label = "MSB Sound Settings"
-    bl_idname = "OBJECT_PT_msb_sound"
+    bl_idname = "OBJECT_PT_msb_sound_event"
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
     bl_context = "object"
@@ -628,7 +628,7 @@ class MSBSoundEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
 class MSBVFXEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate VFX fields for active object."""
     bl_label = "MSB VFX Settings"
-    bl_idname = "OBJECT_PT_msb_vfx"
+    bl_idname = "OBJECT_PT_msb_vfx_event"
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
     bl_context = "object"
@@ -641,7 +641,7 @@ class MSBVFXEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
 class MSBWindEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate Wind fields for active object."""
     bl_label = "MSB Wind Settings"
-    bl_idname = "OBJECT_PT_msb_wind"
+    bl_idname = "OBJECT_PT_msb_wind_event"
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
     bl_context = "object"
@@ -654,7 +654,7 @@ class MSBWindEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
 class MSBTreasureEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate Treasure fields for active object."""
     bl_label = "MSB Treasure Settings"
-    bl_idname = "OBJECT_PT_msb_treasure"
+    bl_idname = "OBJECT_PT_msb_treasure_event"
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
     bl_context = "object"
@@ -667,7 +667,7 @@ class MSBTreasureEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
 class MSBSpawnerEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate Spawner fields for active object."""
     bl_label = "MSB Spawner Settings"
-    bl_idname = "OBJECT_PT_msb_spawner"
+    bl_idname = "OBJECT_PT_msb_spawner_event"
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
     bl_context = "object"
@@ -680,7 +680,7 @@ class MSBSpawnerEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
 class MSBMessageEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate Message fields for active object."""
     bl_label = "MSB Message Settings"
-    bl_idname = "OBJECT_PT_msb_message"
+    bl_idname = "OBJECT_PT_msb_message_event"
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
     bl_context = "object"
@@ -693,7 +693,7 @@ class MSBMessageEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
 class MSBObjActEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate ObjAct fields for active object."""
     bl_label = "MSB ObjAct Settings"
-    bl_idname = "OBJECT_PT_msb_obj_act"
+    bl_idname = "OBJECT_PT_msb_obj_act_event"
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
     bl_context = "object"
@@ -706,7 +706,7 @@ class MSBObjActEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
 class MSBSpawnPointEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate Spawn Point fields for active object."""
     bl_label = "MSB Spawn Point Settings"
-    bl_idname = "OBJECT_PT_msb_spawn_point"
+    bl_idname = "OBJECT_PT_msb_spawn_point_event"
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
     bl_context = "object"
@@ -719,7 +719,7 @@ class MSBSpawnPointEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
 class MSBMapOffsetEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate Map Offset fields for active object."""
     bl_label = "MSB Map Offset Settings"
-    bl_idname = "OBJECT_PT_msb_map_offset"
+    bl_idname = "OBJECT_PT_msb_map_offset_event"
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
     bl_context = "object"
@@ -732,7 +732,7 @@ class MSBMapOffsetEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
 class MSBNavigationEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate Navigation fields for active object."""
     bl_label = "MSB Navigation Settings"
-    bl_idname = "OBJECT_PT_msb_navigation"
+    bl_idname = "OBJECT_PT_msb_navigation_event"
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
     bl_context = "object"
@@ -745,7 +745,7 @@ class MSBNavigationEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
 class MSBEnvironmentEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate Environment fields for active object."""
     bl_label = "MSB Environment Settings"
-    bl_idname = "OBJECT_PT_msb_environment"
+    bl_idname = "OBJECT_PT_msb_environment_event"
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
     bl_context = "object"
@@ -758,7 +758,7 @@ class MSBEnvironmentEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
 class MSBNPCInvasionEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate NPC Invasion fields for active object."""
     bl_label = "MSB NPC Invasion Settings"
-    bl_idname = "OBJECT_PT_msb_npc_invasion"
+    bl_idname = "OBJECT_PT_msb_npc_invasion_event"
     bl_space_type = 'PROPERTIES'
     bl_region_type = 'WINDOW'
     bl_context = "object"

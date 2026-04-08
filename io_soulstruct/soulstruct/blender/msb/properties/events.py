@@ -54,19 +54,19 @@ def _is_region(_, obj: bpy.types.Object):
 
 class BlenderMSBEventSubtype(StrEnum):
     """Union of Event subtypes across all games."""
-    Light = "MSB_LIGHT"
-    Sound = "MSB_SOUND"
-    VFX = "MSB_VFX"
-    Wind = "MSB_WIND"
-    Treasure = "MSB_TREASURE"
-    Spawner = "MSB_SPAWNER"
-    Message = "MSB_MESSAGE"
-    ObjAct = "MSB_OBJ_ACT"
-    SpawnPoint = "MSB_SPAWN_POINT"
-    MapOffset = "MSB_MAP_OFFSET"
-    Navigation = "MSB_NAVIGATION"
-    Environment = "MSB_ENVIRONMENT"
-    NPCInvasion = "MSB_NPC_INVASION"
+    Light = "MSB_LIGHT_EVENT"
+    Sound = "MSB_SOUND_EVENT"
+    VFX = "MSB_VFX_EVENT"
+    Wind = "MSB_WIND_EVENT"
+    Treasure = "MSB_TREASURE_EVENT"
+    Spawner = "MSB_SPAWNER_EVENT"
+    Message = "MSB_MESSAGE_EVENT"
+    ObjAct = "MSB_OBJ_ACT_EVENT"
+    SpawnPoint = "MSB_SPAWN_POINT_EVENT"
+    MapOffset = "MSB_MAP_OFFSET_EVENT"
+    Navigation = "MSB_NAVIGATION_EVENT"
+    Environment = "MSB_ENVIRONMENT_EVENT"
+    NPCInvasion = "MSB_NPC_INVASION_EVENT"
 
     def get_nice_name(self) -> str:
         if self == BlenderMSBEventSubtype.VFX:
