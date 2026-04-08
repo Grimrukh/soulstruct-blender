@@ -41,6 +41,7 @@ def get_flvers_from_binder(
     return [entry.to_binary_file(FLVER) for entry in flver_entries]
 
 
+# Swap X and Y, negate Z. Makes bones point nicely X-forward in Blender.
 BONE_CoB_4x4 = Matrix((
     (0.0, 1.0,  0.0, 0.0),
     (1.0, 0.0,  0.0, 0.0),

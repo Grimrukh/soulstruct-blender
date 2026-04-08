@@ -53,8 +53,7 @@ from ..properties import FLVERImportSettings
 FLVER_BINDER_RE = re.compile(r"^.*?\.(.*bnd)(\.dcx)?$")
 
 
-@io_soulstruct_class
-class BaseFLVERImportOperator(LoggingImportOperator):
+class _BaseFLVERImportOperator(LoggingImportOperator):
 
     def draw(self, context):
         import_settings = context.scene.flver_import_settings
@@ -156,7 +155,7 @@ class BaseFLVERImportOperator(LoggingImportOperator):
 
 
 @io_soulstruct_class
-class ImportFLVER(BaseFLVERImportOperator):
+class ImportFLVER(_BaseFLVERImportOperator):
     """This appears in the tooltip of the operator and in the generated docs."""
     bl_idname = "import_scene.flver"
     bl_label = "Import FLVER"
@@ -176,7 +175,7 @@ class ImportFLVER(BaseFLVERImportOperator):
 # region Game Folder Importers
 
 @io_soulstruct_class
-class ImportMapPieceFLVER(BaseFLVERImportOperator):
+class ImportMapPieceFLVER(_BaseFLVERImportOperator):
     """Import a map piece FLVER from selected game map directory."""
     bl_idname = "import_scene.map_piece_flver"
     bl_label = "Import Map Piece"
@@ -194,9 +193,10 @@ class ImportMapPieceFLVER(BaseFLVERImportOperator):
     @classmethod
     def poll(cls, context) -> bool:
         try:
-            cls.settings(context).get_import_map_dir_path()
+            print(cls.settings(context).get_import_map_dir_path())
             return True
         except NotADirectoryError:
+            print("NOT A DIR")
             return False
 
     def invoke(self, context, _event):
@@ -224,7 +224,7 @@ class ImportMapPieceFLVER(BaseFLVERImportOperator):
 
 
 @io_soulstruct_class
-class ImportCharacterFLVER(BaseFLVERImportOperator):
+class ImportCharacterFLVER(_BaseFLVERImportOperator):
     """Shortcut for browsing for CHRBND Binders in game 'chr' directory."""
     bl_idname = "import_scene.character_flver"
     bl_label = "Import Character"
@@ -302,7 +302,7 @@ class ImportCharacterFLVER(BaseFLVERImportOperator):
 
 
 @io_soulstruct_class
-class ImportObjectFLVER(BaseFLVERImportOperator):
+class ImportObjectFLVER(_BaseFLVERImportOperator):
     """Shortcut for browsing for OBJBND Binders in game 'obj' directory."""
     bl_idname = "import_scene.object_flver"
     bl_label = "Import Object"
@@ -338,7 +338,7 @@ class ImportObjectFLVER(BaseFLVERImportOperator):
 
 
 @io_soulstruct_class
-class ImportAssetFLVER(BaseFLVERImportOperator):
+class ImportAssetFLVER(_BaseFLVERImportOperator):
     """Shortcut for browsing for GEOMBND Binders in game 'asset' directory."""
     bl_idname = "import_scene.asset_flver"
     bl_label = "Import Asset"
@@ -369,7 +369,7 @@ class ImportAssetFLVER(BaseFLVERImportOperator):
 
 
 @io_soulstruct_class
-class ImportEquipmentFLVER(BaseFLVERImportOperator):
+class ImportEquipmentFLVER(_BaseFLVERImportOperator):
     """Import weapon/armor FLVER from a `partsbnd` Binder.
 
     NOTE: Earlier versions of Soulstruct forced you to select an imported `c0000` model, and the mesh and dummies of

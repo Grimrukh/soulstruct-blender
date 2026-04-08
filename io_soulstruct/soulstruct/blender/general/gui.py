@@ -21,7 +21,6 @@ from ..types import SoulstructType
 from .properties import SoulstructSettings
 
 
-@io_soulstruct_class
 class _BaseGlobalSettingsPanel(SoulstructPanel):
     """VIEW properties panel mix-in for Soulstruct global settings."""
 

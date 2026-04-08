@@ -208,7 +208,7 @@ class FLVERMaterialProps(SoulstructPropertyGroup):
 
 
 @io_soulstruct_class
-@io_soulstruct_pointer_property(bpy.types.Scene, "FLVER_MATERIAL_SETTINGS")
+@io_soulstruct_pointer_property(bpy.types.Scene, "flver_material_settings")
 class FLVERMaterialSettings(SoulstructPropertyGroup):
     """Global (Scene) settings for FLVER material import/export."""
 

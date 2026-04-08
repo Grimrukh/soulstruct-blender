@@ -594,8 +594,7 @@ class ImportAllNVMHKTsFromNVMHKTBND(_BaseImportAllNVMHKT):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
-class ImportAllOverworldNVMHKTsBase(_BaseImportAllNVMHKT):
+class _BaseImportAllOverworldNVMHKTs(_BaseImportAllNVMHKT):
     """Import all NVMHKTs from ALL base game overworld small tile maps (m60_XX_ZZ_00).
 
     Note that large/medium overworld tiles do not have navmeshes in Elden Ring.
@@ -719,7 +718,7 @@ class ImportAllOverworldNVMHKTsBase(_BaseImportAllNVMHKT):
 
 
 @io_soulstruct_class
-class ImportAllOverworldNVMHKTs(ImportAllOverworldNVMHKTsBase):
+class ImportAllOverworldNVMHKTs(_BaseImportAllOverworldNVMHKTs):
     """Import all NVMHKTs from ALL base game overworld small tile maps (m60_XX_ZZ_00).
 
     Note that large/medium overworld tiles do not have navmeshes in Elden Ring.
@@ -732,7 +731,7 @@ class ImportAllOverworldNVMHKTs(ImportAllOverworldNVMHKTsBase):
 
 
 @io_soulstruct_class
-class ImportAllDLCOverworldNVMHKTs(ImportAllOverworldNVMHKTsBase):
+class ImportAllDLCOverworldNVMHKTs(_BaseImportAllOverworldNVMHKTs):
     """Import all NVMHKTs from ALL DLC overworld small tile maps (m61_XX_ZZ_00).
 
     Note that large/medium overworld tiles do not have navmeshes in Elden Ring.
