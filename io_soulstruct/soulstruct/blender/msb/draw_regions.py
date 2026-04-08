@@ -84,6 +84,7 @@ def draw_msb_regions():
         obj for obj in bpy.context.scene.collection.all_objects
         if obj.soulstruct_type == SoulstructType.MSB_REGION
         and obj.MSB_REGION.shape_type_enum == RegionShapeType.Point
+        and obj.visible_get()
     ]
 
     SHADER.bind()

@@ -99,14 +99,6 @@ class BaseBlenderMSBPart(
         """Get Soulstruct type of MSB Part's model in Blender."""
         return self._MODEL_ADAPTER.bl_model_type
 
-    @property
-    def location(self):
-        return
-
-    @location.setter
-    def location(self, value):
-        pass
-
     # endregion
 
     @classmethod
