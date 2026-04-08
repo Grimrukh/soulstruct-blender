@@ -354,6 +354,11 @@ class RecomputeEdgeCost(LoggingOperator):
                 self.warning(f"Navmesh part not set for edge '{bl_edge.name}'. Ignoring.")
                 continue  # can't update
 
+            if context.scene.nav_graph_compute_settings.require_clean_mesh:
+                if not is_mesh_clean(edge_navmesh.data):
+                    self.warning(f"Navmesh '{edge_navmesh.name}' is not clean (has duplicate vertices). Ignoring.")
+                    continue
+
             node_a = bl_edge.node_a  # type: bpy.types.Object
             node_b = bl_edge.node_b  # type: bpy.types.Object
             if node_a is None or node_b is None:
@@ -424,6 +429,10 @@ class FindCheapestPath(LoggingOperator):
             return self.error("No active edit mesh object.")
         obj: MeshObject
 
+        if context.scene.nav_graph_compute_settings.require_clean_mesh:
+            if not is_mesh_clean(obj.data):
+                return self.error(f"Navmesh '{obj.name}' is not clean (has duplicate vertices).")
+
         bm = bmesh.from_edit_mesh(obj.data)
 
         selected_faces = [f for f in bm.faces if f.select]
@@ -435,8 +444,6 @@ class FindCheapestPath(LoggingOperator):
         start_face, end_face = selected_faces
         if start_face == active_face:
             start_face, end_face = end_face, start_face
-
-        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.001)
 
         path, total_cost, all_passable_fallback = a_star(start_face, end_face, bm)
 
@@ -519,6 +526,14 @@ class AutoCreateMCG(LoggingOperator):
 
         map_stem = context.collection.name.split(" ")[0]
         navmesh_parts = BlenderMSBNavmesh.from_collection_objects(context.collection)
+
+        if context.scene.nav_graph_compute_settings.require_clean_mesh:
+            not_clean = []
+            for navmesh_part in navmesh_parts:
+                if not is_mesh_clean(navmesh_part.mesh):
+                    not_clean.append(navmesh_part.name)
+            if not_clean:
+                return self.error(f"Some navmeshes are not clean (have duplicate vertices): {not_clean}")
 
         navmesh_exit_clusters = []  # type: list[tuple[EXIT_CLUSTER, ...]]
 

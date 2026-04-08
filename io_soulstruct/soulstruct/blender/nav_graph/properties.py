@@ -143,6 +143,12 @@ class NavGraphComputeSettings(SoulstructPropertyGroup):
         default=1.0,
         description="Cost multiplier (of distance) for Obstacle faces. Ignores obstacle count",
     )
+    require_clean_mesh: bpy.props.BoolProperty(
+        name="Require Clean Mesh",
+        default=False,
+        description="Prohibit duplicate vertices and/or degenerate faces, i.e. geometry deleted by vertex merging. "
+                    "Must be disabled for some vanilla navmeshes, but you should sanitize them and enable this"
+    )
     connected_exit_vertex_distance: bpy.props.FloatProperty(
         name="Connected Exit Vertex Distance",
         default=0.01,

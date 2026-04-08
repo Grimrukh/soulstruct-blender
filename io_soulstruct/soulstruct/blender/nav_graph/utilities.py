@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 __all__ = [
-    "get_neighbors",
+    "build_spatial_adjacency",
     "a_star",
     "get_navmesh_step_cost",
     "get_best_cost",
     "get_edge_cost",
+    "is_mesh_clean",
 ]
 
 import heapq
 import itertools
 import math
+from collections import defaultdict
 
 import bpy
 import bmesh
@@ -20,24 +22,70 @@ from mathutils import Vector
 from soulstruct.base.events.enums import NavmeshFlag
 
 
-def get_neighbors(face: BMFace) -> list[BMFace]:
-    """Get all neighbors of BMesh face."""
-    neighbors = []
-    for edge in face.edges:
-        linked_faces = [f for f in edge.link_faces if f != face]
-        neighbors.extend(linked_faces)
-    return neighbors
+def build_spatial_adjacency(bm: BMesh, tolerance: float = 0.001) -> dict[int, list[int]]:
+    """Build face adjacency map using spatial vertex positions (STL-style).
+
+    Two faces are considered adjacent if they share at least two vertex positions (within `tolerance`). This matches the
+    game's own connectivity resolution and works correctly even when duplicate (non-merged) vertices exist or degenerate
+    (zero-area) faces are present. Neither the mesh nor its face indices are modified.
+
+    Returns a dict mapping each face index to a list of adjacent face indices.
+    """
+    inv_tol = 1.0 / tolerance
+
+    def snap(co: Vector) -> tuple[int, int, int]:
+        return round(co.x * inv_tol), round(co.y * inv_tol), round(co.z * inv_tol)
+
+    # Compute snapped vertex positions per face.
+    face_snap_sets = {}  # type: dict[int, frozenset[tuple[int, int, int]]]
+    for face in bm.faces:
+        face_snap_sets[face.index] = frozenset(snap(v.co) for v in face.verts)
+
+    # Map each snapped position to the set of face indices whose vertices occupy it.
+    pos_to_faces = defaultdict(set)  # type: defaultdict[tuple[int, int, int], set[int]]
+    for fi, snaps in face_snap_sets.items():
+        for s in snaps:
+            pos_to_faces[s].add(fi)
+
+    # For every pair of faces that share at least one snapped vertex position, count total shared positions.
+    pair_shared = defaultdict(int)  # type: defaultdict[tuple[int, int], int]
+    for face_indices in pos_to_faces.values():
+        idx_list = list(face_indices)
+        for i in range(len(idx_list)):
+            for j in range(i + 1, len(idx_list)):
+                key = (idx_list[i], idx_list[j]) if idx_list[i] < idx_list[j] else (idx_list[j], idx_list[i])
+                pair_shared[key] += 1
+
+    # Keep pairs with >= 2 shared snapped positions (i.e. a shared spatial edge).
+    adjacency = defaultdict(list)  # type: defaultdict[int, list[int]]
+    for (fi, fj), count in pair_shared.items():
+        if count >= 2:
+            adjacency[fi].append(fj)
+            adjacency[fj].append(fi)
+
+    return dict(adjacency)
 
 
 def a_star(
-    start_face: BMFace, end_face: BMFace, bm: BMesh, all_faces_passable=False, try_all_faces_passable_fallback=True
+    start_face: BMFace,
+    end_face: BMFace,
+    bm: BMesh,
+    all_faces_passable=False,
+    try_all_faces_passable_fallback=True,
+    adjacency: dict[int, list[int]] | None = None,
 ) -> tuple[list[BMFace] | None, float, bool]:
     """Find shortest path between two faces in a BMesh using A* algorithm.
+
+    Uses spatial adjacency (see `build_spatial_adjacency`) rather than topological edge connectivity, so that meshes
+    with duplicate (non-merged) vertices and/or degenerate faces are handled correctly without modifying the mesh.
 
     If `all_faces_passable` is `True`, the cost of each step is simply the distance between the faces. Otherwise,
     some face flags may modify the distance to get the cost. If `try_all_faces_passable_fallback` is `True`, and no path
     is found when `all_faces_passable` is `False`, the function will try again with `all_faces_passable` set to
     `True` to see if a path can be found through disabled/wall-climbing faces.
+
+    An optional pre-built `adjacency` map can be passed in to avoid rebuilding it on recursive fallback calls or when
+    the caller already has one (e.g. batch edge cost computation over the same mesh).
 
     Returns the list of faces in the path (including start and end), the total cost of the path, and the value of
     `all_faces_passable` so the caller can tell if the fallback option was used. If no path is found, returns
@@ -45,6 +93,11 @@ def a_star(
     """
 
     flags_layer = bm.faces.layers.int.get("nvm_face_flags")  # could be `None` for non-NVM meshes
+
+    # Build spatial adjacency once (reused on fallback).
+    if adjacency is None:
+        bm.faces.ensure_lookup_table()
+        adjacency = build_spatial_adjacency(bm)
 
     # Cached centroids.
     centroids = {i: None for i in range(len(bm.faces))}  # type: dict[int, None | Vector]
@@ -93,7 +146,8 @@ def a_star(
 
             return path, total_cost, all_faces_passable
 
-        for neighbor in get_neighbors(current_face):
+        for neighbor_index in adjacency.get(current_face.index, []):
+            neighbor = bm.faces[neighbor_index]
             distance = get_distance(current_face, neighbor)
             cost = get_navmesh_step_cost(current_face, neighbor, distance, flags_layer, all_faces_passable)
             if math.isinf(cost):
@@ -108,8 +162,13 @@ def a_star(
 
     # No path found.
     if not all_faces_passable and try_all_faces_passable_fallback:
-        # Try again with distance cost override.
-        return a_star(start_face, end_face, bm, all_faces_passable=True, try_all_faces_passable_fallback=False)
+        # Try again with distance cost override. Reuse the same adjacency map.
+        return a_star(
+            start_face, end_face, bm,
+            all_faces_passable=True,
+            try_all_faces_passable_fallback=False,
+            adjacency=adjacency,
+        )
     return None, float("inf"), all_faces_passable
 
 
@@ -175,9 +234,12 @@ def get_best_cost(mesh: bpy.types.Mesh, start_face_i: int, end_face_i: int) -> f
 def get_edge_cost(
     mesh: bpy.types.Mesh, start_face_i: int, end_face_i: int
 ) -> tuple[list[BMFace] | None, float, bool]:
+    """Get the cost of an MCG path between `start_face_i` and `end_face_i` in `mesh`.
+
+    No mesh modification is performed; `a_star` uses spatial adjacency to handle duplicate vertices.
+    """
     bm = bmesh.new()
     bm.from_mesh(mesh)
-    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.001)
     bm.faces.ensure_lookup_table()
     start_face = bm.faces[start_face_i]
     end_face = bm.faces[end_face_i]
@@ -185,3 +247,16 @@ def get_edge_cost(
         return a_star(start_face, end_face, bm)
     finally:
         bm.free()
+
+
+def is_mesh_clean(mesh: bpy.types.Mesh):
+    """Check if mesh is clean: no vertices, edges, or faces removed by `bpy.ops.remove_doubles(dist=0.001)`.`"""
+    bm = bmesh.new()
+    bm.from_mesh(mesh)
+    vertex_count = len(bm.verts)
+    edge_count = len(bm.edges)
+    face_count = len(bm.faces)
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=0.001)
+    if vertex_count != len(bm.verts) or edge_count != len(bm.edges) or face_count != len(bm.faces):
+        return False
+    return True
