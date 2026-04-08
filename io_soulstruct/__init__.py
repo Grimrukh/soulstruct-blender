@@ -26,6 +26,16 @@ except ModuleNotFoundError:
         "Please ensure you are running this code inside Blender's Python environment."
     )
 
+try:
+    import soulstruct.version
+    import soulstruct.havok.version
+except ModuleNotFoundError:
+    raise ModuleNotFoundError(
+        "This Soulstruct add-on requires `soulstruct` and `soulstruct-havok` Python packages to be installed. "
+        "This should have been done automatically by the extension. Try restarting Blender or "
+        "uninstalling and reinstalling the add-on."
+    )
+
 
 # Reload all Soulstruct modules, then all modules in this add-on (except this script).
 # NOTE: This is IMPORTANT when using 'Reload Scripts' in Blender, as it is otherwise prone to partial re-imports of
