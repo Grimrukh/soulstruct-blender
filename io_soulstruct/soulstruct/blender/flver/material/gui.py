@@ -10,6 +10,7 @@ import typing as tp
 
 import bpy
 
+from ...base.register import io_soulstruct_class
 from ...bpy_base.panel import SoulstructPanel
 from ...types import ObjectType, SoulstructType
 from ...flver.image.import_operators import ImportTextures
@@ -29,6 +30,7 @@ def is_flver_or_flver_msb_part(obj: bpy.types.Object) -> bool:
     return False
 
 
+@io_soulstruct_class
 class FLVERGXItemUIList(bpy.types.UIList):
     """Draws a list of `GXItem` elements."""
 
@@ -63,6 +65,7 @@ class FLVERGXItemUIList(bpy.types.UIList):
             subsplit.prop(item, "data", text="", emboss=True)
 
 
+@io_soulstruct_class
 class FLVERMaterialPropsPanel(SoulstructPanel):
     """FLVER Material properties, available on all Blender materials."""
     bl_label = "FLVER Material Properties"
@@ -123,6 +126,7 @@ class FLVERMaterialPropsPanel(SoulstructPanel):
                 layout.label(text=f"{key}: {value}")
 
 
+@io_soulstruct_class
 class FLVERMaterialToolsPanel(SoulstructPanel):
     bl_label = "FLVER Material Tools"
     bl_idname = "SCENE_PT_flver_material_tools"

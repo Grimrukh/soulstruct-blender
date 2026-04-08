@@ -20,9 +20,12 @@ from mathutils import Matrix
 
 from soulstruct.base.maps.msb.region_shapes import RegionShapeType
 
+from ..base.register import *
 from ..types import SoulstructType
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Scene, "region_draw_settings")
 class RegionDrawSettings(bpy.types.PropertyGroup):
 
     draw_point_axes: bpy.props.BoolProperty(
@@ -69,6 +72,7 @@ Y_OFFSET = Matrix.Translation((0, 1, 0))
 Z_OFFSET = Matrix.Translation((0, 0, 1))
 
 
+@io_soulstruct_space_view_3d_draw_handler("WINDOW", "POST_VIEW")
 def draw_msb_regions():
     draw_settings = bpy.context.scene.region_draw_settings
     if not draw_settings.draw_point_axes:

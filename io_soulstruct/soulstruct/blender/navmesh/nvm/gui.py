@@ -16,6 +16,7 @@ import bpy
 from soulstruct.base.events.enums import NavmeshFlag
 from soulstruct.games import DEMONS_SOULS, DARK_SOULS_PTDE, DARK_SOULS_DSR
 
+from ...base.register import io_soulstruct_class
 from ...bpy_base.panel import SoulstructPanel
 from ...exceptions import SoulstructTypeError
 from ...misc.misc_mesh import ApplyLocalMatrixToMesh
@@ -28,6 +29,7 @@ from .misc_operators import *
 from .types import BlenderNVM
 
 
+@io_soulstruct_class
 class NVMNavmeshImportPanel(SoulstructPanel):
     bl_label = "NVM Navmesh Import"
     bl_idname = "NVM_PT_nvm_navmesh_import"
@@ -49,6 +51,7 @@ class NVMNavmeshImportPanel(SoulstructPanel):
         layout.operator(ImportAnyNVM.bl_idname, text="Import Any NVM")
 
 
+@io_soulstruct_class
 class NVMNavmeshExportPanel(SoulstructPanel):
     bl_label = "NVM Navmesh Export"
     bl_idname = "NVM_PT_nvm_navmesh_export"
@@ -81,6 +84,7 @@ class NVMNavmeshExportPanel(SoulstructPanel):
         layout.operator(ExportNVMIntoAnyBinder.bl_idname)
 
 
+@io_soulstruct_class
 class NVMNavmeshToolsPanel(SoulstructPanel):
     bl_label = "NVM Navmesh Tools"
     bl_idname = "NVM_PT_nvm_navmesh_tools"
@@ -169,6 +173,7 @@ def layout_selected_faces(bm: bmesh.types.BMesh, layout, context, selected_faces
         selected_faces_box.label(text="Select navmesh faces in Edit Mode")
 
 
+@io_soulstruct_class
 class NVMEventEntityTriangleUIList(bpy.types.UIList):
     """Draws a list of items."""
     PROP_NAME: tp.ClassVar[str] = "index"
@@ -197,6 +202,7 @@ class NVMEventEntityTriangleUIList(bpy.types.UIList):
             layout.prop(item, self.PROP_NAME, text="", emboss=False)
 
 
+@io_soulstruct_class
 class NVMEventEntityPanel(SoulstructPanel):
     """Draw a Panel in the Object properties window exposing NVM Event Entity properties for active object."""
     bl_label = "NVM Event Entity Settings"

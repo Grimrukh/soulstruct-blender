@@ -21,9 +21,12 @@ from soulstruct.darksouls1r.maps import MSB as DSR_MSB
 from soulstruct.demonssouls.maps import MSB as DES_MSB
 from soulstruct.games import *
 
-from ..msb.types import darksouls1ptde, darksouls1r, demonssouls
+from ..base.operators import *
+from ..base.register import io_soulstruct_class
 from ..flver.models.properties import FLVERImportSettings
+from ..flver.models.gui.flver_material_settings import draw_material_image_settings
 from ..general.cached import get_cached_file
+from ..msb.types import darksouls1ptde, darksouls1r, demonssouls
 from ..types import SoulstructCollectionType
 from ..utilities import *
 from .misc_operators import EnableAllImportModels, DisableAllImportModels
@@ -282,23 +285,10 @@ class _BaseImportMSB(LoggingOperator):
 
         self.layout.separator()
         self.layout.label(text="FLVER Material Settings:")
-        mat_settings = context.scene.flver_material_settings
-
-        if settings.game_config.uses_matbin:
-            layout.label(text="Custom MATBINBND Path:")
-            layout.prop(mat_settings, mat_settings.get_game_matbinbnd_path_prop_name(context), text="")
-        else:
-            layout.label(text="Custom MTDBND Path:")
-            layout.prop(mat_settings, mat_settings.get_game_mtdbnd_path_prop_name(context), text="")
-
-        layout.label(text="Image Cache Directory:")
-        layout.prop(mat_settings, mat_settings.get_game_image_cache_path_prop_name(context), text="")
-        layout.prop(mat_settings, "image_cache_format")
-        layout.prop(mat_settings, "import_cached_images")
-        layout.prop(mat_settings, "cache_new_game_images")
-        layout.prop(mat_settings, "pack_image_data")
+        draw_material_image_settings(layout, context)
 
 
+@io_soulstruct_class
 class ImportMapMSB(_BaseImportMSB):
     """Import all Parts, Regions, and Events from active map's MSB.
 
@@ -336,6 +326,7 @@ class ImportMapMSB(_BaseImportMSB):
         return _import_msb(self, context, msb, msb_stem, oldest_map_stem)
 
 
+@io_soulstruct_class
 class ImportAnyMSB(_BaseImportMSB, LoggingImportOperator):
     """Import all Parts, Regions, and Events from active map's MSB.
 

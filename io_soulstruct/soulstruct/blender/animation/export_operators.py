@@ -18,10 +18,11 @@ from soulstruct.containers import Binder, EntryNotFoundError
 from soulstruct.dcx import DCXType
 from soulstruct.havok.fromsoft.base import BaseSkeletonHKX, BaseAnimationHKX
 
+from ..base.operators import *
+from ..base.register import io_soulstruct_class
 from ..exceptions import *
 from ..flver.models import BlenderFLVER
 from ..types import *
-from ..utilities import *
 from .utilities import *
 from .types import SoulstructAnimation
 
@@ -39,6 +40,7 @@ def _is_bl_flver_with_animation_data(obj: bpy.types.Object) -> tp.TypeGuard[Mesh
     return bool(bl_flver.armature and bl_flver.armature.animation_data and bl_flver.armature.animation_data.action)
 
 
+@io_soulstruct_class
 class ExportAnyHKXAnimation(LoggingExportOperator):
     """Export loose HKX animation file from an Action attached to active FLVER Armature."""
     bl_idname = "export_scene.hkx_animation"
@@ -140,6 +142,7 @@ class ExportAnyHKXAnimation(LoggingExportOperator):
         return {"FINISHED"}
 
 
+@io_soulstruct_class
 class ExportHKXAnimationIntoAnyBinder(LoggingImportOperator):
     """Export HKX animation from an Action attached to a FLVER armature, into an existing BND."""
     bl_idname = "export_scene.hkx_animation_binder"
@@ -258,7 +261,7 @@ class ExportHKXAnimationIntoAnyBinder(LoggingImportOperator):
         return {"FINISHED"}
 
 
-class BaseExportTypedHKXAnimation(LoggingOperator):
+class _BaseExportTypedHKXAnimation(LoggingOperator):
 
     @classmethod
     def poll(cls, context) -> bool:
@@ -277,7 +280,8 @@ class BaseExportTypedHKXAnimation(LoggingOperator):
         return bool(bl_flver.armature and bl_flver.armature.animation_data and bl_flver.armature.animation_data.action)
 
 
-class ExportCharacterHKXAnimation(BaseExportTypedHKXAnimation):
+@io_soulstruct_class
+class ExportCharacterHKXAnimation(_BaseExportTypedHKXAnimation):
     """Export active animation from selected character Armature into that character's game ANIBND."""
     bl_idname = "export_scene.hkx_character_animation"
     bl_label = "Export Character Anim"
@@ -413,7 +417,8 @@ class ExportCharacterHKXAnimation(BaseExportTypedHKXAnimation):
         return {"FINISHED" if exported_paths else "CANCELLED"}
 
 
-class ExportObjectHKXAnimation(BaseExportTypedHKXAnimation):
+@io_soulstruct_class
+class ExportObjectHKXAnimation(_BaseExportTypedHKXAnimation):
     """Export active animation from selected object Armature into that object's game OBJBND."""
     bl_idname = "export_scene.object_hkx_animation"
     bl_label = "Export Object Anim"

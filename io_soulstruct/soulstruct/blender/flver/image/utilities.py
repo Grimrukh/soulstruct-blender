@@ -7,7 +7,7 @@ __all__ = [
 
 import bpy
 
-from ...utilities.operators import LoggingOperator
+from ...base.operators import LoggingOperator
 
 
 def get_possible_image_names(image_stem: str) -> tuple[str, ...]:

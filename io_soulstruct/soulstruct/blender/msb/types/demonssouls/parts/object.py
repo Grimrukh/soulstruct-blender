@@ -9,10 +9,10 @@ import bpy
 from soulstruct.demonssouls.maps.models import MSBObjectModel
 from soulstruct.demonssouls.maps.parts import MSBObject, MSBDummyObject
 
-from ...adapters import *
-from ....properties.parts import BlenderMSBPartSubtype, MSBObjectProps
+from .....base import LoggingOperator
 from .....types import SoulstructType
-from .....utilities import LoggingOperator
+from ....properties.parts import BlenderMSBPartSubtype, MSBObjectProps
+from ...adapters import *
 
 from .base import BaseBlenderMSBPart_DES
 

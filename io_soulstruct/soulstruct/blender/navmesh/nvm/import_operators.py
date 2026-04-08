@@ -22,9 +22,11 @@ from pathlib import Path
 
 import bpy
 
-from soulstruct.containers import Binder, BinderEntry
 from soulstruct.base.maps.navmesh.nvm import NVM
+from soulstruct.containers import Binder, BinderEntry
 
+from ...base.operators import *
+from ...base.register import io_soulstruct_class
 from ...exceptions import NVMImportError
 from ...utilities import *
 from .types import *
@@ -37,7 +39,7 @@ class NVMImportChoiceInfo(tp.NamedTuple):
     entries: list[BinderEntry]  # entries from which user must choose
 
 
-class BaseImportNVM(LoggingImportOperator):
+class _BaseImportNVM(LoggingImportOperator):
 
     # Type hints for `LoggingOperator`.
     error: tp.Callable[[str], set[str]]
@@ -104,7 +106,8 @@ class BaseImportNVM(LoggingImportOperator):
         return entry_model_id == self.navmesh_model_id
 
 
-class ImportAnyNVM(BaseImportNVM):
+@io_soulstruct_class
+class ImportAnyNVM(_BaseImportNVM):
     bl_idname = "import_scene.nvm"
     bl_label = "Import NVM"
     bl_description = "Import a NVM navmesh file. Can import from BNDs and supports DCX-compressed files"
@@ -211,6 +214,7 @@ def get_binder_entry_choices(self, context):
     return ImportNVMWithBinderChoice.enum_options
 
 
+@io_soulstruct_class
 class ImportNVMWithBinderChoice(LoggingOperator):
     """Presents user with a choice of enums from `enum_choices` class variable (set prior).
 
@@ -285,6 +289,7 @@ class ImportNVMWithBinderChoice(LoggingOperator):
         bpy.ops.wm.nvm_binder_choice_operator("INVOKE_DEFAULT")
 
 
+@io_soulstruct_class
 class ImportMapNVM(BinderEntrySelectOperator):
     """Import a NVM from the current selected value of listed game map NVMs."""
     bl_idname = "import_scene.selected_map_nvm"

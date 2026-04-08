@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 __all__ = [
-    "ImportAnyHKXAnimation",
     "ImportHKXAnimationWithBinderChoice",
+    "ImportAnyHKXAnimation",
     "ImportCharacterHKXAnimation",
     "ImportObjectHKXAnimation",
     "ImportAssetHKXAnimation",
@@ -21,10 +21,10 @@ from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
 from soulstruct.eldenring.containers import DivBinder
 from soulstruct.havok.core import HKX
 
+from ..base.operators import *
+from ..base.register import io_soulstruct_class
 from ..exceptions import AnimationImportError, UnsupportedGameError
 from ..types import *
-from ..utilities import *
-
 from .types import SoulstructAnimation
 from .utilities import *
 
@@ -35,7 +35,7 @@ GEOMBND_RE = re.compile(r"^.*?\.geombnd(\.dcx)?$")
 SKELETON_ENTRY_RE = re.compile(r"skeleton\.hkx(\.dcx)?", flags=re.IGNORECASE)
 
 
-class BaseImportHKXAnimation(LoggingOperator):
+class _BaseImportHKXAnimation(LoggingOperator):
     """NOTE: Not all subclasses are `ImportHelper` operators."""
 
     @classmethod
@@ -77,7 +77,8 @@ class BaseImportHKXAnimation(LoggingOperator):
         return read_skeleton_hkx_entry(skeleton_entry, compendium)
 
 
-class ImportHKXAnimationWithBinderChoice(BaseImportHKXAnimation, BinderEntrySelectOperator):
+@io_soulstruct_class
+class ImportHKXAnimationWithBinderChoice(_BaseImportHKXAnimation, BinderEntrySelectOperator):
     """Presents user with a choice of enums from `enum_choices` class variable (set prior).
 
     See: https://blender.stackexchange.com/questions/6512/how-to-call-invoke-popup
@@ -161,7 +162,8 @@ class ImportHKXAnimationWithBinderChoice(BaseImportHKXAnimation, BinderEntrySele
         return bpy.ops.wm.hkx_animation_binder_choice("INVOKE_DEFAULT")
 
 
-class ImportAnyHKXAnimation(BaseImportHKXAnimation, LoggingImportOperator):
+@io_soulstruct_class
+class ImportAnyHKXAnimation(_BaseImportHKXAnimation, LoggingImportOperator):
     bl_idname = "import_scene.hkx_animation"
     bl_label = "Import Any HKX Anim"
     bl_description = ("Import a HKX animation file from an ANIBND, OBJBND, or GEOMBND. Loose HKX animation files "
@@ -233,7 +235,7 @@ class ImportAnyHKXAnimation(BaseImportHKXAnimation, LoggingImportOperator):
         )
 
 
-class BaseImportTypedHKXAnimation(BaseImportHKXAnimation):
+class _BaseImportTypedHKXAnimation(_BaseImportHKXAnimation):
     """Base class for importing character, object, and asset FLVER animations from their specific ANIBND sources."""
 
     def execute(self, context):
@@ -266,7 +268,8 @@ def _sub_c0000_binder_choices(self, context):
     return ImportCharacterHKXAnimation.c0000_binder_choices
 
 
-class ImportCharacterHKXAnimation(BaseImportTypedHKXAnimation):
+@io_soulstruct_class
+class ImportCharacterHKXAnimation(_BaseImportTypedHKXAnimation):
     """Detects name of selected character FLVER Armature and finds their ANIBND in the game directory."""
     bl_idname = "import_scene.character_hkx_animation"
     bl_label = "Import Character Anim"
@@ -358,7 +361,8 @@ class ImportCharacterHKXAnimation(BaseImportTypedHKXAnimation):
         return anibnd, skeleton_hkx, compendium
 
 
-class ImportObjectHKXAnimation(BaseImportTypedHKXAnimation):
+@io_soulstruct_class
+class ImportObjectHKXAnimation(_BaseImportTypedHKXAnimation):
     """Detects name of selected object FLVER Armature and finds their OBJBND in the game directory."""
     bl_idname = "import_scene.object_hkx_animation"
     bl_label = "Import Object Anim"
@@ -396,7 +400,8 @@ class ImportObjectHKXAnimation(BaseImportTypedHKXAnimation):
         return anibnd, skeleton_hkx, compendium
 
 
-class ImportAssetHKXAnimation(BaseImportTypedHKXAnimation):
+@io_soulstruct_class
+class ImportAssetHKXAnimation(_BaseImportTypedHKXAnimation):
     """Detects name of selected asset FLVER Armature and finds their GEOMBND in the game directory.
 
     Elden Ring and onwards only.

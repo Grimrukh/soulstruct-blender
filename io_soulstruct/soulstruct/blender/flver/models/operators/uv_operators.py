@@ -21,7 +21,8 @@ import bpy
 import bmesh
 from mathutils import Matrix, Vector
 
-from ....utilities import LoggingOperator
+from ....base.operators import LoggingOperator
+from ....base.register import io_soulstruct_class
 
 
 # noinspection PyUnusedLocal
@@ -36,6 +37,7 @@ def _get_uv_layer_items(self, context) -> list[tuple[str, str, str]]:
     return ActivateUVMap.UV_LAYER_NAMES
 
 
+@io_soulstruct_class
 class ActivateUVMap(LoggingOperator):
 
     bl_idname = "object.activate_uv_map"
@@ -103,6 +105,7 @@ class ActivateUVMap(LoggingOperator):
         return self.error(f"No textures found that were linked to by the '{uv_layer_name}' attribute node.")
 
 
+@io_soulstruct_class
 class FastUVUnwrap(LoggingOperator):
 
     bl_idname = "uv.fast_uv_unwrap"
@@ -137,6 +140,7 @@ class FastUVUnwrap(LoggingOperator):
         return {"FINISHED"}
 
 
+@io_soulstruct_class
 class FastUVUnwrapIslands(LoggingOperator):
 
     bl_idname = "uv.fast_uv_unwrap_islands"
@@ -223,6 +227,7 @@ def _rotate_uv_map(operator: LoggingOperator, context, angle_rad: float) -> set[
     return {"FINISHED"}
 
 
+@io_soulstruct_class
 class RotateUVMapClockwise90(LoggingOperator):
 
     bl_idname = "uv.rotate_uv_map_clockwise_90"
@@ -237,6 +242,7 @@ class RotateUVMapClockwise90(LoggingOperator):
         return _rotate_uv_map(self, context, -math.pi / 2.0)
 
 
+@io_soulstruct_class
 class RotateUVMapCounterClockwise90(LoggingOperator):
 
     bl_idname = "uv.rotate_uv_map_counter_clockwise_90"
@@ -251,6 +257,7 @@ class RotateUVMapCounterClockwise90(LoggingOperator):
         return _rotate_uv_map(self, context, math.pi / 2.0)
 
 
+@io_soulstruct_class
 class AddRandomUVTileOffsets(LoggingOperator):
 
     bl_idname = "uv.add_random_uv_tile_offsets"

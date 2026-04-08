@@ -12,11 +12,14 @@ __all__ = [
 
 import bpy
 
-from ..types import BlenderFLVER
+from ....base.operators import LoggingOperator
+from ....base.register import io_soulstruct_class
 from ....types import SoulstructType
-from ....utilities import LoggingOperator, replace_shared_prefix
+from ....utilities import replace_shared_prefix
+from ..types import BlenderFLVER
 
 
+@io_soulstruct_class
 class CopyToNewFLVER(LoggingOperator):
 
     bl_idname = "object.copy_to_new_flver"
@@ -54,6 +57,7 @@ class CopyToNewFLVER(LoggingOperator):
         return {"FINISHED"}
 
 
+@io_soulstruct_class
 class RenameFLVER(LoggingOperator):
 
     bl_idname = "object.rename_flver"
@@ -123,6 +127,7 @@ class RenameFLVER(LoggingOperator):
         return {"FINISHED"}
 
 
+@io_soulstruct_class
 class SelectMeshChildren(LoggingOperator):
     """Simple operator that iterates over selected objects, selects all MESH children of any ARMATURES, and deselects
     anything else that isn't a MESH."""
@@ -150,6 +155,7 @@ class SelectMeshChildren(LoggingOperator):
         return {"FINISHED"}
 
 
+@io_soulstruct_class
 class SyncMSBPartArmatures(LoggingOperator):
     """Sync the Armature of all FLVER models that are instanced by MSB Parts. Only works for MSB Map Piece ('m*') parts
     currently."""
@@ -183,6 +189,7 @@ class SyncMSBPartArmatures(LoggingOperator):
         return {"FINISHED"}
 
 
+@io_soulstruct_class
 class ClearFLVERSubmeshProperties(LoggingOperator):
     """Clear all submesh properties on the active FLVER model, so that it will use global properties instead."""
     bl_idname = "flver.clear_submesh_props"
@@ -202,6 +209,7 @@ class ClearFLVERSubmeshProperties(LoggingOperator):
         return {"FINISHED"}
 
 
+@io_soulstruct_class
 class AddFLVERSubmeshProperties(LoggingOperator):
     """Add per-submesh properties on the active FLVER model, to use instead of global properties."""
     bl_idname = "flver.add_submesh_props"

@@ -16,7 +16,8 @@ import bpy
 from soulstruct.flver import *
 from soulstruct.utilities.text import natural_keys
 
-from .....base import BaseBlenderSoulstructObject, add_auto_type_props
+from .....base.operators import *
+from .....base.soulstruct_object import BaseBlenderSoulstructObject, add_auto_type_props
 from .....exceptions import *
 from .....flver.image.types import DDSTextureCollection
 from .....flver.material.types import BlenderFLVERMaterial

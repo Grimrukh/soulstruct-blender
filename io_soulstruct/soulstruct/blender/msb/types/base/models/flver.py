@@ -19,12 +19,13 @@ import bpy
 from soulstruct.containers import Binder, BinderEntry
 from soulstruct.flver import FLVER, MergedMesh
 
+from .....base.operators import *
 from .....exceptions import FLVERImportError
 from .....flver.image.image_import_manager import ImageImportManager
 from .....flver.models.types import BlenderFLVER
 from .....flver.utilities import get_flvers_from_binder
 from .....types import *
-from .....utilities import find_or_create_collection, LoggingOperator, get_model_name, find_obj
+from .....utilities import find_or_create_collection, get_model_name, find_obj
 
 from .base import BaseBlenderMSBModelImporter, MODEL_T
 

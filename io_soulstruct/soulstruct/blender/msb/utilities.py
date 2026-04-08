@@ -21,8 +21,8 @@ import bpy
 
 from soulstruct.base.maps.msb import MSB, MSBEntry  # must not be imported under `TYPE_CHECKING` guard
 
+from ..base.operators import LoggingOperator
 from ..general.cached import get_cached_file
-from ..utilities import *
 
 
 MSB_COLLECTION_RE = re.compile(r"^(m\d\d_\d\d_\d\d_\d\d) MSB$")
@@ -154,7 +154,7 @@ class BaseMSBEntrySelectOperator(LoggingOperator):
 
         return entry_list[entry_id]
 
-    def _import_entry(self, context: Context, entry: MSBEntry):
+    def _import_entry(self, context: bpy.types.Context, entry: MSBEntry):
         """Subclass must implement this function to handle the chosen MSB entry."""
         raise NotImplementedError(f"Operator `{self.__class__.__name__} must implement `_import_entry()`.")
 

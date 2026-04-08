@@ -8,6 +8,7 @@ import bpy
 
 from soulstruct.flver.material import Material
 
+from ..base.register import io_soulstruct_class, io_soulstruct_pointer_property
 from ..bpy_base.property_group import SoulstructPropertyGroup
 from ..types import ObjectType
 
@@ -39,6 +40,8 @@ def _get_display_mask_id_items(self, context) -> list[tuple[str, str, str]]:
     return items
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Scene, "flver_tool_settings")
 class FLVERToolSettings(SoulstructPropertyGroup):
     """Holds settings for the various operators below. Drawn manually in operator browser windows."""
 

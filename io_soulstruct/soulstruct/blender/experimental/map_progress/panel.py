@@ -6,18 +6,12 @@ __all__ = [
 
 import bpy
 
-from .operators import (
-    MapProgressSelectObject,
-    SetMapProgressState,
-    ToggleMapProgressOverlay,
-    ExportMapProgressCSV,
-    MapProgressBulkInit,
-    RefreshMapProgressVisuals,
-)
-
+from ...base.register import io_soulstruct_class
+from .operators import *
 from .utils import count_states, objects_by_state
 
 
+@io_soulstruct_class
 class MapProgressPanel(bpy.types.Panel):
     bl_label = "Map Progress"
     bl_idname = "MAPPROG_PT_progress"

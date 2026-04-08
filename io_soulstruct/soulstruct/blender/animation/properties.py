@@ -7,7 +7,11 @@ __all__ = [
 
 import bpy
 
+from ..base.register import io_soulstruct_class, io_soulstruct_pointer_property
 
+
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Scene, "animation_import_settings")
 class AnimationImportSettings(bpy.types.PropertyGroup):
 
     to_60_fps: bpy.props.BoolProperty(
@@ -17,6 +21,8 @@ class AnimationImportSettings(bpy.types.PropertyGroup):
     )
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Scene, "animation_export_settings")
 class AnimationExportSettings(bpy.types.PropertyGroup):
 
     from_60_fps: bpy.props.BoolProperty(

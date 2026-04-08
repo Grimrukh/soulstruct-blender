@@ -20,6 +20,7 @@ from soulstruct.base.models.matbin import MATBINBND
 from soulstruct.base.models.mtd import MTDBND
 from soulstruct.games import *
 
+from ...base.register import io_soulstruct_class, io_soulstruct_pointer_property
 from ...bpy_base.property_group import SoulstructPropertyGroup
 from ...exceptions import InternalSoulstructBlenderError
 from ...flver.image.enums import BlenderImageFormat
@@ -28,7 +29,7 @@ from ...utilities import *
 
 if tp.TYPE_CHECKING:
     from soulstruct.games import Game
-    from ...utilities import LoggingOperator
+    from ...base.operators import LoggingOperator
 
 
 # noinspection PyUnusedLocal
@@ -59,8 +60,11 @@ def _check_gx_item_data(self, context: str) -> None:
     # Valid.
 
 
+@io_soulstruct_class
 class FLVERGXItemProps(bpy.types.PropertyGroup):
     """Extension properties for FLVER `GXItem` collection on `FLVERMaterialProps`.
+
+    NOTE: This is only used as nested inside `FLVERMaterialProps`.
 
     NOTE: Dummy item that appears last in each list is not imported in Blender and is auto-created on export.
     """
@@ -107,6 +111,8 @@ class FLVERGXItemProps(bpy.types.PropertyGroup):
         return bytes(bytearray.fromhex(self.data))
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Material, "FLVER_MATERIAL")
 class FLVERMaterialProps(SoulstructPropertyGroup):
     """Extension properties for Blender materials that represent FLVER materials.
 
@@ -201,6 +207,8 @@ class FLVERMaterialProps(SoulstructPropertyGroup):
     )
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Scene, "FLVER_MATERIAL_SETTINGS")
 class FLVERMaterialSettings(SoulstructPropertyGroup):
     """Global (Scene) settings for FLVER material import/export."""
 
@@ -408,7 +416,7 @@ class FLVERMaterialSettings(SoulstructPropertyGroup):
         path_str = getattr(self, prop_name)
         return Path(path_str) if path_str else None
 
-    def get_cached_image_path(self, context: bpy.types.Context, image_stem: str):
+    def get_cached_image_path(self, context: bpy.types.Context, image_stem: str) -> Path:
         """Get the path to a cached image file in the image cache directory."""
         image_cache_directory = self.get_game_image_cache_directory(context)
         if not image_cache_directory:
@@ -431,7 +439,8 @@ class FLVERMaterialSettings(SoulstructPropertyGroup):
         if settings.game_config.uses_matbin:
             raise InternalSoulstructBlenderError(f"Active game '{game.name}' does not use MTDs. Should not call this.")
 
-        if is_path_and_file(custom_path := self.get_game_mtdbnd_path(context)):
+        custom_path = self.get_game_mtdbnd_path(context)
+        if is_path_and_file(custom_path):
             return MTDBND.from_path(custom_path)
 
         # Try to find MTDBND in project or game directory. We know their names from the bundled versions in Soulstruct,
@@ -480,7 +489,8 @@ class FLVERMaterialSettings(SoulstructPropertyGroup):
                 f"Active game '{game.name}' does not use MATBINs. Should not call this."
             )
 
-        if is_path_and_file(custom_path := self.get_game_matbinbnd_path(context)):
+        custom_path = self.get_game_matbinbnd_path(context)
+        if is_path_and_file(custom_path):
             return MATBINBND.from_path(custom_path)
 
         # Try to find MATBINBND in project or game directory.

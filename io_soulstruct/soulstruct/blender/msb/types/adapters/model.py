@@ -9,6 +9,7 @@ from dataclasses import dataclass
 
 import bpy
 
+from ....base.operators import *
 from ....types import *
 from ....utilities import *
 

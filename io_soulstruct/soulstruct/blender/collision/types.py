@@ -7,17 +7,19 @@ __all__ = [
 import typing as tp
 from pathlib import Path
 
+import numpy as np
+
 import bmesh
 import bpy
-import numpy as np
-from ..base import BaseBlenderSoulstructObject
-from ..exceptions import MapCollisionExportError
-from ..types import *
-from ..utilities import *
 
 from soulstruct.havok.enums import HavokModule
 from soulstruct.havok.fromsoft.shared.map_collision import *
 
+from ..base.operators import *
+from ..base.soulstruct_object import BaseBlenderSoulstructObject
+from ..exceptions import MapCollisionExportError
+from ..types import *
+from ..utilities import *
 from .properties import MapCollisionProps
 from .utilities import HKX_MATERIAL_NAME_RE
 

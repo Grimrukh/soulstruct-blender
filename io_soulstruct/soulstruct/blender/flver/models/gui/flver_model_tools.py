@@ -4,6 +4,7 @@ __all__ = [
     "FLVERModelToolsPanel",
 ]
 
+from ....base.register import io_soulstruct_class
 from ....bpy_base.panel import SoulstructPanel
 from ....exceptions import SoulstructTypeError
 from ....misc.misc_mesh import *
@@ -11,6 +12,7 @@ from ..operators import *
 from ..types import BlenderFLVER
 
 
+@io_soulstruct_class
 class FLVERModelToolsPanel(SoulstructPanel):
     bl_label = "FLVER Model Tools"
     bl_idname = "SCENE_PT_flver_model_tools"

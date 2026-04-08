@@ -9,8 +9,8 @@ from dataclasses import dataclass
 
 import bpy
 
+from ....base.operators import LoggingOperator
 from ....types.field_adapters import FieldAdapter
-from ....utilities.operators import LoggingOperator
 from ....utilities.conversion import *
 
 if tp.TYPE_CHECKING:

@@ -14,11 +14,14 @@ import bpy
 
 from soulstruct.games import *
 
+from ...base.register import io_soulstruct_class, io_soulstruct_pointer_property
 from ...bpy_base.property_group import SoulstructPropertyGroup
 from .events import BlenderMSBEventSubtype
 from .parts import MSBPartArmatureMode
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Scene, "msb_import_settings")
 class MSBImportSettings(SoulstructPropertyGroup):
     """Common MSB import settings. Drawn manually in operator browser windows."""
 
@@ -125,18 +128,20 @@ class MSBImportSettings(SoulstructPropertyGroup):
     def get_model_name_match_filter(self) -> tp.Callable[[str], bool]:
         match self.model_name_filter_match_mode:
             case "GLOB":
-                def is_name_match(name: str):
+                def is_name_match(name: str) -> bool:
                     return self.model_name_filter in {"", "*"} or fnmatch(name, self.model_name_filter)
             case "REGEX":
-                pattern = re.compile(self.model_name_filter)
+                pattern = re.compile(self.model_name_filter)  # type: re.Pattern[str]
 
-                def is_name_match(name: str):
-                    return self.model_name_filter == "" or re.match(pattern, name)
+                def is_name_match(name: str) -> bool:
+                    return self.model_name_filter == "" or (re.match(pattern, name) is not None)
             case _:  # should never happen
                 raise ValueError(f"Invalid MSB Model name match mode: {self.model_name_filter}")
         return is_name_match
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Scene, "msb_export_settings")
 class MSBExportSettings(SoulstructPropertyGroup):
 
     GAME_PROP_NAMES = {
@@ -207,6 +212,8 @@ class MSBExportSettings(SoulstructPropertyGroup):
     )
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Scene, "msb_tool_settings")
 class MSBToolSettings(SoulstructPropertyGroup):
 
     event_color: bpy.props.FloatVectorProperty(

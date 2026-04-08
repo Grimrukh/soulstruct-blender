@@ -19,7 +19,7 @@ import bpy
 
 from soulstruct.base.maps.msb.models import BaseMSBModel
 
-from .....utilities.operators import LoggingOperator
+from .....base.operators import LoggingOperator
 from .....types import MeshObject
 
 

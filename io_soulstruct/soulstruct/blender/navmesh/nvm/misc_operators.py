@@ -14,16 +14,20 @@ __all__ = [
     "GenerateNavmeshFromCollision",
 ]
 
+import typing as tp
+
 import bmesh
 import bpy
 from mathutils import Vector
 
 from soulstruct.base.events.enums import NavmeshFlag
 
+from ...base.operators import LoggingOperator
+from ...base.register import io_soulstruct_class, io_soulstruct_pointer_property
 from ...bpy_base.property_group import SoulstructPropertyGroup
 from ...exceptions import SoulstructTypeError
 from ...types import *
-from ...utilities import LoggingOperator, replace_shared_prefix
+from ...utilities import replace_shared_prefix
 from .types import BlenderNVM
 from .utilities import set_face_material, get_navmesh_material
 
@@ -34,6 +38,8 @@ _navmesh_flag_items = [
 ]
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Scene, "navmesh_face_settings")
 class NavmeshFaceSettings(SoulstructPropertyGroup):
 
     # No game-specific properties.
@@ -53,6 +59,7 @@ class NavmeshFaceSettings(SoulstructPropertyGroup):
     )
 
 
+@io_soulstruct_class
 class RenameNavmesh(LoggingOperator):
     """Simply renames an NVM model and all MSB Navmesh parts that instance it."""
     bl_idname = "object.rename_nvm"
@@ -111,6 +118,7 @@ class RenameNavmesh(LoggingOperator):
         return {"FINISHED"}
 
 
+@io_soulstruct_class
 class RefreshFaceIndices(LoggingOperator):
     bl_idname = "mesh.refresh_face_indices"
     bl_label = "Refresh Selected Face Indices"
@@ -122,114 +130,80 @@ class RefreshFaceIndices(LoggingOperator):
         return {"FINISHED"}
 
 
-class AddNVMFaceFlags(LoggingOperator):
+class _BaseModifyNVMFaceFlags(LoggingOperator):
+
+    MODIFY_TYPE: tp.ClassVar[str]  # {ADD, REMOVE, SET}
+
+    @classmethod
+    def poll(cls, context) -> bool:
+        return context.edit_object is not None and context.mode == "EDIT_MESH"
+
+    # noinspection PyMethodMayBeStatic
+    def execute(self, context):
+        # noinspection PyTypeChecker
+        obj = context.edit_object
+        if obj is None or obj.type != ObjectType.MESH:
+            return self.error("No Mesh selected.")
+
+        obj: MeshObject
+        bm = bmesh.from_edit_mesh(obj.data)
+
+        props = context.scene.navmesh_face_settings
+        navmesh_flag = int(props.navmesh_flag)
+
+        flags_layer = bm.faces.layers.int.get("nvm_face_flags")
+        if flags_layer:
+            selected_faces = [face for face in bm.faces if face.select]
+            if self.MODIFY_TYPE == "ADD":
+                for face in selected_faces:
+                    face[flags_layer] |= navmesh_flag
+                    set_face_material(bl_mesh=obj.data, bl_face=face, face_flags=face[flags_layer])
+            elif self.MODIFY_TYPE == "REMOVE":
+                for face in selected_faces:
+                    face[flags_layer] &= ~navmesh_flag
+                    set_face_material(bl_mesh=obj.data, bl_face=face, face_flags=face[flags_layer])
+            elif self.MODIFY_TYPE == "SET":
+                for face in selected_faces:
+                    face[flags_layer] = navmesh_flag
+                    set_face_material(bl_mesh=obj.data, bl_face=face, face_flags=face[flags_layer])
+            else:
+                raise TypeError(f"Invalid MODIFY_TYPE for NVM Face Flags operator: {self.MODIFY_TYPE}")
+
+            bmesh.update_edit_mesh(obj.data)
+
+        # TODO: Would be nice to remove now-unused materials from the mesh.
+
+        return {"FINISHED"}
+
+
+@io_soulstruct_class
+class AddNVMFaceFlags(_BaseModifyNVMFaceFlags):
     bl_idname = "mesh.add_nvm_face_flags"
     bl_label = "Add NVM Face Flags"
     bl_description = "Add the selected NavmeshFlag bit flag to all selected faces"
 
-    @classmethod
-    def poll(cls, context) -> bool:
-        return context.edit_object is not None and context.mode == "EDIT_MESH"
-
-    # noinspection PyMethodMayBeStatic
-    def execute(self, context):
-        # noinspection PyTypeChecker
-        obj = context.edit_object
-        if obj is None or obj.type != ObjectType.MESH:
-            return self.error("No Mesh selected.")
-
-        obj: MeshObject
-        bm = bmesh.from_edit_mesh(obj.data)
-
-        props = context.scene.navmesh_face_settings
-        navmesh_flag = int(props.navmesh_flag)
-
-        flags_layer = bm.faces.layers.int.get("nvm_face_flags")
-        if flags_layer:
-            selected_faces = [face for face in bm.faces if face.select]
-            for face in selected_faces:
-                face[flags_layer] |= navmesh_flag
-                set_face_material(bl_mesh=obj.data, bl_face=face, face_flags=face[flags_layer])
-
-            bmesh.update_edit_mesh(obj.data)
-
-        # TODO: Would be nice to remove now-unused materials from the mesh.
-
-        return {"FINISHED"}
+    MODIFY_TYPE = "ADD"
 
 
-class RemoveNVMFaceFlags(LoggingOperator):
+@io_soulstruct_class
+class RemoveNVMFaceFlags(_BaseModifyNVMFaceFlags):
     bl_idname = "mesh.remove_nvm_face_flags"
     bl_label = "Remove NVM Face Flags"
     bl_description = "Remove the selected NavmeshFlag bit flag from all selected faces"
 
-    @classmethod
-    def poll(cls, context) -> bool:
-        return context.edit_object is not None and context.mode == "EDIT_MESH"
-
-    # noinspection PyMethodMayBeStatic
-    def execute(self, context):
-        # noinspection PyTypeChecker
-        obj = context.edit_object
-        if obj is None or obj.type != ObjectType.MESH:
-            return self.error("No Mesh selected.")
-
-        obj: MeshObject
-        bm = bmesh.from_edit_mesh(obj.data)
-
-        props = context.scene.navmesh_face_settings
-        navmesh_flag = int(props.navmesh_flag)
-
-        flags_layer = bm.faces.layers.int.get("nvm_face_flags")
-        if flags_layer:
-            selected_faces = [face for face in bm.faces if face.select]
-            for face in selected_faces:
-                face[flags_layer] &= ~navmesh_flag
-                set_face_material(bl_mesh=obj.data, bl_face=face, face_flags=face[flags_layer])
-
-            bmesh.update_edit_mesh(obj.data)
-
-        # TODO: Would be nice to remove now-unused materials from the mesh.
-
-        return {"FINISHED"}
+    MODIFY_TYPE = "REMOVE"
 
 
-class SetNVMFaceFlags(LoggingOperator):
+@io_soulstruct_class
+class SetNVMFaceFlags(_BaseModifyNVMFaceFlags):
     bl_idname = "mesh.set_nvm_face_flags"
     bl_label = "Set NVM Face Flags"
     bl_description = "Set the selected NavmeshFlag bit flag (and no others) to all selected faces"
 
-    @classmethod
-    def poll(cls, context) -> bool:
-        return context.edit_object is not None and context.mode == "EDIT_MESH"
-
-    # noinspection PyMethodMayBeStatic
-    def execute(self, context):
-        # noinspection PyTypeChecker
-        obj = context.edit_object
-        if obj is None or obj.type != ObjectType.MESH:
-            return self.error("No Mesh selected.")
-
-        obj: MeshObject
-        bm = bmesh.from_edit_mesh(obj.data)
-
-        props = context.scene.navmesh_face_settings
-        navmesh_flag = int(props.navmesh_flag)
-
-        flags_layer = bm.faces.layers.int.get("nvm_face_flags")
-        if flags_layer:
-            selected_faces = [face for face in bm.faces if face.select]
-            for face in selected_faces:
-                face[flags_layer] = navmesh_flag
-                set_face_material(bl_mesh=obj.data, bl_face=face, face_flags=face[flags_layer])
-
-            bmesh.update_edit_mesh(obj.data)
-
-        # TODO: Would be nice to remove now-unused materials from the mesh.
-
-        return {"FINISHED"}
+    MODIFY_TYPE = "SET"
 
 
+@io_soulstruct_class
 class SetNVMFaceObstacleCount(LoggingOperator):
     bl_idname = "mesh.set_nvm_face_obstacle_count"
     bl_label = "Set NVM Face Obstacle Count"
@@ -262,6 +236,7 @@ class SetNVMFaceObstacleCount(LoggingOperator):
         return {"FINISHED"}
 
 
+@io_soulstruct_class
 class ResetNVMFaceInfo(LoggingOperator):
     """Reset all NVM face flags and obstacle counts to default, and create face layers if missing.
 
@@ -310,6 +285,7 @@ class ResetNVMFaceInfo(LoggingOperator):
         return {"FINISHED"}
 
 
+@io_soulstruct_class
 class AddNVMEventEntityTriangleIndex(bpy.types.Operator):
     bl_idname = "nvm_event_entity.add_triangle_index"
     bl_label = "Add Triangle"
@@ -324,6 +300,7 @@ class AddNVMEventEntityTriangleIndex(bpy.types.Operator):
         return {'FINISHED'}
 
 
+@io_soulstruct_class
 class RemoveNVMEventEntityTriangleIndex(bpy.types.Operator):
     bl_idname = "nvm_event_entity.remove_triangle_index"
     bl_label = "Remove Triangle"
@@ -362,6 +339,7 @@ def get_connected_component(face, visited):
     return island
 
 
+@io_soulstruct_class
 class GenerateNavmeshFromCollision(LoggingOperator):
     bl_idname = "object.generate_navmesh_from_collision"
     bl_label = "Generate Navmesh from Collision"

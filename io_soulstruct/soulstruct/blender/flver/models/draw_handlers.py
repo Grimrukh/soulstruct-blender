@@ -9,12 +9,14 @@ import blf
 import bpy
 from bpy_extras.view3d_utils import location_3d_to_region_2d
 
+from ...base.register import io_soulstruct_space_view_3d_draw_handler
 from ...exceptions import SoulstructTypeError
 from ...types import SoulstructType
 
 from .types import BlenderFLVER
 
 
+@io_soulstruct_space_view_3d_draw_handler("WINDOW", "POST_PIXEL")
 def draw_dummy_ids():
     """Draw the numeric reference IDs of all Dummy children of selected FLVER.
 

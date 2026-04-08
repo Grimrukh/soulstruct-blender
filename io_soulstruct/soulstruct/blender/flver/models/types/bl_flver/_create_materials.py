@@ -14,6 +14,7 @@ from soulstruct.flver import *
 from soulstruct.base.models.shaders import MatDef, MatDefError
 from soulstruct.containers.tpf import TPFTexture
 
+from .....base.operators import *
 from .....flver.image.enums import BlenderImageFormat
 from .....flver.image.import_operators import *
 from .....flver.image.types import DDSTexture, DDSTextureCollection

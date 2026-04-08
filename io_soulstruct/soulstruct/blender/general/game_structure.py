@@ -35,7 +35,7 @@ class GameStructure:
     def map_stem(self) -> str:
         return self.settings.map_stem
 
-    def get_file_path(self, *parts: str | Path, if_exist=False, dcx_type: DCXType = None) -> Path | None:
+    def get_file_path(self, *parts: str | Path, dcx_type: DCXType = None) -> Path:
         """Get path of arbitrary file relative to this root.
 
         At least one `parts` argument must be given, as this is not permitted to return directories.
@@ -49,23 +49,37 @@ class GameStructure:
         """
         if not parts:
             raise ValueError("Must provide at least one part to `get_file_path()`.")
-        file_path = self._process_file_dcx_path(Path(self.root, *parts), dcx_type)
-        if if_exist and not file_path.is_file():
+        return self._process_file_dcx_path(Path(self.root, *parts), dcx_type)
+
+    def get_file_path_if_exists(self, *parts: str | Path, dcx_type: DCXType = None) -> Path | None:
+        """Get path of arbitrary file relative to this root, but only if it exists.
+
+        See: `GameStructure.get_file_path` for details.
+        """
+        file_path = self.get_file_path(*parts, dcx_type=dcx_type)
+        if not file_path.is_file():
             return None
         return file_path
 
-    def get_dir_path(self, *parts: str | Path, if_exist=False) -> Path | None:
+    def get_dir_path(self, *parts: str | Path) -> Path:
         """Get path of arbitrary directory relative to this root. Does NOT check if the directory actually exists.
 
         If no parts are given, `root` will be returned.
         """
+        return Path(self.root, *parts)
+
+    def get_dir_path_if_exists(self, *parts: str | Path) -> Path | None:
+        """Get path of arbitrary directory relative to this root. Checks if the directory actually exists.
+
+        If no parts are given, `root` will be returned.
+        """
         dir_path = Path(self.root, *parts)
-        if if_exist and not dir_path.is_dir():
+        if not dir_path.is_dir():
             return None
         return dir_path
 
     def get_map_file_path(
-        self, *parts: Path | str, if_exist=False, dcx_type: DCXType = None, map_stem: str = None
+        self, *parts: Path | str, dcx_type: DCXType = None, map_stem: str = None
     ) -> Path | None:
         """Get the `map/{map_stem}` path, and optionally further, in the game directory.
 
@@ -73,6 +87,8 @@ class GameStructure:
 
         If `dcx_type` is given (including `Null`), the path will be processed by that DCX type. Otherwise, the known
         game specific/default DCX type for the file type will be used.
+
+        Returns `None` if no `map_stem` is given or set in Soulstruct settings.
         """
         if not parts:
             raise ValueError("Must provide at least one file path part to `get_map_file_path()`.")
@@ -94,15 +110,23 @@ class GameStructure:
             relative_file_path = Path(str(relative_file_path).replace(map_stem[1:], true_map_stem[1:]))
 
         file_path = Path(self.root, relative_file_path)
-        file_path = self._process_file_dcx_path(file_path, dcx_type)
-        if if_exist and not file_path.is_file():
+        return self._process_file_dcx_path(file_path, dcx_type)
+
+    def get_map_file_path_if_exists(
+        self, *parts: Path | str, dcx_type: DCXType = None, map_stem: str = None
+    ) -> Path | None:
+        """Same as `get_map_file_path()`, but path must exist, or `None` is returned."""
+        file_path = self.get_map_file_path(*parts, dcx_type=dcx_type, map_stem=map_stem)
+        if not file_path or not file_path.is_file():
             return None
         return file_path
 
-    def get_map_dir_path(self, if_exist=False, map_stem: str = None) -> Path | None:
+    def get_map_dir_path(self, map_stem: str = None) -> Path | None:
         """Get the `map/{map_stem}` path, and optionally further, in the game directory.
 
         If no parts are given, `{root}/map/{map_stem}` path will be returned.
+
+        Returns `None` if `map_stem` is not given or set in Soulstruct settings.
         """
         map_stem = map_stem or self.map_stem
         if not map_stem:
@@ -112,24 +136,39 @@ class GameStructure:
 
         if self.settings.is_game(ELDEN_RING):
             # Area subfolders in 'map'.
-            dir_path = Path(self.root, f"map/{map_stem[:3]}/{map_stem}")
-        else:
-            dir_path = Path(self.root, f"map/{map_stem}")
+            return Path(self.root, f"map/{map_stem[:3]}/{map_stem}")
+        return Path(self.root, f"map/{map_stem}")
 
-        if if_exist and not dir_path.is_dir():
+    def get_map_dir_path_if_exists(self, map_stem: str = None) -> Path | None:
+        """Get the `map/{map_stem}` path in the game directory.
+
+        Returns `None` if no `map_stem` is given or set in Soulstruct settings.
+        """
+        dir_path = self.get_map_dir_path_if_exists(map_stem=map_stem)
+        if not dir_path or not dir_path.is_dir():
             return None
         return dir_path
 
-    def get_msb_path(self, if_exist=False, map_stem: str = None) -> Path | None:
+    def get_msb_path(self, map_stem: str = None) -> Path | None:
+        """Get the `map_stem` MSB path in the game `map/MapStudio` directory.
+
+        Returns `None` if no `map_stem` is given or set in Soulstruct settings.
+        """
+        relative_msb_path = self.settings.get_relative_msb_path(map_stem)  # handles smart versioning
+        if not relative_msb_path:
+            return None  # no game root set
+        return self.get_file_path(relative_msb_path)
+
+    def get_msb_path_if_exists(self, map_stem: str = None) -> Path | None:
         """Get the `map_stem` MSB path in the game `map/MapStudio` directory."""
         relative_msb_path = self.settings.get_relative_msb_path(map_stem)  # handles smart versioning
         if not relative_msb_path:
             return None
-        return self.get_file_path(relative_msb_path, if_exist=if_exist)
+        return self.get_file_path_if_exists(relative_msb_path)
 
-    def _process_file_dcx_path(self, path: Path, dcx_type: DCXType | None) -> Path:
+    def _process_file_dcx_path(self, path: Path | str, dcx_type: DCXType | None) -> Path:
         """Process path with given `dcx_type`, or default game DCX type for file suffix if `dcx_type` is `None`."""
-        path = dcx_type.process_path(path) if dcx_type is not None else self.game.process_dcx_path(path)
+        processed_path = Path(dcx_type.process_path(path) if dcx_type is not None else self.game.process_dcx_path(path))
         if self.settings.import_bak_file:  # add extra '.bak' suffix
-            return path.with_suffix(path.suffix + ".bak")
-        return path
+            return processed_path.with_suffix(processed_path.suffix + ".bak")
+        return processed_path

@@ -23,13 +23,15 @@ from pathlib import Path
 import bpy
 from mathutils import Vector
 
+from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
 from soulstruct.havok.fromsoft.eldenring.file_types import NavmeshHKX
 
+from ....base.operators import *
+from ....base.register import io_soulstruct_class
 from ....exceptions import NVMHKTImportError
-from ..utilities import get_dungeons_to_overworld_dict
 from ....types import *
 from ....utilities import *
-from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
+from ..utilities import get_dungeons_to_overworld_dict
 from .core import *
 
 ANY_NVMHKT_NAME_RE = re.compile(r"^(?P<stem>.*)\.hkx$")  # no DCX inside DCX-compressed NVMHKTBNDs
@@ -43,7 +45,7 @@ class NVMHKTImportChoiceInfo(tp.NamedTuple):
     entries: list[BinderEntry]  # entries from which user must choose
 
 
-class BaseImportNVMHKT(LoggingImportOperator):
+class _BaseImportNVMHKT(LoggingImportOperator):
 
     # Type hints for `LoggingOperator`.
     error: tp.Callable[[str], set[str]]
@@ -112,7 +114,8 @@ class BaseImportNVMHKT(LoggingImportOperator):
         return entry_model_id == self.navmesh_model_id
 
 
-class ImportNVMHKT(BaseImportNVMHKT):
+@io_soulstruct_class
+class ImportNVMHKT(_BaseImportNVMHKT):
     bl_idname = "import_scene.nvmhkt"
     bl_label = "Import NVMHKT"
     bl_description = "Import a HKX Havok navmesh file. Can import from NVMHKTBNDs and supports DCX-compressed files"
@@ -213,6 +216,7 @@ def get_binder_entry_choices(self, context):
     return ImportNVMHKTWithBinderChoice.enum_options
 
 
+@io_soulstruct_class
 class ImportNVMHKTWithBinderChoice(LoggingOperator):
     """Presents user with a choice of enums from `enum_choices` class variable (set prior).
 
@@ -279,6 +283,7 @@ class ImportNVMHKTWithBinderChoice(LoggingOperator):
         bpy.ops.wm.nvmhkt_binder_choice_operator("INVOKE_DEFAULT")
 
 
+@io_soulstruct_class
 class ImportNVMHKTFromNVMHKTBND(BinderEntrySelectOperator):
     """Import a NVMHKT from the current selected value of listed game map NVMHKTs."""
     bl_idname = "import_scene.nvmhkt_entry"
@@ -344,7 +349,7 @@ class ImportNVMHKTFromNVMHKTBND(BinderEntrySelectOperator):
         return {"FINISHED"}
 
 
-class ImportAllNVMHKTBase(LoggingOperator):
+class _BaseImportAllNVMHKT(LoggingOperator):
 
     use_material: bool
 
@@ -384,7 +389,8 @@ class ImportAllNVMHKTBase(LoggingOperator):
             raise
 
 
-class ImportAllNVMHKTsFromNVMHKTBND(ImportAllNVMHKTBase):
+@io_soulstruct_class
+class ImportAllNVMHKTsFromNVMHKTBND(_BaseImportAllNVMHKT):
     """Import all NVMHKTs of chosen resolution(s) from selected map."""
     bl_idname = "import_scene.all_nvmhkt"
     bl_label = "Import All Map NVMHKTs"
@@ -588,7 +594,8 @@ class ImportAllNVMHKTsFromNVMHKTBND(ImportAllNVMHKTBase):
         return {"FINISHED"}
 
 
-class ImportAllOverworldNVMHKTsBase(ImportAllNVMHKTBase):
+@io_soulstruct_class
+class ImportAllOverworldNVMHKTsBase(_BaseImportAllNVMHKT):
     """Import all NVMHKTs from ALL base game overworld small tile maps (m60_XX_ZZ_00).
 
     Note that large/medium overworld tiles do not have navmeshes in Elden Ring.
@@ -711,6 +718,7 @@ class ImportAllOverworldNVMHKTsBase(ImportAllNVMHKTBase):
         return {"FINISHED"}
 
 
+@io_soulstruct_class
 class ImportAllOverworldNVMHKTs(ImportAllOverworldNVMHKTsBase):
     """Import all NVMHKTs from ALL base game overworld small tile maps (m60_XX_ZZ_00).
 
@@ -723,6 +731,7 @@ class ImportAllOverworldNVMHKTs(ImportAllOverworldNVMHKTsBase):
     AREA = "m60"
 
 
+@io_soulstruct_class
 class ImportAllDLCOverworldNVMHKTs(ImportAllOverworldNVMHKTsBase):
     """Import all NVMHKTs from ALL DLC overworld small tile maps (m61_XX_ZZ_00).
 

@@ -15,7 +15,8 @@ from mathutils import Vector
 
 from soulstruct.base.maps.navmesh.nvm import *
 
-from ...base import BaseBlenderSoulstructObject
+from ...base.operators import *
+from ...base.soulstruct_object import BaseBlenderSoulstructObject
 from ...exceptions import NVMExportError
 from ...types import *
 from ...utilities import *

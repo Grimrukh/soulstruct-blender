@@ -5,9 +5,13 @@ __all__ = [
     "PrintGameTransform",
 ]
 
-from ..utilities import BLTransform, LoggingOperator
+
+from ..base.operators import *
+from ..base.register import io_soulstruct_class
+from ..utilities import BLTransform
 
 
+@io_soulstruct_class
 class PrintGameTransform(LoggingOperator):
     bl_idname = "io_scene_soulstruct.print_game_transform"
     bl_label = "Print Game Transform"

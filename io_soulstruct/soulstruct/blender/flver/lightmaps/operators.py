@@ -14,13 +14,16 @@ from soulstruct.base.models.mtd import MTDBND
 from soulstruct.darksouls1r.models.shaders import MatDef as DS1R_MatDef
 from soulstruct.games import DARK_SOULS_DSR
 
+from ...base.operators import LoggingOperator
+from ...base.register import io_soulstruct_class, io_soulstruct_pointer_property
 from ...bpy_base.property_group import SoulstructPropertyGroup
 from ...exceptions import SoulstructTypeError
 from ..material.types import BlenderFLVERMaterial
 from ..models.types import BlenderFLVER
-from ...utilities import LoggingOperator
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Scene, "bake_lightmap_settings")
 class BakeLightmapSettings(SoulstructPropertyGroup):
 
     # Currently only for DSR.
@@ -82,6 +85,7 @@ class BakeLightmapSettings(SoulstructPropertyGroup):
     )
 
 
+@io_soulstruct_class
 class BakeLightmapTextures(LoggingOperator):
 
     bl_idname = "bake.lightmaps"
@@ -195,6 +199,8 @@ class BakeLightmapTextures(LoggingOperator):
         selected meshes/materials are using the same lightmap texture. If no lightmap texture node is found, an error
         will be raised, to ensure that the user is fully aware of what meshes they are trying to bake.
         """
+        if not material_slot.material:
+            raise ValueError("Material slot has no material set.")
         mesh = bl_flver.mesh
         bl_material = BlenderFLVERMaterial(material_slot.material)
         if not bl_material.mat_def_path:
@@ -224,7 +230,7 @@ class BakeLightmapTextures(LoggingOperator):
                 f"Material '{bl_material.name}' of mesh {mesh.name} has no image assigned to its "
                 f"'{texture_node_name}' texture node."
             )
-        if lightmap_image.name != assert_lightmap_image.name:
+        if assert_lightmap_image and lightmap_image.name != assert_lightmap_image.name:
             raise ValueError(
                 f"Material '{bl_material.name}' of mesh {mesh.name} has image '{lightmap_image.name}' assigned to its "
                 f"'{texture_node_name}' texture node, but '{assert_lightmap_image.name}' was expected."

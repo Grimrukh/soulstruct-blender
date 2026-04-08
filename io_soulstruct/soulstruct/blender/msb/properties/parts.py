@@ -34,6 +34,7 @@ import bpy
 from soulstruct.base.maps.msb.enums import BaseMSBPartSubtype
 from soulstruct.games import *
 
+from ...base.register import io_soulstruct_class, io_soulstruct_pointer_property
 from ...types import SoulstructType, ObjectType
 from ...bpy_base.property_group import SoulstructPropertyGroup
 from .events import BlenderMSBEventSubtype
@@ -145,6 +146,8 @@ def _is_model(_, obj: bpy.types.Object):
     )
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Object, "MSB_PART")
 class MSBPartProps(SoulstructPropertyGroup):
     """Properties for MSB Parts."""
 
@@ -481,11 +484,15 @@ class MSBPartProps(SoulstructPropertyGroup):
     )
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Object, "MSB_MAP_PIECE")
 class MSBMapPieceProps(SoulstructPropertyGroup):
     """No additional properties."""
     pass
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Object, "MSB_OBJECT")
 class MSBObjectProps(SoulstructPropertyGroup):
 
     GAME_PROP_NAMES = {
@@ -542,6 +549,8 @@ class MSBObjectProps(SoulstructPropertyGroup):
     )
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Object, "MSB_ASSET")
 class MSBAssetProps(SoulstructPropertyGroup):
 
     GAME_PROP_NAMES = {
@@ -565,6 +574,8 @@ class MSBAssetProps(SoulstructPropertyGroup):
     # TODO: Elden Ring Asset properties.
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Object, "MSB_CHARACTER")
 class MSBCharacterProps(SoulstructPropertyGroup):
 
     GAME_PROP_NAMES = {
@@ -757,6 +768,8 @@ class MSBCharacterProps(SoulstructPropertyGroup):
     )
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Object, "MSB_PLAYER_START")
 class MSBPlayerStartProps(SoulstructPropertyGroup):
 
     GAME_PROP_NAMES = {
@@ -804,6 +817,8 @@ class BlenderMSBCollisionHitFilter(StrEnum):
     LevelExit_B = "LevelExit_B"  # 23  # glowing turquoise
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Object, "MSB_COLLISION")
 class MSBCollisionProps(SoulstructPropertyGroup):
 
     GAME_PROP_NAMES = {
@@ -1125,6 +1140,8 @@ class MSBCollisionProps(SoulstructPropertyGroup):
     )
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Object, "MSB_PROTOBOSS")
 class MSBProtobossProps(SoulstructPropertyGroup):
     """Only used in Demon's Souls, but doesn't appear in any final MSB files. TODO."""
 
@@ -1213,6 +1230,8 @@ class MSBProtobossProps(SoulstructPropertyGroup):
     )
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Object, "MSB_NAVMESH")
 class MSBNavmeshProps(SoulstructPropertyGroup):
 
     GAME_PROP_NAMES = {
@@ -1271,6 +1290,8 @@ class MSBNavmeshProps(SoulstructPropertyGroup):
         raise ValueError(f"Invalid MSB Part navmesh group bit count: {bit_count}. Must be 128.")
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Object, "MSB_CONNECT_COLLISION")
 class MSBConnectCollisionProps(SoulstructPropertyGroup):
 
     GAME_PROP_NAMES = {

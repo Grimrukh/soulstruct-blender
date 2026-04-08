@@ -4,11 +4,12 @@ __all__ = [
     "FLVERImportPanel",
 ]
 
+from ....base.register import io_soulstruct_class
 from ....bpy_base.panel import SoulstructPanel
-
 from ..operators.import_operators import *
 
 
+@io_soulstruct_class
 class FLVERImportPanel(SoulstructPanel):
     """Panel for Soulstruct FLVER operators."""
     bl_label = "FLVER Import"

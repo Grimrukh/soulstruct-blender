@@ -8,9 +8,12 @@ __all__ = [
 from pathlib import Path
 
 import bpy
+
 from soulstruct.containers import Binder
 from soulstruct.containers.tpf import TPF
 from soulstruct.dcx import DCXType
+
+from ...base.operators import *
 from ...utilities import *
 from .types import *
 

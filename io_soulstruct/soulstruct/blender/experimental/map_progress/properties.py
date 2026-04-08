@@ -9,6 +9,8 @@ from datetime import datetime
 
 import bpy
 
+from ...base.register import io_soulstruct_class, io_soulstruct_pointer_property
+
 from .config import SUPPORTED_TYPES
 
 # noinspection PyUnusedLocal
@@ -31,6 +33,8 @@ def _on_hide_select_done_changed(self: MapProgressSettings, context: bpy.types.C
             obj.hide_select = self.hide_select_done
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Scene, "map_progress_settings")
 class MapProgressSettings(bpy.types.PropertyGroup):
     """Global add-on settings stored in Scene."""
 
@@ -111,6 +115,8 @@ class MapProgressSettings(bpy.types.PropertyGroup):
     )
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Object, "map_progress")
 class MapProgressProps(bpy.types.PropertyGroup):
     """Per-object properties for map progress tracking."""
     state: bpy.props.EnumProperty(

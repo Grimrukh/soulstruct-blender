@@ -15,12 +15,13 @@ from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
 from soulstruct.containers.tpf import TPF, TPFTexture, TPFPlatform
 from soulstruct.games import *
 
-from ...utilities import LoggingOperator, CheckDCXMode, MAP_STEM_RE
+from ...base.operators import LoggingOperator
+from ...utilities import CheckDCXMode, MAP_STEM_RE
 
 if tp.TYPE_CHECKING:
     from soulstruct.flver import FLVER
 
-_LOGGER = logging.getLogger("soulstruct.io")
+_LOGGER = logging.getLogger(__name__)
 
 TPF_RE = re.compile(r"(?P<stem>.*)\.tpf(?P<dcx>\.dcx)?$")
 CHRTPFBHD_RE = re.compile(r"(?P<stem>.*)\.chrtpfbhd?$")  # never has DCX

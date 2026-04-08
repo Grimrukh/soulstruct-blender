@@ -15,11 +15,11 @@ import bpy
 from soulstruct.dcx import DCXType
 from soulstruct.games import DARK_SOULS_PTDE, DARK_SOULS_DSR, DEMONS_SOULS
 from soulstruct.utilities.files import create_bak
-
 from soulstruct.havok.fromsoft.shared import BothResHKXBHD, HKXBHD
 
+from ..base.operators import *
+from ..base.register import io_soulstruct_class
 from ..types import SoulstructType
-from ..utilities import *
 from .types import *
 
 
@@ -35,6 +35,7 @@ NUMERIC_HKX_COLLISION_STEM_RE = {  # standard map model name; no extensions
 }
 
 
+@io_soulstruct_class
 class ExportAnyHKXMapCollision(LoggingExportOperator):
     """Export 'hi' and/or 'lo' HKX from a selection of Blender meshes."""
     bl_idname = "export_scene.hkx_map_collision"
@@ -170,6 +171,7 @@ class ExportAnyHKXMapCollision(LoggingExportOperator):
         return {"FINISHED"}
 
 
+@io_soulstruct_class
 class ExportHKXMapCollisionIntoAnyBinder(LoggingImportOperator):
     bl_idname = "export_scene.hkx_map_collision_binder"
     bl_label = "Export Map Collision Into Binder"
@@ -256,6 +258,7 @@ class ExportHKXMapCollisionIntoAnyBinder(LoggingImportOperator):
         return {"FINISHED"}
 
 
+@io_soulstruct_class
 class ExportMapHKXMapCollision(LoggingOperator):
     """Export a HKX collision file to detected map in appropriate format (loose or HKXBHD)."""
     bl_idname = "export_scene_map.hkx_map_collision"

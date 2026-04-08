@@ -6,10 +6,12 @@ __all__ = [
 
 import bpy
 
+from ...base.register import io_soulstruct_class
 from ...bpy_base.panel import SoulstructPanel
 from .types import DDSTexture
 
 
+@io_soulstruct_class
 class DDSTexturePanel(SoulstructPanel):
     """Panel for Image DDS texture settings. Appears in IMAGE_EDITOR space."""
     bl_label = "DDS Settings"

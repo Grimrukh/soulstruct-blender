@@ -22,7 +22,7 @@ from ..utilities.bpy_data import copy_obj_property_group
 from ..utilities.misc import remove_dupe_suffix
 
 if tp.TYPE_CHECKING:
-    from ..utilities import LoggingOperator
+    from ..base.operators import LoggingOperator
 
 
 SOULSTRUCT_T = tp.TypeVar("SOULSTRUCT_T", bound=object)  # does not have to be a `GameFile` (e.g. `MSBMapPiece`)

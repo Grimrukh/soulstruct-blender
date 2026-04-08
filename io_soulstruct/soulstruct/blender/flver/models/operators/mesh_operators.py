@@ -14,9 +14,11 @@ import bmesh
 
 from soulstruct.flver import Material
 
-from ....utilities import LoggingOperator
+from ....base.operators import LoggingOperator
+from ....base.register import io_soulstruct_class
 
 
+@io_soulstruct_class
 class SelectDisplayMaskID(LoggingOperator):
 
     bl_idname = "mesh.select_display_mask_id"
@@ -67,6 +69,7 @@ class SelectDisplayMaskID(LoggingOperator):
         return {"FINISHED"}
 
 
+@io_soulstruct_class
 class SelectUnweightedVertices(LoggingOperator):
 
     bl_idname = "mesh.select_unweighted_vertices"
@@ -100,6 +103,7 @@ class SelectUnweightedVertices(LoggingOperator):
         return {"FINISHED"}
 
 
+@io_soulstruct_class
 class SetSmoothCustomNormals(LoggingOperator):
 
     bl_idname = "mesh.set_smooth_custom_normals"
@@ -129,6 +133,7 @@ class SetSmoothCustomNormals(LoggingOperator):
         return {"FINISHED"}
 
 
+@io_soulstruct_class
 class SetVertexAlpha(LoggingOperator):
 
     bl_idname = "mesh.set_selected_vertex_alpha"
@@ -170,6 +175,7 @@ class SetVertexAlpha(LoggingOperator):
         return {"FINISHED"}
 
 
+@io_soulstruct_class
 class InvertVertexAlpha(LoggingOperator):
 
     bl_idname = "mesh.invert_selected_vertex_alpha"

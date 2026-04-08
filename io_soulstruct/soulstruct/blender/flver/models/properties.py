@@ -18,6 +18,7 @@ from bpy.app.handlers import persistent
 from soulstruct.flver import FLVERBoneUsageFlags, FLVERVersion
 from soulstruct.games import *
 
+from ...base.register import *
 from ...bpy_base.property_group import SoulstructPropertyGroup
 from ...types import SoulstructType
 
@@ -30,8 +31,12 @@ class CollectedSubmeshProps(tp.NamedTuple):
     use_backface_culling: bool
 
 
+@io_soulstruct_class
 class FLVERSubmeshProps(SoulstructPropertyGroup):
-    """Blender properties specified per FLVER material slot that determine submesh properties."""
+    """Blender properties specified per FLVER material slot that determine submesh properties.
+
+    NOTE: This property group is only used nested inside `FLVERProps`.
+    """
 
     # No game-specific properties.
 
@@ -89,6 +94,8 @@ class FLVERSubmeshProps(SoulstructPropertyGroup):
         return ["is_dynamic", "default_bone_index", "face_set_count"]
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Object, "FLVER")
 class FLVERProps(SoulstructPropertyGroup):
     """Extension properties for all Blender Mesh objects that represent FLVER models.
 
@@ -284,7 +291,8 @@ class FLVERProps(SoulstructPropertyGroup):
         """Generate effect submesh properties (for FLVER export) from materials or global settings."""
         
 
-
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Object, "FLVER_DUMMY")
 class FLVERDummyProps(SoulstructPropertyGroup):
     """Extension properties for Blender objects that represent FLVER Dummy objects."""
 
@@ -327,6 +335,8 @@ class FLVERDummyProps(SoulstructPropertyGroup):
     )
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Bone, "FLVER_BONE")
 class FLVERBoneProps(SoulstructPropertyGroup):
     """Extension properties for Blender Bones that represent FLVER bones.
 
@@ -390,6 +400,8 @@ class FLVERBoneProps(SoulstructPropertyGroup):
         return flags
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Scene, "flver_import_settings")
 class FLVERImportSettings(SoulstructPropertyGroup):
     """Common FLVER import settings.
 
@@ -453,6 +465,8 @@ class FLVERImportSettings(SoulstructPropertyGroup):
     )
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Scene, "flver_export_settings")
 class FLVERExportSettings(SoulstructPropertyGroup):
     """Common FLVER export settings. Drawn manually in operator browser windows."""
 
@@ -585,6 +599,7 @@ def _sync_submesh_props(bl_flver_obj: bpy.types.Object):
         entry.use_backface_culling = "MATERIAL"
 
 
+@io_soulstruct_depsgraph_update_post_handler
 @persistent  # prevent Blender from unloading handler when a new file is loaded
 def flver_submesh_sync_handler(scene: bpy.types.Scene, _depsgraph: bpy.types.Depsgraph):
     """Scan scene for FLVER objects and synchronize their submesh properties to their materials."""

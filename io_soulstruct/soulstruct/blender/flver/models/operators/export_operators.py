@@ -21,9 +21,10 @@ from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError, TPF
 from soulstruct.dcx import DCXType
 from soulstruct.games import *
 
+from ....base.operators import *
+from ....base.register import io_soulstruct_class
 from ....exceptions import *
 from ....general import *
-from ....utilities import *
 from ...image import *
 from ...image.export_operators import export_map_area_textures
 from ..types import BlenderFLVER, FLVERModelType
@@ -34,6 +35,7 @@ if tp.TYPE_CHECKING:
 
 # region Generic Exporters
 
+@io_soulstruct_class
 class ExportAnyFLVER(LoggingExportOperator):
     """Export one FLVER model from a Blender Armature parent to a file using a browser window."""
     bl_idname = "export_scene.flver"
@@ -104,6 +106,7 @@ class ExportAnyFLVER(LoggingExportOperator):
         return {"FINISHED"}
 
 
+@io_soulstruct_class
 class ExportFLVERIntoAnyBinder(LoggingImportOperator):
     """Export a single FLVER model from a Blender mesh into a chosen game binder (BND/BHD).
 
@@ -239,6 +242,7 @@ class ExportFLVERIntoAnyBinder(LoggingImportOperator):
 
 # region Type-Specific Game Exporters and Operators
 
+@io_soulstruct_class
 class ExportMapPieceFLVERs(LoggingOperator):
     bl_idname = "export_scene.map_piece_flver"
     bl_label = "Export Map Pieces"
@@ -407,6 +411,7 @@ class BaseGameFLVERBinderExportOperator(LoggingOperator):
         return multi_tpf
 
 
+@io_soulstruct_class
 class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
     """Export a single FLVER model from a Blender mesh into same-named CHRBND in the game directory."""
     bl_idname = "export_scene.character_flver"
@@ -531,13 +536,13 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
             if multi_tpf is not None:
 
                 def post_export_action() -> list[Path]:
-                    if settings.project_root:
-                        export_dir = settings.project_root.get_dir_path(relative_tpf_dir_path, if_exist=True)
+                    if project_root := settings.project_root:
+                        export_dir = project_root.get_dir_path_if_exists(relative_tpf_dir_path)
                         if export_dir:
                             # Delete loose TPF folder (in favor of new Binder TPF).
                             export_dir.rmdir()
-                    if settings.also_export_to_game and settings.game_root:
-                        import_dir = settings.game_root.get_dir_path(relative_tpf_dir_path, if_exist=True)
+                    if settings.also_export_to_game and (game_root := settings.game_root):
+                        import_dir = game_root.get_dir_path_if_exists(relative_tpf_dir_path)
                         if import_dir:
                             import_dir.rmdir()
 
@@ -546,19 +551,23 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
                 return multi_tpf, post_export_action
 
             # Otherwise, create loose folder with individual TPFs.
-            tpfs = texture_collection.to_single_texture_tpfs(
+            paths_and_tpfs = texture_collection.to_single_texture_tpfs(
                 self,
                 DCXType.Null,  # no DCX in PTDE
                 find_same_format=None,  # TODO
             )
+            # Remove DDS conversion failure cases.
+            valid_paths_and_tpfs = [x for x in paths_and_tpfs if x is not None]  # type: list[tuple[Path, TPF]]
 
             def post_export_action() -> list[Path]:
                 exported_tpf_paths = []
-                if tpfs:
-                    for tpf in tpfs:
+                if valid_paths_and_tpfs:
+                    for tpf_path, tpf in valid_paths_and_tpfs:
                         # TPF `path` already set correctly to name.
-                        exported_tpf_paths += settings.export_file(self, tpf, relative_tpf_dir_path / tpf.path.name)
-                    self.info(f"Exported {len(tpfs)} textures into loose character TPF folder '{model_stem}'.")
+                        exported_tpf_paths += settings.export_file(self, tpf, relative_tpf_dir_path / tpf_path.name)
+                    self.info(
+                        f"Exported {len(valid_paths_and_tpfs)} textures into loose character TPF folder '{model_stem}'."
+                    )
 
                 return exported_tpf_paths
 
@@ -577,12 +586,12 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
 
                 def post_export_action() -> list[Path]:
                     if settings.project_root:
-                        export_path = settings.project_root.get_file_path(relative_chrtpfbdt_path, if_exist=True)
+                        export_path = settings.project_root.get_file_path_if_exists(relative_chrtpfbdt_path)
                         if export_path:
                             # Delete CHRTPFBDT (in favor of new TPF).
                             export_path.unlink()
                     if settings.also_export_to_game and settings.game_root:
-                        import_path = settings.game_root.get_file_path(relative_chrtpfbdt_path, if_exist=True)
+                        import_path = settings.game_root.get_file_path_if_exists(relative_chrtpfbdt_path)
                         if import_path:
                             import_path.unlink()
 
@@ -655,6 +664,7 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
         return packed_bdt, len(chrtpfbxf.entries)
 
 
+@io_soulstruct_class
 class ExportObjectFLVER(BaseGameFLVERBinderExportOperator):
     """Export a single FLVER model from a Blender mesh into same-named OBJBND in the game directory.
 
@@ -723,6 +733,7 @@ class ExportObjectFLVER(BaseGameFLVERBinderExportOperator):
         return {"FINISHED" if exported_paths else "CANCELLED"}
 
 
+@io_soulstruct_class
 class ExportAssetFLVER(BaseGameFLVERBinderExportOperator):
     """Export a single FLVER model from a Blender mesh into same-named GEOMBND in the game directory."""
     bl_idname = "export_scene.asset_flver"
@@ -771,6 +782,7 @@ class ExportAssetFLVER(BaseGameFLVERBinderExportOperator):
         return {"FINISHED" if exported_paths else "CANCELLED"}
 
 
+@io_soulstruct_class
 class ExportEquipmentFLVER(BaseGameFLVERBinderExportOperator):
     """Export a single FLVER model from a Blender mesh into same-named PARTSBND in the game directory."""
     bl_idname = "export_scene.equipment_flver"

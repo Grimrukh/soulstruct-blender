@@ -9,12 +9,12 @@ from dataclasses import dataclass
 
 import bpy
 
+from ....base.operators import LoggingOperator
 from ....exceptions import MissingMSBEntryError, SoulstructTypeError
 from ....msb.types.adapters.names import *
 from ....types import ObjectType, SoulstructType
 from ....types.field_adapters import FieldAdapter
 from ....utilities.bpy_data import find_obj_or_create_empty
-from ....utilities.operators import LoggingOperator
 
 if tp.TYPE_CHECKING:
     from soulstruct.base.maps.msb import MSB as BaseMSB

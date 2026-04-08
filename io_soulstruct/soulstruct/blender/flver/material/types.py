@@ -12,12 +12,13 @@ import bpy
 from soulstruct.flver import *
 from soulstruct.games import DARK_SOULS_DSR, DEMONS_SOULS, DARK_SOULS_PTDE
 
-from ...base import add_auto_type_props
+from ...base.operators import LoggingOperator
+from ...base.soulstruct_object import add_auto_type_props
 from ...exceptions import MaterialImportError, FLVERExportError
 from ...flver.image import DDSTexture, DDSTextureCollection
 from ...flver.image.utilities import find_or_create_image
 from ...types import MeshObject
-from ...utilities import LoggingOperator, get_bl_custom_prop, remove_dupe_suffix
+from ...utilities import get_bl_custom_prop, remove_dupe_suffix
 from . import shaders
 
 if tp.TYPE_CHECKING:

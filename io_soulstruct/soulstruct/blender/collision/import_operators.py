@@ -14,10 +14,9 @@ __all__ = [
     "ImportMapHKXMapCollision",
 ]
 
+import re
 import shutil
 import tempfile
-
-import re
 import traceback
 import typing as tp
 from pathlib import Path
@@ -28,6 +27,8 @@ from soulstruct.containers import BinderEntry, EntryNotFoundError
 from soulstruct.games import DARK_SOULS_PTDE, DEMONS_SOULS
 from soulstruct.havok.fromsoft.shared import MapCollisionModel, BothResHKXBHD
 
+from ..base.operators import *
+from ..base.register import io_soulstruct_class
 from ..exceptions import MapCollisionImportError
 from ..utilities import *
 from .types import BlenderMapCollision
@@ -43,6 +44,7 @@ class HKXImportInfo(tp.NamedTuple):
     lo_collision: MapCollisionModel
 
 
+@io_soulstruct_class
 class ImportAnyHKXMapCollision(LoggingImportOperator):
     """Most generic importer. Loads standalone HKX files or HKX entries from a HKXBHD Binder (one/all)."""
 
@@ -196,6 +198,7 @@ def get_binder_entry_choices(self, context):
     return ImportHKXMapCollisionWithBinderChoice.enum_options
 
 
+@io_soulstruct_class
 class ImportHKXMapCollisionWithBinderChoice(LoggingOperator):
     """Presents user with a choice of enums from `enum_choices` class variable (set prior).
 
@@ -260,6 +263,7 @@ class ImportHKXMapCollisionWithBinderChoice(LoggingOperator):
         bpy.ops.wm.hkx_map_collision_binder_choice_operator("INVOKE_DEFAULT")
 
 
+@io_soulstruct_class
 class ImportMapHKXMapCollision(LoggingOperator):
     bl_idname = "import_scene.map_hkx_map_collision"
     bl_label = "Import Map Collision"

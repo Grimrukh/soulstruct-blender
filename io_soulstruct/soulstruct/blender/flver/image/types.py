@@ -10,14 +10,15 @@ import typing as tp
 from pathlib import Path
 
 import bpy
+
 from soulstruct.containers import Binder, BinderEntry
 from soulstruct.containers.tpf import TPF, TPFTexture, TPFPlatform, TextureType
 from soulstruct.darksouls1r.maps.map_area_texture_manager import MapAreaTextureManager
 from soulstruct.dcx import DCXType
 from soulstruct.base.textures import *
 
+from ...base.operators import *
 from ...exceptions import UnsupportedGameError, SoulstructTypeError, TextureExportError
-from ...utilities import *
 from .enums import *
 from .properties import *
 
@@ -362,8 +363,8 @@ class DDSTextureCollection(dict[str, DDSTexture]):
         operator: LoggingOperator,
         tpf_dcx_type: DCXType,
         find_same_format: tp.Callable[[str], str] = None,
-    ) -> list[TPF | None]:
-        """Put each DDS texture into its own TPF and return them all.
+    ) -> list[tuple[Path, TPF] | None]:
+        """Put each DDS texture into its own TPF and return them all, along with their paths.
 
         Used for, e.g., 'overflow' CHRBND textures in DS1: PTDE when they do not fit into a single multi-texture CHRBND
         TPF. Note that we don't just call `DDSTexture.to_single_texture_tpf()`, since we can batch DDS conversion here.
@@ -382,6 +383,8 @@ class DDSTextureCollection(dict[str, DDSTexture]):
                 tpfs.append(None)
                 continue
 
+            tpf_path = Path(tpf_dcx_type.process_path(f"{dds_texture.stem}.tpf"))
+
             # Create single-texture TPF.
             texture = TPFTexture(
                 stem=dds_texture.stem,
@@ -393,10 +396,10 @@ class DDSTextureCollection(dict[str, DDSTexture]):
                 platform=dds_texture.tpf_platform,
                 encoding_type=2,
                 tpf_flags=3,
-                path=tpf_dcx_type.process_path(f"{dds_texture.stem}.tpf"),
+                path=tpf_path,
                 dcx_type=tpf_dcx_type,
             )
-            tpfs.append(tpf)
+            tpfs.append((tpf_path, tpf))
 
         # We don't need to check if `tpfs` is empty. Caller may be fine with that.
 
@@ -430,10 +433,10 @@ class DDSTextureCollection(dict[str, DDSTexture]):
         else:
             raise UnsupportedGameError(f"Cannot yet export TPFBHDs for game {settings.game.name}.")
 
-        tpfs = self.to_single_texture_tpfs(operator, tpf_dcx_type, find_same_format)
+        paths_and_tpfs = self.to_single_texture_tpfs(operator, tpf_dcx_type, find_same_format)
 
         entry_id = 0  # only incremented for successful TPFs
-        for dds_texture, tpf in zip(self.get_sorted_textures(), tpfs):
+        for dds_texture, (_, tpf) in zip(self.get_sorted_textures(), paths_and_tpfs):
             if tpf is None:
                 # Error already reported.
                 continue

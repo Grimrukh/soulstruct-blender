@@ -9,10 +9,10 @@ import bpy
 from soulstruct.darksouls1ptde.maps.models import MSBCharacterModel
 from soulstruct.darksouls1ptde.maps.parts import MSBCharacter, MSBDummyCharacter
 
-from ...adapters import *
-from ....properties.parts import BlenderMSBPartSubtype, MSBCharacterProps
+from .....base import LoggingOperator
 from .....types import SoulstructType
-from .....utilities import LoggingOperator
+from ....properties.parts import BlenderMSBPartSubtype, MSBCharacterProps
+from ...adapters import *
 
 from .base import BaseBlenderMSBPart_DS1
 

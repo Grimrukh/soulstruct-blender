@@ -17,8 +17,9 @@ from bpy_extras.view3d_utils import location_3d_to_region_2d
 from gpu_extras.batch import batch_for_shader
 from mathutils import Vector
 
-from ..exceptions import SoulstructTypeError
+from ..base.register import *
 from ..bpy_base.property_group import SoulstructPropertyGroup
+from ..exceptions import SoulstructTypeError
 
 from .types import *
 
@@ -39,6 +40,8 @@ _LAST_DRAWN_TRIANGLES_A = None  # type: list[Vector] | None  # flattened list of
 _LAST_DRAWN_TRIANGLES_B = None  # type: list[Vector] | None  # flattened list of triangle vertices
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Scene, "mcg_draw_settings")
 class MCGDrawSettings(SoulstructPropertyGroup):
 
     # No game-specific properties.
@@ -75,6 +78,7 @@ class MCGDrawSettings(SoulstructPropertyGroup):
             return None
 
 
+@io_soulstruct_space_view_3d_draw_handler("WINDOW", "POST_VIEW")
 def update_mcg_draw_caches():
     """Process selected MCG nodes/edges and update cached batches if necessary."""
     global _CACHED_SHADER, _CACHED_NODES_BATCH, _CACHED_EDGES_BATCH
@@ -199,6 +203,7 @@ def update_mcg_draw_caches():
             _LAST_DRAWN_TRIANGLES_B = node_b_triangles_coords
 
 
+@io_soulstruct_space_view_3d_draw_handler("WINDOW", "POST_VIEW")
 def draw_mcg_nodes():
     global _CACHED_SHADER, _CACHED_NODES_BATCH
     draw_settings = bpy.context.scene.mcg_draw_settings
@@ -225,6 +230,7 @@ def draw_mcg_nodes():
     gpu.state.depth_test_set("NONE")
 
 
+@io_soulstruct_space_view_3d_draw_handler("WINDOW", "POST_VIEW")
 def draw_mcg_edges():
     global _CACHED_SHADER, _CACHED_EDGES_BATCH, _CACHED_TRIANGLES_A_BATCH, _CACHED_TRIANGLES_B_BATCH
     draw_settings = bpy.context.scene.mcg_draw_settings
@@ -255,6 +261,7 @@ def draw_mcg_edges():
     gpu.state.depth_test_set("NONE")
 
 
+@io_soulstruct_space_view_3d_draw_handler("WINDOW", "POST_PIXEL")
 def draw_mcg_edge_cost_labels():
     """Draw MCG edge cost labels using `blf` (text-blitting) module."""
     draw_settings = bpy.context.scene.mcg_draw_settings

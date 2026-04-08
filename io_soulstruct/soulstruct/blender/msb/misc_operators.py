@@ -14,7 +14,7 @@ __all__ = [
     "CopyDrawGroups",
     "ApplyPartTransformToModel",
     "CreateConnectCollision",
-    "MSBFindPartsPointer",
+    "FindMSBPartsPointer",
     "FindMSBParts",
     "FindEntityID",
     "ColorMSBEvents",
@@ -32,21 +32,23 @@ from mathutils import Matrix
 from soulstruct.base.maps.msb.region_shapes import RegionShapeType
 from soulstruct.games import DEMONS_SOULS, DARK_SOULS_PTDE, DARK_SOULS_DSR
 
-from ..exceptions import FLVERError
-from ..general import SoulstructSettings
+from ..base.operators import *
+from ..base.register import io_soulstruct_class, io_soulstruct_pointer_property
 from ..collision.types import BlenderMapCollision
+from ..exceptions import FLVERError
 from ..flver.models import BlenderFLVER
-from .operator_config import BLENDER_MSB_PART_CLASSES
-from .properties.parts import MSBPartArmatureMode
+from ..general import SoulstructSettings
 from ..navmesh.nvm.types import BlenderNVM
 from ..types import *
 from ..utilities import *
-
+from .operator_config import BLENDER_MSB_PART_CLASSES
 from .properties import BlenderMSBPartSubtype
+from .properties.parts import MSBPartArmatureMode
 from .types.base.parts import BaseBlenderMSBPart
 from .utilities import primitive_cube
 
 
+@io_soulstruct_class
 class EnableAllImportModels(LoggingOperator):
 
     bl_idname = "object.msb_enable_all_import_models"
@@ -63,6 +65,7 @@ class EnableAllImportModels(LoggingOperator):
         return {"FINISHED"}
 
 
+@io_soulstruct_class
 class DisableAllImportModels(LoggingOperator):
 
     bl_idname = "object.msb_disable_all_import_models"
@@ -79,6 +82,7 @@ class DisableAllImportModels(LoggingOperator):
         return {"FINISHED"}
 
 
+@io_soulstruct_class
 class EnableSelectedNames(LoggingOperator):
 
     bl_idname = "object.enable_selected_names"
@@ -95,6 +99,7 @@ class EnableSelectedNames(LoggingOperator):
         return {"FINISHED"}
 
 
+@io_soulstruct_class
 class DisableSelectedNames(LoggingOperator):
 
     bl_idname = "object.disable_selected_names"
@@ -141,6 +146,8 @@ def _is_navmesh_part(_, obj: bpy.types.Object) -> bool:
     )
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Scene, "msb_part_creation_templates")
 class MSBPartCreationTemplates(bpy.types.PropertyGroup):
     """Template pointers for `CreateMSBPart` operator (pointer properties cannot be used by operators)."""
 
@@ -177,6 +184,7 @@ class MSBPartCreationTemplates(bpy.types.PropertyGroup):
     )
 
 
+@io_soulstruct_class
 class CreateMSBPart(LoggingOperator):
 
     bl_idname = "object.create_msb_part"
@@ -481,6 +489,7 @@ class CreateMSBPart(LoggingOperator):
         return prop_name != "model"
 
 
+@io_soulstruct_class
 class CreateMSBRegion(LoggingOperator):
 
     bl_idname = "object.create_msb_region"
@@ -518,6 +527,7 @@ class CreateMSBRegion(LoggingOperator):
         return {"FINISHED"}
 
 
+@io_soulstruct_class
 class CreateMSBEnvironmentEvent(LoggingOperator):
 
     bl_idname = "object.create_msb_environment_event"
@@ -611,6 +621,7 @@ class CreateMSBEnvironmentEvent(LoggingOperator):
         return {"FINISHED"}
 
 
+@io_soulstruct_class
 class DuplicateMSBPartModel(LoggingOperator):
 
     bl_idname = "object.duplicate_part_model"
@@ -760,6 +771,7 @@ class DuplicateMSBPartModel(LoggingOperator):
         return new_model_name
 
 
+@io_soulstruct_class
 class BatchSetPartGroups(LoggingOperator):
 
     bl_idname = "object.batch_set_part_groups"
@@ -884,6 +896,7 @@ class BatchSetPartGroups(LoggingOperator):
         return {"FINISHED"}
 
 
+@io_soulstruct_class
 class CopyDrawGroups(LoggingOperator):
 
     bl_idname = "object.copy_draw_groups"
@@ -921,6 +934,7 @@ class CopyDrawGroups(LoggingOperator):
         return {"FINISHED"}
 
 
+@io_soulstruct_class
 class ApplyPartTransformToModel(LoggingOperator):
 
     bl_idname = "object.apply_part_transform_to_model"
@@ -983,6 +997,7 @@ class ApplyPartTransformToModel(LoggingOperator):
         part.matrix_local = Matrix.Identity(4)  # reset to identity
 
 
+@io_soulstruct_class
 class CreateConnectCollision(LoggingOperator):
     bl_idname = "object.create_connect_collision"
     bl_label = "Create Connect Collision"
@@ -1098,7 +1113,9 @@ def _is_user_of_active_model(_, obj):
     )
 
 
-class MSBFindPartsPointer(bpy.types.PropertyGroup):
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Scene, "find_msb_parts_pointer")
+class FindMSBPartsPointer(bpy.types.PropertyGroup):
 
     part: bpy.props.PointerProperty(
         name="Part",
@@ -1108,6 +1125,7 @@ class MSBFindPartsPointer(bpy.types.PropertyGroup):
     )
 
 
+@io_soulstruct_class
 class FindMSBParts(LoggingOperator):
 
     bl_idname = "object.find_msb_parts"
@@ -1149,6 +1167,7 @@ class FindMSBParts(LoggingOperator):
         return {"FINISHED"}
 
 
+@io_soulstruct_class
 class FindEntityID(LoggingOperator):
 
     bl_idname = "object.find_msb_entity_id"
@@ -1203,6 +1222,7 @@ class FindEntityID(LoggingOperator):
         return {"FINISHED"}
 
 
+@io_soulstruct_class
 class ColorMSBEvents(LoggingOperator):
 
     bl_idname = "object.color_msb_events"
@@ -1271,6 +1291,7 @@ def _update_initial_transform(bl_part_obj: bpy.types.Object, bl_part_transform_o
     bl_part_obj["MSB Scale"] = bl_part_transform_obj.scale
 
 
+@io_soulstruct_class
 class RestoreActivePartInitialTransform(LoggingOperator):
 
     bl_idname = "object.restore_active_part_initial_transform"
@@ -1294,6 +1315,7 @@ class RestoreActivePartInitialTransform(LoggingOperator):
         return {"FINISHED"}
 
 
+@io_soulstruct_class
 class RestoreSelectedPartsInitialTransforms(LoggingOperator):
 
     bl_idname = "object.restore_selected_parts_initial_transforms"
@@ -1325,6 +1347,7 @@ class RestoreSelectedPartsInitialTransforms(LoggingOperator):
         return {"FINISHED"}
 
 
+@io_soulstruct_class
 class UpdateActiveMSBPartInitialTransform(LoggingOperator):
 
     bl_idname = "object.update_active_msb_part_initial_transform"
@@ -1348,6 +1371,7 @@ class UpdateActiveMSBPartInitialTransform(LoggingOperator):
         return {"FINISHED"}
 
 
+@io_soulstruct_class
 class UpdateSelectedPartsInitialTransforms(LoggingOperator):
 
     bl_idname = "object.update_selected_parts_initial_transforms"

@@ -39,6 +39,7 @@ from soulstruct.base.maps.msb.enums import BaseMSBEventSubtype
 from soulstruct.darksouls1ptde.events.enums import SoundType
 from soulstruct.games import *
 
+from ...base.register import io_soulstruct_class, io_soulstruct_pointer_property
 from ...bpy_base.property_group import SoulstructPropertyGroup
 from ...types import SoulstructType
 
@@ -85,6 +86,8 @@ class BlenderMSBEventSubtype(StrEnum):
             raise ValueError(f"Unsupported Blender MSB Event subtype: {subtype}")
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Object, "MSB_EVENT")
 class MSBEventProps(SoulstructPropertyGroup):
 
     GAME_PROP_NAMES = {
@@ -176,6 +179,8 @@ class MSBEventProps(SoulstructPropertyGroup):
                 obj.name = f"{name} <{BlenderMSBEventSubtype.get_enum_name(obj.MSB_EVENT.entry_subtype)}>{dupe_suffix}"
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Object, "MSB_LIGHT_EVENT")
 class MSBLightEventProps(SoulstructPropertyGroup):
 
     GAME_PROP_NAMES = {
@@ -203,6 +208,8 @@ class MSBLightEventProps(SoulstructPropertyGroup):
     )
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Object, "MSB_SOUND_EVENT")
 class MSBSoundEventProps(SoulstructPropertyGroup):
 
     GAME_PROP_NAMES = {
@@ -242,6 +249,8 @@ class MSBSoundEventProps(SoulstructPropertyGroup):
     )
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Object, "MSB_VFX_EVENT")
 class MSBVFXEventProps(SoulstructPropertyGroup):
 
     GAME_PROP_NAMES = {
@@ -268,6 +277,8 @@ class MSBVFXEventProps(SoulstructPropertyGroup):
     )
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Object, "MSB_WIND_EVENT")
 class MSBWindEventProps(SoulstructPropertyGroup):
 
     GAME_PROP_NAMES = {
@@ -323,6 +334,8 @@ class MSBWindEventProps(SoulstructPropertyGroup):
     )
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Object, "MSB_TREASURE_EVENT")
 class MSBTreasureEventProps(SoulstructPropertyGroup):
 
     GAME_PROP_NAMES = {
@@ -390,6 +403,8 @@ class MSBTreasureEventProps(SoulstructPropertyGroup):
     )
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Object, "MSB_SPAWNER_EVENT")
 class MSBSpawnerEventProps(SoulstructPropertyGroup):
 
     GAME_PROP_NAMES = {
@@ -735,6 +750,8 @@ class MSBSpawnerEventProps(SoulstructPropertyGroup):
         return [getattr(self, f"spawn_regions_{i}") for i in range(4)]
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Object, "MSB_MESSAGE_EVENT")
 class MSBMessageEventProps(SoulstructPropertyGroup):
 
     GAME_PROP_NAMES = {
@@ -778,6 +795,8 @@ class MSBMessageEventProps(SoulstructPropertyGroup):
     )
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Object, "MSB_OBJ_ACT_EVENT")
 class MSBObjActEventProps(SoulstructPropertyGroup):
 
     GAME_PROP_NAMES = {
@@ -822,6 +841,8 @@ class MSBObjActEventProps(SoulstructPropertyGroup):
     )
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Object, "MSB_SPAWN_POINT_EVENT")
 class MSBSpawnPointEventProps(SoulstructPropertyGroup):
 
     GAME_PROP_NAMES = {
@@ -838,6 +859,8 @@ class MSBSpawnPointEventProps(SoulstructPropertyGroup):
     )
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Object, "MSB_MAP_OFFSET_EVENT")
 class MSBMapOffsetEventProps(SoulstructPropertyGroup):
 
     GAME_PROP_NAMES = {
@@ -860,6 +883,8 @@ class MSBMapOffsetEventProps(SoulstructPropertyGroup):
     )
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Object, "MSB_NAVIGATION_EVENT")
 class MSBNavigationEventProps(SoulstructPropertyGroup):
 
     GAME_PROP_NAMES = {
@@ -877,6 +902,8 @@ class MSBNavigationEventProps(SoulstructPropertyGroup):
     )
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Object, "MSB_ENVIRONMENT_EVENT")
 class MSBEnvironmentEventProps(SoulstructPropertyGroup):
 
     GAME_PROP_NAMES = {
@@ -927,6 +954,8 @@ class MSBEnvironmentEventProps(SoulstructPropertyGroup):
     )
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Object, "MSB_NPC_INVASION_EVENT")
 class MSBNPCInvasionEventProps(SoulstructPropertyGroup):
 
     GAME_PROP_NAMES = {

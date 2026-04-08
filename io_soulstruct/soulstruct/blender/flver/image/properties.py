@@ -9,10 +9,13 @@ import bpy
 
 from soulstruct.containers.tpf import TPFPlatform
 
+from ...base.register import io_soulstruct_class, io_soulstruct_pointer_property
 from ...bpy_base.property_group import SoulstructPropertyGroup
 from .enums import *
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Image, "DDS_TEXTURE")
 class DDSTextureProps(SoulstructPropertyGroup):
     """Used as `bpy.types.Image.DDS_TEXTURE`."""
 
@@ -54,6 +57,8 @@ class DDSTextureProps(SoulstructPropertyGroup):
     )
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Scene, "texture_export_settings")
 class TextureExportSettings(SoulstructPropertyGroup):
     """Contains settings and enums that determine DDS compression type for each FLVER texture slot type."""
 

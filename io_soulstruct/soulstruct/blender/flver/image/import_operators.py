@@ -13,16 +13,18 @@ import typing as tp
 from pathlib import Path
 
 import bpy
-from ...utilities.operators import LoggingImportOperator
+
 from soulstruct.base.textures.dds import DDS
 from soulstruct.base.textures.texconv import texconv
 from soulstruct.containers.tpf import TPF, batch_get_tpf_texture_png_data, batch_get_tpf_texture_tga_data, TPFPlatform
 
+from ...base.operators import LoggingImportOperator
+from ...base.register import io_soulstruct_class
 from .enums import BlenderImageFormat
 from .types import *
 
 
-_LOGGER = logging.getLogger("soulstruct.io")
+_LOGGER = logging.getLogger(__name__)
 
 TPF_RE = re.compile(r"(?P<stem>.*)\.tpf(?P<dcx>\.dcx)?$")
 CHRTPFBHD_RE = re.compile(r"(?P<stem>.*)\.chrtpfbhd?$")  # never has DCX
@@ -32,6 +34,7 @@ AEG_STEM_RE = re.compile(r"^aeg(?P<aeg>\d\d\d)$")  # checks stem only
 # NOTE: We don't need a PropertyGroup for texture import (yet).
 
 
+@io_soulstruct_class
 class ImportTextures(LoggingImportOperator):
     """Import an image file from disk into Blender, converting DDS images to specified format first, and optionally
     assigning imported texture to one or more selected `Image` nodes."""

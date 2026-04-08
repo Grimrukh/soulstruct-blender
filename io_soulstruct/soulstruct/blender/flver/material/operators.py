@@ -22,16 +22,19 @@ import bpy
 from soulstruct.base.models.shaders import MatDefError
 from soulstruct.flver import FLVERVersion
 
+from ...base.operators import LoggingOperator
+from ...base.register import io_soulstruct_class, io_soulstruct_pointer_property
 from ...bpy_base.property_group import SoulstructPropertyGroup
 from ...general.game_config import BLENDER_GAME_CONFIG
 from ...types import MeshObject, SoulstructType, is_active_obj_typed_mesh_obj
-from ...utilities import LoggingOperator
 from .properties import get_cached_matbinbnd, get_cached_mtdbnd
 from .types import BlenderFLVERMaterial
 
 _AREA_PREFIX_RE = re.compile(r"m\d\d_")
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Scene, "material_tool_settings")
 class MaterialToolSettings(SoulstructPropertyGroup):
     """Miscellaneous settings used by various Material operators."""
 
@@ -120,6 +123,7 @@ class _SetMaterialTexture(LoggingOperator):
         return {"FINISHED"}
 
 
+@io_soulstruct_class
 class SetMaterialTexture0(_SetMaterialTexture):
 
     bl_idname = "object.set_material_texture_0"
@@ -130,6 +134,7 @@ class SetMaterialTexture0(_SetMaterialTexture):
     SLOT_SUFFIX = "_0"
 
 
+@io_soulstruct_class
 class SetMaterialTexture1(_SetMaterialTexture):
 
     bl_idname = "object.set_material_texture_1"
@@ -140,6 +145,7 @@ class SetMaterialTexture1(_SetMaterialTexture):
     SLOT_SUFFIX = "_1"
 
 
+@io_soulstruct_class
 class AutoRenameMaterials(LoggingOperator):
     """TODO: Support other games."""
 
@@ -170,6 +176,7 @@ class AutoRenameMaterials(LoggingOperator):
         return {"FINISHED"}
 
 
+@io_soulstruct_class
 class MergeFLVERMaterials(LoggingOperator):
     """Scan all materials on all selected objects, and merge materials determined to be identical.
 
@@ -320,6 +327,7 @@ class MergeFLVERMaterials(LoggingOperator):
         return mat_name
 
 
+@io_soulstruct_class
 class AddMaterialGXItem(LoggingOperator):
     bl_idname = "material.add_gx_item"
     bl_label = "Add GX Item"
@@ -335,6 +343,7 @@ class AddMaterialGXItem(LoggingOperator):
         return {"FINISHED"}
 
 
+@io_soulstruct_class
 class RemoveMaterialGXItem(LoggingOperator):
     bl_idname = "material.remove_gx_item"
     bl_label = "Remove GX Item"
@@ -357,6 +366,7 @@ class RemoveMaterialGXItem(LoggingOperator):
         return {"FINISHED"}
 
 
+@io_soulstruct_class
 class RegenerateFLVERMaterialShaders(LoggingOperator):
     bl_idname = "material.regenerate_flver_shaders"
     bl_label = "Regenerate Material Shaders"

@@ -7,9 +7,13 @@ __all__ = [
 ]
 
 import bpy
+
+from ..base.register import io_soulstruct_class, io_soulstruct_pointer_property
 from .utilities import HKX_MATERIAL_NAME_RE
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Object, "COLLISION")
 class MapCollisionProps(bpy.types.PropertyGroup):
     """Common map collision properties for Blender objects."""
 
@@ -17,6 +21,8 @@ class MapCollisionProps(bpy.types.PropertyGroup):
     pass
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Scene, "map_collision_import_settings")
 class MapCollisionImportSettings(bpy.types.PropertyGroup):
     """Common HKX map collision import settings. Drawn manually in operator browser windows."""
 
@@ -41,6 +47,8 @@ def _on_hi_alpha_change(self, _):
             mat.diffuse_color[3] = self.hi_alpha
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Scene, "map_collision_tool_settings")
 class MapCollisionToolSettings(bpy.types.PropertyGroup):
     """Common HKX map collision tool settings. Drawn manually in operator browser windows."""
 

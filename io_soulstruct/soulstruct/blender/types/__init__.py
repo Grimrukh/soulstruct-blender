@@ -11,6 +11,7 @@ __all__ = [
     "is_empty_obj",
 
     "SoulstructType",
+    "SOULSTRUCT_TYPE_ENUM_LIST",
     "SoulstructCollectionType",
     "is_typed_empty_obj",
     "is_typed_mesh_obj",

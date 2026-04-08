@@ -6,9 +6,11 @@ from bpy.props import StringProperty
 
 from soulstruct.dcx import DCXType
 
-from ..utilities import *
+from ..base.operators import LoggingExportOperator, get_dcx_enum_property
+from ..base.register import io_soulstruct_class
 
 
+@io_soulstruct_class
 class ExportHKXCutscene(LoggingExportOperator):
     """Export RemoBND cutscene animation from Actions attached to all selected FLVER armatures."""
     bl_idname = "export_scene.hkx_cutscene"
@@ -32,13 +34,12 @@ class ExportHKXCutscene(LoggingExportOperator):
 
     @classmethod
     def poll(cls, context) -> bool:
-        # TODO: All selected objects must be armatures.
+        # TODO: Select a cutscene collection.
         try:
             return context.selected_objects[0].type == "ARMATURE"
         except IndexError:
             return False
 
     def execute(self, context):
-        # TODO
-        print("Executing HKX cutscene export...")
-        return {"FINISHED"}
+        """TODO"""
+        return self.error("HKX cutscene export is not yet implemented.")

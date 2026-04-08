@@ -13,6 +13,7 @@ import bpy
 from soulstruct.base.maps.msb.parts import BaseMSBPart
 from soulstruct.base.maps.msb.utils import BitSet
 
+from ....base.operators import *
 from ....exceptions import SoulstructTypeError
 from ....flver.models.types import BlenderFLVER
 from ....msb.properties import BlenderMSBPartSubtype, MSBPartArmatureMode, MSBPartProps

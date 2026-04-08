@@ -16,11 +16,11 @@ from mathutils import Vector
 from soulstruct.flver import FLVER, FLVERBone
 from soulstruct.utilities.maths import Vector3
 
-from ....utilities import game_bone_transform_to_bl_bone_matrix
-from .....utilities.conversion import to_blender
-from .....utilities.operators import LoggingOperator
-from .....utilities.misc import is_uniform
+from .....base.operators import LoggingOperator
 from .....types import ArmatureObject
+from .....utilities.conversion import to_blender
+from .....utilities.misc import is_uniform
+from ....utilities import game_bone_transform_to_bl_bone_matrix
 
 
 def create_edit_bones(

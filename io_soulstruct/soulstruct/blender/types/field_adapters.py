@@ -15,7 +15,7 @@ import bpy
 
 from soulstruct.utilities.maths import EulerDeg
 
-from ..utilities.operators import LoggingOperator
+from ..base.operators import LoggingOperator
 from ..utilities.conversion import *
 
 if tp.TYPE_CHECKING:

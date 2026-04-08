@@ -7,7 +7,11 @@ __all__ = [
 
 import bpy
 
+from ..base.register import io_soulstruct_class, io_soulstruct_pointer_property
 
+
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Scene, "cutscene_import_settings")
 class CutsceneImportSettings(bpy.types.PropertyGroup):
 
     to_60_fps: bpy.props.BoolProperty(
@@ -23,6 +27,8 @@ class CutsceneImportSettings(bpy.types.PropertyGroup):
     )
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Scene, "cutscene_export_settings")
 class CutsceneExportSettings(bpy.types.PropertyGroup):
 
     from_60_fps: bpy.props.BoolProperty(

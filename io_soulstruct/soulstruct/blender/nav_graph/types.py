@@ -14,7 +14,8 @@ from soulstruct.base.maps.navmesh import MCG, MCGNode
 from soulstruct.base.maps.navmesh import MCGEdge
 from soulstruct.utilities.text import natural_keys
 
-from ..base import BaseBlenderSoulstructObject
+from ..base.operators import *
+from ..base.soulstruct_object import BaseBlenderSoulstructObject
 from ..exceptions import *
 from ..navmesh.nvm.types import BlenderNVM
 from ..types import *

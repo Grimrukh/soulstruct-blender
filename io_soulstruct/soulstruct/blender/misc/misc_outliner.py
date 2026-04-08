@@ -11,9 +11,11 @@ import re
 
 import bpy
 
-from ..utilities import LoggingOperator
+from ..base.operators import LoggingOperator
+from ..base.register import io_soulstruct_class
 
 
+@io_soulstruct_class
 class ShowCollectionOperator(LoggingOperator):
     """Finds the collection of a given name and makes it visible in the viewport.
 
@@ -43,6 +45,7 @@ class ShowCollectionOperator(LoggingOperator):
         return {"FINISHED"}
 
 
+@io_soulstruct_class
 class HideCollectionOperator(LoggingOperator):
 
     bl_idname = "outliner.hide_collection"

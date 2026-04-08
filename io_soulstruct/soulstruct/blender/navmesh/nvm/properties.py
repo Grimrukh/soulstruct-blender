@@ -8,16 +8,23 @@ __all__ = [
 
 import bpy
 
+from ...base.register import io_soulstruct_class, io_soulstruct_pointer_property
 from ...bpy_base.property_group import SoulstructPropertyGroup
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Object, "NVM")
 class NVMProps(SoulstructPropertyGroup):
     """No properties currently."""
     pass
 
 
+@io_soulstruct_class
 class NVMFaceIndex(bpy.types.PropertyGroup):
-    """No other way to handle this, unfortunately, since we need to store an arbitrary number of faces."""
+    """No other way to handle this, unfortunately, since we need to store an arbitrary number of faces.
+
+    NOTE: Only used nested inside other property groups.
+    """
 
     index: bpy.props.IntProperty(
         name="Index",
@@ -26,6 +33,8 @@ class NVMFaceIndex(bpy.types.PropertyGroup):
     )
 
 
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Object, "NVM_EVENT_ENTITY")
 class NVMEventEntityProps(SoulstructPropertyGroup):
 
     # No game-specific properties.

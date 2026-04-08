@@ -22,7 +22,7 @@ __all__ = [
     "CopyDrawGroups",
     "ApplyPartTransformToModel",
     "CreateConnectCollision",
-    "MSBFindPartsPointer",
+    "FindMSBPartsPointer",
     "FindMSBParts",
     "FindEntityID",
     "ColorMSBEvents",

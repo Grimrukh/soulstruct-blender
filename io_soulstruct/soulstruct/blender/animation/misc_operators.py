@@ -6,13 +6,14 @@ import typing as tp
 
 import bpy
 
-from ..utilities.operators import LoggingOperator
+from ..base.operators import *
+from ..base.register import io_soulstruct_class
 from ..types import ArmatureObject, MeshObject
-
 from .types import SoulstructAnimation
 from .utilities import get_active_flver_or_part_armature
 
 
+@io_soulstruct_class
 class ArmatureActionChoiceOperator(LoggingOperator):
     """Operator called dynamically to let the user choose from a list of available animations for a given armature.
 
@@ -82,6 +83,7 @@ def get_armature_action_choices(self, context):
     return ArmatureActionChoiceOperator.ENUM_OPTIONS
 
 
+@io_soulstruct_class
 class SelectArmatureActionOperator(LoggingOperator):
     # TODO: FLVER and Part actions are not compatible, as they put root motion in different places.
     #
@@ -98,5 +100,8 @@ class SelectArmatureActionOperator(LoggingOperator):
 
     def execute(self, context):
         armature_obj, mesh_obj, model_name, is_part = get_active_flver_or_part_armature(context)
+        if not armature_obj or not mesh_obj:
+            # Should be prevented by poll.
+            return self.error("Active FLVER model must have an Armature and Mesh selected.")
         ArmatureActionChoiceOperator.run(armature_obj, mesh_obj, model_name)
         return {"FINISHED"}

@@ -39,6 +39,7 @@ import bpy
 
 from soulstruct.base.maps.msb.region_shapes import RegionShapeType
 
+from ..base.register import io_soulstruct_class
 from ..types import SoulstructType
 from ..bpy_base import SoulstructPanel, SoulstructPropertyGroup
 from .import_operators import *
@@ -47,6 +48,7 @@ from .misc_operators import *
 from .properties import *
 
 
+@io_soulstruct_class
 class MSBImportPanel(SoulstructPanel):
     """Panel for Soulstruct MSB import operators."""
     bl_label = "MSB Import"
@@ -67,6 +69,7 @@ class MSBImportPanel(SoulstructPanel):
         layout.operator(ImportAnyMSB.bl_idname)
 
 
+@io_soulstruct_class
 class MSBExportPanel(SoulstructPanel):
     """Panel for Soulstruct MSB export operators."""
     bl_label = "MSB Export"
@@ -95,6 +98,7 @@ class MSBExportPanel(SoulstructPanel):
         layout.operator(ExportAnyMSB.bl_idname)
 
 
+@io_soulstruct_class
 class MSBToolsPanel(SoulstructPanel):
     """Panel for Soulstruct MSB tool settings/operators."""
     bl_label = "MSB Tools"
@@ -174,6 +178,7 @@ def bit_set_prop(
 
 # region Property Panels
 
+@io_soulstruct_class
 class MSBPartPanel(SoulstructPanel):
     """Draw a Panel in the Object properties window exposing the appropriate MSB Part fields for active object."""
     bl_label = "MSB Part Settings"
@@ -280,6 +285,7 @@ class _MSBPartSubtypePanelMixin:
             layout.prop(props, prop)
 
 
+@io_soulstruct_class
 class MSBMapPiecePartPanel(SoulstructPanel, _MSBPartSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate MSB Character fields for active object."""
     bl_label = "MSB Map Piece Settings"
@@ -296,6 +302,7 @@ class MSBMapPiecePartPanel(SoulstructPanel, _MSBPartSubtypePanelMixin):
         layout.label(text="No additional properties.")
 
 
+@io_soulstruct_class
 class MSBObjectPartPanel(SoulstructPanel, _MSBPartSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate MSB Object fields for active object."""
     bl_label = "MSB Object Settings"
@@ -308,6 +315,7 @@ class MSBObjectPartPanel(SoulstructPanel, _MSBPartSubtypePanelMixin):
     PROP_GROUP_TYPE = MSBObjectProps
 
 
+@io_soulstruct_class
 class MSBCharacterPartPanel(SoulstructPanel, _MSBPartSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate MSB Character fields for active object."""
     bl_label = "MSB Character Settings"
@@ -366,6 +374,7 @@ class MSBCharacterPartPanel(SoulstructPanel, _MSBPartSubtypePanelMixin):
                 panel.prop(props, prop)
 
 
+@io_soulstruct_class
 class MSBPlayerStartPartPanel(SoulstructPanel, _MSBPartSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate MSB PlayerStart fields for object."""
     bl_label = "MSB Player Start Settings"
@@ -378,6 +387,7 @@ class MSBPlayerStartPartPanel(SoulstructPanel, _MSBPartSubtypePanelMixin):
     PROP_GROUP_TYPE = MSBPlayerStartProps
 
 
+@io_soulstruct_class
 class MSBCollisionPartPanel(SoulstructPanel, _MSBPartSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate MSB Collision fields for active object."""
     bl_label = "MSB Collision Settings"
@@ -409,6 +419,7 @@ class MSBCollisionPartPanel(SoulstructPanel, _MSBPartSubtypePanelMixin):
             layout.prop(props, prop)
 
 
+@io_soulstruct_class
 class MSBProtobossPartPanel(SoulstructPanel, _MSBPartSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate MSB Protoboss fields for object."""
     bl_label = "MSB Protoboss Settings"
@@ -421,6 +432,7 @@ class MSBProtobossPartPanel(SoulstructPanel, _MSBPartSubtypePanelMixin):
     PROP_GROUP_TYPE = MSBProtobossProps
 
 
+@io_soulstruct_class
 class MSBNavmeshPartPanel(SoulstructPanel, _MSBPartSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate MSB Navmesh fields for active object."""
     bl_label = "MSB Navmesh Settings"
@@ -453,6 +465,7 @@ class MSBNavmeshPartPanel(SoulstructPanel, _MSBPartSubtypePanelMixin):
             layout.prop(props, prop)
 
 
+@io_soulstruct_class
 class MSBConnectCollisionPartPanel(SoulstructPanel, _MSBPartSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate MSB Collision fields for active object."""
     bl_label = "MSB Connect Collision Settings"
@@ -465,6 +478,7 @@ class MSBConnectCollisionPartPanel(SoulstructPanel, _MSBPartSubtypePanelMixin):
     PROP_GROUP_TYPE = MSBConnectCollisionProps
 
 
+@io_soulstruct_class
 class MSBRegionPanel(SoulstructPanel):
     """Creates a Panel in the Object properties window."""
     bl_label = "MSB Region Settings"
@@ -518,6 +532,7 @@ class MSBRegionPanel(SoulstructPanel):
         # All properties handled manually above.
 
 
+@io_soulstruct_class
 class MSBEventPanel(SoulstructPanel):
     """Draw a Panel in the Object properties window exposing the appropriate MSB Event fields for active object."""
     bl_label = "MSB Event Settings"
@@ -583,6 +598,7 @@ class _MSBEventSubtypePanelMixin:
             layout.prop(props, prop)
 
 
+@io_soulstruct_class
 class MSBLightEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate Light fields for active object."""
     bl_label = "MSB Light Settings"
@@ -595,6 +611,7 @@ class MSBLightEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     PROP_GROUP_TYPE = MSBLightEventProps
 
 
+@io_soulstruct_class
 class MSBSoundEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate Sound fields for active object."""
     bl_label = "MSB Sound Settings"
@@ -607,6 +624,7 @@ class MSBSoundEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     PROP_GROUP_TYPE = MSBSoundEventProps
 
 
+@io_soulstruct_class
 class MSBVFXEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate VFX fields for active object."""
     bl_label = "MSB VFX Settings"
@@ -619,6 +637,7 @@ class MSBVFXEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     PROP_GROUP_TYPE = MSBVFXEventProps
 
 
+@io_soulstruct_class
 class MSBWindEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate Wind fields for active object."""
     bl_label = "MSB Wind Settings"
@@ -631,6 +650,7 @@ class MSBWindEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     PROP_GROUP_TYPE = MSBWindEventProps
 
 
+@io_soulstruct_class
 class MSBTreasureEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate Treasure fields for active object."""
     bl_label = "MSB Treasure Settings"
@@ -643,6 +663,7 @@ class MSBTreasureEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     PROP_GROUP_TYPE = MSBTreasureEventProps
 
 
+@io_soulstruct_class
 class MSBSpawnerEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate Spawner fields for active object."""
     bl_label = "MSB Spawner Settings"
@@ -655,6 +676,7 @@ class MSBSpawnerEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     PROP_GROUP_TYPE = MSBSpawnerEventProps
 
 
+@io_soulstruct_class
 class MSBMessageEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate Message fields for active object."""
     bl_label = "MSB Message Settings"
@@ -667,6 +689,7 @@ class MSBMessageEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     PROP_GROUP_TYPE = MSBMessageEventProps
 
 
+@io_soulstruct_class
 class MSBObjActEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate ObjAct fields for active object."""
     bl_label = "MSB ObjAct Settings"
@@ -679,6 +702,7 @@ class MSBObjActEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     PROP_GROUP_TYPE = MSBObjActEventProps
 
 
+@io_soulstruct_class
 class MSBSpawnPointEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate Spawn Point fields for active object."""
     bl_label = "MSB Spawn Point Settings"
@@ -691,6 +715,7 @@ class MSBSpawnPointEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     PROP_GROUP_TYPE = MSBSpawnPointEventProps
 
 
+@io_soulstruct_class
 class MSBMapOffsetEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate Map Offset fields for active object."""
     bl_label = "MSB Map Offset Settings"
@@ -703,6 +728,7 @@ class MSBMapOffsetEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     PROP_GROUP_TYPE = MSBMapOffsetEventProps
 
 
+@io_soulstruct_class
 class MSBNavigationEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate Navigation fields for active object."""
     bl_label = "MSB Navigation Settings"
@@ -715,6 +741,7 @@ class MSBNavigationEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     PROP_GROUP_TYPE = MSBNavigationEventProps
 
 
+@io_soulstruct_class
 class MSBEnvironmentEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate Environment fields for active object."""
     bl_label = "MSB Environment Settings"
@@ -727,6 +754,7 @@ class MSBEnvironmentEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     PROP_GROUP_TYPE = MSBEnvironmentEventProps
 
 
+@io_soulstruct_class
 class MSBNPCInvasionEventPanel(SoulstructPanel, _MSBEventSubtypePanelMixin):
     """Draw a Panel in the Object properties window exposing the appropriate NPC Invasion fields for active object."""
     bl_label = "MSB NPC Invasion Settings"

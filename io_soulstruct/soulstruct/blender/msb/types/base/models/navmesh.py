@@ -12,9 +12,10 @@ import bpy
 from soulstruct.containers import Binder, EntryNotFoundError
 from soulstruct.base.maps.navmesh.nvm import NVM
 
+from .....base.operators import *
 from .....exceptions import NVMImportError
 from .....navmesh.nvm.types import BlenderNVM
-from .....utilities import LoggingOperator, find_or_create_collection
+from .....utilities import find_or_create_collection
 from .....types import MeshObject
 
 from .base import BaseBlenderMSBModelImporter, MODEL_T

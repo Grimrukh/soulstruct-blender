@@ -13,7 +13,8 @@ from mathutils import Matrix
 from soulstruct.flver import *
 from soulstruct.utilities.maths import Vector3
 
-from ....base import BaseBlenderSoulstructObject, add_auto_type_props
+from ....base.operators import *
+from ....base.soulstruct_object import BaseBlenderSoulstructObject, add_auto_type_props
 from ....exceptions import *
 from ...utilities import (
     BONE_CoB_4x4,

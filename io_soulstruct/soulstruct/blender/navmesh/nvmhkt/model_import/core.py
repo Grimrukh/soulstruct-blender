@@ -10,6 +10,7 @@ import bpy
 
 from soulstruct.havok.fromsoft.eldenring import NavmeshHKX
 
+from ....base.operators import LoggingOperator
 from ....types import *
 from ....utilities import *
 

@@ -14,9 +14,11 @@ from pathlib import Path
 
 import bpy
 
-from .game_config import BLENDER_GAME_CONFIG
-from ..utilities import *
 from soulstruct.games import ELDEN_RING
+
+from ..base.operators import *
+from ..base.register import io_soulstruct_class
+from .game_config import BLENDER_GAME_CONFIG
 
 if tp.TYPE_CHECKING:
     from .game_structure import GameStructure
@@ -145,7 +147,7 @@ class _SelectMapDirectory(LoggingOperator):
         root = self.get_root(context)
         if not root:
             return self.error(f"{self.SOURCE} directory not set.")
-        map_dir = root.get_dir_path("map", if_exist=True)  # type: Path | None
+        map_dir = root.get_dir_path_if_exists("map")
         if not map_dir:
             return self.error(f"{self.SOURCE} 'map' directory not found.")
         if settings.is_game(ELDEN_RING):
@@ -169,10 +171,11 @@ class _SelectMapDirectory(LoggingOperator):
         return {"FINISHED"}
 
 
+@io_soulstruct_class
 class SelectGameMapDirectory(_SelectMapDirectory):
     """Browse for game map directory to set `map_stem` setting."""
     bl_idname = "soulstruct.select_game_map_directory"
-    bl_label = "Select Map from Game"
+    bl_label = "Select Map in Game"
     bl_description = "Select a map subdirectory in game 'map' folder"
 
     SOURCE = "Game"
@@ -184,15 +187,16 @@ class SelectGameMapDirectory(_SelectMapDirectory):
     )
 
     @classmethod
-    def get_root(cls, context) -> GameStructure:
+    def get_root(cls, context) -> GameStructure | None:
         settings = cls.settings(context)
         return settings.game_root
 
 
+@io_soulstruct_class
 class SelectProjectMapDirectory(_SelectMapDirectory):
     """Browse for project map directory to set `map_stem` setting."""
     bl_idname = "soulstruct.select_project_map_directory"
-    bl_label = "Select Map from Project"
+    bl_label = "Select Map in Project"
     bl_description = "Select a map subdirectory in project 'map' folder"
 
     SOURCE = "Project"
@@ -204,11 +208,12 @@ class SelectProjectMapDirectory(_SelectMapDirectory):
     )
 
     @classmethod
-    def get_root(cls, context) -> GameStructure:
+    def get_root(cls, context) -> GameStructure | None:
         settings = cls.settings(context)
         return settings.project_root
 
 
+@io_soulstruct_class
 class SelectImageCacheDirectory(LoggingImportOperator):
     """Browse for global image cache directory."""
     bl_idname = "soulstruct.select_image_cache_directory"
@@ -245,6 +250,7 @@ class SelectImageCacheDirectory(LoggingImportOperator):
         return {"FINISHED"}
 
 
+@io_soulstruct_class
 class SelectCustomMTDBNDFile(LoggingImportOperator):
     """Browse for custom MTDBND file."""
     bl_idname = "soulstruct.select_custom_mtdbnd_file"
@@ -261,6 +267,7 @@ class SelectCustomMTDBNDFile(LoggingImportOperator):
         return {"FINISHED"}
 
 
+@io_soulstruct_class
 class SelectCustomMATBINBNDFile(LoggingImportOperator):
     """Browse for custom MATBINBND file."""
     bl_idname = "soulstruct.select_custom_matbinbnd_file"
@@ -277,6 +284,7 @@ class SelectCustomMATBINBNDFile(LoggingImportOperator):
         return {"FINISHED"}
 
 
+@io_soulstruct_class
 class LoadCollectionsFromBlend(LoggingImportOperator):
     """Load collections and objects from a '.blend' file by linking its root-level collections to this scene.
 

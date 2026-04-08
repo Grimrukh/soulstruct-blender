@@ -18,6 +18,7 @@ from soulstruct.flver import *
 from soulstruct.base.models.shaders import MatDef
 from soulstruct.games import DEMONS_SOULS
 
+from .....base.operators import *
 from .....exceptions import *
 from .....flver.image.types import DDSTextureCollection
 from .....flver.material.properties import get_cached_mtdbnd, get_cached_matbinbnd

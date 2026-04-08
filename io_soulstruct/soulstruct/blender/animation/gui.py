@@ -5,12 +5,14 @@ __all__ = [
     "AnimationToolsPanel",
 ]
 
+from ..base.register import io_soulstruct_class
 from ..bpy_base.panel import SoulstructPanel
 from .import_operators import *
 from .export_operators import *
 from .misc_operators import *
 
 
+@io_soulstruct_class
 class AnimationImportExportPanel(SoulstructPanel):
     bl_label = "Animation Import/Export"
     bl_idname = "HKX_ANIMATION_PT_animation_import_export"
@@ -55,6 +57,7 @@ class AnimationImportExportPanel(SoulstructPanel):
             panel.operator(ExportHKXAnimationIntoAnyBinder.bl_idname)
 
 
+@io_soulstruct_class
 class AnimationToolsPanel(SoulstructPanel):
     bl_label = "Animation Tools"
     bl_idname = "HKX_ANIMATION_PT_animation_tools"
