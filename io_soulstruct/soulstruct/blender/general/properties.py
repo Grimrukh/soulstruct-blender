@@ -457,7 +457,10 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
 
     @staticmethod
     def get_first_existing_map_file_path(
-        *parts: str | Path, roots: tp.Sequence[GameStructure | None], dcx_type: DCXType = None, map_stem: str = None
+        *parts: str | Path,
+        roots: tp.Sequence[GameStructure | None],
+        dcx_type: DCXType = None,
+        map_stem: str | None = None,
     ) -> Path | None:
         """Check ordered `roots` for 'map' file path, returning first that exists.
 
@@ -472,7 +475,10 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
         return None
 
     @staticmethod
-    def get_first_existing_map_dir_path(roots: tp.Sequence[GameStructure | None], map_stem: str = None) -> Path | None:
+    def get_first_existing_map_dir_path(
+        roots: tp.Sequence[GameStructure | None],
+        map_stem: str | None = None,
+    ) -> Path | None:
         """Check ordered `roots` for 'map' dir path, returning first that exists.
 
         Returns `None` if no existing map directory is found.
@@ -486,7 +492,10 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
         return None
 
     @staticmethod
-    def get_first_existing_msb_path(roots: tp.Sequence[GameStructure | None], map_stem: str = None) -> Path | None:
+    def get_first_existing_msb_path(
+        roots: tp.Sequence[GameStructure | None],
+        map_stem: str | None = None,
+    ) -> Path | None:
         """Check ordered `roots` for MSB file path, returning first that exists.
 
         Returns `None` if no existing MSB file is found.
@@ -499,7 +508,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
                 return path
         return None
 
-    def get_oldest_map_stem_version(self, map_stem: str = None):
+    def get_oldest_map_stem_version(self, map_stem: str | None = None):
         """Check if `smart_map_version_handling` is enabled and return the oldest version of the map stem if so."""
         if map_stem is None:
             map_stem = self.map_stem
@@ -507,7 +516,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
             return map_stem
         return BLENDER_GAME_CONFIG[self.game].new_to_old_map.get(map_stem, map_stem)
 
-    def get_latest_map_stem_version(self, map_stem: str = None):
+    def get_latest_map_stem_version(self, map_stem: str | None = None):
         """Check if `smart_map_version_handling` is enabled and return the latest version of the map stem if so."""
         if map_stem is None:
             map_stem = self.map_stem
@@ -953,7 +962,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
         """
         ...
 
-    def get_relative_msb_path(self, map_stem: str = None) -> Path | None:
+    def get_relative_msb_path(self, map_stem: str | None = None) -> Path | None:
         """Get relative MSB path of given `map_stem` (or selected by default) for selected game.
 
         If `smart_map_version_handling` is enabled, this will redirect to the latest version of the MSB.
