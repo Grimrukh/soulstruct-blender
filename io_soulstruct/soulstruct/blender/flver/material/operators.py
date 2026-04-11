@@ -26,8 +26,8 @@ from ...base.operators import LoggingOperator
 from ...base.register import io_soulstruct_class, io_soulstruct_pointer_property
 from ...bpy_base.property_group import SoulstructPropertyGroup
 from ...general.game_config import BLENDER_GAME_CONFIG
+from ...general.matdefs import get_cached_matbinbnd, get_cached_mtdbnd
 from ...types import MeshObject, SoulstructType, is_active_obj_typed_mesh_obj
-from .properties import get_cached_matbinbnd, get_cached_mtdbnd
 from .types import BlenderFLVERMaterial
 
 _AREA_PREFIX_RE = re.compile(r"m\d\d_")

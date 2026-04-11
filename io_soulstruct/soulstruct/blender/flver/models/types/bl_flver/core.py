@@ -126,7 +126,7 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
         return None
 
     @classmethod
-    def from_armature_or_mesh(cls, obj: bpy.types.Object) -> tp.Self:
+    def from_armature_or_mesh(cls, obj: bpy.types.Object | None) -> tp.Self:
         """FLVER models can be parsed from a Mesh obj or its optional Armature parent."""
         if not obj:
             raise SoulstructTypeError("No Object given.")
@@ -204,9 +204,9 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
         Does not rename anything.
         """
         new_armature_obj = duplicate_armature(self, context, child_mesh_obj, as_data_instance)
-        if copy_pose:
+        if copy_pose and (armature := self.armature):
             context.view_layer.update()  # SLOW
-            copy_armature_pose(self.armature, new_armature_obj)
+            copy_armature_pose(armature, new_armature_obj)
         return new_armature_obj
 
     def duplicate_dummies(self) -> list[bpy.types.Object]:
@@ -243,7 +243,7 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
         """Find all MSB Part instances that use this FLVER as their model, and sync their Armatures to this FLVER's
         Armature. This may involve creating a new Armature for the Part."""
 
-        if not self.armature:
+        if not (armature := self.armature):
             return []  # nothing to sync if no Armature (we don't delete out-of-sync MSB Part armatures)
         bl_msb_part_users = self.find_msb_part_users()
         if not bl_msb_part_users:
@@ -254,7 +254,7 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
         for bl_msb_part in bl_msb_part_users:
             if bl_msb_part.parent and bl_msb_part.parent.type == "ARMATURE":
                 bl_msb_part_arma = bl_msb_part.parent
-                bl_msb_part_arma.data = self.armature.data  # assign new Armature data to existing Armature object
+                bl_msb_part_arma.data = armature.data  # assign new Armature data to existing Armature object
             else:
                 if self.bone_data_type != FLVERBoneDataType.CUSTOM:
                     # TODO: Baked policy: only create new Armatures for CUSTOM bone data (e.g. static Map Piece pose).
@@ -275,7 +275,7 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
             # Update view layer ONCE to capture any newly-created armatures.
             context.view_layer.update()  # SLOW
         for bl_msb_part_arma in bl_msb_part_armatures:
-            copy_armature_pose(self.armature, bl_msb_part_arma)
+            copy_armature_pose(armature, bl_msb_part_arma)
         return bl_msb_part_users
 
     def find_msb_part_users(self) -> list[MeshObject]:

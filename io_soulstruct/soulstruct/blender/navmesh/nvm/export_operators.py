@@ -22,7 +22,7 @@ from soulstruct.games import DARK_SOULS_PTDE, DARK_SOULS_DSR, DEMONS_SOULS
 from ...base.operators import *
 from ...base.register import io_soulstruct_class
 from ...exceptions import SoulstructTypeError
-from ...types import SoulstructType
+from ...types import SoulstructType, MeshObject
 from ...utilities.misc import *
 from .types import *
 
@@ -49,7 +49,7 @@ class ExportAnyNVM(LoggingExportOperator):
 
     @classmethod
     def poll(cls, context) -> bool:
-        return context.active_object and context.active_object.soulstruct_type == SoulstructType.NAVMESH
+        return context.active_object is not None and context.active_object.soulstruct_type == SoulstructType.NAVMESH
 
     def invoke(self, context, _event):
         """Set default export name to name of object (before first space and without Blender dupe suffix)."""
@@ -250,12 +250,19 @@ class ExportMapNVM(LoggingOperator):
         opened_nvmbnds = {}  # type: dict[Path, BaseNVMBND]
         bl_nvms = BlenderNVM.from_selected_objects(context, sort=True)  # type: list[BlenderNVM]
 
-        export_loose_des_nvms = settings.is_game(DEMONS_SOULS) and settings.des_export_debug_files
+        export_loose_des_nvms = settings.is_game(DEMONS_SOULS) and settings.demonssouls.export_debug_files
         loose_nvms_to_export = []  # type: list[tuple[NVM, Path]]
 
         for bl_nvm in bl_nvms:
             # NVMBND files come from latest 'map' folder version.
             map_stem = settings.get_map_stem_for_export(bl_nvm.obj, latest=True)
+
+            if not map_stem:
+                self.error(
+                    f"Cannot detect a map stem for `{bl_nvm.name}` (and none set in settings)."
+                )
+                continue
+
             relative_nvmbnd_path = Path(f"map/{map_stem}/{map_stem}.nvmbnd")
 
             if relative_nvmbnd_path not in opened_nvmbnds:
@@ -294,7 +301,7 @@ class ExportMapNVM(LoggingOperator):
                 entry.entry_id = i
             exported_paths += settings.export_file(self, nvmbnd, relative_nvmbnd_path)
 
-        if settings.is_game(DEMONS_SOULS) and settings.des_export_debug_files and loose_nvms_to_export:
+        if settings.is_game(DEMONS_SOULS) and settings.demonssouls.export_debug_files and loose_nvms_to_export:
             # Export loose NVMs next to NVMBND.
             for nvm, relative_nvm_path in loose_nvms_to_export:
                 exported_paths += settings.export_file(self, nvm, relative_nvm_path)

@@ -23,7 +23,7 @@ from soulstruct.havok.enums import HavokModule
 from soulstruct.havok.fromsoft.base import BaseSkeletonHKX, BaseAnimationHKX
 
 
-@dataclass(slots=True, kw_only=True)
+@dataclass(slots=True, kw_only=True, frozen=True)
 class BlenderGameConfig:
     """Fixed configuration data and game-specific classes for a specific game."""
 
@@ -112,7 +112,6 @@ BLENDER_GAME_CONFIG = {
         msb_class=demonssouls.maps.MSB,
         map_constants=demonssouls.maps.constants,
 
-        # TODO: No idea why PyCharm is complaining about type here. Can't seem to detect 'type[BaseNVMBND] hint above.
         nvmbnd_class=demonssouls.maps.navmesh.NVMBND,
         supports_mcg=True,
 

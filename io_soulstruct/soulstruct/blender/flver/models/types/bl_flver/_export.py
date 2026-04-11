@@ -21,13 +21,14 @@ from soulstruct.games import DEMONS_SOULS
 from .....base.operators import *
 from .....exceptions import *
 from .....flver.image.types import DDSTextureCollection
-from .....flver.material.properties import get_cached_mtdbnd, get_cached_matbinbnd
 from .....flver.material.types import BlenderFLVERMaterial
 from .....flver.models.properties import FLVERExportSettings
 from .....general import BLENDER_GAME_CONFIG, SoulstructSettings
+from .....general.matdefs import get_cached_mtdbnd, get_cached_matbinbnd
 from .....utilities import *
-
 from ..enums import FLVERModelType, FLVERBoneDataType
+
+# Private implementation modules:
 from ._export_bones import create_flver_bones
 
 if tp.TYPE_CHECKING:

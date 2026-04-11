@@ -26,13 +26,13 @@ def duplicate_armature(
     child_mesh_obj: MeshObject,
     as_data_instance=False,
 ) -> ArmatureObject:
-    if not bl_flver.armature:
+    if not (armature := bl_flver.armature):
         # TODO: Could copy 'implicit Armature' by creating a single-bone Armature with the same name as the model.
         raise FLVERError("No Armature to duplicate for FLVER model.")
 
     new_armature_obj = new_armature_object(
-        bl_flver.armature.name,
-        data=bl_flver.armature.data if as_data_instance else bl_flver.armature.copy(),
+        armature.name,
+        data=armature.data if as_data_instance else armature.data.copy(),
     )
     for collection in child_mesh_obj.users_collection:
         collection.objects.link(new_armature_obj)

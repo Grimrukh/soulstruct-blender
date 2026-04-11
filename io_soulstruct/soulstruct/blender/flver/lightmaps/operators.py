@@ -18,6 +18,7 @@ from ...base.operators import LoggingOperator
 from ...base.register import io_soulstruct_class, io_soulstruct_pointer_property
 from ...bpy_base.property_group import SoulstructPropertyGroup
 from ...exceptions import SoulstructTypeError
+from ...general.matdefs import get_mtdbnd
 from ..material.types import BlenderFLVERMaterial
 from ..models.types import BlenderFLVER
 
@@ -114,8 +115,7 @@ class BakeLightmapTextures(LoggingOperator):
         """
         self.info("Baking FLVER lightmap textures...")
 
-        mat_settings = context.scene.flver_material_settings
-        mtdbnd = mat_settings.get_mtdbnd(self, context)
+        mtdbnd = get_mtdbnd(self, context)
         bake_settings = context.scene.bake_lightmap_settings
 
         bl_flvers = BlenderFLVER.from_selected_objects(context, sort=True)  # type: list[BlenderFLVER]

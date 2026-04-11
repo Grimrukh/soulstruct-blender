@@ -34,9 +34,9 @@ class _BaseGlobalSettingsPanel(SoulstructPanel):
         game = settings.game
         if game:
             layout.label(text="Game Root:")
-            layout.prop(settings, settings.get_game_root_prop_name(), text="")
+            layout.prop(settings.game_settings, "game_root_str", text="")
             layout.label(text="Project Root:")
-            layout.prop(settings, settings.get_project_root_prop_name(), text="")
+            layout.prop(settings.game_settings, "project_root_str", text="")
         else:
             layout.label(text="Unsupported Game")
 
@@ -49,8 +49,14 @@ class _BaseGlobalSettingsPanel(SoulstructPanel):
             panel.prop(settings, "prefer_import_from_project")
             panel.prop(settings, "also_export_to_game")
             panel.prop(settings, "smart_map_version_handling")
+            if settings.game_config.uses_matbin:
+                layout.label(text="Custom MATBINBND Path:")
+                layout.prop(settings.game_settings, "matbinbnd_path_str", text="")
+            else:
+                layout.label(text="Custom MTDBND Path:")
+                layout.prop(settings.game_settings, "mtdbnd_path_str", text="")
             if settings.is_game(DEMONS_SOULS):
-                panel.prop(settings, "des_export_debug_files")
+                panel.prop(settings.demonssouls, "export_debug_files")
             panel.label(text="Soulstruct GUI Project Path:")
             panel.prop(settings, "soulstruct_project_root_str", text="")
 

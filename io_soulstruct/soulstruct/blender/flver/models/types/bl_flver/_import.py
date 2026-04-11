@@ -312,7 +312,7 @@ def _create_bl_mesh(
     command.operator.debug(f"Merged FLVER meshes in {time.perf_counter() - p} s")
     if command.import_settings.merge_mesh_vertices:
         # Report vertex reduction.
-        total_vertices = sum(len(mesh.vertices) for mesh in command.flver.meshes)
+        total_vertices = sum(mesh.vertex_count for mesh in command.flver.meshes)
         total_merged_vertices = merged_mesh.vertex_data.shape[0]
         command.operator.debug(
             f"Merging reduced {total_vertices} vertices to {total_merged_vertices} "
@@ -430,12 +430,12 @@ def _create_bl_mesh_from_merged_mesh(
     valid_face_loop_indices = all_faces[unique_mask].ravel()
 
     # Create and populate UV and vertex color data layers (on loops).
-    for i, (uv_layer_name, merged_loop_uv_array) in enumerate(merged_mesh.loop_uvs.items()):
+    for i, (uv_layer_name, merged_loop_uv_array) in enumerate(merged_mesh.loop_data.uvs.items()):
         # self.operator.info(f"Creating UV layer {i}: {uv_layer_name}")
         uv_layer = mesh_data.uv_layers.new(name=uv_layer_name, do_init=False)
         loop_uv_data = merged_loop_uv_array[valid_face_loop_indices].ravel()
         uv_layer.data.foreach_set("uv", loop_uv_data)
-    for i, merged_color_array in enumerate(merged_mesh.loop_vertex_colors):
+    for i, merged_color_array in enumerate(merged_mesh.loop_data.vertex_colors):
         # self.operator.info(f"Creating Vertex Colors layer {i}: VertexColors{i}")
         # TODO: Apparently `vertex_colors` is deprecated in favor of "color attributes". Investigate.
         color_layer = mesh_data.vertex_colors.new(name=f"VertexColors{i}")
@@ -450,9 +450,10 @@ def _create_bl_mesh_from_merged_mesh(
     # that. New versions of Blender automatically create the `mesh.corner_normals` collection. We also don't need to
     # enable `use_auto_smooth` or call `calc_normals_split()` anymore.
 
-    loop_normal_data = merged_mesh.loop_normals[valid_face_loop_indices]  # NOT raveled
-    mesh_data.normals_split_custom_set(loop_normal_data)  # one normal per loop
-    mesh_data.update()
+    if merged_mesh.loop_data.normals is not None:
+        loop_normal_data = merged_mesh.loop_data.normals[valid_face_loop_indices]  # NOT raveled
+        mesh_data.normals_split_custom_set(loop_normal_data)  # one normal per loop
+        mesh_data.update()
 
     return merged_mesh.vertex_data["bone_weights"], merged_mesh.vertex_data["bone_indices"]
 

@@ -9,6 +9,7 @@ __all__ = [
     "FLVERImportError",
     "FLVERExportError",
     "MaterialImportError",
+    "MissingSoulstructNodeGroupError",
     "TextureExportError",
     "MapCollisionImportError",
     "MapCollisionExportError",
@@ -81,6 +82,11 @@ class FLVERExportError(FLVERError):
 class MaterialImportError(SoulstructBlenderError):
     """Error raised during material shader creation. Generally non-fatal, as the critical texture nodes required for
     export are typically easy to create. This just means a more faithful shader couldn't be built."""
+    pass
+
+
+class MissingSoulstructNodeGroupError(MaterialImportError):
+    """Error raised if Soulstruct tries to load an invalid node group from bundled shaders."""
     pass
 
 

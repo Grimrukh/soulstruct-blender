@@ -60,174 +60,24 @@ def _update_log_level(self: SoulstructSettings, context: bpy.types.Context):
 
 
 @io_soulstruct_class
-@io_soulstruct_pointer_property(bpy.types.Scene, "soulstruct_settings")
-class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyGroup` (unnecessary)
-    """Global settings for the Soulstruct Blender plugin."""
+class SoulstructGameSettings(bpy.types.PropertyGroup):
+    """Game-specific settings. `SoulstructSettings` retrieves settings from active game's instance of this."""
 
-    # region True Blender Properties
-
-    game_enum: bpy.props.EnumProperty(
-        name="Game",
-        description="Game currently being worked on. Determines available features, default data values, "
-                    "file paths/extensions/compression, etc. Must match selected game directory",
-        items=[
-            (game.variable_name, game.name, game.name)
-            for game in SUPPORTED_GAMES
-        ],
-        default=DARK_SOULS_DSR.variable_name,
-    )
-
-    # Directories are set and saved for each game, so you can switch between them without having to set this again.
-    # The prefixes to these directories are identical to the `Game.submodule_name` attribute of that game and are
-    # retrieved dynamically.
-
-    # region Game/Project Directories
-    demonssouls_game_root_str: bpy.props.StringProperty(
-        name="DeS Game Root",
-        description="Root (containing BIN) of game directory to import files from when they are missing from the "
-                    "project directory, and optionally export to if 'Also Export to Game' is enabled. DeS files should "
-                    "already be unpacked",
+    game_root_str: bpy.props.StringProperty(
+        name="Game Root",
+        description="Root of game directory to import files from when they are missing from the project directory, "
+                    "and optionally export to if 'Also Export to Game' is enabled",
         default="",
         subtype="DIR_PATH",
     )
 
-    demonssouls_project_root_str: bpy.props.StringProperty(
-        name="DS1:PTDE Project Root",
+    project_root_str: bpy.props.StringProperty(
+        name="Project Root",
         description="Project root directory with game-like structure to export to. Files for import and Binders needed "
                     "for exporting new entries will also be sourced here first if they exist",
         default="",
         subtype="DIR_PATH",
     )
-
-    darksouls1ptde_game_root_str: bpy.props.StringProperty(
-        name="DS1:PTDE Game Root",
-        description="Root (containing EXE) of game directory to import files from when they are missing from the "
-                    "project directory, and optionally export to if 'Also Export to Game' is enabled. Files must be "
-                    "unpacked with UDSFM",
-        default="",
-        subtype="DIR_PATH",
-    )
-
-    darksouls1ptde_project_root_str: bpy.props.StringProperty(
-        name="DS1:PTDE Project Root",
-        description="Project root directory with game-like structure to export to. Files for import and Binders needed "
-                    "for exporting new entries will also be sourced here first if they exist",
-        default="",
-        subtype="DIR_PATH",
-    )
-
-    darksouls1r_game_root_str: bpy.props.StringProperty(
-        name="DS1R Game Root",
-        description="Root (containing EXE) of game directory to import files from when they are missing from the "
-                    "project directory, and optionally export to if 'Also Export to Game' is enabled. DS1R files "
-                    "should already be unpacked",
-        default="",
-        subtype="DIR_PATH",
-    )
-
-    darksouls1r_project_root_str: bpy.props.StringProperty(
-        name="DS1R Project Root",
-        description="Project root directory with game-like structure to export to. Files for import and Binders needed "
-                    "for exporting new entries will also be sourced here first if they exist",
-        default="",
-        subtype="DIR_PATH",
-    )
-
-    bloodborne_game_root_str: bpy.props.StringProperty(
-        name="Bloodborne Game Root",
-        description="Root (containing BIN) of game directory to import files from when they are missing from the "
-                    "project directory, and optionally export to if 'Also Export to Game' is enabled. BB files "
-                    "should already be unpacked",
-        default="",
-        subtype="DIR_PATH",
-    )
-
-    bloodborne_project_root_str: bpy.props.StringProperty(
-        name="Bloodborne Project Root",
-        description="Project root directory with game-like structure to export to. Files for import and Binders needed "
-                    "for exporting new entries will also be sourced here first if they exist",
-        default="",
-        subtype="DIR_PATH",
-    )
-
-    sekiro_game_root_str: bpy.props.StringProperty(
-        name="Sekiro Game Root",
-        description="Root (containing EXE) of game directory to import files from when they are missing from the "
-                    "project directory, and optionally export to if 'Also Export to Game' is enabled. Files must be "
-                    "unpacked with UXM",
-        default="",
-        subtype="DIR_PATH",
-    )
-
-    sekiro_project_root_str: bpy.props.StringProperty(
-        name="Sekiro Project Directory",
-        description="Project root directory with game-like structure to export to. Files for import and Binders needed "
-                    "for exporting new entries will also be sourced here first if they exist",
-        default="",
-        subtype="DIR_PATH",
-    )
-
-    eldenring_game_root_str: bpy.props.StringProperty(
-        name="Elden Ring Game Root",
-        description="Root (containing EXE) of game directory to import files from when they are missing from the "
-                    "project directory, and optionally export to if 'Also Export to Game' is enabled. Files must be "
-                    "unpacked with UXM",
-        default="",
-        subtype="DIR_PATH",
-    )
-
-    eldenring_project_root_str: bpy.props.StringProperty(
-        name="ER Project Directory",
-        description="Project root directory with game-like structure to export to. Files for import and Binders needed "
-                    "for exporting new entries will also be sourced here first if they exist",
-        default="",
-        subtype="DIR_PATH",
-    )
-    # endregion
-
-    soulstruct_project_root_str: bpy.props.StringProperty(
-        name="Soulstruct Project Root",
-        description="Optional root directory of a 'Soulstruct GUI' project with MSB JSON files, EVS event scripts, "
-                    "etc., which MSB JSONs can be automatically exported to in sync with MSB files",
-        default="",
-        subtype="DIR_PATH",
-    )
-
-    prefer_import_from_project: bpy.props.BoolProperty(
-        name="Prefer Import from Project",
-        description="When importing, prefer files/folders from project directory over game directory if they exist. "
-                    "NOTE: When exporting new entries into Binders, an existing project Binder will always be "
-                    "preferred as the export target over the existing game Binder.",
-        default=True,
-    )
-
-    also_export_to_game: bpy.props.BoolProperty(
-        name="Also Export to Game",
-        description="Export files to the game directory in addition to the project directory (if given)",
-        default=False,
-    )
-
-    des_export_debug_files: bpy.props.BoolProperty(
-        name="Export Demon's Souls Debug Files",
-        description="Export non-DCX and/or loose files for Demon's Souls debug mode, depending on file type",
-        default=True,
-    )
-
-    import_bak_file: bpy.props.BoolProperty(
-        name="Import BAK File",
-        description="Import from '.bak' backup file when auto-importing from project/game directory. If enabled and a "
-                    "'.bak' file is not found, the import will fail",
-        default=False,
-    )
-
-    enable_debug_logging: bpy.props.BoolProperty(
-        name="Enable Debug Logging",
-        description="Enable debug logging for more detailed information in the Blender console",
-        default=False,
-        update=_update_log_level,
-    )
-
-    # region Blender Map Properties
 
     map_stem: bpy.props.StringProperty(
         name="Map Stem",
@@ -235,23 +85,38 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
         default="",
     )
 
-    auto_detect_export_map: bpy.props.BoolProperty(
-        name="Auto-Detect Export Map",
-        description="Detect map stem (e.g. 'm10_00_00_00') from selected or active objects and/or collections when "
-                    "exporting project/game files, depending on the operator",
+    mtdbnd_path_str: bpy.props.StringProperty(
+        name="MTDBND Path",
+        description="Path of custom MTDBND file for detecting material setups in game. "
+                    "Defaults to an automatic known location in selected project (preferred) or game directory",
+        default="",
+        subtype="FILE_PATH",
+    )
+
+
+@io_soulstruct_class
+class DemonsSoulsGameSettings(SoulstructGameSettings):
+
+    export_debug_files: bpy.props.BoolProperty(
+        name="Export Demon's Souls Debug Files",
+        description="Export non-DCX and/or loose files for Demon's Souls debug mode, depending on file type",
         default=True,
     )
 
-    smart_map_version_handling: bpy.props.BoolProperty(
-        name="Use Smart Map Version Handling",
-        description="If enabled, Blender auto-import/export will always use the latest versions of MSB, NVMBND, MCG, "
-                    "and MCP map files, but will still use the original versions of FLVER and HKXBHD/BDT files. This "
-                    "is the correct way to handle files for Darkroot Garden in DS1. Selecting map m12_00_00_00 vs. "
-                    "m12_00_00_01 in the dropdown will therefore have no effect on auto-import/export",
-        default=True,
+
+@io_soulstruct_class
+class EldenRingGameSettings(SoulstructGameSettings):
+
+    matbinbnd_path_str: bpy.props.StringProperty(
+        name="MATBINBND Path",
+        description="Path of custom MATBINBND file for detecting material setups in Elden Ring. "
+                    "Defaults to an automatic known location in selected project (preferred) or game directory. "
+                    "If '_dlc01' and '_dlc02' variants of path name are found, they will also be loaded",
+        default="",
+        subtype="FILE_PATH",
     )
 
-    er_map_filter_mode: bpy.props.EnumProperty(
+    map_filter_mode: bpy.props.EnumProperty(
         name="Elden Ring Map Filter",
         description="Filter mode for Map Stem dropdown. Only used by Elden Ring",
         items=[
@@ -281,17 +146,122 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
         ],
     )
 
-    er_map_extra_filter_glob: bpy.props.StringProperty(
+    map_extra_filter_glob: bpy.props.StringProperty(
         name="Elden Ring Map Extra Filter Glob",
         description="Additional glob filter for Map Stem dropdown. Only used by Elden Ring and only applies to map stems "
                     "that pass the standard filter.",
         default="",
     )
 
-    er_include_empty_map_tiles: bpy.props.BoolProperty(
+    include_empty_map_tiles: bpy.props.BoolProperty(
         name="Include Empty Map Tiles",
         description="Include Elden Ring overworld small map tiles with compressed MSB size < 700 bytes (likely empty)",
         default=False,
+    )
+
+
+@io_soulstruct_class
+@io_soulstruct_pointer_property(bpy.types.Scene, "soulstruct_settings")
+class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyGroup` (unnecessary)
+    """Global settings for the Soulstruct Blender plugin."""
+
+    game_enum: bpy.props.EnumProperty(
+        name="Game",
+        description="Game currently being worked on. Determines available features, default data values, "
+                    "file paths/extensions/compression, etc. Must match selected game directory",
+        items=[
+            (game.variable_name, game.name, game.name)
+            for game in SUPPORTED_GAMES
+        ],
+        default=DARK_SOULS_DSR.variable_name,
+    )
+
+    # region Game-Specific Settings
+
+    demonssouls: bpy.props.PointerProperty(
+        name="Demon's Souls Settings",
+        type=DemonsSoulsGameSettings,
+        description="Demon's Souls settings",
+    )
+
+    darksouls1ptde: bpy.props.PointerProperty(
+        name="Dark Souls 1: PTDE Settings",
+        type=SoulstructGameSettings,  # no game-specific options
+        description="Dark Souls 1: PTDE settings",
+    )
+
+    darksouls1r: bpy.props.PointerProperty(
+        name="Dark Souls 1: Remastered Settings",
+        type=SoulstructGameSettings,  # no game-specific options
+        description="Dark Souls 1: Remastered settings",
+    )
+
+    bloodborne: bpy.props.PointerProperty(
+        name="Bloodborne Settings",
+        type=SoulstructGameSettings,  # no game-specific options
+        description="Bloodborne Settings",
+    )
+
+    eldenring: bpy.props.PointerProperty(
+        name="Elden Ring Settings",
+        type=EldenRingGameSettings,
+        description="Elden Ring Settings",
+    )
+
+    # endregion
+
+    soulstruct_project_root_str: bpy.props.StringProperty(
+        name="Soulstruct Project Root",
+        description="Optional root directory of a 'Soulstruct GUI' project with MSB JSON files, EVS event scripts, "
+                    "etc., which MSB JSONs can be automatically exported to in sync with MSB files",
+        default="",
+        subtype="DIR_PATH",
+    )
+
+    prefer_import_from_project: bpy.props.BoolProperty(
+        name="Prefer Import from Project",
+        description="When importing, prefer files/folders from project directory over game directory if they exist. "
+                    "NOTE: When exporting new entries into Binders, an existing project Binder will always be "
+                    "preferred as the export target over the existing game Binder.",
+        default=True,
+    )
+
+    also_export_to_game: bpy.props.BoolProperty(
+        name="Also Export to Game",
+        description="Export files to the game directory in addition to the project directory (if given)",
+        default=False,
+    )
+
+    import_bak_file: bpy.props.BoolProperty(
+        name="Import BAK File",
+        description="Import from '.bak' backup file when auto-importing from project/game directory. If enabled and a "
+                    "'.bak' file is not found, the import will fail",
+        default=False,
+    )
+
+    enable_debug_logging: bpy.props.BoolProperty(
+        name="Enable Debug Logging",
+        description="Enable debug logging for more detailed information in the Blender console",
+        default=False,
+        update=_update_log_level,
+    )
+
+    # region Blender Map Properties
+
+    auto_detect_export_map: bpy.props.BoolProperty(
+        name="Auto-Detect Export Map",
+        description="Detect map stem (e.g. 'm10_00_00_00') from selected or active objects and/or collections when "
+                    "exporting project/game files, depending on the operator",
+        default=True,
+    )
+
+    smart_map_version_handling: bpy.props.BoolProperty(
+        name="Use Smart Map Version Handling",
+        description="If enabled, Blender auto-import/export will always use the latest versions of MSB, NVMBND, MCG, "
+                    "and MCP map files, but will still use the original versions of FLVER and HKXBHD/BDT files. This "
+                    "is the correct way to handle files for Darkroot Garden in DS1. Selecting map m12_00_00_00 vs. "
+                    "m12_00_00_01 in the dropdown will therefore have no effect on auto-import/export",
+        default=True,
     )
 
     # endregion
@@ -308,19 +278,19 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
         return self.game.variable_name
 
     @property
+    def game_settings(self) -> SoulstructGameSettings:
+        return getattr(self, self.game.submodule_name)
+
+    @property
     def game_root_path(self) -> Path | None:
         """Get root path for live game files for active game, if path is set."""
-        game_submodule_name = self.game.submodule_name
-        prop_name = f"{game_submodule_name}_game_root_str"
-        game_root_str = getattr(self, prop_name, "")
+        game_root_str = self.game_settings.game_root_str
         return Path(game_root_str) if game_root_str else None
 
     @property
     def project_root_path(self) -> Path | None:
         """Get root path for project files for active game, if path is set."""
-        game_submodule_name = self.game.submodule_name
-        prop_name = f"{game_submodule_name}_project_root_str"
-        project_root_str = getattr(self, prop_name, "")
+        project_root_str = self.game_settings.project_root_str
         return Path(project_root_str) if project_root_str else None
 
     @property
@@ -336,6 +306,28 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
         if project_root_path:
             return GameStructure(self, project_root_path)
         return None
+
+    @property
+    def map_stem(self) -> str:
+        return self.game_settings.map_stem
+
+    @map_stem.setter
+    def map_stem(self, stem: str) -> None:
+        self.game_settings.map_stem = stem
+
+    @property
+    def mtdbnd_path(self) -> Path | None:
+        if self.is_game("ELDEN_RING"):
+            return None
+        mtdbnd_path_str = self.game_settings.mtdbnd_path_str
+        return Path(mtdbnd_path_str) if mtdbnd_path_str else None
+
+    @property
+    def matbinbnd_path(self) -> Path | None:
+        if not self.is_game("ELDEN_RING"):
+            return None
+        matbinbnd_path_str = self.eldenring.matbinbnd_path_str
+        return Path(matbinbnd_path_str) if matbinbnd_path_str else None
 
     @property
     def soulstruct_project_root_path(self) -> Path | None:
@@ -366,23 +358,14 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
 
     # endregion
 
-    # region Constructors
-
-    @staticmethod
-    def from_context(context: bpy.types.Context = None) -> SoulstructSettings:
-        if context is None:
-            context = bpy.context
-        return context.scene.soulstruct_settings
-
-    # endregion
-
     # region Getter Methods
 
     def is_game(self, *name_or_game: str | Game) -> tp.TypeGuard[Game]:
         """Check if any `name_or_game` is the selected `Game`."""
+        current_game = self.game
         for game in name_or_game:
             game = get_game(game)
-            if game is self.game:
+            if game is current_game:
                 return True
         return False
 
@@ -393,14 +376,6 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
     @property
     def game_config(self) -> BlenderGameConfig:
         return BLENDER_GAME_CONFIG[self.game]
-
-    def get_game_root_prop_name(self) -> str:
-        """Get the name of the game root property for the current game."""
-        return f"{self.game.submodule_name}_game_root_str"
-
-    def get_project_root_prop_name(self):
-        """Get the name of the project root property for the current game."""
-        return f"{self.game.submodule_name}_project_root_str"
 
     def auto_set_game(self):
         """Determine `game` enum value from `game_directory`."""
@@ -508,7 +483,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
                 return path
         return None
 
-    def get_oldest_map_stem_version(self, map_stem: str | None = None):
+    def get_oldest_map_stem_version(self, map_stem: str | None = None) -> str:
         """Check if `smart_map_version_handling` is enabled and return the oldest version of the map stem if so."""
         if map_stem is None:
             map_stem = self.map_stem
@@ -516,7 +491,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
             return map_stem
         return BLENDER_GAME_CONFIG[self.game].new_to_old_map.get(map_stem, map_stem)
 
-    def get_latest_map_stem_version(self, map_stem: str | None = None):
+    def get_latest_map_stem_version(self, map_stem: str | None = None) -> str:
         """Check if `smart_map_version_handling` is enabled and return the latest version of the map stem if so."""
         if map_stem is None:
             map_stem = self.map_stem

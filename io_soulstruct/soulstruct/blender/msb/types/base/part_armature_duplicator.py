@@ -36,7 +36,7 @@ class PartArmatureDuplicator:
         context: bpy.types.Context,
         armature_mode: MSBPartArmatureMode,
         bl_part: BaseBlenderMSBPart,
-        model: MeshObject,
+        model: MeshObject | None,
     ) -> bool:
         """Check `armature_mode` (and presence of `model`) and instance model Armature to Part accordingly."""
         if not model:

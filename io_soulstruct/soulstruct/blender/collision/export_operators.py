@@ -311,6 +311,11 @@ class ExportMapHKXMapCollision(LoggingOperator):
                 continue
 
             map_stem = settings.get_map_stem_for_export(bl_map_collision.obj, oldest=True)
+            if not map_stem:
+                self.error(
+                    f"Cannot detect a map stem for `{bl_map_collision.name}` (and none set in settings)."
+                )
+                continue
 
             model_name = bl_map_collision.game_name
             if not LOOSE_HKX_COLLISION_STEM_RE[settings.game].match(model_name):

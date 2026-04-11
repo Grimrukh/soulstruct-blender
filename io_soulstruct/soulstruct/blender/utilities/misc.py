@@ -187,7 +187,7 @@ def get_collection_map_stem(obj: bpy.types.Object) -> str:
     """
     if not obj.users_collection:
         raise ValueError(f"Object '{obj.name}' is not in any Blender collection.")
-    map_stem = None
+    map_stem = ""
     for collection in obj.users_collection:
         new_match = MAP_STEM_RE.match(collection.name.split(" ")[0])
         if new_match:

@@ -12,7 +12,6 @@ __all__ = [
 ]
 
 import math
-import typing as tp
 from dataclasses import dataclass
 from functools import singledispatch
 
@@ -51,10 +50,8 @@ FS_BL_CoB_4 = BLMatrix((
 # Game -> Blender
 # =========================
 
-BLENDER_TO_GAME_TYPES = tp.Union[BLEuler, BLVector, BLMatrix, BLQuaternion]
-
 @singledispatch
-def to_game(obj: BLENDER_TO_GAME_TYPES) -> tp.Union[Vector3, Matrix3, Matrix4, EulerRad, FSQuaternion]:
+def to_game(obj):
     """Default: raise for unsupported types."""
     raise TypeError(f"to_game() has no registered converter for type {type(obj)!r}")
 
@@ -119,10 +116,8 @@ def bl_matrix_to_game_trs(matrix: BLMatrix) -> TRSTransform:
 # Blender -> Game  (inverse)
 # =========================
 
-GAME_TO_BLENDER_TYPES = tp.Union[Vector3, Matrix3, Matrix4, EulerRad, EulerDeg, FSQuaternion]
-
 @singledispatch
-def to_blender(obj: GAME_TO_BLENDER_TYPES) -> tp.Union[BLVector, BLMatrix, BLEuler, BLQuaternion]:
+def to_blender(obj):
     """Default: raise for unsupported types."""
     raise TypeError(f"to_blender() has no registered converter for type {type(obj)!r}")
 

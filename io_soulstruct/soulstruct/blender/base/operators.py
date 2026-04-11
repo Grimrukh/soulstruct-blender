@@ -87,16 +87,19 @@ class LoggingOperator(bpy.types.Operator):
 
     @staticmethod
     def to_object_mode(context: bpy.types.Context):
+        # noinspection PyUnresolvedReferences
         if context.mode != "OBJECT" and bpy.ops.object.mode_set.poll():
             bpy.ops.object.mode_set(mode="OBJECT", toggle=False)
 
     @staticmethod
     def to_edit_mode(context: bpy.types.Context):
+        # noinspection PyUnresolvedReferences
         if not context.mode.startswith("EDIT") and bpy.ops.object.mode_set.poll():
             bpy.ops.object.mode_set(mode="EDIT", toggle=False)
 
     @staticmethod
     def deselect_all():
+        # noinspection PyUnresolvedReferences
         if bpy.ops.object.select_all.poll():
             bpy.ops.object.select_all(action="DESELECT")
 

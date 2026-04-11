@@ -13,7 +13,8 @@ website = "https://github.com/Grimrukh/soulstruct-blender"
 # https://docs.blender.org/manual/en/dev/advanced/extensions/tags.html
 tags = ["Animation", "Import-Export", "Material", "Modeling", "Mesh", "Node", "Object", "UV"]
 
-blender_version_min = "4.5.0"
+# Blender 5.1 required for DirectX normal map support.
+blender_version_min = "5.1.0"
 # blender_version_max = "5.1.0"
 
 # https://docs.blender.org/manual/en/dev/advanced/extensions/licenses.html

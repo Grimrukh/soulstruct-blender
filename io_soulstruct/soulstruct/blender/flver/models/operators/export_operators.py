@@ -289,6 +289,13 @@ class ExportMapPieceFLVERs(LoggingOperator):
         for bl_flver in bl_flvers:
 
             map_stem = settings.get_map_stem_for_export(bl_flver.mesh, oldest=True)
+
+            if not map_stem:
+                self.error(
+                    f"Cannot detect a map stem for `{bl_flver.name}` (and none set in settings)."
+                )
+                continue
+
             relative_map_path = Path(f"map/{map_stem}")
             texture_collection = DDSTextureCollection()
 
@@ -320,7 +327,7 @@ class ExportMapPieceFLVERs(LoggingOperator):
             if (
                 settings.is_game(DEMONS_SOULS)
                 and relative_flver_path.name.endswith(".dcx")
-                and settings.des_export_debug_files
+                and settings.demonssouls.export_debug_files
             ):
                 # DeS loose FLVER has DCX by default, but we want a non-DCX Map Piece too.
                 for export_path in exported_paths:
@@ -345,6 +352,36 @@ class BaseGameFLVERBinderExportOperator(LoggingOperator):
     @staticmethod
     def _get_binder_path(settings: SoulstructSettings, model_stem: str) -> Path:
         raise NotImplementedError
+
+    @tp.overload
+    def get_binder_and_flver(
+        self,
+        context: bpy.types.Context,
+        settings: SoulstructSettings,
+        binder_class: type[CHRBND_TYPING],
+        flver_model_type: FLVERModelType,
+    ) -> tuple[str, CHRBND_TYPING, FLVER, DDSTextureCollection]:
+        ...
+
+    @tp.overload
+    def get_binder_and_flver(
+        self,
+        context: bpy.types.Context,
+        settings: SoulstructSettings,
+        binder_class: type[OBJBND_TYPING],
+        flver_model_type: FLVERModelType,
+    ) -> tuple[str, OBJBND_TYPING, FLVER, DDSTextureCollection]:
+        ...
+
+    @tp.overload
+    def get_binder_and_flver(
+        self,
+        context: bpy.types.Context,
+        settings: SoulstructSettings,
+        binder_class: type[PARTSBND_TYPING],
+        flver_model_type: FLVERModelType,
+    ) -> tuple[str, PARTSBND_TYPING, FLVER, DDSTextureCollection]:
+        ...
 
     def get_binder_and_flver(
         self,
@@ -447,10 +484,13 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
         settings = self.settings(context)
 
         try:
+            chrbnd_class = settings.game.from_game_submodule_import(
+                "models.chrbnd", "CHRBND"
+            )  # type: type[CHRBND_TYPING]
             model_stem, chrbnd, flver, textures = self.get_binder_and_flver(
                 context,
                 settings,
-                settings.game.from_game_submodule_import("models.chrbnd", "CHRBND"),
+                chrbnd_class,
                 flver_model_type=FLVERModelType.Character,
             )
         except FLVERExportError as ex:
@@ -465,7 +505,7 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
 
             if (
                 settings.is_game(DEMONS_SOULS)
-                and settings.des_export_debug_files
+                and settings.demonssouls.export_debug_files
             ):
                 if chrbnd.dcx_type != DCXType.Null:
                     # Export non-DCX CHRBND too.
@@ -503,7 +543,7 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
 
         if (
             settings.is_game(DEMONS_SOULS)
-            and settings.des_export_debug_files
+            and settings.demonssouls.export_debug_files
             and multi_tpf is not None
         ):
             # Export non-DCX TPF next to CHRBND too.
@@ -585,13 +625,13 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
                     pass
 
                 def post_export_action() -> list[Path]:
-                    if settings.project_root:
-                        export_path = settings.project_root.get_file_path_if_exists(relative_chrtpfbdt_path)
+                    if root := settings.project_root:
+                        export_path = root.get_file_path_if_exists(relative_chrtpfbdt_path)
                         if export_path:
                             # Delete CHRTPFBDT (in favor of new TPF).
                             export_path.unlink()
-                    if settings.also_export_to_game and settings.game_root:
-                        import_path = settings.game_root.get_file_path_if_exists(relative_chrtpfbdt_path)
+                    if settings.also_export_to_game and (root := settings.game_root):
+                        import_path = root.get_file_path_if_exists(relative_chrtpfbdt_path)
                         if import_path:
                             import_path.unlink()
 
@@ -646,7 +686,7 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
             chrtpfbhd_entry = chrbnd[chrtpfbhd_entry_name]
         except EntryNotFoundError:
             try:
-                chrtpfbhd_entry_id = chrbnd.CHRTPFBHD_ENTRY_ID
+                chrtpfbhd_entry_id = getattr(chrbnd, "CHRTPFBHD_ENTRY_ID")
             except AttributeError:
                 self.warning(f"Cannot create a new CHRTPFBHD entry for game {settings.game}.")
                 return b"", 0
@@ -700,10 +740,13 @@ class ExportObjectFLVER(BaseGameFLVERBinderExportOperator):
         settings = self.settings(context)
 
         try:
+            objbnd_class = settings.game.from_game_submodule_import(
+                "models.objbnd", "OBJBND"
+            )  # type: type[OBJBND_TYPING]
             model_stem, objbnd, flver, textures = self.get_binder_and_flver(
                 context,
                 settings,
-                settings.game.from_game_submodule_import("models.objbnd", "OBJBND"),
+                objbnd_class,
                 flver_model_type=FLVERModelType.Object,
             )
         except FLVERExportError as ex:
@@ -722,7 +765,7 @@ class ExportObjectFLVER(BaseGameFLVERBinderExportOperator):
 
         if (
             settings.is_game(DEMONS_SOULS)
-            and settings.des_export_debug_files
+            and settings.demonssouls.export_debug_files
         ):
             if objbnd.dcx_type != DCXType.Null:
                 # Export non-DCX OBJBND too.
@@ -811,10 +854,13 @@ class ExportEquipmentFLVER(BaseGameFLVERBinderExportOperator):
         settings = self.settings(context)
 
         try:
+            partsbnd_class = settings.game.from_game_submodule_import(
+                "models.partsbnd", "PARTSBND"
+            )  # type: type[PARTSBND_TYPING]
             model_stem, partsbnd, flver, textures = self.get_binder_and_flver(
                 context,
                 settings,
-                settings.game.from_game_submodule_import("models.partsbnd", "PARTSBND"),
+                partsbnd_class,
                 flver_model_type=FLVERModelType.Equipment,
             )
         except FLVERExportError as ex:
@@ -837,7 +883,7 @@ class ExportEquipmentFLVER(BaseGameFLVERBinderExportOperator):
 
         if (
             settings.is_game(DEMONS_SOULS)
-            and settings.des_export_debug_files
+            and settings.demonssouls.export_debug_files
         ):
             if partsbnd.dcx_type != DCXType.Null:
                 # Export non-DCX PARTSBND too.

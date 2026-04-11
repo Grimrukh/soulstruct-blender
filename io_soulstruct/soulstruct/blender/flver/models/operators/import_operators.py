@@ -78,6 +78,7 @@ class _BaseFLVERImportOperator(LoggingImportOperator):
                 binder = Binder.from_path(source_path)
                 binder_flvers = get_flvers_from_binder(binder, source_path, allow_multiple=True)
                 if import_settings.import_textures:
+                    print(f"Finding image textures for: {source_path}")
                     image_import_manager.find_flver_textures(source_path, binder)
                     for flver in binder_flvers:
                         self.find_extra_textures(source_path, flver, image_import_manager)

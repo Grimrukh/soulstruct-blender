@@ -10,7 +10,8 @@ from pathlib import Path
 import bpy
 
 from soulstruct.flver import *
-from soulstruct.games import DARK_SOULS_DSR, DEMONS_SOULS, DARK_SOULS_PTDE
+from soulstruct.games import *
+from .shaders import BaseNodeTreeBuilder
 
 from ...base.operators import LoggingOperator
 from ...base.soulstruct_object import add_auto_type_props
@@ -206,18 +207,10 @@ class BlenderFLVERMaterial:
             # Override texture path.
             sampler_texture_stems[sampler_name] = texture_stem.lower()
 
+        builder_class = cls.get_builder_class(context)
+
         if not copied:
             # Try to build shader nodetree.
-            if context.scene.soulstruct_settings.is_game(DEMONS_SOULS):
-                builder_class = shaders.demonssouls.NodeTreeBuilder
-            elif context.scene.soulstruct_settings.is_game(DARK_SOULS_PTDE):
-                builder_class = shaders.darksouls1ptde.NodeTreeBuilder
-            elif context.scene.soulstruct_settings.is_game(DARK_SOULS_DSR):
-                builder_class = shaders.darksouls1r.NodeTreeBuilder
-            else:
-                # No special shaders.
-                builder_class = shaders.BaseNodeTreeBuilder
-
             try:
                 builder = builder_class(
                     operator=operator,
@@ -229,12 +222,17 @@ class BlenderFLVERMaterial:
                 )
                 builder.build()
             except (MaterialImportError, KeyError, ValueError, IndexError) as ex:
+                import traceback
+                traceback.print_exc()
                 operator.warning(
                     f"Error building shader for material '{material_name}'. Textures written to custom properties. "
                     f"Error:\n  {ex}"
                 )
                 for sampler_name, texture_stem in flver_sampler_texture_stems.items():
                     bl_material[f"Path[{sampler_name}]"] = texture_stem
+            else:
+                # Assign shader name from MatDef.
+                material.type_properties.shader_name = builder.matdef.shader_stem
 
             if bl_materials_by_matdef_name is not None:
                 # Record material for MatDef for future copying.
@@ -257,9 +255,11 @@ class BlenderFLVERMaterial:
 
                     # Update Image colorspace from node label. (If image is used with multiple sampler types, this will
                     # be the last one found.) TODO: Would be better to do this upon `Image` creation, based on name.
-                    if ("Albedo" not in tex_nodes_by_name[sampler_name].label and
-                            "Lightmap" not in tex_nodes_by_name[sampler_name].label):
-                        bl_image.colorspace_settings.name = "Non-Color"
+                    node_label = tex_nodes_by_name[sampler_name].label
+                    if "Albedo" not in node_label and "Lightmap" not in node_label:
+                        bl_image.colorspace_settings.name = "Non-Color"  # always
+                    else:
+                        bl_image.colorspace_settings.name = builder_class.ALBEDO_COLOR_SPACE  # game-dependent
 
         return material
 
@@ -524,16 +524,7 @@ class BlenderFLVERMaterial:
         output_node = bl_material.node_tree.nodes.new("ShaderNodeOutputMaterial")
         output_node.name = "Material Output"
 
-        # Select appropriate builder class for the game.
-        if context.scene.soulstruct_settings.is_game(DEMONS_SOULS):
-            builder_class = shaders.demonssouls.NodeTreeBuilder
-        elif context.scene.soulstruct_settings.is_game(DARK_SOULS_PTDE):
-            builder_class = shaders.darksouls1ptde.NodeTreeBuilder
-        elif context.scene.soulstruct_settings.is_game(DARK_SOULS_DSR):
-            builder_class = shaders.darksouls1r.NodeTreeBuilder
-        else:
-            builder_class = shaders.BaseNodeTreeBuilder
-
+        builder_class = self.get_builder_class(context)
         try:
             builder = builder_class(
                 operator=operator,
@@ -545,6 +536,8 @@ class BlenderFLVERMaterial:
             )
             builder.build()
         except (MaterialImportError, KeyError, ValueError, IndexError) as ex:
+            import traceback
+            traceback.print_exc()
             operator.warning(
                 f"Error rebuilding shader for material '{self.name}'. Textures written to custom properties. "
                 f"Error:\n  {ex}"
@@ -552,6 +545,9 @@ class BlenderFLVERMaterial:
             # Fall back: store texture paths as custom properties.
             for sampler_name, texture_stem in existing_texture_stems.items():
                 bl_material[f"Path[{sampler_name}]"] = texture_stem
+        else:
+            # Assign shader name from MatDef.
+            self.type_properties.shader_name = builder.matdef.shader_stem
 
     def get_image_texture_nodes(self, with_image_only=False) -> list[bpy.types.ShaderNodeTexImage]:
         # noinspection PyTypeChecker,PyUnresolvedReferences
@@ -591,6 +587,26 @@ class BlenderFLVERMaterial:
                 hashed.append((gx_item.category, gx_item.index, gx_item.data))
 
         return hash(tuple(hashed))
+
+    @property
+    def shader_name(self) -> str:
+        """Get read-only shader name."""
+        return self.type_properties.shader_name
+
+    @staticmethod
+    def get_builder_class(context: bpy.types.Context) -> type[BaseNodeTreeBuilder]:
+        # Select appropriate builder class for the game.
+        settings = context.scene.soulstruct_settings
+        if settings.is_game(DEMONS_SOULS):
+            return shaders.demonssouls.NodeTreeBuilder
+        elif settings.is_game(DARK_SOULS_PTDE):
+            return shaders.darksouls1ptde.NodeTreeBuilder
+        elif settings.is_game(DARK_SOULS_DSR):
+            return shaders.darksouls1r.NodeTreeBuilder
+        elif settings.is_game(ELDEN_RING):
+            return shaders.eldenring.NodeTreeBuilder
+        else:
+            return shaders.BaseNodeTreeBuilder
 
 
 add_auto_type_props(BlenderFLVERMaterial, *BlenderFLVERMaterial.AUTO_MATERIAL_PROPS)

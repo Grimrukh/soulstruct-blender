@@ -151,7 +151,7 @@ class _SelectMapDirectory(LoggingOperator):
         if not map_dir:
             return self.error(f"{self.SOURCE} 'map' directory not found.")
         if settings.is_game(ELDEN_RING):
-            self.set_map_options_eldenring(map_dir, settings.er_map_filter_mode)
+            self.set_map_options_eldenring(map_dir, settings.eldenring.map_filter_mode)
         else:
 
             def get_map_desc(map_stem: str):

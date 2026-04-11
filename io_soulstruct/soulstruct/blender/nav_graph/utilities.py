@@ -74,7 +74,7 @@ def a_star(
     try_all_faces_passable_fallback=True,
     adjacency: dict[int, list[int]] | None = None,
 ) -> tuple[list[BMFace] | None, float, bool]:
-    """Find shortest path between two faces in a BMesh using A* algorithm.
+    """Find the shortest path between two faces in a BMesh using A* algorithm.
 
     Uses spatial adjacency (see `build_spatial_adjacency`) rather than topological edge connectivity, so that meshes
     with duplicate (non-merged) vertices and/or degenerate faces are handled correctly without modifying the mesh.
@@ -250,7 +250,7 @@ def get_edge_cost(
 
 
 def is_mesh_clean(mesh: bpy.types.Mesh):
-    """Check if mesh is clean: no vertices, edges, or faces removed by `bpy.ops.remove_doubles(dist=0.001)`.`"""
+    """Check if mesh is clean: no vertices, edges, or faces removed by `bpy.ops.remove_doubles(dist=0.001)`."""
     bm = bmesh.new()
     bm.from_mesh(mesh)
     vertex_count = len(bm.verts)

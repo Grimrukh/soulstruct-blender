@@ -32,20 +32,15 @@ class FLVERMaterialSettingsPanel(SoulstructPanel):
                 panel.prop(texture_export_settings, prop_name)
 
 
-def draw_material_image_settings(context: bpy.types.Context, layout: bpy.types.UILayout):
+def draw_material_image_settings(context: bpy.types.Context, layout: bpy.types.UILayout | None) -> None:
     """Draw material image settings in the given layout."""
-    settings = context.scene.soulstruct_settings
+    if not layout:
+        return
     mat_settings = context.scene.flver_material_settings
 
-    if settings.game_config.uses_matbin:
-        layout.label(text="Custom MATBINBND Path:")
-        layout.prop(mat_settings, mat_settings.get_game_matbinbnd_path_prop_name(context), text="")
-    else:
-        layout.label(text="Custom MTDBND Path:")
-        layout.prop(mat_settings, mat_settings.get_game_mtdbnd_path_prop_name(context), text="")
-
-    layout.label(text="Image Cache Directory:")
-    layout.prop(mat_settings, mat_settings.get_game_image_cache_path_prop_name(context), text="")
+    layout.label(text="Image Cache Root Directory:")
+    layout.prop(mat_settings, "image_cache_root_str", text="")
+    layout.label(text="Image Import/Export Settings:")
     layout.prop(mat_settings, "image_cache_format")
     layout.prop(mat_settings, "import_cached_images")
     layout.prop(mat_settings, "cache_new_game_images")

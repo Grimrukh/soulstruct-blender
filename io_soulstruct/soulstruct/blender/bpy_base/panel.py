@@ -74,12 +74,11 @@ class SoulstructPanel(bpy.types.Panel):
         map_box = layout.box()
 
         map_box.label(text="Choose Active Map:")
-        map_box.prop(context.scene.soulstruct_settings, "map_stem", text="")
-
+        map_box.prop(context.scene.soulstruct_settings.game_settings, "map_stem", text="")
 
         if context.scene.soulstruct_settings.is_game("ELDEN_RING"):
             map_box.label(text="ER Map Selection Filter:")
-            map_box.prop(context.scene.soulstruct_settings, "er_map_filter_mode", text="")
+            map_box.prop(context.scene.soulstruct_settings.eldenring, "map_filter_mode", text="")
 
         row = map_box.row()
         split = row.split(factor=0.5)

@@ -19,8 +19,8 @@ from .....flver.image.enums import BlenderImageFormat
 from .....flver.image.import_operators import *
 from .....flver.image.types import DDSTexture, DDSTextureCollection
 from .....flver.material.types import BlenderFLVERMaterial
-from .....flver.material.properties import get_cached_mtdbnd, get_cached_matbinbnd
 from .....general import BLENDER_GAME_CONFIG
+from .....general.matdefs import get_cached_mtdbnd, get_cached_matbinbnd
 from .....utilities import *
 
 if tp.TYPE_CHECKING:
@@ -123,7 +123,7 @@ def create_materials(
     for mesh, mesh_textures in zip(flver.meshes, all_mesh_texture_stems, strict=True):
         material = mesh.material
         material_hash = hash(material)  # NOTE: if there are duplicate FLVER materials, this will combine them
-        vertex_color_count = len([f for f in mesh.vertices.dtype.names if "color" in f])
+        vertex_color_count = len([f for f in mesh.unique_field_names if f.startswith("color_")])
 
         if material_hash not in flver_material_hash_first_mat:
             # First time this FLVER material has been encountered. Create it in Blender now.

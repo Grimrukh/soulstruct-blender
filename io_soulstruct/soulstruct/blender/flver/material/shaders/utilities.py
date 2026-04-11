@@ -4,8 +4,12 @@ from __future__ import annotations
 
 __all__ = [
     "TEX_SAMPLER_RE",
+    "NODE_INPUT_CONSTANT_TYPING",
+    "NODE_INPUT_TYPING",
     "new_shader_node",
     "new_shader_math_node",
+    "load_soulstruct_node_group",
+    "new_soulstruct_node_group",
 ]
 
 import re
@@ -13,19 +17,24 @@ import typing as tp
 
 import bpy
 
+from ....exceptions import MissingSoulstructNodeGroupError
+from ....utilities.files import ADDON_PACKAGE_PATH
 from .enums import *
 
 NODE_T = tp.TypeVar("NODE_T", bound=bpy.types.Node)
 
 TEX_SAMPLER_RE = re.compile(r"(Main) (\d+) (Albedo|Specular|Shininess|Normal)")
 
+NODE_INPUT_CONSTANT_TYPING = tp.Union[str, int, tuple[int, ...], float, tuple[float, ...]]
+NODE_INPUT_TYPING = tp.Union[NODE_INPUT_CONSTANT_TYPING, bpy.types.NodeSocket]
+
 
 def new_shader_node(
     tree: bpy.types.NodeTree,
     node_type: type[NODE_T],
-    location: tuple[int, int] = None,
+    location: tuple[float, float] = None,
     /,
-    inputs: dict[str | int, tp.Any] = None,
+    inputs: dict[str | int, NODE_INPUT_TYPING | None] = None,
     outputs: dict[str | int, bpy.types.NodeSocket] = None,
     **kwargs,
 ) -> NODE_T:
@@ -78,3 +87,47 @@ def new_shader_math_node(
 
     # noinspection PyTypeChecker
     return node
+
+
+def load_soulstruct_node_group(node_group: SoulstructNodeGroups) -> None:
+    """Tries to add a node group to the open file from the 'Shaders.blend' file, if it is not already added."""
+    if node_group.value in bpy.data.node_groups:
+        # Already loaded.
+        return
+    try:
+        shaders_blend_path = ADDON_PACKAGE_PATH("Shaders.blend")
+        with bpy.data.libraries.load(str(shaders_blend_path)) as (data_from, data_to):
+            data_to.node_groups = [node_group.value]
+    except Exception:
+        raise MissingSoulstructNodeGroupError(
+            f"Could not find node group '{node_group.value}' in bundled 'Shaders.blend' file."
+        )
+
+
+def new_soulstruct_node_group(
+    tree: bpy.types.NodeTree,
+    node_group: SoulstructNodeGroups,
+    location: tuple[float, float] = None,
+    *,
+    inputs: dict[str, NODE_INPUT_TYPING | None] = None,
+    outputs: dict[str, bpy.types.NodeSocket] = None,
+) -> bpy.types.ShaderNodeGroup:
+    """Constructs a shader node group by appending the node group with the specified name to the open Blender scene.
+
+    Inputs given in `node_inputs` are attached (if sockets) or set as default values to the inputs of the node group,
+    and any outputs given in `node_outputs` are attached to those sockets. Inputs values can be `None` to streamline
+    the construction of the dictionaries, but output values must be NodeSockets.
+
+    To prevent maintenance issues, input/output keys cannot be index integers.
+    """
+
+    load_soulstruct_node_group(node_group)
+
+    return new_shader_node(
+        tree,
+        bpy.types.ShaderNodeGroup,
+        location=location,
+        inputs=inputs,
+        outputs=outputs,
+        node_tree=bpy.data.node_groups[node_group.value],
+    )

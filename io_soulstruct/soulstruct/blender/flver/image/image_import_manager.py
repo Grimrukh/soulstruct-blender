@@ -71,6 +71,9 @@ class ImageImportManager:
     # Holds TPF stems that have already been opened and scanned, so they aren't checked again.
     _scanned_tpf_sources: set[str]
 
+    # Records AET path once so that arbitrary 'aetXXX' textures can be found.
+    _aet_root_directory: Path | None = None
+
     def __init__(self, operator: LoggingOperator, context: bpy.types.Context):
         self.operator = operator
         self.context = context
@@ -106,14 +109,9 @@ class ImageImportManager:
             # Loose FLVER file. Likely a map piece in an older game like DS1. We look in adjacent `mXX` directory.
             self._register_map_tpfs(source_dir)
         elif source_name.endswith(".mapbnd"):
-            # MAPBND should have been given as an initial Binder. We also look in adjacent `Common*.tpf` loose TPFs.
-            _LOGGER.warning("Cannot yet find MAPBND Map Piece FLVER textures.")
-            # TODO: Elden Ring MAPBND Map Piece textures are in 'asset/aet' subdirectories, I believe.
-            # if flver_binder:
-            #     self.scan_binder_textures(flver_binder)
-            # else:
-            #     _LOGGER.warning(f"Opened MAPBND '{flver_binder}' was not passed to ImageImportManager!")
-            # self._find_mapbnd_tpfs(source_dir)
+            # MAPBND FLVER textures are in 'asset/aet'.
+            if not self._aet_root_directory:
+                self._aet_root_directory = (source_dir / "../../../asset/aet").resolve()
 
         # CHARACTERS
         elif model_stem.startswith("c") and source_name.endswith(".flver"):
@@ -170,8 +168,10 @@ class ImageImportManager:
 
         # ASSETS (Elden Ring)
         elif source_name.endswith(".geombnd"):
-            # Likely an AEG asset FLVER from Elden Ring onwards. We look in nearby `aet` directory.
-            self._register_aeg_tpfs(source_dir)
+            # Likely an AEG asset FLVER from Elden Ring onwards. These can use any AET texture, so we just record
+            # the 'asset/aet' path.
+            if not self._aet_root_directory:
+                self._aet_root_directory = (source_dir / "../../aet").resolve()
 
         # GENERIC BINDERS (e.g. Object FLVERs in OBJBNDs)
         elif source_name.endswith("bnd"):
@@ -204,6 +204,14 @@ class ImageImportManager:
         if texture_stem in self._tpf_textures:
             # Already found and loaded.
             return self._tpf_textures[texture_stem]
+
+        if texture_stem.startswith("aet"):
+            # NOTE: We register the standard TPF, not the '_l' low-res TPF.
+            if not self._aet_root_directory:
+                raise KeyError("ImageImportManager has not set the 'aet' root directory for asset textures.")
+            aet_tpf_path = self._aet_root_directory / texture_stem[:6] / f"{texture_stem[:10]}.tpf.dcx"
+            self._pending_tpf_sources.setdefault(texture_stem, aet_tpf_path)
+            # Can now be found below.
 
         if texture_stem in self._pending_tpf_sources:
             # Found a pending TPF with the exact same stem as the requested texture (should have only one DDS).
@@ -395,12 +403,15 @@ class ImageImportManager:
                             self._tpf_textures.setdefault(texture.stem.lower(), texture)
 
     def _register_aeg_tpfs(self, source_dir: Path, check_dcx_mode: CheckDCXMode = CheckDCXMode.DCX_ONLY):
-        """Find AEG TPFs in an adjacent 'aet' directory. Always uses DCX in games that use it."""
+        """Find AEG TPFs in an adjacent 'aet' directory. Always uses DCX in games that use it.
+
+        NOTE: AEG assets can use any other assets' textures as well, but their names give away the location.
+        """
         aeg_directory_match = AEG_STEM_RE.match(source_dir.name)
         if not aeg_directory_match:
             _LOGGER.warning("GEOMBND not located in an AEG folder (`aegXXX`). Cannot find AEG TPFs.")
             return
-        aet_directory = source_dir / "../../aet"
+        aet_directory = source_dir / f"../../aet/aet{aeg_directory_match.group(1)}"
         if not aet_directory.is_dir():
             _LOGGER.warning(f"`aet` directory does not exist: {aet_directory}. Cannot find AEG TPFs.")
             return

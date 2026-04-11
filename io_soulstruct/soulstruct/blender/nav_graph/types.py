@@ -438,36 +438,28 @@ class BlenderMCGNode(BaseBlenderSoulstructObject[MCGNode, MCGNodeProps]):
         if node_navmesh_info is None:
             node_navmesh_info = {}
 
-        # Get navmesh A (must ALWAYS be present).
-        if self.navmesh_a is None:
+        def collect_node_info(_navmesh: MeshObject, _navmesh_triangles: list[int]) -> None:
+            navmesh_name = _navmesh.name  # type: str
+            node_navmesh_info[navmesh_name] = _navmesh_triangles
+            if navmesh_nodes is not None:
+                try:
+                    _navmesh_nodes = navmesh_nodes[navmesh_name]
+                except KeyError:
+                    raise KeyError(f"Navmesh '{navmesh_name}' not found in `navmesh_nodes`.")
+                _navmesh_nodes.append(node)
+
+        if navmesh_a := self.navmesh_a is None:
             raise NavGraphExportError(f"Node '{self.name}' does not have Navmesh A set.")
-        navmesh_a_name = self.navmesh_a.name  # type: str
-        navmesh_a_triangles = self.navmesh_a_triangles
-        node_navmesh_info[navmesh_a_name] = navmesh_a_triangles
-        if navmesh_nodes is not None:
-            try:
-                navmesh_a_nodes = navmesh_nodes[navmesh_a_name]
-            except KeyError:
-                raise KeyError(f"Navmesh A '{navmesh_a_name}' not found in `navmesh_nodes`.")
-            navmesh_a_nodes.append(node)
-
-        if self.navmesh_b is None:
+        if navmesh_b := self.navmesh_b is None:
             raise NavGraphExportError(f"Node '{self.name}' does not have Navmesh B set.")
-        navmesh_b_name = self.navmesh_b.name  # type: str
-        navmesh_b_triangles = self.navmesh_b_triangles
-        node_navmesh_info[navmesh_b_name] = navmesh_b_triangles
-        if navmesh_nodes is not None:
-            try:
-                navmesh_b_nodes = navmesh_nodes[navmesh_b_name]
-            except KeyError:
-                raise KeyError(f"Navmesh B '{navmesh_b_name}' not found in `navmesh_nodes`.")
-            navmesh_b_nodes.append(node)
-
-        if not navmesh_a_triangles and not navmesh_b_triangles:
+        if not self.navmesh_a_triangles and not self.navmesh_b_triangles:
             raise NavGraphExportError(
                 f"Node '{self.name}' does not have any triangles set for Navmesh A or B. One of them is "
                 f"permitted to be missing, if that navmesh is a dead end, but not both."
             )
+
+        collect_node_info(navmesh_a, self.navmesh_a_triangles)
+        collect_node_info(navmesh_b, self.navmesh_b_triangles)
 
         return node
 
@@ -576,9 +568,9 @@ class BlenderMCGEdge(BaseBlenderSoulstructObject[MCGEdge, MCGEdgeProps]):
             raise ValueError("`map_id` must be provided to export `MCGEdge`.")
 
         edge = MCGEdge(map_id=map_id, cost=self.cost)
-        if not self.navmesh_part:
+        if not (navmesh_part := self.navmesh_part):
             raise NavGraphExportError(f"Edge '{self.name}' does not have a Navmesh Part set.")
-        navmesh_part_name = BlenderNVM(self.navmesh_part).game_name
+        navmesh_part_name = BlenderNVM(navmesh_part).game_name
         try:
             navmesh_index = navmesh_part_indices[navmesh_part_name]
         except KeyError:
@@ -587,14 +579,14 @@ class BlenderMCGEdge(BaseBlenderSoulstructObject[MCGEdge, MCGEdgeProps]):
             )
         edge.navmesh_index = navmesh_index
 
-        if not self.node_a:
+        if not (node_a := self.node_a):
             raise NavGraphExportError(f"Edge '{self.name}' does not have a Node A set.")
-        if not self.node_b:
+        if not (node_b := self.node_b):
             raise NavGraphExportError(f"Edge '{self.name}' does not have a Node B set.")
 
         # Strip down node names to match dictionary keys.
-        node_a_name = _get_node_name_stem(self.node_a)
-        node_b_name = _get_node_name_stem(self.node_b)
+        node_a_name = _get_node_name_stem(node_a)
+        node_b_name = _get_node_name_stem(node_b)
 
         try:
             node_a_index = node_indices[node_a_name]

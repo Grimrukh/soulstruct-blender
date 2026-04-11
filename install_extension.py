@@ -5,6 +5,7 @@ Useful for live development.
 
 import argparse
 import logging
+import os
 import shutil
 import subprocess
 import sys
@@ -19,7 +20,7 @@ _LOGGER = logging.getLogger("soulstruct.blender.install_extension")
 
 _ALWAYS_IGNORE = [
     "__pycache__", "*.pyc", ".git", ".idea", "*.egg-info", "tests",
-    "soulstruct_config.json", "soulstruct.log",
+    "soulstruct_config.json", "soulstruct.log", "*.blend1",
 ]
 
 _IO_SOULSTRUCT_SOURCE_DIR = Path(__file__).parent / "io_soulstruct"
@@ -70,12 +71,12 @@ def direct_install_addon(bl_version: str = "5.1", is_install_from_disk: bool = T
 def direct_install_soulstruct(
     bl_version: str = "5.1",
     use_local: bool = False,
-    editable: bool = False,
+    inject: bool = False,
 ) -> int:
     """Install `soulstruct` and `soulstruct-havok` directly into the '.local' site-packages for Blender."""
 
-    if not use_local and editable:
-        raise ValueError("Cannot use `editable` mode without `use_local`.")
+    if not use_local and inject:
+        raise ValueError("Cannot use `inject` mode without `use_local`.")
 
     if bl_version >= "5.1":
         py_ver = "python3.13"
@@ -91,6 +92,41 @@ def direct_install_soulstruct(
             f"Do a proper initial installation first from Blender preferences (Add-ons)."
         )
         return 1
+
+    if inject:
+        ignore_patterns = shutil.ignore_patterns(*_ALWAYS_IGNORE, "oo2core_6_win64.dll")
+
+        # When replacing Soulstruct while Blender is open, we don't want to delete 'oo2core_6_win64.dll',
+        # as it will be in use by Blender.
+
+        soulstruct_dir = local_site_packages / "soulstruct"
+
+        if soulstruct_dir.is_dir():
+            # Delete everything inside except DLLs.
+            for entry in os.scandir(soulstruct_dir):
+                # Keep .dll files in the root
+                if entry.is_file() and entry.name.lower().endswith('.dll'):
+                    continue
+                if entry.is_file():
+                    os.remove(entry.path)
+                elif entry.is_dir():
+                    shutil.rmtree(entry.path)
+
+        # Copy all contents of `soulstruct` in.
+        shutil.copytree(
+            SOULSTRUCT_PATH(),
+            soulstruct_dir,
+            dirs_exist_ok=True,
+            ignore=ignore_patterns,
+        )
+        shutil.copytree(
+            SOULSTRUCT_HAVOK_PATH("havok"),
+            soulstruct_dir / "havok",
+            dirs_exist_ok=False,  # should not exist
+            ignore=ignore_patterns,
+        )
+        _LOGGER.info("Injected 'soulstruct' and 'soulstruct-havok' directly into Blender local site-packages.")
+        return 0
 
     pip_cmd = [
         sys.executable, "-m", "pip", "install",
@@ -111,14 +147,10 @@ def direct_install_soulstruct(
         # Done.
     else:
         # Install non-Soulstruct pinned requirements from PyPI (e.g. specific SciPy version).
-        pip_cmd += [req for req in requirements if not req.startswith("soulstruct")]
-        # Get live package roots for editable installation.
         soulstruct_root_path = SOULSTRUCT_PATH("../..")
         soulstruct_havok_root_path = SOULSTRUCT_HAVOK_PATH("../..")
-        if editable:
-            pip_cmd += ["-e", str(soulstruct_root_path), "-e", str(soulstruct_havok_root_path)]
-        else:
-            pip_cmd += [str(soulstruct_root_path), str(soulstruct_havok_root_path)]
+        pip_cmd += [req for req in requirements if not req.startswith("soulstruct")]
+        pip_cmd += [str(soulstruct_root_path), str(soulstruct_havok_root_path)]
 
     _LOGGER.info(f"pip cmd: {pip_cmd}")
     try:
@@ -136,8 +168,8 @@ PARSER = argparse.ArgumentParser(
 )
 PARSER.add_argument("blenderVersion", help="Blender version, e.g. 5.1")
 PARSER.add_argument("--installSoulstruct", action="store_true", help="Also install Soulstruct modules.")
-PARSER.add_argument("-e", "--editable", action="store_true",
-                    help="Install Soulstruct modules in editable mode from current environment.")
+PARSER.add_argument("--inject", action="store_true",
+                    help="Inject Soulstruct modules directly without using `pip`.")
 
 
 def main(args):
@@ -147,7 +179,11 @@ def main(args):
     direct_install_addon(parsed.blenderVersion, is_install_from_disk=True)
 
     if parsed.installSoulstruct:
-        direct_install_soulstruct(bl_version=parsed.blenderVersion, use_local=True, editable=parsed.editable)
+        direct_install_soulstruct(
+            bl_version=parsed.blenderVersion,
+            use_local=True,
+            inject=parsed.inject,
+        )
 
 
 if __name__ == '__main__':

@@ -112,6 +112,9 @@ class FLVERMaterialPropsPanel(SoulstructPanel):
                 col = row.column(align=True)
                 col.operator(AddMaterialGXItem.bl_idname, icon='ADD', text="")
                 col.operator(RemoveMaterialGXItem.bl_idname, icon='REMOVE', text="")
+            elif prop == "shader_name":
+                # Read-only.
+                layout.label(text=f"Shader: {props.shader_name}")
             else:
                 # Standard public property.
                 layout.prop(props, prop)

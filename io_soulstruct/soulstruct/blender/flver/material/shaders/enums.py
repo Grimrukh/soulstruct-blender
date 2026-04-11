@@ -3,8 +3,10 @@ from __future__ import annotations
 __all__ = [
     "ShaderNodeType",
     "MathOperation",
+    "SoulstructNodeGroups",
 ]
 
+import typing as tp
 from enum import StrEnum
 
 
@@ -157,3 +159,27 @@ class MathOperation(StrEnum):
     TANH = "TANH"
     RADIANS = "RADIANS"
     DEGREES = "DEGREES"
+
+
+class SoulstructNodeGroups(StrEnum):
+    """Names of all valid node groups bundled in `Shaders.blend`."""
+
+    # Helpers:
+    ProcessRGNormals = "Process RG Normals"
+    CombineDetail = "Combine Detail"
+    ERMask3BlendNormals = "ER Mask3 Blend Normals"
+
+    # Shaders:
+    GenericDiffuseNoLightShader = "Generic Diffuse No Light Shader"
+
+    PTDEStandardEnvShader = "PTDE Standard Env Shader"
+    PTDEStandardDir3Shader = "PTDE Standard Dir3 Shader"
+    PTDEWaterShader = "PTDE Water Shader"
+    PTDENormalToAlphaShader = "PTDE Normal to Alpha Shader"
+
+    DS1RBasicPBRShader = "DS1R Basic PBR Shader"
+    DS1RBasicColoredSpecShader = "DS1R Basic Colored Spec Shader"
+    DS1RSnowShader = "DS1R Snow Shader"
+
+    ERBasicPBRShader = "ER Basic PBR Shader"
+    ERFurShader = "ER Fur Shader"
