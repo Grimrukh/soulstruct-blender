@@ -158,8 +158,8 @@ def create_materials(
 
             new_materials.append(bl_material)
             if matdef:
-                used_uv_layers = matdef.get_used_uv_layers()
-                bl_material_uv_layer_names.append(tuple(layer.name for layer in used_uv_layers))
+                uv_slot_tuple = matdef.get_uv_slot_tuple()
+                bl_material_uv_layer_names.append(tuple(layer.name for layer in uv_slot_tuple))
             else:
                 # UV layer names not known for this material. `MergedMesh` will just use index, which may cause
                 # conflicting types of UV data to occupy the same Blender UV slot.
@@ -199,7 +199,7 @@ def create_materials(
         new_materials.append(bl_material)
         if flver_matdefs[material_hash] is not None:
             bl_material_uv_layer_names.append(
-                tuple(layer.name for layer in flver_matdefs[material_hash].get_used_uv_layers())
+                tuple(layer.name for layer in flver_matdefs[material_hash].get_uv_slot_tuple())
             )
         else:
             bl_material_uv_layer_names.append(())

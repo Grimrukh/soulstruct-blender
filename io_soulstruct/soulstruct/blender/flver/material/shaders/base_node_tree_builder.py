@@ -192,173 +192,236 @@ class BaseNodeTreeBuilder(abc.ABC):
                 f"'{self.matdef.shader_stem}'. Error:\n    {ex}"
             )
 
+    # region Mix / Resolve Helpers
+
+    @property
+    def _vc_alpha(self) -> NodeSocket | float:
+        """Vertex colors alpha output from the first vertex color node, or ``1.0`` if none exist."""
+        if self.vertex_colors_nodes:
+            return self.vertex_colors_nodes[0].outputs["Alpha"]
+        return 1.0
+
+    def _find_matching_tex_nodes(
+        self,
+        pattern: str,
+        max_count: int = 2,
+    ) -> list[tuple["MatDefSampler", bpy.types.ShaderNodeTexImage]]:
+        """Find sampler tex-image nodes whose alias matches *pattern* (regex).
+
+        Returns up to *max_count* ``(sampler, tex_node)`` pairs.  Tex nodes whose
+        ``.image`` is ``None`` are still included — callers decide how to handle
+        missing images.  Warns and skips samplers for which no Blender texture node
+        was created.
+        """
+        from soulstruct.base.models.shaders import MatDefSampler  # noqa – avoid circular at module level
+
+        matches = self.matdef.get_matching_samplers(re.compile(pattern), match_alias=True)
+        if len(matches) > max_count:
+            self.operator.warning(
+                f"Found {len(matches)} samplers matching pattern '{pattern}' in material "
+                f"'{self.matdef.name}'. Only the first {max_count} will be used."
+            )
+            matches = matches[:max_count]
+
+        results: list[tuple[MatDefSampler, bpy.types.ShaderNodeTexImage]] = []
+        for _, sampler in matches:
+            tex_node = self.tex_image_nodes.get(sampler.alias)
+            if not tex_node:
+                self.operator.warning(
+                    f"Sampler '{sampler.alias}' found but no such texture node exists."
+                )
+                continue
+            results.append((sampler, tex_node))
+        return results
+
+    @staticmethod
+    def _adjust_mix_fac_for_images(
+        tex_a: bpy.types.ShaderNodeTexImage,
+        tex_b: bpy.types.ShaderNodeTexImage,
+        mix_fac: NodeSocket | float,
+    ) -> NodeSocket | float | None:
+        """Return an adjusted mix factor based on which tex nodes have images.
+
+        Returns ``None`` when *both* textures are missing (caller should bail).
+        """
+        if not tex_a.image and not tex_b.image:
+            return None
+        if not tex_a.image:
+            return 1.0
+        if not tex_b.image:
+            return 0.0
+        return mix_fac
+
     def _mix_value_nodes(
         self,
-        input_1: NodeSocket,
-        input_2: NodeSocket,
+        input_a: NodeSocket,
+        input_b: NodeSocket,
         node_y: float,
-        mix_fac_input: NodeSocket | float = 0.5,
-        mix_data_type: str = "VECTOR"
+        mix_fac: NodeSocket | float = 0.5,
+        data_type: str = "VECTOR",
     ) -> bpy.types.ShaderNodeMix:
-        mix_node = new_shader_node(
+        """Create a ``ShaderNodeMix`` that blends *input_a* / *input_b* and return the **node**."""
+        return new_shader_node(
             self.tree,
             bpy.types.ShaderNodeMix,
             (self.POST_TEX_X, node_y),
-            inputs={
-                "Factor": mix_fac_input,
-                "A": input_1,
-                "B": input_2,
-            },
-            data_type=mix_data_type,
+            inputs={"Factor": mix_fac, "A": input_a, "B": input_b},
+            data_type=data_type,
         )
 
-        return mix_node
+    def _mix_sockets(
+        self,
+        input_a: NodeSocket,
+        input_b: NodeSocket,
+        node_y: float,
+        mix_fac: NodeSocket | float = 0.5,
+        data_type: str = "VECTOR",
+    ) -> NodeSocket:
+        """Create a ``ShaderNodeMix`` and return its **Result** output socket directly."""
+        return self._mix_value_nodes(input_a, input_b, node_y, mix_fac, data_type).outputs["Result"]
 
-    def _get_mixed_texture_color(self, pattern: str, mix_fac_input: NodeSocket | float = 0.5) -> NodeSocket | None:
-        """Searches the `MatDef` for samplers that match the pattern, and returns a single socket output for it.
+    def _chain_mix_sockets(
+        self,
+        base: NodeSocket | None,
+        layers: list[tuple[NodeSocket | None, NodeSocket | float]],
+        node_y: float,
+        data_type: str = "VECTOR",
+        y_step: float = -40,
+    ) -> NodeSocket | None:
+        """Chain-mix *base* with each ``(overlay, factor)`` in *layers*, skipping ``None`` overlays.
 
-        If there are two or more samplers, it creates the necessary nodes to combine the first two, then returns the
-        combined output. Other samplers are ignored.
+        If *base* is ``None`` the first non-``None`` overlay replaces it.  Returns
+        ``None`` only when *base* and every overlay are all ``None``.
 
-        Returns `None` if pattern is not found or handled, or no sampler images are defined.
+        Useful for blending an arbitrary number of detail/secondary textures into a
+        primary channel without per-step ``None`` boilerplate in callers.
         """
-        matches = self.matdef.get_matching_samplers(re.compile(pattern), match_alias=True)
-        if len(matches) >= 2:
-            if len(matches) >= 3:
-                self.operator.warning(
-                    f"Found {len(matches)} samplers matching pattern '{pattern}' in material "
-                    f"'{self.matdef.name}'. Only the first two will be mixed."
-                )
+        current = base
+        y = node_y
+        for overlay, fac in layers:
+            if overlay is None:
+                continue
+            if current is None:
+                current = overlay
+            else:
+                current = self._mix_sockets(current, overlay, y, fac, data_type)
+                y += y_step
+        return current
 
-            tex_node1 = self.tex_image_nodes.get(matches[0][1].alias)
-            if not tex_node1:
-                self.operator.warning(f"Sampler '{matches[0][1].alias}' found but no such texture node exists.")
-                return None
-            tex_node2 = self.tex_image_nodes.get(matches[1][1].alias)
-            if not tex_node2:
-                self.operator.warning(f"Sampler '{matches[1][1].alias}' found but no such texture node exists.")
-                return None
+    def _masked_blend_sockets(
+        self,
+        base: NodeSocket,
+        overlay: NodeSocket,
+        node_y: float,
+        mask_fac: NodeSocket | float,
+        uv_fac: NodeSocket | float,
+        data_type: str = "VECTOR",
+    ) -> NodeSocket:
+        """Two-step masked blend used by multi-blend shaders.
 
-            if not tex_node1.image and not tex_node2.image:
-                # Standard case: no images are defined in sampler slots.
-                return None
+        Step 1 — **mask mix**:  ``Mix(fac=mask, A=overlay, B=base)``
+            *mask* = 1 → base, *mask* = 0 → overlay.
+        Step 2 — **UV override**: ``Mix(fac=uv, A=step1, B=base)``
+            *uv* = 0 → step-1 result (blend applied), *uv* = 1 → base (blend ignored).
 
-            return self._mix_value_nodes(
-                tex_node1.outputs["Color"],
-                tex_node2.outputs["Color"],
-                tex_node1.location[1],
-                mix_fac_input,
-                "RGBA",
-            ).outputs["Result"]
+        Returns the final blended socket.
+        """
+        mask_blended = self._mix_sockets(overlay, base, node_y, mask_fac, data_type)
+        return self._mix_sockets(mask_blended, base, node_y, uv_fac, data_type)
 
-        elif len(matches) == 1:
-            match = self.tex_image_nodes.get(matches[0][1].alias, None)
-            if not match:
-                self.operator.warning(f"Sampler '{matches[0][1].alias}' found but no such texture node exists.")
-                return None
-            if not match.image:
-                # Standard case: no image is defined in sampler slot.
-                return None
-            return match.outputs["Color"]
+    def _process_normal_tex(
+        self,
+        tex_node: bpy.types.ShaderNodeTexImage,
+        uv_layer_name: str,
+    ) -> tuple[NodeSocket, NodeSocket | None]:
+        """Process a single normal-map texture through RG-normal processing and a Normal Map node.
 
-        # No color textures found.
-        return None
+        Returns ``(normal_socket, blue_passthru_socket)``.
+        """
+        normal_map_node, blue_passthru = self._normal_tex_to_normal_input(
+            y=tex_node.location[1],
+            color_input_from=tex_node.outputs["Color"],
+            normal_output_to=None,
+            uv_layer_name=uv_layer_name,
+        )
+        return normal_map_node.outputs["Normal"], blue_passthru
+
+    def _make_default_normal_socket(self) -> tuple[NodeSocket, None]:
+        """Create a flat (default) Normal Map node on ``UVTexture0``.
+
+        Used as fallback when no normal-map samplers are found.
+        """
+        normal_map_node = self._new_normal_map_node("UVTexture0", self.mix_y, strength=1.0)
+        normal_map_node.hide = True
+        normal_map_node.inputs["Color"].default_value = (0.5, 0.5, 1, 1)
+        return normal_map_node.outputs["Normal"], None
+
+    # endregion
+
+    # region Mixed-Texture Resolution
+
+    def _get_mixed_texture_color(
+        self,
+        pattern: str,
+        mix_fac_input: NodeSocket | float = 0.5,
+    ) -> NodeSocket | None:
+        """Find samplers matching *pattern* and return a single ``Color`` output socket.
+
+        Mixes the first two matches when both are present, adjusting the factor when one
+        is missing.  Returns ``None`` if no images are defined.
+        """
+        found = self._find_matching_tex_nodes(pattern)
+        if not found:
+            return None
+        if len(found) == 1:
+            _, tex_node = found[0]
+            return tex_node.outputs["Color"] if tex_node.image else None
+
+        (_, tex_a), (_, tex_b) = found[0], found[1]
+        fac = self._adjust_mix_fac_for_images(tex_a, tex_b, mix_fac_input)
+        if fac is None:
+            return None
+        return self._mix_sockets(
+            tex_a.outputs["Color"], tex_b.outputs["Color"], tex_a.location[1], fac, "RGBA",
+        )
 
     def _get_mixed_texture_normals(
-        self, pattern: str, mix_fac_input: NodeSocket | float = 0.5,
+        self,
+        pattern: str,
+        mix_fac_input: NodeSocket | float = 0.5,
     ) -> tuple[NodeSocket | None, NodeSocket | None]:
-        """Searches the `MatDef` for samplers that match the pattern, and returns a single socket output for it.
+        """Find normal-map samplers matching *pattern*, process them, and return mixed outputs.
 
-        Texture colors are processed as normals, appropriate to the game.
-
-        If there are two or more samplers, it creates the necessary nodes to combine the first two, then returns the
-        combined output. Other samplers are ignored. Also returns combined blue passthru if found.
-
-        Returns `None` if pattern is not found or handled.
-
-        TODO: Combine up to 8 detail normals in Elden Ring...
+        Each texture is processed through RG-normal handling (game-dependent) and a
+        Normal Map node.  Returns ``(normal_socket, blue_passthru_socket)``.  Falls back
+        to a flat default normal when no matches exist.
         """
-        matches = self.matdef.get_matching_samplers(re.compile(pattern), match_alias=True)
-        if len(matches) >= 2:
-            if len(matches) >= 3:
-                self.operator.warning(
-                    f"Found {len(matches)} samplers matching pattern '{pattern}' in material "
-                    f"'{self.matdef.name}'. Only the first two will be mixed."
-                )
+        found = self._find_matching_tex_nodes(pattern)
+        if not found:
+            return self._make_default_normal_socket()
 
-            tex_node1 = self.tex_image_nodes.get(matches[0][1].alias)
-            if not tex_node1:
-                self.operator.warning(f"Sampler '{matches[0][1].alias}' found but no such texture node exists.")
+        if len(found) == 1:
+            sampler, tex_node = found[0]
+            if not tex_node.image:
                 return None, None
-            tex_node2 = self.tex_image_nodes.get(matches[1][1].alias)
-            if not tex_node2:
-                self.operator.warning(f"Sampler '{matches[1][1].alias}' found but no such texture node exists.")
-                return None, None
+            return self._process_normal_tex(tex_node, sampler.uv_layer_name)
 
-            if not tex_node1.image and not tex_node2.image:
-                # Standard case: no images are defined in sampler slots.
-                return None, None
+        (sampler_a, tex_a), (sampler_b, tex_b) = found[0], found[1]
+        fac = self._adjust_mix_fac_for_images(tex_a, tex_b, mix_fac_input)
+        if fac is None:
+            return None, None
 
-            normal_map_node1, blue_passthru1 = self._normal_tex_to_normal_input(
-                y=tex_node1.location[1],
-                color_input_from=tex_node1.outputs["Color"],
-                normal_output_to=None,
-                uv_layer_name=matches[0][1].uv_layer_name
-            )
-            normal_map_node2, blue_passthru2 = self._normal_tex_to_normal_input(
-                y=tex_node2.location[1],
-                color_input_from=tex_node2.outputs["Color"],
-                normal_output_to=None,
-                uv_layer_name=matches[1][1].uv_layer_name
-            )
+        normal_a, blue_a = self._process_normal_tex(tex_a, sampler_a.uv_layer_name)
+        normal_b, blue_b = self._process_normal_tex(tex_b, sampler_b.uv_layer_name)
 
-            normal_socket = self._mix_value_nodes(
-                normal_map_node1.outputs["Normal"],
-                normal_map_node2.outputs["Normal"],
-                tex_node1.location[1],
-                mix_fac_input,
-                "VECTOR",
-            ).outputs["Result"]
+        normal_socket = self._mix_sockets(normal_a, normal_b, tex_a.location[1], fac, "VECTOR")
 
-            if blue_passthru1 and blue_passthru2:
-                blue_passthru_socket = self._mix_value_nodes(
-                    blue_passthru1,
-                    blue_passthru2,
-                    tex_node1.location[1] - 30,
-                    mix_fac_input,
-                    "FLOAT",
-                ).outputs["Result"]
-            else:
-                blue_passthru_socket = None
-
-            return normal_socket, blue_passthru_socket
-
-        elif len(matches) == 1:
-            match = self.tex_image_nodes.get(matches[0][1].alias)
-            if not match:
-                self.operator.warning(f"Sampler '{matches[0][1].alias}' found but no such texture node exists.")
-                return None, None
-            if not match.image:
-                # Standard case: no image is defined in sampler slot.
-                return None, None
-
-            normal_map_node, blue_passthru = self._normal_tex_to_normal_input(
-                y=match.location[1],
-                color_input_from=match.outputs["Color"],
-                normal_output_to=None,
-                uv_layer_name=matches[0][1].uv_layer_name
-            )
-            return normal_map_node.outputs["Normal"], blue_passthru
+        if blue_a and blue_b:
+            blue_socket = self._mix_sockets(blue_a, blue_b, tex_a.location[1] - 30, fac, "FLOAT")
         else:
-            # No matches found. We supply a default normal map for normals only, using 'UVTexture0'.
-            normal_map_node = self._new_normal_map_node(
-                "UVTexture0",
-                self.mix_y,
-                strength=1.0
-            )
-            normal_map_node.hide = True
-            normal_map_node.inputs["Color"].default_value = (0.5, 0.5, 1, 1)
-            return normal_map_node.outputs["Normal"], None
+            blue_socket = blue_a or blue_b
+
+        return normal_socket, blue_socket
 
     def _get_mixed_texture_alpha(
         self,
@@ -367,58 +430,28 @@ class BaseNodeTreeBuilder(abc.ABC):
         only_if: bool = True,
         max_sampler_count: int = 2,
     ) -> NodeSocket | None:
-        """Searches the `MatDef` for samplers that match the pattern, and returns a single socket output for it.
+        """Find samplers matching *pattern* and return a single ``Alpha`` output socket.
 
-        Only texture alpha is used.
-
-        If there are two or more samplers, it creates the necessary nodes to combine the first two, then returns the
-        combined output. Other samplers are ignored.
-
-        Returns `None` if pattern is not found or handled or if `only_if` is True (to ease usage in dictionaries).
+        Mixes the first *max_sampler_count* matches.  Returns ``None`` when *only_if* is
+        ``False`` (convenience for conditional dict construction).
         """
         if not only_if:
             return None
 
-        matches = self.matdef.get_matching_samplers(re.compile(pattern), match_alias=True)
-
-        if len(matches) > max_sampler_count:
-            self.operator.warning(
-                f"Found {len(matches)} samplers matching pattern '{pattern}' in material "
-                f"'{self.matdef.name}'. Only the first {max_sampler_count} will be mixed."
-            )
-            matches = matches[:max_sampler_count]
-        elif len(matches) == 1:
-            match = self.tex_image_nodes.get(matches[0][1].alias)
-            if not match:
-                self.operator.warning(f"Sampler '{matches[0][1].alias}' found but no such texture node exists.")
-                return None
-            if not match.image:
-                return None
-            return match.outputs["Alpha"]
-        elif not matches:
-            # No matches.
+        found = self._find_matching_tex_nodes(pattern, max_count=max_sampler_count)
+        if not found:
             return None
+        if len(found) == 1:
+            _, tex_node = found[0]
+            return tex_node.outputs["Alpha"] if tex_node.image else None
 
-        tex_node1 = self.tex_image_nodes.get(matches[0][1].alias)
-        if not tex_node1:
-            self.operator.warning(f"Sampler '{matches[0][1].alias}' found but no such texture node exists.")
+        (_, tex_a), (_, tex_b) = found[0], found[1]
+        fac = self._adjust_mix_fac_for_images(tex_a, tex_b, mix_fac_input)
+        if fac is None:
             return None
-        tex_node2 = self.tex_image_nodes.get(matches[1][1].alias)
-        if not tex_node2:
-            self.operator.warning(f"Sampler '{matches[1][1].alias}' found but no such texture node exists.")
-            return None
-
-        if not tex_node1.image and not tex_node2.image:
-            # Standard case: no images are defined in sampler slots.
-            return None
-
-        return self._mix_value_nodes(
-            tex_node1.outputs["Alpha"],
-            tex_node2.outputs["Alpha"],
-            tex_node1.location[1] - 50,
-            mix_fac_input,
-            "FLOAT",
-        ).outputs["Result"]
+        return self._mix_sockets(
+            tex_a.outputs["Alpha"], tex_b.outputs["Alpha"], tex_a.location[1] - 50, fac, "FLOAT",
+        )
 
     def get_sampler_bl_image(self, sampler_name: str) -> bpy.types.Image | None:
         """All Blender Images from textures (cached or DDS) are lower-case names. FLVER paths are not case-sensitive."""

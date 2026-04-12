@@ -78,7 +78,7 @@ class ShaderNodeType(StrEnum):
     SeparateColor = "ShaderNodeSeparateColor"
     # SeparateHSV = "ShaderNodeSeparateHSV"  # REMOVED in Blender 5.0 (deprecated since Blender 3.3)
     # SeparateRGB = "ShaderNodeSeparateRGB"  # REMOVED in Blender 5.0 (deprecated since Blender 3.3)
-    # SeparateXYZ = "ShaderNodeSeparateXYZ"  # REMOVED in Blender 5.0 (deprecated since Blender 3.3)
+    SeparateXYZ = "ShaderNodeSeparateXYZ"
     ShaderToRGB = "ShaderNodeShaderToRGB"
     Squeeze = "ShaderNodeSqueeze"
     SubsurfaceScattering = "ShaderNodeSubsurfaceScattering"

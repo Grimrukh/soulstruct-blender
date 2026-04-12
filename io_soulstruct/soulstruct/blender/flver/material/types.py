@@ -167,6 +167,7 @@ class BlenderFLVERMaterial:
         # NOTE: This index is sometimes invalid for vanilla map FLVERs (e.g., 1 when there is only one bone).
 
         if not matdef:
+            operator.warning(f"No MatDef for {flver_material.mat_def_name}. Storing sampler paths in custom props.")
             # Store FLVER sampler texture paths directly in custom properties. No shader tree will be built, but
             # at least we can faithfully write FLVER texture paths back to files on export.
             for sampler_name, texture_stem in flver_sampler_texture_stems.items():
@@ -229,7 +230,12 @@ class BlenderFLVERMaterial:
                     f"Error:\n  {ex}"
                 )
                 for sampler_name, texture_stem in flver_sampler_texture_stems.items():
-                    bl_material[f"Path[{sampler_name}]"] = texture_stem
+                    try:
+                        bl_material[f"Path[{sampler_name}]"] = texture_stem
+                    except KeyError:
+                        # Name is too long. Probably an ER texture. Truncate up to '_snp_Texture2D_':
+                        truncated_name = sampler_name.split("_snp_Texture2D_")[-1]
+                        bl_material[f"Path[{truncated_name}]"] = texture_stem
             else:
                 # Assign shader name from MatDef.
                 material.type_properties.shader_name = builder.matdef.shader_stem
