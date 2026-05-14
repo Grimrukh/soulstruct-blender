@@ -67,6 +67,7 @@ class MSBImportPanel(SoulstructPanel):
 
         self.maybe_draw_map_import_operator(context, ImportMapMSB.bl_idname, layout)
         layout.operator(ImportAnyMSB.bl_idname)
+        layout.operator(ImportERMSB.bl_idname)
 
 
 @io_soulstruct_class

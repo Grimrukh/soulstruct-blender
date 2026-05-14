@@ -10,7 +10,7 @@ import typing as tp
 import bpy
 from mathutils import Matrix
 
-from soulstruct.flver import *
+from soulstruct.flver import Dummy, ColorRGBA
 from soulstruct.utilities.maths import Vector3
 
 from ....base.operators import *
@@ -40,7 +40,7 @@ class BlenderFLVERDummy(BaseBlenderSoulstructObject[Dummy, FLVERDummyProps]):
     )
 
     AUTO_DUMMY_PROPS: tp.ClassVar[list[str]] = [
-        "color_rgba",
+        "color",
         "follows_attach_bone",
         "use_upward_vector",
         "unk_x30",
@@ -82,7 +82,7 @@ class BlenderFLVERDummy(BaseBlenderSoulstructObject[Dummy, FLVERDummyProps]):
         else:
             raise TypeError(f"Parent bone must be a Bone or string, not {type(value)}.")
 
-    color_rgba: tuple[int, int, int, int]  # must be immutable to convey that `bl_dummy.color_rgba.r = X` has no effect
+    color: tuple[int, int, int, int]  # must be immutable to convey that `bl_dummy.color.r = X` has no effect
     follows_attach_bone: bool
     use_upward_vector: bool
     unk_x30: int
@@ -112,11 +112,12 @@ class BlenderFLVERDummy(BaseBlenderSoulstructObject[Dummy, FLVERDummyProps]):
         bl_dummy.obj.empty_display_type = "ARROWS"  # best display type/size I've found (single arrow not sufficient)
         bl_dummy.obj.empty_display_size = 0.05
 
-        bl_dummy.color_rgba = (
-            soulstruct_obj.color_rgba.r,
-            soulstruct_obj.color_rgba.g,
-            soulstruct_obj.color_rgba.b,
-            soulstruct_obj.color_rgba.a,
+        # NOTE: Does not care about source type (Python vs. C++).
+        bl_dummy.color = (
+            soulstruct_obj.color[0],
+            soulstruct_obj.color[1],
+            soulstruct_obj.color[2],
+            soulstruct_obj.color[3],
         )
         bl_dummy.follows_attach_bone = soulstruct_obj.follows_attach_bone
         bl_dummy.use_upward_vector = soulstruct_obj.use_upward_vector
@@ -124,11 +125,15 @@ class BlenderFLVERDummy(BaseBlenderSoulstructObject[Dummy, FLVERDummyProps]):
         bl_dummy.unk_x34 = soulstruct_obj.unk_x34
 
         if soulstruct_obj.use_upward_vector:
-            bl_euler = game_forward_up_vectors_to_bl_euler(soulstruct_obj.forward, soulstruct_obj.upward)
+            bl_euler = game_forward_up_vectors_to_bl_euler(
+                Vector3(soulstruct_obj.forward),
+                Vector3(soulstruct_obj.upward),
+            )
         else:  # use default upward
-            bl_euler = game_forward_up_vectors_to_bl_euler(soulstruct_obj.forward, Vector3((0, 1, 0)))
+            bl_euler = game_forward_up_vectors_to_bl_euler(
+                Vector3(soulstruct_obj.forward), Vector3((0, 1, 0)))
 
-        bl_location = to_blender(soulstruct_obj.translate)
+        bl_location = to_blender(Vector3(soulstruct_obj.translate))
         # This initial transform may still be in 'parent bone' space.
         bl_dummy_transform = Matrix.LocRotScale(bl_location, bl_euler, (1, 1, 1))
 
@@ -158,7 +163,7 @@ class BlenderFLVERDummy(BaseBlenderSoulstructObject[Dummy, FLVERDummyProps]):
     def _create_soulstruct_obj(self) -> Dummy:
         return Dummy(
             reference_id=self.reference_id,  # stored in dummy name for editing convenience
-            color_rgba=ColorRGBA(*self.color_rgba),
+            color=ColorRGBA(*self.color),
             follows_attach_bone=self.follows_attach_bone,
             use_upward_vector=self.use_upward_vector,
             unk_x30=self.unk_x30,

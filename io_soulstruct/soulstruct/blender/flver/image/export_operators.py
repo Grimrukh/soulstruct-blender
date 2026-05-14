@@ -184,7 +184,7 @@ class ExportTexturesIntoBinderOrTPF(LoggingImportOperator):
             if binder is not None:
                 for entry in binder.entries:
                     if entry.name.endswith((".tpf", ".tpf.dcx")):
-                        if entry.minimal_stem == dds_texture.stem:
+                        if entry.stem == dds_texture.stem:
                             # Found a single-texture TPF matching this texture stem. Replace in entry.
                             new_tpf = dds_texture.to_single_texture_tpf(
                                 self,
@@ -193,7 +193,7 @@ class ExportTexturesIntoBinderOrTPF(LoggingImportOperator):
                             )
                             entry.set_from_binary_file(new_tpf)
                             break
-                        elif entry.minimal_stem == binder.path_minimal_stem:
+                        elif entry.stem == binder.path_minimal_stem:
                             # Found a multi-texture TPF. Treat as target TPF.
                             target_tpf = entry.to_binary_file(TPF)
                 else:

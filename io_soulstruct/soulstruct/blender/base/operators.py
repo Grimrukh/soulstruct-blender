@@ -26,7 +26,7 @@ from soulstruct.containers import Binder, BinderEntry
 if tp.TYPE_CHECKING:
     from ..general.properties import SoulstructSettings
 
-_LOGGER = logging.getLogger(__name__)
+_LOGGER = logging.getLogger("soulstruct.blender")
 
 
 class LoggingOperator(bpy.types.Operator):
@@ -49,20 +49,26 @@ class LoggingOperator(bpy.types.Operator):
             LoggingOperator.INITIAL_DEBUG_SETTING_DONE = True
         return _settings
 
-    @staticmethod
-    def debug(msg: str):
+    def debug(self, msg: str, report=False):
+        """Logged and optionally reported (as INFO) in Blender."""
         _LOGGER.debug(msg, stacklevel=2)
-        # No report.
+        if report and _LOGGER.level <= logging.DEBUG:
+            self.report({"INFO"}, f"DEBUG: {msg}")
 
-    def info(self, msg: str):
+    def info(self, msg: str, report=False):
+        """Logged and optionally reported in Blender."""
         _LOGGER.info(msg, stacklevel=2)
-        self.report({"INFO"}, msg)
+        if report:
+            self.report({"INFO"}, msg)
 
-    def warning(self, msg: str):
+    def warning(self, msg: str, report=True):
+        """Logged and optionally reported in Blender."""
         _LOGGER.warning(msg, stacklevel=2)
-        self.report({"WARNING"}, msg)
+        if report:
+            self.report({"WARNING"}, msg)
 
     def error(self, msg: str) -> set[str]:
+        """Logged and reported in Blender. Returns {'CANCELLED'} for easy `execute()` return use."""
         if self.cleanup_callback:
             try:
                 self.cleanup_callback()
@@ -74,6 +80,7 @@ class LoggingOperator(bpy.types.Operator):
         return {"CANCELLED"}
 
     def execute(self, context):
+        """Base class trick: profile any subclass `execute()` method by renaming it to `_execute()`."""
         try:
             execute = getattr(self, "_execute")
         except AttributeError:
@@ -296,7 +303,7 @@ class BinderEntrySelectOperator(LoggingOperator):
                 return []  # one error cancels all imports
 
             entry_id, entry_name = int(match.group(1)), match.group(2)
-            entry = self.binder.find_entry_id(entry_id)
+            entry = self.binder.find_entry_by_id(entry_id)
             if entry is None:
                 self.error(f"Could not find Binder entry with ID {entry_id} in Binder file.")
                 return []

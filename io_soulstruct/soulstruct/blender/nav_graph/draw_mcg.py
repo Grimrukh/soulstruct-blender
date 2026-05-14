@@ -81,6 +81,9 @@ class MCGDrawSettings(SoulstructPropertyGroup):
 @io_soulstruct_space_view_3d_draw_handler("WINDOW", "POST_VIEW")
 def update_mcg_draw_caches():
     """Process selected MCG nodes/edges and update cached batches if necessary."""
+    if bpy.app.background:
+        return
+
     global _CACHED_SHADER, _CACHED_NODES_BATCH, _CACHED_EDGES_BATCH
     global _CACHED_TRIANGLES_A_BATCH, _CACHED_TRIANGLES_B_BATCH
     global _LAST_DRAWN_NODES, _LAST_DRAWN_EDGES

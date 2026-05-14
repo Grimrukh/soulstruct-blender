@@ -4,6 +4,7 @@ __all__ = [
     "create_bl_flver_from_flver",
 ]
 
+import logging
 import time
 import typing as tp
 from dataclasses import dataclass, field
@@ -12,15 +13,20 @@ import numpy as np
 
 import bpy
 
-from soulstruct.flver import *
 from soulstruct.base.models.shaders import MatDefError
+from soulstruct.flver import *
+from soulstruct.flver.bone_tools import BoneTree
+from soulstruct.flver.version import FLVERVersion
+from soulstruct.utilities.maths import EulerRad
+
+import pyrelink.flver as pyre_flver
 
 from .....base.operators import *
 from .....exceptions import FLVERImportError
 from .....types import *
 from .....utilities import *
 from ....material.types import BlenderFLVERMaterial
-from ...properties import FLVERImportSettings
+from ...properties import FLVERImportSettings, FLVERSubmeshProps
 from ..bl_flver_dummy import BlenderFLVERDummy
 from ..enums import FLVERBoneDataType
 
@@ -31,6 +37,8 @@ from ._import_bones import *
 if tp.TYPE_CHECKING:
     from ....image.image_import_manager import ImageImportManager
     from .core import BlenderFLVER
+
+_LOGGER = logging.getLogger("soulstruct.blender")
 
 
 @dataclass(slots=True)
@@ -44,11 +52,13 @@ class _CreateBlenderFLVERCommand:
     context: bpy.types.Context
     flver: FLVER
     name: str
-    collection: bpy.types.Collection = None
+    bone_tree: BoneTree
+    collection: bpy.types.Collection
     image_import_manager: ImageImportManager | None = None
-    existing_merged_mesh: MergedMesh = None
-    existing_bl_materials: tp.Sequence[BlenderFLVERMaterial] = None
-    existing_mesh_bl_material_indices: tp.Sequence[int] = None
+    texture_finder: pyre_flver.TextureFinder | None = None
+    existing_merged_mesh: MergedMesh | None = None
+    existing_bl_materials: tp.Sequence[BlenderFLVERMaterial] | None = None
+    existing_mesh_bl_material_indices: tp.Sequence[int] | None = None
 
     import_settings: FLVERImportSettings = field(default=None, init=False)
 
@@ -59,6 +69,9 @@ class _CreateBlenderFLVERCommand:
             self.existing_mesh_bl_material_indices,
         ]
         if any(existing_props) and not all(existing_props):
+            print(f"Merged Mesh: {bool(self.existing_merged_mesh)}")
+            print(f"BL Materials: {bool(self.existing_bl_materials)}")
+            print(f"BL Material Indices: {bool(self.existing_mesh_bl_material_indices)}")
             raise ValueError(
                 "If any 'existing' FLVER props are given, all must be given (merged_mesh, bl_materials, and material "
                 "indices)."
@@ -78,19 +91,24 @@ def create_bl_flver_from_flver(
     name: str,
     collection: bpy.types.Collection = None,
     image_import_manager: ImageImportManager | None = None,
-    existing_merged_mesh: MergedMesh = None,
+    texture_finder: pyre_flver.TextureFinder | None = None,
     existing_bl_materials: tp.Sequence[BlenderFLVERMaterial] = None,
     existing_mesh_bl_material_indices: tp.Sequence[int] = None,
 ) -> BlenderFLVER:
+
+    if not collection:
+        collection = context.collection
 
     command = _CreateBlenderFLVERCommand(
         operator,
         context,
         flver,
         name,
+        bone_tree=BoneTree(flver),
         collection=collection,
         image_import_manager=image_import_manager,
-        existing_merged_mesh=existing_merged_mesh,
+        texture_finder=texture_finder,
+        existing_merged_mesh=flver.get_cached_merged_mesh() if flver.has_cached_merged_mesh() else None,
         existing_bl_materials=existing_bl_materials,
         existing_mesh_bl_material_indices=existing_mesh_bl_material_indices,
     )
@@ -113,6 +131,8 @@ def create_bl_flver_from_flver(
             # Clear mesh placeholder geometry. There should be no other data on it.
             mesh_data.clear_geometry()
             mesh_data.materials.clear()
+            # Rename expiring placeholder model so it doesn't cause a dupe suffix for our replacement.
+            placeholder_model.name += " <TEMP>"
         else:
             mesh_data = bpy.data.meshes.new(name=name)
     else:
@@ -120,7 +140,9 @@ def create_bl_flver_from_flver(
 
     armature, bl_bone_data_type, bl_bone_names = _create_armature_if_needed(command)
 
+    p = time.perf_counter()
     mesh, bl_materials, mesh_bl_material_indices = _create_bl_mesh(command, armature, bl_bone_names, mesh_data)
+    _LOGGER.info(f"Created Blender mesh for FLVER {command.name} in {time.perf_counter() - p:.3f} s.")
 
     command.collection.objects.link(mesh)
     for bl_material in bl_materials:
@@ -133,6 +155,7 @@ def create_bl_flver_from_flver(
 
         # Armature is always created if there are Dummies, so we can safely create them here.
         for i, dummy in enumerate(command.flver.dummies):
+            dummy: Dummy
             dummy_name = BlenderFLVERDummy.format_name(command.name, i, dummy.reference_id, suffix=None)
             BlenderFLVERDummy.new_from_soulstruct_obj(
                 command.operator,
@@ -168,7 +191,8 @@ def create_bl_flver_from_flver(
         )
     else:
         try:
-            bl_flver.version = command.flver.version.name
+            # Case FLVER version to 'int()' first in case it's a pyrelink C++ enum.
+            bl_flver.version = FLVERVersion(int(command.flver.version)).name
         except TypeError:
             command.operator.warning(
                 f"FLVER version '{command.flver.version}' not recognized. Leaving as 'Selected Game'."
@@ -244,16 +268,24 @@ def _set_submesh_props(
         create_per_submesh_props = True
 
     if create_per_submesh_props:
+        # Note that there may be less Blender materials than original FLVER submeshes,
+        # since some submeshes with identical materials and submesh properties may be merged, or
+        # submeshes that only existed because of the per-mesh bone count limit.
+        # We set submesh properties from the first submesh that uses each Blender material index.
+        seen_bl_material_indices = set()
         for submesh, bl_material_index in zip(flver_meshes, mesh_bl_material_indices, strict=True):
-            bl_material = bl_materials[bl_material_index].material
-            submesh_props = bl_flver.obj.FLVER.submesh_props.add()
-            submesh_props.material = bl_material
+            if bl_material_index in seen_bl_material_indices:
+                continue
+            seen_bl_material_indices.add(bl_material_index)
+
+            submesh_props = bl_flver.obj.FLVER.submesh_props.add()  # type: FLVERSubmeshProps
             submesh_props.is_dynamic = submesh.is_dynamic
             submesh_props.default_bone_index = submesh.default_bone_index
             # TODO: We only track the number of face sets, as we cannot currently represent or export
             #  varying face sets (just the appropriate number of duplicates of the main face set).
             submesh_props.face_set_count = len(submesh.face_sets)
             # BC and non-BC variants of materials are created, so we can set this to MATERIAL.
+            # The 'ON' and 'OFF' overrides are for custom user usage.
             submesh_props.use_backface_culling = "MATERIAL"
 
 
@@ -279,12 +311,17 @@ def _create_bl_mesh(
 
     if command.existing_merged_mesh:
         # Merged mesh already given. Implies that Blender materials are handled manually as well.
-        bl_vert_bone_weights, bl_vert_bone_indices = _create_bl_mesh_from_merged_mesh(
+        _create_bl_mesh_from_merged_mesh(
             command.operator, mesh_data, command.existing_merged_mesh
         )
         mesh = new_mesh_object(command.name, mesh_data, SoulstructType.FLVER)
         if armature:
-            _create_bone_vertex_groups(mesh, bl_bone_names, bl_vert_bone_weights, bl_vert_bone_indices)
+            _create_bone_vertex_groups(
+                mesh,
+                bl_bone_names,
+                command.existing_merged_mesh.bone_weights,
+                command.existing_merged_mesh.bone_indices,
+            )
         return mesh, list(command.existing_bl_materials), list(command.existing_mesh_bl_material_indices)
 
     # Create materials and `MergedMesh` now.
@@ -296,34 +333,43 @@ def _create_bl_mesh(
             model_name=command.name,
             material_blend_mode=command.import_settings.material_blend_mode,
             image_import_manager=command.image_import_manager,
+            texture_finder=command.texture_finder,
             # No cached MatDef materials to pass in.
         )
-
     except MatDefError as ex:
         raise FLVERImportError(f"Failed to create materials for FLVER import. Error: {ex}")
 
+    # Check if all meshes are empty (AFTER creating materials above).
+    for mesh in command.flver.meshes:
+        if mesh.vertex_count > 0:
+            break
+    else:
+        # Empty Blender mesh.
+        mesh = new_mesh_object(f"{command.name} <EMPTY>", mesh_data, SoulstructType.FLVER)
+        return mesh, [], []
+
     p = time.perf_counter()
     # Create merged mesh.
-    merged_mesh = command.flver.to_merged_mesh(
+    merged_mesh = command.flver.build_merged_mesh(
         mesh_bl_material_indices,
         material_uv_layer_names=bl_material_uv_layer_names,
         merge_vertices=command.import_settings.merge_mesh_vertices,
     )
     command.operator.debug(f"Merged FLVER meshes in {time.perf_counter() - p} s")
+
     if command.import_settings.merge_mesh_vertices:
         # Report vertex reduction.
         total_vertices = sum(mesh.vertex_count for mesh in command.flver.meshes)
-        total_merged_vertices = merged_mesh.vertex_data.shape[0]
-        command.operator.debug(
-            f"Merging reduced {total_vertices} vertices to {total_merged_vertices} "
-            f"({100 - 100 * total_merged_vertices / total_vertices:.2f}% reduction)"
-        )
-    bl_vert_bone_weights, bl_vert_bone_indices = _create_bl_mesh_from_merged_mesh(
-        command.operator, mesh_data, merged_mesh
-    )
+        if total_vertices > 0:
+            total_merged_vertices = merged_mesh.vertex_count
+            command.operator.debug(
+                f"Merging reduced {total_vertices} vertices to {total_merged_vertices} "
+                f"({100 - 100 * total_merged_vertices / total_vertices:.2f}% reduction)"
+            )
+    _create_bl_mesh_from_merged_mesh(command.operator, mesh_data, merged_mesh)
     mesh = new_mesh_object(command.name, mesh_data, SoulstructType.FLVER)
     if armature:
-        _create_bone_vertex_groups(mesh, bl_bone_names, bl_vert_bone_weights, bl_vert_bone_indices)
+        _create_bone_vertex_groups(mesh, bl_bone_names, merged_mesh.bone_weights, merged_mesh.bone_indices)
 
     return mesh, bl_materials, mesh_bl_material_indices
 
@@ -335,7 +381,7 @@ def _create_armature_if_needed(
         command.import_settings.omit_default_bone
         and not command.flver.dummies
         and len(command.flver.bones) == 1
-        and command.flver.bones[0].is_default_origin
+        and _is_bone_default_origin(command.flver.bones[0])
     ):
         # Single default bone can be auto-created on export. No Blender Armature parent needed/created.
         return None, FLVERBoneDataType.OMITTED, []
@@ -346,7 +392,7 @@ def _create_armature_if_needed(
     # correctly.
 
     bl_bone_names = []
-    for bone in command.flver.bones:
+    for bone in command.bone_tree.bones:
         # Just using actual bone names to avoid the need for parsing rules on export. However, duplicate names
         # need to be handled with suffixes.
         bl_bone_name = f"{bone.name} <DUPE>" if bone.name in bl_bone_names else bone.name
@@ -361,6 +407,16 @@ def _create_armature_if_needed(
     return armature, bl_bone_data_type, bl_bone_names
 
 
+def _is_bone_default_origin(bone: FLVERBone) -> bool:
+    """Checks whether this bone has only default (non-auto-generated) data."""
+    return (
+        bone.translate == (0.0, 0.0, 0.0)
+        and bone.rotate == EulerRad.zero()
+        and bone.scale == (1.0, 1.0, 1.0)
+        and bone.usage_flags == 0
+    )
+
+
 def _create_mesh_armature_modifier(bl_mesh: MeshObject, bl_armature: ArmatureObject):
     armature_mod = bl_mesh.modifiers.new(name="FLVER Armature", type="ARMATURE")
     armature_mod.object = bl_armature
@@ -372,22 +428,19 @@ def _create_bl_mesh_from_merged_mesh(
     operator: LoggingOperator,
     mesh_data: bpy.types.Mesh,
     merged_mesh: MergedMesh,
-) -> tuple[np.ndarray, np.ndarray]:
+) -> None:
     """Create Blender Mesh with plenty of efficient `foreach_set()` calls to raveled `MergedMesh` arrays.
 
     Returns two arrays of bone indices and bone weights for the created Blender vertices.
     """
+    p = time.perf_counter()
 
-    # p = time.perf_counter()
+    # TODO: Not importing tangents/bitangents currently, but this may need to change (e.g. Elden Ring cloth).
+    bl_positions = merged_mesh.positions[:, [0, 2, 1]]
 
-    merged_mesh.swap_vertex_yz(tangents=False, bitangents=False)
-    merged_mesh.invert_vertex_uv(invert_u=False, invert_v=True)
-    merged_mesh.normalize_normals()
-
-    # We can create vertices before `BMesh` easily.
-    vertex_count = merged_mesh.vertex_data.shape[0]
-    mesh_data.vertices.add(vertex_count)
-    mesh_data.vertices.foreach_set("co", np.array(merged_mesh.vertex_data["position"]).ravel())
+    mesh_data.vertices.add(merged_mesh.vertex_count)
+    # TODO: Is array copy here necessary?
+    mesh_data.vertices.foreach_set("co", np.array(bl_positions).ravel())
 
     all_faces = merged_mesh.faces[:, :3]  # drop material index column (N x 3 array)
     if merged_mesh.vertices_merged:
@@ -397,6 +450,10 @@ def _create_bl_mesh_from_merged_mesh(
     else:
         # No vertex merging occurred, so FLVER 'loops' and 'vertices' are still synonymous.
         face_vertex_indices = all_faces
+
+    if face_vertex_indices.size == 0:
+        operator.warning(f"No face vertex indices found in Merged Mesh for {mesh_data.name}. Skipping.")
+        return
 
     # Drop faces that don't use three unique vertex indices.
     # TODO: Try a vectorized approach that calculates the difference between each pair of the three columns, then
@@ -425,18 +482,20 @@ def _create_bl_mesh_from_merged_mesh(
 
     mesh_data.update(calc_edges=True)
 
-    # self.operator.info(f"Created Blender mesh in {time.perf_counter() - p} s")
+    operator.debug(f"Created Blender mesh in {time.perf_counter() - p} s")
 
     valid_face_loop_indices = all_faces[unique_mask].ravel()
 
     # Create and populate UV and vertex color data layers (on loops).
-    for i, (uv_layer_name, merged_loop_uv_array) in enumerate(merged_mesh.loop_data.uvs.items()):
-        # self.operator.info(f"Creating UV layer {i}: {uv_layer_name}")
+    for i, (uv_layer_name, merged_loop_uv_array) in enumerate(merged_mesh.loop_uvs.items()):
+        operator.debug(f"Creating UV layer {i}: {uv_layer_name}")
+        # Flip V channel:
+        merged_loop_uv_array[:, 1] = 1.0 - merged_loop_uv_array[:, 1]
         uv_layer = mesh_data.uv_layers.new(name=uv_layer_name, do_init=False)
         loop_uv_data = merged_loop_uv_array[valid_face_loop_indices].ravel()
         uv_layer.data.foreach_set("uv", loop_uv_data)
-    for i, merged_color_array in enumerate(merged_mesh.loop_data.vertex_colors):
-        # self.operator.info(f"Creating Vertex Colors layer {i}: VertexColors{i}")
+    for i, merged_color_array in enumerate(merged_mesh.loop_vertex_colors):
+        operator.debug(f"Creating Vertex Colors layer {i}: VertexColors{i}")
         # TODO: Apparently `vertex_colors` is deprecated in favor of "color attributes". Investigate.
         color_layer = mesh_data.vertex_colors.new(name=f"VertexColors{i}")
         loop_color_data = merged_color_array[valid_face_loop_indices].ravel()
@@ -450,12 +509,13 @@ def _create_bl_mesh_from_merged_mesh(
     # that. New versions of Blender automatically create the `mesh.corner_normals` collection. We also don't need to
     # enable `use_auto_smooth` or call `calc_normals_split()` anymore.
 
-    if merged_mesh.loop_data.normals is not None:
-        loop_normal_data = merged_mesh.loop_data.normals[valid_face_loop_indices]  # NOT raveled
-        mesh_data.normals_split_custom_set(loop_normal_data)  # one normal per loop
+    if merged_mesh.loop_normals is not None:
+        bl_normals = merged_mesh.loop_normals[:, [0, 2, 1]]  # swap YZ
+        bl_normals = bl_normals[valid_face_loop_indices]  # valid only; NOT raveled
+        # Ensure normals have unit magnitude.
+        bl_normals /= np.linalg.norm(bl_normals, axis=1, keepdims=True)
+        mesh_data.normals_split_custom_set(bl_normals)  # one normal per loop
         mesh_data.update()
-
-    return merged_mesh.vertex_data["bone_weights"], merged_mesh.vertex_data["bone_indices"]
 
 
 def _create_bone_vertex_groups(
@@ -533,10 +593,11 @@ def _create_bl_bones(
     The detected `FLVERBoneDataType` is returned, which indicates whether bone data was written to `EditBones` or
     `PoseBones`. This is saved to FLVER properties in Blender for export.
     """
+    flver = command.flver
 
     # Detect bone data type (storage location) based on FLVER mesh `is_dynamic` state.
-    if command.flver.any_dynamic():
-        if not command.flver.all_dynamic():
+    if any(mesh.is_dynamic for mesh in flver.meshes):
+        if not all(mesh.is_dynamic for mesh in flver.meshes):
             # Happens for rare objects (e.g. o0150 in DS1). In these cases, my observation is that the meshes do want
             # to be statically posed in Blender for viewing.
             # TODO: Could theoretically handle this per-Bone IFF no Bone is used by both dynamic/static meshes.
@@ -558,7 +619,7 @@ def _create_bl_bones(
     command.operator.to_edit_mode(command.context)
 
     # Create all edit bones. Head/tail are not set yet (depends on `bl_bone_data_type` below).
-    edit_bones = create_edit_bones(command.flver, armature.data, bl_bone_names)
+    edit_bones = create_edit_bones(command.bone_tree, armature.data, bl_bone_names)
 
     # NOTE: Bones that have no vertices weighted to them are left as 'unused' root bones in the FLVER skeleton.
     # They may be animated by HKX animations (and will affect their children appropriately) but will not actually
@@ -566,7 +627,7 @@ def _create_bl_bones(
 
     if bl_bone_data_type == FLVERBoneDataType.EDIT:
         write_flver_rest_pose_to_edit_bones(
-            command.operator, command.flver, edit_bones,
+            command.operator, command.bone_tree, command.name, edit_bones,
         )
 
     # We're done with EditBones now.
@@ -574,20 +635,22 @@ def _create_bl_bones(
     command.operator.to_object_mode(command.context)
 
     # Check for silently deleted (invalid) bones.
-    missing_bones = set(b.name for b in command.flver.bones) - set(b.name for b in armature.data.bones)
+    all_flver_bone_names = set(b.name for b in command.bone_tree.bones)
+    all_bl_bone_names = set(b.name for b in armature.data.bones)
+    missing_bones = all_flver_bone_names - all_bl_bone_names
     if missing_bones:
         raise FLVERImportError(f"Failed to create some FLVER bones: {', '.join(missing_bones)}")
 
     if bl_bone_data_type == FLVERBoneDataType.CUSTOM:
         # We record the bone transforms in custom properties and also write them to PoseBone data for correct static
         # viewing. If animated, this Pose data may be overwritten, but the custom properties will remain for export.
-        write_data_to_custom_bone_prop_and_pose(command.flver, armature)
+        write_data_to_custom_bone_prop_and_pose(command.bone_tree, armature)
 
-    for game_bone, bl_bone in zip(command.flver.bones, armature.data.bones, strict=True):
+    for game_bone_node, bl_bone in zip(command.bone_tree.bones, armature.data.bones, strict=True):
         # Storing 'Unused' flag for now. TODO: If later games' other flags can't be safely auto-detected, store too.
-        bl_bone.FLVER_BONE.is_unused = bool(game_bone.usage_flags & FLVERBoneUsageFlags.UNUSED)
+        bl_bone.FLVER_BONE.is_unused = bool(game_bone_node.usage_flags & FLVERBoneUsageFlags.UNUSED)
         if bl_bone_data_type == FLVERBoneDataType.EDIT:
             # We always write (local) bone scale data to custom properties, as EditBones do not support it.
-            bl_bone.FLVER_BONE.flver_scale = to_blender(game_bone.scale)
+            bl_bone.FLVER_BONE.flver_scale = to_blender(game_bone_node.scale)
 
     return bl_bone_data_type  # can only be EDIT or CUSTOM here

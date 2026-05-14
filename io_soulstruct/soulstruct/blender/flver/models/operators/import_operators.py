@@ -27,30 +27,39 @@ __all__ = [
 ]
 
 import re
+from dataclasses import dataclass
+
 import time
-import traceback
 from pathlib import Path
 
 import bpy
 
-from soulstruct.containers import Binder
 from soulstruct.darksouls1ptde.constants import CHARACTER_MODELS as DS1_CHARACTER_MODELS
 from soulstruct.demonssouls.constants import CHARACTER_MODELS as DES_CHARACTER_MODELS
 from soulstruct.eldenring.constants import CHARACTER_MODELS as ER_CHARACTER_MODELS
-from soulstruct.flver import FLVERVersion, FLVER
+from soulstruct.flver import *
+
+import pyrelink.core as pyre
 
 from ....base.operators import *
 from ....base.register import io_soulstruct_class
+from ....exceptions import FLVERImportError
 from ....general import SoulstructSettings
 from ....types import ArmatureObject
 from ....utilities import *
 from ...image.image_import_manager import ImageImportManager
-from ...utilities import *
 from ..types import BlenderFLVER
-from ..properties import FLVERImportSettings
 
 
 FLVER_BINDER_RE = re.compile(r"^.*?\.(.*bnd)(\.dcx)?$")
+
+
+@dataclass(slots=True)
+class FLVERSourceInfo:
+    source_path: Path
+    bl_name: str
+    flver_bytes: bytes
+    flver: FLVER | None = None
 
 
 class _BaseFLVERImportOperator(LoggingImportOperator):
@@ -65,69 +74,63 @@ class _BaseFLVERImportOperator(LoggingImportOperator):
 
         p = time.perf_counter()
 
-        flvers = []  # type: list[tuple[str, FLVER]]  # holds `(bl_name, flver)` pairs
-        image_import_manager = ImageImportManager(self, context)
+        settings = self.settings(context)
 
-        import_settings = context.scene.flver_import_settings
-        use_matbinbnd = False  # auto-set if first FLVER is from Sekiro/Elden Ring
+        flver_path_sources = {}  # type: dict[str, Path]
+        flver_binder_sources = {}  # type: dict[str, tuple[pyre.BinderEntry, pyre.Binder]]
 
         for source_path in self.file_paths:
 
             if FLVER_BINDER_RE.match(source_path.name):
                 # NOTE: Will always import all FLVERs found in Binder.
-                binder = Binder.from_path(source_path)
-                binder_flvers = get_flvers_from_binder(binder, source_path, allow_multiple=True)
-                if import_settings.import_textures:
-                    print(f"Finding image textures for: {source_path}")
-                    image_import_manager.find_flver_textures(source_path, binder)
-                    for flver in binder_flvers:
-                        self.find_extra_textures(source_path, flver, image_import_manager)
-                for flver in binder_flvers:
-                    # TODO: Sekiro does NOT use MATBIN, so this test needs to change.
-                    #  Unsure if there is a way to generically distinguish these FLVER files, though.
-                    #  Also, does AC6+ use MATBINBND?
-                    if flver.version == FLVERVersion.Sekiro_EldenRing:
-                        use_matbinbnd = True
-                    flvers.append((flver.path_minimal_stem, flver))
+                binder = pyre.Binder.from_path(source_path)
+
+                flver_entries = binder.find_entries_by_name_regex(r".*\.flver(\.dcx)?")
+                if not flver_entries:
+                    raise FLVERImportError(f"Cannot find a FLVER file in binder {source_path}.")
+
+                suffix = ""
+                for entry in flver_entries:
+                    flver_name = entry.stem + suffix
+                    flver_binder_sources[flver_name] = (entry, binder)
+                    # TODO: Hacky: support 2+ FLVERs inside one Binder.
+                    if not suffix:
+                        suffix = "_1"
+                    else:
+                        suffix = f"_{int(suffix[1:]) + 1}"
             else:  # e.g. loose Map Piece FLVER
-                flver = FLVER.from_path(source_path)
-                if import_settings.import_textures:
-                    image_import_manager.find_flver_textures(source_path)
-                    self.find_extra_textures(source_path, flver, image_import_manager)
-                flvers.append((source_path.name.split(".")[0], flver))
+                if ".flver" not in source_path.name:
+                    self.warning(f"Unusual non-Binder FLVER path: {source_path}. Will try to read as FLVER.")
+                flver_name = source_path.name.split(".")[0]
+                flver_path_sources[flver_name] = source_path
 
-        if use_matbinbnd:
-            self.info("Using MATBINBND (FLVER is Elden Ring or newer).")
-        else:
-            self.info("Using MTDBND (FLVER is pre-Elden Ring).")
+        self.info(
+            f"Extracted {len(flver_binder_sources)} FLVERs from Binders and {len(flver_path_sources)} FLVERs from "
+            f"direct file paths in {time.perf_counter() - p:.3f} s."
+        )
 
-        settings = self.settings(context)
         collection = self.get_collection(context, Path(self.directory).name)
 
-        bl_flver = None
-        for bl_name, flver in flvers:
+        p = time.perf_counter()
 
-            try:
-                bl_flver = BlenderFLVER.new_from_soulstruct_obj(
-                    self,
-                    context,
-                    flver,
-                    name=bl_name,
-                    image_import_manager=image_import_manager,
-                    collection=collection,
-                )
-            except Exception as ex:
-                # Delete any objects created prior to exception.
-                traceback.print_exc()  # for inspection in Blender console
-                return self.error(f"Cannot import FLVER: {bl_name}. Error: {ex}")
+        bl_flvers = BlenderFLVER.new_batch_from_soulstruct_objs(
+            self,
+            context,
+            flver_path_sources,
+            flver_binder_sources,
+            texture_finder_callback=None,
+            flver_model_category="",
+            collection=collection,
+        )
 
-            self.post_process_flver(context, settings, import_settings, bl_flver)
+        for bl_flver in bl_flvers:
+            self.post_process_flver(context, settings, bl_flver)
 
-        self.info(f"Imported {len(flvers)} FLVER(s) in {time.perf_counter() - p:.3f} s.")
+        self.info(f"Loaded {len(bl_flvers)} FLVERs into Blender in {time.perf_counter() - p:.3f} s.")
 
         # Select and frame view on (final) newly imported Mesh.
-        if bl_flver:
-            self.set_active_obj(bl_flver.mesh)
+        if bl_flvers and bpy.ops.view3d.view_selected.poll():
+            self.set_active_obj(next(iter(bl_flvers.values())).mesh)
             bpy.ops.view3d.view_selected(use_all_regions=False)
 
         return {"FINISHED"}
@@ -136,7 +139,6 @@ class _BaseFLVERImportOperator(LoggingImportOperator):
         self,
         context: bpy.types.Context,
         settings: SoulstructSettings,
-        import_settings: FLVERImportSettings,
         bl_flver: BlenderFLVER,
     ):
         """Can be overridden to modify new FLVER model."""
@@ -147,7 +149,10 @@ class _BaseFLVERImportOperator(LoggingImportOperator):
         return context.view_layer.active_layer_collection.collection
 
     def find_extra_textures(self, flver_source_path: Path, flver: FLVER, image_import_manager: ImageImportManager):
-        """Can be overridden by importers for specific FLVER model types that know where their textures are."""
+        """Can be overridden by importers for specific FLVER model types that know where their textures are.
+
+        TODO: Characters can also use object textures from maps they expect to appear in, e.g. DS1 Giant steel ball.
+        """
         pass
 
     def set_blender_parent(self, context, bl_flver_armature: ArmatureObject):
@@ -273,27 +278,31 @@ class ImportCharacterFLVER(_BaseFLVERImportOperator):
         self,
         context: bpy.types.Context,
         settings: SoulstructSettings,
-        import_settings: FLVERImportSettings,
         bl_flver: BlenderFLVER,
     ):
-        if import_settings.add_name_suffix:
-            if settings.is_game_ds1():
-                model_dict = DS1_CHARACTER_MODELS
-            elif settings.is_game("DEMONS_SOULS"):
-                model_dict = DES_CHARACTER_MODELS
-            else:
-                model_dict = {}
+        if not context.scene.flver_import_settings.add_name_suffix:
+            return
 
-            if model_dict:
-                # Add character description to model name.
-                try:
-                    model_id = int(bl_flver.name[1:5])
-                    model_desc = model_dict[model_id]
-                    # Don't trigger full rename.
-                    bl_flver.obj.name += f" <{model_desc}>"
-                    bl_flver.armature.name += f" <{model_desc}>"
-                except (ValueError, KeyError):
-                    pass
+        if settings.is_game_ds1():
+            model_dict = DS1_CHARACTER_MODELS
+        elif settings.is_game("DEMONS_SOULS"):
+            model_dict = DES_CHARACTER_MODELS
+        else:
+            # TODO: Use other games' character name dicts.
+            model_dict = {}
+
+        if not model_dict:
+            return
+
+        # Add character description to model name.
+        try:
+            model_id = int(bl_flver.name[1:5])
+            model_desc = model_dict[model_id]
+            # Don't trigger full rename.
+            bl_flver.obj.name += f" <{model_desc}>"
+            bl_flver.armature.name += f" <{model_desc}>"
+        except (ValueError, KeyError):
+            pass
 
     def get_collection(self, context: bpy.types.Context, file_directory_name: str):
         return find_or_create_collection(context.scene.collection, "Models", "Character Models")

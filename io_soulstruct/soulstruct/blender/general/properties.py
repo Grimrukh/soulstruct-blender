@@ -23,6 +23,9 @@ from soulstruct.dcx import DCXType, compress, decompress
 from soulstruct.games import *
 from soulstruct.utilities.files import create_bak
 
+from pyrelink.core import GameType as PyreGameType
+from pyrelink.flver import TextureFinder
+
 from ..base.register import io_soulstruct_class, io_soulstruct_pointer_property
 from ..exceptions import *
 from ..utilities import *
@@ -33,7 +36,7 @@ if tp.TYPE_CHECKING:
     from ..base.operators import LoggingOperator
 
 
-_LOGGER = logging.getLogger(__name__)
+_LOGGER = logging.getLogger("soulstruct.blender")
 
 
 # Global holder for games that front-end users can currently select (or have auto-detected) for the `game` enum.
@@ -246,6 +249,18 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
         update=_update_log_level,
     )
 
+    use_pyrelink_flver: bpy.props.BoolProperty(
+        name="Use C++ FLVER",
+        description="Use accelerated FLVER from Firelink C++ library",
+        default=True,
+    )
+
+    batch_import_flvers: bpy.props.BoolProperty(
+        name="Batch Import FLVERs",
+        description="Use multiprocessing to import batches of FLVERs",
+        default=True,
+    )
+
     # region Blender Map Properties
 
     auto_detect_export_map: bpy.props.BoolProperty(
@@ -280,6 +295,22 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
     @property
     def game_settings(self) -> SoulstructGameSettings:
         return getattr(self, self.game.submodule_name)
+
+    @property
+    def pyrelink_game_type(self) -> PyreGameType:
+        match self.game.variable_name:
+            case "DEMONS_SOULS":
+                return PyreGameType.DemonsSouls
+            case "DARK_SOULS_PTDE":
+                return PyreGameType.DarkSoulsPTDE
+            case "DARK_SOULS_DSR":
+                return PyreGameType.DarkSoulsDSR
+            case "BLOODBORNE":
+                return PyreGameType.Bloodborne
+            case "ELDEN_RING":
+                return PyreGameType.EldenRing
+            case _:
+                raise ValueError(f"Unsupported game for pyrelink: {self.game.name}")
 
     @property
     def game_root_path(self) -> Path | None:
@@ -570,6 +601,13 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
         if not path:
             raise FileNotFoundError(f"MSB file for map '{map_stem}' not found in project or game directory.")
         return path
+
+    def create_texture_finder(self) -> TextureFinder:
+        """Create a new `TextureFinder` using the first available import directory."""
+        return TextureFinder(
+            self.pyrelink_game_type,
+            self.get_first_existing_import_root() or ""
+        )
 
     # endregion
 

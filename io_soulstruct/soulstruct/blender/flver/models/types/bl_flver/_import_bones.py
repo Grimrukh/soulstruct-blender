@@ -8,12 +8,11 @@ __all__ = [
 ]
 
 import math
-import typing as tp
 
 import bpy
 from mathutils import Vector
 
-from soulstruct.flver import FLVER, FLVERBone
+from soulstruct.flver.bone_tools import BoneTree
 from soulstruct.utilities.maths import Vector3
 
 from .....base.operators import LoggingOperator
@@ -24,7 +23,7 @@ from ....utilities import game_bone_transform_to_bl_bone_matrix
 
 
 def create_edit_bones(
-    flver: FLVER,
+    bone_tree: BoneTree,
     armature_data: bpy.types.Armature,
     bl_bone_names: list[str],
 ) -> list[bpy.types.EditBone]:
@@ -33,8 +32,7 @@ def create_edit_bones(
     Note that the returned bones will become invalid when exiting EDIT mode, so they should be used immediately.
     """
     edit_bones = []  # all bones
-    for game_bone, bl_bone_name in zip(flver.bones, bl_bone_names, strict=True):
-        game_bone: FLVERBone
+    for game_bone, bl_bone_name in zip(bone_tree.bones, bl_bone_names, strict=True):
         edit_bone = armature_data.edit_bones.new(bl_bone_name)  # '<DUPE>' suffixes already added to names
         edit_bone: bpy.types.EditBone
 
@@ -55,10 +53,10 @@ def create_edit_bones(
 
     # Set parent relationships. Any FLVER can have a true bone hierarchy. (For Map Pieces, this just means that child
     # bone transforms are relative to parents.)
-    for game_bone, edit_bone in zip(flver.bones, edit_bones, strict=True):
+    for game_bone, edit_bone in zip(bone_tree.bones, edit_bones, strict=True):
         if game_bone.parent_bone:
             # Set bone parent in Blender.
-            parent_bone_index = game_bone.parent_bone.get_bone_index(flver.bones)
+            parent_bone_index = bone_tree.get_bone_index(game_bone.parent_bone)
             parent_edit_bone = edit_bones[parent_bone_index]
             edit_bone.parent = parent_edit_bone
             # edit_bone.use_connect = True
@@ -68,7 +66,8 @@ def create_edit_bones(
 
 def write_flver_rest_pose_to_edit_bones(
     operator: LoggingOperator,
-    flver: FLVER,
+    bone_tree: BoneTree,
+    flver_name: str,
     edit_bones: list[bpy.types.EditBone],
 ):
     """
@@ -79,19 +78,17 @@ def write_flver_rest_pose_to_edit_bones(
 
     Args:
         operator: LoggingOperator to report errors/warnings.
-        flver: FLVER containing bones.
+        bone_tree: FLVER bone tree.
+        flver_name: FLVER name for logging.
         edit_bones: List to populate with created EditBones.
     """
-    game_arma_transforms = flver.get_bone_armature_space_transforms()
+    game_arma_transforms = bone_tree.get_bone_armature_space_transforms()
 
-    nub_bones = _NubBoneManager(flver.bones)
-
-    for game_bone, edit_bone, game_arma_transform in zip(
-        flver.bones, edit_bones, game_arma_transforms, strict=True
+    for game_bone_node, edit_bone, game_arma_transform in zip(
+        bone_tree.bones, edit_bones, game_arma_transforms, strict=True
     ):
-        game_bone: FLVERBone
         game_translate, game_rotmat, game_scale = game_arma_transform
-        _check_scale(operator, game_scale, game_bone.name, flver.path_stem)
+        _check_scale(operator, game_scale, game_bone_node.name, flver_name)
 
         # Non-zero length required before we can manipulate `matrix` (which sets head/tail/roll automatically).
         edit_bone.head = Vector((0.0, 0.0, 0.0))
@@ -100,13 +97,13 @@ def write_flver_rest_pose_to_edit_bones(
         edit_bone.matrix = game_bone_transform_to_bl_bone_matrix(game_translate, game_rotmat, Vector3((1.0, 1.0, 1.0)))
 
         # Set length (child bone, root stub, nub bone, or unknown stub).
-        if game_bone.child_bone:
-            edit_bone.length = max(abs(game_bone.child_bone.translate), 0.01)  # avoid zero length
-        elif not game_bone.parent_bone:
+        if game_bone_node.child_bone:
+            edit_bone.length = max(abs(game_bone_node.child_bone.translate), 0.01)  # avoid zero length
+        elif not game_bone_node.parent_bone:
             # Short stub (unlikely to be animated).
             edit_bone.length = 0.05
         else:
-            nub_bone = nub_bones[game_bone]
+            nub_bone = bone_tree.get_nearest_nub_bone(game_bone_node)
             if nub_bone:
                 # Nub bone gives length of our true leaf bone.
                 edit_bone.length = max(abs(nub_bone.translate), 0.01)  # avoid zero length
@@ -116,7 +113,7 @@ def write_flver_rest_pose_to_edit_bones(
 
 
 def write_data_to_custom_bone_prop_and_pose(
-    flver: FLVER,
+    bone_tree: BoneTree,
     armature: ArmatureObject,
 ):
     """
@@ -128,12 +125,12 @@ def write_data_to_custom_bone_prop_and_pose(
     (e.g. in m12_01_00_00 in Dark Souls), not just flat.
     """
     bl_bone_transforms = []
-    for game_bone in flver.bones:
+    for game_bone_node in bone_tree.bones:
         # Note that we store the local bone transforms directly, without accumulating parent transforms (unlike when
         # writing Edit Bone transforms). Final pose calculations will be done by Blender automatically.
-        bl_bone_location = to_blender(game_bone.translate)
-        bl_bone_rotation_euler = to_blender(game_bone.rotate)
-        bl_bone_scale = to_blender(game_bone.scale)
+        bl_bone_location = to_blender(game_bone_node.translate)
+        bl_bone_rotation_euler = to_blender(game_bone_node.rotate)
+        bl_bone_scale = to_blender(game_bone_node.scale)
         bl_bone_transforms.append((bl_bone_location, bl_bone_rotation_euler, bl_bone_scale))
 
     for bl_bone_transform, bl_bone in zip(bl_bone_transforms, armature.data.bones, strict=True):
@@ -151,30 +148,6 @@ def write_data_to_custom_bone_prop_and_pose(
         pose_bone.location = bl_bone_transform[0]
         pose_bone.rotation_quaternion = bl_bone_transform[1].to_quaternion()
         pose_bone.scale = bl_bone_transform[2]
-
-
-class _NubBoneManager:
-
-    nub_bones: dict[str, FLVERBone]
-
-    def __init__(self, bones: tp.Sequence[FLVERBone]):
-        self.nub_bones = {
-            bone.name: bone
-            for bone in bones
-            if bone.name.endswith("Nub")
-        }
-
-    def __getitem__(self, bone: FLVERBone) -> FLVERBone | None:
-        """Recursively search up skeleton for a matching Nub bone name.
-
-        e.g. bone 'R Finger02' with parent 'R Finger0' might use 'R Finger0Nub'.
-        """
-        nub_name = f"{bone.name}Nub"
-        if nub_name in self.nub_bones:
-            return self.nub_bones[nub_name]
-        elif bone.parent_bone is not None:
-            return self.__getitem__(bone.parent_bone)
-        return None  # no Nub bone found
 
 
 def _check_scale(operator: LoggingOperator, game_scale: Vector3, bone_name: str, flver_name: str):

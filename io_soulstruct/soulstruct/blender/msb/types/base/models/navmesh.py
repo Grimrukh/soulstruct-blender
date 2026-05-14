@@ -46,7 +46,7 @@ class BlenderMSBNavmeshModelImporter(BaseBlenderMSBModelImporter):
         nvm_entry_name = model_name + ".nvm"  # no DCX in any games that use NVM
         nvmbnd = Binder.from_path(nvmbnd_path)
         try:
-            nvm_entry = nvmbnd.find_entry_matching_name(nvm_entry_name, flags=re.IGNORECASE, escape=True)
+            nvm_entry = nvmbnd.find_entry_by_name_regex(nvm_entry_name, flags=re.IGNORECASE, escape=True)
         except EntryNotFoundError:
             raise NVMImportError(f"Could not find NVM entry '{nvm_entry_name}' in NVMBND file '{nvmbnd_path.name}'.")
 

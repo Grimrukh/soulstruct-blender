@@ -1,10 +1,11 @@
-"""Scripts for creating the bundled extension wheels (not version-controlled) from `requirements.txt`.
-
-Wheel preparation may also update `blender_manifest.toml`, which is version-controlled.
+"""Scripts for preparing bundled wheels for the extension from `requirements.txt`, updating the version-controlled
+`blender_manifest.toml`, and building the Blender extension zip.
 """
 
+import argparse
 import logging
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -28,7 +29,11 @@ def read_requirements() -> list[str]:
     return [line.strip() for line in requirements.splitlines() if not line.strip().startswith("#")]
 
 
-def update_wheels(use_local_soulstruct: bool = False):
+def update_wheels(
+    use_local_soulstruct: bool = False,
+    firelink_source_dir: Path = None,
+    no_build_isolation: bool = False,
+):
     """Update wheels in `io_soulstruct/wheels`."""
     wheels_dir = _IO_SOULSTRUCT_SOURCE_DIR / "wheels"
     temp_wheels_dir = _IO_SOULSTRUCT_SOURCE_DIR / "temp_wheels"
@@ -36,15 +41,31 @@ def update_wheels(use_local_soulstruct: bool = False):
     requirements = read_requirements()
 
     pip_wheel_cmd = [sys.executable, "-m", "pip", "wheel"]
+    if no_build_isolation:
+        pip_wheel_cmd += ["--no-build-isolation"]
+
     if use_local_soulstruct:
-        # Get live package roots for wheels.
+        # Get live package roots for wheels (e.g. for testing unreleased development versions).
         soulstruct_root_path = SOULSTRUCT_PATH("../..")
+        if not soulstruct_root_path.is_dir():
+            raise RuntimeError(f"Not a local soulstruct directory: {soulstruct_root_path}")
+        if not (soulstruct_root_path / "pyproject.toml").is_file():
+            raise RuntimeError(f"Not a local soulstruct directory (missing `pyproject.toml`): {soulstruct_root_path}")
+
         soulstruct_havok_root_path = SOULSTRUCT_HAVOK_PATH("../..")
-        pip_wheel_cmd += [req for req in requirements if not req.startswith("soulstruct")]
+        if not soulstruct_havok_root_path.is_dir():
+            raise RuntimeError(f"Not a local soulstruct-havok directory {soulstruct_havok_root_path}")
+        if not (soulstruct_havok_root_path / "pyproject.toml").is_file():
+            raise RuntimeError(f"Not a local soulstruct-havok directory (missing `pyproject.toml`): {soulstruct_havok_root_path}")
+
         pip_wheel_cmd += [str(soulstruct_root_path), str(soulstruct_havok_root_path)]
-    else:
-        # Get `soulstruct` from PyPI.
-        pip_wheel_cmd += requirements
+        requirements = [req for req in requirements if not req.startswith("soulstruct")]
+
+    if firelink_source_dir:
+        pip_wheel_cmd += [str(firelink_source_dir)]
+        requirements = [req for req in requirements if not req.startswith("pyrelink")]
+
+    pip_wheel_cmd += requirements
 
     pip_wheel_cmd += ["-w", str(temp_wheels_dir)]
     _LOGGER.info(f"pip wheel cmd: {' '.join(pip_wheel_cmd)}")
@@ -60,8 +81,11 @@ def update_wheels(use_local_soulstruct: bool = False):
         return 1
 
     # Succeeded. Delete old `wheels_dir` and rename `temp_wheels_dir`.
-    wheels_dir.unlink(missing_ok=True)
+    if wheels_dir.exists():
+        shutil.rmtree(wheels_dir)
     temp_wheels_dir.rename(wheels_dir)
+
+    _LOGGER.info("Successfully updated `io_soulstruct/wheels`.")
 
     return 0
 
@@ -91,19 +115,22 @@ def update_blender_manifest_wheels():
 
     new_manifest = manifest_lines[:wheels_start_line_index + 1] + wheel_lines + manifest_lines[wheels_end_line_index:]
 
-    _LOGGER.info("Manifest wheels: " + ", ".join(wheel_lines))
+    _LOGGER.info("Manifest wheels: " + "".join(wheel_lines))
 
 
     # Write new manifest.
     manifest_path.write_text("\n".join(new_manifest))
 
-    _LOGGER.info("Successfully updated `io_soulstruct/wheels` and updated `io_soulstrlct/blender_manifest.toml`.")
+    _LOGGER.info("Successfully updated `io_soulstruct/blender_manifest.toml`.")
 
     return 0
 
 
 def blender_extension_build():
-    """Use `blender.exe` to build the Soulstruct extension for Blender."""
+    """Use `blender.exe` to build the Soulstruct extension for Blender.
+
+    NOTE: The `blender` command requires any current installed add-ons, including Soulstruct, to run without issues.
+    """
 
     # Move into `io_soulstruct` directory.
     current_dir = Path.cwd()
@@ -127,11 +154,46 @@ def blender_extension_build():
     return 0
 
 
+PARSER = argparse.ArgumentParser()
+PARSER.add_argument(
+    "--update-wheels", action="store_true", default=False,
+    help="Whether to update the wheels directory or not (default: False)."
+)
+PARSER.add_argument(
+    "--build-extension", type=bool, default=True,
+    help="Whether to build the Blender extension ZIP package or not (default: True)."
+)
+PARSER.add_argument(
+    "--firelink-source-dir",
+    type=Path,
+    default=None,
+    help="Path to the Firelink source directory (for pyrelink build). "
+         "If not provided, `pyrelink` will be found on PyPI.",
+)
+PARSER.add_argument(
+    "--no-build-isolation",
+    action="store_true",
+    default=False,
+    help="Do not use build isolation when building wheels from source. "
+         "This makes rebuilds faster in C++. You must have `scikit-build-core` and `pybind11` "
+         "installed in your local environment.",
+)
+
+
 def main():
 
-    # update_wheels(use_local_soulstruct=True)
-    # update_blender_manifest_wheels()
-    blender_extension_build()
+    args = PARSER.parse_args()
+
+    if args.update_wheels:
+        update_wheels(
+            use_local_soulstruct=True,
+            firelink_source_dir=args.firelink_source_dir,
+            no_build_isolation=args.no_build_isolation,
+        )
+        update_blender_manifest_wheels()
+
+    if args.build_extension:
+        blender_extension_build()
 
 
 if __name__ == '__main__':

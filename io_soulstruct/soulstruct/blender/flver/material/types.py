@@ -135,9 +135,11 @@ class BlenderFLVERMaterial:
         MATDEF name, and only the textures updated. This is more efficient than creating identical shader node trees
         over and over for multiple materials.
         """
-        if bl_materials_by_matdef_name is not None and flver_material.mat_def_name in bl_materials_by_matdef_name:
+        mat_def_path = Path(flver_material.mat_def_path)
+
+        if bl_materials_by_matdef_name is not None and mat_def_path.name in bl_materials_by_matdef_name:
             copied = True
-            bl_material = bl_materials_by_matdef_name[flver_material.mat_def_name].copy()
+            bl_material = bl_materials_by_matdef_name[mat_def_path.name].copy()
             bl_material.name = material_name
             # `use_nodes` already set up, and blend settings will match same MatDef.
         else:
@@ -154,11 +156,10 @@ class BlenderFLVERMaterial:
 
         material = cls(bl_material)
 
-        material.mat_def_path = flver_material.mat_def_path  # str
-        if isinstance(flver_material, Material):
-            material.flags = flver_material.flags  # int
-            material.f2_unk_x18 = flver_material.f2_unk_x18  # int
-            material.gx_items = flver_material.get_non_terminator_gx_items()  # final dummy `GXItem` not held in Blender
+        material.mat_def_path = str(mat_def_path)  # str
+        material.flags = flver_material.flags  # int
+        material.f2_unk_x18 = flver_material.f2_unk_x18  # int
+        material.gx_items = _get_non_terminator_gx_items(flver_material)  # final dummy `GXItem` not held in Blender
 
         # Mesh properties:
         material.use_backface_culling = mesh.use_backface_culling  # wraps `face_set[0].use_backface_culling`
@@ -167,7 +168,7 @@ class BlenderFLVERMaterial:
         # NOTE: This index is sometimes invalid for vanilla map FLVERs (e.g., 1 when there is only one bone).
 
         if not matdef:
-            operator.warning(f"No MatDef for {flver_material.mat_def_name}. Storing sampler paths in custom props.")
+            operator.warning(f"No MatDef for {mat_def_path.name}. Storing sampler paths in custom props.")
             # Store FLVER sampler texture paths directly in custom properties. No shader tree will be built, but
             # at least we can faithfully write FLVER texture paths back to files on export.
             for sampler_name, texture_stem in flver_sampler_texture_stems.items():
@@ -208,6 +209,9 @@ class BlenderFLVERMaterial:
             # Override texture path.
             sampler_texture_stems[sampler_name] = texture_stem.lower()
 
+        # Assign shader name from MatDef.
+        material.type_properties.shader_name = matdef.shader_stem
+
         builder_class = cls.get_builder_class(context)
 
         if not copied:
@@ -222,7 +226,7 @@ class BlenderFLVERMaterial:
                     vertex_color_count=vertex_color_count,
                 )
                 builder.build()
-            except (MaterialImportError, KeyError, ValueError, IndexError) as ex:
+            except (MaterialImportError, KeyError, ValueError, IndexError, AttributeError) as ex:
                 import traceback
                 traceback.print_exc()
                 operator.warning(
@@ -236,13 +240,10 @@ class BlenderFLVERMaterial:
                         # Name is too long. Probably an ER texture. Truncate up to '_snp_Texture2D_':
                         truncated_name = sampler_name.split("_snp_Texture2D_")[-1]
                         bl_material[f"Path[{truncated_name}]"] = texture_stem
-            else:
-                # Assign shader name from MatDef.
-                material.type_properties.shader_name = builder.matdef.shader_stem
 
             if bl_materials_by_matdef_name is not None:
                 # Record material for MatDef for future copying.
-                bl_materials_by_matdef_name[flver_material.mat_def_name] = bl_material
+                bl_materials_by_matdef_name[mat_def_path.name] = bl_material
         else:
             # Just replace appropriate texture nodes.
             tex_nodes_by_name = {
@@ -262,7 +263,7 @@ class BlenderFLVERMaterial:
                     # Update Image colorspace from node label. (If image is used with multiple sampler types, this will
                     # be the last one found.) TODO: Would be better to do this upon `Image` creation, based on name.
                     node_label = tex_nodes_by_name[sampler_name].label
-                    if "Albedo" not in node_label and "Lightmap" not in node_label:
+                    if "Albedo" not in node_label and "Diffuse" not in node_label and "Lightmap" not in node_label:
                         bl_image.colorspace_settings.name = "Non-Color"  # always
                     else:
                         bl_image.colorspace_settings.name = builder_class.ALBEDO_COLOR_SPACE  # game-dependent
@@ -526,6 +527,9 @@ class BlenderFLVERMaterial:
         # Clear existing node tree entirely (keeping the material and its properties).
         bl_material.node_tree.nodes.clear()
 
+        # Assign shader name from MatDef.
+        self.type_properties.shader_name = matdef.shader_stem
+
         # Re-add Material Output node (builders expect it).
         output_node = bl_material.node_tree.nodes.new("ShaderNodeOutputMaterial")
         output_node.name = "Material Output"
@@ -541,7 +545,7 @@ class BlenderFLVERMaterial:
                 vertex_color_count=vertex_color_count,
             )
             builder.build()
-        except (MaterialImportError, KeyError, ValueError, IndexError) as ex:
+        except (MaterialImportError, KeyError, ValueError, IndexError, AttributeError) as ex:
             import traceback
             traceback.print_exc()
             operator.warning(
@@ -551,9 +555,6 @@ class BlenderFLVERMaterial:
             # Fall back: store texture paths as custom properties.
             for sampler_name, texture_stem in existing_texture_stems.items():
                 bl_material[f"Path[{sampler_name}]"] = texture_stem
-        else:
-            # Assign shader name from MatDef.
-            self.type_properties.shader_name = builder.matdef.shader_stem
 
     def get_image_texture_nodes(self, with_image_only=False) -> list[bpy.types.ShaderNodeTexImage]:
         # noinspection PyTypeChecker,PyUnresolvedReferences
@@ -616,3 +617,19 @@ class BlenderFLVERMaterial:
 
 
 add_auto_type_props(BlenderFLVERMaterial, *BlenderFLVERMaterial.AUTO_MATERIAL_PROPS)
+
+
+def _get_non_terminator_gx_items(material: Material) -> list[GXItem]:
+    """Return only the non-terminator `GXItem`s in list.
+
+    Raises a `ValueError` if a terminator item appears anywhere except as the last element, but doesn't care if no
+    terminator item exists at all (as one can be created automatically on FLVER export).
+    """
+    non_term_gx_items = []
+    for i, gx_item in enumerate(material.gx_items):
+        if gx_item.is_terminator:
+            if i != len(material.gx_items) - 1:
+                raise ValueError("Terminator `GXItem` found in non-final position in `Material`.")
+            break  # do not append this final terminator item
+        non_term_gx_items.append(gx_item)
+    return non_term_gx_items

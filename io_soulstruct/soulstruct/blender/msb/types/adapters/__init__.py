@@ -3,22 +3,7 @@
 Includes simple name adapter functions for each Entry subtype (used in multiple places for finding referenced Blender
 objects and setting `MSBEntry.name` correctly for the supertype).
 """
-
-__all__ = [
-    "FieldAdapter",
-    "CustomFieldAdapter",
-    "soulstruct_adapter",
-    "MSBPartGroupsAdapter",
-    "MSBPartModelAdapter",
-    "MSBReferenceFieldAdapter",
-    "MSBTransformFieldAdapter",
-
-    "get_part_game_name",
-    "get_event_game_name",
-    "get_region_game_name",
-]
-
-from ....types.field_adapters import FieldAdapter, CustomFieldAdapter, soulstruct_adapter
+from ....types.field_adapters import *
 from .groups import MSBPartGroupsAdapter
 from .model import MSBPartModelAdapter
 from .reference import MSBReferenceFieldAdapter

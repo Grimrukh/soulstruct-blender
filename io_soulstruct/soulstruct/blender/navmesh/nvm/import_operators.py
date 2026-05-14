@@ -58,7 +58,7 @@ class _BaseImportNVM(LoggingImportOperator):
         Returns a list of `(model_name, NVM)` tuples and/or `NVMImportChoiceInfo` objects, depending on whether the
         Binder contains multiple entries that the user may need to choose from.
         """
-        nvm_entries = binder.find_entries_matching_name(ANY_NVM_NAME_RE)
+        nvm_entries = binder.find_entries_by_name_regex(ANY_NVM_NAME_RE)
         if not nvm_entries:
             raise NVMImportError(f"Cannot find any '.nvm{{.dcx}}' files in binder {file_path}.")
 
@@ -82,7 +82,7 @@ class _BaseImportNVM(LoggingImportOperator):
                         self.warning(f"Error occurred while reading NVM Binder entry '{entry.name}': {ex}")
                     else:
                         nvm.path = Path(entry.name)  # also done in `GameFile`, but explicitly needed below
-                        new_import_infos.append((entry.minimal_stem, nvm))
+                        new_import_infos.append((entry.stem, nvm))
                 return new_import_infos
 
             # Queue up all matching Binder entries instead of loaded NVM instances; user will choose entry in pop-up.
@@ -95,7 +95,7 @@ class _BaseImportNVM(LoggingImportOperator):
             self.warning(f"Error occurred while reading NVM Binder entry '{nvm_entries[0].name}': {ex}")
             return []
 
-        return [(nvm_entries[0].minimal_stem, nvm)]
+        return [(nvm_entries[0].stem, nvm)]
 
     def check_nvm_entry_model_id(self, nvm_entry: BinderEntry) -> bool:
         """Checks if the given NVM Binder entry matches the given navmesh model ID."""
@@ -249,7 +249,7 @@ class ImportNVMWithBinderChoice(LoggingOperator):
         entry = self.nvm_entries[choice]
 
         nvm = entry.to_binary_file(NVM)
-        model_name = entry.minimal_stem
+        model_name = entry.stem
         nvm_model_name = entry.name.split(".")[0]
 
         try:
@@ -340,7 +340,7 @@ class ImportMapNVM(BinderEntrySelectOperator):
         map_stem = settings.get_latest_map_stem_version()  # always uses latest in DS1
 
         nvm = entry.to_binary_file(NVM)
-        model_name = entry.minimal_stem
+        model_name = entry.stem
 
         collection = find_or_create_collection(
             context.scene.collection,

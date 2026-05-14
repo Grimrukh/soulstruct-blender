@@ -66,7 +66,7 @@ class _BaseImportNVMHKT(LoggingImportOperator):
         Returns a list of `NVMHKTImportInfo` or `NVMHKTImportChoiceInfo` objects, depending on whether the Binder
         contains multiple entries that the user may need to choose from.
         """
-        nvm_entries = binder.find_entries_matching_name(ANY_NVMHKT_NAME_RE)
+        nvm_entries = binder.find_entries_by_name_regex(ANY_NVMHKT_NAME_RE)
         if not nvm_entries:
             raise NVMHKTImportError(f"Cannot find any '.hkx{{.dcx}}' files in binder {file_path}.")
 
@@ -90,7 +90,7 @@ class _BaseImportNVMHKT(LoggingImportOperator):
                         self.warning(f"Error occurred while reading NVMHKT Binder entry '{entry.name}': {ex}")
                     else:
                         nvmhkt.path = Path(entry.name)  # also done in `GameFile`, but explicitly needed below
-                        new_import_infos.append((entry.minimal_stem, nvmhkt))
+                        new_import_infos.append((entry.stem, nvmhkt))
                 return new_import_infos
 
             # Queue up all matching Binder entries instead of loaded NVMHKT instances; user will choose entry in pop-up.
@@ -103,7 +103,7 @@ class _BaseImportNVMHKT(LoggingImportOperator):
             self.warning(f"Error occurred while reading NVMHKT Binder entry '{nvm_entries[0].name}': {ex}")
             return []
 
-        return [(nvm_entries[0].minimal_stem, nvmhkt)]
+        return [(nvm_entries[0].stem, nvmhkt)]
 
     def check_nvm_entry_model_id(self, nvm_entry: BinderEntry) -> bool:
         """Checks if the given NVMHKT Binder entry matches the given navmesh model ID."""
@@ -250,7 +250,7 @@ class ImportNVMHKTWithBinderChoice(LoggingOperator):
         choice = int(self.choices_enum)
         entry = self.nvmhkt_entries[choice]
 
-        model_name = entry.minimal_stem
+        model_name = entry.stem
         nvmhkt = entry.to_binary_file(NavmeshHKX)
 
         self.importer.operator = self
@@ -324,7 +324,7 @@ class ImportNVMHKTFromNVMHKTBND(BinderEntrySelectOperator):
 
         settings = self.settings(context)
         map_stem = settings.map_stem
-        model_name = entry.minimal_stem
+        model_name = entry.stem
         nvmhkt = entry.to_binary_file(NavmeshHKX)
 
         collection = find_or_create_collection(
@@ -365,14 +365,14 @@ class _BaseImportAllNVMHKT(LoggingOperator):
         entry_name: str,
     ) -> MeshObject:
         try:
-            hkx_entry = nvmhktbnd.find_entry_name(entry_name)
+            hkx_entry = nvmhktbnd.find_entry_by_name(entry_name)
         except EntryNotFoundError:
             self.warning(
                 f"Could not find NVMHKT entry '{entry_name}' in NVMHKTBND file '{nvmhktbnd.path.name}'."
             )
             raise
 
-        model_name = hkx_entry.minimal_stem
+        model_name = hkx_entry.stem
         nvmhkt = hkx_entry.to_binary_file(NavmeshHKX)
 
         importer = NVMHKTImporter(self, context, collection=collection)
@@ -466,8 +466,8 @@ class ImportAllNVMHKTsFromNVMHKTBND(_BaseImportAllNVMHKT):
 
         if import_settings.import_hires_navmeshes:
 
-            for entry in nvmhktbnd.find_entries_matching_name(re.compile(r"n.*\.hkx")):
-                model_name = correct_model_name(entry.minimal_stem)
+            for entry in nvmhktbnd.find_entries_by_name_regex(re.compile(r"n.*\.hkx")):
+                model_name = correct_model_name(entry.stem)
                 nvmhkt = entry.to_binary_file(NavmeshHKX)
 
                 self.info(f"Importing NVMHKT model {model_name}.")
@@ -500,8 +500,8 @@ class ImportAllNVMHKTsFromNVMHKTBND(_BaseImportAllNVMHKT):
                 models.append(bl_nvmhkt)
 
         if import_settings.import_lores_navmeshes:
-            for entry in nvmhktbnd.find_entries_matching_name(re.compile(r"o.*\.hkx")):
-                model_name = correct_model_name(entry.minimal_stem)
+            for entry in nvmhktbnd.find_entries_by_name_regex(re.compile(r"o.*\.hkx")):
+                model_name = correct_model_name(entry.stem)
                 nvmhkt = entry.to_binary_file(NavmeshHKX)
 
                 self.info(f"Importing NVMHKT model {model_name}.")

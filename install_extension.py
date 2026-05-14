@@ -1,6 +1,10 @@
 """Scripts for directly installing the extension and/or `soulstruct` into Blender.
 
-Useful for live development.
+Modes:
+  --inject-extension     Copy extension source directly into Blender AppData extensions (dev).
+  --inject-soulstruct    Inject soulstruct/soulstruct-havok source into Blender site-packages (dev, no pip).
+  --install-pyrelink     Pip-install pyrelink from a local Firelink source dir into Blender site-packages.
+  --install-from-zip     Use `blender.exe` to install a built extension .zip (production testing).
 """
 
 import argparse
@@ -26,165 +30,214 @@ _ALWAYS_IGNORE = [
 _IO_SOULSTRUCT_SOURCE_DIR = Path(__file__).parent / "io_soulstruct"
 
 
-def read_requirements() -> list[str]:
-    """Read `requirements.txt` file and return a list of `pip`-compatible requirements."""
-    requirements_path = _IO_SOULSTRUCT_SOURCE_DIR / "requirements.txt"
-    if not requirements_path.is_file():
-        raise RuntimeError("Cannot find `io_soulstruct/requirements.txt`.")
-    requirements = requirements_path.read_text()
-    return [line.strip() for line in requirements.splitlines() if not line.strip().startswith("#")]
+# ---- Helpers -------------------------------------------------------------------------
+
+def _get_py_ver(bl_version: str) -> str:
+    return "python3.13" if bl_version >= "5.1" else "python3.11"
 
 
-def direct_install_addon(bl_version: str = "5.1", is_install_from_disk: bool = True):
-    """Replace add-on package directly in AppData extensions for given Blender version."""
+def _get_local_site_packages(bl_version: str) -> Path:
+    py_ver = _get_py_ver(bl_version)
+    return Path(
+        f"~/AppData/Roaming/Blender Foundation/Blender/{bl_version}"
+        f"/extensions/.local/lib/{py_ver}/site-packages"
+    ).expanduser()
 
+
+def _get_extension_dir(bl_version: str, is_install_from_disk: bool = True) -> Path:
+    user = "user_default" if is_install_from_disk else "blender_org"
+    return Path(
+        f"~/AppData/Roaming/Blender Foundation/Blender/{bl_version}/extensions/{user}/io_soulstruct"
+    ).expanduser()
+
+
+# ---- Install actions -----------------------------------------------------------------
+
+def inject_extension(bl_version: str = "5.1", is_install_from_disk: bool = True) -> int:
+    """Copy extension source directly into Blender AppData extensions (dev mode)."""
     if not _IO_SOULSTRUCT_SOURCE_DIR.is_dir():
         _LOGGER.error("Cannot find `io_soulstruct` next to script.")
         return 1
 
-    # Is extension installed from disk or from Blender's Extensions platform?
-    user = "user_default" if is_install_from_disk else "blender_org"
-
-    io_soulstruct_dest_dir = Path(
-        f"~/AppData/Roaming/Blender Foundation/Blender/{bl_version}/extensions/{user}/io_soulstruct"
-    ).expanduser()
-    if not io_soulstruct_dest_dir.is_dir():
+    dest_dir = _get_extension_dir(bl_version, is_install_from_disk)
+    if not dest_dir.is_dir():
         _LOGGER.error(
-            f"`io_soulstruct` has not yet been installed at: {io_soulstruct_dest_dir}. "
-            f"Do a proper initial installation first from Blender preferences (Add-ons)."
+            f"`io_soulstruct` is not yet installed at: {dest_dir}. "
+            f"Do a proper initial installation first from Blender preferences (Extensions)."
         )
         return 1
 
-    # Copy add-on directory into extensions directly.
-    ignore_patterns = shutil.ignore_patterns(*_ALWAYS_IGNORE)
-
-    shutil.rmtree(io_soulstruct_dest_dir, ignore_errors=False)
-    shutil.copytree(
-        _IO_SOULSTRUCT_SOURCE_DIR,
-        io_soulstruct_dest_dir,
-        ignore=ignore_patterns,
-    )
-    _LOGGER.info(f"Blender addon `io_soulstruct` installed to '{io_soulstruct_dest_dir.parent}'.")
+    shutil.rmtree(dest_dir)
+    shutil.copytree(_IO_SOULSTRUCT_SOURCE_DIR, dest_dir, ignore=shutil.ignore_patterns(*_ALWAYS_IGNORE))
+    _LOGGER.info(f"Installed `io_soulstruct` to '{dest_dir}'.")
     return 0
 
 
-def direct_install_soulstruct(
-    bl_version: str = "5.1",
-    use_local: bool = False,
-    inject: bool = False,
-) -> int:
-    """Install `soulstruct` and `soulstruct-havok` directly into the '.local' site-packages for Blender."""
+def inject_soulstruct(bl_version: str = "5.1") -> int:
+    """Inject soulstruct + soulstruct-havok source directly into Blender's .local site-packages (no pip).
 
-    if not use_local and inject:
-        raise ValueError("Cannot use `inject` mode without `use_local`.")
-
-    if bl_version >= "5.1":
-        py_ver = "python3.13"
-    else:
-        py_ver = "python3.11"
-
-    local_site_packages = Path(
-        f"~/AppData/Roaming/Blender Foundation/Blender/{bl_version}/extensions/.local/lib/{py_ver}/site-packages"
-    ).expanduser()
+    Preserves any .dll files already present (e.g. oo2core) in case Blender is running.
+    """
+    local_site_packages = _get_local_site_packages(bl_version)
     if not local_site_packages.is_dir():
-        _LOGGER.error(
-            f"Could not find local site-packages at: {local_site_packages}. "
-            f"Do a proper initial installation first from Blender preferences (Add-ons)."
-        )
+        _LOGGER.error(f"Could not find local site-packages at: {local_site_packages}.")
         return 1
 
-    if inject:
-        ignore_patterns = shutil.ignore_patterns(*_ALWAYS_IGNORE, "oo2core_6_win64.dll")
+    ignore_patterns = shutil.ignore_patterns(*_ALWAYS_IGNORE, "oo2core_6_win64.dll")
+    soulstruct_dir = local_site_packages / "soulstruct"
 
-        # When replacing Soulstruct while Blender is open, we don't want to delete 'oo2core_6_win64.dll',
-        # as it will be in use by Blender.
+    if soulstruct_dir.is_dir():
+        # Delete everything except root-level DLLs (which may be locked by Blender).
+        for entry in os.scandir(soulstruct_dir):
+            if entry.is_file() and entry.name.lower().endswith(".dll"):
+                continue
+            if entry.is_file():
+                os.remove(entry.path)
+            elif entry.is_dir():
+                shutil.rmtree(entry.path)
 
-        soulstruct_dir = local_site_packages / "soulstruct"
+    shutil.copytree(SOULSTRUCT_PATH(), soulstruct_dir, dirs_exist_ok=True, ignore=ignore_patterns)
+    shutil.copytree(
+        SOULSTRUCT_HAVOK_PATH("havok"),
+        soulstruct_dir / "havok",
+        dirs_exist_ok=False,
+        ignore=ignore_patterns,
+    )
+    _LOGGER.info("Injected 'soulstruct' and 'soulstruct-havok' into Blender site-packages.")
+    return 0
 
-        if soulstruct_dir.is_dir():
-            # Delete everything inside except DLLs.
-            for entry in os.scandir(soulstruct_dir):
-                # Keep .dll files in the root
-                if entry.is_file() and entry.name.lower().endswith('.dll'):
-                    continue
-                if entry.is_file():
-                    os.remove(entry.path)
-                elif entry.is_dir():
-                    shutil.rmtree(entry.path)
 
-        # Copy all contents of `soulstruct` in.
-        shutil.copytree(
-            SOULSTRUCT_PATH(),
-            soulstruct_dir,
-            dirs_exist_ok=True,
-            ignore=ignore_patterns,
-        )
-        shutil.copytree(
-            SOULSTRUCT_HAVOK_PATH("havok"),
-            soulstruct_dir / "havok",
-            dirs_exist_ok=False,  # should not exist
-            ignore=ignore_patterns,
-        )
-        _LOGGER.info("Injected 'soulstruct' and 'soulstruct-havok' directly into Blender local site-packages.")
-        return 0
+def pip_install_pyrelink(
+    bl_version: str = "5.1",
+    firelink_source_dir: Path = None,
+    no_build_isolation: bool = False,
+) -> int:
+    """Pip-install pyrelink from a local Firelink source directory into Blender's .local site-packages."""
+    if not firelink_source_dir or not firelink_source_dir.is_dir():
+        _LOGGER.error(f"Invalid Firelink source directory: {firelink_source_dir}")
+        return 1
+
+    local_site_packages = _get_local_site_packages(bl_version)
+    if not local_site_packages.is_dir():
+        _LOGGER.error(f"Could not find local site-packages at: {local_site_packages}.")
+        return 1
 
     pip_cmd = [
         sys.executable, "-m", "pip", "install",
         "--upgrade",
         "--disable-pip-version-check",
         "--no-input",
+        "--no-build-isolation",  # re-use cached build results when possible
         "--target", str(local_site_packages),
+        str(firelink_source_dir),
     ]
-    requirements = read_requirements()
+    if no_build_isolation:
+        pip_cmd.append("--no-build-isolation")
 
-    # Three modes of direct installation:
-    #   - install from PyPI
-    #   - install from local (standard)
-    #   - install from local (editable)
-
-    if not use_local:
-        pip_cmd += requirements
-        # Done.
-    else:
-        # Install non-Soulstruct pinned requirements from PyPI (e.g. specific SciPy version).
-        soulstruct_root_path = SOULSTRUCT_PATH("../..")
-        soulstruct_havok_root_path = SOULSTRUCT_HAVOK_PATH("../..")
-        pip_cmd += [req for req in requirements if not req.startswith("soulstruct")]
-        pip_cmd += [str(soulstruct_root_path), str(soulstruct_havok_root_path)]
-
-    _LOGGER.info(f"pip cmd: {pip_cmd}")
+    _LOGGER.info(f"pip cmd: {' '.join(pip_cmd)}")
     try:
-        subprocess.check_output(pip_cmd)
+        completed_process = subprocess.run(pip_cmd, stdout=sys.stdout, stderr=sys.stderr)
     except subprocess.CalledProcessError as ex:
-        _LOGGER.error(f"Failed to `pip` install Soulstruct directly. Error: {ex}")
+        _LOGGER.error(f"Failed to pip-install pyrelink. Error: {ex}")
         return 1
+    if completed_process.returncode != 0:
+        _LOGGER.error(f"Command to pip-install pyrelink returned {completed_process.returncode}.")
 
-    _LOGGER.info("Successfully `pip` installed Soulstruct directory.")
+    _LOGGER.info("Successfully installed pyrelink into Blender site-packages.")
     return 0
 
 
+def blender_install_extension(zip_path: Path, bl_version: str = "5.1") -> int:
+    """Use `blender.exe` to install a built extension .zip (production test mode).
+
+    Equivalent to installing from disk via Blender's Extensions preferences.
+    Updates the bundled wheels in Blender's .local site-packages.
+    """
+    if not zip_path.is_file():
+        _LOGGER.error(f"Extension zip not found: {zip_path}")
+        return 1
+
+    blender_cmd = [
+        "blender", "--command", "extension", "install-file",
+        "--enable",
+        "--repo", "user_default",
+        str(zip_path),
+    ]
+    _LOGGER.info(f"blender cmd: {' '.join(blender_cmd)}")
+    try:
+        subprocess.check_output(blender_cmd)
+    except subprocess.CalledProcessError as ex:
+        _LOGGER.error(f"Failed to install extension via blender. Error: {ex}")
+        return 1
+
+    _LOGGER.info(f"Successfully installed extension from '{zip_path.name}' via blender.")
+    return 0
+
+
+# ---- CLI -----------------------------------------------------------------------------
+
 PARSER = argparse.ArgumentParser(
-    description="Install Soulstruct Blender extension directly and (optionally) Soulstruct modules.",
+    description="Install the Soulstruct Blender extension and/or Python modules.",
 )
-PARSER.add_argument("blenderVersion", help="Blender version, e.g. 5.1")
-PARSER.add_argument("--installSoulstruct", action="store_true", help="Also install Soulstruct modules.")
-PARSER.add_argument("--inject", action="store_true",
-                    help="Inject Soulstruct modules directly without using `pip`.")
+PARSER.add_argument(
+    "blenderversion",
+    help="Blender version to install into, e.g. '5.1'",
+)
+PARSER.add_argument(
+    "--inject-extension", action="store_true",
+    help="Copy extension source directly into Blender AppData extensions (dev mode).",
+)
+PARSER.add_argument(
+    "--inject-soulstruct", action="store_true",
+    help="Inject soulstruct/soulstruct-havok source directly into Blender site-packages (dev mode, no pip).",
+)
+PARSER.add_argument(
+    "--install-pyrelink", action="store_true",
+    help="Pip-install pyrelink from local Firelink source into Blender site-packages.",
+)
+PARSER.add_argument(
+    "--firelink-source-dir", type=Path, default=None,
+    help="Path to Firelink source directory (required for --install-pyrelink).",
+)
+PARSER.add_argument(
+    "--no-build-isolation", action="store_true",
+    help="Disable pip build isolation when installing pyrelink (faster C++ rebuilds; "
+         "requires scikit-build-core and pybind11 to be installed locally).",
+)
+PARSER.add_argument(
+    "--install-from-zip", type=Path, default=None, metavar="ZIP",
+    help="Path to a built extension .zip. Uses blender.exe to install it properly (production test mode).",
+)
 
 
 def main(args):
-
     parsed = PARSER.parse_args(args)
 
-    direct_install_addon(parsed.blenderVersion, is_install_from_disk=True)
+    if parsed.inject_extension:
+        if result := inject_extension(parsed.blenderversion):
+            return result
 
-    if parsed.installSoulstruct:
-        direct_install_soulstruct(
-            bl_version=parsed.blenderVersion,
-            use_local=True,
-            inject=parsed.inject,
-        )
+    if parsed.inject_soulstruct:
+        if result := inject_soulstruct(parsed.blenderversion):
+            return result
+
+    if parsed.install_pyrelink:
+        if not parsed.firelink_source_dir:
+            _LOGGER.error("--install-pyrelink requires --firelink-source-dir.")
+            return 1
+        if result := pip_install_pyrelink(
+            bl_version=parsed.blenderversion,
+            firelink_source_dir=parsed.firelink_source_dir,
+            no_build_isolation=parsed.no_build_isolation,
+        ):
+            return result
+
+    if parsed.install_from_zip:
+        if result := blender_install_extension(parsed.install_from_zip, parsed.blenderversion):
+            return result
+
+    return 0
 
 
-if __name__ == '__main__':
-    main(sys.argv[1:])
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

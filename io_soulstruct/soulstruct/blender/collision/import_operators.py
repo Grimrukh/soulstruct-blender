@@ -126,7 +126,7 @@ class ImportAnyHKXMapCollision(LoggingImportOperator):
                     # Import single specified collision model.
                     import_infos.append(
                         HKXImportInfo(
-                            hi_hkx_entries[0].minimal_stem,
+                            hi_hkx_entries[0].stem,
                             hi_hkx_entries[0].to_binary_file(MapCollisionModel),
                             lo_hkx_entries[0].to_binary_file(MapCollisionModel),
                         )

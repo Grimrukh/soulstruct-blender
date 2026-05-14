@@ -37,6 +37,9 @@ if tp.TYPE_CHECKING:
     from .core import BlenderFLVER
 
 
+# TODO: Implement C++ FLVER acceleration.
+
+
 @dataclass(slots=True)
 class _CreateFLVERCommand:
     """Bundled inputs and state for creating an FLVER from a Blender FLVER object."""
@@ -276,13 +279,16 @@ def _create_flver_meshes(
         )
 
     # Decide if we should use per-submesh properties or global submesh properties.
+    # Note that the number of mesh kwargs given to the MergedMesh for splitting matches the number of Blender materials.
+    # The split function will create additional meshes as needed (for bone limits, etc.) and duplicate the kwargs.
     flver_props = command.bl_flver.type_properties
     flver_mesh_kwargs = []
     if len(flver_props.submesh_props) > 0:
         if len(flver_props.submesh_props) != len(bl_materials):
             raise FLVERExportError(
                 f"Number of submesh properties ({len(flver_props.submesh_props)}) does not match number of Blender materials "
-                f"({len(bl_materials)})."
+                f"({len(bl_materials)}). You must either set submesh properties for every material or use global "
+                f"submesh properties for the FLVER."
             )
         for i, s in enumerate(flver_props.submesh_props):
             flver_mesh_kwargs.append({
@@ -577,22 +583,27 @@ def _create_flver_meshes(
 
     command.operator.debug(f"Constructed combined loop array in {time.perf_counter() - p} s.")
 
-    merged_mesh_kwargs = dict(
+    merged_mesh_loops = MergedMeshLoops(
+        normals=loop_normals,
+        normals_w=loop_normals_w,
+        tangents=loop_tangent_arrays,
+        bitangents=loop_bitangents,
+        vertex_colors=loop_color_arrays,
+        uvs=loop_uv_array_dict,
+        cloth_tangents=None,
+        cloth_bitangents=None,
+    )
+
+    merged_mesh = MergedMesh(
         vertex_data=vertex_data,
+        loop_data=merged_mesh_loops,
         loop_vertex_indices=loop_vertex_indices,
         vertices_merged=True,
-        loop_normals=loop_normals,
-        loop_normals_w=loop_normals_w,
-        loop_tangents=loop_tangent_arrays,
-        loop_bitangents=loop_bitangents,
-        loop_vertex_colors=loop_color_arrays,
-        loop_uvs=loop_uv_array_dict,
         faces=faces,
     )
 
-    merged_mesh = MergedMesh(**merged_mesh_kwargs)
-
     # Apply Blender -> FromSoft transformations.
+    # TODO: Do this externally here with utilities.
     merged_mesh.swap_vertex_yz(tangents=True, bitangents=True)
     merged_mesh.invert_vertex_uv(invert_u=False, invert_v=True)
 

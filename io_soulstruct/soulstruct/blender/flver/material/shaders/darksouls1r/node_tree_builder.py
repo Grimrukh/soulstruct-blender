@@ -4,6 +4,7 @@ __all__ = [
     "NodeTreeBuilder",
 ]
 
+import re
 from dataclasses import dataclass
 
 from soulstruct.utilities.maths import Vector2
@@ -39,7 +40,7 @@ class NodeTreeBuilder(PTDENodeTreeBuilder):
                 # Used by fog, lightshafts, and some tree leaves. Fades out the object when viewed side-on.
                 self._build_ds1_normal_to_alpha_shader()
                 return
-            if "FRPG_Phn_ColDif" in self.matdef.shader_stem or "FRPG_Sfx_ColDif" in self.matdef.shader_stem:
+            if re.match(r"FRPG_(Foliage|Ivy|Phn|Sfx)_ColDif.*", self.matdef.shader_stem):
                 if self.get_param("g_LightingType", default=1) == 0:
                     # If `g_LightingType == 0`, nothing matters but the final surface image.
                     # This shader is probably fine for all games, but should be verified.
@@ -57,8 +58,11 @@ class NodeTreeBuilder(PTDENodeTreeBuilder):
             return
 
         self.operator.warning(
-            f"No DS1R shader support for MatDef {self.matdef.name} with shader {self.matdef.shader_stem}."
+            f"No specific DS1R shader support for MatDef {self.matdef.name} with shader {self.matdef.shader_stem}. "
+            f"Trying to build standard shader."
         )
+        self._build_ds1r_standard_shader()
+        return
 
     def _build_ds1r_standard_shader(self):
         """PBR or Legacy (colored specular) workflow."""
@@ -106,7 +110,7 @@ class NodeTreeBuilder(PTDENodeTreeBuilder):
 
         TODO: Use Blender 5 parallax node.
         """
-        height_image = self.tex_image_nodes.get("Snow Height").image
+        height_image = self.tex_image_nodes.get("DSB 0 Normal").image
         uv_node = self.uv_nodes["UVTexture0"]
         inputs = {
             "Diffuse Map" : self._get_mixed_texture_color("DSB 0 Diffuse"),
@@ -121,7 +125,7 @@ class NodeTreeBuilder(PTDENodeTreeBuilder):
 
             "Snow Color" : self.get_param("g_SnowColor", default=(1, 1, 1, 1)),
             "Snow Height" : self.get_param("g_SnowHeight", default=0.6),
-            "Snow Detail": self._get_mixed_texture_normals("Snow Detail Normal")[0],
+            "Snow Detail": self._get_mixed_texture_normals("DSB 1 Normal")[0],
             "Diffuse Top Height": self.get_param("g_SnowDiffuseBlendTopHeight", default=0.15),
             "Diffuse Bottom Height": self.get_param("g_SnowDiffuseBlendBottomHeight", default=0.1),
             "Snow Delta Height Limit": self.get_param("g_SnowDeltaHeightLimit", default=0.02),
@@ -146,7 +150,7 @@ class NodeTreeBuilder(PTDENodeTreeBuilder):
             inputs[f"Snow Tile Blend {i}"] = self.get_param(f"g_SnowTileBlend_{i}", default=0.1)
 
         if "Lightmap" in self.tex_image_nodes:
-            self.link(self.uv_nodes["UVLightmap"].outputs["Vector"], self.tex_image_nodes["Lightmap"].inputs["Vector"])
+            self.link(self.uv_nodes["UVLightmap"].outputs["UV"], self.tex_image_nodes["Lightmap"].inputs["Vector"])
             inputs["Light Map Influence"] = 1.0
 
         if inputs["Snow Detail"]:

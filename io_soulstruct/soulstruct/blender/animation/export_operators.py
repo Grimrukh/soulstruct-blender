@@ -224,7 +224,7 @@ class ExportHKXAnimationIntoAnyBinder(LoggingImportOperator):
         if not self.overwrite_existing and self.animation_id in binder.get_entry_ids():
             return self.error(f"Animation ID {self.animation_id} already exists in Binder and overwrite is disabled")
 
-        skeleton_entry = binder.find_entry_matching_name(r"skeleton\.hkx", re.IGNORECASE)
+        skeleton_entry = binder.find_entry_by_name_regex(r"skeleton\.hkx", re.IGNORECASE)
         if skeleton_entry is None:
             return self.error("Could not find 'skeleton.hkx' in binder.")
         skeleton_hkx = skeleton_hkx_class.from_binder_entry(skeleton_entry)
@@ -342,7 +342,7 @@ class ExportCharacterHKXAnimation(_BaseExportTypedHKXAnimation):
         animation_id = bl_animation.animation_id
 
         if model_name == "c0000":
-            sub_anibnd_stems = [entry.stem for entry in anibnd.find_entries_matching_name(r"c0000_.*\.txt")]
+            sub_anibnd_stems = [entry.stem for entry in anibnd.find_entries_by_name_regex(r"c0000_.*\.txt")]
             if not sub_anibnd_stems:
                 return self.error("Could not find any sub-ANIBND definitions (e.g. 'c0000_a0x.txt') in c0000 ANIBND.")
             # For now, we keep it simple: load ALL sub-ANIBNDs, find the one with a matching animation ID to replace,

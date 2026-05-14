@@ -10,6 +10,7 @@ __all__ = [
 ]
 
 import math
+import typing as tp
 
 import numpy as np
 
@@ -22,6 +23,9 @@ from soulstruct.base.maps.msb.region_shapes import RegionShapeType
 
 from ..base.register import *
 from ..types import SoulstructType
+
+if tp.TYPE_CHECKING:
+    from gpu.types import GPUShader, GPUBatch
 
 
 @io_soulstruct_class
@@ -58,11 +62,12 @@ UNIT_CIRCLE_32 = [
 CIRCLE_Z_MAT = Matrix()
 CIRCLE_Y_MAT = Matrix.Rotation(math.radians(90.0), 4, 'X')
 CIRCLE_X_MAT = Matrix.Rotation(math.radians(90.0), 4, 'Y')
-SHADER = gpu.shader.from_builtin("UNIFORM_COLOR")
-CIRCLE_BATCH = batch_for_shader(SHADER, "LINE_LOOP", {'pos': UNIT_CIRCLE_32})
-X_LINE_BATCH = batch_for_shader(SHADER, "LINES", {'pos': [(0, 0, 0), (1, 0, 0)]})
-Y_LINE_BATCH = batch_for_shader(SHADER, "LINES", {'pos': [(0, 0, 0), (0, 1, 0)]})
-Z_LINE_BATCH = batch_for_shader(SHADER, "LINES", {'pos': [(0, 0, 0), (0, 0, 1)]})
+
+_CACHED_SHADER = None  # type: GPUShader | None
+_CACHED_CIRCLE_BATCH = None  # type: GPUBatch | None
+_CACHED_X_LINE_BATCH = None  # type: GPUBatch | None
+_CACHED_Y_LINE_BATCH = None  # type: GPUBatch | None
+_CACHED_Z_LINE_BATCH = None  # type: GPUBatch | None
 
 XYZ_COLORS = [
     (1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0)  # matches Blender convention
@@ -74,6 +79,17 @@ Z_OFFSET = Matrix.Translation((0, 0, 1))
 
 @io_soulstruct_space_view_3d_draw_handler("WINDOW", "POST_VIEW")
 def draw_msb_regions():
+    if bpy.app.background:
+        return
+
+    global _CACHED_SHADER, _CACHED_CIRCLE_BATCH, _CACHED_X_LINE_BATCH, _CACHED_Y_LINE_BATCH, _CACHED_Z_LINE_BATCH
+    if not _CACHED_SHADER:
+        _CACHED_SHADER = gpu.shader.from_builtin("UNIFORM_COLOR")  # type: GPUShader
+        _CACHED_CIRCLE_BATCH = batch_for_shader(_CACHED_SHADER, "LINE_LOOP", {'pos': UNIT_CIRCLE_32})
+        _CACHED_X_LINE_BATCH = batch_for_shader(_CACHED_SHADER, "LINES", {'pos': [(0, 0, 0), (1, 0, 0)]})
+        _CACHED_Y_LINE_BATCH = batch_for_shader(_CACHED_SHADER, "LINES", {'pos': [(0, 0, 0), (0, 1, 0)]})
+        _CACHED_Z_LINE_BATCH = batch_for_shader(_CACHED_SHADER, "LINES", {'pos': [(0, 0, 0), (0, 0, 1)]})
+
     draw_settings = bpy.context.scene.region_draw_settings
     if not draw_settings.draw_point_axes:
         # Nothing to draw.
@@ -87,7 +103,7 @@ def draw_msb_regions():
         and obj.visible_get()
     ]
 
-    SHADER.bind()
+    _CACHED_SHADER.bind()
     gpu.state.line_width_set(draw_settings.line_width)
 
     for point in points:
@@ -97,19 +113,19 @@ def draw_msb_regions():
         circle_rad = Matrix.Scale(draw_settings.point_radius, 4)
 
         for i, (line_batch, circle_offset_mat) in enumerate(zip(
-            (X_LINE_BATCH, Y_LINE_BATCH, Z_LINE_BATCH),
+            (_CACHED_X_LINE_BATCH, _CACHED_Y_LINE_BATCH, _CACHED_Z_LINE_BATCH),
             (X_OFFSET, Y_OFFSET, Z_OFFSET)
         )):
 
-            SHADER.uniform_float("color", (*XYZ_COLORS[i], 1.0))
+            _CACHED_SHADER.uniform_float("color", (*XYZ_COLORS[i], 1.0))
 
             gpu.matrix.push()
             gpu.matrix.multiply_matrix(point_loc @ point_rot)
-            line_batch.draw(SHADER)
+            line_batch.draw(_CACHED_SHADER)
             gpu.matrix.pop()
 
             for circle_rot in (CIRCLE_Z_MAT, CIRCLE_Y_MAT, CIRCLE_X_MAT):
                 gpu.matrix.push()
                 gpu.matrix.multiply_matrix(point_loc @ point_rot @ circle_offset_mat @ circle_rot @ circle_rad)
-                CIRCLE_BATCH.draw(SHADER)
+                _CACHED_CIRCLE_BATCH.draw(_CACHED_SHADER)
                 gpu.matrix.pop()

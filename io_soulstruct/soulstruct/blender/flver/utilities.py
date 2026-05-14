@@ -16,8 +16,10 @@ from pathlib import Path
 from mathutils import Euler, Matrix
 
 from soulstruct.containers import Binder
-from soulstruct.flver import FLVER
+from soulstruct.flver import *
 from soulstruct.utilities.maths import EulerRad, Vector3, Matrix3
+
+import pyrelink.flver
 
 from ..exceptions import *
 from ..types import ArmatureObject
@@ -27,18 +29,21 @@ from ..utilities.conversion import to_blender, to_game
 def get_flvers_from_binder(
     binder: Binder,
     file_path: Path,
-    allow_multiple=False,
+    allow_multiple: bool = False,
+    use_pyrelink_flver: bool  =True,
 ) -> list[FLVER]:
     """Find all FLVER files (with or without DCX) in `binder`.
 
     By default, only one FLVER file is allowed. If `allow_multiple` is True, multiple FLVER files will be returned.
     """
-    flver_entries = binder.find_entries_matching_name(r".*\.flver(\.dcx)?")
+    flver_entries = binder.find_entries_by_name_regex(r".*\.flver(\.dcx)?")
     if not flver_entries:
         raise FLVERImportError(f"Cannot find a FLVER file in binder {file_path}.")
     elif not allow_multiple and len(flver_entries) > 1:
-        raise FLVERImportError(f"Found multiple FLVER files in binder {file_path}.")
-    return [entry.to_binary_file(FLVER) for entry in flver_entries]
+        raise FLVERImportError(f"Found multiple FLVER files in binder {file_path}. Only one is expected.")
+    if use_pyrelink_flver:
+        return [pyrelink.flver.FLVER.from_bytes(entry.get_uncompressed_data()) for entry in flver_entries]
+    return [FLVER.from_binder_entry(entry) for entry in flver_entries]
 
 
 # Swap X and Y, negate Z. Makes bones point nicely X-forward in Blender.

@@ -128,7 +128,7 @@ class BaseNodeTreeBuilder(abc.ABC):
             # We take this opportunity to change the Color Space of non-Albedo textures to 'Non-Color'.
             # NOTE: If the texture is used inconsistently across materials, this could change repeatedly.
             if bl_image:
-                if "Albedo" not in node_label and "Lightmap" not in node_label:
+                if "Albedo" not in node_label and "Diffuse" not in node_label and "Lightmap" not in node_label:
                     # noinspection PyTypeChecker
                     bl_image.colorspace_settings.name = "Non-Color"  # always
                 else:
@@ -217,7 +217,7 @@ class BaseNodeTreeBuilder(abc.ABC):
 
         matches = self.matdef.get_matching_samplers(re.compile(pattern), match_alias=True)
         if len(matches) > max_count:
-            self.operator.warning(
+            self.operator.debug(
                 f"Found {len(matches)} samplers matching pattern '{pattern}' in material "
                 f"'{self.matdef.name}'. Only the first {max_count} will be used."
             )

@@ -4,6 +4,7 @@ __all__ = [
     "NodeTreeBuilder",
 ]
 
+import re
 from dataclasses import dataclass
 
 from bpy.types import NodeSocket, ShaderNodeGroup
@@ -48,7 +49,7 @@ class NodeTreeBuilder(BaseNodeTreeBuilder):
                 # Used by fog, lightshafts, and some tree leaves. Fades out the object when viewed side-on.
                 self._build_ds1_normal_to_alpha_shader()
                 return
-            if "FRPG_Phn_ColDif" in self.matdef.shader_stem:
+            if re.match(r"FRPG_(Foliage|Ivy|Phn)_ColDif.*", self.matdef.shader_stem):
                 if self.get_param("g_LightingType", default=1) == 0:
                     # If `g_LightingType == 0`, nothing matters but the final surface image.
                     # This shader is probably fine for all games, but should be verified.
@@ -66,8 +67,11 @@ class NodeTreeBuilder(BaseNodeTreeBuilder):
             return
 
         self.operator.warning(
-            f"No DS1:PTDE shader support for MatDef {self.matdef.name} with shader {self.matdef.shader_stem}."
+            f"No specific DS1:PTDE shader support for MatDef {self.matdef.name} with shader {self.matdef.shader_stem}. "
+            f"Trying to build standard shader."
         )
+        self._build_ptde_standard_shader()
+        return
 
     def _build_ptde_standard_shader(self):
         """Tri-directional phong lighting, or cubemap environmental lighting shader (Dir3 or Env)."""
@@ -151,11 +155,15 @@ class NodeTreeBuilder(BaseNodeTreeBuilder):
 
         for i in range(0,3):
             heightmap_node = self._new_tex_image_node(f"Water Tile {i}", tile_image)
+            # Water tile scale is a float for some MatDefs, but a Vector2 for others.
+            # Unclear if this varies by material, or if Vector2 is only used when scaling X != Y.
+            tile_scale = self.get_param(f"g_TileScale_{i}", default=1.0)
+            if isinstance(tile_scale, tuple):
+                tile_scale_vec = Vector2(tile_scale)
+            else:
+                tile_scale_vec = Vector2((tile_scale, tile_scale))
             uv_scale_node = self._new_tex_scale_node(
-                Vector2([
-                    self.get_param(f"g_TileScale_{i}", default=1),
-                    self.get_param(f"g_TileScale_{i}", default=1),
-                ]),
+                tile_scale_vec,
                 node_y=heightmap_node.location.y,
             )
             self.link(uv_node.outputs["UV"], uv_scale_node.inputs[0])

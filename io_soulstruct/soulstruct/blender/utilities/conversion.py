@@ -118,7 +118,10 @@ def bl_matrix_to_game_trs(matrix: BLMatrix) -> TRSTransform:
 
 @singledispatch
 def to_blender(obj):
-    """Default: raise for unsupported types."""
+    """Default: raise for unsupported types.
+
+    NOTE: We do not support `tuple` because it could be a vector *or* Euler angles, which are converted differently.
+    """
     raise TypeError(f"to_blender() has no registered converter for type {type(obj)!r}")
 
 @to_blender.register(Vector3)

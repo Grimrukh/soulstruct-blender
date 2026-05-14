@@ -5,6 +5,7 @@ __all__ = [
     "get_matbinbnd",
     "get_cached_mtdbnd",
     "get_cached_matbinbnd",
+    "get_cached_mtdbnd_matbinbnd",
     "clear_cached_matdefs",
 ]
 
@@ -26,9 +27,6 @@ def get_mtdbnd(operator: LoggingOperator, context: bpy.types.Context) -> MTDBND:
     """
     settings = context.scene.soulstruct_settings
     game = settings.game
-
-    if settings.game_config.uses_matbin:
-        raise InternalSoulstructBlenderError(f"Active game '{game.name}' does not use MTDs. Should not call this.")
 
     custom_path = settings.mtdbnd_path
     if is_path_and_file(custom_path):
@@ -138,6 +136,18 @@ def get_cached_matbinbnd(operator: LoggingOperator, context: bpy.types.Context) 
     if game not in _CACHED_MATBINBNDS:
         _CACHED_MATBINBNDS[game] = get_matbinbnd(operator, context)
     return _CACHED_MATBINBNDS[game]
+
+
+def get_cached_mtdbnd_matbinbnd(
+    operator: LoggingOperator, context: bpy.types.Context
+) -> tuple[MTDBND | None, MATBINBND | None]:
+    """Get cached MTDBND and/or MATBINBND at the same time, or `None` if absent."""
+    mtdbnd = get_cached_mtdbnd(operator, context)
+    if context.scene.soulstruct_settings.game_config.uses_matbin:
+        matbinbnd = get_cached_matbinbnd(operator, context)
+    else:
+        matbinbnd = None
+    return mtdbnd, matbinbnd
 
 
 def clear_cached_matdefs():

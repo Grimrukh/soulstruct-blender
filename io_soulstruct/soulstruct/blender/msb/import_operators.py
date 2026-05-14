@@ -7,6 +7,7 @@ from __future__ import annotations
 __all__ = [
     "ImportMapMSB",
     "ImportAnyMSB",
+    "ImportERMSB",
 ]
 
 import time
@@ -15,20 +16,29 @@ import typing as tp
 from pathlib import Path
 
 import bpy
+
 from soulstruct.base.maps.msb import BaseMSBSubtype
 from soulstruct.darksouls1ptde.maps import MSB as PTDE_MSB
 from soulstruct.darksouls1r.maps import MSB as DSR_MSB
 from soulstruct.demonssouls.maps import MSB as DES_MSB
 from soulstruct.games import *
+from soulstruct.utilities.maths import Vector3, EulerRad
+
+# Pyrelink currently used for Elden Ring MSB import only.
+from pyrelink.core import Binder as PyrelinkBinder
+import pyrelink.eldenring.maps as er_maps
+import pyrelink.flver
 
 from ..base.operators import *
 from ..base.register import io_soulstruct_class
 from ..flver.models.properties import FLVERImportSettings
 from ..flver.models.gui.flver_material_settings import draw_material_image_settings
+from ..flver.models.types import BlenderFLVER
 from ..general.cached import get_cached_file
 from ..msb.types import darksouls1ptde, darksouls1r, demonssouls
 from ..types import SoulstructCollectionType
-from ..utilities import *
+from ..utilities import find_or_create_collection, new_mesh_object
+from ..utilities.conversion import to_blender
 from .misc_operators import EnableAllImportModels, DisableAllImportModels
 from .operator_config import *
 from .properties import BlenderMSBRegionSubtype, BlenderMSBPartSubtype, BlenderMSBEventSubtype
@@ -58,6 +68,8 @@ def _import_msb(
     operator: LoggingOperator, context: Context, msb: MSB_TYPING, msb_stem: str, oldest_map_stem: str
 ) -> set[str]:
 
+    base_p = time.perf_counter()
+
     settings = operator.settings(context)
     msb_import_settings = context.scene.msb_import_settings
 
@@ -68,7 +80,7 @@ def _import_msb(
     elif settings.is_game(DEMONS_SOULS):
         blender_types_module = demonssouls
     else:
-        return operator.error(f"Unsupported game for MSB import/export: {settings.game.name}")
+        return operator.error(f"Unsupported game for MSB import: {settings.game.name}")
 
     # TODO: Not a fan of how these keys are Soulstruct enums, but the ones below are Blender enums.
     #  (It's because there is no `MSBModelSubtype` enum in Blender, as MSB Models aren't a `SoulstructType`.)
@@ -92,15 +104,27 @@ def _import_msb(
             continue  # import of this Model type is disabled
 
         model_importer = msb_model_importers[model_subtype]
-        models = [model for model in model_list if model_name_filter(model.name)]
-        if models:
+        msb_models = [model for model in model_list if model_name_filter(model.name)]
+        if msb_models:
             # Note that ALL Model types now support batch import. Models that already exist in Blender (of the expected
             # object type, Soulstruct type, and model name) will be skipped, regardless of their Collection.
-            operator.info(f"Importing (up to) {len(models)} MSB{model_subtype.name} model files in parallel.")
+            operator.info(f"Importing (up to) {len(msb_models)} MSB{model_subtype.name} model files in parallel.")
             model_map_stem = oldest_map_stem if model_importer.use_oldest_map_stem else msb_stem
             p = time.perf_counter()
-            model_importer.batch_import_model_meshes(operator, context, models, map_stem=model_map_stem)
-            operator.info(f"Imported {len(models)} MSB{model_subtype.name} models in {time.perf_counter() - p:.3f} s.")
+
+            if settings.batch_import_flvers:
+                model_importer.batch_import_model_meshes(operator, context, msb_models, map_stem=model_map_stem)
+                operator.info(
+                    f"Imported {len(msb_models)} MSB{model_subtype.name} models in {time.perf_counter() - p:.3f} s (BATCH)."
+                )
+            else:
+                # Non-batch import.
+                for model in msb_models:
+                    model_name = model.get_model_file_stem(model_map_stem)
+                    model_importer.import_model_mesh(operator, context, model_name, map_stem=model_map_stem)
+                operator.info(
+                    f"Imported {len(msb_models)} MSB{model_subtype.name} models in {time.perf_counter() - p:.3f} s."
+                )
 
     # All MSB inter-entry reference fields are set later, so it doesn't matter what order we create the MSB entry
     # objects in Blender.
@@ -212,7 +236,7 @@ def _import_msb(
 
     operator.info(
         f"Imported {part_count} Parts, {region_count} Regions, and {event_count} Events from MSB {msb_stem} "
-        f"in {time.perf_counter() - p:.3f} s."
+        f"in {time.perf_counter() - base_p:.3f} s."
     )
 
     msb_collection.soulstruct_type = SoulstructCollectionType.MSB
@@ -382,3 +406,133 @@ class ImportAnyMSB(_BaseImportMSB, LoggingImportOperator):
                 return self.error(f"Failed to load MSB file: {ex}")
 
         return _import_msb(self, context, msb, msb_stem, oldest_map_stem)
+
+
+@io_soulstruct_class
+class ImportERMSB(LoggingOperator):
+
+    bl_idname = "import_scene.er_msb"
+    bl_label = "Import ER MSB"
+    bl_options = {"REGISTER", "UNDO"}
+    bl_description = "Import all models from an Elden Ring MSB"
+
+    IMPORT_MAP_PIECE_FLVERS: tp.ClassVar[bool] = True
+    IMPORT_CHARACTER_FLVERS: tp.ClassVar[bool] = False
+    IMPORT_ASSET_FLVERS: tp.ClassVar[bool] = True
+
+    def execute(self, context):
+
+        settings = self.settings(context)
+
+        # TODO: This demo just imports all FLVER models and places them using MSB Part transform.
+        msb_stem = settings.get_latest_map_stem_version()
+        msb_path = settings.get_import_msb_path()  # will automatically use latest MSB version if known and enabled
+
+        msb = er_maps.MSB.from_path(msb_path)
+
+        seen_model_names = set()
+        transforms = []  # type: list[tuple[str, Vector3, EulerRad, Vector3]]
+        missing_models = set()
+
+        # Collect all FLVER bytes from Binders.
+        flver_names = []  # type: list[str]
+        flver_binder_sources = {}  # type: dict[str, tuple[pyrelink.core.BinderEntry, pyrelink.core.Binder]]
+
+        for part_entry in msb.part_param.get_all_entries():
+            if not (model := part_entry.model):
+                continue
+
+            if model.model_type == er_maps.ModelType.Character:
+                if not self.IMPORT_CHARACTER_FLVERS:
+                    continue
+            elif model.model_type == er_maps.ModelType.MapPiece:
+                if not self.IMPORT_MAP_PIECE_FLVERS:
+                    continue
+            elif model.model_type == er_maps.ModelType.Asset:
+                if not self.IMPORT_ASSET_FLVERS:
+                    continue
+            else:
+                # Ignore other Parts (Collision, Player).
+                continue
+
+            name = model.name.lower()
+
+            # Collect MSB transform of Part.
+            transforms.append((
+                name, Vector3(part_entry.translate), EulerRad(part_entry.rotate), Vector3(part_entry.scale)
+            ))
+
+            if name in seen_model_names:
+                continue
+            seen_model_names.add(name)
+
+            # Collect FLVER model for importing.
+            # NOTE: There's no need to cache any Binders for these FLVER types.
+
+            if model.model_type == er_maps.ModelType.Character:
+                if not self.IMPORT_CHARACTER_FLVERS:
+                    continue
+                # No chance of caching binders.
+                binder_path = settings.get_import_file_path(f"chr/{name}.chrbnd.dcx")
+            elif model.model_type == er_maps.ModelType.MapPiece:
+                if not self.IMPORT_MAP_PIECE_FLVERS:
+                    continue
+                # No chance of caching binders.
+                # NOTE: Drop 'm' prefix from model and add map stem prefix.
+                binder_path = settings.get_import_file_path(f"map/{msb_stem[:3]}/{msb_stem}/{msb_stem}_{name[1:]}.mapbnd.dcx")
+            elif model.model_type == er_maps.ModelType.Asset:
+                if not self.IMPORT_ASSET_FLVERS:
+                    continue
+                binder_path = settings.get_import_file_path(f"asset/aeg/{name[:6]}/{name}.geombnd.dcx")
+            else:
+                # Ignore other Parts (Collision, Player).
+                continue
+
+            if not binder_path.is_file():
+                missing_models.add(name)
+                self.warning(f"No Binder: {binder_path}")
+                continue
+
+            binder = PyrelinkBinder.from_path(binder_path)
+            flver_entry = binder.find_entry_by_id(200)
+            if flver_entry is None:
+                missing_models.add(name)
+                self.warning(f"No FLVER (200) in Binder: {binder_path}")
+                continue
+
+            flver_binder_sources[name] = (flver_entry, binder)
+            flver_names.append(name)
+
+        model_collection = find_or_create_collection(
+            context.scene.collection,
+            "Elden Ring Models",
+        )
+        msb_collection = find_or_create_collection(
+            context.scene.collection,
+            f"MSB {msb_stem}",
+        )
+
+        bl_flvers = BlenderFLVER.new_batch_from_soulstruct_objs(
+            self,
+            context,
+            flver_binder_sources=flver_binder_sources,
+            collection=model_collection,
+        )
+
+        for name, translate, rotate, scale in transforms:
+
+            if name not in bl_flvers:
+                continue  # intentionally skipped (or failed to load model)
+
+            part_instance = new_mesh_object(
+                name=f"MSB {name}",  # TODO: relying on Blender model dupe for name (ER MSBs are name-stripped)
+                data=bl_flvers[name].data,
+            )
+            part_instance.location = to_blender(translate)
+            part_instance.rotation_euler = to_blender(rotate)
+            part_instance.scale = to_blender(scale)
+
+            # Link to MSB collection.
+            msb_collection.objects.link(part_instance)
+
+        return {"FINISHED"}

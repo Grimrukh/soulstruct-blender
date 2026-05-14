@@ -3,3 +3,4 @@
 scipy==1.16.3
 soulstruct==2.3.3
 soulstruct-havok==1.2.2
+pyrelink==0.1.0

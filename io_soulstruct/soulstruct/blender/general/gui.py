@@ -84,6 +84,8 @@ class _BaseGlobalSettingsPanel(SoulstructPanel):
         #     box.prop(context.collection, "soulstruct_type", text="Type")
 
         layout.prop(settings, "enable_debug_logging")
+        layout.prop(settings, "use_pyrelink_flver")
+        layout.prop(settings, "batch_import_flvers")
 
 
 @io_soulstruct_class

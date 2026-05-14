@@ -10,6 +10,7 @@ __all__ = [
     "AddMaterialGXItem",
     "RemoveMaterialGXItem",
     "RegenerateFLVERMaterialShaders",
+    "RegenerateAllFLVERMaterialShaders",
 ]
 
 import os
@@ -25,10 +26,14 @@ from soulstruct.flver import FLVERVersion
 from ...base.operators import LoggingOperator
 from ...base.register import io_soulstruct_class, io_soulstruct_pointer_property
 from ...bpy_base.property_group import SoulstructPropertyGroup
-from ...general.game_config import BLENDER_GAME_CONFIG
-from ...general.matdefs import get_cached_matbinbnd, get_cached_mtdbnd
+from ...general.matdefs import get_cached_mtdbnd_matbinbnd
 from ...types import MeshObject, SoulstructType, is_active_obj_typed_mesh_obj
 from .types import BlenderFLVERMaterial
+
+if tp.TYPE_CHECKING:
+    from soulstruct.base.models.shaders import MatDef
+    from soulstruct.base.models.mtd import MTDBND
+    from soulstruct.base.models.matbin import MATBINBND
 
 _AREA_PREFIX_RE = re.compile(r"m\d\d_")
 
@@ -196,30 +201,41 @@ class MergeFLVERMaterials(LoggingOperator):
         "a new merged material) as desired"
     )
 
+    selected_only: bpy.props.BoolProperty(
+        name="Selected FLVERs Only",
+        description="Merge materials for selected FLVERs only, rather than all FLVERs in data",
+        default=True,
+    )
+
+    map_pieces_only: bpy.props.BoolProperty(
+        name="Map Piece FLVERs Only",
+        description="Merge materials for Map Piece FLVERs only (names starting with 'm')",
+        default=False,
+    )
+
     rename_unique_materials: bpy.props.BoolProperty(
         name="Rename Unique Materials",
         description="Rename materials using merged template even if they are not merged with any other materials",
         default=True,
     )
 
-    @classmethod
-    def poll(cls, context) -> bool:
-        if len(context.selected_objects) < 2:
-            return False
-        return all(
-            obj.type == "MESH" and obj.soulstruct_type == SoulstructType.FLVER for obj in context.selected_objects
-        )
+    # No poll, as it may or may not care about object selection.
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
 
     def execute(self, context):
-        selected_objects = context.selected_objects
+
+        selected_objects = context.selected_objects if self.selected_only else bpy.data.objects
 
         # noinspection PyTypeChecker
         flver_objects = [
             obj for obj in selected_objects
             if obj.type == "MESH" and obj.soulstruct_type == SoulstructType.FLVER
+            and (not self.map_pieces_only or obj.name.startswith("m"))
         ]  # type: list[MeshObject]
         if len(flver_objects) < 2:
-            return self.error("At least two FLVER Mesh model objects must be selected.")
+            return self.error("At least two FLVER Mesh model objects must be in data and/or selected.")
 
         # Maps material hashes to their single merged instances (copied from first instance found).
         merged_materials = {}
@@ -236,14 +252,14 @@ class MergeFLVERMaterials(LoggingOperator):
             for material in obj.data.materials:
                 if not material:
                     continue  # empty slot
-                flver_material = BlenderFLVERMaterial(material)
+                bl_material = BlenderFLVERMaterial(material)
                 # TODO: May want to assert FLVER2 hash here, as otherwise this is destructive for switching back to
                 #  FLVER2 using the same materials (probably rare/difficult already).
                 if obj.FLVER.version == "DEFAULT":
                     is_flver0 = context.scene.soulstruct_settings.is_game("DEMONS_SOULS")
                 else:
                     is_flver0 = FLVERVersion[obj.FLVER.version].is_flver0()
-                material_hash = flver_material.get_hash(is_flver0=is_flver0)
+                material_hash = bl_material.get_hash(is_flver0=is_flver0)
 
                 obj_material_hashes.append(material_hash)
 
@@ -263,7 +279,7 @@ class MergeFLVERMaterials(LoggingOperator):
 
                 # Two (or more) different materials found with same hash. Create merged material.
                 merged_materials[material_hash] = merged_material = material.copy()
-                merged_material.name = self.get_merged_material_name(flver_material)
+                merged_material.name = self.get_merged_material_name(bl_material)
                 self.info(f"Created merged material: {merged_material.name}")
                 continue
 
@@ -379,51 +395,123 @@ class RegenerateFLVERMaterialShaders(LoggingOperator):
         )
 
     def execute(self, context):
-        """Rebuild the node tree of a single Blender material using the latest shader builder.
-
-        `vertex_color_count` can be determined from the owning mesh's color attributes if needed.
-        """
+        """Rebuild the node trees of materials of selected FLVERs using the latest shader builder."""
         settings = context.scene.soulstruct_settings
 
         matdef_class = settings.game_config.matdef_class
         if matdef_class is None:
             return self.error(f"No MatDef class for game {settings.game.name}. Cannot upgrade materials.")
 
-        if BLENDER_GAME_CONFIG[settings.game].uses_matbin:
-            mtdbnd = None
-            matbinbnd = get_cached_matbinbnd(self, context)
-        else:
-            mtdbnd = get_cached_mtdbnd(self, context)
-            matbinbnd = None
+        mtdbnd, matbinbnd = get_cached_mtdbnd_matbinbnd(self, context)
 
         for bl_flver in context.selected_objects:
             for mat in bl_flver.data.materials:
+                if mat is None:
+                    continue  # empty slot
 
-                flver_mat = BlenderFLVERMaterial(mat)
-                mat_def_path = flver_mat.mat_def_path
-                if not mat_def_path:
-                    self.warning(f"Material '{mat.name}' has no mat_def_path set. Skipping.")
-                    continue
+                self.regenerate_material(self, context, mat, matdef_class, mtdbnd, matbinbnd)
 
-                mat_def_name = Path(mat_def_path).name
+        return {"FINISHED"}
 
-                # Look up MatDef from MTDBND or MATBINBND, just as import/export does.
-                try:
-                    if matbinbnd:
-                        matdef = matdef_class.from_matbinbnd_or_name(mat_def_name, matbinbnd)
-                    else:
-                        matdef = matdef_class.from_mtdbnd_or_name(mat_def_name, mtdbnd)
+    @staticmethod
+    def regenerate_material(
+        operator: LoggingOperator,
+        context: bpy.types.Context,
+        material: bpy.types.Material,
+        matdef_class: type[MatDef],
+        mtdbnd: MTDBND | None,
+        matbinbnd: MATBINBND | None,
+    ):
+        flver_mat = BlenderFLVERMaterial(material)
+        mat_def_path = flver_mat.mat_def_path
+        if not mat_def_path:
+            operator.warning(f"Material '{material.name}' has no `mat_def_path` set. Skipping.")
+            return
 
-                except MatDefError as ex:
-                    self.warning(
-                        f"Could not create MatDef for material '{mat.name}' (mat_def: '{mat_def_name}'). "
-                        f"Skipping. Error:\n  {ex}"
-                    )
-                    continue
+        mat_def_name = Path(mat_def_path).name
 
-                flver_mat.rebuild_node_tree(self, context, matdef, vertex_color_count=-1, blend_mode="")
-                self.info(f"Upgraded material: {mat.name}")
+        # Look up MatDef from MTDBND or MATBINBND, just as import/export does.
+        try:
+            if matbinbnd and not mat_def_name.endswith(".mtd"):
+                matdef = matdef_class.from_matbinbnd_or_name(mat_def_name, matbinbnd)
+            else:
+                matdef = matdef_class.from_mtdbnd_or_name(mat_def_name, mtdbnd)
 
+        except MatDefError as ex:
+            operator.warning(
+                f"Could not create MatDef for material '{material.name}' (mat_def: '{mat_def_name}'). "
+                f"Skipping. Error:\n  {ex}"
+            )
+            return
+
+        flver_mat.rebuild_node_tree(operator, context, matdef, vertex_color_count=-1, blend_mode="")
+        operator.info(f"Upgraded FLVER material shader: {material.name}")
+
+
+@io_soulstruct_class
+class RegenerateAllFLVERMaterialShaders(LoggingOperator):
+    bl_idname = "material.regenerate_all_flver_shaders"
+    bl_label = "Regenerate ALL Material Shaders"
+    bl_description = "Regenerate Soulstruct shader node tree for ALL FLVER materials (those with a Mat Def Path)"
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
+    BATCH_SIZE: tp.ClassVar[int] = 500
+
+    def execute(self, context):
+        """Rebuild the node tree of ALL FLVER materials in the file using the latest shader builder."""
+        settings = context.scene.soulstruct_settings
+
+        matdef_class = settings.game_config.matdef_class
+        if matdef_class is None:
+            return self.error(f"No MatDef class for game {settings.game.name}. Cannot upgrade materials.")
+
+        mtdbnd, matbinbnd = get_cached_mtdbnd_matbinbnd(self, context)
+
+        flver_materials = [
+            mat for mat in bpy.data.materials if mat.FLVER_MATERIAL.mat_def_path
+        ]
+        if not flver_materials:
+            return self.info("No FLVER materials found.")
+
+        # Temporarily disable undo to prevent the undo stack from ballooning during bulk node tree rebuilds,
+        # which is the primary cause of MemoryError / BPy_rna allocator exhaustion on large material counts.
+        prefs = context.preferences.edit
+        original_undo_steps = prefs.undo_steps
+        prefs.undo_steps = 0
+
+        # Purge orphans once before starting to start clean.
+        bpy.ops.outliner.orphans_purge(do_recursive=True)
+
+        if context.window_manager:
+            context.window_manager.progress_begin(0, len(flver_materials))
+
+        try:
+            count = 0
+            for mat in flver_materials:
+                self.info(f"Regenerating material: {mat.name}")
+                RegenerateFLVERMaterialShaders.regenerate_material(
+                    self, context, mat, matdef_class, mtdbnd, matbinbnd
+                )
+                count += 1
+                if context.window_manager:
+                    context.window_manager.progress_update(count)
+                if count % self.BATCH_SIZE == 0:
+                    # Purge orphaned node trees and data blocks accumulated during this batch.
+                    bpy.ops.outliner.orphans_purge(do_recursive=True)
+                    self.info(f"Regenerated {count}/{len(flver_materials)} materials...")
+        finally:
+            # Always restore undo steps, even if an exception occurs mid-loop.
+            prefs.undo_steps = original_undo_steps
+
+        # Final purge.
+        bpy.ops.outliner.orphans_purge(do_recursive=True)
+
+        if context.window_manager:
+            context.window_manager.progress_end()
+
+        self.info(f"Regenerated {count} FLVER material shaders.")
         return {"FINISHED"}
 
 # TODO:

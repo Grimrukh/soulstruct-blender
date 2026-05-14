@@ -10,9 +10,9 @@ import re
 import bpy
 from mathutils import Vector
 
-from soulstruct.flver import FLVER, FLVERBone, FLVERBoneUsageFlags
+from soulstruct.flver import FLVER, FLVERBoneUsageFlags
+from soulstruct.flver.bone_tools import BoneNode, BoneTree
 from soulstruct.utilities.maths import Vector3, Matrix3
-from soulstruct.utilities.misc import IDList
 
 from .....base.operators import LoggingOperator
 from .....exceptions import FLVERExportError
@@ -37,7 +37,7 @@ def create_flver_bones(
 
     bl_bone_names = [bone.name for bone in armature.data.bones]
 
-    game_bones = []
+    bone_tree = BoneTree()
     game_bone_parent_indices = []  # type: list[int]
 
     # It's more efficient to set all bones' local transforms at once from ALL of their armature-space transforms, so
@@ -49,7 +49,6 @@ def create_flver_bones(
         raise FLVERExportError("Bone names in Blender Armature are not all unique.")
 
     # TODO: Check properties on data bone, not EditBone.
-    #  Undo bone CoB transform.
     #  Always read scale from FLVER_BONE properties.
 
     for bl_bone in armature.data.bones:
@@ -71,7 +70,7 @@ def create_flver_bones(
             raise FLVERExportError(
                 f"Bone '{bl_bone.name}' has 'Is Unused' enabled, but also has other usage flags set."
             )
-        game_bone = FLVERBone(name=game_bone_name, usage_flags=bone_usage_flags)
+        game_bone_node = BoneNode(name=game_bone_name, usage_flags=bone_usage_flags)
 
         if bl_bone.parent:
             parent_bone_name = bl_bone.parent.name
@@ -86,12 +85,12 @@ def create_flver_bones(
             game_arma_rotmat = to_game(bl_bone_matrix.to_3x3())
             game_arma_transforms.append((game_arma_translate, game_arma_rotmat, game_scale))
 
-        game_bones.append(game_bone)
+        bone_tree.append(game_bone_node)
         game_bone_parent_indices.append(parent_bone_index)
 
-    # Assign game bone parent references. Child and sibling bones are done by caller using FLVER method.
-    for game_bone, parent_index in zip(game_bones, game_bone_parent_indices):
-        game_bone.parent_bone = game_bones[parent_index] if parent_index >= 0 else None
+    # Assign game bone parent references. Child and sibling bones are done below using `BoneTree` method.
+    for game_bone_node, parent_index in zip(bone_tree.bones, game_bone_parent_indices):
+        game_bone_node.parent_bone = bone_tree[parent_index] if parent_index >= 0 else None
 
     operator.to_object_mode(context)
 
@@ -100,31 +99,31 @@ def create_flver_bones(
         # Get armature-space bone transform from PoseBone (map pieces).
         # Note that non-uniform bone scale is supported here (and is actually used in some old vanilla map pieces).
         # Pose transform data will already be in the bone's local space (relative to parent bone), as desired.
-        for game_bone, bl_bone_name in zip(game_bones, bl_bone_names, strict=True):
-            game_bone: FLVERBone
+        for game_bone_node, bl_bone_name in zip(bone_tree.bones, bl_bone_names, strict=True):
             pose_bone = armature.pose.bones[bl_bone_name]
-            game_bone.translate = to_game(pose_bone.location)  # local space
+            game_bone_node.translate = to_game(pose_bone.location)  # local space
             if pose_bone.rotation_mode == "QUATERNION":
                 bl_rot_quat = pose_bone.rotation_quaternion
                 bl_rot_euler = bl_rot_quat.to_euler("XYZ")
-                game_bone.rotate = to_game(bl_rot_euler)
+                game_bone_node.rotate = to_game(bl_rot_euler)
             elif pose_bone.rotation_mode == "XYZ":
                 # TODO: Could this cause the same weird Blender gimbal lock errors as I was seeing with characters?
                 #  If so, I may want to make sure I always set pose bone rotation to QUATERNION mode.
                 bl_rot_euler = pose_bone.rotation_euler
-                game_bone.rotate = to_game(bl_rot_euler)
+                game_bone_node.rotate = to_game(bl_rot_euler)
             else:
                 raise FLVERExportError(
                     f"Unsupported rotation mode '{pose_bone.rotation_mode}' for bone '{pose_bone.name}'. Must be "
                     f"'QUATERNION' or 'XYZ' (Euler)."
                 )
-            game_bone.scale = to_game(pose_bone.scale)  # can be non-uniform
+            game_bone_node.scale = to_game(pose_bone.scale)  # can be non-uniform
 
-    flver.bones = IDList(game_bones)
     # Auto-detect children and siblings from parent bones.
-    flver.set_bone_children_siblings()  # only parents set in `create_bones`
+    bone_tree.set_bone_children_siblings()
 
     if bone_data_type == FLVERBoneDataType.EDIT:
         # Set bones' local transforms efficiently from all armature-space transforms.
         # In CUSTOM (pose) data mode, bone local transform is already set above.
-        flver.set_bone_armature_space_transforms(game_arma_transforms)
+        bone_tree.set_bone_armature_space_transforms(game_arma_transforms)
+
+    flver.set_bone_tree(bone_tree)

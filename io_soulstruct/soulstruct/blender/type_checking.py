@@ -91,9 +91,11 @@ if tp.TYPE_CHECKING:
     from soulstruct.darksouls1ptde.models import CHRBND as PTDE_CHRBND, OBJBND as PTDE_OBJBND, PARTSBND as PTDE_PARTSBND
     from soulstruct.darksouls1r.models import CHRBND as DS1R_CHRBND, OBJBND as DS1R_OBJBND, PARTSBND as DS1R_PARTSBND
     from soulstruct.bloodborne.models import CHRBND as BB_CHRBND, OBJBND as BB_OBJBND, PARTSBND as BB_PARTSBND
+    from soulstruct.eldenring.models import MAPBND as ER_MAPBND
     CHRBND_TYPING = tp.Union[DES_CHRBND, PTDE_CHRBND, DS1R_CHRBND, BB_CHRBND]
     OBJBND_TYPING = tp.Union[DES_OBJBND, PTDE_OBJBND, DS1R_OBJBND, BB_OBJBND]
     PARTSBND_TYPING = tp.Union[DES_PARTSBND, PTDE_PARTSBND, DS1R_PARTSBND, BB_PARTSBND]
+    MAPBND_TYPING = tp.Union[ER_MAPBND]
 
     from soulstruct.demonssouls.models.shaders import MatDef as DES_MatDef
     from soulstruct.darksouls1ptde.models.shaders import MatDef as PTDE_MatDef

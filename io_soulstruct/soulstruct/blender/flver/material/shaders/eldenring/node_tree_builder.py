@@ -80,7 +80,7 @@ class NodeTreeBuilder(BaseNodeTreeBuilder):
                     self._build_er_map_multi_blend_shader(blend_mask_map, profile.multi_blend_count)
                     return
 
-                self.operator.warning(
+                self.operator.debug(
                     f"Could not find Mask1 or BlendEdge texture in MbN shader for {self.matdef.name} - "
                     f"falling back to standard shader. Blending will not be set up."
                 )
@@ -148,8 +148,12 @@ class NodeTreeBuilder(BaseNodeTreeBuilder):
         """
         if albedo is _UNSET:
             albedo = self._get_mixed_texture_color(r"PRIMARY \d Albedo", mix_fac)
+            if albedo is None:
+                albedo = self._get_mixed_texture_color(r"MISC 0 Albedo", 0.0)
         if albedo_alpha is _UNSET:
-            albedo_alpha = self._get_mixed_texture_alpha("PRIMARY 0 Albedo")
+            albedo_alpha = self._get_mixed_texture_alpha("PRIMARY 0 Albedo", 0.0)
+            if albedo_alpha is None:
+                albedo_alpha = self._get_mixed_texture_alpha("MISC 0 Albedo", 0.0)
         if metallic is _UNSET:
             metallic = self._get_mixed_texture_color(r".* \d Metallic", mix_fac)
         if shininess_map is _UNSET:

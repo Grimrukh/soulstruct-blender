@@ -64,14 +64,22 @@ class FLVERPropsPanel(SoulstructPanel):
         # Draw submesh properties, either global or as a list.
         if flver_props.submesh_props:
             submeshes_box = self.layout.box()
-            for submesh_props in flver_props.submesh_props:
+            for i, submesh_props in enumerate(flver_props.submesh_props):
                 submesh_props: FLVERSubmeshProps
+                slot_mat = bl_flver.obj.material_slots[i].material if i < len(bl_flver.obj.material_slots) else None
                 submesh_box = submeshes_box.box()
-                # Show material name text.
-                submesh_box.label(text=submesh_props.material.name if submesh_props.material else "<LOST MATERIAL>")
+                row = submesh_box.row()
+                row.label(text=f"[{i}] {slot_mat.name if slot_mat else '<empty slot>'}")
+                # Move up/down buttons
+                up_op = row.operator("flver.material_slot_move", text="", icon="TRIA_UP")
+                up_op.direction = "UP"
+                down_op = row.operator("flver.material_slot_move", text="", icon="TRIA_DOWN")
+                down_op.direction = "DOWN"
+                remove_op = row.operator("flver.material_slot_remove", text="", icon="X")
                 for prop in submesh_props.get_all_prop_names():
                     submesh_box.prop(submesh_props, prop)
-            # Draw button to clear all submesh properties (to use global instead).
+            # Add slot button
+            self.layout.operator("flver.material_slot_add", text="Add Material Slot", icon="ADD")
             self.layout.operator("flver.clear_submesh_props", text="Clear Submesh Properties")
         else:
             submeshes_box = self.layout.box()

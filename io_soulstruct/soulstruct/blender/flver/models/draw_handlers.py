@@ -20,7 +20,7 @@ from .types import BlenderFLVER
 def draw_dummy_ids():
     """Draw the numeric reference IDs of all Dummy children of selected FLVER.
 
-    Uses each Dummy's `color_rgba` property to determine the color and transparency of the text.
+    Uses each Dummy's `color` property to determine the color and transparency of the text.
     """
     settings = bpy.context.scene.flver_tool_settings
     if not settings.dummy_id_draw_enabled:
@@ -59,6 +59,6 @@ def draw_dummy_ids():
             continue  # dummy is not in view
         blf.position(font_id, label_position.x + 10, label_position.y + 10, 0.0)
         # Set color for this dummy.
-        r, g, b, a = bl_dummy.color_rgba
+        r, g, b, a = bl_dummy.color
         blf.color(font_id, r / 255, g / 255, b / 255, a / 255)  # TODO: set a minimum alpha of 0.1?
         blf.draw(font_id, str(bl_dummy.reference_id))

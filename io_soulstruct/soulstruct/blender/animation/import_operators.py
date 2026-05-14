@@ -60,7 +60,7 @@ class _BaseImportHKXAnimation(LoggingOperator):
     def load_binder_compendium(self, binder: Binder) -> HKX | None:
         """Try to find compendium HKX. Div Binders may have multiple, but they should be identical, so we use first."""
         try:
-            compendium_entry = binder.find_entry_matching_name(r".*\.compendium")
+            compendium_entry = binder.find_entry_by_name_regex(r".*\.compendium")
         except EntryNotFoundError:
             self.info("Did not find any compendium HKX in Binder.")
             return None
@@ -190,7 +190,7 @@ class ImportAnyHKXAnimation(_BaseImportHKXAnimation, LoggingImportOperator):
         if OBJBND_RE.match(binder_path.name):
             # Get ANIBND nested inside OBJBND.
             objbnd = DivBinder.from_path(binder_path)
-            anibnd_entry = objbnd.find_entry_matching_name(r".*\.anibnd(\.dcx)?")
+            anibnd_entry = objbnd.find_entry_by_name_regex(r".*\.anibnd(\.dcx)?")
             if not anibnd_entry:
                 return self.error("OBJBND binder does not contain a nested ANIBND binder.")
             skeleton_anibnd = anibnd = DivBinder.from_binder_entry(anibnd_entry)
@@ -198,7 +198,7 @@ class ImportAnyHKXAnimation(_BaseImportHKXAnimation, LoggingImportOperator):
         elif GEOMBND_RE.match(binder_path.name):
             geombnd = Binder.from_path(binder_path)  # never `DivBinder`
             # Find ANIBND entry inside GEOMBND. Always uppercase. TODO: Shouldn't be case-sensitive though.
-            anibnd_entry = geombnd.find_entry_matching_name(r".*\.anibnd(\.dcx)?")
+            anibnd_entry = geombnd.find_entry_by_name_regex(r".*\.anibnd(\.dcx)?")
             if not anibnd_entry:
                 return self.error("GEOMBND binder does not contain an ANIBND binder.")
             skeleton_anibnd = anibnd = Binder.from_binder_entry(anibnd_entry)  # never `DivBinder`
@@ -222,7 +222,7 @@ class ImportAnyHKXAnimation(_BaseImportHKXAnimation, LoggingImportOperator):
         skeleton_hkx = self.read_skeleton(skeleton_anibnd, compendium)
 
         # Don't bother calling sub-operator if there are no HKX entries to offer.
-        if not anibnd.find_entries_matching_name(r"a.*\.hkx(\.dcx)?"):
+        if not anibnd.find_entries_by_name_regex(r"a.*\.hkx(\.dcx)?"):
             return self.error(f"Cannot find any HKX animation files in binder '{binder_path.name}'.")
 
         return ImportHKXAnimationWithBinderChoice.run(
@@ -247,7 +247,7 @@ class _BaseImportTypedHKXAnimation(_BaseImportHKXAnimation):
         except Exception as ex:
             return self.error(str(ex))
 
-        anim_hkx_entries = anibnd.find_entries_matching_name(r"a.*\.hkx(\.dcx)?")
+        anim_hkx_entries = anibnd.find_entries_by_name_regex(r"a.*\.hkx(\.dcx)?")
         if not anim_hkx_entries:
             raise AnimationImportError(
                 f"Cannot find any HKX animation files in '{anibnd.path_name}' for FLVER model '{model_name}'."
@@ -315,7 +315,7 @@ class ImportCharacterHKXAnimation(_BaseImportTypedHKXAnimation):
         except Exception as ex:
             return self.error(f"Error reading ANIBND '{anibnd_path}': {ex}")
 
-        sub_anibnd_stems = [entry.stem for entry in anibnd.find_entries_matching_name(r"c0000_.*\.txt")]
+        sub_anibnd_stems = [entry.stem for entry in anibnd.find_entries_by_name_regex(r"c0000_.*\.txt")]
         if not sub_anibnd_stems:
             return self.error("Could not find any sub-ANIBND definitions (e.g. 'c0000_a0x.txt') in c0000 ANIBND.")
         # NOTE: We don't check if the sub-ANIBND actually exist yet; they may not yet be in the project directory,
@@ -428,7 +428,7 @@ class ImportAssetHKXAnimation(_BaseImportTypedHKXAnimation):
         # Find ANIBND entry inside GEOMBND. Always uppercase, but we ignore case anyway.
         anibnd_name = f"{model_name.upper()}.anibnd"
         try:
-            anibnd_entry = geombnd.find_entry_matching_name(anibnd_name, flags=re.IGNORECASE)
+            anibnd_entry = geombnd.find_entry_by_name_regex(anibnd_name, flags=re.IGNORECASE)
         except EntryNotFoundError:
             raise AnimationImportError(f"GEOMBND of object '{model_name}' has no ANIBND '{anibnd_name}'.")
         skeleton_anibnd = anibnd = Binder.from_binder_entry(anibnd_entry)

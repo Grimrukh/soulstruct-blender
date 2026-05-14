@@ -153,7 +153,7 @@ class ExportNVMIntoAnyBinder(LoggingImportOperator):
             else:
                 nvm.dcx_type = DCXType.from_member_name(self.dcx_type)  # most likely `Null` for file in `nvmbnd` Binder
 
-            matching_entries = binder.find_entries_matching_name(rf"{model_stem}\.nvm(\.dcx)?")
+            matching_entries = binder.find_entries_by_name_regex(rf"{model_stem}\.nvm(\.dcx)?")
             if not matching_entries:
                 # Create new entry.
                 if "{map}" in self.default_entry_path:

@@ -34,13 +34,14 @@ class DDSTexture:
         "BC7_UNORM": 38,
     }
 
-    image: bpy.types.Image
+    image: bpy.types.Image | None
 
     def __init__(self, image: bpy.types.Image):
         # TODO: Could there be real game textures that are 1 pixel?
         if len(image.pixels) <= 4:
+            self.image = None
             raise SoulstructTypeError(
-                f"Blender image '{self.name}' contains one or less pixels. Cannot use as DDS Texture.")
+                f"Blender image '{image.name}' contains one or less pixels. Cannot use as DDS Texture.")
         self.image = image
 
     @property
@@ -131,7 +132,7 @@ class DDSTexture:
         """
         image_name = f"{name}{image_format.get_suffix()}"
         if image_cache_directory is None:
-            # Use a temporarily file.
+            # Use a temporary file.
             write_image_path = Path(f"~/AppData/Local/Temp/{image_name}").expanduser()
             is_temp_image = True
             # NOTE: We must pack Image data, but we don't warn about the incompatible setting here.

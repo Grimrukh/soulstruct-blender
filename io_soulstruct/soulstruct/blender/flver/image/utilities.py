@@ -26,8 +26,21 @@ def find_or_create_image(operator: LoggingOperator, context: bpy.types.Context, 
     else:
         # Blender image not found. Create empty 1x1 Blender image with no extension.
         bl_image = bpy.data.images.new(name=image_stem, width=1, height=1, alpha=True)
-        bl_image.pixels = [1.0, 0.0, 1.0, 1.0]  # magenta
-        if context.scene.flver_import_settings.import_textures:  # otherwise, expected to be missing
+        color = [1.0, 0.0, 1.0, 1.0]  # magenta
+        do_warning = context.scene.flver_import_settings.import_textures
+        if "systex" in image_stem:
+            do_warning = False
+            if "black" in image_stem:
+                color = [0.0, 0.0, 0.0, 1.0]
+            elif "white" in image_stem:
+                color = [1.0, 1.0, 1.0, 1.0]
+            elif "noise" in image_stem:
+                color = [0.5, 0.5, 0.5, 1.0]  # grey
+            elif "dummy" in image_stem:
+                color = [0.5, 0.5, 0.5, 1.0]  # grey
+        # noinspection PyTypeChecker
+        bl_image.pixels = color
+        if do_warning:
             operator.warning(
                 f"Could not find texture '{image_stem}' in Blender image data. "
                 f"Created 1x1 magenta Image."

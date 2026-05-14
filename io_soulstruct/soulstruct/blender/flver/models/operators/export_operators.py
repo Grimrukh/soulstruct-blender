@@ -176,7 +176,7 @@ class ExportFLVERIntoAnyBinder(LoggingImportOperator):
             return self.error(f"Could not load Binder file '{binder_file_path}'. Error: {ex}.")
 
         # Check for FLVER entry before doing any exporting.
-        flver_entries = binder.find_entries_matching_name(r".*\.flver(\.dcx)?")
+        flver_entries = binder.find_entries_by_name_regex(r".*\.flver(\.dcx)?")
         if not flver_entries:
             if self.default_entry_id == -1:
                 return self.error("No FLVER files found in Binder and default entry ID was left as -1.")
@@ -196,7 +196,7 @@ class ExportFLVERIntoAnyBinder(LoggingImportOperator):
             if len(flver_entries) > 1:
                 # Look for FLVER with matching name.
                 for entry in flver_entries:
-                    if entry.minimal_stem == bl_flver.game_name:
+                    if entry.stem == bl_flver.game_name:
                         self.info(
                             f"Multiple FLVER files found in Binder. Replacing entry with matching stem: "
                             f"{bl_flver.game_name}"
@@ -347,7 +347,7 @@ class ExportMapPieceFLVERs(LoggingOperator):
 
 
 class BaseGameFLVERBinderExportOperator(LoggingOperator):
-    """Base class for operator that exports a FLVER directly into game Binder (CHRBND, OBJBND, PARTSBND)."""
+    """Base class for operator that exports a FLVER directly into game Binder (MAPBND, CHRBND, OBJBND, PARTSBND)."""
 
     @staticmethod
     def _get_binder_path(settings: SoulstructSettings, model_stem: str) -> Path:

@@ -1,6 +1,6 @@
 # Soulstruct Extension for Blender
 
-**Get it here: **
+**Get it here: (TODO)**
 
 This Blender Extension add-on enables you to import a large number of different FromSoftware file formats,
 manipulate their data in Blender, and export them back to game files.
@@ -428,4 +428,3 @@ material shaders may not be handled well or at all.
 
 If you come across any problems or bugs, please file a Git bug report to help me improve the add-on.
 
-Version 2.0 was a signifificant overhaul, so bare with me if any new bugs have appeared.

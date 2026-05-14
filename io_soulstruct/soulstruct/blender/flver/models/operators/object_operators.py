@@ -8,6 +8,9 @@ __all__ = [
     "SyncMSBPartArmatures",
     "ClearFLVERSubmeshProperties",
     "AddFLVERSubmeshProperties",
+    "FLVERMaterialSlotAdd",
+    "FLVERMaterialSlotRemove",
+    "FLVERMaterialSlotMove",
 ]
 
 import bpy
@@ -211,10 +214,9 @@ class ClearFLVERSubmeshProperties(LoggingOperator):
 
 @io_soulstruct_class
 class AddFLVERSubmeshProperties(LoggingOperator):
-    """Add per-submesh properties on the active FLVER model, to use instead of global properties."""
     bl_idname = "flver.add_submesh_props"
-    bl_label = "Add Submesh Properties"
-    bl_description = "Add per-submesh properties on the active FLVER model, to use instead of global properties"
+    bl_label = "Add Per-Slot Submesh Properties"
+    bl_description = "Add per-material-slot submesh properties to the active FLVER object (replaces global settings)"
 
     @classmethod
     def poll(cls, context) -> bool:
@@ -224,18 +226,119 @@ class AddFLVERSubmeshProperties(LoggingOperator):
 
     def execute(self, context):
         bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
-        for material_slot in bl_flver.obj.material_slots:
-            material = material_slot.material
-            if not material:
-                continue  # empty slot, skip
-            submesh_props = bl_flver.type_properties.submesh_props.add()
-            submesh_props.material = material
-            submesh_props.is_dynamic = bl_flver.type_properties.global_is_dynamic
-            submesh_props.default_bone_index = bl_flver.type_properties.global_default_bone_index
-            submesh_props.face_set_count = bl_flver.type_properties.global_face_set_count
-            submesh_props.use_backface_culling = "MATERIAL"  # default
+        flver_props = bl_flver.type_properties
+        flver_props.submesh_props.clear()
+        for _slot in bl_flver.obj.material_slots:
+            entry = flver_props.submesh_props.add()
+            entry.is_dynamic = flver_props.global_is_dynamic
+            entry.default_bone_index = flver_props.global_default_bone_index
+            entry.face_set_count = flver_props.global_face_set_count
+            entry.use_backface_culling = "MATERIAL"
         self.info(
-            f"Added per-submesh properties for {len(bl_flver.type_properties.submesh_props)} materials on "
-            f"FLVER model '{bl_flver.name}'."
+            f"Added {len(flver_props.submesh_props)} per-slot submesh properties on FLVER '{bl_flver.name}'."
         )
+        return {"FINISHED"}
+
+
+@io_soulstruct_class
+class FLVERMaterialSlotAdd(LoggingOperator):
+    """Add a material slot to the active FLVER object and append a matching submesh props entry."""
+    bl_idname = "flver.material_slot_add"
+    bl_label = "Add Material Slot"
+    bl_description = "Add a material slot and a matching submesh properties entry to the active FLVER object"
+
+    @classmethod
+    def poll(cls, context) -> bool:
+        return (
+            context.mode == "OBJECT"
+            and context.active_object is not None
+            and context.active_object.type == "MESH"
+            and BlenderFLVER.is_obj_type(context.active_object)
+        )
+
+    def execute(self, context):
+        obj = context.active_object
+        bpy.ops.object.material_slot_add()  # adds slot at end, makes it active
+
+        props = obj.FLVER
+        if props.submesh_props:  # only sync if using per-slot mode
+            entry = props.submesh_props.add()
+            entry.is_dynamic = props.global_is_dynamic
+            entry.default_bone_index = props.global_default_bone_index
+            entry.face_set_count = props.global_face_set_count
+            entry.use_backface_culling = "MATERIAL"
+
+        return {"FINISHED"}
+
+
+@io_soulstruct_class
+class FLVERMaterialSlotRemove(LoggingOperator):
+    """Remove the active material slot from the active FLVER object and remove the matching submesh props entry."""
+    bl_idname = "flver.material_slot_remove"
+    bl_label = "Remove Material Slot"
+    bl_description = "Remove the active material slot and its matching submesh properties entry from the active FLVER object"
+
+    @classmethod
+    def poll(cls, context) -> bool:
+        return (
+            context.mode == "OBJECT"
+            and context.active_object is not None
+            and context.active_object.type == "MESH"
+            and BlenderFLVER.is_obj_type(context.active_object)
+            and len(context.active_object.material_slots) > 0
+        )
+
+    def execute(self, context):
+        obj = context.active_object
+        active_index = obj.active_material_index
+
+        props = obj.FLVER
+        if props.submesh_props and 0 <= active_index < len(props.submesh_props):
+            props.submesh_props.remove(active_index)
+
+        bpy.ops.object.material_slot_remove()  # removes active slot
+
+        return {"FINISHED"}
+
+
+@io_soulstruct_class
+class FLVERMaterialSlotMove(LoggingOperator):
+    """Move the active material slot up or down and keep submesh props in sync."""
+    bl_idname = "flver.material_slot_move"
+    bl_label = "Move Material Slot"
+    bl_description = "Move the active material slot up or down, keeping submesh properties in sync"
+
+    direction: bpy.props.EnumProperty(
+        name="Direction",
+        items=[
+            ("UP", "Up", "Move slot up"),
+            ("DOWN", "Down", "Move slot down"),
+        ],
+        default="UP",
+    )
+
+    @classmethod
+    def poll(cls, context) -> bool:
+        return (
+            context.mode == "OBJECT"
+            and context.active_object is not None
+            and context.active_object.type == "MESH"
+            and BlenderFLVER.is_obj_type(context.active_object)
+            and len(context.active_object.material_slots) >= 2
+        )
+
+    def execute(self, context):
+        obj = context.active_object
+        active_index = obj.active_material_index
+        n = len(obj.material_slots)
+
+        props = obj.FLVER
+        if props.submesh_props:
+            if self.direction == "UP" and active_index > 0:
+                props.submesh_props.move(active_index, active_index - 1)
+            elif self.direction == "DOWN" and active_index < n - 1:
+                props.submesh_props.move(active_index, active_index + 1)
+
+        bpy.ops.object.material_slot_move(direction=self.direction)
+
         return {"FINISHED"}

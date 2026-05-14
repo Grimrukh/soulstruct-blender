@@ -1,14 +1,3 @@
-__all__ = [
-    "BlenderMSBMapPiece",
-    "BlenderMSBObject",
-    "BlenderMSBCharacter",
-    "BlenderMSBPlayerStart",
-    "BlenderMSBCollision",
-    "BlenderMSBProtoboss",
-    "BlenderMSBNavmesh",
-    "BlenderMSBConnectCollision",
-]
-
 from .map_piece import BlenderMSBMapPiece
 from .object import BlenderMSBObject
 from .character import BlenderMSBCharacter
