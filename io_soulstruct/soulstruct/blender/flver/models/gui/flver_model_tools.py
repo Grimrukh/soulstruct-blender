@@ -4,6 +4,7 @@ __all__ = [
     "FLVERModelToolsPanel",
 ]
 
+from ..operators.object_operators import CutToNewFLVER
 from ....base.register import io_soulstruct_class
 from ....bpy_base.panel import SoulstructPanel
 from ....exceptions import SoulstructTypeError
@@ -50,6 +51,7 @@ class FLVERModelToolsPanel(SoulstructPanel):
             move_box.operator(CutMeshSelectionOperator.bl_idname)
             move_box.operator(ApplyLocalMatrixToMesh.bl_idname)
             move_box.operator(CopyToNewFLVER.bl_idname)
+            move_box.operator(CutToNewFLVER.bl_idname)
 
         header, panel = layout.panel("Bone Tools", default_closed=True)
         header.label(text="Bone Tools")
@@ -76,6 +78,7 @@ class FLVERModelToolsPanel(SoulstructPanel):
             panel.prop(context.scene.flver_tool_settings, "uv_scale")
             panel.operator(FastUVUnwrap.bl_idname)
             panel.operator(FastUVUnwrapIslands.bl_idname)
+            panel.operator(UVUnwrapPinSurrounding.bl_idname)
             panel.operator(RotateUVMapClockwise90.bl_idname)
             panel.operator(RotateUVMapCounterClockwise90.bl_idname)
 
@@ -84,11 +87,12 @@ class FLVERModelToolsPanel(SoulstructPanel):
         if panel:
             panel.label(text="Vertex Color Layer Name:")
             panel.prop(flver_tool_settings, "vertex_color_layer_name", text="")
-            panel.prop(flver_tool_settings, "set_selected_face_vertex_alpha_only")
-            panel.prop(flver_tool_settings, "set_active_material_vertex_alpha_only")
+            panel.prop(flver_tool_settings, "set_selected_face_vertex_color_only")
+            panel.prop(flver_tool_settings, "set_active_material_vertex_color_only")
             panel.operator(InvertVertexAlpha.bl_idname)
             panel.prop(flver_tool_settings, "vertex_alpha")
             panel.operator(SetVertexAlpha.bl_idname)
+            panel.operator(SetVertexColorWhite.bl_idname)
 
         header, panel = layout.panel("Dummy Tools", default_closed=True)
         header.label(text="Dummy Tools")

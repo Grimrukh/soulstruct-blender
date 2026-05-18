@@ -36,6 +36,12 @@ class CopyToNewFLVER(LoggingOperator):
         default="",
     )
 
+    duplicate_materials: bpy.props.BoolProperty(
+        name="Duplicate Materials",
+        description="Duplicate materials of selected faces",
+        default=False,
+    )
+
     @classmethod
     def poll(cls, context) -> bool:
         if context.mode != "EDIT_MESH" or not context.active_object or context.active_object.type != "MESH":
@@ -50,9 +56,55 @@ class CopyToNewFLVER(LoggingOperator):
             return self.error("Must select a Mesh in Edit Mode.")
 
         bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
-        new_bl_flver = bl_flver.duplicate_edit_mode(
+        new_bl_flver = bl_flver.to_new_bl_flver_edit_mode(
             context=context,
-            make_materials_single_user=True,
+            duplicate_selected_geometry=True,
+            make_materials_single_user=self.duplicate_materials,
+            copy_pose=True,  # copy pose immediately (not batched)
+        )
+        new_bl_flver.deep_rename(self.new_name or f"{bl_flver.name}_Copy")
+
+        return {"FINISHED"}
+
+
+@io_soulstruct_class
+class CutToNewFLVER(LoggingOperator):
+
+    bl_idname = "object.cut_to_new_flver"
+    bl_label = "Cut to New FLVER"
+    bl_description = ("Cut selected vertices, edges, and/or faces, their materials, and all FLVER bones and custom "
+                      "properties to a new FLVER model in the active collection. Must be in Edit Mode")
+
+    new_name: bpy.props.StringProperty(
+        name="New Model Name",
+        description="Name of the new FLVER model. If empty, will just add '_Copy' suffix to the original name",
+        default="",
+    )
+
+    duplicate_materials: bpy.props.BoolProperty(
+        name="Duplicate Materials",
+        description="Duplicate materials of selected faces",
+        default=False,
+    )
+
+    @classmethod
+    def poll(cls, context) -> bool:
+        if context.mode != "EDIT_MESH" or not context.active_object or context.active_object.type != "MESH":
+            return False
+        return BlenderFLVER.is_obj_type(context.active_object)
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
+    def execute(self, context):
+        if not self.poll(context):
+            return self.error("Must select a Mesh in Edit Mode.")
+
+        bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
+        new_bl_flver = bl_flver.to_new_bl_flver_edit_mode(
+            context=context,
+            duplicate_selected_geometry=False,
+            make_materials_single_user=self.duplicate_materials,
             copy_pose=True,  # copy pose immediately (not batched)
         )
         new_bl_flver.deep_rename(self.new_name or f"{bl_flver.name}_Copy")

@@ -5,7 +5,7 @@ __all__ = [
     "duplicate_armature",
     "duplicate_dummies",
     "duplicate",
-    "duplicate_edit_mode",
+    "to_new_bl_flver_edit_mode",
 ]
 
 import typing as tp
@@ -97,19 +97,23 @@ def duplicate(
     return bl_flver.__class__(new_mesh_obj)
 
 
-def duplicate_edit_mode(
+def to_new_bl_flver_edit_mode(
     bl_flver: BlenderFLVER,
     context: bpy.types.Context,
+    duplicate_selected_geometry: bool = True,
     make_materials_single_user=True,
     copy_pose=False,
 ) -> BlenderFLVER:
+    """Cut or copy (default) selected EDIT_MESH geometry to a new BlenderFLVER."""
     if context.edit_object != bl_flver.mesh:
         raise FLVERError(f"Mesh of FLVER model '{bl_flver.name}' is not currently being edited in Edit Mode.")
 
-    # Duplicate selected mesh data, then separate it into new object. Note that the `separate` operator will add the
-    # new mesh to the same collection(s) automatically.
-    bpy.ops.mesh.duplicate()
-    bpy.ops.mesh.separate(type="SELECTED")  # new data-block; also copies properties, materials, data layers, etc.
+    if duplicate_selected_geometry:
+        # Duplicate selected mesh data, then separate it into new object. Note that the `separate` operator will add the
+        # new mesh to the same collection(s) automatically.
+        bpy.ops.mesh.duplicate()
+
+    bpy.ops.mesh.separate(type="SELECTED")  # new data-block; also copies properties, data layers, etc. (NOT materials)
 
     # noinspection PyTypeChecker
     new_mesh_obj = context.selected_objects[-1]  # type: MeshObject

@@ -29,6 +29,8 @@ def _get_display_mask_id_items(self, context) -> list[tuple[str, str, str]]:
         if obj.type != ObjectType.MESH:
             continue
         for mat in obj.data.materials:
+            if not mat:
+                continue  # null slot
             if match := Material.DISPLAY_MASK_RE.match(mat.name):
                 mask_id = match.group(1)
                 mask_id_set.add(mask_id)
@@ -59,14 +61,14 @@ class FLVERToolSettings(SoulstructPropertyGroup):
         min=0.0,
         max=1.0,
     )
-    set_selected_face_vertex_alpha_only: bpy.props.BoolProperty(
-        name="Set Selected Face Vertex Alpha Only",
-        description="Only set alpha values for loops (face corners) that are part of selected faces",
+    set_selected_face_vertex_color_only: bpy.props.BoolProperty(
+        name="Set Selected Face Vertex Color/Alpha Only",
+        description="Only set color/alpha values for loops (face corners) that are part of selected faces",
         default=False,
     )
-    set_active_material_vertex_alpha_only: bpy.props.BoolProperty(
-        name="Set Active Material Vertex Alpha Only",
-        description="Only set alpha values for loops (face corners) that are part of faces with active material",
+    set_active_material_vertex_color_only: bpy.props.BoolProperty(
+        name="Set Active Material Vertex ColorAlpha Only",
+        description="Only set color/alpha values for loops (face corners) that are part of faces with active material",
         default=False,
     )
     dummy_id_draw_enabled: bpy.props.BoolProperty(

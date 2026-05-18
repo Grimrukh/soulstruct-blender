@@ -233,9 +233,10 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
         """
         return duplicate(self, context, collections, make_materials_single_user, copy_pose)
 
-    def duplicate_edit_mode(
+    def to_new_bl_flver_edit_mode(
         self,
         context: bpy.types.Context,
+        duplicate_selected_geometry: bool = True,
         make_materials_single_user=True,
         copy_pose=False,
     ) -> BlenderFLVER:
@@ -243,7 +244,13 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
 
         As with `duplicate()`, nothing is renamed; the caller can do that as desired.
         """
-        return duplicate_edit_mode(self, context, make_materials_single_user, copy_pose)
+        return to_new_bl_flver_edit_mode(
+            self,
+            context,
+            duplicate_selected_geometry=duplicate_selected_geometry,
+            make_materials_single_user=make_materials_single_user,
+            copy_pose=copy_pose
+        )
 
     def sync_msb_part_armatures(self, context: bpy.types.Context) -> list[MeshObject]:
         """Find all MSB Part instances that use this FLVER as their model, and sync their Armatures to this FLVER's

@@ -234,8 +234,6 @@ class MergeFLVERMaterials(LoggingOperator):
             if obj.type == "MESH" and obj.soulstruct_type == SoulstructType.FLVER
             and (not self.map_pieces_only or obj.name.startswith("m"))
         ]  # type: list[MeshObject]
-        if len(flver_objects) < 2:
-            return self.error("At least two FLVER Mesh model objects must be in data and/or selected.")
 
         # Maps material hashes to their single merged instances (copied from first instance found).
         merged_materials = {}
@@ -296,7 +294,8 @@ class MergeFLVERMaterials(LoggingOperator):
                     continue  # merged material was created above
                 # This is a unique material that was not merged with any other material. We rename it anyway as asked.
                 # Note that there may be multiple users of this unique material - all will see the name change.
-                material.name = self.get_merged_material_name(BlenderFLVERMaterial(material))
+                attempt_name = material.name = self.get_merged_material_name(BlenderFLVERMaterial(material))
+                self.info(f"Renamed single-user material: {attempt_name} (effective = {material.name})")
 
         self.info(f"Created {len(merged_materials)} merged materials across {len(flver_objects)} objects.")
 
