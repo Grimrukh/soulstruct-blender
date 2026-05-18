@@ -85,6 +85,7 @@ class FLVERModelToolsPanel(SoulstructPanel):
             panel.label(text="Vertex Color Layer Name:")
             panel.prop(flver_tool_settings, "vertex_color_layer_name", text="")
             panel.prop(flver_tool_settings, "set_selected_face_vertex_alpha_only")
+            panel.prop(flver_tool_settings, "set_active_material_vertex_alpha_only")
             panel.operator(InvertVertexAlpha.bl_idname)
             panel.prop(flver_tool_settings, "vertex_alpha")
             panel.operator(SetVertexAlpha.bl_idname)

@@ -154,13 +154,13 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
         self.deep_rename(new_name)
 
     def get_dummies(self, operator: LoggingOperator | None = None) -> list[BlenderFLVERDummy]:
-        """Find all FLVER Dummy (empty children of root object with expected name).
+        """Find all FLVER Dummy (empty children of Armature parent, i.e. siblings of Mesh, with expected name).
 
         If `operator` is provided, warnings will be logged for any Empty children that do not match the expected name
         pattern.
         """
         if not self.armature:
-            return []
+            return []  # Dummies require a FLVER Armature parent
 
         dummies = []
         for child in self.armature.children:

@@ -64,6 +64,11 @@ class FLVERToolSettings(SoulstructPropertyGroup):
         description="Only set alpha values for loops (face corners) that are part of selected faces",
         default=False,
     )
+    set_active_material_vertex_alpha_only: bpy.props.BoolProperty(
+        name="Set Active Material Vertex Alpha Only",
+        description="Only set alpha values for loops (face corners) that are part of faces with active material",
+        default=False,
+    )
     dummy_id_draw_enabled: bpy.props.BoolProperty(
         name="Draw Dummy IDs",
         description="Draw IDs of selected FLVER's Dummies in 3D view",

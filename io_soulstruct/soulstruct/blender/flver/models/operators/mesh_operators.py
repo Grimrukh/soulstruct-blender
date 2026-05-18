@@ -159,11 +159,14 @@ class SetVertexAlpha(LoggingOperator):
         if not vertex_colors:
             bm.free()
             return self.error(f"Mesh does not have a '{tool_settings.vertex_color_layer_name}' vertex color layer.")
+        active_mat_index = context.active_object.active_material_index
 
         alpha = tool_settings.vertex_alpha
         count = 0
         for face in bm.faces:
             if tool_settings.set_selected_face_vertex_alpha_only and not face.select:
+                continue
+            if tool_settings.set_active_material_vertex_alpha_only and face.material_index != active_mat_index:
                 continue
             for loop in face.loops:
                 if loop.vert.select:
@@ -201,10 +204,13 @@ class InvertVertexAlpha(LoggingOperator):
         if not vertex_colors:
             bm.free()
             return self.error(f"Mesh does not have a '{tool_settings.vertex_color_layer_name}' vertex color layer.")
+        active_mat_index = context.active_object.active_material_index
 
         count = 0
         for face in bm.faces:
             if tool_settings.set_selected_face_vertex_alpha_only and not face.select:
+                continue
+            if tool_settings.set_active_material_vertex_alpha_only and face.material_index != active_mat_index:
                 continue
             for loop in face.loops:
                 if loop.vert.select:
