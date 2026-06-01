@@ -11,6 +11,7 @@ import bpy
 
 from ..base.register import io_soulstruct_class
 from ..bpy_base.panel import SoulstructPanel
+from .generators import *
 from .misc_mesh import *
 from .misc_other import *
 from .misc_outliner import *
@@ -28,6 +29,8 @@ class MiscSoulstructMeshOperatorsPanel(SoulstructPanel):
 
     def draw(self, context):
         layout = self.layout
+        if not layout:
+            return
 
         layout.label(text="Mesh Tools:")
         layout.operator(CopyMeshSelectionOperator.bl_idname)
@@ -42,6 +45,11 @@ class MiscSoulstructMeshOperatorsPanel(SoulstructPanel):
         layout.operator(WeightVerticesWithFalloff.bl_idname)
         layout.operator(ApplyModifierNonSingleUser.bl_idname)
 
+        layout.label(text="Mesh Gen:")
+        layout.operator(GenerateRock.bl_idname)
+        layout.operator(GenerateBrick.bl_idname)
+        layout.operator(GenerateSlab.bl_idname)
+
 
 @io_soulstruct_class
 class MiscSoulstructCollectionOperatorsPanel(SoulstructPanel):
@@ -54,6 +62,8 @@ class MiscSoulstructCollectionOperatorsPanel(SoulstructPanel):
 
     def draw(self, context):
         layout = self.layout
+        if not layout:
+            return
 
         self.draw_active_map(context, layout)
 
@@ -176,4 +186,6 @@ class MiscSoulstructOtherOperatorsPanel(SoulstructPanel):
 
     def draw(self, context):
         layout = self.layout
+        if not layout:
+            return
         layout.operator(PrintGameTransform.bl_idname)

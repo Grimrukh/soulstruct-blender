@@ -843,7 +843,7 @@ class ApplyModifierNonSingleUser(LoggingOperator):
 
     @classmethod
     def poll(cls, context) -> bool:
-        return (
+        return bool(
             context.mode == "OBJECT"
             and context.active_object
             and context.active_object.type == "MESH"
