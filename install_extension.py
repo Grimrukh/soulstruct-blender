@@ -108,8 +108,8 @@ def inject_soulstruct(bl_version: str = "5.1") -> int:
 
 
 def pip_install_pyrelink(
+    firelink_source_dir: Path,
     bl_version: str = "5.1",
-    firelink_source_dir: Path = None,
     no_build_isolation: bool = False,
 ) -> int:
     """Pip-install pyrelink from a local Firelink source directory into Blender's .local site-packages."""
@@ -226,8 +226,8 @@ def main(args):
             _LOGGER.error("--install-pyrelink requires --firelink-source-dir.")
             return 1
         if result := pip_install_pyrelink(
-            bl_version=parsed.blenderversion,
             firelink_source_dir=parsed.firelink_source_dir,
+            bl_version=parsed.blenderversion,
             no_build_isolation=parsed.no_build_isolation,
         ):
             return result

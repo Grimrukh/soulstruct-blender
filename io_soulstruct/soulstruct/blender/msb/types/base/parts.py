@@ -2,14 +2,15 @@ from __future__ import annotations
 
 __all__ = [
     "BaseBlenderMSBPart",
-    "PART_T",
 ]
 
 import abc
 import typing as tp
 
 import bpy
+from bpy.types import PropertyGroup
 
+from soulstruct.base.maps.msb.core import MSB as BaseMSB
 from soulstruct.base.maps.msb.parts import BaseMSBPart
 from soulstruct.base.maps.msb.utils import BitSet
 
@@ -21,18 +22,16 @@ from ....msb.types.adapters import *
 from ....types import *
 from ....utilities import *
 
-from .entry import BaseBlenderMSBEntry, SUBTYPE_PROPS_T, MSB_T
+from .entry import BaseBlenderMSBEntry
 from .part_armature_duplicator import PartArmatureDuplicator
 
-PART_T = tp.TypeVar("PART_T", bound=BaseMSBPart)
-BIT_SET_T = tp.TypeVar("BIT_SET_T", bound=BitSet)
 
-
-class BaseBlenderMSBPart(
-    BaseBlenderMSBEntry[PART_T, MSBPartProps, SUBTYPE_PROPS_T, MSB_T],
-    abc.ABC,
-    tp.Generic[PART_T, SUBTYPE_PROPS_T, MSB_T, BIT_SET_T],  # added `BitSet` generic
-):
+class BaseBlenderMSBPart[
+    PART_T: BaseMSBPart,
+    SUBTYPE_PROPS_T: PropertyGroup,
+    MSB_T: BaseMSB,
+    BIT_SET_T: BitSet,  # added parameter
+](BaseBlenderMSBEntry[PART_T, MSBPartProps, SUBTYPE_PROPS_T, MSB_T], abc.ABC):
     """MSB Part instance of a FLVER, Collision (HKX), or Navmesh (NVM) model of the corresponding Part subtype, with
     an additional generic parameter for game-specific `BitSet` type.
 
@@ -109,7 +108,7 @@ class BaseBlenderMSBPart(
         context: bpy.types.Context,
         soulstruct_obj: PART_T,
         name: str,
-        collection: bpy.types.Collection = None,
+        collection: bpy.types.Collection | None = None,
         *,
         map_stem="",
         armature_mode=MSBPartArmatureMode.CUSTOM_ONLY,
@@ -125,18 +124,18 @@ class BaseBlenderMSBPart(
         if soulstruct_obj.model:
             # Blender model objects use the full file stem, not just the `MSBModel.name`.
             model_name = soulstruct_obj.model.get_model_file_stem(map_stem)
-            model = cls._MODEL_ADAPTER.get_blender_model(context, model_name)  # will create placeholder if missing
+            bl_model = cls._MODEL_ADAPTER.get_blender_model(context, model_name)  # will create placeholder if missing
         else:
             operator.warning(f"MSB Part '{name}' has no model set in the MSB.")
-            model = None  # empty model reference (very unusual)
-        model_mesh = model.data if model else bpy.data.meshes.new(name)
-        bl_part = cls.new(name, model_mesh, collection)  # type: tp.Self
-        bl_part.model = model  # NOTE: will redundantly set the Mesh data again but we can't avoid it
+            bl_model = None  # empty model reference (very unusual)
+        model_mesh = bl_model.data if bl_model else bpy.data.meshes.new(name)
+        bl_part = tp.cast(tp.Self, cls.new(name, model_mesh, collection))
+        bl_part.model = bl_model  # NOTE: will redundantly set the Mesh data again but we can't avoid it
 
         if cls._MODEL_ADAPTER.bl_model_type == SoulstructType.FLVER:  # FLVER-based Parts only
             # Check if we should duplicate model's Armature to Part. We do this BEFORE setting the Part transform.
             PartArmatureDuplicator.maybe_instance_flver_model_armature(
-                operator, context, armature_mode, bl_part, model
+                operator, context, armature_mode, bl_part, bl_model
             )
 
         # Transform will be set to Part's Armature parent if created above.
@@ -180,16 +179,20 @@ class BaseBlenderMSBPart(
         return created
 
     def copy_model_armature_pose(self):
+        if not (bl_model := self.model):
+            raise ValueError("Part has no model to copy Armature pose from.")
+        if not (bl_armature := self.armature):
+            raise ValueError("Part has no Armature to copy Armature pose into.")
         if self._MODEL_ADAPTER.bl_model_type != SoulstructType.FLVER:
             raise TypeError("Only FLVER-based Parts can have their model Armature pose copied.")
         if not self.armature:
             raise ValueError("Part does not have an Armature parent to copy pose from.")
         if not self.model:
             raise ValueError("Part has no model to copy Armature pose from.")
-        bl_flver = BlenderFLVER(self.model)
-        if not bl_flver.armature:
+        bl_flver = BlenderFLVER(bl_model)
+        if not (bl_flver_armature := bl_flver.armature):
             return  # harmless case
-        copy_armature_pose(bl_flver.armature, self.armature, ignore_bone_names={"<PART_ROOT>"})
+        copy_armature_pose(bl_flver_armature, bl_armature, ignore_bone_names={"<PART_ROOT>"})
 
     def resolve_msb_entry_refs_and_map_stem(
         self,
@@ -200,9 +203,11 @@ class BaseBlenderMSBPart(
         map_stem: str,
     ):
         """Can be overridden by Parts that require a deferred additional call after all MSB entries are created."""
+        if not (bl_model := self.model):
+            raise ValueError("Part has no model to set MSB model data from.")
         super().resolve_msb_entry_refs_and_map_stem(operator, context, msb_entry, msb, map_stem)
 
-        self._MODEL_ADAPTER.set_msb_model(operator, self.model, msb_entry, msb, map_stem)
+        self._MODEL_ADAPTER.set_msb_model(operator, bl_model, msb_entry, msb, map_stem)
         msb_entry.set_auto_sib_path(map_stem)
 
     @property

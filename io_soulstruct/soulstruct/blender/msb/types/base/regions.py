@@ -9,6 +9,7 @@ import typing as tp
 import bpy
 
 from soulstruct.base.maps.msb.region_shapes import *
+from soulstruct.base.maps.msb.core import MSB as BaseMSB
 from soulstruct.base.maps.msb.regions import BaseMSBRegion
 
 from ....base.operators import *
@@ -19,13 +20,13 @@ from ....msb.utilities import *
 from ....types import *
 from ....utilities import find_or_create_collection
 
-from .entry import BaseBlenderMSBEntry, MSB_T
+from .entry import BaseBlenderMSBEntry
 
 
-REGION_T = tp.TypeVar("REGION_T", bound=BaseMSBRegion)
-
-
-class BaseBlenderMSBRegion(BaseBlenderMSBEntry[REGION_T, MSBRegionProps, None, MSB_T]):
+class BaseBlenderMSBRegion[
+    REGION_T: BaseMSBRegion,
+    MSB_T: BaseMSB,
+](BaseBlenderMSBEntry[REGION_T, MSBRegionProps, None, MSB_T]):
     """Identical across early games, before Regions had events merged into them.
 
     TODO: Currently has no subtype properties, but this will change when later games are supported.
@@ -118,7 +119,7 @@ class BaseBlenderMSBRegion(BaseBlenderMSBEntry[REGION_T, MSBRegionProps, None, M
         context: bpy.types.Context,
         shape_type: RegionShapeType,
         name: str,
-        collection: bpy.types.Collection = None,
+        collection: bpy.types.Collection | None = None,
         **kwargs,
     ) -> tp.Self:
         collection = collection or context.scene.collection
@@ -127,40 +128,40 @@ class BaseBlenderMSBRegion(BaseBlenderMSBEntry[REGION_T, MSBRegionProps, None, M
         if shape_type == RegionShapeType.Point:
             mesh = bpy.data.meshes.new(name)
             primitive_three_axes(mesh)
-            bl_region = cls.new(name, mesh, collection)  # type: tp.Self
+            bl_region = tp.cast(tp.Self, cls.new(name, mesh, collection))
             bl_region.shape_type = RegionShapeType.Point
             # Points also have axes enabled.
             bl_region.obj.show_axis = True
         elif shape_type == RegionShapeType.Circle:
             mesh = bpy.data.meshes.new(name)
             primitive_circle(mesh)
-            bl_region = cls.new(name, mesh, collection)  # type: tp.Self
+            bl_region = tp.cast(tp.Self, cls.new(name, mesh, collection))
             bl_region.shape_type = RegionShapeType.Circle
             bl_region.radius = kwargs.pop("radius", 1.0)
         elif shape_type == RegionShapeType.Sphere:
             mesh = bpy.data.meshes.new(name)
             primitive_cube(mesh)
-            bl_region = cls.new(name, mesh, collection)  # type: tp.Self
+            bl_region = tp.cast(tp.Self, cls.new(name, mesh, collection))
             bl_region.shape_type = RegionShapeType.Sphere
             bl_region.radius = kwargs.pop("radius", 1.0)
         elif shape_type == RegionShapeType.Cylinder:
             mesh = bpy.data.meshes.new(name)
             primitive_cube(mesh)
-            bl_region = cls.new(name, mesh, collection)  # type: tp.Self
+            bl_region = tp.cast(tp.Self, cls.new(name, mesh, collection))
             bl_region.shape_type = RegionShapeType.Cylinder
             bl_region.radius = kwargs.pop("radius", 1.0)
             bl_region.height = kwargs.pop("height", 1.0)
         elif shape_type == RegionShapeType.Rect:
             mesh = bpy.data.meshes.new(name)
             primitive_rect(mesh)
-            bl_region = cls.new(name, mesh, collection)  # type: tp.Self
+            bl_region = tp.cast(tp.Self, cls.new(name, mesh, collection))
             bl_region.shape_type = RegionShapeType.Rect
             bl_region.width = kwargs.pop("width", 1.0)
             bl_region.depth = kwargs.pop("depth", 1.0)
         elif shape_type == RegionShapeType.Box:
             mesh = bpy.data.meshes.new(name)
             primitive_cube(mesh)
-            bl_region = cls.new(name, mesh, collection)  # type: tp.Self
+            bl_region = tp.cast(tp.Self, cls.new(name, mesh, collection))
             bl_region.shape_type = RegionShapeType.Box
             bl_region.width = kwargs.pop("width", 1.0)
             bl_region.depth = kwargs.pop("depth", 1.0)
@@ -170,7 +171,7 @@ class BaseBlenderMSBRegion(BaseBlenderMSBEntry[REGION_T, MSBRegionProps, None, M
             raise TypeError(f"Unsupported MSB region shape: {shape_type}")
 
         if kwargs:
-            raise TypeError(f"Invalid dimension arguments for shape type {shape_type}: {kwargs.keys()}")
+            raise TypeError(f"Invalid dimension arguments for shape type {shape_type}: {kwargs}")
 
         bl_region.shape_type = shape_type
         bl_region.type_properties.region_subtype = BlenderMSBRegionSubtype.All  # no subtypes for DS1
@@ -188,7 +189,7 @@ class BaseBlenderMSBRegion(BaseBlenderMSBEntry[REGION_T, MSBRegionProps, None, M
         context: bpy.types.Context,
         soulstruct_obj: REGION_T,
         name: str,
-        collection: bpy.types.Collection = None,
+        collection: bpy.types.Collection | None = None,
     ) -> tp.Self:
         """Creates the appropriate Mesh depending on the region type.
 
@@ -200,7 +201,10 @@ class BaseBlenderMSBRegion(BaseBlenderMSBEntry[REGION_T, MSBRegionProps, None, M
             raise MSBRegionImportError(f"Cannot yet import MSB region shape: {shape.SHAPE_TYPE.name}")
 
         kwargs = {field: getattr(shape, field) for field in shape.SHAPE_FIELDS}
-        bl_region = cls.new_from_shape_type(operator, context, shape.SHAPE_TYPE, name, collection, **kwargs)
+        bl_region = tp.cast(
+            tp.Self,
+            cls.new_from_shape_type(operator, context, shape.SHAPE_TYPE, name, collection, **kwargs),
+        )
         bl_region._read_props_from_soulstruct_obj(operator, context, soulstruct_obj)
 
         return bl_region

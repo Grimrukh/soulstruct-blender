@@ -27,6 +27,10 @@ if tp.TYPE_CHECKING:
     from ..general.properties import SoulstructSettings
 
 _LOGGER = logging.getLogger("soulstruct.blender")
+# Logging threshold for Blender report. ERRORS are always reported.
+# Stored here so it can be manipulated without needing to import this module.
+if not hasattr(_LOGGER, "blender_log_level"):
+    _LOGGER.blender_log_level = logging.WARNING
 
 
 class LoggingOperator(bpy.types.Operator):
@@ -49,22 +53,22 @@ class LoggingOperator(bpy.types.Operator):
             LoggingOperator.INITIAL_DEBUG_SETTING_DONE = True
         return _settings
 
-    def debug(self, msg: str, report=False):
+    def debug(self, msg: str, report: bool | None = None):
         """Logged and optionally reported (as INFO) in Blender."""
         _LOGGER.debug(msg, stacklevel=2)
-        if report and _LOGGER.level <= logging.DEBUG:
+        if report is not False and _LOGGER.blender_log_level <= logging.DEBUG:
             self.report({"INFO"}, f"DEBUG: {msg}")
 
-    def info(self, msg: str, report=False):
+    def info(self, msg: str, report: bool | None = None):
         """Logged and optionally reported in Blender."""
         _LOGGER.info(msg, stacklevel=2)
-        if report:
+        if report is not False and _LOGGER.blender_log_level <= logging.INFO:
             self.report({"INFO"}, msg)
 
-    def warning(self, msg: str, report=True):
+    def warning(self, msg: str, report: bool | None = None):
         """Logged and optionally reported in Blender."""
         _LOGGER.warning(msg, stacklevel=2)
-        if report:
+        if report is not False and _LOGGER.blender_log_level <= logging.WARNING:
             self.report({"WARNING"}, msg)
 
     def error(self, msg: str) -> set[str]:
@@ -262,7 +266,7 @@ class BinderEntrySelectOperator(LoggingOperator):
             if not self.filter_binder_entry(context, entry):
                 continue
             # We use the index to ensure unique file names while allowing duplicate entry names (e.g. Regions).
-            file_name = f"({entry.id}) {entry.name}"  # name will include extension
+            file_name = f"({entry.entry_id}) {entry.name}"  # name will include extension
             file_path = Path(self.temp_directory, file_name)
             with file_path.open("w") as f:
                 f.write(entry.name)

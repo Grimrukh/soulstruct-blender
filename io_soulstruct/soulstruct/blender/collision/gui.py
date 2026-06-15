@@ -5,7 +5,7 @@ __all__ = [
     "MapCollisionToolsPanel",
 ]
 
-from ..base.register import io_soulstruct_class
+from ..base.register import io_soulstruct_panel
 from ..bpy_base.panel import SoulstructPanel
 from ..exceptions import SoulstructTypeError
 from ..misc.misc_mesh import *
@@ -15,7 +15,7 @@ from .misc_operators import *
 from .types import BlenderMapCollision
 
 
-@io_soulstruct_class
+@io_soulstruct_panel
 class MapCollisionImportExportPanel(SoulstructPanel):
     """Contains import and export operators for HKX Map Collision models."""
 
@@ -58,7 +58,7 @@ class MapCollisionImportExportPanel(SoulstructPanel):
         export_box.operator(ExportHKXMapCollisionIntoAnyBinder.bl_idname)
 
 
-@io_soulstruct_class
+@io_soulstruct_panel
 class MapCollisionToolsPanel(SoulstructPanel):
     """Contains miscellaneous settings/operators for HKX Map Collision models."""
 

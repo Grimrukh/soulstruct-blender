@@ -66,10 +66,10 @@ _HKX_GAME_PACKAGE_MAP = {
 def _guess_hkx_class(hkx_entry: BinderEntry, class_name: str) -> type[HKX]:
     """Find game-specific HKX subclass from HKX file of unknown packfile/tagfile type."""
     data = hkx_entry.get_uncompressed_data()
-    packfile_version = data[0x28:0x38]
-    tagfile_version = data[0x10:0x18]
+    packfile_version = data[0x28:0x36]  # exactly 14 bytes
+    tagfile_version = data[0x10:0x18]  # exactly 8 bytes
     for (is_tagfile, expected_data), game_package in _HKX_GAME_PACKAGE_MAP.items():
-        if is_tagfile and expected_data == tagfile_version:
+        if (is_tagfile and expected_data == tagfile_version) or (not is_tagfile and expected_data == packfile_version):
             try:
                 return getattr(game_package, class_name)  # type: type[HKX]
             except AttributeError:
@@ -83,7 +83,7 @@ def _guess_hkx_class(hkx_entry: BinderEntry, class_name: str) -> type[HKX]:
     )
 
 
-def read_animation_hkx_entry(hkx_entry: BinderEntry, compendium: HKX = None) -> ANIMATION_TYPING:
+def read_animation_hkx_entry(hkx_entry: BinderEntry, compendium: HKX | None = None) -> ANIMATION_TYPING:
     """Read animation HKX file from a Binder entry and return the appropriate `AnimationHKX` subclass instance."""
     animation_hkx_class = _guess_hkx_class(hkx_entry, "AnimationHKX")
     animation_hkx = animation_hkx_class.from_bytes(hkx_entry.get_uncompressed_data(), compendium=compendium)
@@ -92,7 +92,7 @@ def read_animation_hkx_entry(hkx_entry: BinderEntry, compendium: HKX = None) -> 
     return animation_hkx
 
 
-def read_skeleton_hkx_entry(hkx_entry: BinderEntry, compendium: HKX = None) -> SKELETON_TYPING:
+def read_skeleton_hkx_entry(hkx_entry: BinderEntry, compendium: HKX | None = None) -> SKELETON_TYPING:
     """Read skeleton HKX file from a Binder entry and return the appropriate `SkeletonHKX` subclass instance."""
     skeleton_hkx_class = _guess_hkx_class(hkx_entry, "SkeletonHKX")
     skeleton_hkx = skeleton_hkx_class.from_bytes(hkx_entry.get_uncompressed_data(), compendium=compendium)

@@ -6,12 +6,12 @@ __all__ = [
 
 import bpy
 
-from ...base.register import io_soulstruct_class
+from ...base.register import io_soulstruct_panel
 from .operators import *
 from .utils import count_states, objects_by_state
 
 
-@io_soulstruct_class
+@io_soulstruct_panel
 class MapProgressPanel(bpy.types.Panel):
     bl_label = "Map Progress"
     bl_idname = "MAPPROG_PT_progress"

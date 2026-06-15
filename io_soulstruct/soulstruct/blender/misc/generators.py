@@ -15,7 +15,7 @@ import bmesh
 from mathutils import Matrix, Vector
 
 from ..base.operators import LoggingOperator
-from ..base.register import io_soulstruct_class
+from ..base.register import io_soulstruct_operator
 from ..types import MeshObject
 
 
@@ -73,7 +73,7 @@ def _assign_vertex_group(obj: MeshObject, vg_name: str, vert_indices: list[int])
 # Operators
 # ---------------------------------------------------------------------------
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class GenerateRock(LoggingOperator):
     bl_idname = "mesh.generate_rock"
     bl_label = "Generate Rock"
@@ -319,7 +319,7 @@ class GenerateRock(LoggingOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class GenerateBrick(LoggingOperator):
     bl_idname = "mesh.generate_brick"
     bl_label = "Generate Brick"
@@ -471,7 +471,7 @@ class GenerateBrick(LoggingOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class GenerateSlab(LoggingOperator):
     bl_idname = "mesh.generate_slab"
     bl_label = "Generate Slab"

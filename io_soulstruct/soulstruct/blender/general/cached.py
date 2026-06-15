@@ -12,7 +12,7 @@ from soulstruct.containers import Binder
 from soulstruct.utilities.files import get_blake2b_hash
 
 if tp.TYPE_CHECKING:
-    from soulstruct.base.base_binary_file import BASE_BINARY_FILE_T
+    from soulstruct.base.base_binary_file import BaseBinaryFile
 
 
 # Maps file paths to `(BaseBinaryFile, blake2b_hash)` tuples for caching. Useful for inspecting, say, MSB files
@@ -20,7 +20,9 @@ if tp.TYPE_CHECKING:
 _CACHED_FILES = {}
 
 
-def get_cached_file(file_path: Path | str, file_type: type[BASE_BINARY_FILE_T]) -> BASE_BINARY_FILE_T:
+def get_cached_file[BASE_BINARY_FILE_T: BaseBinaryFile](
+    file_path: Path | str, file_type: type[BASE_BINARY_FILE_T]
+) -> BASE_BINARY_FILE_T:
     """Load a `BaseBinaryFile` from disk and cache it in a global dictionary.
 
     NOTE: Obviously, these cached `BaseBinaryFile` instances should be read-only, generally speaking, unless they are

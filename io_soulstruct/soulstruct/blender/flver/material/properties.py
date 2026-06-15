@@ -13,7 +13,7 @@ import bpy
 from soulstruct.flver import GXItem
 from soulstruct.games import *
 
-from ...base.register import io_soulstruct_class, io_soulstruct_pointer_property
+from ...base.register import io_soulstruct_properties, io_soulstruct_pointer_property
 from ...bpy_base.property_group import SoulstructPropertyGroup
 from ...flver.image.enums import BlenderImageFormat
 
@@ -46,7 +46,7 @@ def _check_gx_item_data(self, context: str) -> None:
     # Valid.
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 class FLVERGXItemProps(bpy.types.PropertyGroup):
     """Extension properties for FLVER `GXItem` collection on `FLVERMaterialProps`.
 
@@ -97,7 +97,7 @@ class FLVERGXItemProps(bpy.types.PropertyGroup):
         return bytes(bytearray.fromhex(self.data))
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 @io_soulstruct_pointer_property(bpy.types.Material, "FLVER_MATERIAL")
 class FLVERMaterialProps(SoulstructPropertyGroup):
     """Extension properties for Blender materials that represent FLVER materials.
@@ -176,7 +176,7 @@ class FLVERMaterialProps(SoulstructPropertyGroup):
     )
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 @io_soulstruct_pointer_property(bpy.types.Scene, "flver_material_settings")
 class FLVERMaterialSettings(bpy.types.PropertyGroup):
     """Global (Scene) settings for FLVER material import/export."""

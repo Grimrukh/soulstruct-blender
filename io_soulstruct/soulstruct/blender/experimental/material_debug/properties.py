@@ -9,7 +9,7 @@ __all__ = [
 
 import bpy
 
-from ...base.register import io_soulstruct_class, io_soulstruct_pointer_property
+from ...base.register import io_soulstruct_properties, io_soulstruct_pointer_property
 
 DEBUG_GROUP_NAME = "SoulstructDebugGroup"
 DEBUG_WRAP_LABEL = "SoulstructDebugWrap"
@@ -32,7 +32,7 @@ def _material_debug_sync(self, context):
     sync_material_debug_nodes(context)
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 @io_soulstruct_pointer_property(bpy.types.Scene, "material_debug_settings")
 class MaterialDebugSettings(bpy.types.PropertyGroup):
     """Global add-on settings stored in Scene."""

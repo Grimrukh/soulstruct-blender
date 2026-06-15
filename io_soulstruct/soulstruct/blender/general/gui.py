@@ -15,7 +15,7 @@ __all__ = [
 import bpy
 from soulstruct.games import DEMONS_SOULS
 
-from ..base.register import io_soulstruct_class
+from ..base.register import io_soulstruct_panel
 from ..bpy_base.panel import SoulstructPanel
 from ..types import SoulstructType
 from .properties import SoulstructSettings
@@ -88,7 +88,7 @@ class _BaseGlobalSettingsPanel(SoulstructPanel):
         layout.prop(settings, "batch_import_flvers")
 
 
-@io_soulstruct_class
+@io_soulstruct_panel
 class GlobalSettingsPanel(_BaseGlobalSettingsPanel):
     """SCENE properties panel for Soulstruct global settings."""
     bl_label = "Soulstruct Settings"
@@ -98,7 +98,7 @@ class GlobalSettingsPanel(_BaseGlobalSettingsPanel):
     bl_context = "scene"
 
 
-@io_soulstruct_class
+@io_soulstruct_panel
 class GlobalSettingsPanel_FLVERView(_BaseGlobalSettingsPanel):
     """VIEW properties panel for Soulstruct global settings."""
     bl_label = "General Settings"
@@ -109,7 +109,7 @@ class GlobalSettingsPanel_FLVERView(_BaseGlobalSettingsPanel):
     bl_options = {"DEFAULT_CLOSED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_panel
 class GlobalSettingsPanel_MSBView(_BaseGlobalSettingsPanel):
     """VIEW properties panel for Soulstruct global settings."""
     bl_label = "General Settings"
@@ -120,7 +120,7 @@ class GlobalSettingsPanel_MSBView(_BaseGlobalSettingsPanel):
     bl_options = {"DEFAULT_CLOSED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_panel
 class GlobalSettingsPanel_NavmeshView(_BaseGlobalSettingsPanel):
     """VIEW properties panel for Soulstruct global settings."""
     bl_label = "General Settings"
@@ -131,7 +131,7 @@ class GlobalSettingsPanel_NavmeshView(_BaseGlobalSettingsPanel):
     bl_options = {"DEFAULT_CLOSED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_panel
 class GlobalSettingsPanel_NavGraphView(_BaseGlobalSettingsPanel):
     """VIEW properties panel for Soulstruct global settings."""
     bl_label = "General Settings"
@@ -142,7 +142,7 @@ class GlobalSettingsPanel_NavGraphView(_BaseGlobalSettingsPanel):
     bl_options = {"DEFAULT_CLOSED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_panel
 class GlobalSettingsPanel_AnimationView(_BaseGlobalSettingsPanel):
     """VIEW properties panel for Soulstruct Animation global settings."""
     bl_label = "General Settings"
@@ -153,7 +153,7 @@ class GlobalSettingsPanel_AnimationView(_BaseGlobalSettingsPanel):
     bl_options = {"DEFAULT_CLOSED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_panel
 class GlobalSettingsPanel_CollisionView(_BaseGlobalSettingsPanel):
     """VIEW properties panel for Soulstruct Collision global settings."""
     bl_label = "General Settings"
@@ -164,7 +164,7 @@ class GlobalSettingsPanel_CollisionView(_BaseGlobalSettingsPanel):
     bl_options = {"DEFAULT_CLOSED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_panel
 class GlobalSettingsPanel_CutsceneView(_BaseGlobalSettingsPanel):
     """VIEW properties panel for Soulstruct global settings."""
     bl_label = "General Settings"
@@ -175,7 +175,7 @@ class GlobalSettingsPanel_CutsceneView(_BaseGlobalSettingsPanel):
     bl_options = {"DEFAULT_CLOSED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_panel
 class GlobalSettingsPanel_MiscView(_BaseGlobalSettingsPanel):
     """VIEW properties panel for Soulstruct global settings."""
     bl_label = "General Settings"

@@ -42,7 +42,7 @@ class BlenderNVM(BaseBlenderSoulstructObject[NVM, NVMProps]):
         context: bpy.types.Context,
         soulstruct_obj: NVM,
         name: str,
-        collection: bpy.types.Collection = None,
+        collection: bpy.types.Collection | None = None,
     ) -> BlenderNVM:
         operator.to_object_mode(context)
         operator.deselect_all()
@@ -68,7 +68,7 @@ class BlenderNVM(BaseBlenderSoulstructObject[NVM, NVMProps]):
             face[flags_layer] = nvm_triangle.flags
             face[obstacle_count_layer] = nvm_triangle.obstacle_count
 
-        bl_nvm = cls.new(name, data=mesh, collection=collection)  # type: BlenderNVM
+        bl_nvm = tp.cast(tp.Self, cls.new(name, data=mesh, collection=collection))
 
         for nvm_event in nvm.event_entities:
             # Get the average position of the faces. This is purely for show and is not exported.
@@ -103,6 +103,7 @@ class BlenderNVM(BaseBlenderSoulstructObject[NVM, NVMProps]):
         We do not do any triangulation here; the NVM model should already be triangulated exactly as desired, as the
         triangles actually matter for navigation.
         """
+        settings = context.scene.soulstruct_settings
         mesh_data = self.obj.data
         nvm_verts = np.array([vert.co for vert in mesh_data.vertices], dtype=np.float32)
         # Swap Y and Z coordinates.
@@ -177,7 +178,7 @@ class BlenderNVM(BaseBlenderSoulstructObject[NVM, NVMProps]):
             for nvm_event_entity in self.get_nvm_event_entities()
         ]
 
-        big_endian = context.scene.soulstruct_settings.is_game("DEMONS_SOULS")
+        big_endian = settings.is_game("DEMONS_SOULS")
 
         nvm = NVM(
             big_endian=big_endian,
@@ -195,14 +196,14 @@ class BlenderNVM(BaseBlenderSoulstructObject[NVM, NVMProps]):
             set_face_material(mesh_data, bl_tri, nvm_triangle.flags)
 
     def create_nvm_quadtree(
-        self, context: bpy.types.Context, nvm: NVM, model_name: str, collection: bpy.types.Collection = None
+        self, context: bpy.types.Context, nvm: NVM, model_name: str, collection: bpy.types.Collection | None = None
     ) -> list[bpy.types.Object]:
         """Create box tree (depth first creation order).
 
         NOTE: These boxes should be imported for inspection only. They are automatically generated from the mesh
         min/max vertex coordinates on NVM export and have no properties.
         """
-        collection = collection or context.scene.collection
+        collection = resolve_collection(context, collection)
         boxes = []
         for i, (box, indices) in enumerate(nvm.get_all_boxes(nvm.root_box)):
             if not indices:
@@ -217,7 +218,7 @@ class BlenderNVM(BaseBlenderSoulstructObject[NVM, NVMProps]):
             bl_box.parent = self.obj
         return boxes
 
-    def duplicate(self, collections: tp.Sequence[bpy.types.Collection] = None) -> BlenderNVM:
+    def duplicate(self, collections: tp.Sequence[bpy.types.Collection] = ()) -> BlenderNVM:
         """Duplicate Navmesh model to a new object. Does not rename (will just add duplicate suffix)."""
         new_model = new_mesh_object(self.name, self.data.copy())
         new_model.soulstruct_type = SoulstructType.NAVMESH
@@ -251,7 +252,7 @@ class BlenderNVM(BaseBlenderSoulstructObject[NVM, NVMProps]):
         return remove_dupe_suffix(self.obj.name).split(" ")[0].split(".")[0].strip()
 
     @staticmethod
-    def create_box(context: bpy.types.Context, box: NVMBox, index: int):
+    def create_box(context: bpy.types.Context, box: NVMBox, index: int) -> MeshObject:
         """Create an AABB prism representing `box`. Position is baked into mesh data fully, just like the navmesh."""
         start_vec = to_blender(box.start_corner)
         end_vec = to_blender(box.end_corner)
@@ -259,6 +260,7 @@ class BlenderNVM(BaseBlenderSoulstructObject[NVM, NVMProps]):
         bl_box = context.active_object
         # noinspection PyTypeChecker
         box_data = bl_box.data  # type: bpy.types.Mesh
+        bl_box: MeshObject
         for vertex in box_data.vertices:
             vertex.co[0] = start_vec.x if vertex.co[0] == -1.0 else end_vec.x
             vertex.co[1] = start_vec.y if vertex.co[1] == -1.0 else end_vec.y
@@ -302,10 +304,10 @@ class BlenderNVMEventEntity(BaseBlenderSoulstructObject[NVMEventEntity, NVMEvent
         context: bpy.types.Context,
         soulstruct_obj: NVMEventEntity,
         name: str,
-        collection: bpy.types.Collection = None,
-        location: Vector = None,
+        collection: bpy.types.Collection | None = None,
+        location: Vector | None = None,
     ) -> BlenderNVMEventEntity:
-        bl_event = cls.new(name, data=None, collection=collection)  # type: BlenderNVMEventEntity
+        bl_event = tp.cast(tp.Self, cls.new(name, data=None, collection=collection))
         bl_event.obj.empty_display_type = "CUBE"  # to distinguish it from node spheres
 
         bl_event.obj.location = location or Vector()

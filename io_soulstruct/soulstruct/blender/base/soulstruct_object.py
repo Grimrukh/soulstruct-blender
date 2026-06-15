@@ -2,8 +2,6 @@ from __future__ import annotations
 
 __all__ = [
     "BaseBlenderSoulstructObject",
-    "SOULSTRUCT_T",
-    "TYPE_PROPS_T",
     "add_auto_type_props",
 ]
 
@@ -11,6 +9,7 @@ import abc
 import typing as tp
 
 import bpy
+from bpy.types import PropertyGroup
 from mathutils import Vector, Euler
 
 from soulstruct.utilities.text import natural_keys
@@ -18,6 +17,7 @@ from soulstruct.utilities.text import natural_keys
 from ..exceptions import SoulstructTypeError
 from ..types import ObjectType, SoulstructType
 from ..types.field_adapters import FieldAdapter
+from ..utilities import resolve_collection
 from ..utilities.bpy_data import copy_obj_property_group
 from ..utilities.misc import remove_dupe_suffix
 
@@ -25,14 +25,10 @@ if tp.TYPE_CHECKING:
     from ..base.operators import LoggingOperator
 
 
-SOULSTRUCT_T = tp.TypeVar("SOULSTRUCT_T", bound=object)  # does not have to be a `GameFile` (e.g. `MSBMapPiece`)
-TYPE_PROPS_T = tp.TypeVar("TYPE_PROPS_T", bound=bpy.types.PropertyGroup)  # corresponding to `SOULSTRUCT_T`
-
-# TODO: Workaround for PyCharm `tp.Self` bug with generic classes. Needed even when IDE doesn't explicitly complain.
-SELF_T = tp.TypeVar("SELF_T", bound="BaseBlenderSoulstructObject")
-
-
-class BaseBlenderSoulstructObject(abc.ABC, tp.Generic[SOULSTRUCT_T, TYPE_PROPS_T]):
+class BaseBlenderSoulstructObject[
+    SOULSTRUCT_T: object,  # does not have to be a `GameFile` (e.g. `MSBMapPiece`)
+    TYPE_PROPS_T: PropertyGroup,  # Blender equivalent of `SOULSTRUCT_T`
+](abc.ABC):
     """Base class for Blender objects wrapped with implicit Soulstruct 'types'."""
 
     __slots__ = ["obj"]
@@ -56,11 +52,11 @@ class BaseBlenderSoulstructObject(abc.ABC, tp.Generic[SOULSTRUCT_T, TYPE_PROPS_T
 
     @classmethod
     def new(
-        cls: type[SELF_T],
+        cls,
         name: str,
         data: bpy.types.Mesh | None,
-        collection: bpy.types.Collection = None,
-    ) -> SELF_T:
+        collection: bpy.types.Collection | None = None,
+    ) -> tp.Self:
         """Create a default instance of this Blender/Soulstruct object type.
 
         `type_properties` property values will use their defaults in the Blender property group.
@@ -78,18 +74,18 @@ class BaseBlenderSoulstructObject(abc.ABC, tp.Generic[SOULSTRUCT_T, TYPE_PROPS_T
             case _:
                 raise SoulstructTypeError(f"Unsupported Soulstruct BL_OBJ_TYPE '{cls.BL_OBJ_TYPE}'.")
         obj.soulstruct_type = cls.TYPE
-        (collection or bpy.context.scene.collection).objects.link(obj)
+        resolve_collection(bpy.context, collection).objects.link(obj)
         return cls(obj)
 
     @classmethod
     def new_from_soulstruct_obj(
-        cls: type[SELF_T],
+        cls,
         operator: LoggingOperator,
         context: bpy.types.Context,
         soulstruct_obj: SOULSTRUCT_T,
         name: str,
-        collection: bpy.types.Collection = None,
-    ) -> SELF_T:
+        collection: bpy.types.Collection | None = None,
+    ) -> tp.Self:
         """Create a new Blender object from Soulstruct object.
 
         Operator and context are both required for logging, global settings, and context management.
@@ -102,7 +98,7 @@ class BaseBlenderSoulstructObject(abc.ABC, tp.Generic[SOULSTRUCT_T, TYPE_PROPS_T
             raise TypeError(
                 f"Given `soulstruct_obj` is not of type {cls.SOULSTRUCT_CLASS.__name__}: {cls_name}"
             )
-        bl_obj = cls.new(name, data=None, collection=collection)
+        bl_obj = tp.cast(tp.Self, cls.new(name, data=None, collection=collection))
         bl_obj._read_props_from_soulstruct_obj(operator, context, soulstruct_obj)
         bl_obj._post_new_from_soulstruct_obj(operator, context, soulstruct_obj)
         return bl_obj
@@ -262,7 +258,7 @@ class BaseBlenderSoulstructObject(abc.ABC, tp.Generic[SOULSTRUCT_T, TYPE_PROPS_T
     # region Utility Class Methods
 
     @classmethod
-    def is_obj_type(cls, obj: bpy.types.Object) -> bool:
+    def is_obj_type(cls, obj: bpy.types.Object | None) -> bool:
         """Tries to load this Blender `obj` as this `cls`. Returns `False` if it fails."""
         if not obj:
             return False
@@ -278,7 +274,7 @@ class BaseBlenderSoulstructObject(abc.ABC, tp.Generic[SOULSTRUCT_T, TYPE_PROPS_T
         return cls.is_obj_type(context.active_object)
 
     @classmethod
-    def find_in_data(cls: type[SELF_T], name: str, only_in_collections: list[bpy.types.Collection]) -> SELF_T:
+    def find_in_data(cls, name: str, only_in_collections: list[bpy.types.Collection]) -> tp.Self:
         # TODO: Should be able to provide a name-matching callback, e.g. `get_part_game_name`.
         try:
             obj = bpy.data.objects[name]
@@ -297,7 +293,7 @@ class BaseBlenderSoulstructObject(abc.ABC, tp.Generic[SOULSTRUCT_T, TYPE_PROPS_T
         return cls(obj)
 
     @classmethod
-    def from_active_object(cls: type[SELF_T], context: bpy.types.Context) -> SELF_T:
+    def from_active_object(cls, context: bpy.types.Context) -> tp.Self:
         obj = context.active_object
         if obj is None:
             raise SoulstructTypeError(f"No active object to become a {cls.TYPE} Soulstruct object.")
@@ -306,7 +302,7 @@ class BaseBlenderSoulstructObject(abc.ABC, tp.Generic[SOULSTRUCT_T, TYPE_PROPS_T
         return cls(obj)
 
     @classmethod
-    def from_selected_object(cls: type[SELF_T], context: bpy.types.Context) -> SELF_T:
+    def from_selected_object(cls, context: bpy.types.Context) -> tp.Self:
         if not context.selected_objects:
             raise SoulstructTypeError(f"No selected object to become a {cls.TYPE} Soulstruct object.")
         if len(context.selected_objects) > 1:
@@ -318,10 +314,10 @@ class BaseBlenderSoulstructObject(abc.ABC, tp.Generic[SOULSTRUCT_T, TYPE_PROPS_T
 
     @classmethod
     def from_selected_objects(
-        cls: type[SELF_T],
+        cls,
         context: bpy.types.Context,
         sort=True,
-    ) -> list[SELF_T]:
+    ) -> list[tp.Self]:
         if not context.selected_objects:
             raise SoulstructTypeError(f"No selected objects to become {cls.TYPE} Soulstruct objects.")
         selfs = []

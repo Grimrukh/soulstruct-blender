@@ -12,6 +12,7 @@ import typing as tp
 from dataclasses import dataclass, KW_ONLY
 
 import bpy
+from bpy.types import PropertyGroup
 
 from soulstruct.utilities.maths import EulerDeg
 
@@ -19,12 +20,14 @@ from ..base.operators import LoggingOperator
 from ..utilities.conversion import *
 
 if tp.TYPE_CHECKING:
-    from ..base.soulstruct_object import BaseBlenderSoulstructObject, SOULSTRUCT_T, TYPE_PROPS_T
-    SOULSTRUCT_OBJECT_T = tp.TypeVar("SOULSTRUCT_OBJECT_T", bound=BaseBlenderSoulstructObject)
+    from ..base.soulstruct_object import BaseBlenderSoulstructObject
 
 
 @dataclass(slots=True, frozen=True)
-class FieldAdapter:
+class FieldAdapter[
+    SOULSTRUCT_T: object,
+    TYPE_PROPS_T: PropertyGroup,
+]:
     """Adapter for converting a property between a Soulstruct type and a Blender wrapper property.
 
     Also provides a default getter and setter for the Blender wrapper property, which can be used in `auto_prop` mode.
@@ -47,7 +50,7 @@ class FieldAdapter:
         context: bpy.types.Context,
         soulstruct_obj: SOULSTRUCT_T,
         bl_obj: BaseBlenderSoulstructObject[SOULSTRUCT_T, TYPE_PROPS_T],
-    ):
+    ) -> None:
         """Convert a property from Soulstruct to Blender's wrapper.
 
         Base method does not use `operator` or `context`, but subclasses may do so.
@@ -61,7 +64,7 @@ class FieldAdapter:
         context: bpy.types.Context,
         bl_obj: BaseBlenderSoulstructObject[SOULSTRUCT_T, TYPE_PROPS_T],
         soulstruct_obj: SOULSTRUCT_T,
-    ):
+    ) -> None:
         """Convert a property from Blender's wrapper to Soulstruct.
 
         Base method does not use `operator` or `context`, but subclasses may do so.
@@ -81,7 +84,10 @@ class FieldAdapter:
 
 
 @dataclass(slots=True, frozen=True)
-class CustomFieldAdapter(FieldAdapter):
+class CustomFieldAdapter[
+    SOULSTRUCT_T: object,
+    TYPE_PROPS_T: PropertyGroup,
+](FieldAdapter[SOULSTRUCT_T, TYPE_PROPS_T]):
     """Simple extension that modifies the `getattr` values (in both directions) before setting them.
 
     NOTE: Property getter/setter are unchanged. The read/write functions are only used on import and export of
@@ -130,7 +136,10 @@ class CustomFieldAdapter(FieldAdapter):
 
 
 @dataclass(slots=True, frozen=True)
-class SpatialVectorFieldAdapter(FieldAdapter):
+class SpatialVectorFieldAdapter[
+    SOULSTRUCT_T: object,
+    TYPE_PROPS_T: PropertyGroup,
+](FieldAdapter[SOULSTRUCT_T, TYPE_PROPS_T]):
     """Convert spatial vector (e.g. translate/scale) between Blender and Soulstruct coordinates."""
 
     def soulstruct_to_blender(
@@ -155,7 +164,10 @@ class SpatialVectorFieldAdapter(FieldAdapter):
 
 
 @dataclass(slots=True, frozen=True)
-class EulerAnglesFieldAdapter(FieldAdapter):
+class EulerAnglesFieldAdapter[
+    SOULSTRUCT_T: object,
+    TYPE_PROPS_T: PropertyGroup,
+](FieldAdapter[SOULSTRUCT_T, TYPE_PROPS_T]):
     """Convert Euler rotation angles between Blender (radians) and Soulstruct (degrees)."""
 
     def soulstruct_to_blender(
@@ -182,7 +194,9 @@ class EulerAnglesFieldAdapter(FieldAdapter):
         setattr(soulstruct_obj, self.soulstruct_field_name, game_euler_deg)
 
 
-def soulstruct_adapter(cls: type[SOULSTRUCT_OBJECT_T]) -> type[SOULSTRUCT_OBJECT_T]:
+def soulstruct_adapter[SOULSTRUCT_OBJECT_T: BaseBlenderSoulstructObject](
+    cls: type[SOULSTRUCT_OBJECT_T]
+) -> type[SOULSTRUCT_OBJECT_T]:
     """Decorator that creates properties for each `SoulstructFieldAdapter` (if requested) in `cls.TYPE_FIELDS`.
 
     Should decorate every concrete subclass of `BaseBlenderSoulstructObject` (unless a narrower version of this

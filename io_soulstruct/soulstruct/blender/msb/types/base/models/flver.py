@@ -15,6 +15,7 @@ from pathlib import Path
 
 import bpy
 
+from soulstruct.base.maps.msb.models import BaseMSBModel
 from soulstruct.flver import *
 
 import pyrelink.core as pyre
@@ -27,7 +28,7 @@ from .....flver.utilities import get_flvers_from_binder
 from .....types import *
 from .....utilities import find_or_create_collection, get_model_name, find_obj
 
-from .base import BaseBlenderMSBModelImporter, MODEL_T
+from .base import BaseBlenderMSBModelImporter
 
 
 @dataclass(slots=True)
@@ -46,7 +47,7 @@ class BaseBlenderMSBFLVERModelImporter(BaseBlenderMSBModelImporter, abc.ABC):
         flver: FLVER,
         model_name: str,
         model_collection: bpy.types.Collection,
-        texture_finder: TextureFinder = None,
+        texture_finder: TextureFinder | None = None,
     ) -> MeshObject:
         try:
             bl_flver = BlenderFLVER.new_from_soulstruct_obj(
@@ -70,8 +71,8 @@ class BaseBlenderMSBFLVERModelImporter(BaseBlenderMSBModelImporter, abc.ABC):
         operator: LoggingOperator,
         context: bpy.types.Context,
         map_stem: str,
-        flver_path_sources: dict[str, Path] = None,
-        flver_binder_sources: dict[str, tuple[pyre.BinderEntry, pyre.Binder]] = None,
+        flver_path_sources: dict[str, Path] | None = None,
+        flver_binder_sources: dict[str, tuple[pyre.BinderEntry, pyre.Binder]] | None = None,
     ) -> None:
         """Base method for batch-importing FLVER models for an MSB Part subtype.
 
@@ -136,7 +137,7 @@ class BlenderMSBMapPieceModelImporter(BaseBlenderMSBFLVERModelImporter):
         context: bpy.types.Context,
         model_name: str,
         map_stem: str,  # required for Map Pieces
-        model_collection: bpy.types.Collection = None,
+        model_collection: bpy.types.Collection | None = None,
     ) -> MeshObject:
         """Import the model of the given name into a collection in the current scene."""
         settings = operator.settings(context)
@@ -204,7 +205,7 @@ class BlenderMSBMapPieceModelImporter(BaseBlenderMSBFLVERModelImporter):
         self,
         operator: LoggingOperator,
         context: bpy.types.Context,
-        models: list[MODEL_T],
+        models: list[BaseMSBModel],
         map_stem: str,
     ):
         """Import all models for a batch of MSB Map Pieces, as needed, in parallel as much as possible."""
@@ -282,7 +283,7 @@ class BlenderMSBObjectModelImporter(BaseBlenderMSBFLVERModelImporter):
         context: bpy.types.Context,
         model_name: str,
         map_stem="",  # not used
-        model_collection: bpy.types.Collection = None,
+        model_collection: bpy.types.Collection | None = None,
     ) -> MeshObject:
         """Import the model of the given name into a collection in the current scene."""
         settings = operator.settings(context)
@@ -325,7 +326,7 @@ class BlenderMSBObjectModelImporter(BaseBlenderMSBFLVERModelImporter):
         self,
         operator: LoggingOperator,
         context: bpy.types.Context,
-        models: list[MODEL_T],
+        models: list[BaseMSBModel],
         map_stem: str,
     ):
         """Import all models for a batch of MSB Parts, as needed, in parallel as much as possible."""
@@ -379,7 +380,7 @@ class BlenderMSBCharacterModelImporter(BaseBlenderMSBFLVERModelImporter):
         context: bpy.types.Context,
         model_name: str,
         map_stem="",  # not used
-        model_collection: bpy.types.Collection = None,
+        model_collection: bpy.types.Collection | None = None,
     ) -> MeshObject:
         """Import the model of the given name into a collection in the current scene."""
         settings = operator.settings(context)
@@ -412,7 +413,7 @@ class BlenderMSBCharacterModelImporter(BaseBlenderMSBFLVERModelImporter):
         self,
         operator: LoggingOperator,
         context: bpy.types.Context,
-        models: list[MODEL_T],
+        models: list[BaseMSBModel],
         map_stem: str,
     ):
         """Import all models for a batch of MSB Parts, as needed, in parallel as much as possible."""

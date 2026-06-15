@@ -6,14 +6,12 @@ name = "Soulstruct"
 tagline = "Import, manipulate, and export FromSoftware/Havok assets"
 maintainer = "Scott Mooney (Grimrukh)"
 type = "add-on"
-
-# Optional: link to documentation, support, source files, etc
 website = "https://github.com/Grimrukh/soulstruct-blender"
 
 # https://docs.blender.org/manual/en/dev/advanced/extensions/tags.html
 tags = ["Animation", "Import-Export", "Material", "Modeling", "Mesh", "Node", "Object", "UV"]
 
-# Blender 5.1 required for DirectX normal map support.
+# Blender 5.1 required for Python 3.13 and DirectX normal map support.
 blender_version_min = "5.1.0"
 # blender_version_max = "5.1.0"
 
@@ -28,20 +26,20 @@ platforms = ["windows-x64"]
 # WHEELS START
 wheels = [
   "./wheels/annotated_doc-0.0.4-py3-none-any.whl",
-  "./wheels/click-8.3.3-py3-none-any.whl",
   "./wheels/colorama-0.4.6-py2.py3-none-any.whl",
   "./wheels/constrata-1.3.1-py3-none-any.whl",
+  "./wheels/frozendict-2.4.7-py3-none-any.whl",
   "./wheels/markdown_it_py-4.2.0-py3-none-any.whl",
   "./wheels/mdurl-0.1.2-py3-none-any.whl",
-  "./wheels/numpy-2.4.4-cp313-cp313-win_amd64.whl",
+  "./wheels/numpy-2.4.6-cp313-cp313-win_amd64.whl",
   "./wheels/pygments-2.20.0-py3-none-any.whl",
-  "./wheels/pyrelink-0.1.0-cp313-cp313-win_amd64.whl",  # TOP-LEVEL
+  "./wheels/pyrelink-0.2.0-cp313-cp313-win_amd64.whl",  # TOP-LEVEL
   "./wheels/rich-15.0.0-py3-none-any.whl",
   "./wheels/scipy-1.16.3-cp313-cp313-win_amd64.whl",  # TOP-LEVEL
   "./wheels/shellingham-1.5.4-py2.py3-none-any.whl",
-  "./wheels/soulstruct-2.3.3-py3-none-any.whl",  # TOP-LEVEL
-  "./wheels/soulstruct_havok-1.2.2-py3-none-any.whl",  # TOP-LEVEL
-  "./wheels/typer-0.25.1-py3-none-any.whl",
+  "./wheels/soulstruct-2.4.0-py3-none-any.whl",  # TOP-LEVEL
+  "./wheels/soulstruct_havok-1.3.0-py3-none-any.whl",  # TOP-LEVEL
+  "./wheels/typer-0.26.7-py3-none-any.whl",
   "./wheels/zstandard-0.25.0-cp313-cp313-win_amd64.whl",
 ]
 # WHEELS END

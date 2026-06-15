@@ -6,14 +6,19 @@ __all__ = [
 
 import abc
 
+from bpy.types import PropertyGroup
+
 from soulstruct.darksouls1ptde.maps.msb import MSB
+from soulstruct.darksouls1ptde.maps.events import MSBEvent
 
 from ...adapters import CustomFieldAdapter
-from ...base.entry import SUBTYPE_PROPS_T
-from ...base.events import BaseBlenderMSBEvent, EVENT_T
+from ...base.events import BaseBlenderMSBEvent
 
 
-class BaseBlenderMSBEvent_DS1(BaseBlenderMSBEvent[EVENT_T, SUBTYPE_PROPS_T, MSB], abc.ABC):
+class BaseBlenderMSBEvent_DS1[
+    EVENT_T: MSBEvent,
+    SUBTYPE_PROPS_T: PropertyGroup,
+](BaseBlenderMSBEvent[EVENT_T, SUBTYPE_PROPS_T, MSB], abc.ABC):
     """All DS1 MSB Events have an extra field of unknowns."""
 
     TYPE_FIELDS = BaseBlenderMSBEvent.TYPE_FIELDS + (

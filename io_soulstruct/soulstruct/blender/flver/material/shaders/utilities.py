@@ -16,12 +16,11 @@ import re
 import typing as tp
 
 import bpy
+from bpy.types import Node
 
 from ....exceptions import MissingSoulstructNodeGroupError
 from ....utilities.files import ADDON_PACKAGE_PATH
 from .enums import *
-
-NODE_T = tp.TypeVar("NODE_T", bound=bpy.types.Node)
 
 TEX_SAMPLER_RE = re.compile(r"(Main) (\d+) (Albedo|Specular|Shininess|Normal)")
 
@@ -29,13 +28,13 @@ NODE_INPUT_CONSTANT_TYPING = tp.Union[str, int, tuple[int, ...], float, tuple[fl
 NODE_INPUT_TYPING = tp.Union[NODE_INPUT_CONSTANT_TYPING, bpy.types.NodeSocket]
 
 
-def new_shader_node(
+def new_shader_node[NODE_T: Node](
     tree: bpy.types.NodeTree,
     node_type: type[NODE_T],
-    location: tuple[float, float] = None,
+    location: tuple[float, float] | None = None,
     /,
-    inputs: dict[str | int, NODE_INPUT_TYPING | None] = None,
-    outputs: dict[str | int, bpy.types.NodeSocket] = None,
+    inputs: dict[str | int, NODE_INPUT_TYPING | None] | None = None,
+    outputs: dict[str | int, bpy.types.NodeSocket] | None = None,
     **kwargs,
 ) -> NODE_T:
     """Create a new `bpy.types.Node` of the given type."""
@@ -64,8 +63,8 @@ def new_shader_math_node(
     tree: bpy.types.NodeTree,
     operation: MathOperation | str,
     location: tuple[int, int],
-    input_0: float | int | bpy.types.NodeSocket = None,
-    input_1: float | int | bpy.types.NodeSocket = None,
+    input_0: float | int | bpy.types.NodeSocket | None = None,
+    input_1: float | int | bpy.types.NodeSocket | None = None,
 ) -> bpy.types.ShaderNodeMath:
     """Create a new `ShaderNodeMath` node with the given operation and inputs.
 
@@ -107,10 +106,10 @@ def load_soulstruct_node_group(node_group: SoulstructNodeGroups) -> None:
 def new_soulstruct_node_group(
     tree: bpy.types.NodeTree,
     node_group: SoulstructNodeGroups,
-    location: tuple[float, float] = None,
+    location: tuple[float, float] | None = None,
     *,
-    inputs: dict[str, NODE_INPUT_TYPING | None] = None,
-    outputs: dict[str, bpy.types.NodeSocket] = None,
+    inputs: dict[str, NODE_INPUT_TYPING | None] | None = None,
+    outputs: dict[str, bpy.types.NodeSocket] | None = None,
 ) -> bpy.types.ShaderNodeGroup:
     """Constructs a shader node group by appending the node group with the specified name to the open Blender scene.
 

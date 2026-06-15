@@ -7,10 +7,10 @@ __all__ = [
 
 import bpy
 
-from ..base.register import io_soulstruct_class, io_soulstruct_pointer_property
+from ..base.register import io_soulstruct_properties, io_soulstruct_pointer_property
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 @io_soulstruct_pointer_property(bpy.types.Scene, "cutscene_import_settings")
 class CutsceneImportSettings(bpy.types.PropertyGroup):
 
@@ -27,7 +27,7 @@ class CutsceneImportSettings(bpy.types.PropertyGroup):
     )
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 @io_soulstruct_pointer_property(bpy.types.Scene, "cutscene_export_settings")
 class CutsceneExportSettings(bpy.types.PropertyGroup):
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 __all__ = [
     "CopyToNewFLVER",
+    "CutToNewFLVER",
     "RenameFLVER",
     "SelectMeshChildren",
     "SyncMSBPartArmatures",
@@ -16,13 +17,13 @@ __all__ = [
 import bpy
 
 from ....base.operators import LoggingOperator
-from ....base.register import io_soulstruct_class
+from ....base.register import io_soulstruct_operator
 from ....types import SoulstructType
 from ....utilities import replace_shared_prefix
 from ..types import BlenderFLVER
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class CopyToNewFLVER(LoggingOperator):
 
     bl_idname = "object.copy_to_new_flver"
@@ -67,7 +68,7 @@ class CopyToNewFLVER(LoggingOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class CutToNewFLVER(LoggingOperator):
 
     bl_idname = "object.cut_to_new_flver"
@@ -112,7 +113,7 @@ class CutToNewFLVER(LoggingOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class RenameFLVER(LoggingOperator):
 
     bl_idname = "object.rename_flver"
@@ -182,7 +183,7 @@ class RenameFLVER(LoggingOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class SelectMeshChildren(LoggingOperator):
     """Simple operator that iterates over selected objects, selects all MESH children of any ARMATURES, and deselects
     anything else that isn't a MESH."""
@@ -210,7 +211,7 @@ class SelectMeshChildren(LoggingOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class SyncMSBPartArmatures(LoggingOperator):
     """Sync the Armature of all FLVER models that are instanced by MSB Parts. Only works for MSB Map Piece ('m*') parts
     currently."""
@@ -244,7 +245,7 @@ class SyncMSBPartArmatures(LoggingOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ClearFLVERSubmeshProperties(LoggingOperator):
     """Clear all submesh properties on the active FLVER model, so that it will use global properties instead."""
     bl_idname = "flver.clear_submesh_props"
@@ -264,7 +265,7 @@ class ClearFLVERSubmeshProperties(LoggingOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class AddFLVERSubmeshProperties(LoggingOperator):
     bl_idname = "flver.add_submesh_props"
     bl_label = "Add Per-Slot Submesh Properties"
@@ -292,7 +293,7 @@ class AddFLVERSubmeshProperties(LoggingOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class FLVERMaterialSlotAdd(LoggingOperator):
     """Add a material slot to the active FLVER object and append a matching submesh props entry."""
     bl_idname = "flver.material_slot_add"
@@ -323,7 +324,7 @@ class FLVERMaterialSlotAdd(LoggingOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class FLVERMaterialSlotRemove(LoggingOperator):
     """Remove the active material slot from the active FLVER object and remove the matching submesh props entry."""
     bl_idname = "flver.material_slot_remove"
@@ -353,7 +354,7 @@ class FLVERMaterialSlotRemove(LoggingOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class FLVERMaterialSlotMove(LoggingOperator):
     """Move the active material slot up or down and keep submesh props in sync."""
     bl_idname = "flver.material_slot_move"

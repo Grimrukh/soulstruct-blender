@@ -40,7 +40,7 @@ _LAST_DRAWN_TRIANGLES_A = None  # type: list[Vector] | None  # flattened list of
 _LAST_DRAWN_TRIANGLES_B = None  # type: list[Vector] | None  # flattened list of triangle vertices
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 @io_soulstruct_pointer_property(bpy.types.Scene, "mcg_draw_settings")
 class MCGDrawSettings(SoulstructPropertyGroup):
 

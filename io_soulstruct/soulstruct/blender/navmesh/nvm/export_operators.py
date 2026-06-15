@@ -20,14 +20,14 @@ from soulstruct.demonssouls.maps.navmesh import NVMBND as NVMBND_DES
 from soulstruct.games import DARK_SOULS_PTDE, DARK_SOULS_DSR, DEMONS_SOULS
 
 from ...base.operators import *
-from ...base.register import io_soulstruct_class
+from ...base.register import io_soulstruct_operator
 from ...exceptions import SoulstructTypeError
 from ...types import SoulstructType, MeshObject
 from ...utilities.misc import *
 from .types import *
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ExportAnyNVM(LoggingExportOperator):
     """Export loose NVM file from a Blender mesh.
 
@@ -88,7 +88,7 @@ class ExportAnyNVM(LoggingExportOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ExportNVMIntoAnyBinder(LoggingImportOperator):
     bl_idname = "export_scene.nvm_binder"
     bl_label = "Export NVM Into Binder"
@@ -205,7 +205,7 @@ class ExportNVMIntoAnyBinder(LoggingImportOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ExportMapNVM(LoggingOperator):
 
     bl_idname = "export_scene.nvm_selected_map"

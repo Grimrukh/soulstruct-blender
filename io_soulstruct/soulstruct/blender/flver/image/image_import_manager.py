@@ -93,7 +93,7 @@ class ImageImportManager:
         else:
             self._register_parts_common_tpfs(parts_dir)
 
-    def find_flver_textures(self, flver_source_path: Path, flver_binder: Binder = None, prefer_hi_res=True):
+    def find_flver_textures(self, flver_source_path: Path, flver_binder: Binder | None = None, prefer_hi_res=True):
         """Register known game Binders/TPFs to be opened as needed.
 
         `flver_source_path` is the path to the Binder file containing the FLVER, or loose FLVER file.

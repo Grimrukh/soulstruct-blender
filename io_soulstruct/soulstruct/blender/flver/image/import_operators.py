@@ -19,7 +19,7 @@ from soulstruct.base.textures.texconv import texconv
 from soulstruct.containers.tpf import TPF, batch_get_tpf_texture_png_data, batch_get_tpf_texture_tga_data, TPFPlatform
 
 from ...base.operators import LoggingImportOperator
-from ...base.register import io_soulstruct_class
+from ...base.register import io_soulstruct_operator
 from .enums import BlenderImageFormat
 from .types import *
 
@@ -34,7 +34,7 @@ AEG_STEM_RE = re.compile(r"^aeg(?P<aeg>\d\d\d)$")  # checks stem only
 # NOTE: We don't need a PropertyGroup for texture import (yet).
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ImportTextures(LoggingImportOperator):
     """Import an image file from disk into Blender, converting DDS images to specified format first, and optionally
     assigning imported texture to one or more selected `Image` nodes."""

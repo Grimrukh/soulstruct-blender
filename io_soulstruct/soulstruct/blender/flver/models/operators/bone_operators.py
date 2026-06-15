@@ -10,14 +10,14 @@ import bpy
 from mathutils import Matrix, Quaternion, Vector
 
 from ....base.operators import LoggingOperator
-from ....base.register import io_soulstruct_class
+from ....base.register import io_soulstruct_operator
 from ....exceptions import SoulstructTypeError
 from ....types.bpy_types import ArmatureObject, MeshObject
 from ..types import BlenderFLVER
 from ..types.enums import FLVERBoneDataType
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class BakeBonePoseToVertices(LoggingOperator):
 
     bl_idname = "mesh.bake_bone_pose_to_vertices"
@@ -96,7 +96,7 @@ class BakeBonePoseToVertices(LoggingOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ReboneVertices(LoggingOperator):
 
     bl_idname = "mesh.rebone_vertices"

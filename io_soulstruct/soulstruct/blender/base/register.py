@@ -9,6 +9,9 @@ __all__ = [
     "io_soulstruct_register",
     "io_soulstruct_unregister",
     "io_soulstruct_class",
+    "io_soulstruct_operator",
+    "io_soulstruct_panel",
+    "io_soulstruct_properties",
     "io_soulstruct_pointer_property",
     "io_soulstruct_space_view_3d_draw_handler",
     "io_soulstruct_depsgraph_update_post_handler",
@@ -101,6 +104,18 @@ def io_soulstruct_class(cls: BL_REGISTER_CLS_TYPES) -> BL_REGISTER_CLS_TYPES:
         raise ValueError(f"Class {cls.__name__} already registered in `io_soulstruct` add-on.")
     _CLASSES_TO_REGISTER[cls.__name__] = cls
     return cls
+
+
+# Class decorator alias for Operators so they're easier to find in code.
+io_soulstruct_operator = io_soulstruct_class
+
+
+# Class decorator alias for Panels so they're easier to find in code.
+io_soulstruct_panel = io_soulstruct_class
+
+
+# Class decorator alias for PropertyGroups so they're easier to find in code.
+io_soulstruct_properties = io_soulstruct_class
 
 
 def io_soulstruct_pointer_property(

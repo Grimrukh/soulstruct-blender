@@ -16,14 +16,14 @@ import bpy
 from soulstruct.havok.fromsoft.shared.map_collision import MapCollisionMaterial
 
 from ..base.operators import LoggingOperator
-from ..base.register import io_soulstruct_class
+from ..base.register import io_soulstruct_operator
 from ..types import *
 from ..utilities import get_collection_map_stem, replace_shared_prefix
 from .types import BlenderMapCollision
 from .utilities import HKX_MATERIAL_NAME_RE
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class RenameCollision(LoggingOperator):
     """Simply renames a Collision model and all MSB Collision/Connect Collision parts that instance it."""
     bl_idname = "object.rename_hkx_collision"
@@ -117,7 +117,7 @@ def _flver_mat_name_to_hkx_mat_index(flver_mat_name: str) -> int:
     return MapCollisionMaterial.Dummy  # so user can actually detect any misses
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class GenerateCollisionFromMesh(LoggingOperator):
     bl_idname = "object.generate_collision_from_mesh"
     bl_label = "Create Collision from Mesh"
@@ -171,7 +171,7 @@ class GenerateCollisionFromMesh(LoggingOperator):
         selected_names = {obj.name for obj in context.selected_objects}
         return (
             context.mode == "EDIT_MESH"
-            and edited_names
+            and bool(edited_names)
             and edited_names == selected_names
         )
 
@@ -345,7 +345,7 @@ class GenerateCollisionFromMesh(LoggingOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class SelectHiResFaces(LoggingOperator):
     bl_idname = "object.select_hi_res_faces"
     bl_label = "Select Hi-Res Collision Faces"
@@ -369,7 +369,7 @@ class SelectHiResFaces(LoggingOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class SelectLoResFaces(LoggingOperator):
     bl_idname = "object.select_lo_res_faces"
     bl_label = "Select Lo-Res Collision Faces"

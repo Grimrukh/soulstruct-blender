@@ -28,7 +28,7 @@ if tp.TYPE_CHECKING:
     from gpu.types import GPUShader, GPUBatch
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 @io_soulstruct_pointer_property(bpy.types.Scene, "region_draw_settings")
 class RegionDrawSettings(bpy.types.PropertyGroup):
 

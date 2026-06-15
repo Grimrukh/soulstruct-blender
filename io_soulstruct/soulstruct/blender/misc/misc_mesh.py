@@ -24,7 +24,7 @@ import bpy
 from mathutils import Matrix, Vector, kdtree
 
 from ..base.operators import LoggingOperator
-from ..base.register import io_soulstruct_class
+from ..base.register import io_soulstruct_operator
 from ..types import MeshObject
 
 
@@ -76,7 +76,7 @@ def move_mesh_selection(
     return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class CopyMeshSelectionOperator(LoggingOperator):
     bl_idname = "object.copy_mesh_selection"
     bl_label = "Copy Edit Mesh Selection to Mesh"
@@ -98,7 +98,7 @@ class CopyMeshSelectionOperator(LoggingOperator):
         return move_mesh_selection(self, context, duplicate=True)
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class CutMeshSelectionOperator(LoggingOperator):
     bl_idname = "object.cut_mesh_selection"
     bl_label = "Cut Edit Mesh Selection to Mesh"
@@ -120,7 +120,7 @@ class CutMeshSelectionOperator(LoggingOperator):
         return move_mesh_selection(self, context, duplicate=False)
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class BooleanMeshCut(LoggingOperator):
     bl_idname = "mesh.boolean_mesh_cut"
     bl_label = "Boolean Mesh Cut"
@@ -220,7 +220,7 @@ class BooleanMeshCut(LoggingOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ApplyLocalMatrixToMesh(LoggingOperator):
 
     bl_idname = "object.apply_local_matrix_to_mesh"
@@ -272,7 +272,7 @@ class ApplyLocalMatrixToMesh(LoggingOperator):
         part.matrix_local = Matrix.Identity(4)  # reset to identity
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ScaleMeshIslands(LoggingOperator):
 
     bl_idname = "mesh.scale_mesh_islands"
@@ -342,7 +342,7 @@ class ScaleMeshIslands(LoggingOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class SelectActiveMeshVerticesNearSelected(LoggingOperator):
 
     bl_idname = "mesh.select_active_mesh_vertices_near_selected"
@@ -424,7 +424,7 @@ class SelectActiveMeshVerticesNearSelected(LoggingOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ConvexHullOnEachMeshIsland(LoggingOperator):
 
     bl_idname = "mesh.convex_hull_on_each_mesh_island"
@@ -547,7 +547,7 @@ class ConvexHullOnEachMeshIsland(LoggingOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class SetActiveFaceNormalUpward(LoggingOperator):
 
     bl_idname = "mesh.set_active_face_normal_upward"
@@ -594,7 +594,7 @@ class SetActiveFaceNormalUpward(LoggingOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class SpawnObjectIntoMeshAtFaces(LoggingOperator):
 
     bl_idname = "mesh.spawn_object_into_mesh_at_faces"
@@ -747,7 +747,7 @@ class SpawnObjectIntoMeshAtFaces(LoggingOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class WeightVerticesWithFalloff(LoggingOperator):
 
     bl_idname = "mesh.weight_vertices_with_falloff"
@@ -833,7 +833,7 @@ class WeightVerticesWithFalloff(LoggingOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ApplyModifierNonSingleUser(LoggingOperator):
 
     bl_idname = "mesh.apply_modifier_non_single_user"

@@ -15,7 +15,7 @@ import typing as tp
 
 import bpy
 
-from ..base.register import io_soulstruct_class
+from ..base.register import io_soulstruct_panel
 from ..bpy_base.panel import SoulstructPanel
 from ..types import SoulstructType
 from .import_operators import *
@@ -23,7 +23,7 @@ from .export_operators import *
 from .misc_operators import *
 
 
-@io_soulstruct_class
+@io_soulstruct_panel
 class MCGPropsPanel(SoulstructPanel):
     """Draw a Panel in the Object properties window exposing the appropriate MCG fields for active object."""
     bl_label = "MCG Properties"
@@ -45,7 +45,7 @@ class MCGPropsPanel(SoulstructPanel):
             self.layout.prop(props, prop)
 
 
-@io_soulstruct_class
+@io_soulstruct_panel
 class NavTriangleUIList(bpy.types.UIList):
     """Draws a list of items."""
     PROP_NAME: tp.ClassVar[str] = "index"
@@ -74,7 +74,7 @@ class NavTriangleUIList(bpy.types.UIList):
             layout.prop(item, self.PROP_NAME, text="", emboss=False)
 
 
-@io_soulstruct_class
+@io_soulstruct_panel
 class MCGNodePropsPanel(SoulstructPanel):
     """Draw a Panel in the Object properties window exposing the appropriate MCG_NODE fields for active object."""
     bl_label = "MCG Node Properties"
@@ -127,7 +127,7 @@ class MCGNodePropsPanel(SoulstructPanel):
         col.operator(RemoveMCGNodeNavmeshBTriangleIndex.bl_idname, icon='REMOVE', text="")
 
 
-@io_soulstruct_class
+@io_soulstruct_panel
 class MCGEdgePropsPanel(SoulstructPanel):
     """Draw a Panel in the Object properties window exposing the appropriate MCG_EDGE fields for active object."""
     bl_label = "MCG Edge Properties"
@@ -149,7 +149,7 @@ class MCGEdgePropsPanel(SoulstructPanel):
             self.layout.prop(props, prop)
 
 
-@io_soulstruct_class
+@io_soulstruct_panel
 class NavGraphImportExportPanel(SoulstructPanel):
     bl_label = "MCG Import/Export"
     bl_idname = "MCG_PT_mcg_import_export"
@@ -192,7 +192,7 @@ class NavGraphImportExportPanel(SoulstructPanel):
             panel.operator(ExportAnyMCGMCP.bl_idname)
 
 
-@io_soulstruct_class
+@io_soulstruct_panel
 class NavGraphDrawPanel(SoulstructPanel):
     bl_label = "MCG Drawing"
     bl_idname = "MCG_PT_mcg_draw"
@@ -237,7 +237,7 @@ class NavGraphDrawPanel(SoulstructPanel):
             column.prop(mcg_draw_settings, prop_name, text="")
 
 
-@io_soulstruct_class
+@io_soulstruct_panel
 class NavGraphToolsPanel(SoulstructPanel):
     bl_label = "MCG Tools"
     bl_idname = "MCG_PT_navmesh_tools"
@@ -255,7 +255,7 @@ class NavGraphToolsPanel(SoulstructPanel):
         layout.operator(RefreshMCGNames.bl_idname)
 
 
-@io_soulstruct_class
+@io_soulstruct_panel
 class MCGGeneratorPanel(SoulstructPanel):
     bl_label = "MCG Generator"
     bl_idname = "MCG_PT_navmesh_generator"

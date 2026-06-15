@@ -15,7 +15,7 @@ from soulstruct.darksouls1r.models.shaders import MatDef as DS1R_MatDef
 from soulstruct.games import DARK_SOULS_DSR
 
 from ...base.operators import LoggingOperator
-from ...base.register import io_soulstruct_class, io_soulstruct_pointer_property
+from ...base.register import io_soulstruct_properties, io_soulstruct_operator, io_soulstruct_pointer_property
 from ...bpy_base.property_group import SoulstructPropertyGroup
 from ...exceptions import SoulstructTypeError
 from ...general.matdefs import get_mtdbnd
@@ -23,7 +23,7 @@ from ..material.types import BlenderFLVERMaterial
 from ..models.types import BlenderFLVER
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 @io_soulstruct_pointer_property(bpy.types.Scene, "bake_lightmap_settings")
 class BakeLightmapSettings(SoulstructPropertyGroup):
 
@@ -86,7 +86,7 @@ class BakeLightmapSettings(SoulstructPropertyGroup):
     )
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class BakeLightmapTextures(LoggingOperator):
 
     bl_idname = "bake.lightmaps"

@@ -53,7 +53,7 @@ class _CreateBlenderFLVERCommand:
     flver: FLVER
     name: str
     bone_tree: BoneTree
-    collection: bpy.types.Collection
+    collection: bpy.types.Collection | None
     image_import_manager: ImageImportManager | None = None
     texture_finder: pyre_flver.TextureFinder | None = None
     existing_merged_mesh: MergedMesh | None = None
@@ -89,11 +89,11 @@ def create_bl_flver_from_flver(
     context: bpy.types.Context,
     flver: FLVER,
     name: str,
-    collection: bpy.types.Collection = None,
+    collection: bpy.types.Collection | None = None,
     image_import_manager: ImageImportManager | None = None,
     texture_finder: pyre_flver.TextureFinder | None = None,
-    existing_bl_materials: tp.Sequence[BlenderFLVERMaterial] = None,
-    existing_mesh_bl_material_indices: tp.Sequence[int] = None,
+    existing_bl_materials: tp.Sequence[BlenderFLVERMaterial] | None = None,
+    existing_mesh_bl_material_indices: tp.Sequence[int] | None = None,
 ) -> BlenderFLVER:
 
     if not collection:

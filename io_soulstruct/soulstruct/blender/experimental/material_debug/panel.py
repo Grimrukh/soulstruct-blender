@@ -1,10 +1,10 @@
 import bpy
 
-from ...base.register import io_soulstruct_class
+from ...base.register import io_soulstruct_panel
 from .operators import *
 
 
-@io_soulstruct_class
+@io_soulstruct_panel
 class MaterialDebugPanel(bpy.types.Panel):
     bl_label = "Debug Material View"
     bl_idname = "MAPPROG_PT_debug_material"

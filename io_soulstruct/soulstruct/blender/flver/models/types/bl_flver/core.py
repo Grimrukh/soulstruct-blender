@@ -25,6 +25,7 @@ import pyrelink.flver as pyre_flver
 from .....base.operators import *
 from .....base.soulstruct_object import BaseBlenderSoulstructObject, add_auto_type_props
 from .....exceptions import *
+from .....flver.image.image_import_manager import ImageImportManager
 from .....flver.image.types import DDSTextureCollection
 from .....flver.material.types import BlenderFLVERMaterial
 from .....flver.models.properties import *
@@ -39,9 +40,6 @@ from ._deep_rename import deep_rename
 from ._duplicate import *
 from ._export import create_flver_from_bl_flver
 from ._import import create_bl_flver_from_flver
-
-if tp.TYPE_CHECKING:
-    from .....flver.image.image_import_manager import ImageImportManager
 
 
 class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
@@ -159,11 +157,11 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
         If `operator` is provided, warnings will be logged for any Empty children that do not match the expected name
         pattern.
         """
-        if not self.armature:
+        if not (armature := self.armature):
             return []  # Dummies require a FLVER Armature parent
 
         dummies = []
-        for child in self.armature.children:
+        for child in armature.children:
             if child.type != "EMPTY":
                 continue
             if BlenderFLVERDummy.DUMMY_NAME_RE.match(child.name):
@@ -173,8 +171,10 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
         return sorted(dummies, key=lambda d: natural_keys(d.name))
 
     def get_materials(self) -> list[BlenderFLVERMaterial]:
-        """Get all Mesh materials as `BlenderFLVERMaterial` objects."""
-        return [BlenderFLVERMaterial(mat) for mat in self.mesh.data.materials]
+        """Get all valid Mesh materials as `BlenderFLVERMaterial` objects."""
+        return [
+            BlenderFLVERMaterial(mat) for mat in self.mesh.data.materials if mat is not None
+        ]
 
     def deep_rename(self, new_name: str, old_name=""):
         deep_rename(self, new_name, old_name)
@@ -222,7 +222,7 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
     def duplicate(
         self,
         context: bpy.types.Context,
-        collections: tp.Sequence[bpy.types.Collection] = None,
+        collections: tp.Sequence[bpy.types.Collection] | None = None,
         make_materials_single_user=True,
         copy_pose=False,
     ) -> BlenderFLVER:
@@ -303,7 +303,7 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
     def create_default_armature_parent(
         context: bpy.types.Context,
         model_name: str,
-        mesh_child_obj: MeshObject = None,
+        mesh_child_obj: MeshObject | None = None,
     ) -> ArmatureObject:
         """Create a default Blender Armature for `mesh_child_obj` with a single default, origin, eponymous bone.
 
@@ -334,12 +334,12 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
         context: bpy.types.Context,
         soulstruct_obj: FLVER,
         name: str,
-        collection: bpy.types.Collection = None,
+        collection: bpy.types.Collection | None = None,
         *,
         image_import_manager: ImageImportManager | None = None,
         texture_finder: pyre_flver.TextureFinder | None = None,
-        existing_bl_materials: tp.Sequence[BlenderFLVERMaterial] = None,
-        existing_mesh_bl_material_indices: tp.Sequence[int] = None,
+        existing_bl_materials: tp.Sequence[BlenderFLVERMaterial] | None = None,
+        existing_mesh_bl_material_indices: tp.Sequence[int] | None = None,
     ) -> BlenderFLVER:
         """Read a FLVER into a managed Blender Armature/Mesh.
 
@@ -390,12 +390,12 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
         cls,
         operator: LoggingOperator,
         context: bpy.types.Context,
-        flver_path_sources: dict[str, Path] = None,
-        flver_binder_sources: dict[str, tuple[pyre.BinderEntry, pyre.Binder]] = None,
-        texture_finder_callback: tp.Callable[[pyre_flver.TextureFinder, pyre_flver.FLVER, pyre.BinderEntry | Path, pyre.Binder | None], None] = None,
+        flver_path_sources: dict[str, Path] | None = None,
+        flver_binder_sources: dict[str, tuple[pyre.BinderEntry, pyre.Binder]] | None = None,
+        texture_finder_callback: tp.Callable[[pyre_flver.TextureFinder, pyre_flver.FLVER, pyre.BinderEntry | Path, pyre.Binder | None], None] | None = None,
         flver_model_category: str = "",
         collection: bpy.types.Collection | None = None,
-    ) -> dict[str, tp.Self]:
+    ) -> dict[str, BlenderFLVER]:
         """Primary multi-FLVER importer with efficient Blender material construction and texture retrieval.
 
         FLVERs should already be parsed into dictionaries of Path sources and (BinderEntry, Binder) sources.
@@ -603,7 +603,7 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
                 "Game Models",
             )
 
-        bl_flvers = {}
+        bl_flvers = {}  # type: dict[str, BlenderFLVER]
 
         # Construction of BlenderFLVER cannot be parallelized, unfortunately.
         for model_name, flver in flvers.items():
@@ -660,7 +660,7 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
         material_blend_mode: str,
         image_import_manager: ImageImportManager | None = None,
         texture_finder: pyre_flver.TextureFinder | None = None,
-        bl_materials_by_matdef_name: dict[str, bpy.types.Material] = None,
+        bl_materials_by_matdef_name: dict[str, bpy.types.Material] | None = None,
     ) -> CreatedFLVERMaterials:
         """Create Blender materials needed for `flver`.
 
@@ -686,7 +686,7 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
         self,
         operator: LoggingOperator,
         context: bpy.types.Context,
-        texture_collection: DDSTextureCollection = None,
+        texture_collection: DDSTextureCollection | None = None,
         flver_model_type=FLVERModelType.Unknown,
     ) -> FLVER:
         return create_flver_from_bl_flver(operator, context, self, texture_collection, flver_model_type)

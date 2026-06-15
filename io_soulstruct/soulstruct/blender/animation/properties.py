@@ -7,10 +7,10 @@ __all__ = [
 
 import bpy
 
-from ..base.register import io_soulstruct_class, io_soulstruct_pointer_property
+from ..base.register import io_soulstruct_properties, io_soulstruct_pointer_property
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 @io_soulstruct_pointer_property(bpy.types.Scene, "animation_import_settings")
 class AnimationImportSettings(bpy.types.PropertyGroup):
 
@@ -21,7 +21,7 @@ class AnimationImportSettings(bpy.types.PropertyGroup):
     )
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 @io_soulstruct_pointer_property(bpy.types.Scene, "animation_export_settings")
 class AnimationExportSettings(bpy.types.PropertyGroup):
 

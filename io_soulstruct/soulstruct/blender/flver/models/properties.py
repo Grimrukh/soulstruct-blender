@@ -33,7 +33,7 @@ class CollectedSubmeshProps(tp.NamedTuple):
     use_backface_culling: bool
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 class FLVERSubmeshProps(SoulstructPropertyGroup):
     """Blender properties specified per FLVER material slot that determine submesh properties.
 
@@ -90,7 +90,7 @@ class FLVERSubmeshProps(SoulstructPropertyGroup):
         return ["is_dynamic", "default_bone_index", "face_set_count"]
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 @io_soulstruct_pointer_property(bpy.types.Object, "FLVER")
 class FLVERProps(SoulstructPropertyGroup):
     """Extension properties for all Blender Mesh objects that represent FLVER models.
@@ -287,7 +287,7 @@ class FLVERProps(SoulstructPropertyGroup):
         """Generate effect submesh properties (for FLVER export) from materials or global settings."""
         
 
-@io_soulstruct_class
+@io_soulstruct_properties
 @io_soulstruct_pointer_property(bpy.types.Object, "FLVER_DUMMY")
 class FLVERDummyProps(SoulstructPropertyGroup):
     """Extension properties for Blender objects that represent FLVER Dummy objects."""
@@ -331,7 +331,7 @@ class FLVERDummyProps(SoulstructPropertyGroup):
     )
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 @io_soulstruct_pointer_property(bpy.types.Bone, "FLVER_BONE")
 class FLVERBoneProps(SoulstructPropertyGroup):
     """Extension properties for Blender Bones that represent FLVER bones.
@@ -396,7 +396,7 @@ class FLVERBoneProps(SoulstructPropertyGroup):
         return flags
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 @io_soulstruct_pointer_property(bpy.types.Scene, "flver_import_settings")
 class FLVERImportSettings(SoulstructPropertyGroup):
     """Common FLVER import settings.
@@ -461,7 +461,7 @@ class FLVERImportSettings(SoulstructPropertyGroup):
     )
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 @io_soulstruct_pointer_property(bpy.types.Scene, "flver_export_settings")
 class FLVERExportSettings(SoulstructPropertyGroup):
     """Common FLVER export settings. Drawn manually in operator browser windows."""

@@ -10,12 +10,12 @@ __all__ = [
 
 import bpy
 
-from ..base.register import io_soulstruct_class, io_soulstruct_pointer_property
+from ..base.register import io_soulstruct_properties, io_soulstruct_pointer_property
 from ..bpy_base.property_group import SoulstructPropertyGroup
 from ..navmesh.nvm.properties import NVMFaceIndex
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 @io_soulstruct_pointer_property(bpy.types.Object, "MCG")
 class MCGProps(SoulstructPropertyGroup):
 
@@ -40,7 +40,7 @@ class MCGProps(SoulstructPropertyGroup):
     )
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 @io_soulstruct_pointer_property(bpy.types.Object, "MCG_NODE")
 class MCGNodeProps(SoulstructPropertyGroup):
 
@@ -89,7 +89,7 @@ class MCGNodeProps(SoulstructPropertyGroup):
     )
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 @io_soulstruct_pointer_property(bpy.types.Object, "MCG_EDGE")
 class MCGEdgeProps(SoulstructPropertyGroup):
 
@@ -121,7 +121,7 @@ class MCGEdgeProps(SoulstructPropertyGroup):
     )
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 @io_soulstruct_pointer_property(bpy.types.Scene, "nav_graph_compute_settings")
 class NavGraphComputeSettings(SoulstructPropertyGroup):
 

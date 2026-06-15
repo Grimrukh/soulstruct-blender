@@ -9,7 +9,7 @@ __all__ = [
 
 import bpy
 
-from ..base.register import io_soulstruct_class
+from ..base.register import io_soulstruct_panel
 from ..bpy_base.panel import SoulstructPanel
 from .generators import *
 from .misc_mesh import *
@@ -17,7 +17,7 @@ from .misc_other import *
 from .misc_outliner import *
 
 
-@io_soulstruct_class
+@io_soulstruct_panel
 class MiscSoulstructMeshOperatorsPanel(SoulstructPanel):
 
     bl_label = "Mesh Operators"
@@ -51,7 +51,7 @@ class MiscSoulstructMeshOperatorsPanel(SoulstructPanel):
         layout.operator(GenerateSlab.bl_idname)
 
 
-@io_soulstruct_class
+@io_soulstruct_panel
 class MiscSoulstructCollectionOperatorsPanel(SoulstructPanel):
 
     bl_label = "Collection Operators"
@@ -174,7 +174,7 @@ def _are_all_collections_hidden(context: bpy.types.Context, pattern_str: str) ->
     return all(coll.hide_viewport for coll in colls)
 
 
-@io_soulstruct_class
+@io_soulstruct_panel
 class MiscSoulstructOtherOperatorsPanel(SoulstructPanel):
 
     bl_label = "Other Operators"

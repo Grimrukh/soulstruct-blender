@@ -25,7 +25,7 @@ from soulstruct.base.maps.msb.enums import BaseMSBRegionSubtype
 from soulstruct.base.maps.msb.region_shapes import RegionShapeType
 from soulstruct.games import *
 
-from ...base.register import io_soulstruct_class, io_soulstruct_pointer_property
+from ...base.register import io_soulstruct_properties, io_soulstruct_pointer_property
 from ...bpy_base.property_group import SoulstructPropertyGroup
 from ...types import ObjectType, MeshObject
 from ..utilities import *
@@ -44,7 +44,7 @@ class BlenderMSBRegionSubtype(StrEnum):
             raise ValueError(f"Unsupported Blender MSB Region subtype: {subtype}")
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 @io_soulstruct_pointer_property(bpy.types.Object, "MSB_REGION")
 class MSBRegionProps(SoulstructPropertyGroup):
 

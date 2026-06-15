@@ -22,7 +22,7 @@ from soulstruct.eldenring.containers import DivBinder
 from soulstruct.havok.core import HKX
 
 from ..base.operators import *
-from ..base.register import io_soulstruct_class
+from ..base.register import io_soulstruct_operator
 from ..exceptions import AnimationImportError, UnsupportedGameError
 from ..types import *
 from .types import SoulstructAnimation
@@ -77,7 +77,7 @@ class _BaseImportHKXAnimation(LoggingOperator):
         return read_skeleton_hkx_entry(skeleton_entry, compendium)
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ImportHKXAnimationWithBinderChoice(_BaseImportHKXAnimation, BinderEntrySelectOperator):
     """Presents user with a choice of enums from `enum_choices` class variable (set prior).
 
@@ -162,7 +162,7 @@ class ImportHKXAnimationWithBinderChoice(_BaseImportHKXAnimation, BinderEntrySel
         return bpy.ops.wm.hkx_animation_binder_choice("INVOKE_DEFAULT")
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ImportAnyHKXAnimation(_BaseImportHKXAnimation, LoggingImportOperator):
     bl_idname = "import_scene.hkx_animation"
     bl_label = "Import Any HKX Anim"
@@ -268,7 +268,7 @@ def _sub_c0000_binder_choices(self, context):
     return ImportCharacterHKXAnimation.c0000_binder_choices
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ImportCharacterHKXAnimation(_BaseImportTypedHKXAnimation):
     """Detects name of selected character FLVER Armature and finds their ANIBND in the game directory."""
     bl_idname = "import_scene.character_hkx_animation"
@@ -361,7 +361,7 @@ class ImportCharacterHKXAnimation(_BaseImportTypedHKXAnimation):
         return anibnd, skeleton_hkx, compendium
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ImportObjectHKXAnimation(_BaseImportTypedHKXAnimation):
     """Detects name of selected object FLVER Armature and finds their OBJBND in the game directory."""
     bl_idname = "import_scene.object_hkx_animation"
@@ -400,7 +400,7 @@ class ImportObjectHKXAnimation(_BaseImportTypedHKXAnimation):
         return anibnd, skeleton_hkx, compendium
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ImportAssetHKXAnimation(_BaseImportTypedHKXAnimation):
     """Detects name of selected asset FLVER Armature and finds their GEOMBND in the game directory.
 

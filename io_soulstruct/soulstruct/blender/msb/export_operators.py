@@ -24,7 +24,7 @@ from soulstruct.utilities.text import natural_keys
 from soulstruct.havok.fromsoft.shared import HKXBHD, BothResHKXBHD
 
 from ..base.operators import LoggingOperator, LoggingExportOperator
-from ..base.register import io_soulstruct_class
+from ..base.register import io_soulstruct_operator
 from ..collision.types import BlenderMapCollision
 from ..general.game_config import BLENDER_GAME_CONFIG
 from ..navmesh.nvm.types import BlenderNVM
@@ -159,7 +159,7 @@ def _export_msb(
     return msb, bl_part_objs
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ExportAnyMSB(LoggingExportOperator):
 
     bl_idname = "export_scene.any_msb"
@@ -238,7 +238,7 @@ class ExportAnyMSB(LoggingExportOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ExportMapMSB(LoggingOperator):
 
     bl_idname = "export_scene.map_msb"

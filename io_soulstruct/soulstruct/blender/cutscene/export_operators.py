@@ -7,10 +7,10 @@ from bpy.props import StringProperty
 from soulstruct.dcx import DCXType
 
 from ..base.operators import LoggingExportOperator, get_dcx_enum_property
-from ..base.register import io_soulstruct_class
+from ..base.register import io_soulstruct_operator
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ExportHKXCutscene(LoggingExportOperator):
     """Export RemoBND cutscene animation from Actions attached to all selected FLVER armatures."""
     bl_idname = "export_scene.hkx_cutscene"

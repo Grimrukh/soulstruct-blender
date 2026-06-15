@@ -5,15 +5,19 @@
 This Blender Extension add-on enables you to import a large number of different FromSoftware file formats,
 manipulate their data in Blender, and export them back to game files.
 
-It's powered by [Soulstruct](https://github.com/Grimrukh/soulstruct), my giant Python library of FromSoftware formats, 
-and [Soulstruct Havok](https://github.com/Grimrukh/soulstruct-havok), an experimental expansion library for Havok 
-formats.
+It's powered by:
+- [Soulstruct](https://github.com/Grimrukh/soulstruct), my giant Python library of FromSoftware formats.
+- [Soulstruct Havok](https://github.com/Grimrukh/soulstruct-havok), an experimental expansion library for Havok formats.
+- [Firelink](https://github.com/Grimrukh/Firelink), my newer C++ FromSoftware library with a Python binding layer called `pyrelink` bindings.
+  - This library is now used for core file formats (Binder, FLVER), texture conversion, and specific file formats that 
+  are so large and complex that Python I/O is too slow (e.g. Elden Ring MSBs).
 
 I developed these tools over the years in parallel with the development of Dark Souls: Nightfall, and finally put aside
 some time to polish and release them. I hope they serve you well and anticipate whatever mods they enable :)
 
-**Blender 4.5 or later is required.** Internal API changes introduced in Blender 4.5 have prevented me from supporting
-earlier versions. The maximum tested version is **Blender 5.1** (the latest release as of April 2026).
+**Blender 5.1 or later is required.** Blender 5.1 introduced native DirectX texture support and upgraded the internal
+Python version to 3.13, meaning I can save bandwidth for supporting older Python versions across the whole Soulstruct 
+ecosystem.
 
 ## Table of Contents
 
@@ -64,38 +68,37 @@ happy to consider it as a commission (which is how Demon's Souls support was add
 However, before you ask, it's **unlikely that Collision export support will expand much further**. Havok's collision
 physics system changed radically in 2014 (Bloodborne onwards) and I don't have the tools (or expensive Havok SDK) to be
 able to regenerate the bounding volume tree structures in these newer files (`hkcd` and `hknp` Havok classes). I may
-eventually add import support so you can at least view the collision meshes in Blender, though. (Other modders such as
-InfernoPlus have apparently had success creating new Elden Ring navmeshes, so perhaps it will eventually happen...)
+eventually add import support so you can at least view the collision meshes in Blender, though. Other modders have had
+success using Havok tools contained in the game executable to regenerate navmeshes.
 
 # Installation
 
 As of version 3.0.0, Soulstruct for Blender is an official Blender Extension add-on that is available in the Blender
-Extensions marketplace. Previous versions
+Extensions marketplace. Previous versions were "legacy add-ons" that users had to download and install manually from disk.
 
-This is an experimental add-on that is not yet published to Blender. To install the add-on manually, follow these steps:
+The difference between Blender Extensions and legacy add-ons is how the Python environment is managed. Legacy add-ons
+were installed under `scripts/addons` and were left to their own devices in terms of dependencies, which created a "wild
+west" sort of situation with polluted dependency paths crossing over between conflicting add-ons. Blender Extensions 
+come with their own complete batch of dependency wheels, which is used to construct a single-Extension Python environment.
+This solves the dependency conflict issues, but does place extra restrictions on coding practices, like only using relative
+imports within the add-on (as it is never actually added to `sys.path`).
 
-1. Ensure you have **Blender 4.1 or later**, as Python 3.11 is required.
-2. Download the add-on `.zip` file from the GitHub repository (Releases).
-3. Unzip the contents into your Blender's **user** `scripts/addons` directory.
-   - On Windows, the directory is typically at `C:/<User>/AppData/Roaming/Blender Foundation/Blender/<version>/scripts/addons/`.
-   - **Do not** unzip the contents into the Blender installation directory (e.g. in `Program Files`). The Soulstruct
-   module may not have write access there. If you see a `PermissionError` when trying to enable the add-on in Blender, 
-   check you haven't done this!
-4. Open Blender and go to `Edit > Preferences > Add-ons`.
-5. In the Add-ons tab, find `Import-Export: Soulstruct` and enable it by checking the box next to it.
-   - If you see an error, particularly one about `soulstruct` module import, double check that `io_soulstruct_lib` is
-   installed in the `scripts/addons` directory next to `io_soulstruct`.
-6. Press the N key in the 3D View window or click the little arrow in the top-right and you should see many new tabs
-   including `FLVER`, `Animation`, and so on.
+1. Ensure you have **Blender 5.1 or later**.
+2. Open Blender and go to `Edit > Preferences > Extensions`.
+3. TODO
 
-If you would like to install or update the add-on directly from Git without an official GitHub release, clone and 
-update (or just download) the repo, and update the contents of `scripts/addons/io_soulstruct` from the main 
-`io_soulstruct` folder in the repo.
+If you want to install a development version of the extension, you will need to clone the GitHub repository and build
+the extension from source. To do this, follow these steps:
+1. Clone the repository to your local machine.
+2. Open a terminal and navigate to the root directory of the cloned repository.
+3. Run the following command to build the extension:
+   ```bash
+   blender --command extension build
+   ```
 
-**Note that updated `io_soulstruct` versions without zip releases may also use newer versions of `soulstruct` and 
-`soulstruct-havok` that need to be installed into `scripts/addons/io_soulstruct_lib`.** I'll eventually add these as Git
-submodules to the repo. (You can update `io_soulstruct_lib/soulstruct` yourself using the [Soulstruct repo](https://github.com/Grimrukh/soulstruct), but 
-as `soulstruct-havok` isn't public yet, this will be impossible to update.)
+The source code also comes with scripts `prepare_extension.py` for building dependency wheels and `install_extension.py`
+for manually injecting the current Python source code into Blender's local user Extensions directory, which makes
+development and testing easier.
 
 Whenever you update an add-on in Blender, you will need to either restart Blender (recommended) or call the 
 `Reload Scripts` function from Blender.

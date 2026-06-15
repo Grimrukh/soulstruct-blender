@@ -7,11 +7,11 @@ __all__ = [
 
 import bpy
 
-from ....base.register import io_soulstruct_class
+from ....base.register import io_soulstruct_panel
 from ....bpy_base.panel import SoulstructPanel
 
 
-@io_soulstruct_class
+@io_soulstruct_panel
 class FLVERMaterialSettingsPanel(SoulstructPanel):
 
     bl_label = "FLVER Material Settings"

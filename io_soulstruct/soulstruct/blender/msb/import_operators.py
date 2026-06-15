@@ -30,7 +30,7 @@ import pyrelink.eldenring.maps as er_maps
 import pyrelink.flver
 
 from ..base.operators import *
-from ..base.register import io_soulstruct_class
+from ..base.register import io_soulstruct_operator
 from ..flver.models.properties import FLVERImportSettings
 from ..flver.models.gui.flver_material_settings import draw_material_image_settings
 from ..flver.models.types import BlenderFLVER
@@ -312,7 +312,7 @@ class _BaseImportMSB(LoggingOperator):
         draw_material_image_settings(context, layout)
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ImportMapMSB(_BaseImportMSB):
     """Import all Parts, Regions, and Events from active map's MSB.
 
@@ -350,7 +350,7 @@ class ImportMapMSB(_BaseImportMSB):
         return _import_msb(self, context, msb, msb_stem, oldest_map_stem)
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ImportAnyMSB(_BaseImportMSB, LoggingImportOperator):
     """Import all Parts, Regions, and Events from active map's MSB.
 
@@ -408,7 +408,7 @@ class ImportAnyMSB(_BaseImportMSB, LoggingImportOperator):
         return _import_msb(self, context, msb, msb_stem, oldest_map_stem)
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ImportERMSB(LoggingOperator):
 
     bl_idname = "import_scene.er_msb"

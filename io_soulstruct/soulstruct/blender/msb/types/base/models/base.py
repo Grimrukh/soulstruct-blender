@@ -8,11 +8,9 @@ from __future__ import annotations
 
 __all__ = [
     "BaseBlenderMSBModelImporter",
-    "MODEL_T",
 ]
 
 import abc
-import typing as tp
 from dataclasses import dataclass
 
 import bpy
@@ -23,11 +21,8 @@ from .....base.operators import LoggingOperator
 from .....types import MeshObject
 
 
-MODEL_T = tp.TypeVar("MODEL_T", bound=BaseMSBModel)
-
-
 @dataclass(slots=True)
-class BaseBlenderMSBModelImporter(abc.ABC, tp.Generic[MODEL_T]):
+class BaseBlenderMSBModelImporter(abc.ABC):
     """Finds and imports the various model files referenced by MSB Model entries (used for Part instances).
 
     Derived classes must implement the `import_model_mesh` method to import the model mesh from the game's model files.
@@ -38,7 +33,6 @@ class BaseBlenderMSBModelImporter(abc.ABC, tp.Generic[MODEL_T]):
     The `model` property of the Blender MSB Part will be set to the imported model mesh object.
     """
 
-    msb_model_class: type[MODEL_T]
     use_oldest_map_stem: bool = False
 
     @abc.abstractmethod
@@ -48,7 +42,7 @@ class BaseBlenderMSBModelImporter(abc.ABC, tp.Generic[MODEL_T]):
         context: bpy.types.Context,
         model_name: str,
         map_stem: str,  # not required by all subtypes
-        model_collection: bpy.types.Collection = None,
+        model_collection: bpy.types.Collection | None = None,
     ) -> MeshObject:
         """Use other Soulstruct for Blender submodules to import model for this MSB Part."""
         ...
@@ -58,7 +52,7 @@ class BaseBlenderMSBModelImporter(abc.ABC, tp.Generic[MODEL_T]):
         self,
         operator: LoggingOperator,
         context: bpy.types.Context,
-        models: list[MODEL_T],
+        models: list[BaseMSBModel],
         map_stem: str,
     ) -> None:
         """Import all models for a batch of same-subtype MSB Models, as needed, in parallel as much as possible."""

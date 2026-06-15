@@ -8,17 +8,26 @@ import typing as tp
 from dataclasses import dataclass
 
 import bpy
+from bpy.types import PropertyGroup
 
 from ....base.operators import LoggingOperator
 from ....types.field_adapters import FieldAdapter
 from ....utilities.conversion import *
 
 if tp.TYPE_CHECKING:
-    from ....msb.types.base import BaseBlenderMSBEntry, ENTRY_T, TYPE_PROPS_T, SUBTYPE_PROPS_T, MSB_T
+    from soulstruct.base.maps.msb import MSB as BaseMSB
+    from soulstruct.base.maps.msb.msb_entry import MSBEntry
+    from ....msb.types.base import BaseBlenderMSBEntry
+    from ....msb.types.base import BaseBlenderMSBEntry
 
 
 @dataclass(slots=True, frozen=True)
-class MSBTransformFieldAdapter(FieldAdapter):
+class MSBTransformFieldAdapter[
+    ENTRY_T: MSBEntry,
+    TYPE_PROPS_T: PropertyGroup,
+    SUBTYPE_PROPS_T: PropertyGroup,
+    MSB_T: BaseMSB,
+](FieldAdapter[ENTRY_T, TYPE_PROPS_T]):
     """Converts between up to three MSB Entry field/Blender property pairs:
         `translate` <> `location`
            `rotate` <> `rotation_euler`
@@ -50,7 +59,7 @@ class MSBTransformFieldAdapter(FieldAdapter):
         context: bpy.types.Context,
         soulstruct_obj: ENTRY_T,
         bl_obj: BaseBlenderMSBEntry[ENTRY_T, TYPE_PROPS_T, SUBTYPE_PROPS_T, MSB_T],
-    ):
+    ) -> None:
         field_names = self._get_field_names()
         if "translate" in field_names:
             bl_translate = to_blender(getattr(soulstruct_obj, "translate"))
@@ -68,7 +77,7 @@ class MSBTransformFieldAdapter(FieldAdapter):
         context: bpy.types.Context,
         bl_obj: BaseBlenderMSBEntry[ENTRY_T, TYPE_PROPS_T, SUBTYPE_PROPS_T, MSB_T],
         soulstruct_obj: ENTRY_T,
-    ):
+    ) -> None:
         field_names = self._get_field_names()
         if context.scene.msb_export_settings.use_world_transforms:
             bl_translate, bl_quaternion, bl_scale = bl_obj.transform_obj.matrix_world.decompose()

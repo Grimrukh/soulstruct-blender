@@ -15,7 +15,7 @@ from .shaders import BaseNodeTreeBuilder
 
 from ...base.operators import LoggingOperator
 from ...base.soulstruct_object import add_auto_type_props
-from ...exceptions import MaterialImportError, FLVERExportError
+from ...exceptions import MaterialImportError, FLVERExportError, UnsupportedGameError
 from ...flver.image import DDSTexture, DDSTextureCollection
 from ...flver.image.utilities import find_or_create_image
 from ...types import MeshObject
@@ -101,7 +101,7 @@ class BlenderFLVERMaterial:
 
     @classmethod
     def from_all_mesh_materials(cls, mesh: MeshObject) -> list[tp.Self]:
-        return [cls(mat) for mat in mesh.data.materials]
+        return [cls(mat) for mat in mesh.data.materials if mat is not None]
 
     @classmethod
     def new_from_flver_material(
@@ -116,7 +116,7 @@ class BlenderFLVERMaterial:
         vertex_color_count: int,
         blend_mode="HASHED",
         warn_missing_textures=True,
-        bl_materials_by_matdef_name: dict[str, bpy.types.Material] = None,
+        bl_materials_by_matdef_name: dict[str, bpy.types.Material] | None = None,
     ) -> BlenderFLVERMaterial:
         """Create a new Blender material from a FLVER material.
 
@@ -213,6 +213,10 @@ class BlenderFLVERMaterial:
         material.type_properties.shader_name = matdef.shader_stem
 
         builder_class = cls.get_builder_class(context)
+        if builder_class is None:
+            raise UnsupportedGameError(
+                f"No material builder class found for this game. Cannot build material {bl_material.name}."
+            )
 
         if not copied:
             # Try to build shader nodetree.
@@ -275,7 +279,7 @@ class BlenderFLVERMaterial:
         operator: LoggingOperator,
         context: bpy.types.Context,
         matdef: MatDef,
-        texture_collection: DDSTextureCollection = None,
+        texture_collection: DDSTextureCollection | None = None,
         get_texture_path_prefix: tp.Callable[[str], str] | None = None,
     ) -> Material:
         """Create a FLVER material from Blender material custom properties and texture nodes.
@@ -435,7 +439,7 @@ class BlenderFLVERMaterial:
         matdef: MatDef,
         use_map_piece_layout: bool,
         mesh_kwargs: dict[str, int | bool | None],
-        texture_collection: DDSTextureCollection = None,
+        texture_collection: DDSTextureCollection | None = None,
         get_texture_path_prefix: tp.Callable[[str], str] | None = None,
     ) -> SplitMeshDef:
         """Use given `matdef` to create a `SplitMeshDef` for the given Blender material with either a character
@@ -535,6 +539,11 @@ class BlenderFLVERMaterial:
         output_node.name = "Material Output"
 
         builder_class = self.get_builder_class(context)
+        if builder_class is None:
+            raise UnsupportedGameError(
+                f"No material builder class found for this game. Cannot rebuild material {bl_material.name}."
+            )
+
         try:
             builder = builder_class(
                 operator=operator,
@@ -601,10 +610,12 @@ class BlenderFLVERMaterial:
         return self.type_properties.shader_name
 
     @staticmethod
-    def get_builder_class(context: bpy.types.Context) -> type[BaseNodeTreeBuilder]:
+    def get_builder_class(context: bpy.types.Context) -> type[BaseNodeTreeBuilder] | None:
         # Select appropriate builder class for the game.
         settings = context.scene.soulstruct_settings
-        if settings.is_game(DEMONS_SOULS):
+        if settings.is_game(BLOODBORNE):
+            return shaders.bloodborne.NodeTreeBuilder
+        elif settings.is_game(DEMONS_SOULS):
             return shaders.demonssouls.NodeTreeBuilder
         elif settings.is_game(DARK_SOULS_PTDE):
             return shaders.darksouls1ptde.NodeTreeBuilder
@@ -612,8 +623,9 @@ class BlenderFLVERMaterial:
             return shaders.darksouls1r.NodeTreeBuilder
         elif settings.is_game(ELDEN_RING):
             return shaders.eldenring.NodeTreeBuilder
-        else:
-            return shaders.BaseNodeTreeBuilder
+
+        # Unsupported game.
+        return None
 
 
 add_auto_type_props(BlenderFLVERMaterial, *BlenderFLVERMaterial.AUTO_MATERIAL_PROPS)

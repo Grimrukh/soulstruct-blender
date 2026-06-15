@@ -14,13 +14,13 @@ import bpy
 
 from soulstruct.games import *
 
-from ...base.register import io_soulstruct_class, io_soulstruct_pointer_property
+from ...base.register import io_soulstruct_properties, io_soulstruct_pointer_property
 from ...bpy_base.property_group import SoulstructPropertyGroup
 from .events import BlenderMSBEventSubtype
 from .parts import MSBPartArmatureMode
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 @io_soulstruct_pointer_property(bpy.types.Scene, "msb_import_settings")
 class MSBImportSettings(SoulstructPropertyGroup):
     """Common MSB import settings. Drawn manually in operator browser windows."""
@@ -140,7 +140,7 @@ class MSBImportSettings(SoulstructPropertyGroup):
         return is_name_match
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 @io_soulstruct_pointer_property(bpy.types.Scene, "msb_export_settings")
 class MSBExportSettings(SoulstructPropertyGroup):
 
@@ -212,7 +212,7 @@ class MSBExportSettings(SoulstructPropertyGroup):
     )
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 @io_soulstruct_pointer_property(bpy.types.Scene, "msb_tool_settings")
 class MSBToolSettings(SoulstructPropertyGroup):
 

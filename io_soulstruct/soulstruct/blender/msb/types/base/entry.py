@@ -2,10 +2,6 @@ from __future__ import annotations
 
 __all__ = [
     "BaseBlenderMSBEntry",
-    "ENTRY_T",
-    "TYPE_PROPS_T",
-    "SUBTYPE_PROPS_T",
-    "MSB_T",
 ]
 
 import abc
@@ -13,6 +9,7 @@ import typing as tp
 from enum import StrEnum
 
 import bpy
+from bpy.types import PropertyGroup
 
 from soulstruct.base.maps.msb import MSB as BaseMSB
 from soulstruct.base.maps.msb.msb_entry import MSBEntry
@@ -26,18 +23,12 @@ class BlenderMSBEntryProps(tp.Protocol):
     entry_subtype: bpy.types.EnumProperty | str
 
 
-ENTRY_T = tp.TypeVar("ENTRY_T", bound=MSBEntry)
-TYPE_PROPS_T = tp.TypeVar("TYPE_PROPS_T", bound=BlenderMSBEntryProps)  # narrowed
-SUBTYPE_PROPS_T = tp.TypeVar("SUBTYPE_PROPS_T", bound=tp.Union[bpy.types.PropertyGroup, None])
-MSB_T = tp.TypeVar("MSB_T", bound=BaseMSB)
-SELF_T = tp.TypeVar("SELF_T", bound="BaseBlenderMSBEntry")
-
-
-class BaseBlenderMSBEntry(
-    BaseBlenderSoulstructObject[ENTRY_T, TYPE_PROPS_T],
-    abc.ABC,
-    tp.Generic[ENTRY_T, TYPE_PROPS_T, SUBTYPE_PROPS_T, MSB_T],
-):
+class BaseBlenderMSBEntry[
+    ENTRY_T: MSBEntry,
+    TYPE_PROPS_T: BlenderMSBEntryProps,
+    SUBTYPE_PROPS_T: PropertyGroup | None,
+    MSB_T: BaseMSB,
+](BaseBlenderSoulstructObject[ENTRY_T, TYPE_PROPS_T], abc.ABC):
     """Base class for all `MSBEntry` Blender wrapper types.
 
     Extends generic types with Blender subtype property group and game-specific `MSB` class (required to resolve
@@ -60,13 +51,13 @@ class BaseBlenderMSBEntry(
 
     @classmethod
     def new(
-        cls: type[SELF_T],
+        cls,
         name: str,
         data: bpy.types.Mesh | None,
-        collection: bpy.types.Collection = None,
-    ) -> SELF_T:
+        collection: bpy.types.Collection | None = None,
+    ) -> tp.Self:
         """Sets entry subtype appropriately under supertype properties (e.g. `obj.MSB_PART.entry_subtype`)."""
-        bl_entry = super().new(name, data, collection)  # type: SELF_T
+        bl_entry = tp.cast(tp.Self, super().new(name, data, collection))
         bl_entry.type_properties.entry_subtype = cls.MSB_ENTRY_SUBTYPE
         return bl_entry
 

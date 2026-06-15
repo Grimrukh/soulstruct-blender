@@ -17,7 +17,7 @@ import bpy
 from soulstruct.games import ELDEN_RING
 
 from ..base.operators import *
-from ..base.register import io_soulstruct_class
+from ..base.register import io_soulstruct_operator
 from .game_config import BLENDER_GAME_CONFIG
 
 if tp.TYPE_CHECKING:
@@ -171,7 +171,7 @@ class _SelectMapDirectory(LoggingOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class SelectGameMapDirectory(_SelectMapDirectory):
     """Browse for game map directory to set `map_stem` setting."""
     bl_idname = "soulstruct.select_game_map_directory"
@@ -192,7 +192,7 @@ class SelectGameMapDirectory(_SelectMapDirectory):
         return settings.game_root
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class SelectProjectMapDirectory(_SelectMapDirectory):
     """Browse for project map directory to set `map_stem` setting."""
     bl_idname = "soulstruct.select_project_map_directory"
@@ -213,7 +213,7 @@ class SelectProjectMapDirectory(_SelectMapDirectory):
         return settings.project_root
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class SelectImageCacheDirectory(LoggingImportOperator):
     """Browse for global image cache directory."""
     bl_idname = "soulstruct.select_image_cache_directory"
@@ -250,7 +250,7 @@ class SelectImageCacheDirectory(LoggingImportOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class SelectCustomMTDBNDFile(LoggingImportOperator):
     """Browse for custom MTDBND file."""
     bl_idname = "soulstruct.select_custom_mtdbnd_file"
@@ -267,7 +267,7 @@ class SelectCustomMTDBNDFile(LoggingImportOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class SelectCustomMATBINBNDFile(LoggingImportOperator):
     """Browse for custom MATBINBND file."""
     bl_idname = "soulstruct.select_custom_matbinbnd_file"
@@ -284,7 +284,7 @@ class SelectCustomMATBINBNDFile(LoggingImportOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class LoadCollectionsFromBlend(LoggingImportOperator):
     """Load collections and objects from a '.blend' file by linking its root-level collections to this scene.
 

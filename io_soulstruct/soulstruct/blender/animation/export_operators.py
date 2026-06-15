@@ -19,7 +19,7 @@ from soulstruct.dcx import DCXType
 from soulstruct.havok.fromsoft.base import BaseSkeletonHKX, BaseAnimationHKX
 
 from ..base.operators import *
-from ..base.register import io_soulstruct_class
+from ..base.register import io_soulstruct_operator
 from ..exceptions import *
 from ..flver.models import BlenderFLVER
 from ..types import *
@@ -40,12 +40,13 @@ def _is_bl_flver_with_animation_data(obj: bpy.types.Object) -> tp.TypeGuard[Mesh
     return bool(bl_flver.armature and bl_flver.armature.animation_data and bl_flver.armature.animation_data.action)
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ExportAnyHKXAnimation(LoggingExportOperator):
     """Export loose HKX animation file from an Action attached to active FLVER Armature."""
     bl_idname = "export_scene.hkx_animation"
     bl_label = "Export Any HKX Animation"
     bl_description = "Export a Blender action to a standalone HKX animation file with manual HKX skeleton source"
+
 
     filename_ext = ".hkx"
 
@@ -115,7 +116,9 @@ class ExportAnyHKXAnimation(LoggingExportOperator):
             try:
                 skeleton_entry = skeleton_binder[SKELETON_ENTRY_RE]
             except EntryNotFoundError:
-                return self.error(f"Could not find `skeleton.hkx` (case-insensitive) in binder: '{skeleton_path}'")
+                return self.error(
+                    f"Could not find `skeleton.hkx` (case-insensitive) in binder: '{skeleton_path}'"
+                )
             skeleton_hkx = skeleton_hkx_class.from_binder_entry(skeleton_entry)
 
         current_frame = context.scene.frame_current  # store for resetting after export
@@ -142,7 +145,7 @@ class ExportAnyHKXAnimation(LoggingExportOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ExportHKXAnimationIntoAnyBinder(LoggingImportOperator):
     """Export HKX animation from an Action attached to a FLVER armature, into an existing BND."""
     bl_idname = "export_scene.hkx_animation_binder"
@@ -263,6 +266,11 @@ class ExportHKXAnimationIntoAnyBinder(LoggingImportOperator):
 
 class _BaseExportTypedHKXAnimation(LoggingOperator):
 
+    # Optional class variable for `SkeletonHKX` instance. Useful for tests.
+    # If `None`, the skeleton must appear in the targeted Binder for export
+    # (with special handling used for c0000 split ANIBNDs).
+    SKELETON_HKX: tp.ClassVar[SKELETON_TYPING | None] = None
+
     @classmethod
     def poll(cls, context) -> bool:
         settings = cls.settings(context)
@@ -280,7 +288,7 @@ class _BaseExportTypedHKXAnimation(LoggingOperator):
         return bool(bl_flver.armature and bl_flver.armature.animation_data and bl_flver.armature.animation_data.action)
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ExportCharacterHKXAnimation(_BaseExportTypedHKXAnimation):
     """Export active animation from selected character Armature into that character's game ANIBND."""
     bl_idname = "export_scene.hkx_character_animation"
@@ -329,13 +337,17 @@ class ExportCharacterHKXAnimation(_BaseExportTypedHKXAnimation):
         except FileNotFoundError as ex:
             return self.error(f"Cannot find ANIBND for character {model_name}: {ex}")
 
-        # Skeleton is in ANIBND.
-        skeleton_anibnd = anibnd
-        try:
-            skeleton_entry = skeleton_anibnd[SKELETON_ENTRY_RE]
-        except EntryNotFoundError:
-            return self.error("Could not find 'skeleton.hkx' (case-insensitive) in ANIBND.")
-        skeleton_hkx = skeleton_hkx_class.from_binder_entry(skeleton_entry)
+        if self.SKELETON_HKX is not None:
+            self.info(f"Using operator SKELETON_HKX for export: {self.SKELETON_HKX.path_name}")
+            skeleton_hkx = self.SKELETON_HKX
+        else:
+            # Skeleton is in ANIBND.
+            skeleton_anibnd = anibnd
+            try:
+                skeleton_entry = skeleton_anibnd[SKELETON_ENTRY_RE]
+            except EntryNotFoundError:
+                return self.error("Could not find 'skeleton.hkx' (case-insensitive) in ANIBND.")
+            skeleton_hkx = skeleton_hkx_class.from_binder_entry(skeleton_entry)
 
         # Get animation stem from action name. We will re-format its ID in the selected game's known format (e.g. to
         # support cross-game conversion).
@@ -417,7 +429,7 @@ class ExportCharacterHKXAnimation(_BaseExportTypedHKXAnimation):
         return {"FINISHED" if exported_paths else "CANCELLED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ExportObjectHKXAnimation(_BaseExportTypedHKXAnimation):
     """Export active animation from selected object Armature into that object's game OBJBND."""
     bl_idname = "export_scene.object_hkx_animation"

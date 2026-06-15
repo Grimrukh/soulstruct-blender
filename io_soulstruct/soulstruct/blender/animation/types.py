@@ -577,6 +577,9 @@ class SoulstructAnimation:
                 if bone_name in last_frame_rotations:
                     if last_frame_rotations[bone_name].dot(r) < 0.0:
                         r.negate()  # negate quaternion to avoid discontinuity (reverse direction of rotation)
+                elif r.w < 0.0:
+                    # Frame 0: canonicalize sign (W >= 0) so round-trips always start from the same hemisphere.
+                    r.negate()
 
                 basis_samples[frame_i] = [keyframe_t, *t, *r, *s]
                 last_frame_rotations[bone_name] = r
@@ -715,7 +718,10 @@ class SoulstructAnimation:
         root_motion_samples = []  # type: list[tuple[float, float, float, float]]
         armature_space_frames = []  # type: list[list[TRSTransform]]
 
-        has_root_motion = False
+        # Pre-detect root motion from F-curve presence rather than sampling.  This correctly
+        # preserves zero-valued root motion that would be missed by comparing consecutive samples.
+        _fcurve_paths = {fc.data_path for fc in self.channelbag.fcurves}
+        has_root_motion = bool(_fcurve_paths & {"location", "rotation_euler"})
 
         # Animation track order will match Blender bone order (which should come from FLVER).
         track_bone_mapping = list(range(len(skeleton_hkx.skeleton.bones)))
@@ -738,15 +744,11 @@ class SoulstructAnimation:
             bpy.context.scene.frame_set(frame)
             armature_space_frame = []  # type: list[TRSTransform]
 
-            # We collect root motion vectors, as we're not sure if any root motion exists yet.
-            loc = armature.location
-            rot = armature.rotation_euler
-            root_motion_sample = (loc[0], loc[1], loc[2], rot[2])  # XYZ and Z rotation (soon to be game Y)
-            root_motion_samples.append(root_motion_sample)
-            if not has_root_motion:
-                if len(root_motion_samples) >= 2 and root_motion_samples[-1] != root_motion_samples[-2]:
-                    # Some actual root motion has appeared.
-                    has_root_motion = True
+            # Collect root motion sample (only when the action has root motion F-curves).
+            if has_root_motion:
+                loc = armature.location
+                rot = armature.rotation_euler
+                root_motion_samples.append((loc[0], loc[1], loc[2], rot[2]))
 
             for bone in skeleton_hkx.skeleton.bones:
                 try:

@@ -4,12 +4,12 @@ __all__ = [
     "FLVERUVMapsPanel",
 ]
 
-from ....base.register import io_soulstruct_class
+from ....base.register import io_soulstruct_panel
 from ....bpy_base.panel import SoulstructPanel
 from ..operators.uv_operators import *
 
 
-@io_soulstruct_class
+@io_soulstruct_panel
 class FLVERUVMapsPanel(SoulstructPanel):
     """Panel for Soulstruct FLVER UV map operators. Appears in 'IMAGE_EDITOR' space."""
     bl_label = "FLVER UV Maps"

@@ -4,12 +4,12 @@ __all__ = [
     "CutsceneImportExportPanel",
 ]
 
-from ..base.register import io_soulstruct_class
+from ..base.register import io_soulstruct_panel
 from ..bpy_base.panel import SoulstructPanel
 from .import_operators import *
 
 
-@io_soulstruct_class
+@io_soulstruct_panel
 class CutsceneImportExportPanel(SoulstructPanel):
     bl_label = "Cutscenes"
     bl_idname = "CUTSCENE_PT_hkx_tools"

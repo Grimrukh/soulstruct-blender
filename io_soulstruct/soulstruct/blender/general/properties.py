@@ -26,7 +26,7 @@ from soulstruct.utilities.files import create_bak
 from pyrelink.core import GameType as PyreGameType
 from pyrelink.flver import TextureFinder
 
-from ..base.register import io_soulstruct_class, io_soulstruct_pointer_property
+from ..base.register import io_soulstruct_properties, io_soulstruct_pointer_property
 from ..exceptions import *
 from ..utilities import *
 from .game_config import BLENDER_GAME_CONFIG, BlenderGameConfig
@@ -48,9 +48,6 @@ SUPPORTED_GAMES = [
     ELDEN_RING,
 ]
 
-# Type variable for `get_initial_binder()` method.
-BINDER_T = tp.TypeVar("BINDER_T", bound=Binder)
-
 
 # noinspection PyUnusedLocal
 def _update_log_level(self: SoulstructSettings, context: bpy.types.Context):
@@ -62,7 +59,7 @@ def _update_log_level(self: SoulstructSettings, context: bpy.types.Context):
         handler.setLevel(logging.DEBUG if self.enable_debug_logging else logging.INFO)
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 class SoulstructGameSettings(bpy.types.PropertyGroup):
     """Game-specific settings. `SoulstructSettings` retrieves settings from active game's instance of this."""
 
@@ -97,7 +94,7 @@ class SoulstructGameSettings(bpy.types.PropertyGroup):
     )
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 class DemonsSoulsGameSettings(SoulstructGameSettings):
 
     export_debug_files: bpy.props.BoolProperty(
@@ -107,7 +104,7 @@ class DemonsSoulsGameSettings(SoulstructGameSettings):
     )
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 class EldenRingGameSettings(SoulstructGameSettings):
 
     matbinbnd_path_str: bpy.props.StringProperty(
@@ -163,7 +160,7 @@ class EldenRingGameSettings(SoulstructGameSettings):
     )
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 @io_soulstruct_pointer_property(bpy.types.Scene, "soulstruct_settings")
 class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyGroup` (unnecessary)
     """Global settings for the Soulstruct Blender plugin."""
@@ -436,7 +433,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
 
     @staticmethod
     def get_first_existing_file_path(
-        *parts: str | Path, roots: tp.Sequence[GameStructure | None], dcx_type: DCXType = None
+        *parts: str | Path, roots: tp.Sequence[GameStructure | None], dcx_type: DCXType | None = None
     ) -> Path | None:
         """Check ordered `roots` for file path, returning first that exists."""
         for root in roots:
@@ -465,7 +462,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
     def get_first_existing_map_file_path(
         *parts: str | Path,
         roots: tp.Sequence[GameStructure | None],
-        dcx_type: DCXType = None,
+        dcx_type: DCXType | None = None,
         map_stem: str | None = None,
     ) -> Path | None:
         """Check ordered `roots` for 'map' file path, returning first that exists.
@@ -530,7 +527,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
             return map_stem
         return BLENDER_GAME_CONFIG[self.game].old_to_new_map.get(map_stem, map_stem)
 
-    def get_import_file_path(self, *parts: str | Path, dcx_type: DCXType = None) -> Path:
+    def get_import_file_path(self, *parts: str | Path, dcx_type: DCXType | None = None) -> Path:
         """Try to get file path relative to project or game directory first, depending on `prefer_import_from_project`,
         then fall back to the same path relative to the other directory if the preferred file does not exist.
 
@@ -564,7 +561,12 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
         except NotADirectoryError:
             return False
 
-    def get_import_map_file_path(self, *parts: str | Path, dcx_type: DCXType = None, map_stem: str = None) -> Path:
+    def get_import_map_file_path(
+        self,
+        *parts: str | Path,
+        dcx_type: DCXType | None = None,
+        map_stem: str | None = None,
+    ) -> Path:
         """Get the 'map/{map_stem}' directory path, and optionally further, in the preferred directory.
 
         If `smart_map_version_handling` is enabled, this will redirect to the earliest or latest version of the map if
@@ -582,7 +584,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
             raise FileNotFoundError(f"Map file not found in project or game directory with parts: {parts}")
         return path
 
-    def get_import_map_dir_path(self, map_stem: str = None) -> Path:
+    def get_import_map_dir_path(self, map_stem: str | None = None) -> Path:
         """Get the 'map/{map_stem}' directory path, and optionally further, in the preferred directory.
 
         Directory must exist, or a `NotADirectoryError` will be raised.
@@ -592,7 +594,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
             raise NotADirectoryError(f"Map directory for map {map_stem} not found in project or game directory.")
         return path
 
-    def get_import_msb_path(self, map_stem: str = None) -> Path:
+    def get_import_msb_path(self, map_stem: str | None = None) -> Path:
         """Get the `map_stem` MSB path in the preferred `map/MapStudio` directory.
 
         MSB file must exist, or a `FileNotFoundError` will be raised.
@@ -831,20 +833,20 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
         ...
 
     @tp.overload
-    def get_initial_binder(
+    def get_initial_binder[BINDER_T: Binder](
         self,
         operator: LoggingOperator,
         binder_relative_path: Path,
-        binder_class: type[BINDER_T] = None,
+        binder_class: type[BINDER_T] | None = None,
     ) -> BINDER_T:
         """Overload for custom `Binder` class type."""
         ...
 
-    def get_initial_binder(
+    def get_initial_binder[BINDER_T: Binder](
         self,
         operator: LoggingOperator,
         binder_relative_path: Path,
-        binder_class: type[BINDER_T] = None,
+        binder_class: type[BINDER_T] | None = None,
     ) -> BINDER_T:
         """Get the path to a Binder file whose contents are to be partially modified by an export operation.
 
@@ -914,7 +916,12 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
 
     # endregion
 
-    def get_map_stem_for_export(self, obj: bpy.types.Object = None, oldest=False, latest=False) -> str:
+    def get_map_stem_for_export(
+        self,
+        obj: bpy.types.Object | None = None,
+        oldest: bool = False,
+        latest: bool = False,
+    ) -> str:
         """Get map stem for export based on `obj` name, or fall back to settings map stem."""
         if oldest and latest:
             raise ValueError("Cannot specify both `oldest` and `latest` as True when getting map stem for export.")

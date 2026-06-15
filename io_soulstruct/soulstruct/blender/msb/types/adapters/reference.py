@@ -8,6 +8,7 @@ import typing as tp
 from dataclasses import dataclass
 
 import bpy
+from bpy.types import PropertyGroup
 
 from ....base.operators import LoggingOperator
 from ....exceptions import MissingMSBEntryError, SoulstructTypeError
@@ -19,12 +20,17 @@ from ....utilities.bpy_data import find_obj_or_create_empty
 if tp.TYPE_CHECKING:
     from soulstruct.base.maps.msb import MSB as BaseMSB
     from soulstruct.base.maps.msb.msb_entry import MSBEntry
-    from ....msb.types.base import BaseBlenderMSBEntry, ENTRY_T, TYPE_PROPS_T, SUBTYPE_PROPS_T, MSB_T
+    from ....msb.types.base import BaseBlenderMSBEntry
     REF_TYPING = tp.Literal[SoulstructType.MSB_PART, SoulstructType.MSB_REGION, SoulstructType.MSB_EVENT]
 
 
 @dataclass(slots=True, frozen=True)
-class MSBReferenceFieldAdapter(FieldAdapter):
+class MSBReferenceFieldAdapter[
+    ENTRY_T: MSBEntry,
+    TYPE_PROPS_T: PropertyGroup,
+    SUBTYPE_PROPS_T: PropertyGroup,
+    MSB_T: BaseMSB,
+](FieldAdapter):
     """Wraps an `MSBEntry` property that references another `MSBEntry`, which we handle in Blender.
 
     Property getter/setter is overridden to handle array indices.
@@ -62,8 +68,8 @@ class MSBReferenceFieldAdapter(FieldAdapter):
         soulstruct_obj: ENTRY_T,
         bl_obj: BaseBlenderMSBEntry[ENTRY_T, TYPE_PROPS_T, SUBTYPE_PROPS_T, MSB_T],
         *,
-        missing_reference_callback: tp.Callable[[bpy.types.Object], None] = None,
-        msb_objects: tp.Iterable[bpy.types.Object] = None,
+        missing_reference_callback: tp.Callable[[bpy.types.Object], None] | None = None,
+        msb_objects: tp.Iterable[bpy.types.Object] | None = None,
     ):
         if not missing_reference_callback:
             raise ValueError(
@@ -107,7 +113,7 @@ class MSBReferenceFieldAdapter(FieldAdapter):
         context: bpy.types.Context,
         bl_obj: BaseBlenderMSBEntry[ENTRY_T, TYPE_PROPS_T, SUBTYPE_PROPS_T, MSB_T],
         soulstruct_obj: ENTRY_T,
-        msb: MSB_T = None,
+        msb: MSB_T | None = None,
     ):
         if msb is None:
             raise ValueError("MSB must be given to convert Blender object references to MSB Entry references.")
@@ -157,13 +163,13 @@ class MSBReferenceFieldAdapter(FieldAdapter):
     def _msb_entry_ref_to_bl_entry_ref(
         self,
         operator: LoggingOperator,
-        entry: MSBEntry,
+        entry: ENTRY_T,
         ref_entry: MSBEntry | None,
         msb_objects: tp.Iterable[bpy.types.Object],
         missing_reference_callback: tp.Callable[[bpy.types.Object], None],
-        array_index: int = None,
+        array_index: int | None = None,
     ) -> bpy.types.Object | None:
-        """Convert MSB entry reference to Blender object reference (may be a created Empty added now to
+        """Convert MSB entry reference to Blender object reference (could be a created Empty added now to
         `missing_collection_name`).
 
         Note that we don't need overloads for this, as an `Object` is always returned whose `soulstruct_type` tags the
@@ -192,11 +198,11 @@ class MSBReferenceFieldAdapter(FieldAdapter):
 
     def _bl_entry_ref_to_msb_entry_ref(
         self,
-        msb: BaseMSB,
+        msb: MSB_T,
         referrer_entry: MSBEntry,
         bl_obj: bpy.types.Object | None,
-        array_index: int = None,
-    ) -> MSBEntry | None:
+        array_index: int | None = None,
+    ) -> ENTRY_T | None:
         """Convert Blender object reference to MSB entry reference.
 
         Has wrappers for Part, Event, and Region references. Model references use a separate method.
@@ -230,5 +236,5 @@ class MSBReferenceFieldAdapter(FieldAdapter):
             prop_name_i = f"{self.bl_prop_name}[{array_index}]" if array_index is not None else self.bl_prop_name
             raise MissingMSBEntryError(
                 f"MSB entry '{bl_obj.name}' referenced in field '{prop_name_i}' of MSB entry '{referrer_entry.name}' "
-                f"not found in MSB (under name '{entry_name}')."
+                f"(type {self.ref_type}) not found in MSB (under name '{entry_name}')."
             )

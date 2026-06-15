@@ -6,14 +6,19 @@ __all__ = [
 
 import abc
 
+from bpy.types import PropertyGroup
+
 from soulstruct.darksouls1ptde.maps.msb import MSB, BitSet128
+from soulstruct.darksouls1ptde.maps.parts import MSBPart
 
 from ...adapters import FieldAdapter, MSBPartGroupsAdapter
-from ...base.entry import SUBTYPE_PROPS_T
-from ...base.parts import BaseBlenderMSBPart, PART_T
+from ...base.parts import BaseBlenderMSBPart
 
 
-class BaseBlenderMSBPart_DS1(BaseBlenderMSBPart[PART_T, SUBTYPE_PROPS_T, MSB, BitSet128], abc.ABC):
+class BaseBlenderMSBPart_DS1[
+    PART_T: MSBPart,  # narrowed
+    SUBTYPE_PROPS_T: PropertyGroup,
+](BaseBlenderMSBPart[PART_T, SUBTYPE_PROPS_T, MSB, BitSet128], abc.ABC):
 
     TYPE_FIELDS = BaseBlenderMSBPart.TYPE_FIELDS + (
         MSBPartGroupsAdapter("draw_groups", bit_set_type=BitSet128),

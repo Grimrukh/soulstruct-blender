@@ -10,6 +10,7 @@ import traceback
 import bpy
 
 from soulstruct.containers import Binder, EntryNotFoundError
+from soulstruct.base.maps.msb.models import BaseMSBModel
 from soulstruct.base.maps.navmesh.nvm import NVM
 
 from .....base.operators import *
@@ -18,7 +19,7 @@ from .....navmesh.nvm.types import BlenderNVM
 from .....utilities import find_or_create_collection
 from .....types import MeshObject
 
-from .base import BaseBlenderMSBModelImporter, MODEL_T
+from .base import BaseBlenderMSBModelImporter
 
 
 class BlenderMSBNavmeshModelImporter(BaseBlenderMSBModelImporter):
@@ -30,7 +31,7 @@ class BlenderMSBNavmeshModelImporter(BaseBlenderMSBModelImporter):
         context: bpy.types.Context,
         model_name: str,
         map_stem: str,
-        model_collection: bpy.types.Collection = None,
+        model_collection: bpy.types.Collection | None = None,
     ) -> MeshObject:
         """Import the Navmesh NVM model of the given name into a collection in the current scene.
 
@@ -86,7 +87,7 @@ class BlenderMSBNavmeshModelImporter(BaseBlenderMSBModelImporter):
         cls,
         operator: LoggingOperator,
         context: bpy.types.Context,
-        models: list[MODEL_T],
+        models: list[BaseMSBModel],
         map_stem: str,
     ):
         """Import all models for a batch of MSB Navmeshes, as needed, in parallel as much as possible.

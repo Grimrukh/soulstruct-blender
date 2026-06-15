@@ -7,14 +7,15 @@ from __future__ import annotations
 
 __all__ = [
     "BaseBlenderMSBEvent",
-    "EVENT_T",
 ]
 
 import abc
 import typing as tp
 
 import bpy
+from bpy.types import PropertyGroup
 
+from soulstruct.base.maps.msb import MSB as BaseMSB
 from soulstruct.base.maps.msb.events import BaseMSBEvent
 
 from ....msb.properties import BlenderMSBEventSubtype, MSBEventProps
@@ -22,14 +23,14 @@ from ....msb.types.adapters import *
 from ....types import *
 from ....utilities import find_or_create_collection, remove_dupe_suffix
 
-from .entry import BaseBlenderMSBEntry, SUBTYPE_PROPS_T, MSB_T
+from .entry import BaseBlenderMSBEntry
 
 
-EVENT_T = tp.TypeVar("EVENT_T", bound=BaseMSBEvent)
-SELF_T = tp.TypeVar("SELF_T", bound="BaseBlenderMSBEvent")
-
-
-class BaseBlenderMSBEvent(BaseBlenderMSBEntry[EVENT_T, MSBEventProps, SUBTYPE_PROPS_T, MSB_T], abc.ABC):
+class BaseBlenderMSBEvent[
+    EVENT_T: BaseMSBEvent,
+    SUBTYPE_PROPS_T: PropertyGroup,
+    MSB_T: BaseMSB,
+](BaseBlenderMSBEntry[EVENT_T, MSBEventProps, SUBTYPE_PROPS_T, MSB_T], abc.ABC):
     """MSB Event instance.
 
     Always represented by an Empty object, parented to either the attached region or part, depending on the subtype.
@@ -64,18 +65,18 @@ class BaseBlenderMSBEvent(BaseBlenderMSBEntry[EVENT_T, MSBEventProps, SUBTYPE_PR
 
     @classmethod
     def new(
-        cls: type[SELF_T],
+        cls,
         name: str,
         data: bpy.types.Mesh | None,
-        collection: bpy.types.Collection = None,
-    ) -> SELF_T:
+        collection: bpy.types.Collection | None = None,
+    ) -> tp.Self:
         """MSB Event has ' <E>' appended as a tag (removed for export/ref finding). Note exactly one space in tag.
 
         However, we have to be careful that this tag doesn't put the name length just over the limit, so if the created
         object doesn't have the tag, we just set its name to the original one.
         """
         event_name = name + (" <E>" if not name.endswith(" <E>") else "")
-        bl_event = super().new(event_name, data, collection)  # type: SELF_T
+        bl_event = tp.cast(tp.Self, super().new(event_name, data, collection))
         if not remove_dupe_suffix(bl_event.name).endswith(" <E>"):
             bl_event.name = name
         return bl_event

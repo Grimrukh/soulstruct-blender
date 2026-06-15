@@ -15,7 +15,7 @@ import bpy
 from soulstruct.havok.fromsoft.darksouls1r.remobnd import *
 
 from ..base.operators import LoggingImportOperator
-from ..base.register import io_soulstruct_class
+from ..base.register import io_soulstruct_operator
 from ..exceptions import CutsceneImportError, SoulstructTypeError
 from ..msb.properties.parts import MSBPartArmatureMode
 from ..msb.types.adapters import get_part_game_name
@@ -39,7 +39,7 @@ BL_PART_CLASSES = {
 }
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ImportHKXCutscene(LoggingImportOperator):
     bl_idname = "import_scene.hkx_cutscene"
     bl_label = "Import HKX Cutscene"

@@ -84,6 +84,7 @@ COLLECTION_SOULSTRUCT_TYPE_ENUM_LIST = [
 ]
 
 
+# noinspection PyTypeChecker
 @io_soulstruct_register
 def register_soulstruct_type():
     """Register Soulstruct types of Objects and Collections."""
@@ -114,7 +115,10 @@ def is_typed_mesh_obj(obj: bpy.types.Object, soulstruct_type: SoulstructType) ->
 
 
 def is_active_obj_typed_mesh_obj(context: bpy.types.Context, soulstruct_type: SoulstructType) -> bool:
-    return context.active_object and is_typed_mesh_obj(context.active_object, soulstruct_type)
+    return (
+        context.active_object is not None
+        and is_typed_mesh_obj(context.active_object, soulstruct_type)
+    )
 
 
 def are_all_selected_objs_typed_mesh_objs(

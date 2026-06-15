@@ -39,7 +39,7 @@ from soulstruct.base.maps.msb.enums import BaseMSBEventSubtype
 from soulstruct.darksouls1ptde.events.enums import SoundType
 from soulstruct.games import *
 
-from ...base.register import io_soulstruct_class, io_soulstruct_pointer_property
+from ...base.register import io_soulstruct_properties, io_soulstruct_pointer_property
 from ...bpy_base.property_group import SoulstructPropertyGroup
 from ...types import SoulstructType
 
@@ -86,7 +86,7 @@ class BlenderMSBEventSubtype(StrEnum):
             raise ValueError(f"Unsupported Blender MSB Event subtype: {subtype}")
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 @io_soulstruct_pointer_property(bpy.types.Object, "MSB_EVENT")
 class MSBEventProps(SoulstructPropertyGroup):
 
@@ -179,7 +179,7 @@ class MSBEventProps(SoulstructPropertyGroup):
                 obj.name = f"{name} <{BlenderMSBEventSubtype.get_enum_name(obj.MSB_EVENT.entry_subtype)}>{dupe_suffix}"
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 @io_soulstruct_pointer_property(bpy.types.Object, "MSB_LIGHT_EVENT")
 class MSBLightEventProps(SoulstructPropertyGroup):
 
@@ -208,7 +208,7 @@ class MSBLightEventProps(SoulstructPropertyGroup):
     )
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 @io_soulstruct_pointer_property(bpy.types.Object, "MSB_SOUND_EVENT")
 class MSBSoundEventProps(SoulstructPropertyGroup):
 
@@ -249,7 +249,7 @@ class MSBSoundEventProps(SoulstructPropertyGroup):
     )
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 @io_soulstruct_pointer_property(bpy.types.Object, "MSB_VFX_EVENT")
 class MSBVFXEventProps(SoulstructPropertyGroup):
 
@@ -277,7 +277,7 @@ class MSBVFXEventProps(SoulstructPropertyGroup):
     )
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 @io_soulstruct_pointer_property(bpy.types.Object, "MSB_WIND_EVENT")
 class MSBWindEventProps(SoulstructPropertyGroup):
 
@@ -334,7 +334,7 @@ class MSBWindEventProps(SoulstructPropertyGroup):
     )
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 @io_soulstruct_pointer_property(bpy.types.Object, "MSB_TREASURE_EVENT")
 class MSBTreasureEventProps(SoulstructPropertyGroup):
 
@@ -403,7 +403,7 @@ class MSBTreasureEventProps(SoulstructPropertyGroup):
     )
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 @io_soulstruct_pointer_property(bpy.types.Object, "MSB_SPAWNER_EVENT")
 class MSBSpawnerEventProps(SoulstructPropertyGroup):
 
@@ -750,7 +750,7 @@ class MSBSpawnerEventProps(SoulstructPropertyGroup):
         return [getattr(self, f"spawn_regions_{i}") for i in range(4)]
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 @io_soulstruct_pointer_property(bpy.types.Object, "MSB_MESSAGE_EVENT")
 class MSBMessageEventProps(SoulstructPropertyGroup):
 
@@ -795,7 +795,7 @@ class MSBMessageEventProps(SoulstructPropertyGroup):
     )
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 @io_soulstruct_pointer_property(bpy.types.Object, "MSB_OBJ_ACT_EVENT")
 class MSBObjActEventProps(SoulstructPropertyGroup):
 
@@ -841,7 +841,7 @@ class MSBObjActEventProps(SoulstructPropertyGroup):
     )
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 @io_soulstruct_pointer_property(bpy.types.Object, "MSB_SPAWN_POINT_EVENT")
 class MSBSpawnPointEventProps(SoulstructPropertyGroup):
 
@@ -859,7 +859,7 @@ class MSBSpawnPointEventProps(SoulstructPropertyGroup):
     )
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 @io_soulstruct_pointer_property(bpy.types.Object, "MSB_MAP_OFFSET_EVENT")
 class MSBMapOffsetEventProps(SoulstructPropertyGroup):
 
@@ -883,7 +883,7 @@ class MSBMapOffsetEventProps(SoulstructPropertyGroup):
     )
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 @io_soulstruct_pointer_property(bpy.types.Object, "MSB_NAVIGATION_EVENT")
 class MSBNavigationEventProps(SoulstructPropertyGroup):
 
@@ -902,7 +902,7 @@ class MSBNavigationEventProps(SoulstructPropertyGroup):
     )
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 @io_soulstruct_pointer_property(bpy.types.Object, "MSB_ENVIRONMENT_EVENT")
 class MSBEnvironmentEventProps(SoulstructPropertyGroup):
 
@@ -954,7 +954,7 @@ class MSBEnvironmentEventProps(SoulstructPropertyGroup):
     )
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 @io_soulstruct_pointer_property(bpy.types.Object, "MSB_NPC_INVASION_EVENT")
 class MSBNPCInvasionEventProps(SoulstructPropertyGroup):
 

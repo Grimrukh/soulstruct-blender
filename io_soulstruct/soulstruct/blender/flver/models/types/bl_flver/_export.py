@@ -127,7 +127,7 @@ def create_flver_from_bl_flver(
     operator: LoggingOperator,
     context: bpy.types.Context,
     bl_flver: BlenderFLVER,
-    texture_collection: DDSTextureCollection = None,
+    texture_collection: DDSTextureCollection | None = None,
     flver_model_type=FLVERModelType.Unknown,
 ) -> FLVER:
     """Wraps actual method with temp FLVER management."""

@@ -22,7 +22,7 @@ from soulstruct.dcx import DCXType
 from soulstruct.games import *
 
 from ....base.operators import *
-from ....base.register import io_soulstruct_class
+from ....base.register import io_soulstruct_operator
 from ....exceptions import *
 from ....general import *
 from ...image import *
@@ -35,7 +35,7 @@ if tp.TYPE_CHECKING:
 
 # region Generic Exporters
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ExportAnyFLVER(LoggingExportOperator):
     """Export one FLVER model from a Blender Armature parent to a file using a browser window."""
     bl_idname = "export_scene.flver"
@@ -106,7 +106,7 @@ class ExportAnyFLVER(LoggingExportOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ExportFLVERIntoAnyBinder(LoggingImportOperator):
     """Export a single FLVER model from a Blender mesh into a chosen game binder (BND/BHD).
 
@@ -242,7 +242,7 @@ class ExportFLVERIntoAnyBinder(LoggingImportOperator):
 
 # region Type-Specific Game Exporters and Operators
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ExportMapPieceFLVERs(LoggingOperator):
     bl_idname = "export_scene.map_piece_flver"
     bl_label = "Export Map Pieces"
@@ -448,7 +448,7 @@ class BaseGameFLVERBinderExportOperator(LoggingOperator):
         return multi_tpf
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
     """Export a single FLVER model from a Blender mesh into same-named CHRBND in the game directory."""
     bl_idname = "export_scene.character_flver"
@@ -704,7 +704,7 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
         return packed_bdt, len(chrtpfbxf.entries)
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ExportObjectFLVER(BaseGameFLVERBinderExportOperator):
     """Export a single FLVER model from a Blender mesh into same-named OBJBND in the game directory.
 
@@ -776,7 +776,7 @@ class ExportObjectFLVER(BaseGameFLVERBinderExportOperator):
         return {"FINISHED" if exported_paths else "CANCELLED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ExportAssetFLVER(BaseGameFLVERBinderExportOperator):
     """Export a single FLVER model from a Blender mesh into same-named GEOMBND in the game directory."""
     bl_idname = "export_scene.asset_flver"
@@ -825,7 +825,7 @@ class ExportAssetFLVER(BaseGameFLVERBinderExportOperator):
         return {"FINISHED" if exported_paths else "CANCELLED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ExportEquipmentFLVER(BaseGameFLVERBinderExportOperator):
     """Export a single FLVER model from a Blender mesh into same-named PARTSBND in the game directory."""
     bl_idname = "export_scene.equipment_flver"

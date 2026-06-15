@@ -18,6 +18,7 @@ setup(console_level="INFO")
 _LOGGER = logging.getLogger("soulstruct.blender.prepare_extensions")
 
 _IO_SOULSTRUCT_SOURCE_DIR = Path(__file__).parent / "io_soulstruct"
+_RELEASES_DIR = Path(__file__).parent / "Releases"
 
 
 def read_requirements() -> list[str]:
@@ -30,8 +31,8 @@ def read_requirements() -> list[str]:
 
 
 def update_wheels(
+    firelink_source_dir: Path,
     use_local_soulstruct: bool = False,
-    firelink_source_dir: Path = None,
     no_build_isolation: bool = False,
 ):
     """Update wheels in `io_soulstruct/wheels`."""
@@ -137,7 +138,7 @@ def blender_extension_build():
     os.chdir(_IO_SOULSTRUCT_SOURCE_DIR)
 
     blender_cmd = [
-        "blender", "--command", "extension", "build"
+        "blender", "--command", "extension", "build", "--output-dir", str(_RELEASES_DIR),
     ]
 
     _LOGGER.info(f"blender cmd: {' '.join(blender_cmd)}")
@@ -186,8 +187,8 @@ def main():
 
     if args.update_wheels:
         update_wheels(
-            use_local_soulstruct=True,
             firelink_source_dir=args.firelink_source_dir,
+            use_local_soulstruct=True,
             no_build_isolation=args.no_build_isolation,
         )
         update_blender_manifest_wheels()

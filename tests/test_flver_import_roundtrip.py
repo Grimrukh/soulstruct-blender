@@ -5,8 +5,9 @@ Covers every combination of game × FLVER subtype. Each test case:
   2. Imports a FLVER (or Binder containing one) with the generic `import_scene.flver` operator.
   3. Validates the resulting Blender objects (presence, type, armature, version, etc.).
   4. Exports the imported FLVER to a temporary output file with `export_scene.flver`.
-  5. Verifies the exported file exists and is a parseable FLVER.
-  6. Cleans up.
+  5. Re-imports the exported FLVER and compares Blender-side statistics.
+  6. Re-exports and compares Soulstruct-side statistics (mesh/bone/material counts).
+  7. Cleans up.
 
 FILE PATHS
 ----------
@@ -22,8 +23,7 @@ Or via the runner:
 """
 import sys
 import tempfile
-import typing as tp
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -39,20 +39,8 @@ T.enable_addon()
 # ---------------------------------------------------------------------------
 
 @dataclass
-class FLVERImportCase:
+class FLVERImportCase(T.ImportCaseBase):
     """Declarative description of one FLVER import/export round-trip test."""
-
-    # Human-readable name shown in test output.
-    name: str
-
-    # Value for `bpy.context.scene.soulstruct_settings.game_enum`.
-    game_enum: str
-
-    # Directory containing the source file (set to empty string to skip).
-    directory: Path | str
-
-    # File name inside that directory (e.g. "c1200.chrbnd.dcx").
-    filename: str
 
     # ---- Expected characteristics ---- (all optional; skipped if None)
 
@@ -69,20 +57,6 @@ class FLVERImportCase:
     # mode is active on the imported object).
     expect_per_submesh_props: bool = False
 
-    # Extra tags for documentation only.
-    tags: list[str] = field(default_factory=list)
-
-    @property
-    def skip_reason(self) -> str | None:
-        """Return a skip message if the test cannot run; None if it should run."""
-        if not self.directory:
-            return f"directory not configured (placeholder)"
-        if not Path(self.directory).is_dir():
-            return f"directory not found: {self.directory}"
-        source = Path(self.directory) / self.filename
-        if not source.exists():
-            return f"source file not found: {source}"
-        return None
 
 
 # ---------------------------------------------------------------------------
@@ -94,8 +68,10 @@ class FLVERImportCase:
 #
 # Naming convention used here: "GAME / SubType / description"
 #
+# NOTE: CHRBND Binders can be used directly as operator input for FLVER
+# as the operators extract FLVERs from them.
 
-from soulstruct.config import DSR_PATH
+from soulstruct.config import Config
 
 FLVER_TEST_CASES: list[FLVERImportCase] = [
 
@@ -105,41 +81,49 @@ FLVER_TEST_CASES: list[FLVERImportCase] = [
     FLVERImportCase(
         name="DES / Map Piece / m01 loose FLVER",
         game_enum="DEMONS_SOULS",
-        directory="",   # TODO: e.g. "C:/DES/map/m01_01_00_00"
-        filename="",    # TODO: e.g. "m1100B0A11.flver"
+        directory=Config.DES_PATH / "map/m01_00_00_00",
+        filename="m0010b0.flver.dcx",
         expect_armature=False,
         expect_version="DemonsSouls",
         tags=["map_piece"],
     ),
     FLVERImportCase(
-        name="DES / Character / c0000",
+        name="DES / Character / c0000 (Player)",
         game_enum="DEMONS_SOULS",
-        directory="",   # TODO: e.g. "C:/DES/chr/c0000"
-        filename="",    # TODO: e.g. "c0000.chrbnd"
+        directory=Config.DES_PATH / "chr/c0000",
+        filename="c0000.chrbnd.dcx",
         expect_armature=True,
         expect_version="DemonsSouls",
         tags=["character"],
     ),
     FLVERImportCase(
-        name="DES / Character / enemy",
+        name="DES / Character / c2010 (Boletaria Soldier)",
         game_enum="DEMONS_SOULS",
-        directory="",   # TODO: e.g. "C:/DES/chr"
-        filename="",    # TODO: e.g. "c1200.chrbnd"
+        directory=Config.DES_PATH / "chr/c2010",
+        filename="c2010.chrbnd.dcx",
         expect_armature=True,
         tags=["character"],
     ),
     FLVERImportCase(
-        name="DES / Object",
+        name="DES / Object / o0100",
         game_enum="DEMONS_SOULS",
-        directory="",   # TODO: e.g. "C:/DES/obj"
-        filename="",    # TODO: e.g. "o0100.objbnd"
+        directory=Config.DES_PATH / "obj",
+        filename="o0100.objbnd.dcx",
         tags=["object"],
     ),
     FLVERImportCase(
-        name="DES / Equipment / weapon",
+        name="DES / Equipment / wp_a_0100",
         game_enum="DEMONS_SOULS",
-        directory="",   # TODO: e.g. "C:/DES/parts"
-        filename="",    # TODO: e.g. "WP_A_0100.partsbnd"
+        directory=Config.DES_PATH / "parts",
+        filename="wp_a_0100.partsbnd.dcx",
+        expect_armature=True,
+        tags=["equipment"],
+    ),
+    FLVERImportCase(
+        name="DES / Equipment / am_a_8020",
+        game_enum="DEMONS_SOULS",
+        directory=Config.DES_PATH / "parts",
+        filename="am_a_8020.partsbnd.dcx",
         expect_armature=True,
         tags=["equipment"],
     ),
@@ -148,35 +132,43 @@ FLVER_TEST_CASES: list[FLVERImportCase] = [
     # Dark Souls: Prepare to Die Edition
     # ------------------------------------------------------------------
     FLVERImportCase(
-        name="DS1PTDE / Map Piece / m10 loose FLVER",
+        name="DS1PTDE / Map Piece / m10_02 loose FLVER",
         game_enum="DARK_SOULS_PTDE",
-        directory="",   # TODO: e.g. "C:/DARK SOULS PTDE/map/m10_02_00_00"
-        filename="",    # TODO: e.g. "m1020B0A10.flver"
-        expect_armature=False,
+        directory=Config.PTDE_PATH / "map/m10_02_00_00",
+        filename="m2000B2A10.flver",
+        expect_armature=True,  # does have non-trivial bones in PTDE
         expect_version="DarkSouls_A",
         tags=["map_piece"],
     ),
     FLVERImportCase(
         name="DS1PTDE / Character / c1200",
         game_enum="DARK_SOULS_PTDE",
-        directory="",   # TODO: e.g. "C:/DARK SOULS PTDE/chr"
-        filename="",    # TODO: e.g. "c1200.chrbnd"
+        directory=Config.PTDE_PATH / "chr",
+        filename="c1200.chrbnd",
         expect_armature=True,
         expect_version="DarkSouls_A",
         tags=["character"],
     ),
     FLVERImportCase(
-        name="DS1PTDE / Object",
+        name="DS1PTDE / Object / o1290",
         game_enum="DARK_SOULS_PTDE",
-        directory="",   # TODO: e.g. "C:/DARK SOULS PTDE/obj"
-        filename="",    # TODO: e.g. "o0100.objbnd"
+        directory=Config.PTDE_PATH / "obj",
+        filename="o1290.objbnd",
         tags=["object"],
     ),
     FLVERImportCase(
-        name="DS1PTDE / Equipment / weapon",
+        name="DS1PTDE / Equipment / WP_A_1000",
         game_enum="DARK_SOULS_PTDE",
-        directory="",   # TODO: e.g. "C:/DARK SOULS PTDE/parts"
-        filename="",    # TODO: e.g. "WP_A_0100.partsbnd"
+        directory=Config.PTDE_PATH / "parts",
+        filename="WP_A_1000.partsbnd",
+        expect_armature=True,
+        tags=["equipment"],
+    ),
+    FLVERImportCase(
+        name="DS1PTDE / Equipment / AM_M_1000",
+        game_enum="DARK_SOULS_PTDE",
+        directory=Config.PTDE_PATH / "parts",
+        filename="AM_M_1000.partsbnd",
         expect_armature=True,
         tags=["equipment"],
     ),
@@ -187,7 +179,7 @@ FLVER_TEST_CASES: list[FLVERImportCase] = [
     FLVERImportCase(
         name="DSR / Map Piece / m10 loose FLVER",
         game_enum="DARK_SOULS_DSR",
-        directory=DSR_PATH / "map/m10_02_00_00",
+        directory=Config.DSR_PATH / "map/m10_02_00_00",
         filename="m2000B2A10.flver",  # main bonfire clearing Map Piece
         expect_armature=False,
         expect_version="DarkSouls_A",
@@ -196,7 +188,7 @@ FLVER_TEST_CASES: list[FLVERImportCase] = [
     FLVERImportCase(
         name="DSR / Character / c1200",
         game_enum="DARK_SOULS_DSR",
-        directory= DSR_PATH / "chr",
+        directory=Config.DSR_PATH / "chr",
         filename="c1200.chrbnd.dcx",  # Large Rat
         expect_armature=True,
         expect_version="DarkSouls_A",
@@ -205,7 +197,7 @@ FLVER_TEST_CASES: list[FLVERImportCase] = [
     FLVERImportCase(
         name="DSR / Character / c0000 (player)",
         game_enum="DARK_SOULS_DSR",
-        directory=DSR_PATH / "chr",
+        directory=Config.DSR_PATH / "chr",
         filename="c0000.chrbnd.dcx",  # Player Character
         expect_armature=True,
         expect_version="DarkSouls_A",
@@ -213,24 +205,24 @@ FLVER_TEST_CASES: list[FLVERImportCase] = [
         tags=["character"],
     ),
     FLVERImportCase(
-        name="DSR / Object",
+        name="DSR / Object / o1290",
         game_enum="DARK_SOULS_DSR",
-        directory=DSR_PATH / "obj",
+        directory=Config.DSR_PATH / "obj",
         filename="o1290.objbnd.dcx",  # Sunlight Altar destructible parapets
         tags=["object"],
     ),
     FLVERImportCase(
-        name="DSR / Equipment / weapon",
+        name="DSR / Equipment / WP_A_1000",
         game_enum="DARK_SOULS_DSR",
-        directory=DSR_PATH / "parts",
+        directory=Config.DSR_PATH / "parts",
         filename="WP_A_0100.partsbnd.dcx",
         expect_armature=True,
         tags=["equipment"],
     ),
     FLVERImportCase(
-        name="DSR / Equipment / armor (body)",
+        name="DSR / Equipment / AM_M_1000",
         game_enum="DARK_SOULS_DSR",
-        directory=DSR_PATH / "parts",
+        directory=Config.DSR_PATH / "parts",
         filename="AM_M_0100.partsbnd.dcx",
         expect_armature=True,
         tags=["equipment"],
@@ -274,30 +266,46 @@ FLVER_TEST_CASES: list[FLVERImportCase] = [
     # ------------------------------------------------------------------
     # Bloodborne
     # ------------------------------------------------------------------
-    FLVERImportCase(
-        name="BB / Map Piece",
-        game_enum="BLOODBORNE",
-        directory="",   # TODO: e.g. "C:/Bloodborne/map/m21_00_00_00"
-        filename="",    # TODO: loose FLVER name
-        expect_armature=False,
-        tags=["map_piece"],
-    ),
-    FLVERImportCase(
-        name="BB / Character",
-        game_enum="BLOODBORNE",
-        directory="",   # TODO: e.g. "C:/Bloodborne/chr"
-        filename="",    # TODO: e.g. "c0000.chrbnd.dcx"
-        expect_armature=True,
-        tags=["character"],
-    ),
-    FLVERImportCase(
-        name="BB / Equipment",
-        game_enum="BLOODBORNE",
-        directory="",   # TODO: e.g. "C:/Bloodborne/parts"
-        filename="",    # TODO: e.g. "WP_A_0100.partsbnd.dcx"
-        expect_armature=True,
-        tags=["equipment"],
-    ),
+    # FLVERImportCase(
+    #     name="BB / Map Piece / m21_00 (Hunter's Dream)",
+    #     game_enum="BLOODBORNE",
+    #     directory=Config.BB_PATH / "map/m21_00_00_00",
+    #     filename="m21_00_00_00_001000.flver.dcx",
+    #     expect_armature=False,
+    #     tags=["map_piece"],
+    # ),
+    # FLVERImportCase(
+    #     name="BB / Character / c0000 (Player)",
+    #     game_enum="BLOODBORNE",
+    #     directory=Config.BB_PATH / "chr",
+    #     filename="c0000.chrbnd.dcx",
+    #     expect_armature=True,
+    #     tags=["character"],
+    # ),
+    # FLVERImportCase(
+    #     name="BB / Character / c1060 (Brainsucker)",
+    #     game_enum="BLOODBORNE",
+    #     directory=Config.BB_PATH / "chr",
+    #     filename="c1060.chrbnd.dcx",
+    #     expect_armature=True,
+    #     tags=["character"],
+    # ),
+    # FLVERImportCase(
+    #     name="BB / Equipment / wp_a_1030",
+    #     game_enum="BLOODBORNE",
+    #     directory=Config.BB_PATH / "parts",
+    #     filename="wp_a_1030.partsbnd.dcx",
+    #     expect_armature=True,
+    #     tags=["equipment"],
+    # ),
+    # FLVERImportCase(
+    #     name="BB / Equipment / am_a_5210",
+    #     game_enum="BLOODBORNE",
+    #     directory=Config.BB_PATH / "parts",
+    #     filename="am_a_5210.partsbnd.dcx",
+    #     expect_armature=True,
+    #     tags=["equipment"],
+    # ),
 
     # ------------------------------------------------------------------
     # Dark Souls 3
@@ -437,26 +445,40 @@ FLVER_TEST_CASES: list[FLVERImportCase] = [
 ]
 
 
+# Blender round trip removes degenerate faces. We don't expect more than this
+# for all unit test cases.
+MAX_POLYGON_COUNT_LOSS = 10
+
+
 # ---------------------------------------------------------------------------
 # Per-case test runner
 # ---------------------------------------------------------------------------
 
 def _find_first_flver_obj() -> bpy.types.Object | None:
     """Return the first FLVER-typed Mesh object in the scene (just-imported)."""
-    for obj in bpy.data.objects:
-        if obj.type == "MESH" and obj.soulstruct_type == "FLVER":
-            return obj
-    return None
+    objs = T.find_objects_by_soulstruct_type("FLVER")
+    return objs[0] if objs else None
+
+
+def _flver_scene_stats() -> dict:
+    """Collect coarse statistics about all FLVER Mesh objects currently in the scene."""
+    objs = T.find_objects_by_soulstruct_type("FLVER")
+    poly_count = sum(len(o.data.polygons) for o in objs)
+    mat_count = sum(len(o.data.materials) for o in objs)
+    bone_count = 0
+    for o in objs:
+        if o.parent and o.parent.type == "ARMATURE":
+            bone_count = max(bone_count, len(o.parent.data.bones))
+    return {
+        "mesh_obj_count": len(objs),
+        "poly_count": poly_count,
+        "mat_count": mat_count,
+        "bone_count": bone_count,
+    }
 
 
 def run_case(case: FLVERImportCase):
-    """Import, validate, export, and clean up one FLVERImportCase."""
-
-    # ---- Skip check ----
-    reason = case.skip_reason
-    if reason:
-        print(f"[TEST][SKIP] {case.name} — {reason}")
-        return  # not a failure; just skipped
+    """Import, validate, export, re-import, re-export, and compare one FLVERImportCase."""
 
     # ---- Setup ----
     T.clear_scene()
@@ -464,9 +486,7 @@ def run_case(case: FLVERImportCase):
     # Disable texture import for speed; we only care about geometry/properties.
     bpy.context.scene.flver_import_settings.import_textures = False
 
-    source_path = Path(case.directory) / case.filename
-
-    # ---- Import ----
+    # ---- 1. Import from game file ----
     try:
         result = bpy.ops.import_scene.flver(
             "EXEC_DEFAULT",
@@ -481,14 +501,14 @@ def run_case(case: FLVERImportCase):
         T.fail(case.name, f"Import operator returned {result} (expected FINISHED)")
         return
 
-    # ---- Validate scene ----
+    # ---- 2. Validate scene ----
     flver_obj = _find_first_flver_obj()
     if flver_obj is None:
         T.fail(case.name, "No FLVER Mesh object found in scene after import")
         return
 
     # Armature expectation.
-    if case.expect_armature:  # is True
+    if case.expect_armature is True:
         has_arm = flver_obj.parent is not None and flver_obj.parent.type == "ARMATURE"
         if not has_arm:
             T.fail(case.name, f"Expected Armature parent, got parent={flver_obj.parent}")
@@ -503,8 +523,6 @@ def run_case(case: FLVERImportCase):
     if case.expect_version is not None:
         actual_ver = flver_obj.FLVER.version
         if actual_ver != case.expect_version and actual_ver != "DEFAULT":
-            # "DEFAULT" means version wasn't stored, which is acceptable if the expected
-            # version matches the game default. Only fail on explicit mismatches.
             T.fail(
                 case.name,
                 f"Expected FLVER version '{case.expect_version}', got '{actual_ver}'",
@@ -517,51 +535,137 @@ def run_case(case: FLVERImportCase):
         return
 
     # Per-submesh props.
-    if case.expect_per_submesh_props:
-        if len(flver_obj.FLVER.submesh_props) == 0:
-            T.fail(case.name, "Expected per-slot submesh_props to be populated")
-            return
+    if case.expect_per_submesh_props and len(flver_obj.FLVER.submesh_props) == 0:
+        T.fail(case.name, "Expected per-slot submesh_props to be populated")
+        return
 
-    # ---- Export round-trip ----
-    T.activate(flver_obj)
+    # Save first-import stats for later comparison.
+    stats_1 = _flver_scene_stats()
+    model_name = flver_obj.name.split(".")[0].split(" ")[0]
+
     with tempfile.TemporaryDirectory() as tmpdir:
-        # Export name is first substring before any space or dot.
-        model_name = flver_obj.name.split(".")[0].split(" ")[0]
-        export_path = str(Path(tmpdir) / f"{model_name}.flver")
+        # ---- 3. First export ----
+        T.activate(flver_obj)
+        export_path_1 = str(Path(tmpdir) / f"{model_name}.flver")
         try:
             export_result = bpy.ops.export_scene.flver(
                 "EXEC_DEFAULT",
-                filepath=export_path,
-                dcx_type="Null",  # no DCX for temp export; simpler
+                filepath=export_path_1,
+                dcx_type="Null",
             )
         except Exception as ex:
-            T.fail(case.name, f"Export raised exception: {ex}")
+            T.fail(case.name, f"First export raised exception: {ex}")
             return
-
         if "FINISHED" not in export_result:
-            T.fail(case.name, f"Export operator returned {export_result}")
+            T.fail(case.name, f"First export operator returned {export_result}")
             return
 
-        exported = Path(export_path)
-        # Blender may add .bak or omit extension; check both the explicit path and any .flver in tmpdir.
-        flver_files = list(Path(tmpdir).glob("*.flver"))
-        if not flver_files:
-            T.fail(case.name, f"No .flver file found in export directory after export")
+        flver_files_1 = list(Path(tmpdir).glob("*.flver"))
+        if not flver_files_1:
+            T.fail(case.name, "No .flver found in temp dir after first export")
             return
 
-        # Verify the exported file is a parseable FLVER.
+        # Verify parseable.
         try:
-            reloaded = FLVER.from_path(flver_files[0])
+            reloaded_1 = FLVER.from_path(flver_files_1[0])
         except Exception as ex:
-            T.fail(case.name, f"Exported FLVER could not be parsed by Soulstruct: {ex}")
+            T.fail(case.name, f"First exported FLVER not parseable by Soulstruct: {ex}")
             return
 
-        if not reloaded.meshes and flver_obj.data.polygons:
-            T.fail(case.name, "Exported FLVER has no meshes but source mesh had polygons")
+        if not reloaded_1.meshes and flver_obj.data.polygons:
+            T.fail(case.name, "First exported FLVER has no meshes but source had polygons")
+            return
+
+        # ---- 4. Re-import the exported FLVER ----
+        T.clear_scene()
+        T.set_game(case.game_enum)
+        bpy.context.scene.flver_import_settings.import_textures = False
+        try:
+            result2 = bpy.ops.import_scene.flver(
+                "EXEC_DEFAULT",
+                directory=str(Path(tmpdir)),
+                files=[{"name": flver_files_1[0].name}],
+            )
+        except Exception as ex:
+            T.fail(case.name, f"Re-import raised exception: {ex}")
+            return
+        if "FINISHED" not in result2:
+            T.fail(case.name, f"Re-import returned {result2}")
+            return
+
+        flver_obj_2 = _find_first_flver_obj()
+        if flver_obj_2 is None:
+            T.fail(case.name, "No FLVER object found after re-import")
+            return
+
+        # ---- 5. Compare Blender statistics (import vs re-import) ----
+        stats_2 = _flver_scene_stats()
+        if stats_1["mesh_obj_count"] != stats_2["mesh_obj_count"]:
+            T.fail(
+                case.name,
+                f"Mesh object count differs after re-import: "
+                f"{stats_1['mesh_obj_count']} → {stats_2['mesh_obj_count']}",
+            )
+            return
+        # Vanilla FLVERs often contain degenerate faces that will be lost during round trip.
+        poly_diff = stats_1["poly_count"] - stats_2["poly_count"]
+        if poly_diff < 0 or poly_diff > MAX_POLYGON_COUNT_LOSS:
+            T.fail(
+                case.name,
+                f"Polygon count differs after re-import: "
+                f"{stats_1['poly_count']} → {stats_2['poly_count']} (diff: {poly_diff})",
+            )
+            return
+
+        # ---- 6. Second export (from re-imported data) ----
+        T.activate(flver_obj_2)
+        export_path_2 = str(Path(tmpdir) / f"{model_name}_2.flver")
+        try:
+            export_result_2 = bpy.ops.export_scene.flver(
+                "EXEC_DEFAULT",
+                filepath=export_path_2,
+                dcx_type="Null",
+            )
+        except Exception as ex:
+            T.fail(case.name, f"Second export raised exception: {ex}")
+            return
+        if "FINISHED" not in export_result_2:
+            T.fail(case.name, f"Second export operator returned {export_result_2}")
+            return
+
+        flver_files_2 = [p for p in Path(tmpdir).glob("*.flver") if "_2" in p.stem]
+        if not flver_files_2:
+            T.fail(case.name, "No _2.flver found in temp dir after second export")
+            return
+
+        # ---- 7. Compare Soulstruct representations ----
+        try:
+            reloaded_2 = FLVER.from_path(flver_files_2[0])
+        except Exception as ex:
+            T.fail(case.name, f"Second exported FLVER not parseable by Soulstruct: {ex}")
+            return
+
+        if len(reloaded_1.meshes) != len(reloaded_2.meshes):
+            T.fail(
+                case.name,
+                f"Mesh count differs between export 1 and 2: "
+                f"{len(reloaded_1.meshes)} vs {len(reloaded_2.meshes)}",
+            )
+            return
+        if len(reloaded_1.bones) != len(reloaded_2.bones):
+            T.fail(
+                case.name,
+                f"Bone count differs between export 1 and 2: "
+                f"{len(reloaded_1.bones)} vs {len(reloaded_2.bones)}",
+            )
             return
 
     # ---- All checks passed ----
-    T.ok(case.name, f"import+export round-trip OK ({len(flver_obj.data.materials)} mats)")
+    T.ok(
+        case.name,
+        f"full round-trip OK — {stats_1['mesh_obj_count']} mesh(es), "
+        f"{stats_1['mat_count']} mat(s), {stats_1['bone_count']} bone(s)",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -569,28 +673,7 @@ def run_case(case: FLVERImportCase):
 # ---------------------------------------------------------------------------
 
 def main():
-    _results_before = len(T._results)
-
-    skipped = 0
-    run_count = 0
-    for case in FLVER_TEST_CASES:
-        reason = case.skip_reason
-        if reason:
-            skipped += 1
-            print(f"[TEST][SKIP] {case.name} — {reason}")
-            continue
-        run_case(case)
-        run_count += 1
-
-    passed = sum(1 for _, ok_, _ in T._results[_results_before:] if ok_)
-    failed = sum(1 for _, ok_, _ in T._results[_results_before:] if not ok_)
-
-    print(
-        f"\n[TEST SUMMARY] FLVER import/export: "
-        f"{passed} passed, {failed} failed, {skipped} skipped "
-        f"(out of {len(FLVER_TEST_CASES)} defined cases)"
-    )
-    sys.exit(0 if failed == 0 else 1)
+    T.run_case_list(FLVER_TEST_CASES, run_case, suite_name="FLVER import/export")
 
 
 main()

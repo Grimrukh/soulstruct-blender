@@ -24,7 +24,7 @@ from soulstruct.base.models.shaders import MatDefError
 from soulstruct.flver import FLVERVersion
 
 from ...base.operators import LoggingOperator
-from ...base.register import io_soulstruct_class, io_soulstruct_pointer_property
+from ...base.register import io_soulstruct_properties, io_soulstruct_operator, io_soulstruct_pointer_property
 from ...bpy_base.property_group import SoulstructPropertyGroup
 from ...general.matdefs import get_cached_mtdbnd_matbinbnd
 from ...types import MeshObject, SoulstructType, is_active_obj_typed_mesh_obj
@@ -38,7 +38,7 @@ if tp.TYPE_CHECKING:
 _AREA_PREFIX_RE = re.compile(r"m\d\d_")
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 @io_soulstruct_pointer_property(bpy.types.Scene, "material_tool_settings")
 class MaterialToolSettings(SoulstructPropertyGroup):
     """Miscellaneous settings used by various Material operators."""
@@ -128,7 +128,7 @@ class _SetMaterialTexture(LoggingOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class SetMaterialTexture0(_SetMaterialTexture):
 
     bl_idname = "object.set_material_texture_0"
@@ -139,7 +139,7 @@ class SetMaterialTexture0(_SetMaterialTexture):
     SLOT_SUFFIX = "_0"
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class SetMaterialTexture1(_SetMaterialTexture):
 
     bl_idname = "object.set_material_texture_1"
@@ -150,7 +150,7 @@ class SetMaterialTexture1(_SetMaterialTexture):
     SLOT_SUFFIX = "_1"
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class AutoRenameMaterials(LoggingOperator):
     """TODO: Support other games."""
 
@@ -174,6 +174,8 @@ class AutoRenameMaterials(LoggingOperator):
         obj = context.active_object  # type: MeshObject
 
         for i, material in enumerate(obj.data.materials):
+            if not material:
+                continue  # skip empty material slot
             flver_material = BlenderFLVERMaterial(material)
             new_name = MergeFLVERMaterials.get_merged_material_name(flver_material)
             material.name = new_name  # will add dupe suffix if necessary
@@ -181,7 +183,7 @@ class AutoRenameMaterials(LoggingOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class MergeFLVERMaterials(LoggingOperator):
     """Scan all materials on all selected objects, and merge materials determined to be identical.
 
@@ -250,6 +252,7 @@ class MergeFLVERMaterials(LoggingOperator):
             for material in obj.data.materials:
                 if not material:
                     continue  # empty slot
+                material: bpy.types.Material
                 bl_material = BlenderFLVERMaterial(material)
                 # TODO: May want to assert FLVER2 hash here, as otherwise this is destructive for switching back to
                 #  FLVER2 using the same materials (probably rare/difficult already).
@@ -342,7 +345,7 @@ class MergeFLVERMaterials(LoggingOperator):
         return mat_name
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class AddMaterialGXItem(LoggingOperator):
     bl_idname = "material.add_gx_item"
     bl_label = "Add GX Item"
@@ -353,12 +356,16 @@ class AddMaterialGXItem(LoggingOperator):
         return context.active_object is not None and context.active_object.active_material is not None
 
     def execute(self, context):
+        if not context.active_object:
+            return self.error("No active object.")
         material = context.active_object.active_material
+        if not material:
+            return self.error("No active material.")
         material.FLVER_MATERIAL.gx_items.add()
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class RemoveMaterialGXItem(LoggingOperator):
     bl_idname = "material.remove_gx_item"
     bl_label = "Remove GX Item"
@@ -374,14 +381,18 @@ class RemoveMaterialGXItem(LoggingOperator):
         )
 
     def execute(self, context):
+        if not context.active_object:
+            return self.error("No active object.")
         material = context.active_object.active_material
+        if not material:
+            return self.error("No active material.")
         index = material.FLVER_MATERIAL.gx_item_index
         material.FLVER_MATERIAL.gx_items.remove(index)
         material.FLVER_MATERIAL.gx_item_index = max(0, index - 1)
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class RegenerateFLVERMaterialShaders(LoggingOperator):
     bl_idname = "material.regenerate_flver_shaders"
     bl_label = "Regenerate Material Shaders"
@@ -447,7 +458,7 @@ class RegenerateFLVERMaterialShaders(LoggingOperator):
         operator.info(f"Upgraded FLVER material shader: {material.name}")
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class RegenerateAllFLVERMaterialShaders(LoggingOperator):
     bl_idname = "material.regenerate_all_flver_shaders"
     bl_label = "Regenerate ALL Material Shaders"

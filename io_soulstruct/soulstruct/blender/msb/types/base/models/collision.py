@@ -9,6 +9,7 @@ from dataclasses import dataclass
 
 import bpy
 
+from soulstruct.base.maps.msb.models import BaseMSBModel
 from soulstruct.containers import EntryNotFoundError
 from soulstruct.havok.fromsoft.shared import BothResHKXBHD, MapCollisionModel
 
@@ -19,7 +20,7 @@ from .....exceptions import MapCollisionImportError
 from .....types import MeshObject
 from .....utilities import find_or_create_collection
 
-from .base import BaseBlenderMSBModelImporter, MODEL_T
+from .base import BaseBlenderMSBModelImporter
 
 
 @dataclass(slots=True)
@@ -34,11 +35,11 @@ class BlenderMSBCollisionModelImporter(BaseBlenderMSBModelImporter):
         context: bpy.types.Context,
         model_name: str,
         map_stem: str,
-        model_collection: bpy.types.Collection = None,
+        model_collection: bpy.types.Collection | None = None,
     ) -> MeshObject:
         """Import the Map Collison HKX model of the given name into a collection in the current scene.
 
-        NOTE: `map_stem` should already be set to oldest version if option is enabled. This function is agnostic.
+        NOTE: `map_stem` should already be set to the oldest version if option is enabled. This function is agnostic.
         """
         settings = operator.settings(context)
 
@@ -49,6 +50,9 @@ class BlenderMSBCollisionModelImporter(BaseBlenderMSBModelImporter):
             hi_collision, lo_collision = self._get_hi_lo_collisions_loose(settings, model_name, map_stem)
         else:
             hi_collision, lo_collision = self._get_hi_lo_collisions_hkxbhd(operator, settings, model_name, map_stem)
+
+        if hi_collision is None:
+            raise MapCollisionImportError(f"Could not find hi-res collision for {model_name} in map {map_stem}.")
 
         # Import single HKX.
         try:
@@ -71,9 +75,9 @@ class BlenderMSBCollisionModelImporter(BaseBlenderMSBModelImporter):
         self,
         operator: LoggingOperator,
         context: bpy.types.Context,
-        models: list[MODEL_T],
+        models: list[BaseMSBModel],
         map_stem: str,
-        model_collection: bpy.types.Collection = None,
+        model_collection: bpy.types.Collection | None = None,
     ) -> None:
         """Import all models for a batch of MSB Collisions, as needed, in parallel as much as possible.
 
@@ -137,16 +141,7 @@ class BlenderMSBCollisionModelImporter(BaseBlenderMSBModelImporter):
         self, operator: LoggingOperator, settings: SoulstructSettings, model_name: str, map_stem: str
     ):
         """NOTE: This will decompress and read the full HKXBHDs every time it is called, so prefer batch if possible."""
-        try:
-            hi_res_hkxbhd_path = settings.get_import_map_file_path(f"h{map_stem[1:]}.hkxbhd")
-        except FileNotFoundError:
-            raise FileNotFoundError(f"Cannot find hi-res HKXBHD for map {map_stem}.")
-        try:
-            lo_res_hkxbhd_path = settings.get_import_map_file_path(f"l{map_stem[1:]}.hkxbhd")
-        except FileNotFoundError:
-            raise FileNotFoundError(f"Cannot find lo-res HKXBHD for map {map_stem}.")
-
-        both_res_hkxbhd = BothResHKXBHD.from_both_paths(hi_res_hkxbhd_path, lo_res_hkxbhd_path)
+        both_res_hkxbhd = _get_both_res_hkxbhd(settings, map_stem)
         try:
             return both_res_hkxbhd.get_both_hkx(model_name)
         except FileNotFoundError:
@@ -157,9 +152,9 @@ class BlenderMSBCollisionModelImporter(BaseBlenderMSBModelImporter):
         self,
         operator: LoggingOperator,
         context: bpy.types.Context,
-        models: list[MODEL_T],
+        models: list[BaseMSBModel],
         map_stem: str,
-        model_collection: bpy.types.Collection = None,
+        model_collection: bpy.types.Collection | None = None,
     ):
         imported_model_names = set()
 
@@ -180,9 +175,9 @@ class BlenderMSBCollisionModelImporter(BaseBlenderMSBModelImporter):
         self,
         operator: LoggingOperator,
         context: bpy.types.Context,
-        models: list[MODEL_T],
+        models: list[BaseMSBModel],
         map_stem: str,
-        model_collection: bpy.types.Collection = None,
+        model_collection: bpy.types.Collection | None = None,
     ) -> None:
         """Import all models from the same `BothResHKXBHD`.
 
@@ -198,16 +193,7 @@ class BlenderMSBCollisionModelImporter(BaseBlenderMSBModelImporter):
 
         imported_model_names = set()
 
-        try:
-            hi_res_hkxbhd_path = settings.get_import_map_file_path(f"h{map_stem[1:]}.hkxbhd")
-        except FileNotFoundError:
-            raise FileNotFoundError(f"Cannot find hi-res HKXBHD for map {map_stem}.")
-        try:
-            lo_res_hkxbhd_path = settings.get_import_map_file_path(f"l{map_stem[1:]}.hkxbhd")
-        except FileNotFoundError:
-            raise FileNotFoundError(f"Cannot find lo-res HKXBHD for map {map_stem}.")
-
-        both_res_hkxbhd = BothResHKXBHD.from_both_paths(hi_res_hkxbhd_path, lo_res_hkxbhd_path)
+        both_res_hkxbhd = _get_both_res_hkxbhd(settings, map_stem)
 
         for model in models:
             model_name = model.get_model_file_stem(map_stem)
@@ -227,6 +213,9 @@ class BlenderMSBCollisionModelImporter(BaseBlenderMSBModelImporter):
                 )
                 continue
 
+            if hi_collision is None:
+                raise MapCollisionImportError(f"Could not find hi-res collision for {model_name} in map {map_stem}.")
+
             try:
                 BlenderMapCollision.new_from_soulstruct_obj(
                     operator,
@@ -242,3 +231,20 @@ class BlenderMSBCollisionModelImporter(BaseBlenderMSBModelImporter):
                     f"(Batch) Cannot import Collision model '{model_name}' from HKXBHDs in map {map_stem}. Error: {ex}"
                 )
                 # We continue with other models.
+
+
+def _get_both_res_hkxbhd(settings: SoulstructSettings, map_stem: str) -> BothResHKXBHD:
+    """Find hi-res and lo-res HKXBHD and return ``BothResHKXBHD``.
+
+    Raise `FileNotFoundError` if either cannot be found.
+    """
+    try:
+        hi_res_hkxbhd_path = settings.get_import_map_file_path(f"h{map_stem[1:]}.hkxbhd")
+    except FileNotFoundError:
+        raise FileNotFoundError(f"Cannot find hi-res HKXBHD for map {map_stem}.")
+    try:
+        lo_res_hkxbhd_path = settings.get_import_map_file_path(f"l{map_stem[1:]}.hkxbhd")
+    except FileNotFoundError:
+        raise FileNotFoundError(f"Cannot find lo-res HKXBHD for map {map_stem}.")
+
+    return BothResHKXBHD.from_both_paths(hi_res_hkxbhd_path, lo_res_hkxbhd_path)

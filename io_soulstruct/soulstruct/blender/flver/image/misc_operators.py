@@ -8,12 +8,12 @@ __all__ = [
 import bpy
 
 from ...base.operators import LoggingOperator
-from ...base.register import io_soulstruct_class
+from ...base.register import io_soulstruct_operator
 from ...types import *
 from ...utilities.misc import is_path_and_file
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class FindMissingTexturesInImageCache(LoggingOperator):
     """Iterate over all texture nodes used by all materials of one or more selected objects (typically FLVER meshes) and
     (if currently a 1x1 dummy texture) find that file in the image cache directory.

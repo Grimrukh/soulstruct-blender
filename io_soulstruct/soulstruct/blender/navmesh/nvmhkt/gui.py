@@ -4,12 +4,12 @@ __all__ = [
     "NVMHKTImportPanel",
 ]
 
-from ...base.register import io_soulstruct_class
+from ...base.register import io_soulstruct_panel
 from ...bpy_base.panel import SoulstructPanel
 from .model_import import *
 
 
-@io_soulstruct_class
+@io_soulstruct_panel
 class NVMHKTImportPanel(SoulstructPanel):
     bl_label = "NVMHKT Import"
     bl_idname = "NVMHKT_PT_import"

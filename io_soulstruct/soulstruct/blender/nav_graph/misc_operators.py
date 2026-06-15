@@ -23,7 +23,7 @@ from mathutils import Vector
 from soulstruct.base.events.enums import NavmeshFlag
 
 from ..base.operators import LoggingOperator
-from ..base.register import io_soulstruct_class
+from ..base.register import io_soulstruct_operator
 from ..exceptions import SoulstructTypeError, MCGEdgeCreationError
 from ..msb.types.darksouls1r import BlenderMSBNavmesh
 from ..types import *
@@ -31,7 +31,7 @@ from .utilities import *
 from .types import *
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class AddMCGNodeNavmeshATriangleIndex(bpy.types.Operator):
     bl_idname = "mcg_node.add_navmesh_a_triangle_index"
     bl_label = "Add Navmesh A Triangle"
@@ -46,7 +46,7 @@ class AddMCGNodeNavmeshATriangleIndex(bpy.types.Operator):
         return {'FINISHED'}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class RemoveMCGNodeNavmeshATriangleIndex(bpy.types.Operator):
     bl_idname = "mcg_node.remove_navmesh_a_triangle_index"
     bl_label = "Remove Navmesh A Triangle"
@@ -67,7 +67,7 @@ class RemoveMCGNodeNavmeshATriangleIndex(bpy.types.Operator):
         return {'FINISHED'}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class AddMCGNodeNavmeshBTriangleIndex(bpy.types.Operator):
     bl_idname = "mcg_node.add_navmesh_b_triangle_index"
     bl_label = "Add Navmesh B Triangle"
@@ -82,7 +82,7 @@ class AddMCGNodeNavmeshBTriangleIndex(bpy.types.Operator):
         return {'FINISHED'}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class RemoveMCGNodeNavmeshBTriangleIndex(bpy.types.Operator):
     bl_idname = "mcg_node.remove_navmesh_b_triangle_index"
     bl_label = "Remove Navmesh B Triangle"
@@ -103,7 +103,7 @@ class RemoveMCGNodeNavmeshBTriangleIndex(bpy.types.Operator):
         return {'FINISHED'}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class JoinMCGNodesThroughNavmesh(LoggingOperator):
     """Create an MCG edge between two nodes on a navmesh."""
     bl_idname = "io_soulstruct_scene.join_mcg_nodes"
@@ -195,7 +195,7 @@ class JoinMCGNodesThroughNavmesh(LoggingOperator):
         bl_edge.node_b = node_b
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class SetNodeNavmeshTriangles(LoggingOperator):
     bl_idname = "io_soulstruct_scene.set_node_navmesh_triangles"
     bl_label = "Set Node Navmesh Triangles"
@@ -234,7 +234,7 @@ class SetNodeNavmeshTriangles(LoggingOperator):
                 del bm
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class RefreshMCGNames(LoggingOperator):
     bl_idname = "scene.refresh_mcg_names"
     bl_label = "Refresh MCG Names"
@@ -311,7 +311,7 @@ class RefreshMCGNames(LoggingOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class RecomputeEdgeCost(LoggingOperator):
     """Compute the expected cost of moving from the given edge's start node (lowest face index) to its end node (also
     lowest face index).
@@ -402,7 +402,7 @@ class RecomputeEdgeCost(LoggingOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class FindCheapestPath(LoggingOperator):
     """Uses A* to find the cheapest path between two selected faces on a navmesh.
 
@@ -474,7 +474,7 @@ EXIT_CLUSTER = tp.Tuple[FACE_WITH_VERTS, ...]
 NODE_WITH_KEY = tp.Tuple[BlenderMCGNode, tp.Tuple[int, int]]
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class AutoCreateMCG(LoggingOperator):
     """Create a full MCG structure from scratch but detecting node placements (adjoining 'Exit' faces) and computing
     edge costs between all pairs of nodes in each navmesh.

@@ -59,7 +59,7 @@ class BlenderMapCollision(BaseBlenderSoulstructObject[MapCollisionModel, MapColl
         context: bpy.types.Context,
         soulstruct_obj: MapCollisionModel,
         name: str,
-        collection: bpy.types.Collection = None,
+        collection: bpy.types.Collection | None = None,
         *,
         lo_collision: MapCollisionModel | None = None,  # optional
     ) -> tp.Self:
@@ -113,7 +113,7 @@ class BlenderMapCollision(BaseBlenderSoulstructObject[MapCollisionModel, MapColl
             bl_mesh.materials.append(material)
         bl_mesh.polygons.foreach_set("material_index", face_materials)
 
-        bl_map_collision = cls.new(name, bl_mesh, collection)
+        bl_map_collision = tp.cast(tp.Self, cls.new(name, bl_mesh, collection))
         # No further properties to assign.
         return bl_map_collision
 

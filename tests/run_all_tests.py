@@ -20,6 +20,10 @@ TEST_SCRIPTS = [
     "test_flver_material_ops.py",
     # Import/export round-trip tests (game files required; cases auto-skip if not present):
     "test_flver_import_roundtrip.py",
+    "test_collision_import_roundtrip.py",
+    "test_nvm_import_roundtrip.py",
+    "test_msb_import_roundtrip.py",
+    "test_hkx_animation_import_roundtrip.py",
 ]
 
 overall_pass = True

@@ -7,10 +7,10 @@ __all__ = [
 import bpy
 from mathutils import Vector
 
-from ..base.register import io_soulstruct_class
+from ..base.register import io_soulstruct_operator
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ViewSelectedAtDistanceZero(bpy.types.Operator):
     """Replacement for Blender's default 'View Selected' operator that sets the view distance to zero.
 

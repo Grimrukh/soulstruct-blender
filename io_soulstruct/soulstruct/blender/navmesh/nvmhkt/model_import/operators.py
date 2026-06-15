@@ -27,7 +27,7 @@ from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
 from soulstruct.havok.fromsoft.eldenring.file_types import NavmeshHKX
 
 from ....base.operators import *
-from ....base.register import io_soulstruct_class
+from ....base.register import io_soulstruct_operator
 from ....exceptions import NVMHKTImportError
 from ....types import *
 from ....utilities import *
@@ -114,7 +114,7 @@ class _BaseImportNVMHKT(LoggingImportOperator):
         return entry_model_id == self.navmesh_model_id
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ImportNVMHKT(_BaseImportNVMHKT):
     bl_idname = "import_scene.nvmhkt"
     bl_label = "Import NVMHKT"
@@ -216,7 +216,7 @@ def get_binder_entry_choices(self, context):
     return ImportNVMHKTWithBinderChoice.enum_options
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ImportNVMHKTWithBinderChoice(LoggingOperator):
     """Presents user with a choice of enums from `enum_choices` class variable (set prior).
 
@@ -283,7 +283,7 @@ class ImportNVMHKTWithBinderChoice(LoggingOperator):
         bpy.ops.wm.nvmhkt_binder_choice_operator("INVOKE_DEFAULT")
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ImportNVMHKTFromNVMHKTBND(BinderEntrySelectOperator):
     """Import a NVMHKT from the current selected value of listed game map NVMHKTs."""
     bl_idname = "import_scene.nvmhkt_entry"
@@ -389,7 +389,7 @@ class _BaseImportAllNVMHKT(LoggingOperator):
             raise
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ImportAllNVMHKTsFromNVMHKTBND(_BaseImportAllNVMHKT):
     """Import all NVMHKTs of chosen resolution(s) from selected map."""
     bl_idname = "import_scene.all_nvmhkt"
@@ -717,7 +717,7 @@ class _BaseImportAllOverworldNVMHKTs(_BaseImportAllNVMHKT):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ImportAllOverworldNVMHKTs(_BaseImportAllOverworldNVMHKTs):
     """Import all NVMHKTs from ALL base game overworld small tile maps (m60_XX_ZZ_00).
 
@@ -730,7 +730,7 @@ class ImportAllOverworldNVMHKTs(_BaseImportAllOverworldNVMHKTs):
     AREA = "m60"
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ImportAllDLCOverworldNVMHKTs(_BaseImportAllOverworldNVMHKTs):
     """Import all NVMHKTs from ALL DLC overworld small tile maps (m61_XX_ZZ_00).
 

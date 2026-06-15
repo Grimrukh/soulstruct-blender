@@ -7,11 +7,11 @@ __all__ = [
 
 
 from ..base.operators import *
-from ..base.register import io_soulstruct_class
+from ..base.register import io_soulstruct_operator
 from ..utilities import BLTransform
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class PrintGameTransform(LoggingOperator):
     bl_idname = "io_scene_soulstruct.print_game_transform"
     bl_label = "Print Game Transform"

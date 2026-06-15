@@ -23,7 +23,7 @@ from mathutils import Vector
 from soulstruct.base.events.enums import NavmeshFlag
 
 from ...base.operators import LoggingOperator
-from ...base.register import io_soulstruct_class, io_soulstruct_pointer_property
+from ...base.register import io_soulstruct_properties, io_soulstruct_operator, io_soulstruct_pointer_property
 from ...bpy_base.property_group import SoulstructPropertyGroup
 from ...exceptions import SoulstructTypeError
 from ...types import *
@@ -38,7 +38,7 @@ _navmesh_flag_items = [
 ]
 
 
-@io_soulstruct_class
+@io_soulstruct_properties
 @io_soulstruct_pointer_property(bpy.types.Scene, "navmesh_face_settings")
 class NavmeshFaceSettings(SoulstructPropertyGroup):
 
@@ -59,7 +59,7 @@ class NavmeshFaceSettings(SoulstructPropertyGroup):
     )
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class RenameNavmesh(LoggingOperator):
     """Simply renames an NVM model and all MSB Navmesh parts that instance it."""
     bl_idname = "object.rename_nvm"
@@ -118,7 +118,7 @@ class RenameNavmesh(LoggingOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class RefreshFaceIndices(LoggingOperator):
     bl_idname = "mesh.refresh_face_indices"
     bl_label = "Refresh Selected Face Indices"
@@ -176,7 +176,7 @@ class _BaseModifyNVMFaceFlags(LoggingOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class AddNVMFaceFlags(_BaseModifyNVMFaceFlags):
     bl_idname = "mesh.add_nvm_face_flags"
     bl_label = "Add NVM Face Flags"
@@ -185,7 +185,7 @@ class AddNVMFaceFlags(_BaseModifyNVMFaceFlags):
     MODIFY_TYPE = "ADD"
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class RemoveNVMFaceFlags(_BaseModifyNVMFaceFlags):
     bl_idname = "mesh.remove_nvm_face_flags"
     bl_label = "Remove NVM Face Flags"
@@ -194,7 +194,7 @@ class RemoveNVMFaceFlags(_BaseModifyNVMFaceFlags):
     MODIFY_TYPE = "REMOVE"
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class SetNVMFaceFlags(_BaseModifyNVMFaceFlags):
     bl_idname = "mesh.set_nvm_face_flags"
     bl_label = "Set NVM Face Flags"
@@ -203,7 +203,7 @@ class SetNVMFaceFlags(_BaseModifyNVMFaceFlags):
     MODIFY_TYPE = "SET"
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class SetNVMFaceObstacleCount(LoggingOperator):
     bl_idname = "mesh.set_nvm_face_obstacle_count"
     bl_label = "Set NVM Face Obstacle Count"
@@ -236,7 +236,7 @@ class SetNVMFaceObstacleCount(LoggingOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ResetNVMFaceInfo(LoggingOperator):
     """Reset all NVM face flags and obstacle counts to default, and create face layers if missing.
 
@@ -285,7 +285,7 @@ class ResetNVMFaceInfo(LoggingOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class AddNVMEventEntityTriangleIndex(bpy.types.Operator):
     bl_idname = "nvm_event_entity.add_triangle_index"
     bl_label = "Add Triangle"
@@ -300,7 +300,7 @@ class AddNVMEventEntityTriangleIndex(bpy.types.Operator):
         return {'FINISHED'}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class RemoveNVMEventEntityTriangleIndex(bpy.types.Operator):
     bl_idname = "nvm_event_entity.remove_triangle_index"
     bl_label = "Remove Triangle"
@@ -339,7 +339,7 @@ def get_connected_component(face, visited):
     return island
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class GenerateNavmeshFromCollision(LoggingOperator):
     bl_idname = "object.generate_navmesh_from_collision"
     bl_label = "Generate Navmesh from Collision"

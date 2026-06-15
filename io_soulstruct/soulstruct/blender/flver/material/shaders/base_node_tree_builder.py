@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 import bpy
 from bpy.types import NodeSocket
 
-from soulstruct.base.models.shaders import MatDef
+from soulstruct.base.models.shaders import MatDef, MatDefSampler
 from soulstruct.eldenring.models.shaders import MatDef as ERMatDef
 from soulstruct.utilities.maths import Vector2
 
@@ -117,7 +117,7 @@ class BaseNodeTreeBuilder(abc.ABC):
                 self.tex_y -= 100
                 current_sampler_group = sampler.sampler_group
 
-            bl_image = self.get_sampler_bl_image(sampler.name)
+            bl_image = self._get_sampler_bl_image(sampler.name)
             tex_image_node = self._new_tex_image_node(
                 name=node_name, image=bl_image, label=node_label, hide=bl_image is None
             )
@@ -165,7 +165,7 @@ class BaseNodeTreeBuilder(abc.ABC):
             if sampler_name in matdef_sampler_names:
                 continue
             self.tex_y -= 100  # space these out a bit more
-            bl_image = self.get_sampler_bl_image(sampler_name)
+            bl_image = self._get_sampler_bl_image(sampler_name)
             tex_image_node = self._new_tex_image_node(
                 name=sampler_name, image=bl_image, label=sampler_name, hide=bl_image is None
             )
@@ -205,7 +205,7 @@ class BaseNodeTreeBuilder(abc.ABC):
         self,
         pattern: str,
         max_count: int = 2,
-    ) -> list[tuple["MatDefSampler", bpy.types.ShaderNodeTexImage]]:
+    ) -> list[tuple[MatDefSampler, bpy.types.ShaderNodeTexImage]]:
         """Find sampler tex-image nodes whose alias matches *pattern* (regex).
 
         Returns up to *max_count* ``(sampler, tex_node)`` pairs.  Tex nodes whose
@@ -453,7 +453,7 @@ class BaseNodeTreeBuilder(abc.ABC):
             tex_a.outputs["Alpha"], tex_b.outputs["Alpha"], tex_a.location[1] - 50, fac, "FLOAT",
         )
 
-    def get_sampler_bl_image(self, sampler_name: str) -> bpy.types.Image | None:
+    def _get_sampler_bl_image(self, sampler_name: str) -> bpy.types.Image | None:
         """All Blender Images from textures (cached or DDS) are lower-case names. FLVER paths are not case-sensitive."""
         texture_stem = self.sampler_texture_stems[sampler_name].lower()
         if not texture_stem:
@@ -583,6 +583,10 @@ class BaseNodeTreeBuilder(abc.ABC):
     def output_displacement(self) -> NodeSocket:
         return self.output.inputs["Displacement"]
 
+    # endregion
+
+    # region Node Creation
+
     def _new_vertex_colors_attr_node(self, index: int) -> bpy.types.Node:
         """Create an Attribute node using 'VertexColors{index}'."""
         return new_shader_node(
@@ -620,8 +624,8 @@ class BaseNodeTreeBuilder(abc.ABC):
     def _new_normal_combine_node(
         self,
         node_y: float,
-        inputs: dict[str, tp.Any] = None,
-        outputs: dict[str, tp.Any] = None,
+        inputs: dict[str, tp.Any] | None = None,
+        outputs: dict[str, tp.Any] | None = None,
     ):
         return new_soulstruct_node_group(
             self.tree,
@@ -632,7 +636,7 @@ class BaseNodeTreeBuilder(abc.ABC):
         )
 
     def _new_tex_image_node(
-        self, name: str, image: bpy.types.Image | None, label: str = None, hide=False
+        self, name: str, image: bpy.types.Image | None, label: str | None = None, hide: bool = False
     ) -> bpy.types.ShaderNodeTexImage:
         node = new_shader_node(
             self.tree,
@@ -655,8 +659,8 @@ class BaseNodeTreeBuilder(abc.ABC):
         uv_map_name: str,
         location_y: float,
         strength=1.0,
-        inputs: dict[str | int, tp.Any] = None,
-        outputs: dict[str | int, tp.Any] = None,
+        inputs: dict[str | int, tp.Any] | None = None,
+        outputs: dict[str | int, tp.Any] | None = None,
     ) -> bpy.types.ShaderNodeNormalMap:
         return new_shader_node(
             self.tree,
@@ -672,8 +676,8 @@ class BaseNodeTreeBuilder(abc.ABC):
     def _new_bsdf_shader_node_group(
         self,
         node_group: SoulstructNodeGroups,
-        inputs: dict[str, tp.Any] = None,
-        outputs: dict[str, tp.Any] = None,
+        inputs: dict[str, tp.Any] | None = None,
+        outputs: dict[str, tp.Any] | None = None,
     ) -> bpy.types.ShaderNodeGroup:
         """Create a new `ShaderNodeGroup` of the given name type, or import it from the packaged blend file.
 

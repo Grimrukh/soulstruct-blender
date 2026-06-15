@@ -16,10 +16,10 @@ import bmesh
 from soulstruct.flver import Material
 
 from ....base.operators import LoggingOperator
-from ....base.register import io_soulstruct_class
+from ....base.register import io_soulstruct_operator
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class SelectDisplayMaskID(LoggingOperator):
 
     bl_idname = "mesh.select_display_mask_id"
@@ -70,7 +70,7 @@ class SelectDisplayMaskID(LoggingOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class SelectUnweightedVertices(LoggingOperator):
 
     bl_idname = "mesh.select_unweighted_vertices"
@@ -79,7 +79,7 @@ class SelectUnweightedVertices(LoggingOperator):
 
     @classmethod
     def poll(cls, context) -> bool:
-        return context.active_object and context.active_object.type == "MESH"
+        return context.active_object is not None and context.active_object.type == "MESH"
 
     def execute(self, context):
 
@@ -104,7 +104,7 @@ class SelectUnweightedVertices(LoggingOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class SetSmoothCustomNormals(LoggingOperator):
 
     bl_idname = "mesh.set_smooth_custom_normals"
@@ -134,7 +134,7 @@ class SetSmoothCustomNormals(LoggingOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class SetVertexAlpha(LoggingOperator):
 
     bl_idname = "mesh.set_selected_vertex_alpha"
@@ -143,7 +143,11 @@ class SetVertexAlpha(LoggingOperator):
 
     @classmethod
     def poll(cls, context) -> bool:
-        return context.mode == "EDIT_MESH" and context.active_object and context.active_object.type == "MESH"
+        return (
+            context.mode == "EDIT_MESH"
+            and context.active_object is not None
+            and context.active_object.type == "MESH"
+        )
 
     def execute(self, context):
         if context.mode != "EDIT_MESH":
@@ -179,7 +183,7 @@ class SetVertexAlpha(LoggingOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class InvertVertexAlpha(LoggingOperator):
 
     bl_idname = "mesh.invert_selected_vertex_alpha"
@@ -224,7 +228,7 @@ class InvertVertexAlpha(LoggingOperator):
         return {"FINISHED"}
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class SetVertexColorWhite(LoggingOperator):
 
     bl_idname = "mesh.set_selected_vertex_color_white"
@@ -233,7 +237,11 @@ class SetVertexColorWhite(LoggingOperator):
 
     @classmethod
     def poll(cls, context) -> bool:
-        return context.mode == "EDIT_MESH" and context.active_object and context.active_object.type == "MESH"
+        return (
+            context.mode == "EDIT_MESH"
+            and context.active_object is not None
+            and context.active_object.type == "MESH"
+        )
 
     def execute(self, context):
         if context.mode != "EDIT_MESH":

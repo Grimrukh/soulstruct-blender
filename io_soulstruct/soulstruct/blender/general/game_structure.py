@@ -79,7 +79,7 @@ class GameStructure:
         return dir_path
 
     def get_map_file_path(
-        self, *parts: Path | str, dcx_type: DCXType = None, map_stem: str = None
+        self, *parts: Path | str, dcx_type: DCXType | None = None, map_stem: str | None = None
     ) -> Path | None:
         """Get the `map/{map_stem}` path, and optionally further, in the game directory.
 
@@ -113,7 +113,7 @@ class GameStructure:
         return self._process_file_dcx_path(file_path, dcx_type)
 
     def get_map_file_path_if_exists(
-        self, *parts: Path | str, dcx_type: DCXType = None, map_stem: str = None
+        self, *parts: Path | str, dcx_type: DCXType | None = None, map_stem: str = None
     ) -> Path | None:
         """Same as `get_map_file_path()`, but path must exist, or `None` is returned."""
         file_path = self.get_map_file_path(*parts, dcx_type=dcx_type, map_stem=map_stem)

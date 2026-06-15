@@ -34,6 +34,7 @@ from pathlib import Path
 
 import bpy
 
+from soulstruct.bloodborne.constants import CHARACTER_MODELS as BB_CHARACTER_MODELS
 from soulstruct.darksouls1ptde.constants import CHARACTER_MODELS as DS1_CHARACTER_MODELS
 from soulstruct.demonssouls.constants import CHARACTER_MODELS as DES_CHARACTER_MODELS
 from soulstruct.eldenring.constants import CHARACTER_MODELS as ER_CHARACTER_MODELS
@@ -42,7 +43,7 @@ from soulstruct.flver import *
 import pyrelink.core as pyre
 
 from ....base.operators import *
-from ....base.register import io_soulstruct_class
+from ....base.register import io_soulstruct_operator
 from ....exceptions import FLVERImportError
 from ....general import SoulstructSettings
 from ....types import ArmatureObject
@@ -123,7 +124,7 @@ class _BaseFLVERImportOperator(LoggingImportOperator):
             collection=collection,
         )
 
-        for bl_flver in bl_flvers:
+        for bl_flver in bl_flvers.values():
             self.post_process_flver(context, settings, bl_flver)
 
         self.info(f"Loaded {len(bl_flvers)} FLVERs into Blender in {time.perf_counter() - p:.3f} s.")
@@ -160,7 +161,7 @@ class _BaseFLVERImportOperator(LoggingImportOperator):
         pass
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ImportFLVER(_BaseFLVERImportOperator):
     """This appears in the tooltip of the operator and in the generated docs."""
     bl_idname = "import_scene.flver"
@@ -180,7 +181,7 @@ class ImportFLVER(_BaseFLVERImportOperator):
 
 # region Game Folder Importers
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ImportMapPieceFLVER(_BaseFLVERImportOperator):
     """Import a map piece FLVER from selected game map directory."""
     bl_idname = "import_scene.map_piece_flver"
@@ -228,7 +229,7 @@ class ImportMapPieceFLVER(_BaseFLVERImportOperator):
         image_import_manager.register_lazy_flver_map_textures(map_dir, flver)
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ImportCharacterFLVER(_BaseFLVERImportOperator):
     """Shortcut for browsing for CHRBND Binders in game 'chr' directory."""
     bl_idname = "import_scene.character_flver"
@@ -261,7 +262,9 @@ class ImportCharacterFLVER(_BaseFLVERImportOperator):
         model_name = "<N/A>"
         if model_stem:
             settings = self.settings(context)
-            if settings.is_game_ds1():
+            if settings.is_game("BLOODBORNE"):
+                model_name = BB_CHARACTER_MODELS.get(model_stem, "<Unknown>")
+            elif settings.is_game_ds1():
                 model_name = DS1_CHARACTER_MODELS.get(model_stem, "<Unknown>")
             elif settings.is_game("DEMONS_SOULS"):
                 model_name = DES_CHARACTER_MODELS.get(model_stem, "<Unknown>")
@@ -283,15 +286,16 @@ class ImportCharacterFLVER(_BaseFLVERImportOperator):
         if not context.scene.flver_import_settings.add_name_suffix:
             return
 
-        if settings.is_game_ds1():
+        if settings.is_game("BLOODBORNE"):
+            model_dict = BB_CHARACTER_MODELS
+        elif settings.is_game_ds1():
             model_dict = DS1_CHARACTER_MODELS
         elif settings.is_game("DEMONS_SOULS"):
             model_dict = DES_CHARACTER_MODELS
+        elif settings.is_game("ELDEN_RING"):
+            model_dict = ER_CHARACTER_MODELS
         else:
             # TODO: Use other games' character name dicts.
-            model_dict = {}
-
-        if not model_dict:
             return
 
         # Add character description to model name.
@@ -310,7 +314,7 @@ class ImportCharacterFLVER(_BaseFLVERImportOperator):
     # We do NOT look anywhere else for character textures.
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ImportObjectFLVER(_BaseFLVERImportOperator):
     """Shortcut for browsing for OBJBND Binders in game 'obj' directory."""
     bl_idname = "import_scene.object_flver"
@@ -346,7 +350,7 @@ class ImportObjectFLVER(_BaseFLVERImportOperator):
         image_import_manager.register_lazy_flver_map_textures(map_dir, flver)
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ImportAssetFLVER(_BaseFLVERImportOperator):
     """Shortcut for browsing for GEOMBND Binders in game 'asset' directory."""
     bl_idname = "import_scene.asset_flver"
@@ -377,7 +381,7 @@ class ImportAssetFLVER(_BaseFLVERImportOperator):
         return find_or_create_collection(context.scene.collection, "Models", "Asset Models")
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ImportEquipmentFLVER(_BaseFLVERImportOperator):
     """Import weapon/armor FLVER from a `partsbnd` Binder.
 

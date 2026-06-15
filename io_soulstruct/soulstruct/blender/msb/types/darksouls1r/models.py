@@ -5,7 +5,7 @@ __all__ = [
 ]
 
 from soulstruct.darksouls1r.maps.enums import MSBModelSubtype
-from soulstruct.darksouls1r.maps.models import *
+from soulstruct.darksouls1r.constants import CHARACTER_MODELS
 
 from ..base.models import *
 
@@ -24,10 +24,10 @@ class BlenderMSBCollisionModelImporter_DSR(BlenderMSBCollisionModelImporter):
 
 
 MSB_MODEL_IMPORTERS = {
-    MSBModelSubtype.MapPieceModel: BlenderMSBMapPieceModelImporter(MSBMapPieceModel, use_oldest_map_stem=True),
-    MSBModelSubtype.CollisionModel: BlenderMSBCollisionModelImporter_DSR(MSBCollisionModel, use_oldest_map_stem=True),
-    MSBModelSubtype.NavmeshModel: BlenderMSBNavmeshModelImporter(MSBNavmeshModel, use_oldest_map_stem=False),
-    MSBModelSubtype.ObjectModel: BlenderMSBObjectModelImporter(MSBObjectModel),
-    MSBModelSubtype.CharacterModel: BlenderMSBCharacterModelImporter(MSBCharacterModel),
-    MSBModelSubtype.PlayerModel: BlenderMSBCharacterModelImporter(MSBCharacterModel),
+    MSBModelSubtype.MapPieceModel: BlenderMSBMapPieceModelImporter(use_oldest_map_stem=True),
+    MSBModelSubtype.CollisionModel: BlenderMSBCollisionModelImporter_DSR(use_oldest_map_stem=True),
+    MSBModelSubtype.NavmeshModel: BlenderMSBNavmeshModelImporter(use_oldest_map_stem=False),
+    MSBModelSubtype.ObjectModel: BlenderMSBObjectModelImporter(),
+    MSBModelSubtype.CharacterModel: BlenderMSBCharacterModelImporter(model_name_dict=CHARACTER_MODELS),
+    MSBModelSubtype.PlayerModel: BlenderMSBCharacterModelImporter(model_name_dict=CHARACTER_MODELS),
 }

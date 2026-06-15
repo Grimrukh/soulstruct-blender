@@ -95,9 +95,9 @@ class BlenderFLVERDummy(BaseBlenderSoulstructObject[Dummy, FLVERDummyProps]):
         context: bpy.types.Context,
         soulstruct_obj: Dummy,
         name: str,
-        armature: ArmatureObject = None,
-        collection: bpy.types.Collection = None,
-    ) -> BlenderFLVERDummy:
+        armature: ArmatureObject | None = None,
+        collection: bpy.types.Collection | None = None,
+    ) -> tp.Self:
         """Create a wrapped Blender Dummy empty object from FLVER `Dummy`.
 
         Created Dummy will be parented to `Armature` via its attach bone index, and will also record its internal parent
@@ -107,7 +107,7 @@ class BlenderFLVERDummy(BaseBlenderSoulstructObject[Dummy, FLVERDummyProps]):
             raise FLVERImportError("Cannot create Blender Dummy without an Armature object.")
 
         # noinspection PyTypeChecker
-        bl_dummy = cls.new(name, data=None, collection=collection)  # type: BlenderFLVERDummy
+        bl_dummy = tp.cast(tp.Self, cls.new(name, data=None, collection=collection))
         bl_dummy.parent = armature
         bl_dummy.obj.empty_display_type = "ARROWS"  # best display type/size I've found (single arrow not sufficient)
         bl_dummy.obj.empty_display_size = 0.05

@@ -8,13 +8,13 @@ __all__ = [
 
 from soulstruct.flver import FLVERVersion
 
-from ....base.register import io_soulstruct_class
+from ....base.register import io_soulstruct_panel
 from ....bpy_base.panel import SoulstructPanel
 from ..types import BlenderFLVER, BlenderFLVERDummy
 from ..properties import FLVERProps, FLVERSubmeshProps
 
 
-@io_soulstruct_class
+@io_soulstruct_panel
 class FLVERPropsPanel(SoulstructPanel):
     """Draw a Panel in the Object properties window exposing the appropriate FLVER fields for active object."""
     bl_label = "FLVER Properties"
@@ -92,7 +92,7 @@ class FLVERPropsPanel(SoulstructPanel):
             self.layout.operator("flver.add_submesh_props", text="Add Per-Material Submesh Properties")
 
 
-@io_soulstruct_class
+@io_soulstruct_panel
 class FLVERDummyPropsPanel(SoulstructPanel):
     """Draw a Panel in the Object properties window exposing the appropriate FLVER Dummy fields for active object."""
     bl_label = "FLVER Dummy Properties"
@@ -112,7 +112,7 @@ class FLVERDummyPropsPanel(SoulstructPanel):
             self.layout.prop(props, prop)
 
 
-@io_soulstruct_class
+@io_soulstruct_panel
 class FLVERBonePropsPanel(SoulstructPanel):
     """Draw a Panel in the Bone properties window exposing the appropriate FLVER Bone fields for active bone."""
     bl_label = "FLVER Bone Properties"

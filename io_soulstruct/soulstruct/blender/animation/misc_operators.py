@@ -7,13 +7,13 @@ import typing as tp
 import bpy
 
 from ..base.operators import *
-from ..base.register import io_soulstruct_class
+from ..base.register import io_soulstruct_operator
 from ..types import ArmatureObject, MeshObject
 from .types import SoulstructAnimation
 from .utilities import get_active_flver_or_part_armature
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class ArmatureActionChoiceOperator(LoggingOperator):
     """Operator called dynamically to let the user choose from a list of available animations for a given armature.
 
@@ -83,7 +83,7 @@ def get_armature_action_choices(self, context):
     return ArmatureActionChoiceOperator.ENUM_OPTIONS
 
 
-@io_soulstruct_class
+@io_soulstruct_operator
 class SelectArmatureActionOperator(LoggingOperator):
     # TODO: FLVER and Part actions are not compatible, as they put root motion in different places.
     #
