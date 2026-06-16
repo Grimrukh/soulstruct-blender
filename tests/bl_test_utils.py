@@ -74,6 +74,9 @@ class ImportCaseBase:
     # Extra tags for documentation only.
     tags: list[str] = field(default_factory=list)
 
+    # Convenience toggle for WIP tests.
+    enabled: bool = True
+
     @property
     def _binder_match(self) -> re.Match | None:
         """Return the regex match if filename is in 'binder[entry]' format, else None."""
@@ -131,6 +134,8 @@ class ImportCaseBase:
 
     def check_skip_reason(self) -> str | None:
         """Return a human-readable skip message, or None if the test should run."""
+        if not self.enabled:
+            return "test not enabled"
         if not self.directory:
             return "directory not configured (placeholder)"
         if not Path(self.directory).is_dir():
@@ -261,16 +266,31 @@ def set_game(game_enum: str = "DARK_SOULS_DSR"):
 # ---------------------------------------------------------------------------
 
 def clear_scene():
-    """Delete all objects in the current scene."""
-    bpy.ops.object.select_all(action="SELECT")
-    bpy.ops.object.delete(use_global=False)
-    # Also remove orphaned mesh/material data
-    for mesh in list(bpy.data.meshes):
-        if mesh.users == 0:
-            bpy.data.meshes.remove(mesh)
-    for mat in list(bpy.data.materials):
-        if mat.users == 0:
-            bpy.data.materials.remove(mat)
+    """Wipe all user-created data from bpy.data to ensure a clean state between tests."""
+    _DATA_COLLECTIONS = [
+        bpy.data.objects,
+        bpy.data.meshes,
+        bpy.data.armatures,
+        bpy.data.materials,
+        bpy.data.textures,
+        bpy.data.images,
+        bpy.data.curves,
+        bpy.data.lights,
+        bpy.data.cameras,
+        bpy.data.actions,
+        bpy.data.collections,
+        bpy.data.node_groups,
+        bpy.data.lattices,
+        bpy.data.metaballs,
+        bpy.data.particles,
+    ]
+    for collection in _DATA_COLLECTIONS:
+        for item in list(collection):
+            try:
+                item.use_fake_user = False
+                collection.remove(item)
+            except Exception:
+                pass  # built-in/protected data blocks can't be removed
 
 
 def make_flver_mesh(name: str = "TestFLVER") -> bpy.types.Object:
