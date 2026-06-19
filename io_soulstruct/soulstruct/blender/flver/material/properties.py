@@ -102,8 +102,11 @@ class FLVERGXItemProps(bpy.types.PropertyGroup):
 class FLVERMaterialProps(SoulstructPropertyGroup):
     """Extension properties for Blender materials that represent FLVER materials.
 
-    In Blender, materials also store desired FLVER mesh settings -- that is, there may be multiple materials that are
-    identical except for FLVER mesh/face set settings like backface culling. These settings are stored here.
+    NOTE: In older versions of Soulstruct, these Blender Materials also stored FLVER submesh settings, such as
+    backface culling, dynamic vs. static, default bone index, and (inferred property) face set count. This made it
+    necessary to duplicate otherwise-identical Materials to support variations in these submesh properties. Submesh
+    properties are now handled on the FLVER Mesh itself, either as a per-material array of `FLVERSubmeshProps` or
+    using the global settings on `FLVERProps`.
     """
 
     GAME_PROP_NAMES = {

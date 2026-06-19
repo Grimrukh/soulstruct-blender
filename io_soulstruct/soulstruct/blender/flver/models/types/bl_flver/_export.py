@@ -169,7 +169,8 @@ def _create_flver_from_bl_flver(command: _CreateFLVERCommand) -> FLVER:
         bl_dummies = []
         bl_bone_data_type = FLVERBoneDataType.OMITTED
 
-    if not command.bl_flver.armature or not command.bl_flver.armature.pose.bones:
+    bl_armature = command.bl_flver.armature
+    if not bl_armature or not bl_armature.pose or not bl_armature.pose.bones:
         command.operator.info(  # not a warning
             f"No non-empty FLVER Armature to export. Creating FLVER skeleton with a single default bone at origin "
             f"named '{command.bl_flver.game_name}'."
@@ -179,7 +180,7 @@ def _create_flver_from_bl_flver(command: _CreateFLVERCommand) -> FLVER:
         using_default_bone = True
     else:
         create_flver_bones(
-            command.operator, command.context, command.bl_flver.armature, command.flver, bl_bone_data_type
+            command.operator, command.context, bl_armature, command.flver, bl_bone_data_type
         )
         using_default_bone = False
 
@@ -216,17 +217,9 @@ def _create_flver_from_bl_flver(command: _CreateFLVERCommand) -> FLVER:
             command.operator.warning(f"Exporting non-c0000/c1000 FLVER '{command.bl_flver.name}' with no mesh data.")
         return command.flver
 
-    if command.flver_model_type == FLVERModelType.Unknown:
-        # Guess model type based on name.
-        # TODO: For layouts, probably better off checking MTD prefix 'M' or 'C'?
-        use_map_piece_layout = FLVERModelType.guess_from_name(command.name) == FLVERModelType.MapPiece
-    else:
-        use_map_piece_layout = command.flver_model_type == FLVERModelType.MapPiece
-
     _create_flver_meshes(
         command,
         bl_bone_names=[bone.name for bone in command.flver.bones],
-        use_map_piece_layout=use_map_piece_layout,
         matdefs=matdefs,
         using_default_bone=using_default_bone,
     )
@@ -251,7 +244,6 @@ def _create_flver_from_bl_flver(command: _CreateFLVERCommand) -> FLVER:
 def _create_flver_meshes(
     command: _CreateFLVERCommand,
     bl_bone_names: list[str],
-    use_map_piece_layout: bool,
     matdefs: list[MatDef],
     using_default_bone: bool,
 ):
@@ -265,6 +257,10 @@ def _create_flver_meshes(
     We only respect Face Set Count > 1 if requested in export options. (Duplicating the main face set is only
     viable in older games with low-res meshes, but those same games don't even really need LODs anyway.)
     """
+
+    # If ALL meshes are dynamic or non-dynamic, we can make some shortcuts here.
+    # Otherwise, we have to act like it could be a mixture when collecting bone weights.
+    combined_is_dynamic = command.bl_flver.type_properties.get_combined_is_dynamic()
 
     # 1. Create per-mesh info. Note that every Blender material index is guaranteed to be mapped to AT LEAST ONE
     #    split `FLVERMesh` in the exported FLVER (more if mesh bone maximum is exceeded). This allows the user to
@@ -324,7 +320,6 @@ def _create_flver_meshes(
             command.operator,
             command.context,
             matdef,
-            use_map_piece_layout=use_map_piece_layout,
             mesh_kwargs=mesh_kwargs,
             texture_collection=command.texture_collection,
             get_texture_path_prefix=get_texture_path_prefix,
@@ -363,20 +358,18 @@ def _create_flver_meshes(
     # Slow part number 1: iterating over every Blender vertex to retrieve its position and bone weights/indices.
     # We at least know the size of the array in advance.
     vertex_count = len(tri_mesh_data.vertices)
-    if use_map_piece_layout and command.flver.version.map_pieces_use_normal_w_bones():
-        # Bone weights/indices not in array. `normal_w` is used for single Map Piece bone.
+    if combined_is_dynamic is False and command.flver.version.use_normal_w_bones():
+        # Bone weights/indices not in array. `normal_w` is used for single static mesh bone.
         vertex_data_dtype = [
             ("position", "f", 3),
         ]
-        use_normal_w_bone_index = True
     else:
-        # Rigged FLVERs and older games' Map Pieces.
+        # Rigged meshes, older games' static meshes, or a combination of mesh dynamic states.
         vertex_data_dtype = [
             ("position", "f", 3),  # TODO: support 4D position (see, e.g., Rykard slime in ER: c4711)
             ("bone_weights", "f", 4),
             ("bone_indices", "i", 4),
         ]
-        use_normal_w_bone_index = False
 
     vertex_data = np.empty(vertex_count, dtype=vertex_data_dtype)
     vertex_positions = np.empty((vertex_count, 3), dtype=np.float32)
@@ -408,7 +401,7 @@ def _create_flver_meshes(
             bone_indices.append(bone_index)
             used_bone_indices.add(bone_index)
             # We don't waste time calling retrieval method `weight()` for map pieces.
-            if not use_map_piece_layout:
+            if combined_is_dynamic is False:
                 # TODO: `vertex_group` has `group` (int) and `weight` (float) on it already?
                 bone_weights.append(mesh_group.weight(i))
 
@@ -417,7 +410,7 @@ def _create_flver_meshes(
                 f"Vertex {i} cannot be weighted to {len(bone_indices)} bones (max 1 for Map Pieces, 4 for others)."
             )
         elif len(bone_indices) == 0:
-            if len(bl_bone_names) == 1 and use_map_piece_layout:
+            if len(bl_bone_names) == 1 and combined_is_dynamic is True:
                 # Omitted bone indices can be assumed to be the only bone in the skeleton.
                 # We issue a warning (once) unless this FLVER export is using a default bone (no Armature), in which
                 # case we obviously don't expect any vertices to be weighted to anything.
@@ -436,7 +429,8 @@ def _create_flver_meshes(
                     f"Vertex {i} is not weighted to any bones, and Map Piece FLVER has multiple bones."
                 )
 
-        if use_map_piece_layout:
+        if combined_is_dynamic:
+            # All vertices are guaranteed to be in static meshes only.
             if len(bone_indices) == 1:
                 # Duplicate single-element list to four-element list.
                 # (This is done even for games that will write only a single Map Piece bone to `normal_w`.)
@@ -444,6 +438,7 @@ def _create_flver_meshes(
             else:
                 raise FLVERExportError(f"Map Piece vertices must be weighted to exactly one bone (vertex {i}).")
         else:
+            # This vertex could end up in dynamic (and/or static) meshes.
             # Pad out bone weights and (unused) indices for rigged meshes.
             while len(bone_weights) < 4:
                 bone_weights.append(0.0)
@@ -526,12 +521,12 @@ def _create_flver_meshes(
     loop_normals = np.empty((loop_count, 3), dtype=np.float32)
     tri_mesh_data.loops.foreach_get("normal", loop_normals.ravel())
     if use_normal_w_bone_index:
-        # New Map Pieces: single vertex bone index is stored in `normal_w` (as `uint8`).
+        # New static FLVER meshes: single vertex bone index is stored in `normal_w` (as `uint8`).
         # TODO: Given that the default `normal_w` value in older games is 127, this may be signed, and so the max
-        #  Map Piece bone count may actually be 127/128. Sticking with 256 for now.
+        #  static mesh bone count may actually be 127/128. Sticking with 256 for now.
         if (max_bone_index := vertex_bone_indices.max()) > 255:
             raise FLVERExportError(
-                f"Map Piece mode only supports up to 256 bones (8-bit index), not: {max_bone_index}"
+                f"NormalW bone indices only support up to 256 bones (8-bit index), not: {max_bone_index}"
             )
         loop_normals_w = vertex_bone_indices[:, 0][loop_vertex_indices].astype(np.uint8).reshape(-1, 1)
     else:

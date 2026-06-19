@@ -44,8 +44,8 @@ for script in TEST_SCRIPTS:
 
 print(f"\n{'='*60}")
 if overall_pass:
-    print("ALL SUITES PASSED")
+    print("[green][bold]ALL SUITES PASSED[/bold][/green]")
     sys.exit(0)
 else:
-    print("ONE OR MORE SUITES FAILED")
+    print("[red][bold]ONE OR MORE SUITES FAILED[/bold][/red]")
     sys.exit(1)

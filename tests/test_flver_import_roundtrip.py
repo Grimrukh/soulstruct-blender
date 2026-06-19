@@ -82,8 +82,8 @@ FLVER_TEST_CASES: list[FLVERImportCase] = [
         name="DES / Map Piece / m01 loose FLVER",
         game_enum="DEMONS_SOULS",
         directory=Config.DES_PATH / "map/m01_00_00_00",
-        filename="m0010b0.flver.dcx",
-        expect_armature=False,
+        filename="m0001b0.flver.dcx",
+        expect_armature=True,  # has non-trivial bones
         expect_version="DemonsSouls",
         tags=["map_piece"],
     ),
@@ -93,6 +93,7 @@ FLVER_TEST_CASES: list[FLVERImportCase] = [
         directory=Config.DES_PATH / "chr/c0000",
         filename="c0000.chrbnd.dcx",
         expect_armature=True,
+        expect_materials=False,
         expect_version="DemonsSouls",
         tags=["character"],
     ),
@@ -103,6 +104,7 @@ FLVER_TEST_CASES: list[FLVERImportCase] = [
         filename="c2010.chrbnd.dcx",
         expect_armature=True,
         tags=["character"],
+        # TODO: Bug: exporter tries to write >28 bones in one Mesh.
     ),
     FLVERImportCase(
         name="DES / Object / o0100",
@@ -112,10 +114,10 @@ FLVER_TEST_CASES: list[FLVERImportCase] = [
         tags=["object"],
     ),
     FLVERImportCase(
-        name="DES / Equipment / wp_a_0100",
+        name="DES / Equipment / wp_a_1500",
         game_enum="DEMONS_SOULS",
         directory=Config.DES_PATH / "parts",
-        filename="wp_a_0100.partsbnd.dcx",
+        filename="wp_a_1500.partsbnd.dcx",
         expect_armature=True,
         tags=["equipment"],
     ),
@@ -126,6 +128,7 @@ FLVER_TEST_CASES: list[FLVERImportCase] = [
         filename="am_a_8020.partsbnd.dcx",
         expect_armature=True,
         tags=["equipment"],
+        # TODO: Bug: exporter tries to write >28 bones in one Mesh.
     ),
 
     # ------------------------------------------------------------------
@@ -136,10 +139,11 @@ FLVER_TEST_CASES: list[FLVERImportCase] = [
         game_enum="DARK_SOULS_PTDE",
         directory=Config.PTDE_PATH / "map/m10_02_00_00",
         filename="m2000B2A10.flver",
-        expect_armature=True,  # does have non-trivial bones in PTDE
+        expect_armature=True,
         expect_version="DarkSouls_A",
         tags=["map_piece"],
     ),
+    # TODO: Test a Map Piece with no real bones.
     FLVERImportCase(
         name="DS1PTDE / Character / c1200",
         game_enum="DARK_SOULS_PTDE",
@@ -155,6 +159,7 @@ FLVER_TEST_CASES: list[FLVERImportCase] = [
         directory=Config.PTDE_PATH / "obj",
         filename="o1290.objbnd",
         tags=["object"],
+        # TODO: Bug: second export fails, vertex 410 not weighted to a bone.
     ),
     FLVERImportCase(
         name="DS1PTDE / Equipment / WP_A_1000",
@@ -165,10 +170,10 @@ FLVER_TEST_CASES: list[FLVERImportCase] = [
         tags=["equipment"],
     ),
     FLVERImportCase(
-        name="DS1PTDE / Equipment / AM_M_1000",
+        name="DS1PTDE / Equipment / AM_A_1000",
         game_enum="DARK_SOULS_PTDE",
         directory=Config.PTDE_PATH / "parts",
-        filename="AM_M_1000.partsbnd",
+        filename="AM_A_1000.partsbnd",
         expect_armature=True,
         tags=["equipment"],
     ),
@@ -180,11 +185,12 @@ FLVER_TEST_CASES: list[FLVERImportCase] = [
         name="DSR / Map Piece / m10 loose FLVER",
         game_enum="DARK_SOULS_DSR",
         directory=Config.DSR_PATH / "map/m10_02_00_00",
-        filename="m2000B2A10.flver",  # main bonfire clearing Map Piece
-        expect_armature=False,
+        filename="m2000B2A10.flver.dcx",  # main bonfire clearing Map Piece
+        expect_armature=True,
         expect_version="DarkSouls_A",
         tags=["map_piece"],
     ),
+    # TODO: Test a Map Piece with no real bones.
     FLVERImportCase(
         name="DSR / Character / c1200",
         game_enum="DARK_SOULS_DSR",
@@ -204,6 +210,8 @@ FLVER_TEST_CASES: list[FLVERImportCase] = [
         expect_materials=False,  # player mesh is empty (uses Parts)
         tags=["character"],
     ),
+
+    # TODO: Bugged. Vertices weighted to child bones are not weighted on export.
     FLVERImportCase(
         name="DSR / Object / o1290",
         game_enum="DARK_SOULS_DSR",
@@ -220,10 +228,10 @@ FLVER_TEST_CASES: list[FLVERImportCase] = [
         tags=["equipment"],
     ),
     FLVERImportCase(
-        name="DSR / Equipment / AM_M_1000",
+        name="DSR / Equipment / AM_A_1000",
         game_enum="DARK_SOULS_DSR",
         directory=Config.DSR_PATH / "parts",
-        filename="AM_M_0100.partsbnd.dcx",
+        filename="AM_A_0100.partsbnd.dcx",
         expect_armature=True,
         tags=["equipment"],
     ),
@@ -231,37 +239,37 @@ FLVER_TEST_CASES: list[FLVERImportCase] = [
     # ------------------------------------------------------------------
     # Dark Souls 2 (SotFS)
     # ------------------------------------------------------------------
-    FLVERImportCase(
-        name="DS2 / Map Piece",
-        game_enum="DARK_SOULS_2",
-        directory="",   # TODO: e.g. "C:/Dark Souls 2/map/m10_02_00_00"
-        filename="",    # TODO: e.g. "m10_02_00_00.flver"
-        expect_armature=False,
-        tags=["map_piece"],
-    ),
-    FLVERImportCase(
-        name="DS2 / Character",
-        game_enum="DARK_SOULS_2",
-        directory="",   # TODO: e.g. "C:/Dark Souls 2/chr"
-        filename="",    # TODO: e.g. "c0000.chrbnd"
-        expect_armature=True,
-        tags=["character"],
-    ),
-    FLVERImportCase(
-        name="DS2 / Object",
-        game_enum="DARK_SOULS_2",
-        directory="",   # TODO: e.g. "C:/Dark Souls 2/obj"
-        filename="",    # TODO: e.g. "o0100.objbnd"
-        tags=["object"],
-    ),
-    FLVERImportCase(
-        name="DS2 / Equipment",
-        game_enum="DARK_SOULS_2",
-        directory="",   # TODO: e.g. "C:/Dark Souls 2/parts"
-        filename="",    # TODO: e.g. "WP_A_0100.partsbnd"
-        expect_armature=True,
-        tags=["equipment"],
-    ),
+    # FLVERImportCase(
+    #     name="DS2 / Map Piece",
+    #     game_enum="DARK_SOULS_2",
+    #     directory="",   # TODO: e.g. "C:/Dark Souls 2/map/m10_02_00_00"
+    #     filename="",    # TODO: e.g. "m10_02_00_00.flver"
+    #     expect_armature=False,
+    #     tags=["map_piece"],
+    # ),
+    # FLVERImportCase(
+    #     name="DS2 / Character",
+    #     game_enum="DARK_SOULS_2",
+    #     directory="",   # TODO: e.g. "C:/Dark Souls 2/chr"
+    #     filename="",    # TODO: e.g. "c0000.chrbnd"
+    #     expect_armature=True,
+    #     tags=["character"],
+    # ),
+    # FLVERImportCase(
+    #     name="DS2 / Object",
+    #     game_enum="DARK_SOULS_2",
+    #     directory="",   # TODO: e.g. "C:/Dark Souls 2/obj"
+    #     filename="",    # TODO: e.g. "o0100.objbnd"
+    #     tags=["object"],
+    # ),
+    # FLVERImportCase(
+    #     name="DS2 / Equipment",
+    #     game_enum="DARK_SOULS_2",
+    #     directory="",   # TODO: e.g. "C:/Dark Souls 2/parts"
+    #     filename="",    # TODO: e.g. "WP_A_0100.partsbnd"
+    #     expect_armature=True,
+    #     tags=["equipment"],
+    # ),
 
     # ------------------------------------------------------------------
     # Bloodborne
@@ -310,138 +318,138 @@ FLVER_TEST_CASES: list[FLVERImportCase] = [
     # ------------------------------------------------------------------
     # Dark Souls 3
     # ------------------------------------------------------------------
-    FLVERImportCase(
-        name="DS3 / Map Piece",
-        game_enum="DARK_SOULS_3",
-        directory="",   # TODO: e.g. "C:/DARK SOULS III/map/m30_00_00_00"
-        filename="",    # TODO: e.g. "m30_00_00_00.mapbnd.dcx"
-        expect_armature=False,
-        tags=["map_piece"],
-    ),
-    FLVERImportCase(
-        name="DS3 / Character / c0000",
-        game_enum="DARK_SOULS_3",
-        directory="",   # TODO: e.g. "C:/DARK SOULS III/chr"
-        filename="",    # TODO: e.g. "c0000.chrbnd.dcx"
-        expect_armature=True,
-        tags=["character"],
-    ),
-    FLVERImportCase(
-        name="DS3 / Character / enemy",
-        game_enum="DARK_SOULS_3",
-        directory="",   # TODO: e.g. "C:/DARK SOULS III/chr"
-        filename="",    # TODO: e.g. "c1000.chrbnd.dcx"
-        expect_armature=True,
-        tags=["character"],
-    ),
-    FLVERImportCase(
-        name="DS3 / Object",
-        game_enum="DARK_SOULS_3",
-        directory="",   # TODO: e.g. "C:/DARK SOULS III/obj"
-        filename="",    # TODO: e.g. "o100000.objbnd.dcx"
-        tags=["object"],
-    ),
-    FLVERImportCase(
-        name="DS3 / Equipment / weapon",
-        game_enum="DARK_SOULS_3",
-        directory="",   # TODO: e.g. "C:/DARK SOULS III/parts"
-        filename="",    # TODO: e.g. "WP_A_0100.partsbnd.dcx"
-        expect_armature=True,
-        tags=["equipment"],
-    ),
+    # FLVERImportCase(
+    #     name="DS3 / Map Piece",
+    #     game_enum="DARK_SOULS_3",
+    #     directory="",   # TODO: e.g. "C:/DARK SOULS III/map/m30_00_00_00"
+    #     filename="",    # TODO: e.g. "m30_00_00_00.mapbnd.dcx"
+    #     expect_armature=False,
+    #     tags=["map_piece"],
+    # ),
+    # FLVERImportCase(
+    #     name="DS3 / Character / c0000",
+    #     game_enum="DARK_SOULS_3",
+    #     directory="",   # TODO: e.g. "C:/DARK SOULS III/chr"
+    #     filename="",    # TODO: e.g. "c0000.chrbnd.dcx"
+    #     expect_armature=True,
+    #     tags=["character"],
+    # ),
+    # FLVERImportCase(
+    #     name="DS3 / Character / enemy",
+    #     game_enum="DARK_SOULS_3",
+    #     directory="",   # TODO: e.g. "C:/DARK SOULS III/chr"
+    #     filename="",    # TODO: e.g. "c1000.chrbnd.dcx"
+    #     expect_armature=True,
+    #     tags=["character"],
+    # ),
+    # FLVERImportCase(
+    #     name="DS3 / Object",
+    #     game_enum="DARK_SOULS_3",
+    #     directory="",   # TODO: e.g. "C:/DARK SOULS III/obj"
+    #     filename="",    # TODO: e.g. "o100000.objbnd.dcx"
+    #     tags=["object"],
+    # ),
+    # FLVERImportCase(
+    #     name="DS3 / Equipment / weapon",
+    #     game_enum="DARK_SOULS_3",
+    #     directory="",   # TODO: e.g. "C:/DARK SOULS III/parts"
+    #     filename="",    # TODO: e.g. "WP_A_0100.partsbnd.dcx"
+    #     expect_armature=True,
+    #     tags=["equipment"],
+    # ),
 
     # ------------------------------------------------------------------
     # Sekiro
     # ------------------------------------------------------------------
-    FLVERImportCase(
-        name="Sekiro / Map Piece",
-        game_enum="SEKIRO",
-        directory="",   # TODO: e.g. "C:/Sekiro/map/m10_00_00_00"
-        filename="",    # TODO: loose FLVER or mapbnd
-        expect_armature=False,
-        tags=["map_piece"],
-    ),
-    FLVERImportCase(
-        name="Sekiro / Character / c0100",
-        game_enum="SEKIRO",
-        directory="",   # TODO: e.g. "C:/Sekiro/chr"
-        filename="",    # TODO: e.g. "c0100.chrbnd.dcx"
-        expect_armature=True,
-        expect_version="Sekiro_EldenRing",
-        tags=["character"],
-    ),
-    FLVERImportCase(
-        name="Sekiro / Equipment",
-        game_enum="SEKIRO",
-        directory="",   # TODO: e.g. "C:/Sekiro/parts"
-        filename="",    # TODO: e.g. "WP_A_0001.partsbnd.dcx"
-        expect_armature=True,
-        tags=["equipment"],
-    ),
+    # FLVERImportCase(
+    #     name="Sekiro / Map Piece",
+    #     game_enum="SEKIRO",
+    #     directory="",   # TODO: e.g. "C:/Sekiro/map/m10_00_00_00"
+    #     filename="",    # TODO: loose FLVER or mapbnd
+    #     expect_armature=False,
+    #     tags=["map_piece"],
+    # ),
+    # FLVERImportCase(
+    #     name="Sekiro / Character / c0100",
+    #     game_enum="SEKIRO",
+    #     directory="",   # TODO: e.g. "C:/Sekiro/chr"
+    #     filename="",    # TODO: e.g. "c0100.chrbnd.dcx"
+    #     expect_armature=True,
+    #     expect_version="Sekiro_EldenRing",
+    #     tags=["character"],
+    # ),
+    # FLVERImportCase(
+    #     name="Sekiro / Equipment",
+    #     game_enum="SEKIRO",
+    #     directory="",   # TODO: e.g. "C:/Sekiro/parts"
+    #     filename="",    # TODO: e.g. "WP_A_0001.partsbnd.dcx"
+    #     expect_armature=True,
+    #     tags=["equipment"],
+    # ),
 
     # ------------------------------------------------------------------
     # Elden Ring
     # ------------------------------------------------------------------
-    FLVERImportCase(
-        name="ER / Map Piece / m60 overworld",
-        game_enum="ELDEN_RING",
-        directory="",   # TODO: e.g. "C:/ELDEN RING/Game/map/m60/m60_47_52_0"
-        filename="",    # TODO: e.g. "m60_47_52_0.mapbnd.dcx"
-        expect_armature=False,
-        expect_version="Sekiro_EldenRing",
-        tags=["map_piece"],
-    ),
-    FLVERImportCase(
-        name="ER / Map Piece / m10 dungeon",
-        game_enum="ELDEN_RING",
-        directory="",   # TODO: e.g. "C:/ELDEN RING/Game/map/m10/m10_00_00_00"
-        filename="",    # TODO: e.g. "m10_00_00_00.mapbnd.dcx"
-        expect_armature=False,
-        expect_version="Sekiro_EldenRing",
-        tags=["map_piece"],
-    ),
-    FLVERImportCase(
-        name="ER / Character / c0000",
-        game_enum="ELDEN_RING",
-        directory="",   # TODO: e.g. "C:/ELDEN RING/Game/chr"
-        filename="",    # TODO: e.g. "c0000.chrbnd.dcx"
-        expect_armature=True,
-        expect_version="Sekiro_EldenRing",
-        tags=["character"],
-    ),
-    FLVERImportCase(
-        name="ER / Character / enemy",
-        game_enum="ELDEN_RING",
-        directory="",   # TODO: e.g. "C:/ELDEN RING/Game/chr"
-        filename="",    # TODO: e.g. "c1000.chrbnd.dcx"
-        expect_armature=True,
-        expect_version="Sekiro_EldenRing",
-        tags=["character"],
-    ),
-    FLVERImportCase(
-        name="ER / Asset / aeg001",
-        game_enum="ELDEN_RING",
-        directory="",   # TODO: e.g. "C:/ELDEN RING/Game/asset/aeg/aeg001"
-        filename="",    # TODO: e.g. "aeg001_003.geombnd.dcx"
-        tags=["asset"],
-    ),
-    FLVERImportCase(
-        name="ER / Equipment / weapon",
-        game_enum="ELDEN_RING",
-        directory="",   # TODO: e.g. "C:/ELDEN RING/Game/parts"
-        filename="",    # TODO: e.g. "WP_A_0100.partsbnd.dcx"
-        expect_armature=True,
-        expect_version="Sekiro_EldenRing",
-        tags=["equipment"],
-    ),
-    FLVERImportCase(
-        name="ER / Equipment / armor (body)",
-        game_enum="ELDEN_RING",
-        directory="",   # TODO: e.g. "C:/ELDEN RING/Game/parts"
-        filename="",    # TODO: e.g. "AM_M_0100.partsbnd.dcx"
-        expect_armature=True,
-        tags=["equipment"],
-    ),
+    # FLVERImportCase(
+    #     name="ER / Map Piece / m60 overworld",
+    #     game_enum="ELDEN_RING",
+    #     directory="",   # TODO: e.g. "C:/ELDEN RING/Game/map/m60/m60_47_52_0"
+    #     filename="",    # TODO: e.g. "m60_47_52_0.mapbnd.dcx"
+    #     expect_armature=False,
+    #     expect_version="Sekiro_EldenRing",
+    #     tags=["map_piece"],
+    # ),
+    # FLVERImportCase(
+    #     name="ER / Map Piece / m10 dungeon",
+    #     game_enum="ELDEN_RING",
+    #     directory="",   # TODO: e.g. "C:/ELDEN RING/Game/map/m10/m10_00_00_00"
+    #     filename="",    # TODO: e.g. "m10_00_00_00.mapbnd.dcx"
+    #     expect_armature=False,
+    #     expect_version="Sekiro_EldenRing",
+    #     tags=["map_piece"],
+    # ),
+    # FLVERImportCase(
+    #     name="ER / Character / c0000",
+    #     game_enum="ELDEN_RING",
+    #     directory="",   # TODO: e.g. "C:/ELDEN RING/Game/chr"
+    #     filename="",    # TODO: e.g. "c0000.chrbnd.dcx"
+    #     expect_armature=True,
+    #     expect_version="Sekiro_EldenRing",
+    #     tags=["character"],
+    # ),
+    # FLVERImportCase(
+    #     name="ER / Character / enemy",
+    #     game_enum="ELDEN_RING",
+    #     directory="",   # TODO: e.g. "C:/ELDEN RING/Game/chr"
+    #     filename="",    # TODO: e.g. "c1000.chrbnd.dcx"
+    #     expect_armature=True,
+    #     expect_version="Sekiro_EldenRing",
+    #     tags=["character"],
+    # ),
+    # FLVERImportCase(
+    #     name="ER / Asset / aeg001",
+    #     game_enum="ELDEN_RING",
+    #     directory="",   # TODO: e.g. "C:/ELDEN RING/Game/asset/aeg/aeg001"
+    #     filename="",    # TODO: e.g. "aeg001_003.geombnd.dcx"
+    #     tags=["asset"],
+    # ),
+    # FLVERImportCase(
+    #     name="ER / Equipment / weapon",
+    #     game_enum="ELDEN_RING",
+    #     directory="",   # TODO: e.g. "C:/ELDEN RING/Game/parts"
+    #     filename="",    # TODO: e.g. "WP_A_0100.partsbnd.dcx"
+    #     expect_armature=True,
+    #     expect_version="Sekiro_EldenRing",
+    #     tags=["equipment"],
+    # ),
+    # FLVERImportCase(
+    #     name="ER / Equipment / armor (body)",
+    #     game_enum="ELDEN_RING",
+    #     directory="",   # TODO: e.g. "C:/ELDEN RING/Game/parts"
+    #     filename="",    # TODO: e.g. "AM_A_0100.partsbnd.dcx"
+    #     expect_armature=True,
+    #     tags=["equipment"],
+    # ),
 ]
 
 

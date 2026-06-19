@@ -219,7 +219,6 @@ class FLVERProps(SoulstructPropertyGroup):
         default=0,
     )
 
-    # TODO: Submesh properties, synced to material slots (difficult). Remove from Material properties...
     submesh_props: bpy.props.CollectionProperty(
         type=FLVERSubmeshProps,
         name="Submesh Properties",
@@ -247,6 +246,24 @@ class FLVERProps(SoulstructPropertyGroup):
         min=1,
         max=9,  # surely safe
     )
+
+    def get_combined_is_dynamic(self) -> bool | None:
+        """Certain operations can be made more efficient if all meshes are dynamic or static.
+
+        This is the case for most FLVERs.
+
+        Returns `True` if all meshes are dynamic, `False` if no meshes are dynamic, or
+        `None` for a mixture.
+        """
+        if not self.submesh_props:
+            return self.global_is_dynamic
+
+        # Scan submeshes.
+        if all(prop.is_dynamic for prop in self.submesh_props):
+            return True
+        elif all(not prop.is_dynamic for prop in self.submesh_props):
+            return False
+        return None  # mixture
 
     # INTERNAL USE
     bone_data_type: bpy.props.EnumProperty(

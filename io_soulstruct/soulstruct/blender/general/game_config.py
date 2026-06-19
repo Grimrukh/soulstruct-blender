@@ -105,7 +105,7 @@ BLENDER_GAME_CONFIG = {
         matdef_class=demonssouls.models.MatDef,
         _split_mesh_kwargs=dict(
             use_mesh_bone_indices=True,
-            max_bones_per_mesh=38,
+            max_bones_per_mesh=28,  # hard max for FLVER0
             max_mesh_vertex_count=65535,  # faces MUST use 16-bit vertex indices
         ),
 

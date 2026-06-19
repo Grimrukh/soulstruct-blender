@@ -437,24 +437,18 @@ class BlenderFLVERMaterial:
         operator: LoggingOperator,
         context: bpy.types.Context,
         matdef: MatDef,
-        use_map_piece_layout: bool,
         mesh_kwargs: dict[str, int | bool | None],
         texture_collection: DDSTextureCollection | None = None,
         get_texture_path_prefix: tp.Callable[[str], str] | None = None,
     ) -> SplitMeshDef:
         """Use given `matdef` to create a `SplitMeshDef` for the given Blender material with either a character
         layout or a map piece layout, depending on `use_map_piece_layout`.
-
-        TODO: Remove `use_map_piece_layout` manual switch and generate smarter vertex array layouts.
         """
 
         # Some Blender materials may be variants representing distinct Mesh/FaceSet properties; these will be
         # mapped to the same FLVER `Material`/`VertexArrayLayout` combo (created here).
         flver_material = self.to_flver_material(operator, context, matdef, texture_collection, get_texture_path_prefix)
-        if use_map_piece_layout:
-            array_layout = matdef.get_map_piece_layout()
-        else:
-            array_layout = matdef.get_non_map_piece_layout(mesh_kwargs["is_dynamic"])
+        array_layout = matdef.get_vertex_array_layout(is_dynamic=mesh_kwargs["is_dynamic"])
 
         used_uv_layer_names = [layer.name for layer in matdef.get_used_uv_layers()]
         operator.debug(f"Created FLVER material '{flver_material.name}' with UV layers: {used_uv_layer_names}")
