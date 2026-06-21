@@ -65,45 +65,60 @@ class CollisionImportCase(T.ImportCaseBase):
 COLLISION_TEST_CASES: list[CollisionImportCase] = [
 
     # ------------------------------------------------------------------
-    # Dark Souls PTDE
+    # Demon's Souls
     # ------------------------------------------------------------------
     CollisionImportCase(
-        name="PTDE / Map m10 / hi collision h0010B0A10",
-        game_enum="DARK_SOULS_PTDE",
-        directory=Config.PTDE_PATH / "map/m10_02_00_00",
-        filename="h0010B0A10.hkx",
+        name="DeS / Map m01_00_00_00 / h0002b0",  # The Nexus
+        game_enum="DEMONS_SOULS",
+        directory=Config.DES_PATH / "map/m01_00_00_00",
+        filename="h0002b0.hkx",
         tags=["map_collision"],
     ),
     CollisionImportCase(
-        name="PTDE / Map m12 / hi collision",
+        name="PTDE / Map m07_00_00_00 / h0000b0",  # Northern Limits (unused)
+        game_enum="DEMONS_SOULS",
+        directory=Config.DES_PATH / "map/m07_00_00_00",
+        filename="h0000b0.hkx",
+        tags=["map_collision"],
+    ),
+
+    # ------------------------------------------------------------------
+    # Dark Souls PTDE
+    # ------------------------------------------------------------------
+    CollisionImportCase(
+        name="PTDE / Map m10_02_00_00 / h0000B2A10",
+        game_enum="DARK_SOULS_PTDE",
+        directory=Config.PTDE_PATH / "map/m10_02_00_00",
+        filename="h0000B2A10.hkx",
+        tags=["map_collision"],
+    ),
+    CollisionImportCase(
+        name="PTDE / Map m12_00_00_00 / h0000B0A12",
         game_enum="DARK_SOULS_PTDE",
         directory=Config.PTDE_PATH / "map/m12_00_00_00",
-        filename="h0100B0A12.hkx",
+        filename="h0000B0A12.hkx",
         tags=["map_collision"],
     ),
 
     # ------------------------------------------------------------------
     # Dark Souls Remastered
     # ------------------------------------------------------------------
+    # NOTE: These tests take longer than usual due to the large number of Mopper calls
+    # required for multiple full-map exports.
     CollisionImportCase(
-        name="DSR / Map m10 / hi collision h0010B0A10",
+        name="DSR / Map m10_02_00_00 / hkxbhd",
         game_enum="DARK_SOULS_DSR",
         directory=Config.DSR_PATH / "map/m10_02_00_00",
-        filename="h0010B0A10.hkx",
+        filename="h10_02_00_00.hkxbhd",
         tags=["map_collision"],
     ),
     CollisionImportCase(
-        name="DSR / Map m10 / hi collision h0020B0A10",
-        game_enum="DARK_SOULS_DSR",
-        directory=Config.DSR_PATH / "map/m10_02_00_00",
-        filename="h0020B0A10.hkx",
-        tags=["map_collision"],
-    ),
-    CollisionImportCase(
-        name="DSR / Map m12 / hi collision",
+        # QLOC accidentally included two lo-res 'B1A12' collisions.
+        # These should be ignored when importing all from the binders, with a warning.
+        name="DSR / Map m12_00_00_00 / hkxbhd",
         game_enum="DARK_SOULS_DSR",
         directory=Config.DSR_PATH / "map/m12_00_00_00",
-        filename="h12_00_00_00.hkxbhd[h0100B0A12.hkx]",
+        filename="h12_00_00_00.hkxbhd",
         tags=["map_collision"],
     ),
 ]
@@ -145,6 +160,7 @@ def run_case(case: CollisionImportCase):
             "EXEC_DEFAULT",
             directory=str(case.directory),
             files=[{"name": case.filename}],
+            import_all_from_binder=True,
         )
     except Exception as ex:
         T.fail(case.name, f"Import raised exception: {ex}")
@@ -170,26 +186,29 @@ def run_case(case: CollisionImportCase):
             return
 
     stats_1 = _collision_scene_stats()
-    coll_obj = coll_objs[0]
-    model_stem = coll_obj.name.split(".")[0].split(" ")[0]
 
     with tempfile.TemporaryDirectory() as tmpdir:
+
         # ---- 3. First export ----
-        T.activate(coll_obj)
-        export_path_1 = str(Path(tmpdir) / f"{model_stem}.hkx")
-        try:
-            export_result = bpy.ops.export_scene.hkx_map_collision(
-                "EXEC_DEFAULT",
-                filepath=export_path_1,
-                dcx_type="Null",
-                write_other_resolution=True,
-            )
-        except Exception as ex:
-            T.fail(case.name, f"First export raised exception: {ex}")
-            return
-        if "FINISHED" not in export_result:
-            T.fail(case.name, f"First export returned {export_result}")
-            return
+
+        for coll_obj in coll_objs:
+
+            model_stem = coll_obj.name.split(".")[0].split(" ")[0]
+
+            T.activate(coll_obj)
+            try:
+                export_result = bpy.ops.export_scene.hkx_map_collision(
+                    "EXEC_DEFAULT",
+                    filepath=str(Path(tmpdir) / f"{model_stem}.hkx"),
+                    dcx_type="Null",
+                    write_other_resolution=True,
+                )
+            except Exception as ex:
+                T.fail(case.name, f"First export raised exception: {ex}")
+                return
+            if "FINISHED" not in export_result:
+                T.fail(case.name, f"First export returned {export_result}")
+                return
 
         hkx_files_1 = list(Path(tmpdir).glob("*.hkx"))
         if not hkx_files_1:
@@ -201,20 +220,25 @@ def run_case(case: CollisionImportCase):
         if not hi_files:
             T.fail(case.name, "No hi-res .hkx file ('h*') found after first export")
             return
+        lo_files = [p for p in hkx_files_1 if p.name.startswith("l")]
+        if not lo_files:
+            T.fail(case.name, "No lo-res .hkx file ('l*') found after first export")
+            return
         try:
             mc1 = MapCollisionModel.from_path(hi_files[0])
         except Exception as ex:
             T.fail(case.name, f"First exported HKX not parseable: {ex}")
             return
 
-        # ---- 5. Re-import exported file ----
+        # ---- 5. Re-import exported file(s) ----
         T.clear_scene()
         T.set_game(case.game_enum)
         try:
+            # Importer will find matching lo-res file for each hi-res file path.
             result2 = bpy.ops.import_scene.hkx_map_collision(
                 "EXEC_DEFAULT",
                 directory=str(Path(tmpdir)),
-                files=[{"name": hi_files[0].name}],
+                files=[{"name": hi_file.name} for hi_file in hi_files],
             )
         except Exception as ex:
             T.fail(case.name, f"Re-import raised exception: {ex}")
@@ -230,6 +254,12 @@ def run_case(case: CollisionImportCase):
 
         # ---- 6. Compare Blender statistics ----
         stats_2 = _collision_scene_stats()
+        if stats_1["obj_count"] != stats_2["obj_count"]:
+            T.fail(
+                case.name,
+                f"Object count differs after re-import: {stats_1['obj_count']} → {stats_2['obj_count']}",
+            )
+            return
         if stats_1["poly_count"] != stats_2["poly_count"]:
             T.fail(
                 case.name,
@@ -244,22 +274,24 @@ def run_case(case: CollisionImportCase):
             return
 
         # ---- 7. Second export ----
-        T.activate(coll_objs_2[0])
-        coll_stem_2 = coll_objs_2[0].name.split(".")[0].split(" ")[0]
-        export_path_2 = str(Path(tmpdir) / f"{coll_stem_2}_2.hkx")
-        try:
-            export_result_2 = bpy.ops.export_scene.hkx_map_collision(
-                "EXEC_DEFAULT",
-                filepath=export_path_2,
-                dcx_type="Null",
-                write_other_resolution=True,
-            )
-        except Exception as ex:
-            T.fail(case.name, f"Second export raised exception: {ex}")
-            return
-        if "FINISHED" not in export_result_2:
-            T.fail(case.name, f"Second export returned {export_result_2}")
-            return
+
+        for coll_obj_2 in coll_objs_2:
+
+            T.activate(coll_obj_2)
+            coll_stem_2 = coll_obj_2.name.split(".")[0].split(" ")[0]
+            try:
+                export_result_2 = bpy.ops.export_scene.hkx_map_collision(
+                    "EXEC_DEFAULT",
+                    filepath=str(Path(tmpdir) / f"{coll_stem_2}_2.hkx"),
+                    dcx_type="Null",
+                    write_other_resolution=True,
+                )
+            except Exception as ex:
+                T.fail(case.name, f"Second export raised exception: {ex}")
+                return
+            if "FINISHED" not in export_result_2:
+                T.fail(case.name, f"Second export returned {export_result_2}")
+                return
 
         hi_files_2 = [p for p in Path(tmpdir).glob("h*_2.hkx")]
         if not hi_files_2:

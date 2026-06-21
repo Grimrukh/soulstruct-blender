@@ -7,16 +7,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 - `blender_manifest.toml` added — add-on is now a proper Blender Extension package.
+- Added this Changelog (with rough collected history).
 - Prepare and build scripts for packaging and publishing the extension.
 - Experimental Blender type stubs for IDE support.
 - Operator registration decorator machinery replacing manual class registration lists.
 - Vertex alpha editing tool for the active material.
 - **Test suite** for automated operator/import/export testing.
 - Cutscene import/export work in progress.
-- Mesh generator operators.
+- Mesh generator operators (rocks, bricks, etc.).
 - Improved MCG navigation graph generation.
 - Significantly improved Elden Ring material shaders.
-- Added this Changelog (with rough collected history).
 
 ### Changed
 - Blender 5.1 is the minimum supported version (with Python 3.13).
@@ -27,15 +27,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Removed `sys.path` manipulation.
 - Streamlined FLVER import pipeline.
 - Migrated type annotations to `pyrelink`-compatible style; removed `__init__.__all__` boilerplate.
+- Degenerate zero-area FLVER faces are now removed on import.
+- Stop adding extra suffix to secondary FLVERs in BNDs.
 
 ### Fixed
-- Animation export bone center-of-bone (CoB) calculation.
-- MSB event name handling.
-- Various UI argument and map stem typing bugs.
-- Empty FLVER edge case.
+- Fixed animation export bone center-of-bone (CoB) calculation.
+- Fixed MSB event name handling.
+- Fixed various UI argument and map stem typing bugs.
+- Fixed empty FLVER edge case.
 - Registered class list errors.
-- Animation root motion export bug fixed.
+- Fixed animation root motion detection bug for export.
 - Animation quaternions coerced to match FromSoft quaternions more.
+- Fixed import of large collisions (16-bit → 32-bit combined face indices).
 
 ### Removed
 - Support for Blender < 5.1 (Python < 3.13) removed.
@@ -50,10 +53,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Changed
 - FLVER mesh `is_bind_pose` renamed to `is_dynamic` to match SoulsFormats naming.
 - FLVER mesh properties (`is_dynamic`, `default_bone_index`, etc.) moved from Blender materials to FLVER
-  mesh properties, with support for a global default and per-mesh overrides. This allows FLVER materials
-  to be shared and merged more easily across opened models.
-- Removed "Blender Autocomplete 4.1" IDE folder; developers should now use `fake-bpy-module` from PyPI
-  with the bundled scripts for adding Soulstruct types.
+  Mesh properties.
+  - Support for a global default and per-mesh overrides.
+  - This allows FLVER materials to be shared and merged more easily across opened models.
+- Removed "Blender Autocomplete 4.1" IDE folder.
+  - Developers should use `fake-bpy-module` from PyPI with the bundled scripts for adding Soulstruct types.
 
 ### Fixed
 - Import error on add-on installation for some users.

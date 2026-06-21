@@ -1,6 +1,6 @@
 # This file lists the top-level (or version-controlled) dependencies of `io_soulstruct`.
 # It should not be used with `pip`, but is used to automate wheel collection for `blender_manifest.toml`.
 scipy==1.16.3
-soulstruct==2.3.3
-soulstruct-havok==1.2.2
-pyrelink==0.1.0
+soulstruct==2.4.0
+soulstruct-havok==1.3.0
+pyrelink==0.2.0

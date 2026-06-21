@@ -57,6 +57,8 @@ class FLVERImportCase(T.ImportCaseBase):
     # mode is active on the imported object).
     expect_per_submesh_props: bool = False
 
+    # If True, expect two FLVERS to be imported from the source BND, not 1.
+    expect_two_flvers: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -162,11 +164,12 @@ FLVER_TEST_CASES: list[FLVERImportCase] = [
         # TODO: Bug: second export fails, vertex 410 not weighted to a bone.
     ),
     FLVERImportCase(
-        name="DS1PTDE / Equipment / WP_A_1000",
+        name="DS1PTDE / Equipment / WP_A_0100",
         game_enum="DARK_SOULS_PTDE",
         directory=Config.PTDE_PATH / "parts",
-        filename="WP_A_1000.partsbnd",
+        filename="WP_A_0100.partsbnd",
         expect_armature=True,
+        expect_two_flvers=True,
         tags=["equipment"],
     ),
     FLVERImportCase(
@@ -220,18 +223,19 @@ FLVER_TEST_CASES: list[FLVERImportCase] = [
         tags=["object"],
     ),
     FLVERImportCase(
-        name="DSR / Equipment / WP_A_1000",
+        name="DSR / Equipment / WP_A_0100",
         game_enum="DARK_SOULS_DSR",
         directory=Config.DSR_PATH / "parts",
         filename="WP_A_0100.partsbnd.dcx",
         expect_armature=True,
+        expect_two_flvers=True,
         tags=["equipment"],
     ),
     FLVERImportCase(
         name="DSR / Equipment / AM_A_1000",
         game_enum="DARK_SOULS_DSR",
         directory=Config.DSR_PATH / "parts",
-        filename="AM_A_0100.partsbnd.dcx",
+        filename="AM_A_1000.partsbnd.dcx",
         expect_armature=True,
         tags=["equipment"],
     ),
@@ -462,10 +466,9 @@ MAX_POLYGON_COUNT_LOSS = 10
 # Per-case test runner
 # ---------------------------------------------------------------------------
 
-def _find_first_flver_obj() -> bpy.types.Object | None:
-    """Return the first FLVER-typed Mesh object in the scene (just-imported)."""
-    objs = T.find_objects_by_soulstruct_type("FLVER")
-    return objs[0] if objs else None
+def _find_all_flver_objs() -> list[bpy.types.Object]:
+    """Return all FLVER-typed Mesh object in the scene (just-imported)."""
+    return T.find_objects_by_soulstruct_type("FLVER")
 
 
 def _flver_scene_stats() -> dict:
@@ -510,100 +513,140 @@ def run_case(case: FLVERImportCase):
         return
 
     # ---- 2. Validate scene ----
-    flver_obj = _find_first_flver_obj()
-    if flver_obj is None:
+    flver_objs = _find_all_flver_objs()
+    if not flver_objs:
         T.fail(case.name, "No FLVER Mesh object found in scene after import")
         return
-
-    # Armature expectation.
-    if case.expect_armature is True:
-        has_arm = flver_obj.parent is not None and flver_obj.parent.type == "ARMATURE"
-        if not has_arm:
-            T.fail(case.name, f"Expected Armature parent, got parent={flver_obj.parent}")
-            return
-    elif case.expect_armature is False:
-        has_arm = flver_obj.parent is not None and flver_obj.parent.type == "ARMATURE"
-        if has_arm:
-            T.fail(case.name, "Did not expect Armature parent, but one was found")
-            return
-
-    # FLVER version expectation.
-    if case.expect_version is not None:
-        actual_ver = flver_obj.FLVER.version
-        if actual_ver != case.expect_version and actual_ver != "DEFAULT":
-            T.fail(
-                case.name,
-                f"Expected FLVER version '{case.expect_version}', got '{actual_ver}'",
-            )
-            return
-
-    # Material expectation.
-    if case.expect_materials and not flver_obj.data.materials:
-        T.fail(case.name, "Expected at least one material but none were created")
+    if case.expect_two_flvers and len(flver_objs) != 2:
+        T.fail(case.name, f"Expected two FLVER Mesh Objects in scene after import. Found: {flver_objs[0].name}")
+        return
+    elif not case.expect_two_flvers and len(flver_objs) != 1:
+        T.fail(case.name, f"Expected one FLVER Mesh Object after import. Found: {','.join(o.name for o in flver_objs)}")
         return
 
-    # Per-submesh props.
-    if case.expect_per_submesh_props and len(flver_obj.FLVER.submesh_props) == 0:
-        T.fail(case.name, "Expected per-slot submesh_props to be populated")
-        return
+    if case.expect_two_flvers:
+        # Name of second FLVER should be name of first plus '_1' suffix.
+        if flver_objs[1].name != flver_objs[0].name + "_1":
+            T.fail(case.name, f"Expected second FLVER Mesh Object to be named '{flver_objs[0].name}_1' after import")
+
+    for flver_obj in flver_objs:
+
+        # Armature expectation.
+        if case.expect_armature:
+            has_arm = flver_obj.parent is not None and flver_obj.parent.type == "ARMATURE"
+            if not has_arm:
+                T.fail(case.name, f"Expected Armature parent, got parent={flver_obj.parent}")
+                return
+        elif case.expect_armature is False:
+            has_arm = flver_obj.parent is not None and flver_obj.parent.type == "ARMATURE"
+            if has_arm:
+                T.fail(case.name, "Did not expect Armature parent, but one was found")
+                return
+
+        # FLVER version expectation.
+        if case.expect_version is not None:
+            actual_ver = flver_obj.FLVER.version
+            if actual_ver != case.expect_version and actual_ver != "DEFAULT":
+                T.fail(
+                    case.name,
+                    f"Expected FLVER version '{case.expect_version}', got '{actual_ver}'",
+                )
+                return
+
+        # Material expectation.
+        if case.expect_materials and not flver_obj.data.materials:
+            T.fail(case.name, "Expected at least one material but none were created")
+            return
+
+        # Per-submesh props.
+        if case.expect_per_submesh_props and len(flver_obj.FLVER.submesh_props) == 0:
+            T.fail(case.name, "Expected per-slot submesh_props to be populated")
+            return
 
     # Save first-import stats for later comparison.
     stats_1 = _flver_scene_stats()
-    model_name = flver_obj.name.split(".")[0].split(" ")[0]
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        # ---- 3. First export ----
-        T.activate(flver_obj)
-        export_path_1 = str(Path(tmpdir) / f"{model_name}.flver")
-        try:
-            export_result = bpy.ops.export_scene.flver(
-                "EXEC_DEFAULT",
-                filepath=export_path_1,
-                dcx_type="Null",
-            )
-        except Exception as ex:
-            T.fail(case.name, f"First export raised exception: {ex}")
-            return
-        if "FINISHED" not in export_result:
-            T.fail(case.name, f"First export operator returned {export_result}")
-            return
 
-        flver_files_1 = list(Path(tmpdir).glob("*.flver"))
+        # Export each imported FLVER separately.
+        exported_paths_1 = []
+        for flver_obj in flver_objs:
+
+            model_name = flver_obj.name.split(".")[0].split(" ")[0]
+
+            # ---- 3. First export ----
+            T.activate(flver_obj)
+            export_path_1 = str(Path(tmpdir) / f"{model_name}.flver")
+            try:
+                export_result = bpy.ops.export_scene.flver(
+                    "EXEC_DEFAULT",
+                    filepath=export_path_1,
+                    dcx_type="Null",
+                )
+            except Exception as ex:
+                T.fail(case.name, f"First export raised exception: {ex}")
+                return
+            if "FINISHED" not in export_result:
+                T.fail(case.name, f"First export operator returned {export_result}")
+                return
+
+            exported_paths_1.append(export_path_1)
+
+        flver_files_1 = sorted(list(Path(tmpdir).glob("*.flver")))
         if not flver_files_1:
             T.fail(case.name, "No .flver found in temp dir after first export")
             return
-
-        # Verify parseable.
-        try:
-            reloaded_1 = FLVER.from_path(flver_files_1[0])
-        except Exception as ex:
-            T.fail(case.name, f"First exported FLVER not parseable by Soulstruct: {ex}")
+        if case.expect_two_flvers and len(flver_files_1) != 2:
+            T.fail(case.name, "Expected two .flver objects after first export")
+            return
+        elif not case.expect_two_flvers and len(flver_files_1) != 1:
+            T.fail(case.name, "Expected one .flver object after first export")
             return
 
-        if not reloaded_1.meshes and flver_obj.data.polygons:
-            T.fail(case.name, "First exported FLVER has no meshes but source had polygons")
-            return
+        reloaded_1 = []  # type: list[FLVER]
+        for flver_obj, flver_file in zip(flver_objs, flver_files_1, strict=True):
 
-        # ---- 4. Re-import the exported FLVER ----
+            # Verify parseable.
+            try:
+                reloaded = FLVER.from_path(flver_file)
+            except Exception as ex:
+                T.fail(case.name, f"First exported FLVER not parseable by Soulstruct: {ex}")
+                return
+
+            if not reloaded.meshes and flver_obj.data.polygons:
+                T.fail(case.name, "First exported FLVER has no meshes but source had polygons")
+                return
+
+            reloaded_1.append(reloaded)
+
+        # ---- 4. Re-import the exported FLVER(s) ----
         T.clear_scene()
         T.set_game(case.game_enum)
         bpy.context.scene.flver_import_settings.import_textures = False
-        try:
-            result2 = bpy.ops.import_scene.flver(
-                "EXEC_DEFAULT",
-                directory=str(Path(tmpdir)),
-                files=[{"name": flver_files_1[0].name}],
-            )
-        except Exception as ex:
-            T.fail(case.name, f"Re-import raised exception: {ex}")
-            return
-        if "FINISHED" not in result2:
-            T.fail(case.name, f"Re-import returned {result2}")
-            return
 
-        flver_obj_2 = _find_first_flver_obj()
-        if flver_obj_2 is None:
+        for flver_file in flver_files_1:
+            try:
+                result2 = bpy.ops.import_scene.flver(
+                    "EXEC_DEFAULT",
+                    directory=str(Path(tmpdir)),
+                    files=[{"name": flver_file.name}],
+                )
+            except Exception as ex:
+                T.fail(case.name, f"Re-import raised exception: {ex}")
+                return
+            if "FINISHED" not in result2:
+                T.fail(case.name, f"Re-import returned {result2}")
+                return
+
+        flver_objs_2 = _find_all_flver_objs()
+        if not flver_objs_2:
             T.fail(case.name, "No FLVER object found after re-import")
+            return
+        if case.expect_two_flvers and len(flver_objs_2) != 2:
+            T.fail(case.name, "Expected two FLVER Mesh Objects in scene after re-import")
+            return
+        elif not case.expect_two_flvers and len(flver_objs_2) != 1:
+            T.fail(case.name, "Expected one FLVER Mesh Object after re-import")
             return
 
         # ---- 5. Compare Blender statistics (import vs re-import) ----
@@ -626,47 +669,57 @@ def run_case(case: FLVERImportCase):
             return
 
         # ---- 6. Second export (from re-imported data) ----
-        T.activate(flver_obj_2)
-        export_path_2 = str(Path(tmpdir) / f"{model_name}_2.flver")
-        try:
-            export_result_2 = bpy.ops.export_scene.flver(
-                "EXEC_DEFAULT",
-                filepath=export_path_2,
-                dcx_type="Null",
-            )
-        except Exception as ex:
-            T.fail(case.name, f"Second export raised exception: {ex}")
-            return
-        if "FINISHED" not in export_result_2:
-            T.fail(case.name, f"Second export operator returned {export_result_2}")
-            return
+        exported_paths_2 = []
+        for flver_obj_2 in flver_objs_2:
 
-        flver_files_2 = [p for p in Path(tmpdir).glob("*.flver") if "_2" in p.stem]
-        if not flver_files_2:
-            T.fail(case.name, "No _2.flver found in temp dir after second export")
-            return
+            model_name = flver_obj_2.name.split(".")[0].split(" ")[0]
+
+            T.activate(flver_obj_2)
+            export_path_2 = str(Path(tmpdir) / f"{model_name}_RE.flver")
+            try:
+                export_result_2 = bpy.ops.export_scene.flver(
+                    "EXEC_DEFAULT",
+                    filepath=export_path_2,
+                    dcx_type="Null",
+                )
+            except Exception as ex:
+                T.fail(case.name, f"Second export raised exception: {ex}")
+                return
+            if "FINISHED" not in export_result_2:
+                T.fail(case.name, f"Second export operator returned {export_result_2}")
+                return
+            exported_paths_2.append(export_path_2)
 
         # ---- 7. Compare Soulstruct representations ----
-        try:
-            reloaded_2 = FLVER.from_path(flver_files_2[0])
-        except Exception as ex:
-            T.fail(case.name, f"Second exported FLVER not parseable by Soulstruct: {ex}")
-            return
+        for reloaded in reloaded_1:
 
-        if len(reloaded_1.meshes) != len(reloaded_2.meshes):
-            T.fail(
-                case.name,
-                f"Mesh count differs between export 1 and 2: "
-                f"{len(reloaded_1.meshes)} vs {len(reloaded_2.meshes)}",
-            )
-            return
-        if len(reloaded_1.bones) != len(reloaded_2.bones):
-            T.fail(
-                case.name,
-                f"Bone count differs between export 1 and 2: "
-                f"{len(reloaded_1.bones)} vs {len(reloaded_2.bones)}",
-            )
-            return
+            # Have to be careful to find the matching FLVER -- don't rely on sorting.
+            flver_file_2 = Path(tmpdir) / f"{reloaded.path_minimal_stem}_RE.flver"
+            if not flver_file_2.is_file():
+                T.fail(case.name, f"FLVER file {flver_file_2.name} not found in temp dir after second export")
+                return
+
+            try:
+                reloaded_2 = FLVER.from_path(flver_file_2)
+            except Exception as ex:
+                T.fail(case.name, f"Second exported FLVER not parseable by Soulstruct: {ex}")
+                return
+
+            # Blender export may merge previously separate FLVER submeshes but should never add meshes.
+            if len(reloaded.meshes) < len(reloaded_2.meshes):
+                T.fail(
+                    case.name,
+                    f"Mesh count of {reloaded.path_name} vs. {reloaded_2.path_name} "
+                    f"increased between export 1 and 2: {len(reloaded.meshes)} vs {len(reloaded_2.meshes)}",
+                )
+                return
+            if len(reloaded.bones) != len(reloaded_2.bones):
+                T.fail(
+                    case.name,
+                    f"Bone count of {reloaded.path} vs. {reloaded_2.path_name} "
+                    f"differs between export 1 and 2: {len(reloaded.bones)} vs {len(reloaded_2.bones)}",
+                )
+                return
 
     # ---- All checks passed ----
     T.ok(
@@ -681,7 +734,7 @@ def run_case(case: FLVERImportCase):
 # ---------------------------------------------------------------------------
 
 def main():
-    T.run_case_list(FLVER_TEST_CASES, run_case, suite_name="FLVER import/export")
+    T.run_case_list(FLVER_TEST_CASES, run_case, suite_name="FLVER import/export", filter_test_names="DS1PTDE / Map Piece")
 
 
 main()

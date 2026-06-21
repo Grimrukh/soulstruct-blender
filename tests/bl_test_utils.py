@@ -120,7 +120,14 @@ class ImportCaseBase:
             )
         binder_path = Path(self.directory) / bn
         if binder_path not in _binder_cache:
-            _binder_cache[binder_path] = Binder.from_path(binder_path)
+            # TODO: Firelink support for auto-detect split path.
+            if "bhd" in binder_path.name:
+                bdt_path = binder_path.with_name(binder_path.name.replace("bhd", "bdt"))
+                bhd_bytes = binder_path.read_bytes()
+                bdt_bytes = bdt_path.read_bytes()
+                _binder_cache[binder_path] = Binder.from_split_bytes(bhd_bytes, bdt_bytes)
+            else:
+                _binder_cache[binder_path] = Binder.from_path(binder_path)
         return _binder_cache[binder_path]
 
     @property
@@ -366,6 +373,7 @@ def run_case_list(
     case_list: list[ImportCaseBase],
     run_case_fn: tp.Callable,
     suite_name: str = "",
+    filter_test_names: str = "",
 ):
     """Run every case in *case_list* through *run_case_fn*, print a summary, then exit.
 
@@ -380,6 +388,8 @@ def run_case_list(
     before = len(_results)
     skipped = 0
     for case in case_list:
+        if filter_test_names and filter_test_names not in case.name:
+            continue  # manually skipped
         reason = case.check_skip_reason()
         if reason:
             skipped += 1

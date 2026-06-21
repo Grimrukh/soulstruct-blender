@@ -13,6 +13,7 @@ import bmesh
 import bpy
 from mathutils import Vector
 
+from soulstruct.base.events.enums import NavmeshFlag
 from soulstruct.base.maps.navmesh.nvm import *
 
 from ...base.operators import *
@@ -119,29 +120,6 @@ class BlenderNVM(BaseBlenderSoulstructObject[NVM, NVMProps]):
             vertices = tuple(face.vertices)  # type: tuple[int, int, int]
             nvm_faces.append(vertices)
 
-        def find_connected_face_index(edge_v1: int, edge_v2: int, not_face) -> int:
-            """Find face that shares an edge with the given edge.
-
-            Returns -1 if no connected face is found (i.e. edge is on the edge of the mesh).
-            """
-            # TODO: Could surely iterate over faces just once for this?
-            for i_, f_ in enumerate(nvm_faces):
-                if f_ != not_face and edge_v1 in f_ and edge_v2 in f_:  # order doesn't matter
-                    return i_
-            return -1
-
-        # Get connected faces along each edge of each face.
-        nvm_connected_face_indices = []  # type: list[tuple[int, int, int]]
-        for face in nvm_faces:
-            connected_v1 = find_connected_face_index(face[0], face[1], face)
-            connected_v2 = find_connected_face_index(face[1], face[2], face)
-            connected_v3 = find_connected_face_index(face[2], face[0], face)
-            nvm_connected_face_indices.append((connected_v1, connected_v2, connected_v3))
-            if connected_v1 == -1 and connected_v2 == -1 and connected_v3 == -1:
-                operator.warning(
-                    f"NVM face {face} in '{self.name}' appears to have no connected faces, which is very suspicious!"
-                )
-
         # Create `BMesh` to access custom face layers for `flags` and `obstacle_count`.
         bm = bmesh.new()
         bm.from_mesh(mesh_data)
@@ -162,6 +140,34 @@ class BlenderNVM(BaseBlenderSoulstructObject[NVM, NVMProps]):
             nvm_obstacle_counts.append(bm_face[obstacle_count_layer])
         if len(nvm_flags) != len(nvm_faces):
             raise ValueError("NVM mesh has different number of `Mesh` faces and `BMesh` face flags.")
+
+        def find_connected_face_index(edge_v1: int, edge_v2: int, not_face) -> int:
+            """Find face that shares an edge with the given edge.
+
+            Returns -1 if no connected face is found (i.e. edge is on the edge of the mesh).
+            """
+            # TODO: Could surely iterate over faces just once for this?
+            for i_, f_ in enumerate(nvm_faces):
+                if f_ != not_face and edge_v1 in f_ and edge_v2 in f_:  # order doesn't matter
+                    return i_
+            return -1
+
+        # Get connected faces along each edge of each face.
+        nvm_connected_face_indices = []  # type: list[tuple[int, int, int]]
+        for i, face in enumerate(nvm_faces):
+            connected_v1 = find_connected_face_index(face[0], face[1], face)
+            connected_v2 = find_connected_face_index(face[1], face[2], face)
+            connected_v3 = find_connected_face_index(face[2], face[0], face)
+            nvm_connected_face_indices.append((connected_v1, connected_v2, connected_v3))
+
+            # Warn if a non-degenerate face has no connections.
+            is_degenerate = (nvm_flags[i] & NavmeshFlag.Degenerate) != 0
+            if not is_degenerate and connected_v1 == -1 and connected_v2 == -1 and connected_v3 == -1:
+                flag_str = " | ".join([n.name for n in NavmeshFlag if n.value & nvm_flags[i]]) or "Default"
+                operator.warning(
+                    f"Non-degenerate NVM face {face} in '{self.name}' has no connected faces (suspicious). "
+                    f"Flags: {flag_str}"
+                )
 
         nvm_triangles = [
             NVMTriangle(

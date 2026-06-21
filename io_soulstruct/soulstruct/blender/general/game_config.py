@@ -33,8 +33,8 @@ class BlenderGameConfig:
     uses_matbin: bool = False
     matdef_class: type[MatDef] | None = None
     _split_mesh_kwargs: dict[str, int | bool] = field(default_factory=lambda: dict(
-        use_mesh_bone_indices=False,
-        max_mesh_vertex_count=4294967295,  # faces use 32-bit vertex indices
+        use_mesh_bone_indices=False,  # for newer games
+        max_mesh_vertex_count=4294967295,  # for newer games (faces use 32-bit vertex indices)
     ))
 
     # MSB CONFIG

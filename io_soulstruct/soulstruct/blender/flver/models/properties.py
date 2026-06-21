@@ -13,14 +13,12 @@ import logging
 import typing as tp
 
 import bpy
-from bpy.app.handlers import persistent
 
 from soulstruct.flver import FLVERBoneUsageFlags, FLVERVersion
 from soulstruct.games import *
 
 from ...base.register import *
 from ...bpy_base.property_group import SoulstructPropertyGroup
-from ...types import SoulstructType
 
 _LOGGER = logging.getLogger("soulstruct.blender")
 
@@ -247,23 +245,22 @@ class FLVERProps(SoulstructPropertyGroup):
         max=9,  # surely safe
     )
 
-    def get_combined_is_dynamic(self) -> bool | None:
+    def get_all_dynamic_static(self) -> tuple[bool, bool]:
         """Certain operations can be made more efficient if all meshes are dynamic or static.
 
         This is the case for most FLVERs.
 
-        Returns `True` if all meshes are dynamic, `False` if no meshes are dynamic, or
-        `None` for a mixture.
+        Returns a pair of bools: `all_dynamic`, `all_static`. At most one can be `True`.
         """
         if not self.submesh_props:
-            return self.global_is_dynamic
+            return self.global_is_dynamic, not self.global_is_dynamic
 
         # Scan submeshes.
         if all(prop.is_dynamic for prop in self.submesh_props):
-            return True
+            return True, False  # all dynamic
         elif all(not prop.is_dynamic for prop in self.submesh_props):
-            return False
-        return None  # mixture
+            return False, True  # all static
+        return False, False  # mixture
 
     # INTERNAL USE
     bone_data_type: bpy.props.EnumProperty(

@@ -90,15 +90,9 @@ class _BaseFLVERImportOperator(LoggingImportOperator):
                 if not flver_entries:
                     raise FLVERImportError(f"Cannot find a FLVER file in binder {source_path}.")
 
-                suffix = ""
                 for entry in flver_entries:
-                    flver_name = entry.stem + suffix
+                    flver_name = entry.stem
                     flver_binder_sources[flver_name] = (entry, binder)
-                    # TODO: Hacky: support 2+ FLVERs inside one Binder.
-                    if not suffix:
-                        suffix = "_1"
-                    else:
-                        suffix = f"_{int(suffix[1:]) + 1}"
             else:  # e.g. loose Map Piece FLVER
                 if ".flver" not in source_path.name:
                     self.warning(f"Unusual non-Binder FLVER path: {source_path}. Will try to read as FLVER.")

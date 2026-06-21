@@ -455,17 +455,30 @@ def _create_bl_mesh_from_merged_mesh(
         operator.warning(f"No face vertex indices found in Merged Mesh for {mesh_data.name}. Skipping.")
         return
 
-    # Drop faces that don't use three unique vertex indices.
-    # TODO: Try a vectorized approach that calculates the difference between each pair of the three columns, then
-    #  takes the product of those differences. Any row that ends up with zero is degenerate.
+    # Drop faces that don't use three unique vertex indices (topologically degenerate: repeated index).
     unique_mask = np.apply_along_axis(lambda row: len(np.unique(row)) == 3, 1, face_vertex_indices)  # 1D array (N)
-    valid_face_vertex_indices = face_vertex_indices[unique_mask]  # N' x 3 array
-    valid_face_material_indices = merged_mesh.faces[:, 3][unique_mask]  # 1D array (N')
 
-    valid_face_count = valid_face_vertex_indices.shape[0]  # N'
-    invalid_face_count = face_vertex_indices.shape[0] - valid_face_count  # N - N'
+    # Drop faces with (near-)zero area: distinct vertex indices that are positionally coincident or
+    # collinear. FLVER data frequently has separate vertex indices (different UVs/normals/seams) that sit
+    # at or near the same position, which `unique_mask` alone cannot catch.
+    tri_positions = bl_positions[face_vertex_indices]  # N x 3 x 3 (face, vert, xyz)
+    edge1 = tri_positions[:, 1] - tri_positions[:, 0]
+    edge2 = tri_positions[:, 2] - tri_positions[:, 0]
+    cross = np.cross(edge1, edge2)
+    double_area = np.linalg.norm(cross, axis=1)  # N; proportional to 2x triangle area
+    area_mask = double_area > 1e-6  # tuned to mesh scale
+
+    valid_mask = unique_mask & area_mask
+    valid_face_vertex_indices = face_vertex_indices[valid_mask]  # N-valid x 3 array
+    valid_face_material_indices = merged_mesh.faces[:, 3][valid_mask]  # 1D array (N-valid)
+
+    valid_face_count = valid_face_vertex_indices.shape[0]  # N-valid
+    invalid_face_count = face_vertex_indices.shape[0] - valid_face_count  # N - N-valid
     if invalid_face_count > 0:
-        operator.debug(f"Removed {invalid_face_count} invalid/degenerate mesh faces from {mesh_data.name}.")
+        operator.debug(
+            f"Removed {invalid_face_count} invalid/degenerate (zero-area or repeated-index) mesh faces "
+            f"from {mesh_data.name}."
+        )
 
     # Directly assign face corner (loop) vertex indices.
     mesh_data.loops.add(valid_face_vertex_indices.size)
@@ -484,7 +497,7 @@ def _create_bl_mesh_from_merged_mesh(
 
     operator.debug(f"Created Blender mesh in {time.perf_counter() - p} s")
 
-    valid_face_loop_indices = all_faces[unique_mask].ravel()
+    valid_face_loop_indices = all_faces[valid_mask].ravel()
 
     # Create and populate UV and vertex color data layers (on loops).
     for i, (uv_layer_name, merged_loop_uv_array) in enumerate(merged_mesh.loop_uvs.items()):
@@ -505,15 +518,12 @@ def _create_bl_mesh_from_merged_mesh(
     # included textures) that are not actually used by any Mesh. The game's `MatDef` will handle these special cases
     # and ensure that Blender doesn't look for them on export, even if they appear in the shader's node tree.
 
-    # NOTE: `Mesh.create_normals_split()` was removed in Blender 4.1, and I no longer support older versions than
-    # that. New versions of Blender automatically create the `mesh.corner_normals` collection. We also don't need to
-    # enable `use_auto_smooth` or call `calc_normals_split()` anymore.
+    # NOTE: `Mesh.create_normals_split()` was removed in Blender 4.1. New versions of Blender automatically create the
+    # `mesh.corner_normals` collection. We also don't need to enable `use_auto_smooth` or call `calc_normals_split()`.
 
     if merged_mesh.loop_normals is not None:
         bl_normals = merged_mesh.loop_normals[:, [0, 2, 1]]  # swap YZ
         bl_normals = bl_normals[valid_face_loop_indices]  # valid only; NOT raveled
-        # Ensure normals have unit magnitude.
-        bl_normals /= np.linalg.norm(bl_normals, axis=1, keepdims=True)
         mesh_data.normals_split_custom_set(bl_normals)  # one normal per loop
         mesh_data.update()
 

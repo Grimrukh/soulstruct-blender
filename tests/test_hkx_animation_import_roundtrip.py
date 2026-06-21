@@ -95,6 +95,31 @@ class HKXAnimationImportCase(T.ImportCaseBase):
 HKX_ANIMATION_TEST_CASES: list[HKXAnimationImportCase] = [
 
     # ------------------------------------------------------------------
+    # Demon's Souls
+    # ------------------------------------------------------------------
+    HKXAnimationImportCase(
+        name="DeS / chr / c1200 (Large Rat)",
+        game_enum="DARK_SOULS_PTDE",
+        flver_dir=Config.PTDE_PATH / "chr",
+        flver_filename="c1200.chrbnd",
+        directory=Config.PTDE_PATH / "chr",
+        filename="c1200.anibnd",
+        anim_entry_name="", # empty = use first available animation
+        tags=["animation", "character"],
+    ),
+    HKXAnimationImportCase(
+        name="PTDE / chr / c0000 (Player)",
+        game_enum="DARK_SOULS_PTDE",
+        flver_dir=Config.PTDE_PATH / "chr",
+        flver_filename="c0000.chrbnd",
+        directory=Config.PTDE_PATH / "chr",
+        filename="c0000_a6x.anibnd",  # random subset of player animations (6000-6999)
+        skeleton_anibnd_filename="c0000.anibnd",
+        anim_entry_name="",
+        tags=["animation", "character", "player"],
+    ),
+
+    # ------------------------------------------------------------------
     # Dark Souls PTDE
     # ------------------------------------------------------------------
     HKXAnimationImportCase(
@@ -147,28 +172,28 @@ HKX_ANIMATION_TEST_CASES: list[HKXAnimationImportCase] = [
     # ------------------------------------------------------------------
     # Bloodborne
     # ------------------------------------------------------------------
-    HKXAnimationImportCase(
-        name="BB / chr / c1800",
-        game_enum="BLOODBORNE",
-        flver_dir="",       # TODO: BB_PATH / "chr"
-        flver_filename="",  # TODO: "c1800.chrbnd.dcx"
-        directory="",       # TODO: BB_PATH / "chr"
-        filename="",        # TODO: "c1800.anibnd.dcx"
-        tags=["animation", "character"],
-    ),
+    # HKXAnimationImportCase(
+    #     name="BB / chr / c1060 (Brainsucker)",
+    #     game_enum="BLOODBORNE",
+    #     flver_dir=Config.BB_PATH / "chr",
+    #     flver_filename="c1060.chrbnd.dcx",
+    #     directory=Config.BB_PATH / "chr",
+    #     filename="c1060.anibnd.dcx",
+    #     tags=["animation", "character"],
+    # ),
 
     # ------------------------------------------------------------------
     # Elden Ring
     # ------------------------------------------------------------------
-    HKXAnimationImportCase(
-        name="ER / chr / c1200 (enemy)",
-        game_enum="ELDEN_RING",
-        flver_dir="",       # TODO: ER_PATH / "chr"
-        flver_filename="",  # TODO: "c1200.chrbnd.dcx"
-        directory="",       # TODO: ER_PATH / "chr"
-        filename="",        # TODO: "c1200.anibnd.dcx"
-        tags=["animation", "character"],
-    ),
+    # HKXAnimationImportCase(
+    #     name="ER / chr / c4382 (Tunnel Miner)",
+    #     game_enum="ELDEN_RING",
+    #     flver_dir=Config.ER_PATH / "chr",
+    #     flver_filename="c4382.chrbnd.dcx",
+    #     directory=Config.ER_PATH / "chr",
+    #     filename="c4382.anibnd.dcx",
+    #     tags=["animation", "character"],
+    # ),
 ]
 
 # ---------------------------------------------------------------------------

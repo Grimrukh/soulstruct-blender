@@ -260,7 +260,7 @@ def _create_flver_meshes(
 
     # If ALL meshes are dynamic or non-dynamic, we can make some shortcuts here.
     # Otherwise, we have to act like it could be a mixture when collecting bone weights.
-    combined_is_dynamic = command.bl_flver.type_properties.get_combined_is_dynamic()
+    all_dynamic, all_static = command.bl_flver.type_properties.get_all_dynamic_static()
 
     # 1. Create per-mesh info. Note that every Blender material index is guaranteed to be mapped to AT LEAST ONE
     #    split `FLVERMesh` in the exported FLVER (more if mesh bone maximum is exceeded). This allows the user to
@@ -358,18 +358,14 @@ def _create_flver_meshes(
     # Slow part number 1: iterating over every Blender vertex to retrieve its position and bone weights/indices.
     # We at least know the size of the array in advance.
     vertex_count = len(tri_mesh_data.vertices)
-    if combined_is_dynamic is False and command.flver.version.use_normal_w_bones():
-        # Bone weights/indices not in array. `normal_w` is used for single static mesh bone.
-        vertex_data_dtype = [
-            ("position", "f", 3),
-        ]
-    else:
-        # Rigged meshes, older games' static meshes, or a combination of mesh dynamic states.
-        vertex_data_dtype = [
-            ("position", "f", 3),  # TODO: support 4D position (see, e.g., Rykard slime in ER: c4711)
-            ("bone_weights", "f", 4),
-            ("bone_indices", "i", 4),
-        ]
+    # Always include bone weights and indices. For static meshes on games that encode the single bone index
+    # in `normal_w`, `MergedMesh.get_combined_loop_data()` derives the correct per-loop value from `bone_indices`
+    # at split time -- so no special-casing is needed here.
+    vertex_data_dtype = [
+        ("position", "f", 3),  # TODO: support 4D position (see, e.g., Rykard slime in ER: c4711)
+        ("bone_weights", "f", 4),
+        ("bone_indices", "i", 4),
+    ]
 
     vertex_data = np.empty(vertex_count, dtype=vertex_data_dtype)
     vertex_positions = np.empty((vertex_count, 3), dtype=np.float32)
@@ -389,6 +385,7 @@ def _create_flver_meshes(
     # Unfortunately, there is no way to retrieve the weighted bones of vertices without iterating over all vertices.
     # We iterate over the original, non-triangulated mesh, as the vertices should be the same and these vertices
     # have their bone vertex groups (which cannot easily be transferred to the triangulated copy).
+    invalid_static_vertex_indices = []
     for i, vertex in enumerate(command.mesh.data.vertices):
         bone_indices = []  # global (splitter will make them local to mesh if appropriate)
         bone_weights = []
@@ -400,9 +397,8 @@ def _create_flver_meshes(
                 raise FLVERExportError(f"Vertex is weighted to invalid bone name: '{mesh_group.name}'.")
             bone_indices.append(bone_index)
             used_bone_indices.add(bone_index)
-            # We don't waste time calling retrieval method `weight()` for map pieces.
-            if combined_is_dynamic is False:
-                # TODO: `vertex_group` has `group` (int) and `weight` (float) on it already?
+            # Skip weight retrieval only when ALL meshes are confirmed non-dynamic (map pieces only).
+            if not all_static:
                 bone_weights.append(mesh_group.weight(i))
 
         if len(bone_indices) > 4:
@@ -410,7 +406,7 @@ def _create_flver_meshes(
                 f"Vertex {i} cannot be weighted to {len(bone_indices)} bones (max 1 for Map Pieces, 4 for others)."
             )
         elif len(bone_indices) == 0:
-            if len(bl_bone_names) == 1 and combined_is_dynamic is True:
+            if len(bl_bone_names) == 1 and all_static:
                 # Omitted bone indices can be assumed to be the only bone in the skeleton.
                 # We issue a warning (once) unless this FLVER export is using a default bone (no Armature), in which
                 # case we obviously don't expect any vertices to be weighted to anything.
@@ -429,14 +425,14 @@ def _create_flver_meshes(
                     f"Vertex {i} is not weighted to any bones, and Map Piece FLVER has multiple bones."
                 )
 
-        if combined_is_dynamic:
+        if all_static:
             # All vertices are guaranteed to be in static meshes only.
             if len(bone_indices) == 1:
                 # Duplicate single-element list to four-element list.
-                # (This is done even for games that will write only a single Map Piece bone to `normal_w`.)
+                # (This is done even for games that will write only a single static bone to `normal_w`.)
                 bone_indices *= 4
             else:
-                raise FLVERExportError(f"Map Piece vertices must be weighted to exactly one bone (vertex {i}).")
+                invalid_static_vertex_indices.append(i)
         else:
             # This vertex could end up in dynamic (and/or static) meshes.
             # Pad out bone weights and (unused) indices for rigged meshes.
@@ -449,6 +445,11 @@ def _create_flver_meshes(
         vertex_bone_indices[i] = bone_indices
         if bone_weights:  # rigged only
             vertex_bone_weights[i] = bone_weights
+
+    if invalid_static_vertex_indices:
+        raise FLVERExportError(
+            f"Static mesh vertices must be weighted to exactly one bone. Vertices: {invalid_static_vertex_indices}"
+        )
 
     for used_bone_index in used_bone_indices:
         command.flver.bones[used_bone_index].usage_flags &= ~1
@@ -520,18 +521,9 @@ def _create_flver_meshes(
 
     loop_normals = np.empty((loop_count, 3), dtype=np.float32)
     tri_mesh_data.loops.foreach_get("normal", loop_normals.ravel())
-    if use_normal_w_bone_index:
-        # New static FLVER meshes: single vertex bone index is stored in `normal_w` (as `uint8`).
-        # TODO: Given that the default `normal_w` value in older games is 127, this may be signed, and so the max
-        #  static mesh bone count may actually be 127/128. Sticking with 256 for now.
-        if (max_bone_index := vertex_bone_indices.max()) > 255:
-            raise FLVERExportError(
-                f"NormalW bone indices only support up to 256 bones (8-bit index), not: {max_bone_index}"
-            )
-        loop_normals_w = vertex_bone_indices[:, 0][loop_vertex_indices].astype(np.uint8).reshape(-1, 1)
-    else:
-        # Rigged models or old Map Pieces: `normal_w` is unused and defaults to 127.
-        loop_normals_w = np.full((loop_count, 1), 127, dtype=np.uint8)
+    # `normal_w` defaults to 127. For non-dynamic meshes on games that encode the bone index in `normal_w`,
+    # `MergedMesh.get_combined_loop_data()` derives the correct per-loop value from `bone_indices` at split time.
+    loop_normals_w = np.full((loop_count, 1), 127, dtype=np.uint8)
 
     if colors_layer_0:
         colors_layer_0.data.foreach_get("color", loop_color_arrays[0].ravel())
@@ -544,14 +536,14 @@ def _create_flver_meshes(
         uv_layer.data.foreach_get("uv", loop_uv_array_dict[uv_layer_name].ravel())
 
     # 5. Calculate individual tangent arrays for each UV layer that starts with `UVTexture`.
-    #  We also need to manually include `UVBloodMaskOrLightmap` for non-Map Pieces (Bloodborne) as the same slot is
-    #  used for Lightmaps by Map Pieces. (No better solution for this yet.)
+    #  UVBloodMaskOrLightmap is always included if present: on Bloodborne characters it carries the blood-mask
+    #  tangent (tangent_1), while on static meshes the layout has no second tangent slot so the array is unused.
 
     loop_tangent_arrays = []
     uv_texture_layer_names = sorted(
         [
             name for name in bl_uv_layer_names
-            if name.startswith("UVTexture") or (name == "UVBloodMaskOrLightmap" and not use_map_piece_layout)
+            if name.startswith("UVTexture") or name == "UVBloodMaskOrLightmap"
         ]
     )
     for uv_name in uv_texture_layer_names:

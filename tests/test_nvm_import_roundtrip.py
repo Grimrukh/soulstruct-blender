@@ -92,17 +92,17 @@ NVM_TEST_CASES: list[NVMImportCase] = [
     # Dark Souls PTDE
     # ------------------------------------------------------------------
     NVMImportCase(
-        name="PTDE / Map m10 / n0010B0A10",
+        name="PTDE / Map m10_02_00_00 / nvmbnd",
         game_enum="DARK_SOULS_PTDE",
         directory=Config.PTDE_PATH / "map/m10_02_00_00",
-        filename="n0010B0A10.nvm",
+        filename="m10_02_00_00.nvmbnd",
         tags=["navmesh"],
     ),
     NVMImportCase(
-        name="PTDE / Map m12 / navmesh",
+        name="PTDE / Map m12_00_00_01 / nvmbnd",
         game_enum="DARK_SOULS_PTDE",
-        directory=Config.PTDE_PATH / "map/m12_00_00_00",
-        filename="n0100B0A12.nvm",
+        directory=Config.PTDE_PATH / "map/m12_00_00_01",
+        filename="m12_00_00_01.nvmbnd",
         tags=["navmesh"],
     ),
 
@@ -110,21 +110,14 @@ NVM_TEST_CASES: list[NVMImportCase] = [
     # Dark Souls Remastered
     # ------------------------------------------------------------------
     NVMImportCase(
-        name="DSR / Map m10 / n0010B0A10",
+        name="DSR / Map m10_02_00_00 / nvmbnd",
         game_enum="DARK_SOULS_DSR",
         directory=Config.DSR_PATH / "map/m10_02_00_00",
         filename="m10_02_00_00.nvmbnd.dcx",
         tags=["navmesh"],
     ),
     NVMImportCase(
-        name="DSR / Map m10 / n0020B0A10",
-        game_enum="DARK_SOULS_DSR",
-        directory=Config.DSR_PATH / "map/m10_02_00_00",
-        filename="m10_02_00_00.nvmbnd.dcx",
-        tags=["navmesh"],
-    ),
-    NVMImportCase(
-        name="DSR / Map m12 / n0007B0A12",
+        name="DSR / Map m12_00_00_01 / nvmbnd",
         game_enum="DARK_SOULS_DSR",
         directory=Config.DSR_PATH / "map/m12_00_00_01",
         filename="m12_00_00_01.nvmbnd.dcx",
@@ -180,9 +173,8 @@ def run_case(case: NVMImportCase):
         import_kwargs: dict = dict(
             directory=str(case.directory),
             files=[{"name": case.operator_filename}],
+            import_all_from_binder = is_binder,
         )
-        if is_binder:
-            import_kwargs["import_all_from_binder"] = True
         result = bpy.ops.import_scene.nvm("EXEC_DEFAULT", **import_kwargs)
     except Exception as ex:
         T.fail(case.name, f"Import raised exception: {ex}")

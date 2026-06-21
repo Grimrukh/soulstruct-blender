@@ -306,7 +306,9 @@ class BlenderMapCollision(BaseBlenderSoulstructObject[MapCollisionModel, MapColl
         face_materials = []
         offset = initial_offset
         for mesh, bl_material_index in zip(collision.meshes, bl_material_indices, strict=True):
-            face_stack.append(mesh.faces[:, :3] + offset)
+            # Individual meshes use `uint16` face vertex indices. We may exceed that limit after
+            # combining them for large collisions, so the offset indices are recast to `uint32`.
+            face_stack.append(np.astype(mesh.faces[:, :3], np.uint32) + offset)
             vert_stack.append(mesh.vertices[:, :3])
             face_materials.extend([bl_material_index] * mesh.face_count)
             offset += mesh.vertex_count

@@ -96,10 +96,15 @@ class ImportAnyHKXMapCollision(LoggingImportOperator):
                 if self.import_all_from_binder:
                     both_res_hkxbhd.hi_res.load_all()
                     both_res_hkxbhd.lo_res.load_all()
-                    import_infos.extend([
-                        HKXImportInfo(f"h{hkx_stem}", hi_collision, lo_collision)
-                        for hkx_stem, (hi_collision, lo_collision) in both_res_hkxbhd.get_both_res_dict()
-                    ])
+
+                    for hkx_stem, (hi_collision, lo_collision) in both_res_hkxbhd.get_both_res_dict().items():
+                        if not hi_collision:
+                            self.warning(f"Skipping lo-res collision 'l{hkx_stem}' in {file_path.name} with no hi-res.")
+                            continue
+                        if not lo_collision:
+                            self.warning(f"Importing hi-res collision 'h{hkx_stem}' without a lo-res collision.")
+                            # Import permitted.
+                        import_infos.append(HKXImportInfo(f"h{hkx_stem}", hi_collision, lo_collision))
                 elif self.collision_model_id != -1:
                     hi_hkx_entries = [
                         entry for entry in both_res_hkxbhd.hi_res.entries if self.check_hkx_entry_model_id(entry)
@@ -142,6 +147,7 @@ class ImportAnyHKXMapCollision(LoggingImportOperator):
                     self.warning(f"Error occurred while reading HKX file '{file_path.name}': {ex}")
                 else:
                     if file_path.name.startswith("h"):
+                        # Loose hi-res collision was read. Look for adjacent lo-res version.
                         hi_collision = collision
                         try:
                             lo_collision = MapCollisionModel.from_path(file_path.parent / f"l{file_path.name[1:]}")
@@ -149,13 +155,15 @@ class ImportAnyHKXMapCollision(LoggingImportOperator):
                             self.warning(f"Could not find matching 'lo' HKX next to '{file_path.name}'.")
                             lo_collision = None
                     elif file_path.name.startswith("l"):
+                        # Loose lo-res collision was read. Look for adjacent hi-res version.
                         lo_collision = collision
                         try:
                             hi_collision = MapCollisionModel.from_path(file_path.parent / f"h{file_path.name[1:]}")
                         except FileNotFoundError:
                             return self.error(f"Could not find matching 'hi' HKX next to '{file_path.name}'.")
                     else:
-                        hi_collision = collision  # treat unknown file name as hi-res
+                        # Unknown collision file name prefix. Assume hi-res.
+                        hi_collision = collision
                         lo_collision = None
                     import_infos.append(HKXImportInfo(file_path.name.split(".")[0], hi_collision, lo_collision))
 
