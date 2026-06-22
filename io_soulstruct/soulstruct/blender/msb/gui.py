@@ -210,13 +210,14 @@ class MSBPartPanel(SoulstructPanel):
             box = layout.box()
             box.label(text="MSB Part is animated. Stored MSB Transform:")
             for label, prop in (
-                    ("Position", '["MSB Translate"]'),
-                    ("Rotation", '["MSB Rotate"]'),
-                    ("Scale", '["MSB Scale"]'),
+                    ("Position", "MSB Translate"),
+                    ("Rotation", "MSB Rotate"),
+                    ("Scale", "MSB Scale"),
             ):
                 row = box.row()
-                row.prop(obj, prop, text=label)
-                row.enabled = False
+                if prop in row:
+                    row.prop(obj, f"[\"{prop}\"]", text=label)
+                    row.enabled = False
                 # try:
                 #     vector = obj[prop]  # or Euler, technically
                 #     prop_str = f"{label}: ({vector[0]:.2f}, {vector[1]:.2f}, {vector[2]:.2f})"

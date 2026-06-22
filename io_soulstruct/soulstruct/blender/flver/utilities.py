@@ -5,7 +5,6 @@ __all__ = [
     "BONE_CoB_4x4",
     "game_bone_transform_to_bl_bone_matrix",
     "get_armature_matrix",
-    "get_basis_matrix",
     "game_forward_up_vectors_to_bl_euler",
     "bl_euler_to_game_forward_up_vectors",
     "bl_rotmat_to_game_forward_up_vectors",
@@ -46,7 +45,8 @@ def get_flvers_from_binder(
     return [FLVER.from_binder_entry(entry) for entry in flver_entries]
 
 
-# Swap X and Y, negate Z. Makes bones point nicely X-forward in Blender.
+# Swap X and Y, negate Z (to preserve handedness). Makes bones point nicely X-forward in Blender.
+# This has to be carefully handled when posing animations.
 BONE_CoB_4x4 = Matrix((
     (0.0, 1.0,  0.0, 0.0),
     (1.0, 0.0,  0.0, 0.0),
@@ -98,39 +98,6 @@ def get_armature_matrix(armature: ArmatureObject, bone_name: str, basis=None) ->
         #  -> basis = (parent_local.inv @ local)parent_local @ parent_armature.inv @ armature
         parent_local = armature.data.bones[parent.name].matrix_local
         return get_armature_matrix(armature, parent.name) @ parent_local.inverted() @ local @ basis
-
-
-def get_basis_matrix(
-    armature: ArmatureObject,
-    bone_name: str,
-    armature_matrix: Matrix,
-    armature_inv_matrices: dict[str, Matrix],
-    cached_local_inv_matrices: dict[str, Matrix],
-):
-    """Get the appropriate matrix to assign to `pose_bone.matrix_basis` from `armature_matrix` by inverting Blender's
-    process (see `get_armature_matrix()`).
-
-    Args:
-        armature: Armature object containing `bone_name`.
-        bone_name: Name of the pose bone for which to get the basis matrix.
-        armature_matrix: The desired armature matrix for `bone_name` (i.e., `pose_bone.matrix`).
-        armature_inv_matrices: Dictionary mapping bone names to their armature matrices inverted. Used to avoid
-            recalculating the inverted matrices of multi-child bones.
-        cached_local_inv_matrices: Dictionary mapping bone names to their local matrices inverted. Used to avoid
-            recalculating the inverted matrices of multi-child bones.
-
-    Inverse of `get_armature_matrix()`.
-    """
-    if bone_name not in cached_local_inv_matrices:
-        cached_local_inv_matrices[bone_name] = armature.data.bones[bone_name].matrix_local.inverted()
-    local_inv = cached_local_inv_matrices[bone_name]
-    parent_bone = armature.pose.bones[bone_name].parent
-
-    if parent_bone is None:
-        return local_inv @ armature_matrix
-
-    parent_removed = armature_inv_matrices[parent_bone.name] @ armature_matrix
-    return local_inv @ armature.data.bones[parent_bone.name].matrix_local @ parent_removed
 
 
 def game_forward_up_vectors_to_bl_euler(forward: Vector3, up: Vector3) -> Euler:

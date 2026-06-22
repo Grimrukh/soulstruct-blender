@@ -737,7 +737,7 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
 
     @staticmethod
     def parse_flver_obj(obj: bpy.types.Object) -> tuple[ArmatureObject | None, MeshObject]:
-        """Parse a Blender object into a Mesh and (optional) Armature object."""
+        """Parse a Blender FLVER object into a Mesh and (optional) Armature object."""
         if obj.type == "MESH" and obj.soulstruct_type == SoulstructType.FLVER:
             mesh = obj
             armature = mesh.parent if mesh.parent is not None and mesh.parent.type == "ARMATURE" else None

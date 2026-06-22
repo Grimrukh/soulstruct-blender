@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Mesh generator operators (rocks, bricks, etc.).
 - Improved MCG navigation graph generation.
 - Significantly improved Elden Ring material shaders.
+- On-screen operator progress indicators (cursor percentage).
 
 ### Changed
 - Blender 5.1 is the minimum supported version (with Python 3.13).
@@ -31,7 +32,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Stop adding extra suffix to secondary FLVERs in BNDs.
 
 ### Fixed
-- Fixed animation export bone center-of-bone (CoB) calculation.
+- Fixed animation export bone change-of-basis (CoB) calculation.
 - Fixed MSB event name handling.
 - Fixed various UI argument and map stem typing bugs.
 - Fixed empty FLVER edge case.
@@ -39,6 +40,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed animation root motion detection bug for export.
 - Animation quaternions coerced to match FromSoft quaternions more.
 - Fixed import of large collisions (16-bit → 32-bit combined face indices).
+- Fixed cutscene import with bone change-of-basis (compatible with/without CoB).
 
 ### Removed
 - Support for Blender < 5.1 (Python < 3.13) removed.

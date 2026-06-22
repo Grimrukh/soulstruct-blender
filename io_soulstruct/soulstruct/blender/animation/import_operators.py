@@ -24,6 +24,7 @@ from soulstruct.havok.core import HKX
 from ..base.operators import *
 from ..base.register import io_soulstruct_operator
 from ..exceptions import AnimationImportError, UnsupportedGameError
+from ..flver import FLVERBoneDataType
 from ..types import *
 from .types import SoulstructAnimation
 from .utilities import *
@@ -43,7 +44,7 @@ class _BaseImportHKXAnimation(LoggingOperator):
         """Must have an active FLVER or Part with an Armature and be working on a game that supports animations."""
         if not context.scene.soulstruct_settings.game_config.supports_animation:
             return False
-        armature_obj, _, _, _ = get_active_flver_or_part_armature(context)
+        armature_obj, _, _, _, _ = get_active_flver_or_part_armature(context)
         return armature_obj is not None
 
     def get_anibnd_skeleton_compendium(
@@ -69,7 +70,7 @@ class _BaseImportHKXAnimation(LoggingOperator):
             return HKX.from_binder_entry(compendium_entry)
 
     @staticmethod
-    def read_skeleton(skeleton_anibnd: Binder, compendium: HKX = None) -> SKELETON_TYPING:
+    def read_skeleton(skeleton_anibnd: Binder, compendium: HKX | None = None) -> SKELETON_TYPING:
         try:
             skeleton_entry = skeleton_anibnd[SKELETON_ENTRY_RE]
         except EntryNotFoundError:
@@ -93,6 +94,7 @@ class ImportHKXAnimationWithBinderChoice(_BaseImportHKXAnimation, BinderEntrySel
     MODEL_NAME: tp.ClassVar[str] = ""
     SKELETON_HKX: tp.ClassVar[SKELETON_TYPING | None] = None
     HKX_COMPENDIUM: tp.ClassVar[HKX | None] = None
+    BONE_DATA_TYPE: tp.ClassVar[FLVERBoneDataType | None] = None
 
     @classmethod
     def get_binder(cls, context) -> Binder | None:
@@ -149,6 +151,7 @@ class ImportHKXAnimationWithBinderChoice(_BaseImportHKXAnimation, BinderEntrySel
         model_name: str,
         skeleton_hkx: SKELETON_TYPING,
         compendium: HKX | None,
+        bone_data_type: FLVERBoneDataType,
     ) -> set[str]:
         cls.BINDER = binder
         cls.ARMATURE_OBJ = armature_obj
@@ -156,6 +159,7 @@ class ImportHKXAnimationWithBinderChoice(_BaseImportHKXAnimation, BinderEntrySel
         cls.MODEL_NAME = model_name
         cls.SKELETON_HKX = skeleton_hkx
         cls.HKX_COMPENDIUM = compendium
+        cls.BONE_DATA_TYPE = bone_data_type
 
         # Invoke this operator.
         # noinspection PyUnresolvedReferences
@@ -183,7 +187,7 @@ class ImportAnyHKXAnimation(_BaseImportHKXAnimation, LoggingImportOperator):
 
     def execute(self, context):
 
-        armature_obj, mesh_obj, model_name, is_part = get_active_flver_or_part_armature(context)
+        armature_obj, mesh_obj, model_name, is_part, bone_data_type = get_active_flver_or_part_armature(context)
 
         binder_path = Path(self.filepath)
 
@@ -232,6 +236,7 @@ class ImportAnyHKXAnimation(_BaseImportHKXAnimation, LoggingImportOperator):
             model_name=model_name,
             skeleton_hkx=skeleton_hkx,
             compendium=compendium,
+            bone_data_type=bone_data_type,
         )
 
 
@@ -239,7 +244,7 @@ class _BaseImportTypedHKXAnimation(_BaseImportHKXAnimation):
     """Base class for importing character, object, and asset FLVER animations from their specific ANIBND sources."""
 
     def execute(self, context):
-        armature_obj, mesh_obj, model_name, is_part = get_active_flver_or_part_armature(context)
+        armature_obj, mesh_obj, model_name, is_part, bone_data_type = get_active_flver_or_part_armature(context)
 
         # Find animation HKX entry/entries.
         try:
@@ -260,6 +265,7 @@ class _BaseImportTypedHKXAnimation(_BaseImportHKXAnimation):
             model_name=model_name,
             skeleton_hkx=skeleton_hkx,
             compendium=compendium,
+            bone_data_type=bone_data_type,
         )
 
 
@@ -289,7 +295,7 @@ class ImportCharacterHKXAnimation(_BaseImportTypedHKXAnimation):
         return super().poll(context) and context.active_object.name[0] == "c"
 
     def invoke(self, context, _event):
-        _, _, model_name, _ = get_active_flver_or_part_armature(context)
+        _, _, model_name, _, _ = get_active_flver_or_part_armature(context)
 
         if model_name == "c0000":
             self._invoke_c0000(context)

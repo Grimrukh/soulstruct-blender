@@ -399,7 +399,7 @@ class ImportEquipmentFLVER(_BaseFLVERImportOperator):
     DEFAULT_SUBDIR = "parts"
     POLL_DEFAULT_SUBDIR = True
 
-    files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'}, )
+    files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'})
     directory: bpy.props.StringProperty(options={'HIDDEN'}, subtype="DIR_PATH")
 
     # Base `execute` method is fine.

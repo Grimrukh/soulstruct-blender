@@ -95,11 +95,11 @@ class SelectArmatureActionOperator(LoggingOperator):
     @classmethod
     def poll(cls, context) -> bool:
         """Animation's rigged armature must be selected (to extract bone names)."""
-        armature_obj, _, _, _ = get_active_flver_or_part_armature(context)
+        armature_obj, _, _, _, _ = get_active_flver_or_part_armature(context)
         return armature_obj is not None
 
     def execute(self, context):
-        armature_obj, mesh_obj, model_name, is_part = get_active_flver_or_part_armature(context)
+        armature_obj, mesh_obj, model_name, _, _ = get_active_flver_or_part_armature(context)
         if not armature_obj or not mesh_obj:
             # Should be prevented by poll.
             return self.error("Active FLVER model must have an Armature and Mesh selected.")

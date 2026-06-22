@@ -1,9 +1,13 @@
 from __future__ import annotations
 
-__all__ = ["SoulstructCutsceneAnimation"]
+__all__ = [
+    "CutFrames",
+    "SoulstructCutsceneAnimation",
+]
 
 import math
 import typing as tp
+from dataclasses import dataclass
 
 import bpy
 import numpy as np
@@ -14,8 +18,30 @@ from soulstruct.havok.fromsoft.darksouls1r.remobnd import RemoPartAnimationFrame
 from ..animation.types import SoulstructAnimation
 from ..animation.utilities import *
 from ..exceptions import SoulstructTypeError
+from ..flver.models.types import FLVERBoneDataType
 from ..types import ArmatureObject, CameraObject, EmptyObject
 from ..utilities import to_blender
+
+
+# Blender BezTriple interpolation enum -> int (for batched `foreach_set`).
+# Verify on your Blender build if interpolation ever looks wrong; revert to the
+# string-assignment loop below if these differ.
+_INTERP_CONSTANT = 0
+_INTERP_LINEAR = 1
+
+
+@dataclass(slots=True)
+class CutFrames:
+    """One cut's animation data for a single part (or dummy).
+
+    `frames` is `None` when the part does not appear in this cut. `frame_count` is
+    *always* the cut's clip length (from the camera), so the timeline pads uniformly
+    whether or not this part is present. This replaces the old
+    `list[RemoPartAnimationFrame] | int` union, so consumers never branch on type:
+    they read `cut.frames is None` for presence and `cut.frame_count` for length.
+    """
+    frame_count: int
+    frames: list[RemoPartAnimationFrame] | None = None
 
 
 class SoulstructCutsceneAnimation:
@@ -33,7 +59,7 @@ class SoulstructCutsceneAnimation:
     def __init__(self, action: bpy.types.Action):
         if not isinstance(action, bpy.types.Action):
             raise SoulstructTypeError(
-                f"Cutscene animation must be initialized with a Blender Action, not {type(action)}."
+                f"Cutscene animation must be initialized with a Blender Action, not {type(action).__name__}."
             )
         self.action = action
 
@@ -57,13 +83,13 @@ class SoulstructCutsceneAnimation:
         return get_or_create_action_strip(self.action)
 
     @staticmethod
-    def _get_slot_id_type(animated_id: bpy.types.ID) -> str:
+    def _get_slot_id_type(animated_id: bpy.types.ID) -> tp.Literal["OBJECT", "CAMERA"]:
         """Only Objects (including Armatures) and Cameras can be animated by cutscenes."""
         if isinstance(animated_id, bpy.types.Object):
             return "OBJECT"
         if isinstance(animated_id, bpy.types.Camera):
             return "CAMERA"
-        raise TypeError(f"Unsupported cutscene Action slot ID type: {type(animated_id)}")
+        raise TypeError(f"Unsupported cutscene Action slot ID type: {type(animated_id).__name__}")
 
     def bind(
         self,
@@ -98,14 +124,56 @@ class SoulstructCutsceneAnimation:
         channelbag: bpy.types.ActionChannelbag,
         constant_keyframe_t: tp.Iterable[float] = (),
     ):
-        constant_keyframe_t = {cls._normalize_keyframe_t(t) for t in constant_keyframe_t}
+        """Set every keyframe to LINEAR, except those whose (rounded) time is in
+        `constant_keyframe_t`, which become CONSTANT holds (cut boundaries).
+
+        Keyframes are matched by time rather than index because per-bone keyframe
+        rows are not uniformly indexed across cuts. The comparison is vectorized
+        with `foreach_get`/`foreach_set` to avoid a per-keyframe Python loop.
+        """
+        constant_t = np.fromiter(
+            {cls._normalize_keyframe_t(t) for t in constant_keyframe_t},
+            dtype=np.float64,
+        )
         for fcurve in channelbag.fcurves:
-            for keyframe in fcurve.keyframe_points:
-                if cls._normalize_keyframe_t(keyframe.co.x) in constant_keyframe_t:
-                    keyframe.interpolation = "CONSTANT"
-                else:
-                    keyframe.interpolation = "LINEAR"
+            n = len(fcurve.keyframe_points)
+            if n == 0:
+                continue
+            co = np.empty(n * 2, dtype=np.float64)
+            fcurve.keyframe_points.foreach_get("co", co)
+            frame_t = np.round(co[0::2], 6)
+
+            interp = np.full(n, _INTERP_LINEAR, dtype=np.int32)
+            if constant_t.size:
+                interp[np.isin(frame_t, constant_t)] = _INTERP_CONSTANT
+
+            fcurve.keyframe_points.foreach_set("interpolation", interp.tolist())
             fcurve.update()
+
+    @staticmethod
+    def cancel_remo_root_parent_rest(armature: ArmatureObject, remo_root_bone_names: list[str]) -> None:
+        """For each FLVER bone that will receive cutscene-root-level (parentless-in-HKX) data,
+        if that bone has a real parent in the Blender armature, pose the parent to cancel its
+        own rest pose. This way, Blender's parent chain doesn't reintroduce a rest rotation the
+        cutscene data never accounted for.
+
+        Idempotent and safe to call once per part even when multiple remo-root bones (e.g.
+        Upper_Root, Lower_Root) share the same FLVER parent.
+        """
+        cancelled = set()
+        for bone_name in remo_root_bone_names:
+            bl_bone = armature.data.bones.get(bone_name)
+            if bl_bone is None or bl_bone.parent is None:
+                continue
+            fk_parent_name = bl_bone.parent.name
+            if fk_parent_name in cancelled:
+                continue
+            rest_local = bl_bone.parent.matrix_local
+            if bl_bone.parent.parent is not None:
+                # `EditBone.matrix_local` is Armature-space. Easy to make it parent-relative.
+                rest_local = bl_bone.parent.parent.matrix_local.inverted() @ rest_local
+            armature.pose.bones[fk_parent_name].matrix_basis = rest_local.inverted()
+            cancelled.add(fk_parent_name)
 
     @staticmethod
     def _add_samples(
@@ -133,15 +201,13 @@ class SoulstructCutsceneAnimation:
         camera: CameraObject,
         camera_transforms: list[list[CameraFrameTransform]],
         camera_fov_keyframes: list[list[tuple[float, float]]],
-        to_60_fps: bool,
+        bl_frames_per_game_frame: float,
     ):
         camera.rotation_mode = "XYZ"
         camera_data = camera.data
 
         _, object_channelbag = self.bind(camera)  # OBJECT
         _, data_channelbag = self.bind(camera_data)  # CAMERA
-
-        bl_frames_per_game_frame = 2.0 if to_60_fps else 1.0
 
         location_rows = []
         rotation_rows = []
@@ -184,63 +250,73 @@ class SoulstructCutsceneAnimation:
         self._add_samples(data_channelbag, "lens", lens_samples)
         self._set_keyframe_interpolation(data_channelbag, lens_final_t)
 
-    def add_cutscene_cuts(
+    def add_armature_cuts(
         self,
-        context: bpy.types.Context,
-        armature_or_dummy: EmptyObject | ArmatureObject,
-        arma_cuts: list[list[RemoPartAnimationFrame] | int],
-        is_root_motion_only=False,
+        armature: ArmatureObject,
+        cuts: list[CutFrames],
+        bl_frames_per_game_frame: float,
+        bone_data_type: FLVERBoneDataType,
+        is_root_motion_only: bool = False,
+        assert_root_bone_names: tp.Container[str] = (),
     ):
-        """Bind cutscene animation data for one Armature or Dummy into this shared Action."""
-        armature_or_dummy.rotation_mode = "XYZ"
-        _, channelbag = self.bind(armature_or_dummy)
+        """Bind cutscene animation data for one Armature into this shared Action.
 
-        to_60_fps = context.scene.cutscene_import_settings.to_60_fps
-        bl_frames_per_game_frame = 2.0 if to_60_fps else 1.0
-
-        cut_end_keyframe_t = []
-        frame_count = 0
-        for arma_frames in arma_cuts:
-            frame_count += arma_frames if isinstance(arma_frames, int) else len(arma_frames)
-            if frame_count > 0:
-                cut_end_keyframe_t.append(bl_frames_per_game_frame * (frame_count - 1))
+        A single pass over `cuts` drives both keyframe placement (via `global_keyframe_t`)
+        and cut-boundary tracking (`cut_end_keyframe_t`), so there is exactly one frame
+        accountant and no chance of the two drifting out of sync. Boundaries are recorded
+        only for cuts this part actually appears in.
+        """
+        armature.rotation_mode = "QUATERNION"
+        _, channelbag = self.bind(armature)
 
         if not is_root_motion_only:
-            if armature_or_dummy.type != "ARMATURE":
-                raise ValueError(
-                    "Cutscene animation can only be applied to an Empty (Dummy) with `is_root_motion_only=True`."
-                )
-            armature_or_dummy: ArmatureObject
-            arma_local_inv_matrices = SoulstructAnimation.get_armature_local_inv_matrices(armature_or_dummy)
+            arma_local_inv_matrices = SoulstructAnimation.get_armature_local_inv_matrices(armature)
         else:
             arma_local_inv_matrices = {}
 
         bone_basis_sample_arrays = {}  # type: dict[str, list[np.ndarray]]
         root_motion_rows = []  # type: list[list[float]]
+        cut_end_keyframe_t = []  # type: list[float]
 
         global_keyframe_t = 0.0
-        for arma_cut_frames in arma_cuts:
-            if isinstance(arma_cut_frames, int):
-                global_keyframe_t += arma_cut_frames * bl_frames_per_game_frame
+        for cut in cuts:
+            if cut.frames is None:
+                # Part absent from this cut: just pad the timeline by the clip length.
+                global_keyframe_t += cut.frame_count * bl_frames_per_game_frame
                 continue
 
-            bone_arma_frames = [frame.bone_transforms for frame in arma_cut_frames]
+            bone_arma_frames = [frame.bone_transforms for frame in cut.frames]
             if not is_root_motion_only and any(bone_arma_frames):
                 cut_bone_basis_samples = SoulstructAnimation.get_bone_basis_samples(
-                    armature_or_dummy,
+                    armature,
                     bone_arma_frames,
                     arma_local_inv_matrices,
                     bl_frames_per_game_frame,
+                    bone_data_type,
+                    assert_root_bone_names=assert_root_bone_names,
                 )
+
                 for bone_name, basis_samples in cut_bone_basis_samples.items():
                     basis_samples[:, 0] += global_keyframe_t
                     bone_basis_sample_arrays.setdefault(bone_name, []).append(basis_samples)
 
-            for frame in arma_cut_frames:
+            for frame in cut.frames:
+                # Cutscene "root motion" can be and often is a full TRS, not just translate + Z-rotation.
                 rm_translate = to_blender(frame.root_motion.translation)
-                rm_rotate_z = -frame.root_motion.rotation.to_euler_angles_rad(order="xzy").y
-                root_motion_rows.append([global_keyframe_t, rm_translate.x, rm_translate.y, rm_translate.z, rm_rotate_z])
+                rm_rotate_quat = to_blender(frame.root_motion.rotation)
+                rm_scale = to_blender(frame.root_motion.scale)
+                root_motion_rows.append(
+                    [
+                        global_keyframe_t,
+                        *rm_translate,
+                        *rm_rotate_quat,
+                        *rm_scale,
+                    ]
+                )
                 global_keyframe_t += bl_frames_per_game_frame
+
+            # Final keyframe of this cut holds CONSTANT (no interpolation into the next cut).
+            cut_end_keyframe_t.append(global_keyframe_t - bl_frames_per_game_frame)
 
         bone_basis_samples = (
             {
@@ -255,11 +331,64 @@ class SoulstructCutsceneAnimation:
         if not bone_basis_samples and root_motion.shape[0] == 0:
             return
 
-        SoulstructAnimation._add_keyframes_batch(
+        add_keyframes_batch(
             channelbag,
             bone_basis_samples,
             root_motion=root_motion,
-            root_motion_bone_name="",
+        )
+        self._set_keyframe_interpolation(channelbag, cut_end_keyframe_t)
+
+    def add_dummy_cuts(
+        self,
+        dummy: EmptyObject,
+        cuts: list[CutFrames],
+        bl_frames_per_game_frame: float,
+    ):
+        """Bind cutscene animation data for one Armature or Dummy into this shared Action.
+
+        A single pass over `cuts` drives both keyframe placement (via `global_keyframe_t`)
+        and cut-boundary tracking (`cut_end_keyframe_t`), so there is exactly one frame
+        accountant and no chance of the two drifting out of sync. Boundaries are recorded
+        only for cuts this part actually appears in.
+        """
+        dummy.rotation_mode = "QUATERNION"
+        _, channelbag = self.bind(dummy)
+
+        root_motion_rows = []  # type: list[list[float]]
+        cut_end_keyframe_t = []  # type: list[float]
+
+        global_keyframe_t = 0.0
+        for cut in cuts:
+            if cut.frames is None:
+                # Part absent from this cut: just pad the timeline by the clip length.
+                global_keyframe_t += cut.frame_count * bl_frames_per_game_frame
+                continue
+
+            for frame in cut.frames:
+                # "Root motion" is full TRS data.
+                rm_translate = to_blender(frame.root_motion.translation)
+                rm_rotate_quat = to_blender(frame.root_motion.rotation)
+                root_motion_rows.append(
+                    [
+                        global_keyframe_t,
+                        *rm_translate,
+                        *rm_rotate_quat,
+                    ]
+                )
+                global_keyframe_t += bl_frames_per_game_frame
+
+            # Final keyframe of this cut holds CONSTANT (no interpolation into the next cut).
+            cut_end_keyframe_t.append(global_keyframe_t - bl_frames_per_game_frame)
+
+        root_motion = np.array(root_motion_rows, dtype=np.float64) if root_motion_rows else np.empty((0, 5))
+
+        if root_motion.shape[0] == 0:
+            return
+
+        add_keyframes_batch(
+            channelbag,
+            bone_basis_samples={},
+            root_motion=root_motion,
         )
         self._set_keyframe_interpolation(channelbag, cut_end_keyframe_t)
 

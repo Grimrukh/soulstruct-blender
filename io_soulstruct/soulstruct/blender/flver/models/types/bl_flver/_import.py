@@ -606,7 +606,10 @@ def _create_bl_bones(
     flver = command.flver
 
     # Detect bone data type (storage location) based on FLVER mesh `is_dynamic` state.
-    if any(mesh.is_dynamic for mesh in flver.meshes):
+    if not flver.meshes:
+        # Empty mesh is ONLY good for dynamic usage (animations).
+        bl_bone_data_type = FLVERBoneDataType.EDIT
+    elif any(mesh.is_dynamic for mesh in flver.meshes):
         if not all(mesh.is_dynamic for mesh in flver.meshes):
             # Happens for rare objects (e.g. o0150 in DS1). In these cases, my observation is that the meshes do want
             # to be statically posed in Blender for viewing.

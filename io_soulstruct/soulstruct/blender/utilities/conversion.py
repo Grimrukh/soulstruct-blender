@@ -92,8 +92,7 @@ def _(e: BLEuler) -> EulerRad:
 
 @to_game.register(BLQuaternion)
 def _(q: BLQuaternion):
-    """Move `w` to end, negate all, and swap Y and Z (== sandwiching with FS_BL_CoB_3 with 3x3 round trip)."""
-    # TODO: Not 100% certain this is equivalent to the matrix round trip.
+    """Move W to end, negate XYZ, and swap Y and Z (== sandwiching with FS_BL_CoB_3 with 3x3 round trip)."""
     return FSQuaternion((-q.x, -q.z, -q.y, q.w))
 
 def bl_vector_array_to_game_vector_array(bl_array: np.ndarray) -> np.ndarray:
@@ -168,8 +167,7 @@ def _(e: EulerRad) -> BLEuler:
 
 @to_blender.register(FSQuaternion)
 def _(q: FSQuaternion):
-    """Move `w` to end, negate all, and swap Y and Z (== sandwiching with FS_BL_CoB_3 with 3x3 round trip)."""
-    # TODO: Not 100% certain this is equivalent to the matrix round trip.
+    """Move W to start, negate XYZ, and swap Y and Z (== sandwiching with FS_BL_CoB_3 with 3x3 round trip)."""
     return BLQuaternion((q.w, -q.x, -q.z, -q.y))
 
 def game_vector_array_to_bl_vector_array(game_array: np.ndarray) -> np.ndarray:
