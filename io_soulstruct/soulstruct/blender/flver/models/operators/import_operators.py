@@ -46,7 +46,7 @@ from ....base.operators import *
 from ....base.register import io_soulstruct_operator
 from ....exceptions import FLVERImportError
 from ....general import SoulstructSettings
-from ....types import ArmatureObject
+from ....types import ArmatureObject, ObjectType, SoulstructType
 from ....utilities import *
 from ...image.image_import_manager import ImageImportManager
 from ..types import BlenderFLVER
@@ -135,7 +135,7 @@ class _BaseFLVERImportOperator(LoggingImportOperator):
         context: bpy.types.Context,
         settings: SoulstructSettings,
         bl_flver: BlenderFLVER,
-    ):
+    ) -> None:
         """Can be overridden to modify new FLVER model."""
         pass
 
@@ -379,12 +379,11 @@ class ImportAssetFLVER(_BaseFLVERImportOperator):
 class ImportEquipmentFLVER(_BaseFLVERImportOperator):
     """Import weapon/armor FLVER from a `partsbnd` Binder.
 
-    NOTE: Earlier versions of Soulstruct forced you to select an imported `c0000` model, and the mesh and dummies of
-    this equipment FLVER would be parented to that model. However, this was actually destructive, as it prevented the
-    user from viewing or editing the partial c0000 Armature that is actually present in the equipment FLVER.
+    Optionally, you may attach these FLVER meshes to an existing `c0000` FLVER Armature instead of the one in the
+    parts FLVER. When using the Export Equipment FLVER operator, only c0000 bones that are used by the equipment meshes
+    will appear in the output.
 
-    If you want to animate equipment with c0000 animations, you can simply set those animations to this FLVER -- the
-    Armature bones should all be compatible.
+    Note that you can load c0000 animations onto a standalone Equipment FLVER without needing to attach it to c0000.
     """
     bl_idname = "import_scene.equipment_flver"
     bl_label = "Import Equipment"
@@ -402,9 +401,62 @@ class ImportEquipmentFLVER(_BaseFLVERImportOperator):
     files: bpy.props.CollectionProperty(type=bpy.types.OperatorFileListElement, options={'HIDDEN', 'SKIP_SAVE'})
     directory: bpy.props.StringProperty(options={'HIDDEN'}, subtype="DIR_PATH")
 
+    use_c0000_armature: bpy.props.BoolProperty(
+        default=False,
+        name="Use c0000 Armature",
+        description=(
+            "Parent equipment model to armature of c0000 FLVER if detected in scene, instead of a new armature. "
+            "Currently only works for armor equipment, not weapons"
+        ),
+    )
+
+    def draw(self, context):
+        super().draw(context)
+        self.layout.prop(self, "use_c0000_armature")
+
     # Base `execute` method is fine.
 
     def get_collection(self, context: bpy.types.Context, file_directory_name: str):
         return find_or_create_collection(context.scene.collection, "Models", "Equipment Models")
+
+    def post_process_flver(
+        self,
+        context: bpy.types.Context,
+        settings: SoulstructSettings,
+        bl_flver: BlenderFLVER,
+    ) -> None:
+        """Parent equipment model to c0000 if detected."""
+        super().post_process_flver(context, settings, bl_flver)
+
+        if not self.use_c0000_armature:
+            return
+
+        if not (new_armature := bl_flver.armature):
+            self.warning("Equipment FLVER has no Armature; cannot parent to c0000. This is highly unusual.")
+            return
+
+        bl_c0000 = find_obj("c0000", ObjectType.MESH, SoulstructType.FLVER, bl_name_func=get_model_name)
+
+        if not bl_c0000:
+            self.warning(f"Could not find c0000 FLVER to parent Equipment {bl_flver.name} to.")
+            return
+        c0000 = BlenderFLVER(bl_c0000)
+        if not c0000.armature:
+            self.warning(
+                f"c0000 FLVER found for parenting, but it has no Armature. Cannot parent Equipment {bl_flver.name}."
+            )
+            return
+
+        # Change parent to c0000 Armature.
+        bl_flver.obj.parent = c0000.armature
+        # Change modifier target to c0000 Armature.
+        bl_flver.obj.modifiers["FLVER Armature"].object = c0000.armature
+
+        # Add bl_flver.obj to all collections of c0000.
+        for coll in c0000.obj.users_collection:
+            coll.objects.link(bl_flver.obj)
+
+        # Delete newly created Armature.
+        bpy.data.objects.remove(new_armature)
 
 # endregion

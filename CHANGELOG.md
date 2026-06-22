@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Improved MCG navigation graph generation.
 - Significantly improved Elden Ring material shaders.
 - On-screen operator progress indicators (cursor percentage).
+- Import Equipment FLVER option to parent to existing c0000 armature (armor only).
 
 ### Changed
 - Blender 5.1 is the minimum supported version (with Python 3.13).
