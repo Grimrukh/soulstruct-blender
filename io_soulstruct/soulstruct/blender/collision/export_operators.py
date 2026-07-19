@@ -147,7 +147,8 @@ class ExportAnyHKXMapCollision(LoggingExportOperator):
                 hi_hkx.write(hi_path)
             except Exception as ex:
                 traceback.print_exc()
-                self.error(f"Cannot write exported HKX '{hi_name}' to '{hi_path}'. Error: {ex}")
+                # Operator failed.
+                return self.error(f"Cannot write exported HKX '{hi_name}' to '{hi_path}'. Error: {ex}")
             else:
                 hi_written = True
         if lo_hkx:
@@ -157,12 +158,13 @@ class ExportAnyHKXMapCollision(LoggingExportOperator):
                 lo_hkx.write(lo_path)
             except Exception as ex:
                 traceback.print_exc()
-                self.error(f"Cannot write exported HKX '{lo_name}' to '{lo_path}'. Error: {ex}")
                 if hi_written:
                     # Restore hi-res file if lo-res write fails.
                     hi_path.unlink(missing_ok=True)
                     if hi_tempbak_path:
                         hi_tempbak_path.rename(hi_path)
+                # Operator failed.
+                return self.error(f"Cannot write exported HKX '{lo_name}' to '{lo_path}'. Error: {ex}")
 
         # Ensure that we don't leave '.tempbak' files lying around.
         if hi_tempbak_path and hi_tempbak_path.is_file():
