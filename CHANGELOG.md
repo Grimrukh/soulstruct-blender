@@ -31,6 +31,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Migrated type annotations to `pyrelink`-compatible style; removed `__init__.__all__` boilerplate.
 - Degenerate zero-area FLVER faces are now removed on import.
 - Stop adding extra suffix to secondary FLVERs in BNDs.
+- `ExportMapNVM` operator fails if ANY NVM fails to export.
 
 ### Fixed
 - Fixed animation export bone change-of-basis (CoB) calculation.
