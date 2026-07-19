@@ -40,7 +40,7 @@ class MSBPartGroupsAdapter[BIT_SET_T: BitSet](FieldAdapter):
         groups = set()
         for i, bit_vector_32 in enumerate(bit_vector_32s):
             for j in range(32):
-                if bit_vector_32[i]:
+                if bit_vector_32[j]:
                     groups.add(i * 32 + j)
         return self.bit_set_type(groups)
 

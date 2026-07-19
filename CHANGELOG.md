@@ -42,6 +42,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Animation quaternions coerced to match FromSoft quaternions more.
 - Fixed import of large collisions (16-bit → 32-bit combined face indices).
 - Fixed cutscene import with bone change-of-basis (compatible with/without CoB).
+- Fixed MSB Part bit-group export bug.
 
 ### Removed
 - Support for Blender < 5.1 (Python < 3.13) removed.
