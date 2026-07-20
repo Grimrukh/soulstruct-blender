@@ -337,7 +337,7 @@ class ImportHKXCutscene(LoggingImportOperator):
         cutscene_animation: SoulstructCutsceneAnimation,
         bl_frames_per_game_frame: float,
     ) -> CameraObject:
-        """Create a new Blender camera object for the cutscene."""
+        """Create a new Blender camera object for the cutscene and animate it."""
         camera_name = self.camera_name.format(CutsceneName=remobnd.cutscene_name)
         camera_data = bpy.data.cameras.new(camera_name)
         camera_data.sensor_width = 35  # mm (seems to match game FoV appearance)
@@ -346,7 +346,7 @@ class ImportHKXCutscene(LoggingImportOperator):
 
         # Add motion to camera.
         camera_transforms = [cut.sibcam.get_clipped_camera_animation() for cut in remobnd.cuts]
-        camera_fov_keyframes = [cut.sibcam.get_fov_keyframes_scaled_to_clip() for cut in remobnd.cuts]
+        camera_fov_keyframes = [cut.sibcam.get_clip_timescaled_fov_keyframes() for cut in remobnd.cuts]
 
         try:
             cutscene_animation.add_camera_cuts(

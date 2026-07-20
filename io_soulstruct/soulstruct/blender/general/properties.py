@@ -13,6 +13,7 @@ import logging
 import shutil
 import traceback
 import typing as tp
+from types import ModuleType
 from pathlib import Path
 
 import bpy
@@ -292,6 +293,14 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
     @property
     def game_settings(self) -> SoulstructGameSettings:
         return getattr(self, self.game.submodule_name)
+
+    @property
+    def constants(self) -> tp.Union[ModuleType | None]:
+        """Get Soulstruct `constants` module for game, if present."""
+        try:
+            return self.game.import_game_submodule("constants")
+        except ImportError:
+            return None
 
     @property
     def pyrelink_game_type(self) -> PyreGameType:

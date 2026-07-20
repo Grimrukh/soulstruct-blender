@@ -415,7 +415,7 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
 
         operator.info(
             f"Importing {len(flver_binder_sources) + len(flver_path_sources)} "
-            f"{flver_model_category}FLVERs in parallel.",
+            f"{flver_model_category} FLVERs in parallel.",
             report=True,
         )
 
@@ -462,7 +462,7 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
                 flvers[name] = flver_from_binder
 
         operator.info(
-            f"Imported {len(flvers)} {flver_model_category}FLVERs in {time.perf_counter() - p:.2f} seconds."
+            f"Imported {len(flvers)} {flver_model_category} FLVERs in {time.perf_counter() - p:.2f} seconds."
         )
         p = time.perf_counter()
 
@@ -743,13 +743,34 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
             armature = mesh.parent if mesh.parent is not None and mesh.parent.type == "ARMATURE" else None
         elif obj.type == "ARMATURE":
             armature = obj
-            mesh_children = [child for child in armature.children if child.type == "MESH"]
-            if not mesh_children or mesh_children[0].soulstruct_type != SoulstructType.FLVER:
+            flver_mesh_children = [
+                child for child in armature.children
+                if child.type == "MESH" and child.soulstruct_type == SoulstructType.FLVER
+            ]
+            if not flver_mesh_children:
                 raise SoulstructTypeError(
                     f"Armature '{armature.name}' has no FLVER Mesh child. Please create it, even if empty, and set its "
                     f"Soulstruct object type to FLVER using the General Settings panel."
                 )
-            mesh = mesh_children[0]
+            if len(flver_mesh_children) > 1:
+                # Filter by matching stem.
+                matching_mesh_children = [
+                    child for child in flver_mesh_children
+                    if get_model_name(child.name) == get_model_name(armature.name)
+                ]
+                if not matching_mesh_children:
+                    raise SoulstructTypeError(
+                        f"Armature '{armature.name}' has multiple FLVER Mesh children, but none match the Armature "
+                        f"model name. Please rename one Mesh child to match the Armature name."
+                    )
+                if len(matching_mesh_children) > 1:
+                    raise SoulstructTypeError(
+                        f"Armature '{armature.name}' has multiple FLVER Mesh children that match the Armature "
+                        f"model name. Please rename so exactly one Mesh child matches the Armature name."
+                    )
+                mesh = matching_mesh_children[0]
+            else:
+                mesh = flver_mesh_children[0]
         else:
             raise SoulstructTypeError(
                 f"Given object '{obj.name}' is not a FLVER Mesh or Armature parent of such. Cannot parse as FLVER."

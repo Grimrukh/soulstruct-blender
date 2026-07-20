@@ -12,7 +12,7 @@ from dataclasses import dataclass
 import bpy
 import numpy as np
 
-from soulstruct.base.animations.sibcam import CameraFrameTransform
+from soulstruct.base.animations.sibcam import *
 from soulstruct.havok.fromsoft.darksouls1r.remobnd import RemoPartAnimationFrame
 
 from ..animation.types import SoulstructAnimation
@@ -21,7 +21,6 @@ from ..exceptions import SoulstructTypeError
 from ..flver.models.types import FLVERBoneDataType
 from ..types import ArmatureObject, CameraObject, EmptyObject
 from ..utilities import to_blender
-
 
 # Blender BezTriple interpolation enum -> int (for batched `foreach_set`).
 # Verify on your Blender build if interpolation ever looks wrong; revert to the
@@ -94,9 +93,8 @@ class SoulstructCutsceneAnimation:
     def bind(
         self,
         animated_id: bpy.types.ID,
-        slot_name: str = "",
     ) -> tuple[bpy.types.ActionSlot, bpy.types.ActionChannelbag]:
-        """Bind our `Action` to `animated_id` and find/create the appropriate slot."""
+        """Bind our unified cutscene `Action` to `animated_id` and find/create the appropriate slot."""
         anim_data = animated_id.animation_data_create()
         anim_data.action = self.action
         # After assigning the Action, we can find the same-named slot.
@@ -105,7 +103,7 @@ class SoulstructCutsceneAnimation:
                 anim_data.action_slot = slot
                 break
         else:
-            # Create action slot.
+            # Create new action slot for this ID.
             anim_data.action_slot = self.action.slots.new(
                 id_type=self._get_slot_id_type(animated_id),
                 name=animated_id.name,
@@ -151,31 +149,6 @@ class SoulstructCutsceneAnimation:
             fcurve.update()
 
     @staticmethod
-    def cancel_remo_root_parent_rest(armature: ArmatureObject, remo_root_bone_names: list[str]) -> None:
-        """For each FLVER bone that will receive cutscene-root-level (parentless-in-HKX) data,
-        if that bone has a real parent in the Blender armature, pose the parent to cancel its
-        own rest pose. This way, Blender's parent chain doesn't reintroduce a rest rotation the
-        cutscene data never accounted for.
-
-        Idempotent and safe to call once per part even when multiple remo-root bones (e.g.
-        Upper_Root, Lower_Root) share the same FLVER parent.
-        """
-        cancelled = set()
-        for bone_name in remo_root_bone_names:
-            bl_bone = armature.data.bones.get(bone_name)
-            if bl_bone is None or bl_bone.parent is None:
-                continue
-            fk_parent_name = bl_bone.parent.name
-            if fk_parent_name in cancelled:
-                continue
-            rest_local = bl_bone.parent.matrix_local
-            if bl_bone.parent.parent is not None:
-                # `EditBone.matrix_local` is Armature-space. Easy to make it parent-relative.
-                rest_local = bl_bone.parent.parent.matrix_local.inverted() @ rest_local
-            armature.pose.bones[fk_parent_name].matrix_basis = rest_local.inverted()
-            cancelled.add(fk_parent_name)
-
-    @staticmethod
     def _add_samples(
         channelbag: bpy.types.ActionChannelbag,
         data_path: str,
@@ -200,11 +173,14 @@ class SoulstructCutsceneAnimation:
         self,
         camera: CameraObject,
         camera_transforms: list[list[CameraFrameTransform]],
-        camera_fov_keyframes: list[list[tuple[float, float]]],
+        camera_fov_keyframes: list[list[TimescaledFoVKeyframe]],
         bl_frames_per_game_frame: float,
     ):
-        camera.rotation_mode = "XYZ"
+        camera.rotation_mode = "XYZ"  # Euler
         camera_data = camera.data
+        # We have to convert FoV to focal length and animate that.
+        # Blender simply cannot animate FoV ("angle"), only compute it.
+        camera_data.lens_unit = "MILLIMETERS"
 
         _, object_channelbag = self.bind(camera)  # OBJECT
         _, data_channelbag = self.bind(camera_data)  # CAMERA
@@ -231,15 +207,18 @@ class SoulstructCutsceneAnimation:
         self._add_samples(object_channelbag, "rotation_euler", rotation_samples)
         self._set_keyframe_interpolation(object_channelbag, final_frame_t)
 
-        sensor_width = camera_data.sensor_width
+        # TODO: Could create a temp FoV FCurve with tan-in/out and bake it to every-frame Focal Length.
+        #  Doesn't seem very impactful as (variable) SIBCAM cut data appears to always be 95% baked anyway.
+
+        sensor_width = camera_data.sensor_width  # should be 35 mm (just created)
         cut_fov_t_offset = 0
         lens_rows = []
         lens_final_t = []
         for cut_fov_keyframes, cut_camera_transforms in zip(camera_fov_keyframes, camera_transforms, strict=True):
             last_bl_t = None
-            for t, fov in cut_fov_keyframes:
-                lens = sensor_width / (2 * math.tan(fov / 2.0))
-                bl_t = (cut_fov_t_offset + t) * bl_frames_per_game_frame
+            for fov_keyframe in cut_fov_keyframes:
+                lens = sensor_width / (2 * math.tan(fov_keyframe.fov / 2.0))
+                bl_t = (cut_fov_t_offset + fov_keyframe.fov_t) * bl_frames_per_game_frame
                 lens_rows.append([bl_t, lens])
                 last_bl_t = bl_t
             if last_bl_t is not None:
@@ -301,7 +280,7 @@ class SoulstructCutsceneAnimation:
                     bone_basis_sample_arrays.setdefault(bone_name, []).append(basis_samples)
 
             for frame in cut.frames:
-                # Cutscene "root motion" can be and often is a full TRS, not just translate + Z-rotation.
+                # Cutscene "root motion" (root bone transforms) uses a TRS, not just translate + Z-rotation.
                 rm_translate = to_blender(frame.root_motion.translation)
                 rm_rotate_quat = to_blender(frame.root_motion.rotation)
                 rm_scale = to_blender(frame.root_motion.scale)
@@ -318,13 +297,14 @@ class SoulstructCutsceneAnimation:
             # Final keyframe of this cut holds CONSTANT (no interpolation into the next cut).
             cut_end_keyframe_t.append(global_keyframe_t - bl_frames_per_game_frame)
 
-        bone_basis_samples = (
-            {
+        if bone_basis_sample_arrays:
+            bone_basis_samples = {
                 bone_name: np.concatenate(basis_sample_arrays)
                 for bone_name, basis_sample_arrays in bone_basis_sample_arrays.items()
             }
-            if bone_basis_sample_arrays else {}
-        )
+        else:
+            # No bone transforms to animate.
+            bone_basis_samples = {}
 
         root_motion = np.array(root_motion_rows, dtype=np.float64) if root_motion_rows else np.empty((0, 5))
 
@@ -398,3 +378,64 @@ class SoulstructCutsceneAnimation:
         context.scene.frame_end = int(self.action.frame_range[1])
         if reset_current_frame:
             context.scene.frame_set(context.scene.frame_start)
+
+    # Export Methods
+
+    @staticmethod
+    def export_fov_keyframes(
+        fcurve: bpy.types.FCurve,
+        bl_frames_per_game_frame: float,
+        cut_fov_t_offset: float,
+        cut_start_bl_t: float,
+        cut_end_bl_t: float
+    ) -> list[FoVKeyframe]:
+        """Get SIBCAM-ready FoV frame data from cutscene camera animation in Blender.
+
+        Read back FOV keyframes for a single cut from a Blender `angle` fcurve and
+        reconstruct (t, fov, tan_in, tan_out) tuples in SIBCAM's native units/convention.
+
+        cut_start_bl_t / cut_end_bl_t bound the keyframes belonging to this cut on the
+        Blender timeline (matching how `bl_t` was computed on import).
+        """
+        n = len(fcurve.keyframe_points)
+        co = np.empty(n * 2, dtype=np.float64)
+        hl = np.empty(n * 2, dtype=np.float64)
+        hr = np.empty(n * 2, dtype=np.float64)
+        fcurve.keyframe_points.foreach_get("co", co)
+        fcurve.keyframe_points.foreach_get("handle_left", hl)
+        fcurve.keyframe_points.foreach_get("handle_right", hr)
+
+        co = co.reshape(-1, 2)
+        hl = hl.reshape(-1, 2)
+        hr = hr.reshape(-1, 2)
+
+        sibcam_fov_keyframes = []  # type: list[FoVKeyframe]
+        for i in range(n):
+            bl_t, fov = co[i]
+            if not (cut_start_bl_t <= bl_t <= cut_end_bl_t):
+                continue
+
+            hl_x, hl_y = hl[i]
+            hr_x, hr_y = hr[i]
+
+            # Recover slopes in d(fov)/d(bl_t) from the handle offsets.
+            # Guard against zero-length handles (shouldn't happen with FREE/dt-3 handles,
+            # but a user could have collapsed a handle onto the keyframe itself).
+            dt_left = bl_t - hl_x
+            dt_right = hr_x - bl_t
+            slope_in = (fov - hl_y) / dt_left if dt_left > 1e-9 else 0.0
+            slope_out = (hr_y - fov) / dt_right if dt_right > 1e-9 else 0.0
+
+            # Undo the time rescale applied on import, then undo the incoming-slope sign flip
+            # to match SIBCAM's tan_in/tan_out convention (tan_in == -tan_out).
+            tan_in = -(slope_in * bl_frames_per_game_frame)
+            tan_out = slope_out * bl_frames_per_game_frame
+
+            # Convert bl_t back to the cut-local game frame `t`.
+            t = round(bl_t / bl_frames_per_game_frame) - cut_fov_t_offset
+
+            sibcam_fov_keyframes.append(FoVKeyframe(fov_t=t, fov=fov, tan_in=tan_in, tan_out=tan_out))
+
+        return sibcam_fov_keyframes
+
+    # endregion

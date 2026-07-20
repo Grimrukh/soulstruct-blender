@@ -19,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Significantly improved Elden Ring material shaders.
 - On-screen operator progress indicators (cursor percentage).
 - Import Equipment FLVER option to parent to existing c0000 armature (armor only).
+- `ImportArmorSetFLVERs` operator to import whole armor set ID and parent to c0000.
 
 ### Changed
 - Blender 5.1 is the minimum supported version (with Python 3.13).
@@ -31,6 +32,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Migrated type annotations to `pyrelink`-compatible style; removed `__init__.__all__` boilerplate.
 - Degenerate zero-area FLVER faces are now removed on import.
 - Stop adding extra suffix to secondary FLVERs in BNDs.
+- Dedicated one-click `ImportPlayerFLVER` operator for importing c0000 (no meshes/texture).
 
 ### Fixed
 - Fixed animation export bone change-of-basis (CoB) calculation.

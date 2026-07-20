@@ -298,7 +298,7 @@ class ImportCharacterHKXAnimation(_BaseImportTypedHKXAnimation):
         _, _, model_name, _, _ = get_active_flver_or_part_armature(context)
 
         if model_name == "c0000":
-            self._invoke_c0000(context)
+            return self._invoke_c0000(context)
 
         # No invocation dialogs needed for non-c0000 characters.
         ImportCharacterHKXAnimation.c0000_binder_choices = [("None", "None", "No sub-ANIBND")]

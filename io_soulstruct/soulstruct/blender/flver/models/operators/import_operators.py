@@ -21,15 +21,18 @@ __all__ = [
     "ImportFLVER",
     "ImportMapPieceFLVER",
     "ImportCharacterFLVER",
+    "ImportPlayerFLVER",
     "ImportObjectFLVER",
     "ImportAssetFLVER",
     "ImportEquipmentFLVER",
+    "ImportArmorSetFLVERs",
 ]
 
 import re
 from dataclasses import dataclass
 
 import time
+import typing as tp
 from pathlib import Path
 
 import bpy
@@ -309,6 +312,62 @@ class ImportCharacterFLVER(_BaseFLVERImportOperator):
 
 
 @io_soulstruct_operator
+class ImportPlayerFLVER(LoggingOperator):
+    """Shortcut for opening 'c0000' FLVER."""
+    bl_idname = "import_scene.player_flver"
+    bl_label = "Import Player (c0000)"
+    bl_description = "Import player (c0000) FLVER from selected game 'chr' directory"
+
+    @classmethod
+    def poll(cls, context) -> bool:
+        return cls.settings(context).has_import_dir_path("chr")
+
+    def execute(self, context: bpy.types.Context):
+        """Default import method for FLVERs."""
+
+        settings = self.settings(context)
+
+        try:
+            c0000_binder_path = settings.get_import_file_path("chr/c0000.chrbnd")
+        except FileNotFoundError:
+            return self.error(f"Cannot find c0000 CHRBND in 'chr' import directory.")
+
+        binder = pyre.Binder.from_path(c0000_binder_path)
+        flver_entries = binder.find_entries_by_name_regex(r".*\.flver(\.dcx)?")
+        flver_binder_sources = {}
+        if not flver_entries:
+            raise FLVERImportError(f"Cannot find a FLVER file in binder {c0000_binder_path}.")
+        if len(flver_entries) > 1:
+            self.warning("Found multiple FLVERs inside player (c0000) CHRBND. Unusual, but importing all.")
+        for entry in flver_entries:
+            flver_name = entry.stem
+            flver_binder_sources[flver_name] = (entry, binder)
+
+        collection = find_or_create_collection(context.scene.collection, "Models", "Character Models")
+
+        p = time.perf_counter()
+
+        bl_flvers = BlenderFLVER.new_batch_from_soulstruct_objs(
+            self,
+            context,
+            None,
+            flver_binder_sources,
+            texture_finder_callback=None,
+            flver_model_category="",
+            collection=collection,
+        )
+
+        # Select and frame view on (final) newly imported Mesh.
+        if bl_flvers and bpy.ops.view3d.view_selected.poll():
+            self.set_active_obj(next(iter(bl_flvers.values())).mesh)
+            bpy.ops.view3d.view_selected(use_all_regions=False)
+
+        return {"FINISHED"}
+
+    # Player model has no meshes or textures.
+
+
+@io_soulstruct_operator
 class ImportObjectFLVER(_BaseFLVERImportOperator):
     """Shortcut for browsing for OBJBND Binders in game 'obj' directory."""
     bl_idname = "import_scene.object_flver"
@@ -428,6 +487,256 @@ class ImportEquipmentFLVER(_BaseFLVERImportOperator):
         """Parent equipment model to c0000 if detected."""
         super().post_process_flver(context, settings, bl_flver)
 
+        if not self.use_c0000_armature:
+            return
+
+        if not (new_armature := bl_flver.armature):
+            self.warning("Equipment FLVER has no Armature; cannot parent to c0000. This is highly unusual.")
+            return
+
+        bl_c0000 = find_obj("c0000", ObjectType.MESH, SoulstructType.FLVER, bl_name_func=get_model_name)
+
+        if not bl_c0000:
+            self.warning(f"Could not find c0000 FLVER to parent Equipment {bl_flver.name} to.")
+            return
+        c0000 = BlenderFLVER(bl_c0000)
+        if not c0000.armature:
+            self.warning(
+                f"c0000 FLVER found for parenting, but it has no Armature. Cannot parent Equipment {bl_flver.name}."
+            )
+            return
+
+        # Change parent to c0000 Armature.
+        bl_flver.obj.parent = c0000.armature
+        # Change modifier target to c0000 Armature.
+        bl_flver.obj.modifiers["FLVER Armature"].object = c0000.armature
+
+        # Add bl_flver.obj to all collections of c0000.
+        for coll in c0000.obj.users_collection:
+            coll.objects.link(bl_flver.obj)
+
+        # Delete newly created Armature.
+        bpy.data.objects.remove(new_armature)
+
+
+# noinspection PyUnusedLocal
+def _armor_set_id_choices(self, context):
+    return ImportArmorSetFLVERs.armor_set_id_choices
+
+
+@io_soulstruct_operator
+class ImportArmorSetFLVERs(LoggingOperator):
+    """Import armor FLVER from all `partsbnd` Binders belonging to the same ArmorParam (EquipParamProtector) set.
+
+    Optionally, you may attach these FLVER meshes to an existing `c0000` FLVER Armature instead of the one in the
+    parts FLVER. When using the Export Equipment FLVER operator, only c0000 bones that are used by the equipment meshes
+    will appear in the output.
+
+    Note that you can load c0000 animations onto a standalone Equipment FLVER without needing to attach it to c0000.
+    """
+    bl_idname = "import_scene.armor_set_flvers"
+    bl_label = "Import Armor Set"
+    bl_description = "Import armor set FLVERs from PARTSBNDs in selected game 'parts' directory"
+
+    armor_set_id_choices: tp.ClassVar[list[tuple[str, str, str]]] = []
+
+    prefer_female: bpy.props.BoolProperty(
+        name="Prefer Female Variant",
+        default=True,
+        description="Use female (F) parts if available rather than male (M) parts. Falls back to all (A) either way",
+    )
+    preferred_skin_variant: bpy.props.EnumProperty(
+        name="Preferred Skin Variant",
+        items=[
+            ("Human", "Human", "Human"),
+            ("Hollow", "Hollow", "Hollow (_M)"),
+            ("L", "L", "L (_L)"),
+            ("S", "S", "S (_S)"),
+        ],
+        default="Human",
+        description="Choose PARTSBND suffix (skin variant) to prefer. Falls back to Human if preference absent",
+    )
+    use_c0000_armature: bpy.props.BoolProperty(
+        name="Use c0000 Armature",
+        default=True,
+        description=(
+            "Parent equipment model to armature of c0000 FLVER if detected in scene, instead of a new armature. "
+            "Currently only works for armor equipment, not weapons"
+        ),
+    )
+    armor_set_id: bpy.props.EnumProperty(
+        items=_armor_set_id_choices,
+        name="Armor Set ID",
+        description="Choose an armor set ID to import",
+    )
+
+    # Default `draw()` is fine.
+
+    def invoke(self, context, event):
+        """User chooses an armor set ID.
+
+        Available IDs are ANY armor-type PARTSBND ID found in `parts`.
+
+        TODO: Draw known Armor Set name next to enum option.
+        """
+        settings = self.settings(context)
+        parts_dir_path = settings.get_import_dir_path("parts")
+        if not parts_dir_path or not parts_dir_path.is_dir():
+            raise FileNotFoundError(f"Cannot find `parts` subfolder in import directory.")
+        armor_set_ids = set()
+        for partsbnd_path in parts_dir_path.glob("*.partsbnd*"):
+            if partsbnd_path.suffix not in {".partsbnd", ".dcx"}:
+                continue
+            if partsbnd_path.name[:2] not in {"AM", "BD", "HD", "LG"}:
+                # Ignore WP (weapon), FC (face), HR (hair), etc.
+                continue
+            try:
+                armor_set_id = int(partsbnd_path.name[5:9])  # TT_G_1234
+            except ValueError:
+                self.warning(f"Cannot parse armor set ID from PARTSBND: {partsbnd_path.name}")
+                continue
+            armor_set_ids.add(armor_set_id)
+
+        if not armor_set_ids:
+            return self.error("No armor set IDs found in `parts` import directory.")
+
+        try:
+            armor_sets = getattr(settings.constants, "ARMOR_SETS")
+        except AttributeError:
+            ImportArmorSetFLVERs.armor_set_id_choices = [
+                # No default option.
+                (str(stem), str(stem), str(stem)) for stem in sorted(armor_set_ids)
+            ]
+        else:
+            ImportArmorSetFLVERs.armor_set_id_choices = [
+                # No default option.
+                (str(set_id), str(set_id), f"{set_id} <{armor_sets.get(set_id, 'Unknown')}>")
+                for set_id in sorted(armor_set_ids)
+            ]
+
+        # Now prompt user to select an armor set ID.
+        return context.window_manager.invoke_props_dialog(self)
+
+    def execute(self, context):
+
+        p = time.perf_counter()
+        chosen_armor_set_id = int(self.armor_set_id)
+
+        settings = self.settings(context)
+        parts_dir_path = settings.get_import_dir_path("parts")
+        if not parts_dir_path or not parts_dir_path.is_dir():
+            raise FileNotFoundError(f"Cannot find `parts` subfolder in import directory.")
+
+        flver_binder_sources = {}  # type: dict[str, tuple[pyre.BinderEntry, pyre.Binder]]
+
+        # Map armor set type combinations to dicts of PARTSBND options mapped by (gender, suffix).
+        armor_set_options = {}  # type: dict[str, dict[str, dict[str, Path]]]
+
+        for partsbnd_path in parts_dir_path.glob("*.partsbnd*"):
+            if partsbnd_path.suffix not in {".partsbnd", ".dcx"}:
+                continue
+            stem = partsbnd_path.name.split(".")[0]
+            partsbnd_type = stem[:2]
+            if partsbnd_type not in {"AM", "BD", "HD", "LG"}:
+                # Ignore WP (weapon), FC (face), HR (hair), etc.
+                continue
+            try:
+                armor_set_id = int(stem[5:9])  # TT_G_1234
+            except ValueError:
+                self.warning(f"Cannot parse armor set ID from PARTSBND: {stem}")
+                continue
+            if armor_set_id != chosen_armor_set_id:
+                continue
+            # Found an option.
+            gender = stem[3:4]
+            suffix = stem[9:]
+            armor_set_options.setdefault(partsbnd_type, {}).setdefault(gender, {})[suffix] = partsbnd_path
+
+        # We import one option for each type, based on preferences.
+        import_partsbnd_paths = []
+        for armor_type, type_options in armor_set_options.items():
+            if self.prefer_female and "F" in type_options:
+                gender_options = type_options["F"]
+                gender = "F"
+            elif not self.prefer_female and "M" in type_options:
+                gender_options = type_options["M"]
+                gender = "M"
+            elif "A" in type_options:
+                gender_options = type_options["A"]
+                gender = "A"
+            else:
+                self.warning(f"Cannot find gender type A, F, or M for armor type {armor_type}.")
+                continue
+            for suffix, path in gender_options.items():
+                if self.preferred_skin_variant == "Human" and not suffix:
+                    import_partsbnd_paths.append(path)
+                    break
+                elif self.preferred_skin_variant == "Hollow" and "_M" in suffix:
+                    import_partsbnd_paths.append(path)
+                    break
+                elif self.preferred_skin_variant == "L" and "_L" in suffix:
+                    import_partsbnd_paths.append(path)
+                    break
+                elif self.preferred_skin_variant == "S" and "_S" in suffix:
+                    import_partsbnd_paths.append(path)
+                    break
+            else:
+                # No preferred skin variant found; just take the Human option if available.
+                if "" in gender_options:
+                    import_partsbnd_paths.append(gender_options[""])
+                else:
+                    self.warning(f"Cannot find preferred skin variant '{self.preferred_skin_variant}' or default Human "
+                                 f"variant for armor type {armor_type} (gender {gender}).")
+
+        for source_path in import_partsbnd_paths:
+
+            # NOTE: Will always import all FLVERs found in Binder.
+            binder = pyre.Binder.from_path(source_path)
+            flver_entries = binder.find_entries_by_name_regex(r".*\.flver(\.dcx)?")
+            if not flver_entries:
+                raise FLVERImportError(f"Cannot find a FLVER file in binder {source_path}.")
+
+            for entry in flver_entries:
+                flver_name = entry.stem
+                flver_binder_sources[flver_name] = (entry, binder)
+
+        self.info(
+            f"Extracted {len(flver_binder_sources)} FLVERs from PARTSBND Binders in {time.perf_counter() - p:.3f} s."
+        )
+
+        collection = find_or_create_collection(context.scene.collection, "Models", "Equipment Models")
+
+        p = time.perf_counter()
+
+        bl_flvers = BlenderFLVER.new_batch_from_soulstruct_objs(
+            self,
+            context,
+            None,
+            flver_binder_sources,
+            texture_finder_callback=None,
+            flver_model_category="",
+            collection=collection,
+        )
+
+        for bl_flver in bl_flvers.values():
+            self.post_process_flver(context, settings, bl_flver)
+
+        self.info(f"Loaded {len(bl_flvers)} FLVERs into Blender in {time.perf_counter() - p:.3f} s.")
+
+        # Select and frame view on (final) newly imported Mesh.
+        if bl_flvers and bpy.ops.view3d.view_selected.poll():
+            self.set_active_obj(next(iter(bl_flvers.values())).mesh)
+            bpy.ops.view3d.view_selected(use_all_regions=False)
+
+        return {"FINISHED"}
+
+    def post_process_flver(
+        self,
+        context: bpy.types.Context,
+        settings: SoulstructSettings,
+        bl_flver: BlenderFLVER,
+    ) -> None:
+        """Parent equipment model to c0000 if detected."""
         if not self.use_c0000_armature:
             return
 

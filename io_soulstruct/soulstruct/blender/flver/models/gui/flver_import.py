@@ -30,11 +30,13 @@ class FLVERImportPanel(SoulstructPanel):
         layout.label(text="Import from Game/Project:")
         layout.operator(ImportMapPieceFLVER.bl_idname)
         layout.operator(ImportCharacterFLVER.bl_idname)
+        layout.operator(ImportPlayerFLVER.bl_idname)
         if settings.is_game("ELDEN_RING"):
             layout.operator(ImportAssetFLVER.bl_idname)
         else:
             layout.operator(ImportObjectFLVER.bl_idname)
         layout.operator(ImportEquipmentFLVER.bl_idname)
+        layout.operator(ImportArmorSetFLVERs.bl_idname)
 
         layout.label(text="Generic Import:")
         layout.operator(ImportFLVER.bl_idname, text="Import Any FLVER")

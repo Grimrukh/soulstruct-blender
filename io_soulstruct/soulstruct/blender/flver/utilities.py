@@ -70,9 +70,8 @@ def game_bone_transform_to_bl_bone_matrix(
     bl_translate = to_blender(game_translate)
     bl_rotmat = to_blender(game_rotmat)
     bl_scale = to_blender(game_scale)
-    bl_transform = Matrix.Translation(bl_translate) @ bl_rotmat.to_4x4()
-    for i in range(3):
-        bl_transform[i][i] *= bl_scale[i]
+
+    bl_transform = Matrix.LocRotScale(bl_translate, bl_rotmat, bl_scale)
     # Apply CoB matrix to swap X and Y and negate Z.
     return bl_transform @ BONE_CoB_4x4
 

@@ -402,8 +402,7 @@ class SoulstructAnimation:
             t, location XYZ, rotation quaternion WXYZ, scale XYZ
         """
 
-        # Convert armature-space frame data to Blender `(location, rotation_quaternion, scale)` tuples.
-        # Note that we decompose the basis matrices so that quaternion discontinuities are handled properly.
+        # We negate double-cover quaternions to improve interpolation between adjacent frames.
         last_frame_rotations = {}  # type: dict[str, BLQuaternion]
         frame_count = len(arma_frames)
 
