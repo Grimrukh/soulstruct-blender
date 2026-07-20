@@ -32,6 +32,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Migrated type annotations to `pyrelink`-compatible style; removed `__init__.__all__` boilerplate.
 - Degenerate zero-area FLVER faces are now removed on import.
 - Stop adding extra suffix to secondary FLVERs in BNDs.
+- `ExportMapNVM` operator fails if ANY NVM fails to export.
 - Dedicated one-click `ImportPlayerFLVER` operator for importing c0000 (no meshes/texture).
 
 ### Fixed
@@ -44,6 +45,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Animation quaternions coerced to match FromSoft quaternions more.
 - Fixed import of large collisions (16-bit → 32-bit combined face indices).
 - Fixed cutscene import with bone change-of-basis (compatible with/without CoB).
+- Fixed MSB Part bit-group export bug.
 
 ### Removed
 - Support for Blender < 5.1 (Python < 3.13) removed.

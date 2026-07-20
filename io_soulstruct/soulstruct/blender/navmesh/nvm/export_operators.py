@@ -283,8 +283,7 @@ class ExportMapNVM(LoggingOperator):
                 nvm = bl_nvm.to_soulstruct_obj(self, context)
             except Exception as ex:
                 traceback.print_exc()
-                self.error(f"Cannot get exported NVM. Error: {ex}")
-                continue
+                return self.error(f"Cannot get exported NVM {bl_nvm.name}. Error: {ex}")
             else:
                 nvm.dcx_type = DCXType.Null  # no DCX compression inside NVMBND
 
