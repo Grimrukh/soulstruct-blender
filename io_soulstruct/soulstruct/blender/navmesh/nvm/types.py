@@ -165,8 +165,8 @@ class BlenderNVM(BaseBlenderSoulstructObject[NVM, NVMProps]):
             if not is_degenerate and connected_v1 == -1 and connected_v2 == -1 and connected_v3 == -1:
                 flag_str = " | ".join([n.name for n in NavmeshFlag if n.value & nvm_flags[i]]) or "Default"
                 operator.warning(
-                    f"Non-degenerate NVM face {face} in '{self.name}' has no connected faces (suspicious). "
-                    f"Flags: {flag_str}"
+                    f"Non-degenerate NVM face {face} in '{self.name}' has no connected faces (unusual but "
+                    f"does occur in a few vanilla files). Flags: {flag_str}"
                 )
 
         nvm_triangles = [
