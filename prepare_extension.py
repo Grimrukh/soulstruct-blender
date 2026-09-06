@@ -137,6 +137,9 @@ def blender_extension_build():
     current_dir = Path.cwd()
     os.chdir(_IO_SOULSTRUCT_SOURCE_DIR)
 
+    # Make Releases directory if it doesn't exist.
+    _RELEASES_DIR.mkdir(parents=True, exist_ok=True)
+
     blender_cmd = [
         "blender", "--command", "extension", "build", "--output-dir", str(_RELEASES_DIR),
     ]
@@ -161,7 +164,7 @@ PARSER.add_argument(
     help="Whether to update the wheels directory or not (default: False)."
 )
 PARSER.add_argument(
-    "--build-extension", type=bool, default=True,
+    "--build-extension", action="store_true", default=True,
     help="Whether to build the Blender extension ZIP package or not (default: True)."
 )
 PARSER.add_argument(
