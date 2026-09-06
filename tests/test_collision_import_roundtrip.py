@@ -75,7 +75,7 @@ COLLISION_TEST_CASES: list[CollisionImportCase] = [
         tags=["map_collision"],
     ),
     CollisionImportCase(
-        name="PTDE / Map m07_00_00_00 / h0000b0",  # Northern Limits (unused)
+        name="DeS / Map m07_00_00_00 / h0000b0",  # Northern Limits (unused)
         game_enum="DEMONS_SOULS",
         directory=Config.DES_PATH / "map/m07_00_00_00",
         filename="h0000b0.hkx",

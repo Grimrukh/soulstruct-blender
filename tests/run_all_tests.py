@@ -10,6 +10,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from rich import print
+
 BLENDER_EXE = sys.argv[0]  # Blender passes itself as sys.argv[0] when --background is used
 TESTS_DIR = Path(__file__).parent
 
@@ -37,10 +39,10 @@ for script in TEST_SCRIPTS:
         capture_output=False,
     )
     if proc.returncode != 0:
-        print(f"[SUITE FAIL] {script} exited with code {proc.returncode}")
+        print(f"[red]\\[SUITE FAIL] {script} exited with code {proc.returncode}[/red]")
         overall_pass = False
     else:
-        print(f"[SUITE PASS] {script}")
+        print(f"[green]\\[SUITE PASS] {script}[/green]")
 
 print(f"\n{'='*60}")
 if overall_pass:

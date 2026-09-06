@@ -98,21 +98,21 @@ HKX_ANIMATION_TEST_CASES: list[HKXAnimationImportCase] = [
     # Demon's Souls
     # ------------------------------------------------------------------
     HKXAnimationImportCase(
-        name="DeS / chr / c1200 (Large Rat)",
-        game_enum="DARK_SOULS_PTDE",
-        flver_dir=Config.PTDE_PATH / "chr",
-        flver_filename="c1200.chrbnd",
-        directory=Config.PTDE_PATH / "chr",
-        filename="c1200.anibnd",
+        name="DeS / chr / c2010 (Boletaria Soldier)",
+        game_enum="DEMONS_SOULS",
+        flver_dir=Config.DES_PATH / "chr",
+        flver_filename="c2010.chrbnd",
+        directory=Config.DES_PATH / "chr",
+        filename="c2010.anibnd",
         anim_entry_name="", # empty = use first available animation
         tags=["animation", "character"],
     ),
     HKXAnimationImportCase(
-        name="PTDE / chr / c0000 (Player)",
-        game_enum="DARK_SOULS_PTDE",
-        flver_dir=Config.PTDE_PATH / "chr",
+        name="DeS / chr / c0000 (Player)",
+        game_enum="DEMONS_SOULS",
+        flver_dir=Config.DES_PATH / "chr",
         flver_filename="c0000.chrbnd",
-        directory=Config.PTDE_PATH / "chr",
+        directory=Config.DES_PATH / "chr",
         filename="c0000_a6x.anibnd",  # random subset of player animations (6000-6999)
         skeleton_anibnd_filename="c0000.anibnd",
         anim_entry_name="",
