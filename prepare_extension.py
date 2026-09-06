@@ -39,6 +39,12 @@ def update_wheels(
     wheels_dir = _IO_SOULSTRUCT_SOURCE_DIR / "wheels"
     temp_wheels_dir = _IO_SOULSTRUCT_SOURCE_DIR / "temp_wheels"
 
+    # The 'requirements.txt' file contains pinned requirements for:
+    #   - soulstruct
+    #   - soulstruct-havok
+    #   - pyrelink
+    # Other requirements (numpy, rich, etc.) are transitive through these pinned versions.
+    # The PyPI package names for the above will be replaced by local folders according to args.
     requirements = read_requirements()
 
     pip_wheel_cmd = [sys.executable, "-m", "pip", "wheel"]
@@ -117,7 +123,6 @@ def update_blender_manifest_wheels():
     new_manifest = manifest_lines[:wheels_start_line_index + 1] + wheel_lines + manifest_lines[wheels_end_line_index:]
 
     _LOGGER.info("Manifest wheels: " + "".join(wheel_lines))
-
 
     # Write new manifest.
     manifest_path.write_text("\n".join(new_manifest))
