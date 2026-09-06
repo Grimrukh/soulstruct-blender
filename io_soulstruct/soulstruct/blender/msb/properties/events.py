@@ -284,17 +284,17 @@ class MSBWindEventProps(SoulstructPropertyGroup):
     GAME_PROP_NAMES = {
         DEMONS_SOULS: (
             "wind_vector_min",
-            "unk_x0c",
+            "unk_x0c_x10",
             "wind_vector_max",
-            "unk_x1c",
+            "unk_x1c_x20",
             "wind_swing_cycles",
             "wind_swing_powers",
         ),
         DARK_SOULS_PTDE: (
             "wind_vector_min",
-            "unk_x0c",
+            "unk_x0c_x10",
             "wind_vector_max",
-            "unk_x1c",
+            "unk_x1c_x20",
             "wind_swing_cycles",
             "wind_swing_powers",
         ),
@@ -305,8 +305,8 @@ class MSBWindEventProps(SoulstructPropertyGroup):
         description="Wind vector minimum",
         default=(0.0, 0.0, 0.0),
     )
-    unk_x0c: bpy.props.FloatProperty(
-        name="Unk x0c",
+    unk_x0c_x10: bpy.props.FloatProperty(
+        name="Unk [x0c-x10]",
         description="Unknown scalar related to wind vector minimum",
         default=0.0,
     )
@@ -315,8 +315,8 @@ class MSBWindEventProps(SoulstructPropertyGroup):
         description="Wind vector maximum",
         default=(0.0, 0.0, 0.0),
     )
-    unk_x1c: bpy.props.FloatProperty(
-        name="Unk x1c",
+    unk_x1c_x20: bpy.props.FloatProperty(
+        name="Unk [x1c-x20]",
         description="Unknown scalar related to wind vector maximum",
         default=0.0,
     )

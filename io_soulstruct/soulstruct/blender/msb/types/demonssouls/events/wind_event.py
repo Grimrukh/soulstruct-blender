@@ -25,16 +25,16 @@ class BlenderMSBWindEvent(BaseBlenderMSBEvent_DES[MSBWindEvent, MSBWindEventProp
 
     SUBTYPE_FIELDS = (
         CustomFieldAdapter("wind_vector_min", read_func=Vector, write_func=Vector3),
-        FieldAdapter("unk_x0c"),
+        FieldAdapter("unk_x0c_x10"),
         CustomFieldAdapter("wind_vector_max", read_func=Vector, write_func=Vector3),
-        FieldAdapter("unk_x1c"),
+        FieldAdapter("unk_x1c_x20"),
         CustomFieldAdapter("wind_swing_cycles", read_func=Vector, write_func=lambda x: list(x)),
         CustomFieldAdapter("wind_swing_powers", read_func=Vector, write_func=lambda x: list(x)),
     )
 
     wind_vector_min: Vector
-    unk_x0c: float
+    unk_x0c_x10: float
     wind_vector_max: Vector
-    unk_x1c: float
+    unk_x1c_x20: float
     wind_swing_cycles: Vector
     wind_swing_powers: Vector
