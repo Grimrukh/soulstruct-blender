@@ -5,6 +5,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+---
+
+## [3.0.0] - 2026-09-06
+
 ### Added
 - `blender_manifest.toml` added — add-on is now a proper Blender Extension package.
 - New custom icons added to Soulstruct Panels.
@@ -51,8 +55,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Removed
 - Support for Blender < 5.1 (Python < 3.13) removed.
-
----
 
 ## [2.6.0] - 2026-03-22
 
