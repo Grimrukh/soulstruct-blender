@@ -7,7 +7,7 @@ __all__ = [
 import bpy
 
 from ...base.register import io_soulstruct_panel
-from ...bpy_base.panel import SoulstructPanel
+from ...bpy_base.panel import SoulstructPanel, smart_prop
 from .types import DDSTexture
 
 
@@ -38,4 +38,4 @@ class DDSTexturePanel(SoulstructPanel):
         # Draw DDS Texture properties.
         dds_texture = DDSTexture(image)
         for prop in dds_texture.texture_properties.__annotations__:
-            layout.prop(dds_texture.texture_properties, prop)
+            smart_prop(layout, dds_texture.texture_properties, prop)

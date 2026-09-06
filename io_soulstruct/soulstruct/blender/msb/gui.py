@@ -41,7 +41,7 @@ from soulstruct.base.maps.msb.region_shapes import RegionShapeType
 
 from ..base.register import io_soulstruct_panel
 from ..types import SoulstructType
-from ..bpy_base import SoulstructPanel, SoulstructPropertyGroup
+from ..bpy_base import SoulstructPanel, SoulstructPropertyGroup, smart_prop
 from .import_operators import *
 from .export_operators import *
 from .misc_operators import *
@@ -89,7 +89,7 @@ class MSBExportPanel(SoulstructPanel):
 
         settings = context.scene.soulstruct_settings
 
-        layout.prop(settings, "auto_detect_export_map")
+        smart_prop(layout, settings, "auto_detect_export_map")
         if settings.auto_detect_export_map:
             self.draw_detected_map(context, layout, use_latest_version=True, detect_from_collection=True)
         else:
@@ -129,16 +129,16 @@ class MSBToolsPanel(SoulstructPanel):
         split = event_box.row().split(factor=0.25)
         split.column().label(text="Color:")
         split.column().prop(context.scene.msb_tool_settings, "event_color", text="")
-        event_box.prop(context.scene.msb_tool_settings, "event_color_type", text="Type")
-        event_box.prop(context.scene.msb_tool_settings, "event_color_active_collection_only")
+        smart_prop(event_box, context.scene.msb_tool_settings, "event_color_type", text="Type")
+        smart_prop(event_box, context.scene.msb_tool_settings, "event_color_active_collection_only")
         event_box.operator(ColorMSBEvents.bl_idname, icon='COLOR')
 
         header, panel = layout.panel("Region Draw Settings", default_closed=True)
         header.label(text="Region Draw Settings")
         if panel:
-            layout.prop(context.scene.region_draw_settings, "draw_point_axes")
-            panel.prop(context.scene.region_draw_settings, "point_radius")
-            panel.prop(context.scene.region_draw_settings, "line_width")
+            smart_prop(layout, context.scene.region_draw_settings, "draw_point_axes")
+            smart_prop(panel, context.scene.region_draw_settings, "point_radius")
+            smart_prop(panel, context.scene.region_draw_settings, "line_width")
 
 
 def get_active_part_obj(context) -> bpy.types.Object | None:
@@ -216,7 +216,7 @@ class MSBPartPanel(SoulstructPanel):
             ):
                 row = box.row()
                 if prop in row:
-                    row.prop(obj, f"[\"{prop}\"]", text=label)
+                    smart_prop(row, obj, f"[\"{prop}\"]", text=label)
                     row.enabled = False
                 # try:
                 #     vector = obj[prop]  # or Euler, technically
@@ -228,7 +228,7 @@ class MSBPartPanel(SoulstructPanel):
             box.operator(UpdateActiveMSBPartInitialTransform.bl_idname, text="Update Stored Transform")
 
         for pre_prop in ("entry_subtype", "model", "entity_id"):
-            layout.prop(props, pre_prop)
+            smart_prop(layout, props, pre_prop)
             handled.add(pre_prop)
 
         handled |= bit_set_prop(layout, props, "draw_groups_", "Draw Groups")
@@ -238,21 +238,21 @@ class MSBPartPanel(SoulstructPanel):
         header.label(text="DrawParam IDs")
         if panel:
             for prop_name in obj.MSB_PART.DRAW_PARAM_PROP_NAMES:
-                panel.prop(props, prop_name)
+                smart_prop(panel, props, prop_name)
         handled |= set(obj.MSB_PART.DRAW_PARAM_PROP_NAMES)
 
         header, panel = layout.panel("Other Draw Settings", default_closed=True)
         header.label(text="Other Draw Settings")
         if panel:
             for prop_name in obj.MSB_PART.OTHER_DRAW_PROP_NAMES:
-                panel.prop(props, prop_name)
+                smart_prop(panel, props, prop_name)
         handled |= set(obj.MSB_PART.OTHER_DRAW_PROP_NAMES)
 
         # TODO: Option to hide Part supertype properties that are known to be unused for this subtype.
         for prop in prop_names:
             if prop in handled:
                 continue
-            layout.prop(props, prop)
+            smart_prop(layout, props, prop)
 
 
 class _MSBPartSubtypePanelMixin:
@@ -284,7 +284,7 @@ class _MSBPartSubtypePanelMixin:
             return
 
         for prop in prop_names:
-            layout.prop(props, prop)
+            smart_prop(layout, props, prop)
 
 
 @io_soulstruct_panel
@@ -348,7 +348,7 @@ class MSBCharacterPartPanel(SoulstructPanel, _MSBPartSubtypePanelMixin):
                 continue
             prop_names.remove(prop_name)
             if panel:
-                panel.prop(props, prop_name)
+                smart_prop(panel, props, prop_name)
 
         header, panel = layout.panel("Patrol Settings", default_closed=True)
         header.label(text="Patrol Settings")
@@ -357,7 +357,7 @@ class MSBCharacterPartPanel(SoulstructPanel, _MSBPartSubtypePanelMixin):
                 continue
             prop_names.remove(prop_name)
             if panel:
-                panel.prop(props, prop_name)
+                smart_prop(panel, props, prop_name)
 
         header, panel = layout.panel("Advanced Settings", default_closed=True)
         header.label(text="Advanced Settings")
@@ -366,14 +366,14 @@ class MSBCharacterPartPanel(SoulstructPanel, _MSBPartSubtypePanelMixin):
                 continue
             prop_names.remove(prop_name)
             if panel:
-                panel.prop(props, prop_name)
+                smart_prop(panel, props, prop_name)
 
         # Leftover:
         header, panel = layout.panel("Other Settings", default_closed=True)
         header.label(text="Other Settings")
         if panel:
             for prop in prop_names:
-                panel.prop(props, prop)
+                smart_prop(panel, props, prop)
 
 
 @io_soulstruct_panel
@@ -418,7 +418,7 @@ class MSBCollisionPartPanel(SoulstructPanel, _MSBPartSubtypePanelMixin):
         for prop in prop_names:
             if prop in handled:
                 continue
-            layout.prop(props, prop)
+            smart_prop(layout, props, prop)
 
 
 @io_soulstruct_panel
@@ -464,7 +464,7 @@ class MSBNavmeshPartPanel(SoulstructPanel, _MSBPartSubtypePanelMixin):
         for prop in prop_names:
             if prop in handled:
                 continue
-            layout.prop(props, prop)
+            smart_prop(layout, props, prop)
 
 
 @io_soulstruct_panel
@@ -505,29 +505,29 @@ class MSBRegionPanel(SoulstructPanel):
 
         props = obj.MSB_REGION
 
-        layout.prop(props, "entry_subtype")
-        layout.prop(props, "entity_id")
+        smart_prop(layout, props, "entry_subtype")
+        smart_prop(layout, props, "entity_id")
 
         header, panel = layout.panel("Shape Settings", default_closed=False)
         header.label(text="Shape Settings")
         if panel:
-            panel.prop(props, "shape_type")
+            smart_prop(panel, props, "shape_type")
             if props.shape_type_enum == RegionShapeType.Point:
                 panel.label(text="No shape data for Point.")
             elif props.shape_type_enum == RegionShapeType.Circle:
-                panel.prop(props, "shape_x", text="Radius")
+                smart_prop(panel, props, "shape_x", text="Radius")
             elif props.shape_type_enum == RegionShapeType.Sphere:
-                panel.prop(props, "shape_x", text="Radius")
+                smart_prop(panel, props, "shape_x", text="Radius")
             elif props.shape_type_enum == RegionShapeType.Cylinder:
-                panel.prop(props, "shape_x", text="Radius")
-                panel.prop(props, "shape_z", text="Height")
+                smart_prop(panel, props, "shape_x", text="Radius")
+                smart_prop(panel, props, "shape_z", text="Height")
             elif props.shape_type_enum == RegionShapeType.Rect:
-                panel.prop(props, "shape_x", text="Width")
-                panel.prop(props, "shape_y", text="Depth")
+                smart_prop(panel, props, "shape_x", text="Width")
+                smart_prop(panel, props, "shape_y", text="Depth")
             elif props.shape_type_enum == RegionShapeType.Box:
-                panel.prop(props, "shape_x", text="Width")
-                panel.prop(props, "shape_y", text="Depth")
-                panel.prop(props, "shape_z", text="Height")
+                smart_prop(panel, props, "shape_x", text="Width")
+                smart_prop(panel, props, "shape_y", text="Depth")
+                smart_prop(panel, props, "shape_z", text="Height")
             elif props.shape_type_enum == RegionShapeType.Composite:
                 panel.label(text="TODO: Cannot yet modify Composite shape.")
 
@@ -561,14 +561,14 @@ class MSBEventPanel(SoulstructPanel):
         handled = set()
 
         for pre_prop in ("entry_subtype", "entity_id"):
-            layout.prop(props, pre_prop)
+            smart_prop(layout, props, pre_prop)
             handled.add(pre_prop)
 
         # TODO: Option to hide Event supertype properties that are known to be unused for this subtype.
         for prop in prop_names:
             if prop in handled:
                 continue
-            layout.prop(props, prop)
+            smart_prop(layout, props, prop)
 
 
 class _MSBEventSubtypePanelMixin:
@@ -597,7 +597,7 @@ class _MSBEventSubtypePanelMixin:
         props = getattr(obj, self.EVENT_SUBTYPE.value)  # type: SoulstructPropertyGroup
         prop_names = props.get_game_prop_names(context)
         for prop in prop_names:
-            layout.prop(props, prop)
+            smart_prop(layout, props, prop)
 
 
 @io_soulstruct_panel

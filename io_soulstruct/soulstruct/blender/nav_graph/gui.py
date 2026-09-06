@@ -16,7 +16,7 @@ import typing as tp
 import bpy
 
 from ..base.register import io_soulstruct_panel
-from ..bpy_base.panel import SoulstructPanel
+from ..bpy_base.panel import SoulstructPanel, smart_prop
 from ..types import SoulstructType
 from .import_operators import *
 from .export_operators import *
@@ -42,7 +42,7 @@ class MCGPropsPanel(SoulstructPanel):
         bl_node = context.active_object
         props = bl_node.MCG
         for prop in props.__annotations__:
-            self.layout.prop(props, prop)
+            smart_prop(self.layout, props, prop)
 
 
 @io_soulstruct_panel
@@ -67,11 +67,11 @@ class NavTriangleUIList(bpy.types.UIList):
         if self.layout_type in {'DEFAULT', 'COMPACT'}:
             row = layout.row()
             row.label(text=f"Triangle {index}:")
-            row.prop(item, self.PROP_NAME, text="", emboss=False)
+            smart_prop(row, item, self.PROP_NAME, text="", emboss=False)
         elif self.layout_type == 'GRID':
             layout.alignment = 'CENTER'
             layout.label(text=f"Triangle {index}:")
-            layout.prop(item, self.PROP_NAME, text="", emboss=False)
+            smart_prop(layout, item, self.PROP_NAME, text="", emboss=False)
 
 
 @io_soulstruct_panel
@@ -94,9 +94,9 @@ class MCGNodePropsPanel(SoulstructPanel):
         bl_node = context.active_object
         props = bl_node.MCG_NODE
 
-        layout.prop(props, "unknown_offset")
-        layout.prop(props, "navmesh_a")
-        layout.prop(props, "navmesh_b")
+        smart_prop(layout, props, "unknown_offset")
+        smart_prop(layout, props, "navmesh_a")
+        smart_prop(layout, props, "navmesh_b")
 
         layout.label(text="Navmesh A Triangles:")
         row = layout.row()
@@ -146,7 +146,7 @@ class MCGEdgePropsPanel(SoulstructPanel):
         bl_edge = context.active_object
         props = bl_edge.MCG_EDGE
         for prop in props.__annotations__:
-            self.layout.prop(props, prop)
+            smart_prop(self.layout, props, prop)
 
 
 @io_soulstruct_panel
@@ -183,7 +183,7 @@ class NavGraphImportExportPanel(SoulstructPanel):
         header, panel = layout.panel("Export", default_closed=False)
         header.label(text="Export")
         if panel:
-            panel.prop(settings, "auto_detect_export_map")
+            smart_prop(panel, settings, "auto_detect_export_map")
             if settings.auto_detect_export_map:
                 self.draw_detected_map(context, layout, use_latest_version=True)
             else:
@@ -207,8 +207,8 @@ class NavGraphDrawPanel(SoulstructPanel):
         mcg_draw_settings = context.scene.mcg_draw_settings
 
         layout.label(text="MCG Parent Object:")
-        layout.prop(mcg_draw_settings, "mcg_parent", text="")
-        layout.prop(mcg_draw_settings, "draw_graph")
+        smart_prop(layout, mcg_draw_settings, "mcg_parent", text="")
+        smart_prop(layout, mcg_draw_settings, "draw_graph")
         drawn = {
             "mcg_parent",
             "draw_graph",
@@ -223,7 +223,7 @@ class NavGraphDrawPanel(SoulstructPanel):
             for prop_name in mcg_draw_settings.get_all_prop_names():
                 if prop_name in drawn:
                     continue
-                layout.prop(mcg_draw_settings, prop_name)
+                smart_prop(layout, mcg_draw_settings, prop_name)
 
         layout.label(text="Edge Cost Label Colors:")
         row = layout.row()
@@ -234,7 +234,7 @@ class NavGraphDrawPanel(SoulstructPanel):
         ]:
             column = row.column()
             column.label(text=label)
-            column.prop(mcg_draw_settings, prop_name, text="")
+            smart_prop(column, mcg_draw_settings, prop_name, text="")
 
 
 @io_soulstruct_panel
@@ -272,13 +272,13 @@ class MCGGeneratorPanel(SoulstructPanel):
         header, panel = layout.panel("Settings", default_closed=False)
         header.label(text="Settings")
         nav_graph_compute_settings = context.scene.nav_graph_compute_settings
-        layout.prop(nav_graph_compute_settings, "select_path")
-        layout.prop(nav_graph_compute_settings, "wall_multiplier")
-        layout.prop(nav_graph_compute_settings, "obstacle_multiplier")
-        layout.prop(nav_graph_compute_settings, "require_clean_mesh")
+        smart_prop(layout, nav_graph_compute_settings, "select_path")
+        smart_prop(layout, nav_graph_compute_settings, "wall_multiplier")
+        smart_prop(layout, nav_graph_compute_settings, "obstacle_multiplier")
+        smart_prop(layout, nav_graph_compute_settings, "require_clean_mesh")
         layout.operator(RecomputeEdgeCost.bl_idname)
         layout.operator(FindCheapestPath.bl_idname)
 
         layout.label(text="Complete MCG Generation:")
-        layout.prop(nav_graph_compute_settings, "connected_exit_vertex_distance")
+        smart_prop(layout, nav_graph_compute_settings, "connected_exit_vertex_distance")
         layout.operator(AutoCreateMCG.bl_idname)

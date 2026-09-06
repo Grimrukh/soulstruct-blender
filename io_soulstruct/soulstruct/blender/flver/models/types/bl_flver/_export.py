@@ -278,7 +278,7 @@ def _create_flver_meshes(
     # Note that the number of mesh kwargs given to the MergedMesh for splitting matches the number of Blender materials.
     # The split function will create additional meshes as needed (for bone limits, etc.) and duplicate the kwargs.
     flver_props = command.bl_flver.type_properties
-    flver_mesh_kwargs = []
+    split_mesh_def_kwargs = []
     if len(flver_props.submesh_props) > 0:
         if len(flver_props.submesh_props) != len(bl_materials):
             raise FLVERExportError(
@@ -287,24 +287,24 @@ def _create_flver_meshes(
                 f"submesh properties for the FLVER."
             )
         for i, s in enumerate(flver_props.submesh_props):
-            flver_mesh_kwargs.append({
-                "is_dynamic": s.is_dynamic,
-                "default_bone_index": s.default_bone_index,
-                "face_set_count": s.face_set_count if command.export_settings.create_lod_face_sets else 1,
-                "use_backface_culling": s.resolve_use_backface_culling(bl_materials[i].material.use_backface_culling),
-                "f0_unk_x46": 0,  # TODO: not sure what this is yet and haven't seen non-zero
-                "uses_bounding_boxes": True,  # enabled even for FLVER0 versions
-            })
+            split_mesh_def_kwargs.append(dict(
+                is_dynamic=s.is_dynamic,
+                default_bone_index=s.default_bone_index,
+                face_set_count=s.face_set_count if command.export_settings.create_lod_face_sets else 1,
+                use_backface_culling=s.resolve_use_backface_culling(bl_materials[i].material.use_backface_culling),
+                uses_bounding_boxes=True,  # enabled even for FLVER0 versions
+                f0_unk_x46=0,  # TODO: not sure what this is yet and haven't seen non-zero
+            ))
     else:
         # Same kwargs for all FLVER meshes.
-        flver_mesh_kwargs = [{
-            "is_dynamic": flver_props.global_is_dynamic,
-            "default_bone_index": flver_props.global_default_bone_index,
-            "face_set_count": flver_props.global_face_set_count if command.export_settings.create_lod_face_sets else 1,
-            "use_backface_culling": bl_materials[i].material.use_backface_culling,  # always use material
-            "f0_unk_x46": 0,
-            "uses_bounding_boxes": True,
-        } for i in range(len(bl_materials))]
+        split_mesh_def_kwargs = [dict(
+            is_dynamic=flver_props.global_is_dynamic,
+            default_bone_index=flver_props.global_default_bone_index,
+            face_set_count=flver_props.global_face_set_count if command.export_settings.create_lod_face_sets else 1,
+            use_backface_culling=bl_materials[i].material.use_backface_culling,  # always use material
+            uses_bounding_boxes=True,
+            f0_unk_x46=0,  # TODO: not sure what this is yet and haven't seen non-zero
+        ) for i in range(len(bl_materials))]
 
     if command.settings.is_game(DEMONS_SOULS):
         # Use absolute texture path prefix, featuring model stem and other subdirectories.
@@ -314,15 +314,17 @@ def _create_flver_meshes(
         # Paths in later games are just naked file names.
         get_texture_path_prefix = None
 
-    for matdef, bl_material, mesh_kwargs in zip(matdefs, bl_materials, flver_mesh_kwargs, strict=True):
+    for matdef, bl_material, split_mesh_def_kw in zip(
+        matdefs, bl_materials, split_mesh_def_kwargs, strict=True
+    ):
         bl_material: BlenderFLVERMaterial
         split_mesh_def = bl_material.to_split_mesh_def(
             command.operator,
             command.context,
-            matdef,
-            mesh_kwargs=mesh_kwargs,
+            matdef=matdef,
             texture_collection=command.texture_collection,
             get_texture_path_prefix=get_texture_path_prefix,
+            **split_mesh_def_kw,  # passthrough
         )
         split_mesh_defs.append(split_mesh_def)
 

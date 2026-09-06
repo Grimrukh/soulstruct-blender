@@ -8,7 +8,7 @@ __all__ = [
 import bpy
 
 from ....base.register import io_soulstruct_panel
-from ....bpy_base.panel import SoulstructPanel
+from ....bpy_base.panel import SoulstructPanel, smart_prop
 
 
 @io_soulstruct_panel
@@ -29,7 +29,7 @@ class FLVERMaterialSettingsPanel(SoulstructPanel):
         if panel:
             texture_export_settings = context.scene.texture_export_settings
             for prop_name in texture_export_settings.get_game_prop_names(context):
-                panel.prop(texture_export_settings, prop_name)
+                smart_prop(panel, texture_export_settings, prop_name)
 
 
 def draw_material_image_settings(context: bpy.types.Context, layout: bpy.types.UILayout | None) -> None:
@@ -39,9 +39,9 @@ def draw_material_image_settings(context: bpy.types.Context, layout: bpy.types.U
     mat_settings = context.scene.flver_material_settings
 
     layout.label(text="Image Cache Root Directory:")
-    layout.prop(mat_settings, "image_cache_root_str", text="")
+    smart_prop(layout, mat_settings, "image_cache_root_str", text="")
     layout.label(text="Image Import/Export Settings:")
-    layout.prop(mat_settings, "image_cache_format")
-    layout.prop(mat_settings, "import_cached_images")
-    layout.prop(mat_settings, "cache_new_game_images")
-    layout.prop(mat_settings, "pack_image_data")
+    smart_prop(layout, mat_settings, "image_cache_format")
+    smart_prop(layout, mat_settings, "import_cached_images")
+    smart_prop(layout, mat_settings, "cache_new_game_images")
+    smart_prop(layout, mat_settings, "pack_image_data")

@@ -17,7 +17,7 @@ from soulstruct.base.events.enums import NavmeshFlag
 from soulstruct.games import DEMONS_SOULS, DARK_SOULS_PTDE, DARK_SOULS_DSR
 
 from ...base.register import io_soulstruct_panel
-from ...bpy_base.panel import SoulstructPanel
+from ...bpy_base.panel import SoulstructPanel, smart_prop
 from ...exceptions import SoulstructTypeError
 from ...misc.misc_mesh import ApplyLocalMatrixToMesh
 from ...types import *
@@ -73,7 +73,7 @@ class NVMNavmeshExportPanel(SoulstructPanel):
             return
 
         layout = self.layout
-        layout.prop(settings, "auto_detect_export_map")
+        smart_prop(layout, settings, "auto_detect_export_map")
         if settings.auto_detect_export_map:
             self.draw_detected_map(context, layout, use_latest_version=True)
         else:
@@ -155,7 +155,7 @@ def layout_selected_faces(bm: bmesh.types.BMesh, layout, context, selected_faces
         props = context.scene.navmesh_face_settings
         flag_box = layout.box()
         row = flag_box.row()
-        row.prop(props, "navmesh_flag")
+        smart_prop(row, props, "navmesh_flag")
         row = flag_box.row()
         row.operator(AddNVMFaceFlags.bl_idname, text="Add")
         row.operator(RemoveNVMFaceFlags.bl_idname, text="Remove")
@@ -164,7 +164,7 @@ def layout_selected_faces(bm: bmesh.types.BMesh, layout, context, selected_faces
         # Box and button to set obstacle count for selected faces.
         obstacle_box = layout.box()
         row = obstacle_box.row()
-        row.prop(props, "obstacle_count")
+        smart_prop(row, props, "obstacle_count")
         row = obstacle_box.row()
         row.operator(SetNVMFaceObstacleCount.bl_idname, text="Set Obstacle Count")
 
@@ -195,11 +195,11 @@ class NVMEventEntityTriangleUIList(bpy.types.UIList):
         if self.layout_type in {'DEFAULT', 'COMPACT'}:
             row = layout.row()
             row.label(text=f"Triangle {index}:")
-            row.prop(item, self.PROP_NAME, text="", emboss=False)
+            smart_prop(row, item, self.PROP_NAME, text="", emboss=False)
         elif self.layout_type == 'GRID':
             layout.alignment = 'CENTER'
             layout.label(text=f"Triangle {index}:")
-            layout.prop(item, self.PROP_NAME, text="", emboss=False)
+            smart_prop(layout, item, self.PROP_NAME, text="", emboss=False)
 
 
 @io_soulstruct_panel
@@ -225,7 +225,7 @@ class NVMEventEntityPanel(SoulstructPanel):
             return
 
         props = obj.NVM_EVENT_ENTITY
-        layout.prop(props, "entity_id")
+        smart_prop(layout, props, "entity_id")
 
         layout.label(text="Triangles:")
         row = layout.row()
@@ -241,4 +241,4 @@ class NVMEventEntityPanel(SoulstructPanel):
         col.operator(AddNVMEventEntityTriangleIndex.bl_idname, icon='ADD', text="")
         col.operator(RemoveNVMEventEntityTriangleIndex.bl_idname, icon='REMOVE', text="")
 
-        layout.prop(props, "triangle_indices")
+        smart_prop(layout, props, "triangle_indices")

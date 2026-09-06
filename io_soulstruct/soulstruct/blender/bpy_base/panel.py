@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 __all__ = [
-    "SoulstructPanel"
+    "SoulstructPanel",
+    "smart_prop",
 ]
 
 import typing as tp
@@ -33,6 +34,39 @@ def _detect_icon_name(module_name: str) -> str:
         if substring in dotted:
             return icon_name
     return ""
+
+
+def _is_plain_bool_prop(data: bpy.types.bpy_struct, property_name: str) -> bool:
+    """Detect a single (non-array) `BoolProperty`, i.e. a checkbox/toggle widget.
+
+    Used by `smart_prop()` below to decide whether a `.prop()` call needs the `use_property_split` workaround.
+    """
+    try:
+        rna_prop = data.bl_rna.properties[property_name]
+    except (AttributeError, KeyError):
+        return False
+    return rna_prop.type == "BOOLEAN" and not rna_prop.is_array
+
+
+def smart_prop(layout: bpy.types.UILayout, data: bpy.types.bpy_struct, prop_name: str, *args, **kwargs):
+    """Drop-in replacement for `layout.prop(data, property, ...)` that keeps checkboxes left-anchored.
+
+    Blender's `use_property_split` layout mode does not split a checkbox (`BoolProperty`) into a label column and
+    a value column like it does for other property types; instead it shifts the whole checkbox-plus-label widget
+    to start at the split point, which centers it in the panel and clips long labels against the panel's right
+    edge. The accepted per-widget fix is to disable `use_property_split` for just that one `prop()` call and
+    restore it afterward -- this helper does that automatically (only when needed), so call sites don't have to.
+    Non-checkbox properties are passed straight through unaffected.
+    """
+    if layout.use_property_split and _is_plain_bool_prop(data, prop_name):
+        layout.use_property_split = False
+        try:
+            layout.prop(data, prop_name, *args, **kwargs)
+            return
+        finally:
+            layout.use_property_split = True
+    layout.prop(data, prop_name, *args, **kwargs)
+    return
 
 
 class SoulstructPanel(bpy.types.Panel):
@@ -74,7 +108,7 @@ class SoulstructPanel(bpy.types.Panel):
         self,
         context: bpy.types.Context,
         operator_id: str,
-        layout: bpy.types.UILayout = None,
+        layout: bpy.types.UILayout | None = None,
         **kwargs,
     ):
         layout = layout or self.layout
@@ -88,7 +122,7 @@ class SoulstructPanel(bpy.types.Panel):
         self,
         context: bpy.types.Context,
         operator_id: str,
-        layout: bpy.types.UILayout = None,
+        layout: bpy.types.UILayout | None = None,
         **kwargs,
     ):
         layout = layout or self.layout
@@ -98,7 +132,7 @@ class SoulstructPanel(bpy.types.Panel):
         else:
             layout.label(text="No export directory set.")
 
-    def draw_active_map(self, context: bpy.types.Context, layout: bpy.types.UILayout = None):
+    def draw_active_map(self, context: bpy.types.Context, layout: bpy.types.UILayout | None = None):
         layout = layout or self.layout
         box = layout.box()
         box.label(text=f"Active Map: {context.scene.soulstruct_settings.map_stem}")
@@ -106,7 +140,7 @@ class SoulstructPanel(bpy.types.Panel):
     def draw_detected_map(
         self,
         context: bpy.types.Context,
-        layout: bpy.types.UILayout = None,
+        layout: bpy.types.UILayout | None = None,
         use_latest_version=False,
         detect_from_collection=False,  # rather than active object
     ):
@@ -130,7 +164,7 @@ class SoulstructPanel(bpy.types.Panel):
         else:
             box.label(text=f"Detected Map: {map_stem}")
 
-    def draw_map_stem_choice(self, context: bpy.types.Context, layout: bpy.types.UILayout = None):
+    def draw_map_stem_choice(self, context: bpy.types.Context, layout: bpy.types.UILayout | None = None):
         layout = layout or self.layout
         map_box = layout.box()
 

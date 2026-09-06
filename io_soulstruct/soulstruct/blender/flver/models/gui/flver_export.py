@@ -5,7 +5,7 @@ __all__ = [
 ]
 
 from ....base.register import io_soulstruct_panel
-from ....bpy_base.panel import SoulstructPanel
+from ....bpy_base.panel import SoulstructPanel, smart_prop
 from ..operators.export_operators import *
 from ..types import BlenderFLVER
 
@@ -29,12 +29,12 @@ class FLVERExportPanel(SoulstructPanel):
         header.label(text="FLVER Export Settings")
         if panel:
             export_settings = context.scene.flver_export_settings
-            panel.prop(settings, "auto_detect_export_map")
-            panel.prop(export_settings, "export_textures")
-            panel.prop(export_settings, "allow_missing_textures")
-            panel.prop(export_settings, "allow_unknown_texture_types")
-            panel.prop(export_settings, "create_lod_face_sets")
-            panel.prop(export_settings, "normal_tangent_dot_max")
+            smart_prop(panel, settings, "auto_detect_export_map")
+            smart_prop(panel, export_settings, "export_textures")
+            smart_prop(panel, export_settings, "allow_missing_textures")
+            smart_prop(panel, export_settings, "allow_unknown_texture_types")
+            smart_prop(panel, export_settings, "create_lod_face_sets")
+            smart_prop(panel, export_settings, "normal_tangent_dot_max")
 
         if not context.selected_objects:
             layout.label(text="Select some FLVER models.")
@@ -56,7 +56,7 @@ class FLVERExportPanel(SoulstructPanel):
 
             box = layout.box()
             box.label(text="Map Models:")
-            box.prop(settings, "auto_detect_export_map")
+            smart_prop(box, settings, "auto_detect_export_map")
             if settings.auto_detect_export_map:
                 self.draw_detected_map(context, box, use_latest_version=False)
             else:

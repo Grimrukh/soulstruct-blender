@@ -9,7 +9,7 @@ __all__ = [
 from soulstruct.flver import FLVERVersion
 
 from ....base.register import io_soulstruct_panel
-from ....bpy_base.panel import SoulstructPanel
+from ....bpy_base.panel import SoulstructPanel, smart_prop
 from ..types import BlenderFLVER, BlenderFLVERDummy
 from ..properties import FLVERProps, FLVERSubmeshProps
 
@@ -51,7 +51,7 @@ class FLVERPropsPanel(SoulstructPanel):
             ):
                 prop_names.remove(f2_unk_prop)
                 if panel:
-                    panel.prop(flver_props, f2_unk_prop)
+                    smart_prop(panel, flver_props, f2_unk_prop)
 
         for prop in prop_names:
             if prop == "mesh_vertices_merged":
@@ -59,7 +59,7 @@ class FLVERPropsPanel(SoulstructPanel):
                 txt = f"Meshes were {'' if bl_flver.mesh_vertices_merged else 'NOT '}merged on import."
                 self.layout.label(text=txt)
             else:
-                self.layout.prop(flver_props, prop)
+                smart_prop(self.layout, flver_props, prop)
 
         # Draw submesh properties, either global or as a list.
         if flver_props.submesh_props:
@@ -77,16 +77,16 @@ class FLVERPropsPanel(SoulstructPanel):
                 down_op.direction = "DOWN"
                 remove_op = row.operator("flver.material_slot_remove", text="", icon="X")
                 for prop in submesh_props.get_all_prop_names():
-                    submesh_box.prop(submesh_props, prop)
+                    smart_prop(submesh_box, submesh_props, prop)
             # Add slot button
             self.layout.operator("flver.material_slot_add", text="Add Material Slot", icon="ADD")
             self.layout.operator("flver.clear_submesh_props", text="Clear Submesh Properties")
         else:
             submeshes_box = self.layout.box()
             submeshes_box.label(text="Global Submesh Properties:")
-            submeshes_box.prop(flver_props, "global_is_dynamic", text="Is Dynamic")
-            submeshes_box.prop(flver_props, "global_default_bone_index", text="Default Bone Index")
-            submeshes_box.prop(flver_props, "global_face_set_count", text="Face Set Count")
+            smart_prop(submeshes_box, flver_props, "global_is_dynamic", text="Is Dynamic")
+            smart_prop(submeshes_box, flver_props, "global_default_bone_index", text="Default Bone Index")
+            smart_prop(submeshes_box, flver_props, "global_face_set_count", text="Face Set Count")
             submeshes_box.label(text="Use Backface Culling: <From Material>")
             # Draw button to add per-submesh properties (to use instead of global).
             self.layout.operator("flver.add_submesh_props", text="Add Per-Material Submesh Properties")
@@ -109,7 +109,7 @@ class FLVERDummyPropsPanel(SoulstructPanel):
         bl_dummy = BlenderFLVERDummy.from_active_object(context)
         props = bl_dummy.type_properties
         for prop in props.__annotations__:
-            self.layout.prop(props, prop)
+            smart_prop(self.layout, props, prop)
 
 
 @io_soulstruct_panel
@@ -137,4 +137,4 @@ class FLVERBonePropsPanel(SoulstructPanel):
         self.layout.label(text="Transform Overrides (Local Space):")
         props = context.bone.FLVER_BONE
         for prop in props.__annotations__:
-            self.layout.prop(props, prop)
+            smart_prop(self.layout, props, prop)

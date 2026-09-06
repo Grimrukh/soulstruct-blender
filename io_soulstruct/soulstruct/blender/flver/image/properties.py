@@ -73,8 +73,8 @@ class TextureExportSettings(SoulstructPropertyGroup):
 
     require_power_of_two: bpy.props.BoolProperty(
         name="Require Power of Two Size",
-        description="Require that all exported textures have power-of-two dimensions. Even if disabled, this will "
-                    "never allow 1-pixel textures to be exported",
+        description="Require that all exported textures have power-of-two dimensions (>= 2). Even if disabled, this "
+                    "will never allow 1-pixel textures to be exported, as these are typically placeholder textures",
         default=True,
     )
 

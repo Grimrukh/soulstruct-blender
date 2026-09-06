@@ -5,7 +5,7 @@ __all__ = [
 ]
 
 from ....base.register import io_soulstruct_panel
-from ....bpy_base.panel import SoulstructPanel
+from ....bpy_base.panel import SoulstructPanel, smart_prop
 from ....exceptions import SoulstructTypeError
 from ....misc.misc_mesh import *
 from ..operators import *
@@ -31,7 +31,7 @@ class FLVERModelToolsPanel(SoulstructPanel):
         if panel:
             mask_box = panel.box()
             mask_box.label(text="Display Mask ID:")
-            mask_box.prop(flver_tool_settings, "display_mask_id", text="")
+            smart_prop(mask_box, flver_tool_settings, "display_mask_id", text="")
             mask_box.operator(SelectDisplayMaskID.bl_idname)
 
             modify_box = panel.box()
@@ -74,7 +74,7 @@ class FLVERModelToolsPanel(SoulstructPanel):
         header, panel = layout.panel("UV Tools", default_closed=True)
         header.label(text="UV Tools")
         if panel:
-            panel.prop(context.scene.flver_tool_settings, "uv_scale")
+            smart_prop(panel, context.scene.flver_tool_settings, "uv_scale")
             panel.operator(FastUVUnwrap.bl_idname)
             panel.operator(FastUVUnwrapIslands.bl_idname)
             panel.operator(UVUnwrapPinSurrounding.bl_idname)
@@ -85,19 +85,19 @@ class FLVERModelToolsPanel(SoulstructPanel):
         header.label(text="Vertex Color Tools")
         if panel:
             panel.label(text="Vertex Color Layer Name:")
-            panel.prop(flver_tool_settings, "vertex_color_layer_name", text="")
-            panel.prop(flver_tool_settings, "set_selected_face_vertex_color_only")
-            panel.prop(flver_tool_settings, "set_active_material_vertex_color_only")
+            smart_prop(panel, flver_tool_settings, "vertex_color_layer_name", text="")
+            smart_prop(panel, flver_tool_settings, "set_selected_face_vertex_color_only")
+            smart_prop(panel, flver_tool_settings, "set_active_material_vertex_color_only")
             panel.operator(InvertVertexAlpha.bl_idname)
-            panel.prop(flver_tool_settings, "vertex_alpha")
+            smart_prop(panel, flver_tool_settings, "vertex_alpha")
             panel.operator(SetVertexAlpha.bl_idname)
             panel.operator(SetVertexColorWhite.bl_idname)
 
         header, panel = layout.panel("Dummy Tools", default_closed=True)
         header.label(text="Dummy Tools")
         if panel:
-            panel.prop(context.scene.flver_tool_settings, "dummy_id_draw_enabled", text="Draw Dummy IDs")
-            panel.prop(context.scene.flver_tool_settings, "dummy_id_font_size", text="Dummy ID Font Size")
+            smart_prop(panel, context.scene.flver_tool_settings, "dummy_id_draw_enabled", text="Draw Dummy IDs")
+            smart_prop(panel, context.scene.flver_tool_settings, "dummy_id_font_size", text="Dummy ID Font Size")
             panel.operator(HideAllDummiesOperator.bl_idname)
             panel.operator(ShowAllDummiesOperator.bl_idname)
 

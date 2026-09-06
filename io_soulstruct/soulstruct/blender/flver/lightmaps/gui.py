@@ -2,7 +2,7 @@ from __future__ import annotations
 
 __all__ = ["FLVERLightmapsPanel"]
 
-from ...bpy_base.panel import SoulstructPanel
+from ...bpy_base.panel import SoulstructPanel, smart_prop
 from .operators import BakeLightmapTextures
 
 
@@ -22,5 +22,5 @@ class FLVERLightmapsPanel(SoulstructPanel):
         header.label(text="Settings")
         if panel:
             for prop_name in bake_lightmap_settings.__annotations__:
-                panel.prop(bake_lightmap_settings, prop_name)
+                smart_prop(panel, bake_lightmap_settings, prop_name)
         layout.operator(BakeLightmapTextures.bl_idname)

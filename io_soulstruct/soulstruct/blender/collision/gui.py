@@ -6,7 +6,7 @@ __all__ = [
 ]
 
 from ..base.register import io_soulstruct_panel
-from ..bpy_base.panel import SoulstructPanel
+from ..bpy_base.panel import SoulstructPanel, smart_prop
 from ..exceptions import SoulstructTypeError
 from ..misc.misc_mesh import *
 from .import_operators import *
@@ -48,7 +48,7 @@ class MapCollisionImportExportPanel(SoulstructPanel):
             export_box.label(text="MSB Parts cannot be selected.")
             return
 
-        export_box.prop(settings, "auto_detect_export_map")
+        smart_prop(export_box, settings, "auto_detect_export_map")
         if settings.auto_detect_export_map:
             self.draw_detected_map(context, layout, use_latest_version=False)
         else:
@@ -81,9 +81,9 @@ class MapCollisionToolsPanel(SoulstructPanel):
 
         layout.label(text="Display Tools:")
         layout.operator(SelectHiResFaces.bl_idname)
-        layout.prop(context.scene.map_collision_tool_settings, "hi_alpha")
+        smart_prop(layout, context.scene.map_collision_tool_settings, "hi_alpha")
         layout.operator(SelectLoResFaces.bl_idname)
-        layout.prop(context.scene.map_collision_tool_settings, "lo_alpha")
+        smart_prop(layout, context.scene.map_collision_tool_settings, "lo_alpha")
 
         layout.label(text="Mesh Tools:")
         # Useful in particular for creating HKX map collisions (e.g. from FLVER or high <> low res).
