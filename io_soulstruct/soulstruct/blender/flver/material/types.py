@@ -437,28 +437,35 @@ class BlenderFLVERMaterial:
         operator: LoggingOperator,
         context: bpy.types.Context,
         matdef: MatDef,
-        mesh_kwargs: dict[str, int | bool | None],
         texture_collection: DDSTextureCollection | None = None,
         get_texture_path_prefix: tp.Callable[[str], str] | None = None,
+        **split_mesh_def_kwargs,
     ) -> SplitMeshDef:
         """Use given `matdef` to create a `SplitMeshDef` for the given Blender material with either a character
         layout or a map piece layout, depending on `use_map_piece_layout`.
+
+        NOTE: All SplitMeshDef kwargs should be in `split_mesh_def_kwargs` (except `uv_layer_names`, which is
+        automatically determined from the MatDef). `is_dynamic` is the only one explicitly required.
         """
+
+        if "is_dynamic" not in split_mesh_def_kwargs:
+            raise ValueError("`is_dynamic` must be given in `split_mesh_def_kwargs` for `to_split_mesh_def()`.")
 
         # Some Blender materials may be variants representing distinct Mesh/FaceSet properties; these will be
         # mapped to the same FLVER `Material`/`VertexArrayLayout` combo (created here).
         flver_material = self.to_flver_material(operator, context, matdef, texture_collection, get_texture_path_prefix)
-        array_layout = matdef.get_vertex_array_layout(is_dynamic=mesh_kwargs["is_dynamic"])
+        array_layout = matdef.get_vertex_array_layout(is_dynamic=split_mesh_def_kwargs["is_dynamic"])
 
         used_uv_layer_names = [layer.name for layer in matdef.get_used_uv_layers()]
-        operator.debug(f"Created FLVER material '{flver_material.name}' with UV layers: {used_uv_layer_names}")
+        operator.debug(
+            f"Created FLVER SplitMeshDef with material '{flver_material.name}' and UV layers: {used_uv_layer_names}"
+        )
 
         return SplitMeshDef(
             flver_material,
             array_layout,
-            is_dynamic=mesh_kwargs["is_dynamic"],
-            kwargs=mesh_kwargs,
             uv_layer_names=used_uv_layer_names,
+            **split_mesh_def_kwargs,
         )
 
     def rebuild_node_tree(
