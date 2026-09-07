@@ -55,7 +55,7 @@ class _CreateBlenderFLVERCommand:
     bone_tree: BoneTree
     collection: bpy.types.Collection | None
     image_import_manager: ImageImportManager | None = None
-    texture_finder: pyre_flver.TextureFinder | None = None
+    texture_finders: tp.Sequence[pyre_flver.TextureFinder] = ()
     existing_merged_mesh: MergedMesh | None = None
     existing_bl_materials: tp.Sequence[BlenderFLVERMaterial] | None = None
     existing_mesh_bl_material_indices: tp.Sequence[int] | None = None
@@ -91,7 +91,7 @@ def create_bl_flver_from_flver(
     name: str,
     collection: bpy.types.Collection | None = None,
     image_import_manager: ImageImportManager | None = None,
-    texture_finder: pyre_flver.TextureFinder | None = None,
+    texture_finders: tp.Sequence[pyre_flver.TextureFinder] = (),
     existing_bl_materials: tp.Sequence[BlenderFLVERMaterial] | None = None,
     existing_mesh_bl_material_indices: tp.Sequence[int] | None = None,
 ) -> BlenderFLVER:
@@ -107,7 +107,7 @@ def create_bl_flver_from_flver(
         bone_tree=BoneTree(flver),
         collection=collection,
         image_import_manager=image_import_manager,
-        texture_finder=texture_finder,
+        texture_finders=texture_finders,
         existing_merged_mesh=flver.get_cached_merged_mesh() if flver.has_cached_merged_mesh() else None,
         existing_bl_materials=existing_bl_materials,
         existing_mesh_bl_material_indices=existing_mesh_bl_material_indices,
@@ -333,7 +333,7 @@ def _create_bl_mesh(
             model_name=command.name,
             material_blend_mode=command.import_settings.material_blend_mode,
             image_import_manager=command.image_import_manager,
-            texture_finder=command.texture_finder,
+            texture_finders=command.texture_finders,
             # No cached MatDef materials to pass in.
         )
     except MatDefError as ex:

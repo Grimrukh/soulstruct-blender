@@ -47,7 +47,7 @@ class BaseBlenderMSBFLVERModelImporter(BaseBlenderMSBModelImporter, abc.ABC):
         flver: FLVER,
         model_name: str,
         model_collection: bpy.types.Collection,
-        texture_finder: TextureFinder | None = None,
+        texture_finders: tp.Sequence[TextureFinder] = (),
     ) -> MeshObject:
         try:
             bl_flver = BlenderFLVER.new_from_soulstruct_obj(
@@ -55,7 +55,7 @@ class BaseBlenderMSBFLVERModelImporter(BaseBlenderMSBModelImporter, abc.ABC):
                 context,
                 flver,
                 name=model_name,
-                texture_finder=texture_finder,
+                texture_finders=texture_finders,
                 collection=model_collection,
             )
         except Exception as ex:
@@ -176,13 +176,12 @@ class BlenderMSBMapPieceModelImporter(BaseBlenderMSBFLVERModelImporter):
                 flver = FLVER.from_path(flver_source_path)
 
         if flver_import_settings.import_textures:
-            texture_finder = TextureFinder(
-                settings.pyrelink_game_type,
-                settings.get_first_existing_import_root() or "",
-            )
-            texture_finder.register_flver_sources(flver_source_path, mapbnd, prefer_hi_res=True)
+            texture_finders = settings.create_texture_finders()
+            for finder in texture_finders:
+                if finder:
+                    finder.register_flver_sources(flver_source_path, mapbnd, prefer_hi_res=True)
         else:
-            texture_finder = None
+            texture_finders = []
 
         if not model_collection:
             model_collection = find_or_create_collection(
@@ -198,7 +197,7 @@ class BlenderMSBMapPieceModelImporter(BaseBlenderMSBFLVERModelImporter):
             flver,
             model_name,
             model_collection,
-            texture_finder=texture_finder,
+            texture_finders=texture_finders,
         )
 
     def batch_import_model_meshes(
@@ -301,10 +300,11 @@ class BlenderMSBObjectModelImporter(BaseBlenderMSBFLVERModelImporter):
         )
 
         if flver_import_settings.import_textures:
-            texture_finder = settings.create_texture_finder()
-            texture_finder.register_flver_sources(objbnd_path, objbnd, prefer_hi_res=True)
+            texture_finders = settings.create_texture_finders()
+            for finder in texture_finders:
+                finder.register_flver_sources(objbnd_path, objbnd, prefer_hi_res=True)
         else:
-            texture_finder = None
+            texture_finders = []
 
         if not model_collection:
             model_collection = find_or_create_collection(context.scene.collection, "Models", "Object Models")
@@ -314,7 +314,7 @@ class BlenderMSBObjectModelImporter(BaseBlenderMSBFLVERModelImporter):
             sub_model_name = flver.path_minimal_stem  # e.g. could be 'o1000_1'
             assert sub_model_name is not None  # set by Binder
             bl_obj = self._import_flver_model_mesh(
-                operator, context, flver, sub_model_name, model_collection, texture_finder
+                operator, context, flver, sub_model_name, model_collection, texture_finders
             )
             if not first_bl_obj:
                 first_bl_obj = bl_obj
@@ -389,7 +389,7 @@ class BlenderMSBCharacterModelImporter(BaseBlenderMSBFLVERModelImporter):
             model_collection = find_or_create_collection(context.scene.collection, "Models", "Character Models")
 
         import_settings = context.scene.flver_import_settings
-        texture_finder = settings.create_texture_finder() if import_settings.import_textures else None
+        texture_finders = settings.create_texture_finders() if import_settings.import_textures else []
         # No extra global texture sources to pinpoint for Characters.
 
         if self.uses_nested_subfolders:
@@ -402,11 +402,11 @@ class BlenderMSBCharacterModelImporter(BaseBlenderMSBFLVERModelImporter):
         # Only one Character FLVER permitted per CHRBND.
         binder_flvers = get_flvers_from_binder(chrbnd, chrbnd_path, allow_multiple=False)
         flver = binder_flvers[0]
-        if texture_finder:
-            texture_finder.register_flver_sources(chrbnd_path, chrbnd, prefer_hi_res=True)
+        for finder in texture_finders:
+            finder.register_flver_sources(chrbnd_path, chrbnd, prefer_hi_res=True)
 
         return self._import_flver_model_mesh(
-            operator, context, flver, model_name, model_collection, texture_finder
+            operator, context, flver, model_name, model_collection, texture_finders
         )
 
     def batch_import_model_meshes(

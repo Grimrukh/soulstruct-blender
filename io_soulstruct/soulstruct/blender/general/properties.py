@@ -613,12 +613,19 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
             raise FileNotFoundError(f"MSB file for map '{map_stem}' not found in project or game directory.")
         return path
 
-    def create_texture_finder(self) -> TextureFinder:
-        """Create a new `TextureFinder` using the first available import directory."""
-        return TextureFinder(
-            self.pyrelink_game_type,
-            self.get_first_existing_import_root() or ""
-        )
+    def create_texture_finders(self) -> list[TextureFinder]:
+        """Create up to two `TextureFinder`s, one for the project and one for the game, ordered by import preference.
+        """
+        if is_path_and_dir(self.project_root_path):
+            project_finder = TextureFinder(self.pyrelink_game_type, self.project_root_path or "")
+        else:
+            project_finder = None
+        if is_path_and_dir(self.game_root_path):
+            game_finder = TextureFinder(self.pyrelink_game_type, self.game_root_path or "")
+        else:
+            game_finder = None
+        finders = [project_finder, game_finder] if self.prefer_import_from_project else [game_finder, project_finder]
+        return [finder for finder in finders if finder is not None]
 
     # endregion
 

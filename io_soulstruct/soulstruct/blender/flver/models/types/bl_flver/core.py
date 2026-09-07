@@ -337,7 +337,7 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
         collection: bpy.types.Collection | None = None,
         *,
         image_import_manager: ImageImportManager | None = None,
-        texture_finder: pyre_flver.TextureFinder | None = None,
+        texture_finders: tp.Sequence[pyre_flver.TextureFinder] = (),
         existing_bl_materials: tp.Sequence[BlenderFLVERMaterial] | None = None,
         existing_mesh_bl_material_indices: tp.Sequence[int] | None = None,
     ) -> BlenderFLVER:
@@ -380,7 +380,7 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
             name=name,
             collection=collection,
             image_import_manager=image_import_manager,
-            texture_finder=texture_finder,
+            texture_finders=texture_finders,
             existing_bl_materials=existing_bl_materials,
             existing_mesh_bl_material_indices=existing_mesh_bl_material_indices,
         )
@@ -472,7 +472,7 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
             if settings.pyrelink_game_type == pyre.GameType.Bloodborne:
                 # TODO: pyrelink TextureFinder cannot deswizzle PS4 textures yet.
                 image_import_manager = ImageImportManager(operator, context)
-                texture_finder = None
+                texture_finders = []
 
                 # Find textures for all loaded FLVERs.
                 for model_name, flver in flvers.items():
@@ -485,25 +485,27 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
                     step += 1
             else:
                 image_import_manager = None
-                texture_finder = settings.create_texture_finder()
+                texture_finders = settings.create_texture_finders()
 
                 # Find textures for all loaded FLVERs.
                 reg_p = time.perf_counter()
                 for model_name, flver in flvers.items():
                     _, source_binder = flver_binder_sources.get(model_name, (None, None))
-                    texture_finder.register_flver_sources(
-                        str(source_binder.path if source_binder else flver.path),
-                        source_binder,
-                    )
+                    for finder in texture_finders:
+                        finder.register_flver_sources(
+                            str(source_binder.path if source_binder else flver.path),
+                            source_binder,
+                        )
                     if texture_finder_callback:
                         # Logical assertion: FLVER source must be Path or BinderEntry in one of these.
                         flver_source = flver_path_sources[model_name] or flver_binder_sources[model_name][0]
-                        texture_finder_callback(
-                            texture_finder,
-                            flver,
-                            flver_source,
-                            flver_binder_sources.get(model_name, (None, None))[1],
-                        )
+                        for finder in texture_finders:
+                            texture_finder_callback(
+                                finder,
+                                flver,
+                                flver_source,
+                                flver_binder_sources.get(model_name, (None, None))[1],
+                            )
                     progress(step)
                     step += 1
                 operator.info(
@@ -511,7 +513,7 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
                 )
         else:
             image_import_manager = None
-            texture_finder = None
+            texture_finders = []
             progress(2 * steps // 5)
 
         # Brief non-parallel excursion: create Blender materials and `MergedMesh` arguments for each `FLVER`.
@@ -540,7 +542,7 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
                     model_name,
                     material_blend_mode=flver_import_settings.material_blend_mode,
                     image_import_manager=image_import_manager,
-                    texture_finder=texture_finder,
+                    texture_finders=texture_finders,
                     bl_materials_by_matdef_name=bl_materials_by_matdef_name,
                 )
                 progress(step)
@@ -628,7 +630,7 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
                     context,
                     flver,
                     name=model_name,
-                    texture_finder=texture_finder,
+                    texture_finders=texture_finders,
                     collection=collection,
                     existing_bl_materials=bl_materials,
                     existing_mesh_bl_material_indices=mesh_bl_material_indices,
@@ -659,7 +661,7 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
         model_name: str,
         material_blend_mode: str,
         image_import_manager: ImageImportManager | None = None,
-        texture_finder: pyre_flver.TextureFinder | None = None,
+        texture_finders: tp.Sequence[pyre_flver.TextureFinder] = (),
         bl_materials_by_matdef_name: dict[str, bpy.types.Material] | None = None,
     ) -> CreatedFLVERMaterials:
         """Create Blender materials needed for `flver`.
@@ -678,7 +680,7 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
             model_name,
             material_blend_mode=material_blend_mode,
             image_import_manager=image_import_manager,
-            texture_finder=texture_finder,
+            texture_finders=texture_finders,
             bl_materials_by_matdef_name=bl_materials_by_matdef_name,
         )
 

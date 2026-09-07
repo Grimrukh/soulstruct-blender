@@ -47,7 +47,7 @@ def create_materials(
     model_name: str,
     material_blend_mode: str,
     image_import_manager: ImageImportManager | None = None,
-    texture_finder: pyre_flver.TextureFinder | None = None,
+    texture_finders: tp.Sequence[pyre_flver.TextureFinder] = (),
     bl_materials_by_matdef_name: dict[str, bpy.types.Material] = None,
 ) -> CreatedFLVERMaterials:
     """Create Blender materials needed for `flver`.
@@ -74,7 +74,7 @@ def create_materials(
         # We attempt texure load if ImageImportManager or TextureFinder is given, OR if an image cache directory
         # is given (which does not require either finder class).
         image_cache_dir = mat_settings.get_game_image_cache_directory(context)
-        if image_import_manager or texture_finder or is_path_and_dir(image_cache_dir):
+        if image_import_manager or texture_finders or is_path_and_dir(image_cache_dir):
             p = time.perf_counter()
             all_texture_stems = {
                 v
@@ -83,7 +83,7 @@ def create_materials(
                 if v  # obviously ignore empty texture paths
             }
             texture_collection = _load_texture_images(
-                operator, context, model_name, all_texture_stems, image_import_manager, texture_finder
+                operator, context, model_name, all_texture_stems, image_import_manager, texture_finders
             )
             if texture_collection:
                 operator.debug(f"Loaded {len(texture_collection)} textures in {time.perf_counter() - p:.3f} s.")
@@ -262,7 +262,7 @@ def _load_texture_images(
     name: str,
     texture_stems: set[str],
     image_import_manager: ImageImportManager | None = None,
-    texture_finder: pyre_flver.TextureFinder | None = None,
+    texture_finders: tp.Sequence[pyre_flver.TextureFinder] = (),
 ) -> DDSTextureCollection:
     """Load texture images from PNG cache directory or TPFs found with `image_import_manager`.
 
@@ -313,13 +313,16 @@ def _load_texture_images(
                 bl_image_stems.add(texture_stem)
                 continue
 
-        if texture_finder:
+        for i, texture_finder in enumerate(texture_finders):
             # Searching for original texture is NOT case-sensitive.
             image_data = texture_finder.get_texture_as(texture_stem, texture_finder_format, name)
 
             if not image_data:
-                operator.warning(f"Could not find FLVER texture '{texture_stem}' with TextureFinder.")
-                continue
+                if i == len(texture_finders) - 1:
+                    operator.warning(f"Could not find FLVER texture '{texture_stem}' with any TextureFinders.")
+                    break
+                else:
+                    continue  # try next TextureFinder
 
             try:
                 dds_texture = DDSTexture.new_from_image_data(

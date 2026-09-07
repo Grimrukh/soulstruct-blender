@@ -57,6 +57,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Dynamic (animated) FLVER armature bones now use Blender's `FULL` scale inheritance instead of `NONE`.
   - Static FLVERs (map pieces) still use `NONE` to match FLVER bone semantics.
   - FLVER export is unaffected either way, as it never reads pose scale.
+- Use TextureFinders for both project and game import directories (as available) to find FLVER textures
 
 ### Removed
 - Support for Blender < 5.1 (Python < 3.13) removed.
