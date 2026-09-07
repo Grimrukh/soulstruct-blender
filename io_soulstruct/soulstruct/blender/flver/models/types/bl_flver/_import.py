@@ -632,7 +632,7 @@ def _create_bl_bones(
     command.operator.to_edit_mode(command.context)
 
     # Create all edit bones. Head/tail are not set yet (depends on `bl_bone_data_type` below).
-    edit_bones = create_edit_bones(command.bone_tree, armature.data, bl_bone_names)
+    edit_bones = create_edit_bones(command.bone_tree, armature.data, bl_bone_names, bl_bone_data_type)
 
     # NOTE: Bones that have no vertices weighted to them are left as 'unused' root bones in the FLVER skeleton.
     # They may be animated by HKX animations (and will affect their children appropriately) but will not actually

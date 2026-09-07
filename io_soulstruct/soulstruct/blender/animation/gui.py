@@ -10,6 +10,7 @@ from ..bpy_base.panel import SoulstructPanel
 from .import_operators import *
 from .export_operators import *
 from .misc_operators import *
+from .skeleton_operators import *
 
 
 @io_soulstruct_panel
@@ -55,6 +56,19 @@ class AnimationImportExportPanel(SoulstructPanel):
             panel.label(text="Generic Export:")
             panel.operator(ExportAnyHKXAnimation.bl_idname)
             panel.operator(ExportHKXAnimationIntoAnyBinder.bl_idname)
+
+        header, panel = self.layout.panel("Skeleton Export", default_closed=True)
+        header.label(text="Skeleton Export")
+        if panel:
+            export_settings = context.scene.animation_export_settings
+            panel.label(text="Generate HKX skeleton from FLVER Armature.")
+            panel.prop(export_settings, "skeleton_bone_source")
+            panel.prop(export_settings, "skeleton_include_ancestor_bones")
+            panel.label(text="Export to Project/Game")
+            panel.operator(ExportCharacterHKXSkeleton.bl_idname)
+            panel.operator(ExportObjectHKXSkeleton.bl_idname)
+            panel.label(text="Generic Export:")
+            panel.operator(ExportHKXSkeletonIntoAnyBinder.bl_idname)
 
 
 @io_soulstruct_panel

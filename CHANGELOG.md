@@ -25,6 +25,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - On-screen operator progress indicators (cursor percentage).
 - Import Equipment FLVER option to parent to existing c0000 armature (armor only).
 - `ImportArmorSetFLVERs` operator to import whole armor set ID and parent to c0000.
+- `ExportHKXSkeleton` operators added to refresh an ANIBND's HKX skeleton from a subset of FLVER bones.
+  - Subset can be chosen from animation, from existing file, or by manual selection.
 
 ### Changed
 - Blender 5.1 is the minimum supported version (with Python 3.13).
@@ -52,6 +54,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed import of large collisions (16-bit → 32-bit combined face indices).
 - Fixed cutscene import with bone change-of-basis (compatible with/without CoB).
 - Fixed MSB Part bit-group export bug.
+- Dynamic (animated) FLVER armature bones now use Blender's `FULL` scale inheritance instead of `NONE`.
+  - Static FLVERs (map pieces) still use `NONE` to match FLVER bone semantics.
+  - FLVER export is unaffected either way, as it never reads pose scale.
 
 ### Removed
 - Support for Blender < 5.1 (Python < 3.13) removed.

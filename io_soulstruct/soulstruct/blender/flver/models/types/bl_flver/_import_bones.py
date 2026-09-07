@@ -20,17 +20,30 @@ from .....types import ArmatureObject
 from .....utilities.conversion import to_blender
 from .....utilities.misc import is_uniform
 from ....utilities import game_bone_transform_to_bl_bone_matrix
+from ..enums import FLVERBoneDataType
 
 
 def create_edit_bones(
     bone_tree: BoneTree,
     armature_data: bpy.types.Armature,
     bl_bone_names: list[str],
+    bone_data_type: FLVERBoneDataType,
 ) -> list[bpy.types.EditBone]:
     """Create all edit bones from FLVER bones in `bl_armature` and return them.
 
     Note that the returned bones will become invalid when exiting EDIT mode, so they should be used immediately.
     """
+    # FLVER bone scale is never inherited (see `BoneTree.get_bone_armature_space_transforms()`), but HKX animation
+    # bone scale IS inherited (Havok composes `S' = S_parent * S_local`). A Blender Armature can only use one
+    # convention, so we choose per bone data type:
+    #  - EDIT (dynamic FLVERs: characters/objects) stores no scale in EditBones at all, so pose scale can only ever
+    #    come from an HKX animation; 'FULL' is required for animated poses to display and export correctly.
+    #  - CUSTOM (static FLVERs: map pieces) writes FLVER *local* bone scale to PoseBones for display, so 'NONE' is
+    #    required to match FLVER semantics.
+    # Either way, FLVER export is unaffected: it always reads local bone scale from the `FLVER_BONE.flver_scale`
+    # custom property and rest transforms from `Bone.matrix_local`, never from pose scale.
+    inherit_scale = "FULL" if bone_data_type == FLVERBoneDataType.EDIT else "NONE"
+
     edit_bones = []  # all bones
     for game_bone, bl_bone_name in zip(bone_tree.bones, bl_bone_names, strict=True):
         edit_bone = armature_data.edit_bones.new(bl_bone_name)  # '<DUPE>' suffixes already added to names
@@ -45,8 +58,7 @@ def create_edit_bones(
         # particularly for FLVER root bones like 'Pelvis'.
         edit_bone.use_local_location = True
 
-        # FLVER bones never inherit scale.
-        edit_bone.inherit_scale = "NONE"
+        edit_bone.inherit_scale = inherit_scale
 
         # We don't bother storing child or sibling bones. They are generated from parents on export.
         edit_bones.append(edit_bone)
