@@ -7,7 +7,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
-## [3.0.0] - 2026-09-06
+## [3.0.0] - 2026-09-07
 
 ### Added
 - `blender_manifest.toml` added — add-on is now a proper Blender Extension package.
@@ -30,7 +30,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 - Blender 5.1 is the minimum supported version (with Python 3.13).
-- `soulstruct` 2.4.0 and `soulstruct-havok` 1.2.5 used.
+- `soulstruct` 2.4.1 and `soulstruct-havok` 1.3.0 used.
 - `pyrelink` 0.2.0 used (`Firelink` bindings).
 - `soulstruct` and `soulstruct-havok` are now fetched from PyPI rather than bundled.
 - `scipy` can use latest again (1.18+) after bug was fixed.
