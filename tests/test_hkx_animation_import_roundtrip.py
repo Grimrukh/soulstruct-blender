@@ -26,7 +26,26 @@ Round-trip methodology per case
    passing the ANIBND path as ``hkx_skeleton_path`` (the operator extracts the
    skeleton from within the binder).
 5. Verify the exported file is non-empty.
-6. Clean up.
+6. Re-import the exported HKX and compare F-curve samples with the original.
+7. Clean up.
+
+Two-stage round-trip check
+--------------------------
+Step 4-6 are run TWICE, in this order:
+
+1. ``force_interleaved=True`` — exports raw uncompressed interleaved frames, i.e.
+   *no* wavelet/spline compression at all.  This isolates the add-on's own
+   Blender <-> HKX conversion math (armature-space <-> bone-basis matrices, the
+   FromSoft/Blender coordinate change of basis, and the armature <-> local
+   hierarchy conversions).  Compared with a tight tolerance, since the only
+   expected loss is float32 storage in ``hkQsTransform``.
+2. Default compressed export (spline for most games, wavelet for Demon's Souls).
+   Compared with a looser tolerance that accommodates genuine compression loss.
+
+If stage 1 fails, the discrepancy is a *bug in the add-on* (or in the
+armature/local conversions in ``soulstruct-havok``).  If stage 1 passes and only
+stage 2 fails, the discrepancy is genuine lossy compression.  The failure message
+is prefixed with the stage label so the two are never confused.
 
 FILE PATHS
 ----------
@@ -197,6 +216,25 @@ HKX_ANIMATION_TEST_CASES: list[HKXAnimationImportCase] = [
 ]
 
 # ---------------------------------------------------------------------------
+# Round-trip constants
+# ---------------------------------------------------------------------------
+
+SKELETON_ENTRY_RE = re.compile(r"skeleton\.hkx(\.dcx)?", re.IGNORECASE)
+
+# Tolerance for the uncompressed (interleaved) export stage. The only expected loss here is
+# float32 storage of `hkQsTransform` members and matrix decompose/recompose round-tripping, both
+# of which are far below this. Anything larger indicates a genuine add-on bug rather than
+# compression loss.
+INTERLEAVED_ATOL = 1e-4
+
+# Tolerance for the compressed export stage, which accommodates the lossy spline compression used
+# by most games (and wavelet compression in Demon's Souls). DSR adds an extra 2015-2010 conversion
+# on top. Differences of up to ~0.005 in location/scale and ~0.005 in quaternion dot deviation are
+# considered acceptable compression artifacts.
+COMPRESSED_ATOL = 5e-3
+
+
+# ---------------------------------------------------------------------------
 # ActionChannelbag (FCurves container) retrieval helper for Action
 # ---------------------------------------------------------------------------
 
@@ -323,9 +361,6 @@ def _import_animation_headless(
         T.fail(case.name, f"No skeleton HKX class for game {settings.game.name}")
         return False
 
-    import re
-    SKELETON_ENTRY_RE = re.compile(r"skeleton\.hkx(\.dcx)?", re.IGNORECASE)
-
     # For c0000 (and any case with a separate skeleton ANIBND), load the skeleton
     # from that dedicated binder rather than the animation sub-ANIBND, mirroring
     # the special handling in ExportCharacterHKXAnimation.
@@ -427,6 +462,91 @@ def _import_animation_headless(
 
 
 # ---------------------------------------------------------------------------
+# Headless export + re-import helper
+# ---------------------------------------------------------------------------
+
+def _export_and_reimport(
+    armature_obj: bpy.types.Object,
+    anim_stem: str,
+    skeleton_source_path: Path,
+    check_frames: list[int],
+    force_interleaved: bool,
+) -> tuple[dict[tuple[str, int], list[float]] | None, str]:
+    """Export the Action currently assigned to `armature_obj`, then re-import the exported HKX.
+
+    Returns `(fcurve_samples, "")` on success, or `(None, error_message)` on failure. Note that a
+    successful call leaves the *re-imported* Action assigned to `armature_obj`; the caller is
+    responsible for restoring the original Action before any subsequent export.
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        export_path = str(Path(tmpdir) / f"{anim_stem}.hkx")
+        T.activate(armature_obj)
+        try:
+            export_result = bpy.ops.export_scene.hkx_animation(
+                "EXEC_DEFAULT",
+                filepath=export_path,
+                hkx_skeleton_path=str(skeleton_source_path),
+                dcx_type="Null",
+                force_interleaved=force_interleaved,
+            )
+        except Exception as ex:
+            traceback.print_exc()
+            return None, f"Animation export raised exception: {ex}"
+        if "FINISHED" not in export_result:
+            return None, f"Animation export returned {export_result}"
+
+        # ---- Verify exported file ----
+        hkx_files = list(Path(tmpdir).glob("*.hkx"))
+        if not hkx_files:
+            return None, "No .hkx file found after animation export"
+        hkx_file = hkx_files[0]
+        if hkx_file.stat().st_size == 0:
+            return None, f"Exported HKX file is empty: {hkx_file.name}"
+
+        if not check_frames:
+            return {}, ""
+
+        # ---- Re-import exported HKX ----
+        settings = bpy.context.scene.soulstruct_settings
+        anim_hkx_cls = settings.game_config.animation_hkx_class
+        skel_hkx_cls = settings.game_config.skeleton_hkx_class
+        try:
+            skel_p = Path(skeleton_source_path)
+            if skel_p.name.endswith(".hkx") or skel_p.name.endswith(".hkx.dcx"):
+                reimport_skeleton_hkx = skel_hkx_cls.from_path(skel_p)
+            else:
+                from soulstruct.containers import Binder as _RtBinder
+                skel_binder = _RtBinder.from_path(skel_p)
+                skel_entry = skel_binder.find_entry_by_name_regex(SKELETON_ENTRY_RE)
+                reimport_skeleton_hkx = skel_hkx_cls.from_binder_entry(skel_entry)
+            reimport_animation_hkx = anim_hkx_cls.from_path(hkx_file)
+        except Exception as ex:
+            traceback.print_exc()
+            return None, f"Could not load exported HKX for round-trip check: {ex}"
+
+        from bl_ext.user_default.io_soulstruct.soulstruct.blender.animation.types import (
+            SoulstructAnimation as _SoulstructAnimation,
+        )
+        model_name = armature_obj.name.split(".")[0].split(" ")[0]
+        suffix = "_reimport_interleaved" if force_interleaved else "_reimport_compressed"
+        try:
+            reimport_bl_anim = _SoulstructAnimation.new_from_hkx_animation(
+                _LogStub(),
+                bpy.context,
+                reimport_animation_hkx,
+                skeleton_hkx=reimport_skeleton_hkx,
+                name=anim_stem + suffix,
+                armature_obj=armature_obj,
+                model_name=model_name,
+            )
+        except Exception as ex:
+            traceback.print_exc()
+            return None, f"Re-import of exported HKX for round-trip check failed: {ex}"
+
+        return _sample_fcurves(reimport_bl_anim.channelbag, check_frames), ""
+
+
+# ---------------------------------------------------------------------------
 # Per-case test runner
 # ---------------------------------------------------------------------------
 
@@ -434,7 +554,6 @@ def run_case(case: HKXAnimationImportCase):
     """Import FLVER → import animation → export animation → verify."""
 
     anibnd_path = case.source_path
-    flver_path = Path(case.flver_dir) / case.flver_filename
 
     # ---- 1. Import FLVER ----
     T.clear_scene()
@@ -491,7 +610,7 @@ def run_case(case: HKXAnimationImportCase):
     check_frames = keyframe_positions[:5]
     original_samples = _sample_fcurves(channelbag, check_frames)
 
-    # ---- 4. Export animation ----
+    # ---- 4. Export + re-import animation, twice ----
     anim_stem = action.name.split("|")[-1].split(" ")[0].split(".")[0] or "a000_000000"
 
     # For c0000, the skeleton lives in the base ANIBND, not the animation sub-ANIBND.
@@ -503,94 +622,58 @@ def run_case(case: HKXAnimationImportCase):
         else anibnd_path
     )
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        export_path = str(Path(tmpdir) / f"{anim_stem}.hkx")
-        T.activate(armature_obj)
-        try:
-            export_result = bpy.ops.export_scene.hkx_animation(
-                "EXEC_DEFAULT",
-                filepath=export_path,
-                hkx_skeleton_path=str(skeleton_source_path),
-                dcx_type="Null",
+    # `new_from_hkx_animation()` assigns the re-imported Action to the Armature, so we must restore
+    # the original Action before each export stage.
+    original_action = action
+    original_action_slot = armature_obj.animation_data.action_slot
+
+    # Stage 1 (interleaved) is lossless, so any failure there is an add-on bug rather than
+    # compression loss. Stage 2 is the real game format.
+    stages = (
+        ("interleaved (uncompressed)", True, INTERLEAVED_ATOL),
+        ("compressed", False, COMPRESSED_ATOL),
+    )
+
+    for stage_label, force_interleaved, atol in stages:
+
+        # Restore original Action (no-op on the first stage).
+        armature_obj.animation_data.action = original_action
+        armature_obj.animation_data.action_slot = original_action_slot
+
+        reimported_samples, error = _export_and_reimport(
+            armature_obj,
+            anim_stem,
+            skeleton_source_path,
+            check_frames,
+            force_interleaved,
+        )
+        if error:
+            T.fail(case.name, f"[{stage_label}] {error}")
+            return
+        if not check_frames:
+            continue
+
+        mismatches = _compare_fcurve_samples(original_samples, reimported_samples, atol=atol)
+        if mismatches:
+            summary = "\n  ".join(mismatches[:5])
+            if len(mismatches) > 5:
+                summary += f"\n  ... and {len(mismatches) - 5} more"
+            T.fail(
+                case.name,
+                f"[{stage_label}] Round-trip frame check failed ({len(mismatches)} mismatch(es), "
+                f"atol={atol}) over frames {check_frames}:\n  {summary}",
             )
-        except Exception as ex:
-            T.fail(case.name, f"Animation export raised exception: {ex}")
-            return
-        if "FINISHED" not in export_result:
-            T.fail(case.name, f"Animation export returned {export_result}")
             return
 
-        # ---- 5. Verify exported file ----
-        hkx_files = list(Path(tmpdir).glob("*.hkx"))
-        if not hkx_files:
-            T.fail(case.name, "No .hkx file found after animation export")
-            return
-        hkx_file = hkx_files[0]
-        if hkx_file.stat().st_size == 0:
-            T.fail(case.name, f"Exported HKX file is empty: {hkx_file.name}")
-            return
-
-        # ---- 5a. Re-import exported HKX and compare first frames ----
-        if check_frames:
-            _SKEL_ENTRY_RE = re.compile(r"skeleton\.hkx(\.dcx)?", re.IGNORECASE)
-            try:
-                _settings = bpy.context.scene.soulstruct_settings
-                _anim_hkx_cls = _settings.game_config.animation_hkx_class
-                _skel_hkx_cls = _settings.game_config.skeleton_hkx_class
-                skel_p = Path(skeleton_source_path)
-                if skel_p.name.endswith(".hkx") or skel_p.name.endswith(".hkx.dcx"):
-                    reimport_skeleton_hkx = _skel_hkx_cls.from_path(skel_p)
-                else:
-                    from soulstruct.containers import Binder as _RtBinder
-                    _skel_binder = _RtBinder.from_path(skel_p)
-                    _skel_entry = _skel_binder.find_entry_by_name_regex(_SKEL_ENTRY_RE)
-                    reimport_skeleton_hkx = _skel_hkx_cls.from_binder_entry(_skel_entry)
-                reimport_animation_hkx = _anim_hkx_cls.from_path(hkx_file)
-            except Exception as ex:
-                T.fail(case.name, f"Could not load exported HKX for round-trip check: {ex}")
-                return
-
-            from bl_ext.user_default.io_soulstruct.soulstruct.blender.animation.types import (
-                SoulstructAnimation as _SoulstructAnimation,
-            )
-            _model_name = armature_obj.name.split(".")[0].split(" ")[0]
-            try:
-                reimport_bl_anim = _SoulstructAnimation.new_from_hkx_animation(
-                    _LogStub(),
-                    bpy.context,
-                    reimport_animation_hkx,
-                    skeleton_hkx=reimport_skeleton_hkx,
-                    name=anim_stem + "_reimport",
-                    armature_obj=armature_obj,
-                    model_name=_model_name,
-                )
-            except Exception as ex:
-                traceback.print_exc()
-                T.fail(case.name, f"Re-import of exported HKX for round-trip check failed: {ex}")
-                return
-
-            reimported_samples = _sample_fcurves(reimport_bl_anim.channelbag, check_frames)
-            # Use a looser tolerance than the default 1e-3 to accommodate the lossy spline
-            # compression used by most games (DSR adds an extra 2015-2010 conversion on top).
-            # Differences of up to ~0.005 in location/scale and ~0.005 in quaternion dot
-            # deviation are considered acceptable compression artifacts.
-            mismatches = _compare_fcurve_samples(original_samples, reimported_samples, atol=5e-3)
-            if mismatches:
-                summary = "\n  ".join(mismatches[:5])
-                if len(mismatches) > 5:
-                    summary += f"\n  ... and {len(mismatches) - 5} more"
-                T.fail(
-                    case.name,
-                    f"Round-trip frame check failed ({len(mismatches)} mismatch(es)) "
-                    f"over frames {check_frames}:\n  {summary}",
-                )
-                return
+    # Leave the original Action assigned for any downstream inspection.
+    armature_obj.animation_data.action = original_action
+    armature_obj.animation_data.action_slot = original_action_slot
 
     T.ok(
         case.name,
         f"animation round-trip OK — action '{action.name}', "
         f"{len(channelbag.fcurves)} F-Curve(s), "
-        f"first {len(check_frames)} frame(s) consistent",
+        f"first {len(check_frames)} frame(s) consistent (interleaved and compressed)",
     )
 
 
