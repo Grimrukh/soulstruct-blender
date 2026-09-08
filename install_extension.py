@@ -153,8 +153,10 @@ def pip_install_pyrelink(
     except subprocess.CalledProcessError as ex:
         _LOGGER.error(f"Failed to pip-install pyrelink. Error: {ex}")
         return 1
+
     if completed_process.returncode != 0:
         _LOGGER.error(f"Command to pip-install pyrelink returned {completed_process.returncode}.")
+        return completed_process.returncode
 
     _LOGGER.info("Successfully installed pyrelink into Blender site-packages.")
     return 0

@@ -77,9 +77,8 @@ class _CreateFLVERCommand:
 
         if self.bl_flver.version == "DEFAULT":
             # Default is game-dependent.
-            try:
-                version = self.settings.game_config.flver_default_version
-            except KeyError:
+            version = self.settings.game_config.flver_default_version
+            if version is None:
                 raise ValueError(
                     f"Do not know default FLVER Version for game {self.settings.game}. You must set 'Version' yourself "
                     f"on FLVER object '{self.name}' before exporting."

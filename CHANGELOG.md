@@ -5,6 +5,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+### Fixed
+- Fixed logging when finding game textures for Blender materials.
+- Updated to `soulstruct 2.4.2` to fix FLVER UV export bug.
+
 ---
 
 ## [3.0.0] - 2026-09-07

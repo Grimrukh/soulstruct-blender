@@ -313,32 +313,35 @@ def _load_texture_images(
                 bl_image_stems.add(texture_stem)
                 continue
 
-        for i, texture_finder in enumerate(texture_finders):
-            # Searching for original texture is NOT case-sensitive.
-            image_data = texture_finder.get_texture_as(texture_stem, texture_finder_format, name)
+        if texture_finders:
+            for i, texture_finder in enumerate(texture_finders):
+                # Searching for original texture is NOT case-sensitive.
+                image_data = texture_finder.get_texture_as(texture_stem, texture_finder_format, name)
+                if not image_data:
+                    continue  # try next TextureFinder or proceed to `else` below
 
-            if not image_data:
-                if i == len(texture_finders) - 1:
-                    operator.warning(f"Could not find FLVER texture '{texture_stem}' with any TextureFinders.")
-                    break
+                try:
+                    dds_texture = DDSTexture.new_from_image_data(
+                        name=texture_stem,
+                        image_format=bl_image_format,
+                        image_data=image_data,
+                        image_cache_directory=write_image_directory,
+                        replace_existing=False,  # not currently used
+                        pack_image_data=mat_settings.pack_image_data,
+                    )
+                except SoulstructTypeError as ex:
+                    operator.warning(f"Could not load '{texture_stem}' as DDS texture. Error: {ex}")
+                    bl_image_stems.add(texture_stem)  # don't try again
+                    continue  # try next TextureFinder or proceed to `else` below
                 else:
-                    continue  # try next TextureFinder
+                    # DDS loaded successfully.
+                    new_texture_collection.add(dds_texture)
+                    bl_image_stems.add(texture_stem)
+                    break  # don't check more TextureFinders
+            else:
+                operator.warning(f"Could not find FLVER texture '{texture_stem}' with any TextureFinders.")
 
-            try:
-                dds_texture = DDSTexture.new_from_image_data(
-                    name=texture_stem,
-                    image_format=bl_image_format,
-                    image_data=image_data,
-                    image_cache_directory=write_image_directory,
-                    replace_existing=False,  # not currently used
-                    pack_image_data=mat_settings.pack_image_data,
-                )
-                new_texture_collection.add(dds_texture)
-                bl_image_stems.add(texture_stem)
-                continue  # found
-            except SoulstructTypeError as ex:
-                operator.warning(f"Could not load as DDS texture: {texture_stem}. Error: {ex}")
-                bl_image_stems.add(texture_stem)  # don't try again
+            continue  # go to next texture
 
         if image_import_manager:
             try:
@@ -348,9 +351,7 @@ def _load_texture_images(
                 operator.warning(f"Could not find FLVER texture '{texture_stem}' with ImageImportManager. Error: {ex}")
             else:
                 tpf_textures_to_load[texture_stem] = texture
-                continue  # found
-
-        operator.warning(f"Could not find TPF or cached image '{texture_stem}' for FLVER '{name}'.")
+                continue  # texture found, go to next texture
 
     # This section is only used by ImageImportManager, not TextureFinder.
     if tpf_textures_to_load:
