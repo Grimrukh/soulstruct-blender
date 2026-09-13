@@ -5,9 +5,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+### Added
+- C++ `pyrelink` FLVER acceleration enabled for export (same global 'Use C++ FLVER' option as import).
+
+### Changed
+- Updated to `soulstruct 2.4.3` (FLVER UV export bug, GameType enum).
+- Updated to `soulstruct-havok 1.3.2` (spline-compressed animation decoding fix, TRSTransform.left_divide).
+- Updated to `pyrelink 0.3.2`.
+- Changed `is_game()` calls to use new `GameType` enum.
+- Dynamic FLVER Armature bones now use `inherit_scale = 'ALIGNED'` (was `'FULL'`).
+- HKX animation round-trip test now compares exported HKX bone transforms in HKX local space.
+
 ### Fixed
+- HKX animation import/export now converts game transforms and applies the X-forward bone change of basis at the
+  translation/rotation/scale level, never via `Matrix.decompose()` -> Negative bone scale fixed.
 - Fixed logging when finding game textures for Blender materials.
-- Updated to `soulstruct 2.4.2` to fix FLVER UV export bug.
+- Fixed Import Player operator for Demon's Souls (now checks c0000 subfolder).
+- Don't fail entire FLVER import when a DDS texture cannot be parsed by Firelink.
 
 ---
 
