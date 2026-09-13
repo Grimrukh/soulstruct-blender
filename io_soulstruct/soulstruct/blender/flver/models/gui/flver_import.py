@@ -4,6 +4,8 @@ __all__ = [
     "FLVERImportPanel",
 ]
 
+from soulstruct.games import GameType
+
 from ....base.register import io_soulstruct_panel
 from ....bpy_base.panel import SoulstructPanel
 from ..operators.import_operators import *
@@ -31,7 +33,7 @@ class FLVERImportPanel(SoulstructPanel):
         layout.operator(ImportMapPieceFLVER.bl_idname)
         layout.operator(ImportCharacterFLVER.bl_idname)
         layout.operator(ImportPlayerFLVER.bl_idname)
-        if settings.is_game("ELDEN_RING"):
+        if settings.is_game(GameType.EldenRing):
             layout.operator(ImportAssetFLVER.bl_idname)
         else:
             layout.operator(ImportObjectFLVER.bl_idname)

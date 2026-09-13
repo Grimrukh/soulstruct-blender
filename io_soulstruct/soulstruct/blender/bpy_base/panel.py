@@ -9,6 +9,8 @@ import typing as tp
 
 import bpy
 
+from soulstruct.games import GameType
+
 from ..base.icons import get_icon_id
 
 # Ordered (most-specific-first) `Panel.__module__` substring -> custom icon name (see `base/icons.py`).
@@ -171,7 +173,7 @@ class SoulstructPanel(bpy.types.Panel):
         map_box.label(text="Choose Active Map:")
         map_box.prop(context.scene.soulstruct_settings.game_settings, "map_stem", text="")
 
-        if context.scene.soulstruct_settings.is_game("ELDEN_RING"):
+        if context.scene.soulstruct_settings.is_game(GameType.EldenRing):
             map_box.label(text="ER Map Selection Filter:")
             map_box.prop(context.scene.soulstruct_settings.eldenring, "map_filter_mode", text="")
 

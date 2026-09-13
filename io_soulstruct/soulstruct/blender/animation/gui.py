@@ -5,6 +5,8 @@ __all__ = [
     "AnimationToolsPanel",
 ]
 
+from soulstruct.games import GameType
+
 from ..base.register import io_soulstruct_panel
 from ..bpy_base.panel import SoulstructPanel
 from .import_operators import *
@@ -35,7 +37,7 @@ class AnimationImportExportPanel(SoulstructPanel):
             if settings.import_roots != (None, None):
                 panel.label(text="Import from Game/Project")
                 panel.operator(ImportCharacterHKXAnimation.bl_idname)
-                if settings.is_game("ELDEN_RING"):
+                if settings.is_game(GameType.EldenRing):
                     panel.operator(ImportAssetHKXAnimation.bl_idname)
                 else:
                     panel.operator(ImportObjectHKXAnimation.bl_idname)
@@ -49,7 +51,7 @@ class AnimationImportExportPanel(SoulstructPanel):
         if panel:
             panel.label(text="Export to Project/Game")
             panel.operator(ExportCharacterHKXAnimation.bl_idname)
-            if settings.is_game("ELDEN_RING"):
+            if settings.is_game(GameType.EldenRing):
                 panel.label(text="Asset animation export not ready!")
             else:
                 panel.operator(ExportObjectHKXAnimation.bl_idname)

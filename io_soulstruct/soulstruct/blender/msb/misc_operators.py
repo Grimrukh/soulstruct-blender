@@ -30,7 +30,7 @@ import bpy
 from mathutils import Matrix
 
 from soulstruct.base.maps.msb.region_shapes import RegionShapeType
-from soulstruct.games import DEMONS_SOULS, DARK_SOULS_PTDE, DARK_SOULS_DSR
+from soulstruct.games import GameType
 
 from ..base.operators import *
 from ..base.register import io_soulstruct_properties, io_soulstruct_operator, io_soulstruct_pointer_property
@@ -1031,7 +1031,7 @@ class CreateConnectCollision(LoggingOperator):
     @classmethod
     def poll(cls, context) -> bool:
         settings = cls.settings(context)
-        if not settings.is_game(DEMONS_SOULS, DARK_SOULS_PTDE, DARK_SOULS_DSR):
+        if not settings.is_game(GameType.DemonsSouls, GameType.DarkSoulsPTDE, GameType.DarkSoulsDSR):
             return False
         if not context.selected_objects:
             return False
@@ -1048,11 +1048,11 @@ class CreateConnectCollision(LoggingOperator):
     def execute(self, context):
 
         settings = self.settings(context)
-        if settings.is_game(DARK_SOULS_PTDE):
+        if settings.is_game(GameType.DarkSoulsPTDE):
             from .types.darksouls1ptde import BlenderMSBConnectCollision
-        elif settings.is_game(DARK_SOULS_DSR):
+        elif settings.is_game(GameType.DarkSoulsDSR):
             from .types.darksouls1r import BlenderMSBConnectCollision
-        elif settings.is_game(DEMONS_SOULS):
+        elif settings.is_game(GameType.DemonsSouls):
             from .types.demonssouls import BlenderMSBConnectCollision
         else:
             return self.error(f"Connect Collision creation not supported for game {settings.game.name}.")

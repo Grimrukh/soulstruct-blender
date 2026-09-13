@@ -42,6 +42,7 @@ from soulstruct.darksouls1ptde.constants import CHARACTER_MODELS as DS1_CHARACTE
 from soulstruct.demonssouls.constants import CHARACTER_MODELS as DES_CHARACTER_MODELS
 from soulstruct.eldenring.constants import CHARACTER_MODELS as ER_CHARACTER_MODELS
 from soulstruct.flver import *
+from soulstruct.games import GameType
 
 import pyrelink.core as pyre
 
@@ -259,13 +260,13 @@ class ImportCharacterFLVER(_BaseFLVERImportOperator):
         model_name = "<N/A>"
         if model_stem:
             settings = self.settings(context)
-            if settings.is_game("BLOODBORNE"):
+            if settings.is_game(GameType.Bloodborne):
                 model_name = BB_CHARACTER_MODELS.get(model_stem, "<Unknown>")
             elif settings.is_game_ds1():
                 model_name = DS1_CHARACTER_MODELS.get(model_stem, "<Unknown>")
-            elif settings.is_game("DEMONS_SOULS"):
+            elif settings.is_game(GameType.DemonsSouls):
                 model_name = DES_CHARACTER_MODELS.get(model_stem, "<Unknown>")
-            elif settings.is_game("ELDEN_RING"):
+            elif settings.is_game(GameType.EldenRing):
                 model_name = ER_CHARACTER_MODELS.get(model_stem, "<Unknown>")
 
         self.layout.label(text=f"Character: {model_name}")
@@ -283,13 +284,13 @@ class ImportCharacterFLVER(_BaseFLVERImportOperator):
         if not context.scene.flver_import_settings.add_name_suffix:
             return
 
-        if settings.is_game("BLOODBORNE"):
+        if settings.is_game(GameType.Bloodborne):
             model_dict = BB_CHARACTER_MODELS
         elif settings.is_game_ds1():
             model_dict = DS1_CHARACTER_MODELS
-        elif settings.is_game("DEMONS_SOULS"):
+        elif settings.is_game(GameType.DemonsSouls):
             model_dict = DES_CHARACTER_MODELS
-        elif settings.is_game("ELDEN_RING"):
+        elif settings.is_game(GameType.EldenRing):
             model_dict = ER_CHARACTER_MODELS
         else:
             # TODO: Use other games' character name dicts.
@@ -327,8 +328,15 @@ class ImportPlayerFLVER(LoggingOperator):
 
         settings = self.settings(context)
 
+        if settings.is_game(GameType.DemonsSouls):
+            # Nested inside character subfolder.
+            c0000_binder_path = Path(f"chr/c0000/c0000.chrbnd")
+        else:
+            # Not in subfolder.
+            c0000_binder_path = Path(f"chr/c0000.chrbnd")
+
         try:
-            c0000_binder_path = settings.get_import_file_path("chr/c0000.chrbnd")
+            c0000_binder_path = settings.get_import_file_path(c0000_binder_path)
         except FileNotFoundError:
             return self.error(f"Cannot find c0000 CHRBND in 'chr' import directory.")
 
@@ -388,7 +396,7 @@ class ImportObjectFLVER(_BaseFLVERImportOperator):
     @classmethod
     def poll(cls, context) -> bool:
         settings = cls.settings(context)
-        if settings.is_game("ELDEN_RING"):
+        if settings.is_game(GameType.EldenRing):
             return False  # has 'assets' instead
         return settings.has_import_dir_path("obj")
 

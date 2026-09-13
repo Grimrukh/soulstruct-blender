@@ -34,15 +34,27 @@ def create_edit_bones(
     Note that the returned bones will become invalid when exiting EDIT mode, so they should be used immediately.
     """
     # FLVER bone scale is never inherited (see `BoneTree.get_bone_armature_space_transforms()`), but HKX animation
-    # bone scale IS inherited (Havok composes `S' = S_parent * S_local`). A Blender Armature can only use one
-    # convention, so we choose per bone data type:
+    # bone scale IS inherited: Havok composes `hkQsTransform`s shear-free, as
+    #     T' = T_parent + R_parent @ (S_parent * T_local),  R' = R_parent @ R_local,  S' = S_parent * S_local
+    # where `*` is component-wise, i.e. the parent's scale is applied along the CHILD's own axes, never as a general
+    # affine (shearing) matrix product. A Blender Armature can only use one convention, so we choose per bone data type:
     #  - EDIT (dynamic FLVERs: characters/objects) stores no scale in EditBones at all, so pose scale can only ever
-    #    come from an HKX animation; 'FULL' is required for animated poses to display and export correctly.
-    #  - CUSTOM (static FLVERs: map pieces) writes FLVER *local* bone scale to PoseBones for display, so 'NONE' is
-    #    required to match FLVER semantics.
+    #    come from an HKX animation. Blender's 'ALIGNED' mode ("apply parent X scale to child X axis, and so on") is
+    #    exactly the Havok rule above and reproduces `pose_bone.matrix` from Havok armature-space data to float
+    #    precision, with no shear, with or without the X-forward bone CoB (the CoB permutes axes identically for
+    #    parent and child, so component-wise products are unaffected). 'FULL' is WRONG here: it composes 4x4
+    #    matrices, so a rotated child of a non-uniformly scaled parent gets shear and the wrong scale (e.g. DSR c3420
+    #    animates `Spine1`/`Spine3`/`Neck1` X-scale between ~0.65 and ~1.5, visibly warping everything downstream).
+    #    'NONE' still scales the child's *location* by the parent scale (Blender always does that) but drops the
+    #    inherited scale itself.
+    #  - CUSTOM (static FLVERs: map pieces) writes FLVER *local* bone scale to PoseBones for display, so 'NONE' is the
+    #    closest match to FLVER semantics. (It is not perfect: FLVER also leaves child *translations* unscaled by the
+    #    parent, which no Blender mode does, but scaled FLVER bones with children are super rare.)
     # Either way, FLVER export is unaffected: it always reads local bone scale from the `FLVER_BONE.flver_scale`
-    # custom property and rest transforms from `Bone.matrix_local`, never from pose scale.
-    inherit_scale = "FULL" if bone_data_type == FLVERBoneDataType.EDIT else "NONE"
+    # custom property and rest transforms from `Bone.matrix_local`, never from pose scale. HKX animation export is
+    # also unaffected: it recomposes armature-space transforms from pose channels with the Havok rule directly (see
+    # `animation.utilities.get_pose_trs_from_basis()`), rather than trusting `pose_bone.matrix`.
+    inherit_scale = "ALIGNED" if bone_data_type == FLVERBoneDataType.EDIT else "NONE"
 
     edit_bones = []  # all bones
     for game_bone, bl_bone_name in zip(bone_tree.bones, bl_bone_names, strict=True):
@@ -166,12 +178,12 @@ def _check_scale(operator: LoggingOperator, game_scale: Vector3, bone_name: str,
     """Check bone scale for issues. Return `True` if scale is uniform identity and `False` if not."""
     if not is_uniform(game_scale, rel_tol=0.001):
         operator.warning(
-            f"Bone {bone_name} in FLVER {flver_name} has non-uniform scale: {game_scale}. "
+            f"Bone '{bone_name}' in FLVER {flver_name} has non-uniform scale: {game_scale:.3f}. "
             f"This is unsupported in Blender. Storing on custom property."
         )
     elif any(c < 0.0 for c in game_scale):
         operator.warning(
-            f"Bone {bone_name} in FLVER {flver_name} has negative scale: {game_scale}. "
+            f"Bone '{bone_name}' in FLVER {flver_name} has negative scale: {game_scale:.3f}. "
             f"This is unsupported in Blender. Storing on custom property."
         )
     elif math.isclose(game_scale.x, 1.0, rel_tol=0.001):
@@ -179,6 +191,6 @@ def _check_scale(operator: LoggingOperator, game_scale: Vector3, bone_name: str,
         pass
     else:
         operator.warning(
-            f"Bone {bone_name} in FLVER {flver_name} has uniform but non-identity scale: {game_scale}. "
+            f"Bone '{bone_name}' in FLVER {flver_name} has uniform but non-identity scale: {game_scale:.3f}. "
             f"This is unsupported in Blender. Storing on custom property."
         )

@@ -15,6 +15,7 @@ from mathutils import Vector
 
 from soulstruct.base.events.enums import NavmeshFlag
 from soulstruct.base.maps.navmesh.nvm import *
+from soulstruct.games import GameType
 
 from ...base.operators import *
 from ...base.soulstruct_object import BaseBlenderSoulstructObject
@@ -184,7 +185,7 @@ class BlenderNVM(BaseBlenderSoulstructObject[NVM, NVMProps]):
             for nvm_event_entity in self.get_nvm_event_entities()
         ]
 
-        big_endian = settings.is_game("DEMONS_SOULS")
+        big_endian = settings.is_game(GameType.DemonsSouls)
 
         nvm = NVM(
             big_endian=big_endian,

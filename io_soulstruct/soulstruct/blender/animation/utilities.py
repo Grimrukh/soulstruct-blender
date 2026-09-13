@@ -12,7 +12,10 @@ __all__ = [
     "get_armature_bone_data_type",
     "get_or_create_action_strip",
     "create_action_slot_channelbag",
-    "get_basis_matrix",
+    "TRS",
+    "get_armature_rest_trs",
+    "get_basis_trs",
+    "get_pose_trs_from_basis",
     "add_keyframes_batch",
 ]
 
@@ -20,7 +23,7 @@ import typing as tp
 from pathlib import Path
 
 import bpy
-from mathutils import Matrix
+from mathutils import Matrix, Quaternion, Vector
 
 import numpy as np
 
@@ -247,48 +250,109 @@ def create_action_slot_channelbag(
     return action, action_slot, channelbag
 
 
-def get_basis_matrix(
-    armature: ArmatureObject,
-    bone_name: str,
-    parent_bone_name: str,
-    armature_matrix: Matrix,
-    armature_inv_matrices: dict[str, Matrix],
-    cached_local_edit_inv_matrices: dict[str, Matrix],
-):
-    """Get the appropriate matrix to assign to `pose_bone.matrix_basis` from `armature_matrix` by inverting Blender's
-    process (see `get_armature_matrix()`).
+TRS = tuple[Vector, Quaternion, Vector]  # (translation, rotation, scale)
 
-    The basis matrix represents the *local pose* transform of the bone relative to its *local rest* transform
-    (EditBone). For root bones, local pose IS armature pose, and this reduces to just being rest-relative.
 
-    We only consider parent bones that appear as keys in `armature_inv_matrices`. Otherwise, the parent is ignored; this
-    allows e.g. untouched Master bones to be ignored in cutscene animations (where the children of Master may be treated
-    as world-space transforms instead).
+def get_armature_rest_trs(armature: ArmatureObject) -> dict[str, TRS]:
+    """Return a dict mapping Blender bone names to their rest pose (translation, rotation, scale) in armature space,
+    decomposed from `Bone.matrix_local`.
 
-    Args:
-        armature: Armature object containing `bone_name`.
-        bone_name: Name of the pose bone for which to get the basis matrix.
-        parent_bone_name: Name of the bone's parent. Can be intentionally omitted to treat any bone as root.
-            This is useful for cutscene animations that, e.g., skip the c0000[Master] bone frame entirely.
-        armature_matrix: The desired armature matrix for `bone_name` (i.e., `pose_bone.matrix`).
-        armature_inv_matrices: Dictionary mapping bone names to their armature matrices inverted. Used to avoid
-            recalculating the inverted matrices of multi-child bones. Parent bone names MUST appear in this to be used
-            for making the current bone's pose parent-relative.
-        cached_local_edit_inv_matrices: Dictionary mapping bone names to their local matrices inverted. Used to avoid
-            recalculating the inverted matrices of multi-child bones.
-
-    Inverse of `get_armature_matrix()`.
+    FLVER rest bones never carry scale (see `write_flver_rest_pose_to_edit_bones()`), so `matrix_local` is always a
+    pure rotation+translation matrix and this decomposition is exact -- no shear is possible.
     """
-    if bone_name not in cached_local_edit_inv_matrices:
-        cached_local_edit_inv_matrices[bone_name] = armature.data.bones[bone_name].matrix_local.inverted()
-    local_edit_inv = cached_local_edit_inv_matrices[bone_name]
+    return {
+        bone.name: bone.matrix_local.decompose()
+        for bone in armature.data.bones
+    }
 
-    if not parent_bone_name:
-        return local_edit_inv @ armature_matrix
 
-    local_pose = armature_inv_matrices[parent_bone_name] @ armature_matrix
-    parent_local_edit = armature.data.bones[parent_bone_name].matrix_local
-    return local_edit_inv @ parent_local_edit @ local_pose
+def _trs_compose(t1: Vector, r1: Quaternion, s1: Vector, t2: Vector, r2: Quaternion, s2: Vector) -> TRS:
+    """Shear-free composition of two (translation, rotation, scale) transforms, matching the composition rule used by
+    Havok's `hkQsTransform` (and Soulstruct's `TRSTransform.compose(scale_translation=True)`):
+        T' = R1 @ (S1 * T2) + T1
+        R' = R1 @ R2
+        S' = S1 * S2  (component-wise)
+
+    Unlike `Matrix @ Matrix`, this can NEVER introduce shear. That matters because a plain matrix product of a
+    non-uniformly-scaled parent and a rotated child generally DOES contain shear, which Havok's animation format
+    (and this composition rule) cannot represent and never produces in the first place.
+    """
+    scaled_t2 = Vector((s1.x * t2.x, s1.y * t2.y, s1.z * t2.z))
+    t = r1.to_matrix() @ scaled_t2 + t1
+    r = r1 @ r2
+    s = Vector((s1.x * s2.x, s1.y * s2.y, s1.z * s2.z))
+    return t, r, s
+
+
+def _trs_left_divide(t1: Vector, r1: Quaternion, s1: Vector, t2: Vector, r2: Quaternion, s2: Vector) -> TRS:
+    """Solve `(t1, r1, s1) (+) X = (t2, r2, s2)` for `X`, where `(+)` is the shear-free composition above.
+
+    IMPORTANT: this is NOT the same as composing `(t2, r2, s2)` with the "inverse" of `(t1, r1, s1)` (i.e. it is
+    NOT `_trs_compose(*inverse(t1, r1, s1), t2, r2, s2)`). Havok's own `TRSTransform.inverse()` is explicitly only a
+    *one-sided* inverse -- its docstring notes `inverse(A) (+) A == identity` holds for any scale, but the reverse
+    `A (+) inverse(A)` does not, "because rotation and non-uniform scaling do not commute". Composing with that
+    one-sided inverse therefore does NOT recover `X` here whenever `s1` is non-uniform: it silently applies the
+    unscale *before* un-rotating, instead of after, corrupting exactly the non-uniform-scale-plus-rotation cases this
+    whole shear-free scheme exists to handle correctly. This function solves the composition definition directly
+    (unscale happens after un-rotating), which is provably correct for any scale.
+    """
+    inv_r1 = r1.inverted()
+    inv_s1 = Vector((1.0 / s1.x, 1.0 / s1.y, 1.0 / s1.z))
+    r = inv_r1 @ r2
+    s = Vector((s2.x * inv_s1.x, s2.y * inv_s1.y, s2.z * inv_s1.z))
+    rotated_delta = inv_r1.to_matrix() @ (t2 - t1)
+    t = Vector((rotated_delta.x * inv_s1.x, rotated_delta.y * inv_s1.y, rotated_delta.z * inv_s1.z))
+    return t, r, s
+
+
+def get_basis_trs(
+    rest_trs: TRS,
+    parent_rest_trs: TRS | None,
+    pose_trs: TRS,
+    parent_pose_trs: TRS | None,
+) -> TRS:
+    """Shear-free replacement for the old matrix-based `get_basis_matrix()`. Returns the (location, rotation, scale)
+    triple to write directly to a PoseBone's FCurve samples (i.e. Blender's `matrix_basis`, pre-decomposed), given the
+    bone's (and optional parent's) rest and target armature-space pose transforms.
+
+    Solves `pose_trs = parent_pose_trs (+) (rest_rel (+) basis)` for `basis`, where `(+)` is the shear-free TRS
+    composition above and `rest_rel` is this bone's rest pose expressed relative to its parent's rest pose. If
+    `parent_rest_trs`/`parent_pose_trs` is `None`, the bone is treated as a root (parent transforms are identity).
+    This allows e.g. untouched Master bones to be ignored in cutscene animations (where the children of Master may be
+    treated as world-space transforms instead).
+
+    Inverse of `get_pose_trs_from_basis()`.
+    """
+    if parent_rest_trs is None or parent_pose_trs is None:
+        rest_rel = rest_trs
+        local_pose = pose_trs
+    else:
+        rest_rel = _trs_left_divide(*parent_rest_trs, *rest_trs)
+        local_pose = _trs_left_divide(*parent_pose_trs, *pose_trs)
+    return _trs_left_divide(*rest_rel, *local_pose)
+
+
+def get_pose_trs_from_basis(
+    rest_trs: TRS,
+    parent_rest_trs: TRS | None,
+    basis_trs: TRS,
+    parent_pose_trs: TRS | None,
+) -> TRS:
+    """Inverse of `get_basis_trs()`: reconstructs a bone's armature-space target (translation, rotation, scale)
+    transform from its Blender pose channel values (the `basis`) plus rest/parent-pose data.
+
+    Used by animation export in place of reading `pose_bone.matrix` directly, since that final matrix depends on each
+    bone's `inherit_scale` setting. Only `ALIGNED` (which FLVER import now sets on dynamic FLVER bones) matches this
+    Havok rule exactly; `FULL` composes 4x4 matrices and so introduces shear and wrong scale whenever a non-uniformly
+    scaled parent has a rotated child, and `NONE`/`AVERAGE` lose the inherited scale (though Blender still scales the
+    child's *location* by the parent scale in every mode). Recomposing here keeps export correct regardless of how a
+    user (or older import) has configured the Armature.
+    """
+    if parent_rest_trs is None or parent_pose_trs is None:
+        return _trs_compose(*rest_trs, *basis_trs)
+    rest_rel = _trs_left_divide(*parent_rest_trs, *rest_trs)
+    local_pose = _trs_compose(*rest_rel, *basis_trs)
+    return _trs_compose(*parent_pose_trs, *local_pose)
 
 
 def add_keyframes_batch(

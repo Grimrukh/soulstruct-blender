@@ -12,6 +12,7 @@ from pathlib import Path
 
 import bpy
 
+from soulstruct.games import GameType
 from soulstruct.havok.fromsoft.darksouls1r.remobnd import *
 
 from ..base.operators import LoggingImportOperator
@@ -66,7 +67,7 @@ class ImportHKXCutscene(LoggingImportOperator):
     @classmethod
     def poll(cls, context) -> bool:
         """Only for DSR right now."""
-        return cls.settings(context).is_game("DARK_SOULS_DSR") and super().poll(context)
+        return cls.settings(context).is_game(GameType.DarkSoulsDSR) and super().poll(context)
 
     def execute(self, context):
         remobnd_path = Path(self.filepath)

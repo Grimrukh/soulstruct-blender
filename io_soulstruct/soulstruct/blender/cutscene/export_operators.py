@@ -33,6 +33,7 @@ from pathlib import Path
 import bpy
 from mathutils import Quaternion as BlenderQuaternion
 
+from soulstruct.games import GameType
 from soulstruct.havok.utilities.maths import TRSTransform, Quaternion, Vector3
 from soulstruct.havok.fromsoft.darksouls1r.remobnd import *
 
@@ -79,7 +80,7 @@ class ExportHKXCutscene(LoggingExportOperator):
 
     @classmethod
     def poll(cls, context) -> bool:
-        if not cls.settings(context).is_game("DARK_SOULS_DSR"):
+        if not cls.settings(context).is_game(GameType.DarkSoulsDSR):
             return False
         obj = context.active_object
         return bool(obj and obj.type == "CAMERA" and obj.animation_data and obj.animation_data.action)

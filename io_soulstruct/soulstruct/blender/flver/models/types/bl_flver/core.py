@@ -470,7 +470,7 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
 
             step = steps // 5
             if settings.pyrelink_game_type == pyre.GameType.Bloodborne:
-                # TODO: pyrelink TextureFinder cannot deswizzle PS4 textures yet.
+                # TODO: pyrelink TextureFinder can deswizzle PS4 textures now - upgrade.
                 image_import_manager = ImageImportManager(operator, context)
                 texture_finders = []
 
@@ -547,9 +547,7 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
                 )
                 progress(step)
                 step += 1
-                operator.info(
-                    f"Created Blender materials for FLVER in {time.perf_counter() - mat_p:.3f} s: {model_name}"
-                )
+                operator.time_info(mat_p, f"Created Blender materials for FLVER {model_name}")
             except Exception as ex:
                 operator.error(f"(Batch) Cannot import FLVER: {flver.path_name}. Material creation error: {ex}")
                 flvers.pop(model_name)  # drop failed FLVER
@@ -690,7 +688,9 @@ class BlenderFLVER(BaseBlenderSoulstructObject[FLVER, FLVERProps]):
         context: bpy.types.Context,
         texture_collection: DDSTextureCollection | None = None,
         flver_model_type=FLVERModelType.Unknown,
-    ) -> FLVER:
+    ) -> FLVER | pyre_flver.FLVER:
+        """Returns a Python `soulstruct` `FLVER` or a C++ `pyrelink` `FLVER`, depending on the `use_pyrelink_flver`
+        setting at the time of the call."""
         return create_flver_from_bl_flver(operator, context, self, texture_collection, flver_model_type)
 
     @property

@@ -7,7 +7,7 @@ import typing as tp
 import numpy as np
 
 import bpy
-from mathutils import Matrix, Quaternion as BLQuaternion
+from mathutils import Vector, Quaternion as BLQuaternion
 
 from soulstruct.dcx import DCXType
 from soulstruct.games import *
@@ -16,7 +16,7 @@ from soulstruct.havok.fromsoft.demonssouls import AnimationHKX as DES_AnimationH
 from soulstruct.havok.utilities.maths import TRSTransform
 
 from ..base.operators import *
-from ..flver.utilities import game_bone_transform_to_bl_bone_matrix, BONE_CoB_4x4
+from ..flver.utilities import game_trs_to_bl_bone_trs, bl_bone_trs_to_game_trs
 from ..flver.models.types import BlenderFLVER, FLVERBoneDataType
 from ..exceptions import *
 from ..types import *
@@ -339,7 +339,7 @@ class SoulstructAnimation:
                 bone_basis_samples = cls.get_bone_basis_samples(
                     armature_obj,
                     arma_frames,
-                    cls.get_armature_local_inv_matrices(armature_obj),
+                    get_armature_rest_trs(armature_obj),
                     bl_frames_per_game_frame,
                     bone_data_type,
                 )
@@ -377,22 +377,10 @@ class SoulstructAnimation:
         return animation
 
     @staticmethod
-    def get_armature_local_inv_matrices(armature: ArmatureObject) -> dict[str, Matrix]:
-        """Return a dictionary mapping Blender bone names to their inverted `matrix_local` transforms.
-
-        NOTE: We stay in our custom 'FromSoft bone space' coordinates here (X-forward), since this is intended only for
-        use within bone transform calculations.
-        """
-        return {
-            bone.name: bone.matrix_local.inverted()
-            for bone in armature.data.bones
-        }
-
-    @staticmethod
     def get_bone_basis_samples(
         armature: ArmatureObject,
         arma_frames: list[dict[str, TRSTransform]],
-        arma_local_inv_matrices: dict[str, Matrix],
+        rest_trs_by_bone_name: dict[str, tuple[Vector, BLQuaternion, Vector]],
         bl_frames_per_game_frame: float,
         bone_data_type: FLVERBoneDataType,
         assert_root_bone_names: tp.Container[str] = (),
@@ -400,6 +388,13 @@ class SoulstructAnimation:
         """Convert a list of Armature-space frames, where each frame is a `dict[bone_name: str, TRSTransform]`, to an
         outer dictionary that maps bone names to an array of 11 bone basis-space keyframe values:
             t, location XYZ, rotation quaternion WXYZ, scale XYZ
+
+        Uses shear-free TRS composition (`get_basis_trs()`) rather than 4x4 matrix algebra to derive each bone's pose
+        basis relative to its parent. A plain matrix ratio between a non-uniformly-scaled parent's armature-space
+        target and a rotated child's target generally contains shear, which `Matrix.decompose()` would silently
+        discard; Havok's own bone hierarchy composition never produces such shear in the first place, so neither
+        should ours. Likewise, the game -> Blender coordinate conversion and the X-forward bone CoB are applied at TRS
+        level, never via `Matrix.decompose()`, so negative bone scale (which Havok animations do use) survives exactly.
         """
 
         # We negate double-cover quaternions to improve interpolation between adjacent frames.
@@ -411,60 +406,39 @@ class SoulstructAnimation:
             for bone_name in arma_frames[0].keys()
         }  # type: dict[str, np.ndarray]
 
+        identity_trs = (Vector((0.0, 0.0, 0.0)), BLQuaternion(), Vector((1.0, 1.0, 1.0)))
+
         keyframe_t = 0.0
         for frame_i, frame in enumerate(arma_frames):
             # `frame_i` is used to index array rows (created above).
 
-            bl_arma_matrices = {}
+            bl_pose_trs = {}  # type: dict[str, tuple[Vector, BLQuaternion, Vector]]
             for bone_name, trs in frame.items():
-                # bl_arma_matrix = game_trs_to_bl_matrix(trs)
                 if bone_data_type == FLVERBoneDataType.EDIT:
-                    # Account for EditBone change of basis.
-                    # In practice, this only matters for root bones (including effective cutscene root bones)
-                    # because child bones only have their local transforms extracted for the basis matrix anyway.
-                    # bl_arma_matrices[bone_name] = bl_arma_matrix @ BONE_CoB_4x4  # TODO: use this probably
-                    bl_arma_matrices[bone_name] = game_bone_transform_to_bl_bone_matrix(
-                        trs.translation,
-                        trs.rotation.to_matrix3(),
-                        trs.scale,
-                    )
+                    # Account for EditBone change of basis (at TRS level, so scale signs are preserved exactly).
+                    bl_pose_trs[bone_name] = game_trs_to_bl_bone_trs(trs)
                 else:
                     # Standard conversion, no CoB in edit bones to account for.
-                    bl_arma_matrices[bone_name] = game_trs_to_bl_matrix(trs)
+                    bl_pose_trs[bone_name] = game_trs_to_bl_trs(trs)
 
-            cached_arma_inv_matrices = {}  # cached for frame as needed
-
-            for bone_name, bl_arma_matrix in bl_arma_matrices.items():
+            for bone_name, pose_trs in bl_pose_trs.items():
                 basis_samples = bone_basis_samples[bone_name]
 
                 bl_edit_bone = tp.cast(bpy.types.Bone, armature.data.bones[bone_name])
+                rest_trs = rest_trs_by_bone_name[bone_name]
 
                 if bl_edit_bone.parent is not None and bone_name not in assert_root_bone_names:
                     parent_bone_name = bl_edit_bone.parent.name
-                    if parent_bone_name not in cached_arma_inv_matrices:
-                        # Cache parent's inverted armature matrix (might be needed by other sibling bones this frame).
-                        # Note that as FLVER and HKX skeleton hierarchies may be different, the FLVER (Blender Armature)
-                        # parent bone may not even be animated, in which case we just use an identity matrix.
-                        if parent_bone_name in bl_arma_matrices:
-                            cached_arma_inv_matrices[parent_bone_name] = bl_arma_matrices[parent_bone_name].inverted()
-                        else:
-                            # We still want to use the rest pose of this parent, even though it doesn't appear
-                            # in this animation frame. Assume animation pose is identity.
-                            cached_arma_inv_matrices[parent_bone_name] = Matrix.Identity(4)
+                    parent_rest_trs = rest_trs_by_bone_name[parent_bone_name]
+                    # As FLVER and HKX skeleton hierarchies may be different, the FLVER (Blender Armature) parent
+                    # bone may not even be animated in this frame's data, in which case we assume an identity pose.
+                    parent_pose_trs = bl_pose_trs.get(parent_bone_name, identity_trs)
                 else:
-                    # Consider this bone as a root bone when calculating basis matrix.
-                    parent_bone_name = ""
+                    # Consider this bone as a root bone when calculating basis.
+                    parent_rest_trs = None
+                    parent_pose_trs = None
 
-                bl_basis_matrix = get_basis_matrix(
-                    armature,
-                    bone_name,
-                    parent_bone_name,
-                    bl_arma_matrix,
-                    cached_arma_inv_matrices,
-                    arma_local_inv_matrices,
-                )
-
-                t, r, s = bl_basis_matrix.decompose()
+                t, r, s = get_basis_trs(rest_trs, parent_rest_trs, pose_trs, parent_pose_trs)
 
                 if bone_name in last_frame_rotations:
                     if last_frame_rotations[bone_name].dot(r) < 0.0:
@@ -540,6 +514,36 @@ class SoulstructAnimation:
             bone.name: bone for bone in armature.pose.bones
         }
 
+        # Rest pose is static, so compute it once. FLVER rest bones never carry scale, so this is exact.
+        rest_trs_by_bone_name = get_armature_rest_trs(armature)
+
+        def _get_pose_trs(bone_name: str, cache: dict[str, TRS]) -> TRS:
+            """Recursively reconstruct `bone_name`'s armature-space (translation, rotation, scale) target from its
+            pose channel values (the `matrix_basis`-equivalent written on import) via shear-free TRS composition,
+            walking up the Blender bone hierarchy as needed.
+
+            Deliberately bypasses `pose_bone.matrix`: that final matrix depends on each bone's `inherit_scale`
+            setting, and only `ALIGNED` (set by FLVER import on dynamic FLVERs) reproduces Havok's shear-free,
+            component-wise scale-propagating composition; `FULL` shears, and `NONE` drops inherited scale. Recomposing
+            from channels keeps export correct for any Armature configuration.
+            """
+            if bone_name in cache:
+                return cache[bone_name]
+            pose_bone = armature.pose.bones[bone_name]
+            basis_trs = (pose_bone.location.copy(), pose_bone.rotation_quaternion.copy(), pose_bone.scale.copy())
+            rest_trs = rest_trs_by_bone_name[bone_name]
+            bl_bone = armature.data.bones[bone_name]
+            if bl_bone.parent is not None:
+                parent_name = bl_bone.parent.name
+                parent_rest_trs = rest_trs_by_bone_name[parent_name]
+                parent_pose_trs = _get_pose_trs(parent_name, cache)
+            else:
+                parent_rest_trs = None
+                parent_pose_trs = None
+            result = get_pose_trs_from_basis(rest_trs, parent_rest_trs, basis_trs, parent_pose_trs)
+            cache[bone_name] = result
+            return result
+
         # Evaluate all curves at every frame, inclusive of `end_frame`.
         for i, frame in enumerate(range(start_frame, end_frame + 1)):
 
@@ -549,6 +553,7 @@ class SoulstructAnimation:
 
             bpy.context.scene.frame_set(frame)
             armature_space_frame = []  # type: list[TRSTransform]
+            pose_trs_cache = {}  # type: dict[str, TRS]
 
             # Collect root motion sample (only when the action has root motion F-curves).
             if has_root_motion:
@@ -570,11 +575,12 @@ class SoulstructAnimation:
                     # raise AnimationExportError(f"Bone '{bone.name}' in HKX skeleton not found in Blender armature.")
                     armature_space_transform = TRSTransform.identity()
                 else:
+                    pose_trs_bone = _get_pose_trs(bone.name, pose_trs_cache)
                     if bone_data_type == FLVERBoneDataType.EDIT:
-                        # Undo bone CoB first (self-inverse).
-                        armature_space_transform = bl_matrix_to_game_trs(bl_bone.matrix @ BONE_CoB_4x4)
+                        # Undo bone CoB (at TRS level, so scale signs are preserved exactly) and convert to game space.
+                        armature_space_transform = bl_bone_trs_to_game_trs(*pose_trs_bone)
                     else:
-                        armature_space_transform = bl_matrix_to_game_trs(bl_bone.matrix)
+                        armature_space_transform = bl_trs_to_game_trs(*pose_trs_bone)
                     if i > 0:
                         # Negate rotation quaternion if dot with last rotation is negative (first frame ignored).
                         dot = np.dot(armature_space_transform.rotation.data, last_bone_trs[bone.name].rotation.data)

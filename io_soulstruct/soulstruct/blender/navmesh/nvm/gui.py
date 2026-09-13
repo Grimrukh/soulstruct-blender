@@ -14,7 +14,7 @@ import bmesh
 import bpy
 
 from soulstruct.base.events.enums import NavmeshFlag
-from soulstruct.games import DEMONS_SOULS, DARK_SOULS_PTDE, DARK_SOULS_DSR
+from soulstruct.games import GameType
 
 from ...base.register import io_soulstruct_panel
 from ...bpy_base.panel import SoulstructPanel, smart_prop
@@ -41,7 +41,7 @@ class NVMNavmeshImportPanel(SoulstructPanel):
     # noinspection PyUnusedLocal
     def draw(self, context):
         settings = context.scene.soulstruct_settings
-        if not settings.is_game(DEMONS_SOULS, DARK_SOULS_PTDE, DARK_SOULS_DSR):
+        if not settings.is_game(GameType.DemonsSouls, GameType.DarkSoulsPTDE, GameType.DarkSoulsDSR):
             self.layout.label(text="Game does not use NVM.")
             return
 

@@ -17,7 +17,7 @@ from soulstruct.dcx import DCXType
 from soulstruct.darksouls1r.maps.navmesh import NVMBND as NVMBND_DSR
 from soulstruct.darksouls1ptde.maps.navmesh import NVMBND as NVMBND_PTDE
 from soulstruct.demonssouls.maps.navmesh import NVMBND as NVMBND_DES
-from soulstruct.games import DARK_SOULS_PTDE, DARK_SOULS_DSR, DEMONS_SOULS
+from soulstruct.games import GameType
 
 from ...base.operators import *
 from ...base.register import io_soulstruct_operator
@@ -238,11 +238,11 @@ class ExportMapNVM(LoggingOperator):
                 "No game map directory specified in Soulstruct settings and `Detect Map from Collection` is disabled."
             )
 
-        if settings.is_game(DARK_SOULS_PTDE):
+        if settings.is_game(GameType.DarkSoulsPTDE):
             nvmbnd_class = NVMBND_PTDE
-        elif settings.is_game(DARK_SOULS_DSR):
+        elif settings.is_game(GameType.DarkSoulsDSR):
             nvmbnd_class = NVMBND_DSR
-        elif settings.is_game(DEMONS_SOULS):
+        elif settings.is_game(GameType.DemonsSouls):
             nvmbnd_class = NVMBND_DES
         else:
             return self.error(f"Unsupported game: {settings.game}")
@@ -250,7 +250,7 @@ class ExportMapNVM(LoggingOperator):
         opened_nvmbnds = {}  # type: dict[Path, BaseNVMBND]
         bl_nvms = BlenderNVM.from_selected_objects(context, sort=True)  # type: list[BlenderNVM]
 
-        export_loose_des_nvms = settings.is_game(DEMONS_SOULS) and settings.demonssouls.export_debug_files
+        export_loose_des_nvms = settings.is_game(GameType.DemonsSouls) and settings.demonssouls.export_debug_files
         loose_nvms_to_export = []  # type: list[tuple[NVM, Path]]
 
         for bl_nvm in bl_nvms:
@@ -300,7 +300,7 @@ class ExportMapNVM(LoggingOperator):
                 entry.entry_id = i
             exported_paths += settings.export_file(self, nvmbnd, relative_nvmbnd_path)
 
-        if settings.is_game(DEMONS_SOULS) and settings.demonssouls.export_debug_files and loose_nvms_to_export:
+        if settings.is_game(GameType.DemonsSouls) and settings.demonssouls.export_debug_files and loose_nvms_to_export:
             # Export loose NVMs next to NVMBND.
             for nvm, relative_nvm_path in loose_nvms_to_export:
                 exported_paths += settings.export_file(self, nvm, relative_nvm_path)

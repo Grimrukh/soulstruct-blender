@@ -21,6 +21,9 @@ from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError, TPF
 from soulstruct.dcx import DCXType
 from soulstruct.games import *
 
+import pyrelink.core as pyre_core
+import pyrelink.flver as pyre_flver
+
 from ....base.operators import *
 from ....base.register import io_soulstruct_operator
 from ....exceptions import *
@@ -94,14 +97,21 @@ class ExportAnyFLVER(LoggingExportOperator):
             traceback.print_exc()
             return self.error(f"Cannot get exported FLVER. Error: {ex}")
 
-        flver.dcx_type = dcx_type
+        if isinstance(flver, pyre_flver.FLVER):
+            flver.dcx_type = pyre_core.DCXType(dcx_type.value)  # pyrelink DCXType
+        else:
+            flver.dcx_type = dcx_type  # soulstruct DCXType
+
         try:
             # Will create a `.bak` file automatically if absent.
-            written_path = flver.write(flver_file_path)
+            if isinstance(flver, pyre_flver.FLVER):
+                written_paths = [flver.write_to_path(flver_file_path)]  # pyrelink only returns one Path
+            else:  # soulstruct
+                written_paths = flver.write(flver_file_path)
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Cannot write exported FLVER. Error: {ex}")
-        self.info(f"Exported FLVER to: {str(written_path[0])}")
+        self.info(f"Exported FLVER to: {str(written_paths[0])}")
 
         return {"FINISHED"}
 
@@ -170,6 +180,7 @@ class ExportFLVERIntoAnyBinder(LoggingImportOperator):
 
         self.to_object_mode(context)
         binder_file_path = Path(self.filepath)
+        # TODO: Use pyrelink Binder if enabled.
         try:
             binder = Binder.from_path(binder_file_path)
         except Exception as ex:
@@ -218,10 +229,17 @@ class ExportFLVERIntoAnyBinder(LoggingImportOperator):
             traceback.print_exc()
             return self.error(f"Cannot create exported FLVER from Blender Mesh '{bl_flver.name}'. Error: {ex}")
 
-        flver.dcx_type = dcx_type
+        if isinstance(flver, pyre_flver.FLVER):
+            flver.dcx_type = pyre_core.DCXType(dcx_type.value)  # pyrelink DCXType
+        else:
+            flver.dcx_type = dcx_type  # soulstruct DCXType
 
         try:
-            flver_entry.set_from_binary_file(flver)  # DCX will default to `None` here from exporter function
+            if isinstance(flver, pyre_flver.FLVER):
+                # TODO: Still using soulstruct Binder at the moment, so convert to bytes here.
+                flver_entry.set_uncompressed_data(flver.to_bytes())
+            else:  # soulstruct
+                flver_entry.set_from_binary_file(flver)  # DCX will default to `None` here from exporter function
         except Exception as ex:
             traceback.print_exc()
             return self.error(f"Cannot write exported FLVER. Error: {ex}")
@@ -313,7 +331,10 @@ class ExportMapPieceFLVERs(LoggingOperator):
                     f"Cannot export Map Piece FLVER '{bl_flver.game_name}' from '{bl_flver.name}'. Error: {ex}"
                 )
 
-            flver.dcx_type = flver_dcx_type
+            if isinstance(flver, pyre_flver.FLVER):
+                flver.dcx_type = pyre_core.DCXType(flver_dcx_type.value)  # pyrelink DCXType
+            else:
+                flver.dcx_type = flver_dcx_type  # soulstruct DCXType
             relative_flver_path = relative_map_path / f"{bl_flver.game_name}.flver"
             exported_paths = settings.export_file(self, flver, relative_flver_path)
             all_exported_paths += exported_paths
@@ -325,7 +346,7 @@ class ExportMapPieceFLVERs(LoggingOperator):
                 area_textures |= texture_collection
 
             if (
-                settings.is_game(DEMONS_SOULS)
+                settings.is_game(GameType.DemonsSouls)
                 and relative_flver_path.name.endswith(".dcx")
                 and settings.demonssouls.export_debug_files
             ):
@@ -360,7 +381,7 @@ class BaseGameFLVERBinderExportOperator(LoggingOperator):
         settings: SoulstructSettings,
         binder_class: type[CHRBND_TYPING],
         flver_model_type: FLVERModelType,
-    ) -> tuple[str, CHRBND_TYPING, FLVER, DDSTextureCollection]:
+    ) -> tuple[str, CHRBND_TYPING, FLVER | pyre_flver.FLVER, DDSTextureCollection]:
         ...
 
     @tp.overload
@@ -370,7 +391,7 @@ class BaseGameFLVERBinderExportOperator(LoggingOperator):
         settings: SoulstructSettings,
         binder_class: type[OBJBND_TYPING],
         flver_model_type: FLVERModelType,
-    ) -> tuple[str, OBJBND_TYPING, FLVER, DDSTextureCollection]:
+    ) -> tuple[str, OBJBND_TYPING, FLVER | pyre_flver.FLVER, DDSTextureCollection]:
         ...
 
     @tp.overload
@@ -380,7 +401,7 @@ class BaseGameFLVERBinderExportOperator(LoggingOperator):
         settings: SoulstructSettings,
         binder_class: type[PARTSBND_TYPING],
         flver_model_type: FLVERModelType,
-    ) -> tuple[str, PARTSBND_TYPING, FLVER, DDSTextureCollection]:
+    ) -> tuple[str, PARTSBND_TYPING, FLVER | pyre_flver.FLVER, DDSTextureCollection]:
         ...
 
     def get_binder_and_flver(
@@ -389,7 +410,7 @@ class BaseGameFLVERBinderExportOperator(LoggingOperator):
         settings: SoulstructSettings,
         binder_class: type[CHRBND_TYPING | OBJBND_TYPING | PARTSBND_TYPING],
         flver_model_type: FLVERModelType,
-    ) -> tuple[str, CHRBND_TYPING | OBJBND_TYPING | PARTSBND_TYPING, FLVER, DDSTextureCollection]:
+    ) -> tuple[str, CHRBND_TYPING | OBJBND_TYPING | PARTSBND_TYPING, FLVER | pyre_flver.FLVER, DDSTextureCollection]:
         """Export FLVER from Blender object and return Binder, FLVER, and texture collection.
 
         NOTE: Returned Binder does not load FLVER entries automatically (and they typically aren't needed).
@@ -423,7 +444,10 @@ class BaseGameFLVERBinderExportOperator(LoggingOperator):
                 f"Cannot create exported FLVER '{bl_flver.game_name}' from Mesh '{bl_flver.name}'. Error: {ex}"
             )
 
-        flver.dcx_type = DCXType.Null  # no DCX inside any Binder here
+        if isinstance(flver, pyre_flver.FLVER):
+            flver.dcx_type = pyre_core.DCXType.Null  # no DCX inside any Binder here
+        else:
+            flver.dcx_type = DCXType.Null  # no DCX inside any Binder here
 
         return bl_flver.game_name, binder, flver, texture_collection
 
@@ -457,7 +481,7 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
 
     @staticmethod
     def _get_binder_path(settings: SoulstructSettings, model_stem: str) -> Path:
-        if settings.is_game(DEMONS_SOULS):
+        if settings.is_game(GameType.DemonsSouls):
             # Nested inside character subfolder.
             return Path(f"chr/{model_stem}/{model_stem}.chrbnd")
         # Not in subfolder.
@@ -496,6 +520,9 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
         except FLVERExportError as ex:
             return self.error(str(ex))
 
+        # TODO: Currently this works for pyrelink FLVER because ultimately `chrbnd._flvers` exist only
+        #  to have `bytes(flver)` called on them to convert to entries, which pyrelink `GameFile` bindings support.
+        #  However, for simplicity, these export functions can just use a straightforward `Binder` instance anyway.
         chrbnd.set_flver(model_stem, flver)
 
         relative_chrbnd_path = self._get_binder_path(settings, model_stem)
@@ -504,7 +531,7 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
             exported_paths = settings.export_file(self, chrbnd, relative_chrbnd_path)
 
             if (
-                settings.is_game(DEMONS_SOULS)
+                settings.is_game(GameType.DemonsSouls)
                 and settings.demonssouls.export_debug_files
             ):
                 if chrbnd.dcx_type != DCXType.Null:
@@ -542,7 +569,7 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
             post_export_action()
 
         if (
-            settings.is_game(DEMONS_SOULS)
+            settings.is_game(GameType.DemonsSouls)
             and settings.demonssouls.export_debug_files
             and multi_tpf is not None
         ):
@@ -569,7 +596,7 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
             texture_collection,
         )
 
-        if settings.is_game(DARK_SOULS_PTDE):
+        if settings.is_game(GameType.DarkSoulsPTDE):
 
             relative_tpf_dir_path = Path(f"chr/{model_stem}")
 
@@ -613,7 +640,7 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
 
             return None, post_export_action
 
-        elif settings.is_game(DARK_SOULS_DSR):
+        elif settings.is_game(GameType.DarkSoulsDSR):
 
             relative_chrtpfbdt_path = Path(f"chr/{model_stem}.chrtpfbdt")  # no DCX
 
@@ -764,7 +791,7 @@ class ExportObjectFLVER(BaseGameFLVERBinderExportOperator):
         exported_paths = settings.export_file(self, objbnd, relative_objbnd_path)
 
         if (
-            settings.is_game(DEMONS_SOULS)
+            settings.is_game(GameType.DemonsSouls)
             and settings.demonssouls.export_debug_files
         ):
             if objbnd.dcx_type != DCXType.Null:
@@ -882,7 +909,7 @@ class ExportEquipmentFLVER(BaseGameFLVERBinderExportOperator):
             return self.error(f"Cannot write PARTSBND with new FLVER '{model_stem}'. Error: {ex}")
 
         if (
-            settings.is_game(DEMONS_SOULS)
+            settings.is_game(GameType.DemonsSouls)
             and settings.demonssouls.export_debug_files
         ):
             if partsbnd.dcx_type != DCXType.Null:

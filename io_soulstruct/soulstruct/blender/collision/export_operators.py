@@ -13,9 +13,9 @@ from pathlib import Path
 import bpy
 
 from soulstruct.dcx import DCXType
-from soulstruct.games import DARK_SOULS_PTDE, DARK_SOULS_DSR, DEMONS_SOULS
-from soulstruct.utilities.files import create_bak
+from soulstruct.games import GameType
 from soulstruct.havok.fromsoft.shared import BothResHKXBHD, HKXBHD
+from soulstruct.utilities.files import create_bak
 
 from ..base.operators import *
 from ..base.register import io_soulstruct_operator
@@ -24,14 +24,14 @@ from .types import *
 
 
 LOOSE_HKX_COLLISION_STEM_RE = {  # game-readable model name; no extensions
-    DEMONS_SOULS: re.compile(r"^([hl])(\w{6})$"),
-    DARK_SOULS_PTDE: re.compile(r"^([hl])(\w{6})A(\d\d)$"),
-    DARK_SOULS_DSR: re.compile(r"^([hl])(\w{6})A(\d\d)$"),
+    GameType.DemonsSouls: re.compile(r"^([hl])(\w{6})$"),
+    GameType.DarkSoulsPTDE: re.compile(r"^([hl])(\w{6})A(\d\d)$"),
+    GameType.DarkSoulsDSR: re.compile(r"^([hl])(\w{6})A(\d\d)$"),
 }
 NUMERIC_HKX_COLLISION_STEM_RE = {  # standard map model name; no extensions
-    DEMONS_SOULS: re.compile(r"^([hl])(\d{4})[Bb](\d)$"),
-    DARK_SOULS_PTDE: re.compile(r"^([hl])(\d{4})B(\d)A(\d\d)$"),
-    DARK_SOULS_DSR: re.compile(r"^([hl])(\d{4})B(\d)A(\d\d)$"),
+    GameType.DemonsSouls: re.compile(r"^([hl])(\d{4})[Bb](\d)$"),
+    GameType.DarkSoulsPTDE: re.compile(r"^([hl])(\d{4})B(\d)A(\d\d)$"),
+    GameType.DarkSoulsDSR: re.compile(r"^([hl])(\d{4})B(\d)A(\d\d)$"),
 }
 
 
@@ -62,7 +62,7 @@ class ExportAnyHKXMapCollision(LoggingExportOperator):
     def poll(cls, context) -> bool:
         """Must select a single mesh."""
         settings = cls.settings(context)
-        if not settings.is_game(DEMONS_SOULS, DARK_SOULS_PTDE, DARK_SOULS_DSR):
+        if not settings.is_game(GameType.DemonsSouls, GameType.DarkSoulsPTDE, GameType.DarkSoulsDSR):
             return False
         return BlenderMapCollision.is_obj_type(context.active_object)
 
@@ -85,7 +85,7 @@ class ExportAnyHKXMapCollision(LoggingExportOperator):
         # noinspection PyTypeChecker
         hkx_model = context.active_object  # type: MeshObject
         settings = self.settings(context)
-        if settings.is_game(DEMONS_SOULS, DARK_SOULS_PTDE, DARK_SOULS_DSR):
+        if settings.is_game(GameType.DemonsSouls, GameType.DarkSoulsPTDE, GameType.DarkSoulsDSR):
             bl_map_collision = BlenderMapCollision(hkx_model)
         else:
             return self.error("This operator only supports Dark Souls 1 (PTDE and DSR) and Demon's Souls.")
@@ -94,7 +94,7 @@ class ExportAnyHKXMapCollision(LoggingExportOperator):
             return self.error("This operator only supports games with Havok support.")
 
         hkx_path = Path(self.filepath)
-        if not LOOSE_HKX_COLLISION_STEM_RE[settings.game].match(hkx_path.name) is None:
+        if not LOOSE_HKX_COLLISION_STEM_RE[settings.game_type].match(hkx_path.name) is None:
             return self.warning(
                 f"HKX file name '{hkx_path.name}' does not match the expected name pattern for "
                 f"a HKX collision parent object and will not function in-game: 'h......A..' or 'l......A..'"
@@ -192,7 +192,7 @@ class ExportHKXMapCollisionIntoAnyBinder(LoggingImportOperator):
         """Must select a single mesh."""
         # TODO: Why not all selected models at once?
         settings = cls.settings(context)
-        if not settings.is_game(DEMONS_SOULS, DARK_SOULS_PTDE, DARK_SOULS_DSR):
+        if not settings.is_game(GameType.DemonsSouls, GameType.DarkSoulsPTDE, GameType.DarkSoulsDSR):
             return False
         return BlenderMapCollision.is_obj_type(context.active_object)
 
@@ -210,7 +210,7 @@ class ExportHKXMapCollisionIntoAnyBinder(LoggingImportOperator):
         bl_map_collision = BlenderMapCollision(hkx_model)
 
         model_name = bl_map_collision.game_name
-        if not LOOSE_HKX_COLLISION_STEM_RE[settings.game].match(model_name):
+        if not LOOSE_HKX_COLLISION_STEM_RE[settings.game_type].match(model_name):
             self.warning(
                 f"HKX map collision model name '{model_name}' should generally be 'h....B.A..' or 'l....B.A..'."
             )
@@ -275,7 +275,7 @@ class ExportMapHKXMapCollision(LoggingOperator):
         settings = cls.settings(context)
         if not settings.can_auto_export:
             return False
-        if not settings.is_game(DEMONS_SOULS, DARK_SOULS_PTDE, DARK_SOULS_DSR):
+        if not settings.is_game(GameType.DemonsSouls, GameType.DarkSoulsPTDE, GameType.DarkSoulsDSR):
             return False
         if not context.selected_objects:
             return False
@@ -289,9 +289,9 @@ class ExportMapHKXMapCollision(LoggingOperator):
             return self.error("Must select at least one mesh.")
 
         settings = self.settings(context)
-        if settings.is_game(DARK_SOULS_DSR):
+        if settings.is_game(GameType.DarkSoulsDSR):
             dcx_type = DCXType.DS1_DS2  # inside HKXBHD
-        elif settings.is_game(DEMONS_SOULS, DARK_SOULS_PTDE):
+        elif settings.is_game(GameType.DemonsSouls, GameType.DarkSoulsPTDE):
             dcx_type = DCXType.Null  # loose HKX
         else:
             return self.error("This operator only supports Dark Souls 1 (PTDE and DSR) and Demon's Souls.")
@@ -320,19 +320,19 @@ class ExportMapHKXMapCollision(LoggingOperator):
                 continue
 
             model_name = bl_map_collision.game_name
-            if not LOOSE_HKX_COLLISION_STEM_RE[settings.game].match(model_name):
+            if not LOOSE_HKX_COLLISION_STEM_RE[settings.game_type].match(model_name):
                 return self.error(
                     f"Model name '{model_name}' detected from selected mesh '{bl_map_collision.name}' does not match "
                     f"the required name pattern for this game's collision models."
                 )
             # If HKX name is standard, check that it matches the selected map stem and warn user if not.
-            numeric_match = NUMERIC_HKX_COLLISION_STEM_RE[settings.game].match(model_name)
+            numeric_match = NUMERIC_HKX_COLLISION_STEM_RE[settings.game_type].match(model_name)
             if numeric_match is None:
                 self.warning(
                     f"Model name '{model_name}' detected from selected mesh '{bl_map_collision.name}' does not match "
                     f"the standard name pattern for this game's HKX collision model. Exporting anyway."
                 )
-            elif not settings.is_game(DEMONS_SOULS):
+            elif not settings.is_game(GameType.DemonsSouls):
                 # From Dark Souls onwards, we can check the expected area from the collision name suffix.
                 block, area = int(numeric_match.group(3)), int(numeric_match.group(4))
                 expected_map_stem_aabb = f"m{area:02d}_{block:02d}_"
@@ -354,7 +354,7 @@ class ExportMapHKXMapCollision(LoggingOperator):
             hi_hkx.dcx_type = dcx_type
             lo_hkx.dcx_type = dcx_type
 
-            if settings.is_game(DEMONS_SOULS):
+            if settings.is_game(GameType.DemonsSouls):
                 # Loose, immediate HKX export. TODO: Do the whole 'don't write lo if hi fails' thing from above.
                 relative_dir = Path(f"map/{map_stem}")
                 exported_paths = settings.export_file(self, hi_hkx, Path(relative_dir, f"{hi_hkx.path_stem}.hkx"))

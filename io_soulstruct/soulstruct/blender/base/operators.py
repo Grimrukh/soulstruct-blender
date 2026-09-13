@@ -13,6 +13,7 @@ import logging
 import re
 import shutil
 import tempfile
+import time
 import typing as tp
 from pathlib import Path
 
@@ -82,6 +83,14 @@ class LoggingOperator(bpy.types.Operator):
         _LOGGER.error(msg, stacklevel=2)
         self.report({"ERROR"}, msg)
         return {"CANCELLED"}
+
+    def time_debug(self, start_time: float | int, msg: str, report: bool | None = None):
+        """Time delta logged with message (debug) and optionally reported in Blender."""
+        self.debug(f"{msg} in {time.perf_counter() - start_time:.3f} s", report=report)
+
+    def time_info(self, start_time: float | int, msg: str, report: bool | None = None):
+        """Time delta logged with message (info) and optionally reported in Blender."""
+        self.info(f"{msg} in {time.perf_counter() - start_time:.3f} s", report=report)
 
     def execute(self, context):
         """Base class trick: profile any subclass `execute()` method by renaming it to `_execute()`."""

@@ -8,7 +8,7 @@ import typing as tp
 from pathlib import Path
 
 from soulstruct.dcx import DCXType
-from soulstruct.games import *
+from soulstruct.games import Game, GameType
 
 if tp.TYPE_CHECKING:
     from .properties import SoulstructSettings
@@ -97,7 +97,7 @@ class GameStructure:
         if not map_stem:
             return None
 
-        if self.settings.is_game(ELDEN_RING):
+        if self.settings.is_game(GameType.EldenRing):
             # Area subfolders in 'map'.
             relative_file_path = Path(f"map/{map_stem[:3]}/{map_stem}", *parts)
         else:
@@ -134,7 +134,7 @@ class GameStructure:
 
         # No smart map version handling without any file.
 
-        if self.settings.is_game(ELDEN_RING):
+        if self.settings.is_game(GameType.EldenRing):
             # Area subfolders in 'map'.
             return Path(self.root, f"map/{map_stem[:3]}/{map_stem}")
         return Path(self.root, f"map/{map_stem}")

@@ -12,6 +12,7 @@ import bpy
 from soulstruct.containers import Binder
 from soulstruct.containers.tpf import TPF
 from soulstruct.dcx import DCXType
+from soulstruct.games import GameType
 
 from ...base.operators import *
 from ...utilities import *
@@ -29,7 +30,7 @@ def export_map_area_textures(
     TODO: When to use 'mAA_9999.tpf.dcx'? Never?
     """
     settings = operator.settings(context)
-    if not settings.is_game("DARK_SOULS_DSR"):
+    if not settings.is_game(GameType.DarkSoulsDSR):
         operator.error("Map textures not exported: only supported for Dark Souls: Remastered.")
         return []
 

@@ -22,6 +22,7 @@ import bpy
 
 from soulstruct.base.models.shaders import MatDefError
 from soulstruct.flver import FLVERVersion
+from soulstruct.games import GameType
 
 from ...base.operators import LoggingOperator
 from ...base.register import io_soulstruct_properties, io_soulstruct_operator, io_soulstruct_pointer_property
@@ -257,7 +258,7 @@ class MergeFLVERMaterials(LoggingOperator):
                 # TODO: May want to assert FLVER2 hash here, as otherwise this is destructive for switching back to
                 #  FLVER2 using the same materials (probably rare/difficult already).
                 if obj.FLVER.version == "DEFAULT":
-                    is_flver0 = context.scene.soulstruct_settings.is_game("DEMONS_SOULS")
+                    is_flver0 = context.scene.soulstruct_settings.is_game(GameType.DemonsSouls)
                 else:
                     is_flver0 = FLVERVersion[obj.FLVER.version].is_flver0()
                 material_hash = bl_material.get_hash(is_flver0=is_flver0)

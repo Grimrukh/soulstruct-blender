@@ -4,6 +4,8 @@ __all__ = [
     "CutsceneImportExportPanel",
 ]
 
+from soulstruct.games import GameType
+
 from ..base.register import io_soulstruct_panel
 from ..bpy_base.panel import SoulstructPanel
 from .import_operators import *
@@ -26,7 +28,7 @@ class CutsceneImportExportPanel(SoulstructPanel):
         header, panel = layout.panel("Import", default_closed=False)
         header.label(text="Import")
         if panel:
-            if not settings.is_game("DARK_SOULS_DSR"):
+            if not settings.is_game(GameType.DarkSoulsDSR):
                 panel.label(text="Import for DSR only.")
             else:
                 panel.operator(ImportHKXCutscene.bl_idname)
@@ -34,7 +36,7 @@ class CutsceneImportExportPanel(SoulstructPanel):
         header, panel = layout.panel("Export", default_closed=False)
         header.label(text="Export")
         if panel:
-            if not settings.is_game("DARK_SOULS_DSR"):
+            if not settings.is_game(GameType.DarkSoulsDSR):
                 panel.label(text="Export for DSR only.")
             else:
                 # TODO: Not up yet.

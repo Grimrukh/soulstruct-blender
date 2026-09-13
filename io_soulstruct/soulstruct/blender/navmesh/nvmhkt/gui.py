@@ -4,6 +4,8 @@ __all__ = [
     "NVMHKTImportPanel",
 ]
 
+from soulstruct.games import GameType
+
 from ...base.register import io_soulstruct_panel
 from ...bpy_base.panel import SoulstructPanel, smart_prop
 from .model_import import *
@@ -21,12 +23,12 @@ class NVMHKTImportPanel(SoulstructPanel):
     @classmethod
     def poll(cls, context) -> bool:
         settings = context.scene.soulstruct_settings
-        return settings.is_game("ELDEN_RING")
+        return settings.is_game(GameType.EldenRing)
 
     # noinspection PyUnusedLocal
     def draw(self, context):
         settings = context.scene.soulstruct_settings
-        if not settings.is_game("ELDEN_RING"):
+        if not settings.is_game(GameType.EldenRing):
             self.layout.label(text="Elden Ring only.")
             return
 

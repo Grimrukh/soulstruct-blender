@@ -14,7 +14,7 @@ from pathlib import Path
 
 import bpy
 
-from soulstruct.games import ELDEN_RING
+from soulstruct.games import GameType
 
 from ..base.operators import *
 from ..base.register import io_soulstruct_operator
@@ -96,7 +96,7 @@ class _SelectMapDirectory(LoggingOperator):
         global _DETECTED_MAP_ENUM_ITEMS
 
         def get_map_desc(map_stem: str):
-            return BLENDER_GAME_CONFIG[ELDEN_RING].map_constants.get_map(map_stem).verbose_name
+            return BLENDER_GAME_CONFIG[GameType.EldenRing].map_constants.get_map(map_stem).verbose_name
 
         if filter_mode.endswith("DUNGEONS"):
             # Dungeons. Possible extra area check.
@@ -150,7 +150,7 @@ class _SelectMapDirectory(LoggingOperator):
         map_dir = root.get_dir_path_if_exists("map")
         if not map_dir:
             return self.error(f"{self.SOURCE} 'map' directory not found.")
-        if settings.is_game(ELDEN_RING):
+        if settings.is_game(GameType.EldenRing):
             self.set_map_options_eldenring(map_dir, settings.eldenring.map_filter_mode)
         else:
 

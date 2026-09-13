@@ -11,11 +11,12 @@ from pathlib import Path
 
 import bpy
 
+from soulstruct.base.textures import *
 from soulstruct.containers import Binder, BinderEntry
 from soulstruct.containers.tpf import TPF, TPFTexture, TPFPlatform, TextureType
 from soulstruct.darksouls1r.maps.map_area_texture_manager import MapAreaTextureManager
 from soulstruct.dcx import DCXType
-from soulstruct.base.textures import *
+from soulstruct.games import GameType
 
 from ...base.operators import *
 from ...exceptions import UnsupportedGameError, SoulstructTypeError, TextureExportError
@@ -429,7 +430,7 @@ class DDSTextureCollection(dict[str, DDSTexture]):
             entry_path_parent += "\\"
 
         settings = operator.settings(context)
-        if settings.is_game("DARK_SOULS_DSR"):
+        if settings.is_game(GameType.DarkSoulsDSR):
             tpfbxf = Binder.empty_bxf3()
         else:
             raise UnsupportedGameError(f"Cannot yet export TPFBHDs for game {settings.game.name}.")
@@ -482,7 +483,7 @@ class DDSTextureCollection(dict[str, DDSTexture]):
             return []
 
         settings = operator.settings(context)
-        if not settings.is_game("DARK_SOULS_DSR"):
+        if not settings.is_game(GameType.DarkSoulsDSR):
             raise UnsupportedGameError(f"Cannot yet export map area TPFBHDs for game {settings.game.name}.")
 
         map_directory = map_area_dir.parent  # game 'map' folder

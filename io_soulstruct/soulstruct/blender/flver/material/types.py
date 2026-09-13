@@ -11,7 +11,6 @@ import bpy
 
 from soulstruct.flver import *
 from soulstruct.games import *
-from .shaders import BaseNodeTreeBuilder
 
 from ...base.operators import LoggingOperator
 from ...base.soulstruct_object import add_auto_type_props
@@ -335,7 +334,7 @@ class BlenderFLVERMaterial:
 
         # FLVER material texture path extension doesn't actually matter, but we try to be faithful.
         settings = operator.settings(context)
-        path_ext = ".tif" if settings.is_game("ELDEN_RING") else ".tga"  # TODO: also TIF in Sekiro?
+        path_ext = ".tif" if settings.is_game(GameType.EldenRing) else ".tga"  # TODO: also TIF in Sekiro?
 
         if matdef.matbin:
             # Any sampler that does NOT have a path given in MATBIN is allowed to be missing (lack of MATBIN path
@@ -611,18 +610,18 @@ class BlenderFLVERMaterial:
         return self.type_properties.shader_name
 
     @staticmethod
-    def get_builder_class(context: bpy.types.Context) -> type[BaseNodeTreeBuilder] | None:
+    def get_builder_class(context: bpy.types.Context) -> type[shaders.BaseNodeTreeBuilder] | None:
         # Select appropriate builder class for the game.
         settings = context.scene.soulstruct_settings
-        if settings.is_game(BLOODBORNE):
+        if settings.is_game(GameType.Bloodborne):
             return shaders.bloodborne.NodeTreeBuilder
-        elif settings.is_game(DEMONS_SOULS):
+        elif settings.is_game(GameType.DemonsSouls):
             return shaders.demonssouls.NodeTreeBuilder
-        elif settings.is_game(DARK_SOULS_PTDE):
+        elif settings.is_game(GameType.DarkSoulsPTDE):
             return shaders.darksouls1ptde.NodeTreeBuilder
-        elif settings.is_game(DARK_SOULS_DSR):
+        elif settings.is_game(GameType.DarkSoulsDSR):
             return shaders.darksouls1r.NodeTreeBuilder
-        elif settings.is_game(ELDEN_RING):
+        elif settings.is_game(GameType.EldenRing):
             return shaders.eldenring.NodeTreeBuilder
 
         # Unsupported game.

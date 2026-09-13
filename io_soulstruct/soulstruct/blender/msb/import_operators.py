@@ -73,11 +73,11 @@ def _import_msb(
     settings = operator.settings(context)
     msb_import_settings = context.scene.msb_import_settings
 
-    if settings.is_game(DARK_SOULS_PTDE):
+    if settings.is_game(GameType.DarkSoulsPTDE):
         blender_types_module = darksouls1ptde
-    elif settings.is_game(DARK_SOULS_DSR):
+    elif settings.is_game(GameType.DarkSoulsDSR):
         blender_types_module = darksouls1r
-    elif settings.is_game(DEMONS_SOULS):
+    elif settings.is_game(GameType.DemonsSouls):
         blender_types_module = demonssouls
     else:
         return operator.error(f"Unsupported game for MSB import: {settings.game.name}")
@@ -264,7 +264,7 @@ class _BaseImportMSB(LoggingOperator):
         import_props = list(msb_import_settings.__annotations__)
         booleans = [prop for prop in import_props if prop.startswith("import_")]
         for prop_name in booleans:
-            if settings.is_game("ELDEN_RING") and prop_name == "import_object_models":
+            if settings.is_game(GameType.EldenRing) and prop_name == "import_object_models":
                 layout.prop(msb_import_settings, prop_name, text="Import Asset Models")
             else:
                 layout.prop(msb_import_settings, prop_name)
@@ -381,11 +381,11 @@ class ImportAnyMSB(_BaseImportMSB, LoggingImportOperator):
     def execute(self, context):
 
         settings = self.settings(context)
-        if settings.is_game("DARK_SOULS_PTDE"):
+        if settings.is_game(GameType.DarkSoulsPTDE):
             msb_class = PTDE_MSB
-        elif settings.is_game("DARK_SOULS_DSR"):
+        elif settings.is_game(GameType.DarkSoulsDSR):
             msb_class = DSR_MSB
-        elif settings.is_game("DEMONS_SOULS"):
+        elif settings.is_game(GameType.DemonsSouls):
             msb_class = DES_MSB
         else:
             return self.error(f"Unsupported game for MSB import/export: {settings.game.name}")

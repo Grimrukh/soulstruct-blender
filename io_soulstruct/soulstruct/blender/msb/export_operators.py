@@ -394,11 +394,11 @@ class ExportMapMSB(LoggingOperator):
         settings = context.scene.soulstruct_settings
 
         relative_nvmbnd_path = Path(f"map/{map_stem}/{map_stem}.nvmbnd")
-        if settings.is_game(DEMONS_SOULS):
+        if settings.is_game(GameType.DemonsSouls):
             nvmbnd = NVMBND_DES(map_stem=map_stem)
-        elif settings.is_game(DARK_SOULS_PTDE):
+        elif settings.is_game(GameType.DarkSoulsPTDE):
             nvmbnd = NVMBND_PTDE(map_stem=map_stem)
-        elif settings.is_game(DARK_SOULS_DSR):
+        elif settings.is_game(GameType.DarkSoulsDSR):
             nvmbnd = NVMBND_DSR(map_stem=map_stem)
         else:
             return self.error(f"NVMBND export not supported for game '{settings.game}'.")

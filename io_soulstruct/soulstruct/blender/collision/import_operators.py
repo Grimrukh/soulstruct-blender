@@ -24,7 +24,7 @@ from pathlib import Path
 import bpy
 
 from soulstruct.containers import BinderEntry, EntryNotFoundError
-from soulstruct.games import DARK_SOULS_PTDE, DEMONS_SOULS
+from soulstruct.games import GameType
 from soulstruct.havok.fromsoft.shared import MapCollisionModel, BothResHKXBHD
 
 from ..base.operators import *
@@ -334,7 +334,7 @@ class ImportMapHKXMapCollision(LoggingOperator):
             self.temp_directory = ""
 
         settings = self.settings(context)
-        if settings.is_game(DEMONS_SOULS, DARK_SOULS_PTDE):
+        if settings.is_game(GameType.DemonsSouls, GameType.DarkSoulsPTDE):
             # HKX files are already loose. Just use map folder (oldest).
             try:
                 map_dir = settings.get_import_map_dir_path(map_stem=settings.get_oldest_map_stem_version())
@@ -369,7 +369,7 @@ class ImportMapHKXMapCollision(LoggingOperator):
         collision_pairs = []  # type: list[tuple[MapCollisionModel, MapCollisionModel]]
         settings = self.settings(context)
 
-        if settings.is_game(DEMONS_SOULS, DARK_SOULS_PTDE):
+        if settings.is_game(GameType.DemonsSouls, GameType.DarkSoulsPTDE):
             # DeS and PTDE read loose HKX files from map folder.
             file_paths = [Path(self.directory, file.name) for file in self.files]
             for path in file_paths:

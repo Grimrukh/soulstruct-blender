@@ -17,9 +17,10 @@ import bpy
 
 from soulstruct.base.maps.msb.models import BaseMSBModel
 from soulstruct.flver import *
+from soulstruct.games import GameType
 
 import pyrelink.core as pyre
-from pyrelink.flver import FLVER as PyreFLVER, TextureFinder
+import pyrelink.flver as pyre_flver
 
 from .....base.operators import *
 from .....exceptions import FLVERImportError
@@ -47,7 +48,7 @@ class BaseBlenderMSBFLVERModelImporter(BaseBlenderMSBModelImporter, abc.ABC):
         flver: FLVER,
         model_name: str,
         model_collection: bpy.types.Collection,
-        texture_finders: tp.Sequence[TextureFinder] = (),
+        texture_finders: tp.Sequence[pyre_flver.TextureFinder] = (),
     ) -> MeshObject:
         try:
             bl_flver = BlenderFLVER.new_from_soulstruct_obj(
@@ -143,7 +144,7 @@ class BlenderMSBMapPieceModelImporter(BaseBlenderMSBFLVERModelImporter):
         settings = operator.settings(context)
         flver_import_settings = context.scene.flver_import_settings
 
-        if settings.is_game("ELDEN_RING"):
+        if settings.is_game(GameType.EldenRing):
             # Map Piece FLVERs are in MAPBND Binders.
             mapbnd_name = f"map/{map_stem[:3]}/{map_stem}/{map_stem}_{model_name[1:]}.mapbnd.dcx"
             try:
@@ -159,7 +160,7 @@ class BlenderMSBMapPieceModelImporter(BaseBlenderMSBFLVERModelImporter):
             flver_entry = flver_entries[0]
 
             if settings.use_pyrelink_flver:
-                flver = PyreFLVER.from_bytes(flver_entry.get_uncompressed_data())
+                flver = pyre_flver.FLVER.from_bytes(flver_entry.get_uncompressed_data())
             else:
                 flver = FLVER.from_bytes(flver_entry.get_uncompressed_data())
         else:
@@ -171,7 +172,7 @@ class BlenderMSBMapPieceModelImporter(BaseBlenderMSBFLVERModelImporter):
                 raise FLVERImportError(f"Cannot find FLVER model file for Map Piece: {model_name}.")
             operator.info(f"Importing map piece FLVER: {flver_source_path}")
             if settings.use_pyrelink_flver:
-                flver = PyreFLVER.from_path(flver_source_path)
+                flver = pyre_flver.FLVER.from_path(flver_source_path)
             else:
                 flver = FLVER.from_path(flver_source_path)
 
@@ -213,7 +214,7 @@ class BlenderMSBMapPieceModelImporter(BaseBlenderMSBFLVERModelImporter):
         flver_path_sources = {}  # type: dict[str, Path]
         flver_binder_sources = {}  # type: dict[str, tuple[pyre.BinderEntry, pyre.Binder]]
         
-        if settings.is_game("ELDEN_RING"):
+        if settings.is_game(GameType.EldenRing):
             # Map Piece FLVERS are inside MAPBND Binders.
         
             for model in models:

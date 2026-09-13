@@ -249,9 +249,9 @@ class SoulstructCutsceneAnimation:
         _, channelbag = self.bind(armature)
 
         if not is_root_motion_only:
-            arma_local_inv_matrices = SoulstructAnimation.get_armature_local_inv_matrices(armature)
+            rest_trs_by_bone_name = get_armature_rest_trs(armature)
         else:
-            arma_local_inv_matrices = {}
+            rest_trs_by_bone_name = {}
 
         bone_basis_sample_arrays = {}  # type: dict[str, list[np.ndarray]]
         root_motion_rows = []  # type: list[list[float]]
@@ -269,7 +269,7 @@ class SoulstructCutsceneAnimation:
                 cut_bone_basis_samples = SoulstructAnimation.get_bone_basis_samples(
                     armature,
                     bone_arma_frames,
-                    arma_local_inv_matrices,
+                    rest_trs_by_bone_name,
                     bl_frames_per_game_frame,
                     bone_data_type,
                     assert_root_bone_names=assert_root_bone_names,

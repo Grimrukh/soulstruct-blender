@@ -13,7 +13,7 @@ __all__ = [
 ]
 
 import bpy
-from soulstruct.games import DEMONS_SOULS
+from soulstruct.games import GameType
 
 from ..base.register import io_soulstruct_panel
 from ..bpy_base.panel import SoulstructPanel, smart_prop
@@ -55,7 +55,7 @@ class _BaseGlobalSettingsPanel(SoulstructPanel):
             else:
                 layout.label(text="Custom MTDBND Path:")
                 smart_prop(layout, settings.game_settings, "mtdbnd_path_str", text="")
-            if settings.is_game(DEMONS_SOULS):
+            if settings.is_game(GameType.DemonsSouls):
                 smart_prop(panel, settings.demonssouls, "export_debug_files")
             panel.label(text="Soulstruct GUI Project Path:")
             smart_prop(panel, settings, "soulstruct_project_root_str", text="")

@@ -734,7 +734,7 @@ def run_case(case: FLVERImportCase):
 # ---------------------------------------------------------------------------
 
 def main():
-    T.run_case_list(FLVER_TEST_CASES, run_case, suite_name="FLVER import/export", filter_test_names="DS1PTDE / Map Piece")
+    T.run_case_list(FLVER_TEST_CASES, run_case, suite_name="FLVER import/export")
 
 
 main()

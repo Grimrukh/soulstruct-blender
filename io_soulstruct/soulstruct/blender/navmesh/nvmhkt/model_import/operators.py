@@ -24,6 +24,7 @@ import bpy
 from mathutils import Vector
 
 from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
+from soulstruct.games import GameType
 from soulstruct.havok.fromsoft.eldenring.file_types import NavmeshHKX
 
 from ....base.operators import *
@@ -300,7 +301,7 @@ class ImportNVMHKTFromNVMHKTBND(BinderEntrySelectOperator):
 
     @classmethod
     def poll(cls, context) -> bool:
-        if not cls.settings(context).is_game("ELDEN_RING"):
+        if not cls.settings(context).is_game(GameType.EldenRing):
             return False
         settings = cls.settings(context)
         try:
@@ -412,7 +413,7 @@ class ImportAllNVMHKTsFromNVMHKTBND(_BaseImportAllNVMHKT):
 
     @classmethod
     def poll(cls, context) -> bool:
-        if not cls.settings(context).is_game("ELDEN_RING"):
+        if not cls.settings(context).is_game(GameType.EldenRing):
             return False
         settings = cls.settings(context)
         if settings.map_stem in {"", "0"}:
@@ -615,7 +616,7 @@ class _BaseImportAllOverworldNVMHKTs(_BaseImportAllNVMHKT):
 
     @classmethod
     def poll(cls, context) -> bool:
-        if not cls.settings(context).is_game("ELDEN_RING"):
+        if not cls.settings(context).is_game(GameType.EldenRing):
             return False
         return True
 

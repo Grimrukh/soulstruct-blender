@@ -94,7 +94,10 @@ class BlenderGameConfig:
 
     @property
     def split_mesh_kwargs(self) -> dict[str, int | bool]:
-        """Return a copy of game-specific FLVER mesh-splitting kwargs."""
+        """Return a copy of game-specific FLVER mesh-splitting kwargs.
+
+        NOTE: These kwargs work for both `soulstruct` and `pyrelink` mesh-splitting functions.
+        """
         return self._split_mesh_kwargs.copy()
 
 

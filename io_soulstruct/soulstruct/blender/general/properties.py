@@ -24,8 +24,8 @@ from soulstruct.dcx import DCXType, compress, decompress
 from soulstruct.games import *
 from soulstruct.utilities.files import create_bak
 
-from pyrelink.core import GameType as PyreGameType
-from pyrelink.flver import TextureFinder
+import pyrelink.core as pyre_core
+import pyrelink.flver as pyre_flver
 
 from ..base.register import io_soulstruct_properties, io_soulstruct_pointer_property
 from ..exceptions import *
@@ -287,6 +287,11 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
         return get_game(self.game_enum)
 
     @property
+    def game_type(self) -> GameType:
+        """Get globally selected FromSoft game type. `game_enum` cannot be null, so this always returns a `GameType`."""
+        return get_game(self.game_enum).game_type
+
+    @property
     def game_variable_name(self) -> str:
         return self.game.variable_name
 
@@ -303,18 +308,19 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
             return None
 
     @property
-    def pyrelink_game_type(self) -> PyreGameType:
+    def pyrelink_game_type(self) -> pyre_core.GameType:
+        """To avoid drift issues, we match by variable name rather than `GameType` enum values."""
         match self.game.variable_name:
             case "DEMONS_SOULS":
-                return PyreGameType.DemonsSouls
+                return pyre_core.GameType.DemonsSouls
             case "DARK_SOULS_PTDE":
-                return PyreGameType.DarkSoulsPTDE
+                return pyre_core.GameType.DarkSoulsPTDE
             case "DARK_SOULS_DSR":
-                return PyreGameType.DarkSoulsDSR
+                return pyre_core.GameType.DarkSoulsDSR
             case "BLOODBORNE":
-                return PyreGameType.Bloodborne
+                return pyre_core.GameType.Bloodborne
             case "ELDEN_RING":
-                return PyreGameType.EldenRing
+                return pyre_core.GameType.EldenRing
             case _:
                 raise ValueError(f"Unsupported game for pyrelink: {self.game.name}")
 
@@ -354,14 +360,14 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
 
     @property
     def mtdbnd_path(self) -> Path | None:
-        if self.is_game("ELDEN_RING"):
+        if self.is_game(GameType.EldenRing):
             return None
         mtdbnd_path_str = self.game_settings.mtdbnd_path_str
         return Path(mtdbnd_path_str) if mtdbnd_path_str else None
 
     @property
     def matbinbnd_path(self) -> Path | None:
-        if not self.is_game("ELDEN_RING"):
+        if not self.is_game(GameType.EldenRing):
             return None
         matbinbnd_path_str = self.eldenring.matbinbnd_path_str
         return Path(matbinbnd_path_str) if matbinbnd_path_str else None
@@ -397,18 +403,18 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
 
     # region Getter Methods
 
-    def is_game(self, *name_or_game: str | Game) -> tp.TypeGuard[Game]:
+    def is_game(self, *name_or_game: str | GameType | Game) -> tp.TypeGuard[Game]:
         """Check if any `name_or_game` is the selected `Game`."""
         current_game = self.game
         for game in name_or_game:
-            game = get_game(game)
-            if game is current_game:
+            actual_game = get_game(game)  # type: Game
+            if actual_game is current_game:
                 return True
         return False
 
-    def is_game_ds1(self) -> tp.TypeGuard[Game]:
+    def is_game_ds1(self) -> bool:
         """Checks if current game is either version of Dark Souls 1."""
-        return self.is_game(DARK_SOULS_PTDE, DARK_SOULS_DSR)
+        return self.is_game(GameType.DarkSoulsPTDE, GameType.DarkSoulsDSR)
 
     @property
     def game_config(self) -> BlenderGameConfig:
@@ -613,15 +619,15 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
             raise FileNotFoundError(f"MSB file for map '{map_stem}' not found in project or game directory.")
         return path
 
-    def create_texture_finders(self) -> list[TextureFinder]:
+    def create_texture_finders(self) -> list[pyre_flver.TextureFinder]:
         """Create up to two `TextureFinder`s, one for the project and one for the game, ordered by import preference.
         """
         if is_path_and_dir(self.project_root_path):
-            project_finder = TextureFinder(self.pyrelink_game_type, self.project_root_path or "")
+            project_finder = pyre_flver.TextureFinder(self.pyrelink_game_type, self.project_root_path or "")
         else:
             project_finder = None
         if is_path_and_dir(self.game_root_path):
-            game_finder = TextureFinder(self.pyrelink_game_type, self.game_root_path or "")
+            game_finder = pyre_flver.TextureFinder(self.pyrelink_game_type, self.game_root_path or "")
         else:
             game_finder = None
         finders = [project_finder, game_finder] if self.prefer_import_from_project else [game_finder, project_finder]
@@ -650,7 +656,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
         return None
 
     def export_file(
-        self, operator: LoggingOperator, file: BaseBinaryFile, relative_path: Path, class_name=""
+        self, operator: LoggingOperator, file: BaseBinaryFile | pyre_core.GameFile, relative_path: Path, class_name=""
     ) -> list[Path]:
         """Write `file` to `relative_path` in project directory (if given) and optionally also to game directory if
         `also_export_to_game` is enabled.
@@ -659,7 +665,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
 
         Returns a list of file paths exported.
         """
-        class_name = class_name or file.cls_name
+        class_name = class_name or file.__class__.__name__
         if relative_path.is_absolute():
             # Indicates a mistake in an operator.
             raise InternalSoulstructBlenderError(
@@ -673,7 +679,11 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
             return []  # TODO: possible that project file is written, but not game file?
 
     def _export_file(
-        self, operator: LoggingOperator, file: BaseBinaryFile, relative_path: Path, class_name: str
+        self,
+        operator: LoggingOperator,
+        file: BaseBinaryFile | pyre_core.GameFile,
+        relative_path: Path,
+        class_name: str,
     ) -> list[Path]:
         project_root = self.project_root
         game_root = self.game_root
@@ -681,7 +691,10 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
         if project_root:
             project_path = project_root.get_file_path(relative_path)
             project_path.parent.mkdir(parents=True, exist_ok=True)
-            exported_project_paths = file.write(project_path)  # will create '.bak' if appropriate
+            if isinstance(file, BaseBinaryFile):
+                exported_project_paths = file.write(project_path)  # will create '.bak' if appropriate
+            else:  # pyre_core.GameFile
+                exported_project_paths = [file.write_to_path(project_path)]
             operator.info(
                 f"Exported {class_name} to project files: {', '.join(str(path) for path in exported_project_paths)}"
             )
@@ -704,7 +717,10 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
         if game_root and self.also_export_to_game:
             game_path = game_root.get_file_path(relative_path)
             game_path.parent.mkdir(parents=True, exist_ok=True)
-            exported_game_paths = file.write(game_path)
+            if isinstance(file, BaseBinaryFile):
+                exported_game_paths = file.write(game_path)
+            else:  # pyre_core.GameFile
+                exported_game_paths = [file.write_to_path(game_path)]
             operator.info(f"Exported {class_name} to game directory only: {exported_game_paths}")
             return exported_game_paths
 

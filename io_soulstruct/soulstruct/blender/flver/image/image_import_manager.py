@@ -123,21 +123,21 @@ class ImageImportManager:
             # header in CHRBND) for DSR, and adjacent loose folders for PTDE.
             if flver_binder:
                 self.scan_binder_textures(flver_binder)
-                if settings.is_game(DEMONS_SOULS):
+                if settings.is_game(GameType.DemonsSouls):
                     # CHRBND itself is already inside model subdirectory ('chr/cXXXX') alongside the loose TPFs.
                     self._register_chr_loose_tpfs(source_dir, CheckDCXMode.NO_DCX)
-                elif settings.is_game(DARK_SOULS_PTDE):
+                elif settings.is_game(GameType.DarkSoulsPTDE):
                     # CHRBND is next to a model subdirectory that contains loose TPFs ('chr/cXXXX').
                     self._register_chr_loose_tpfs(source_dir / model_stem, CheckDCXMode.NO_DCX)
-                elif settings.is_game(DARK_SOULS_DSR):
+                elif settings.is_game(GameType.DarkSoulsDSR):
                     # Some CHRBNDs have CHRTPFBDTs next to them (with the CHRTPFBHD inside the CHRBND).
                     self._register_chr_tpfbdts(source_dir, flver_binder)
-                elif settings.is_game(BLOODBORNE):
+                elif settings.is_game(GameType.Bloodborne):
                     # Bloodborne doesn't have any loose/BXF CHRBND textures. All TPFs are inside the CHRBND.
                     pass
-                elif settings.is_game(DARK_SOULS_3, SEKIRO):
+                elif settings.is_game(GameType.DarkSouls3, GameType.Sekiro):
                     self._register_chr_texbnd(source_dir, model_stem=model_stem, res="")  # no res
-                elif settings.is_game(ELDEN_RING):
+                elif settings.is_game(GameType.EldenRing):
                     res = "_h" if prefer_hi_res else "_l"
                     self._register_chr_texbnd(source_dir, model_stem=model_stem, res=res)
             else:

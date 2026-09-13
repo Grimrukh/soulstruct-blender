@@ -10,9 +10,12 @@ import re
 import bpy
 from mathutils import Vector
 
-from soulstruct.flver import FLVER, FLVERBoneUsageFlags
+from soulstruct.flver import FLVER, FLVERBone, FLVERBoneUsageFlags
 from soulstruct.flver.bone_tools import BoneNode, BoneTree
 from soulstruct.utilities.maths import Vector3, Matrix3
+
+import pyrelink.core as pyre_core
+import pyrelink.flver as pyre_flver
 
 from .....base.operators import LoggingOperator
 from .....exceptions import FLVERExportError
@@ -26,7 +29,7 @@ def create_flver_bones(
     operator: LoggingOperator,
     context: bpy.types.Context,
     armature: ArmatureObject,
-    flver: FLVER,
+    flver: FLVER | pyre_flver.FLVER,
     bone_data_type: FLVERBoneDataType,
 ):
     """Create `FLVER` bones from Blender Armature bones.
@@ -126,4 +129,30 @@ def create_flver_bones(
         # In CUSTOM (pose) data mode, bone local transform is already set above.
         bone_tree.set_bone_armature_space_transforms(game_arma_transforms)
 
-    flver.set_bone_tree(bone_tree)
+    if isinstance(flver, pyre_flver.FLVER):
+        _set_pyrelink_bone_tree(flver, bone_tree)
+    else:
+        flver.set_bone_tree(bone_tree)
+
+
+def _set_pyrelink_bone_tree(flver: pyre_flver.FLVER, bone_tree: BoneTree):
+    """`pyre_flver.FLVER` equivalent of soulstruct's `FLVER.set_bone_tree()`: sets FLVER bone data from scratch
+    using `bone_tree` (built identically for either FLVER type, since it operates on plain Python `BoneNode`s)."""
+    pr_bones = []
+    for bone_node in bone_tree.bones:
+        pr_bone = pyre_flver.Bone()
+        pr_bone.name = bone_node.name
+        pr_bone.translate = pyre_core.Vector3(bone_node.translate.x, bone_node.translate.y, bone_node.translate.z)
+        pr_bone.rotate = pyre_core.EulerRad(bone_node.rotate.x, bone_node.rotate.y, bone_node.rotate.z)
+        pr_bone.scale = pyre_core.Vector3(bone_node.scale.x, bone_node.scale.y, bone_node.scale.z)
+        pr_aabb = pyre_core.AABB()
+        pr_aabb.min = pyre_core.Vector3(*bone_node.bounding_box.min)
+        pr_aabb.max = pyre_core.Vector3(*bone_node.bounding_box.max)
+        pr_bone.bounding_box = pr_aabb
+        pr_bone.usage_flags = bone_node.usage_flags
+        pr_bone.parent_bone_index = bone_tree.get_bone_index(bone_node.parent_bone)
+        pr_bone.child_bone_index = bone_tree.get_bone_index(bone_node.child_bone)
+        pr_bone.next_sibling_bone_index = bone_tree.get_bone_index(bone_node.next_sibling_bone)
+        pr_bone.previous_sibling_bone_index = bone_tree.get_bone_index(bone_node.previous_sibling_bone)
+        pr_bones.append(pr_bone)
+    flver.bones = pr_bones
