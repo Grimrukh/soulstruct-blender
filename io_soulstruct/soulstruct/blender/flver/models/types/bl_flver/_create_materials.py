@@ -316,7 +316,15 @@ def _load_texture_images(
         if texture_finders:
             for i, texture_finder in enumerate(texture_finders):
                 # Searching for original texture is NOT case-sensitive.
-                image_data = texture_finder.get_texture_as(texture_stem, texture_finder_format, name)
+                try:
+                    # DDS parsing may still fail for a few textures (e.g. Demon's Souls).
+                    image_data = texture_finder.get_texture_as(texture_stem, texture_finder_format, name)
+                except Exception as ex:
+                    operator.warning(
+                        f"Could not convert DDS texture '{texture_stem}' with DirectX. Error: {ex}"
+                    )
+                    bl_image_stems.add(texture_stem)  # don't try again
+                    continue  # try next TextureFinder or proceed to `else` below
                 if not image_data:
                     continue  # try next TextureFinder or proceed to `else` below
 
