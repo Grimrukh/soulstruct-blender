@@ -5,6 +5,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+---
+
+## [3.1.0] - 2026-09-13
+
 ### Added
 - C++ `pyrelink` FLVER acceleration enabled for export (same global 'Use C++ FLVER' option as import).
 
@@ -22,8 +26,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Fixed logging when finding game textures for Blender materials.
 - Fixed Import Player operator for Demon's Souls (now checks c0000 subfolder).
 - Don't fail entire FLVER import when a DDS texture cannot be parsed by Firelink.
-
----
 
 ## [3.0.0] - 2026-09-07
 
