@@ -18,6 +18,7 @@ from ....base.soulstruct_object import BaseBlenderSoulstructObject, add_auto_typ
 from ....exceptions import *
 from ...utilities import (
     BONE_CoB_4x4,
+    get_bone_object_parent_matrix,
     game_forward_up_vectors_to_bl_euler,
     bl_rotmat_to_game_forward_up_vectors,
 )
@@ -48,12 +49,17 @@ class BlenderFLVERDummy(BaseBlenderSoulstructObject[Dummy, FLVERDummyProps]):
     ]
 
     @property
-    def parent_bone(self) -> bpy.types.Bone:
+    def parent_bone(self) -> bpy.types.Bone | None:
         """NOTE: Parent bone CANNOT be set as a Pointer property. We have to use a StringProperty name.
 
-        This property uses the attached name to get the actual Bone object from the Armature, and raises a KeyError if
-        that bone name is missing.
+        Returns `None` if no parent bone name is stored (i.e. FLVER `parent_bone_index == -1`, which is perfectly
+        valid and means the Dummy transform is in model space).
+
+        Otherwise, this property uses the attached name to get the actual Bone object from the Armature, and raises a
+        KeyError if that bone name is missing.
         """
+        if not self.type_properties.parent_bone_name:
+            return None  # no parent bone (model space)
         if not self.parent or self.parent.type != "ARMATURE":
             raise ValueError("Cannot get parent bone of Dummy without an Armature parent.")
         # noinspection PyTypeChecker
@@ -151,7 +157,10 @@ class BlenderFLVERDummy(BaseBlenderSoulstructObject[Dummy, FLVERDummyProps]):
         if soulstruct_obj.attach_bone_index != -1:
             # Set true Blender parent. We manually compute the `matrix_local` of the Dummy to be relative to this bone.
             bl_attach_bone = armature.data.bones[soulstruct_obj.attach_bone_index]
-            bl_attach_bone_matrix = bl_attach_bone.matrix_local @ BONE_CoB_4x4  # undo bone CoB (self-inverse)
+            # NOTE: Unlike the FLVER-space 'parent bone' math above, we must NOT undo the X-forward bone CoB here,
+            # and we must include the bone's tail offset: Blender resolves a bone-parented Object's `matrix_local`
+            # against the bone exactly as Blender sees it. See `get_bone_object_parent_matrix()`.
+            bl_attach_bone_matrix = get_bone_object_parent_matrix(bl_attach_bone)
             bl_dummy_transform = bl_attach_bone_matrix.inverted() @ bl_dummy_transform
             bl_dummy.obj.parent_bone = bl_attach_bone.name  # true Blender property (note *name*, not Bone itself)
             bl_dummy.obj.parent_type = "BONE"
@@ -205,7 +214,9 @@ class BlenderFLVERDummy(BaseBlenderSoulstructObject[Dummy, FLVERDummyProps]):
             # Use attach bone transform to convert Dummy transform to Armature space. We do this even if
             # `follows_attach_bone` is False, because this is resolving a genuine Blender parent-child relation.
             bl_attach_bone = armature.data.bones[attach_bone_index]
-            bl_attach_bone_matrix = bl_attach_bone.matrix_local @ BONE_CoB_4x4  # undo bone CoB (self-inverse)
+            # Must exactly mirror the import side: Blender's bone-parent space keeps the X-forward bone CoB and is
+            # rooted at the bone's TAIL. See `get_bone_object_parent_matrix()`.
+            bl_attach_bone_matrix = get_bone_object_parent_matrix(bl_attach_bone)
             bl_dummy_transform = bl_attach_bone_matrix @ bl_dummy_transform
         else:
             # Dummy has no attach bone.

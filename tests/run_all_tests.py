@@ -20,6 +20,7 @@ TEST_SCRIPTS = [
     "test_flver_object_ops.py",
     "test_flver_mesh_ops.py",
     "test_flver_material_ops.py",
+    "test_flver_dummy_transforms.py",
     # Import/export round-trip tests (game files required; cases auto-skip if not present):
     "test_flver_import_roundtrip.py",
     "test_collision_import_roundtrip.py",

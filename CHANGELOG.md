@@ -5,6 +5,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+### Fixed
+- FLVER Dummies with an attach bone are no longer misplaced in Blender.
+  - This was previously a symmetric bug, so round trips were fine, but dummies appeared wrong in Blender.
+- FLVER export no longer raises `KeyError: "Parent bone '' of Dummy not found in Armature."` for a Dummy with no
+  'In Space of Bone' set (FLVER `parent_bone_index == -1`). `BlenderFLVERDummy.parent_bone` now returns `None`.
+
+### Added
+- New `tests/test_flver_dummy_transforms.py` suite: asserts that imported Dummies land at their FLVER-defined world
+  transform (not merely that import/export round-trip each other, which a symmetric error passes).
+
 ---
 
 ## [3.1.1] - 2026-09-20

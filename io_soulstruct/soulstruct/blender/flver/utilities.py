@@ -8,6 +8,7 @@ __all__ = [
     "game_trs_to_bl_bone_trs",
     "bl_bone_trs_to_game_trs",
     "get_armature_matrix",
+    "get_bone_object_parent_matrix",
     "game_forward_up_vectors_to_bl_euler",
     "bl_euler_to_game_forward_up_vectors",
     "bl_rotmat_to_game_forward_up_vectors",
@@ -21,6 +22,7 @@ __all__ = [
 
 from pathlib import Path
 
+import bpy
 from mathutils import Euler, Matrix, Quaternion, Vector
 
 from soulstruct.containers import Binder
@@ -142,6 +144,30 @@ def get_armature_matrix(armature: ArmatureObject, bone_name: str, basis=None) ->
         #  -> basis = (parent_local.inv @ local)parent_local @ parent_armature.inv @ armature
         parent_local = armature.data.bones[parent.name].matrix_local
         return get_armature_matrix(armature, parent.name) @ parent_local.inverted() @ local @ basis
+
+
+def get_bone_object_parent_matrix(bone: bpy.types.Bone) -> Matrix:
+    """Return the armature-space matrix that Blender uses as the parent space of an Object whose `parent_type` is
+    'BONE' and whose `parent_bone` is `bone`, at rest.
+
+    This is NOT `bone.matrix_local`. Blender's `ob_parbone()` builds the parent matrix from the bone's POSE matrix
+    (equal to `matrix_local` at rest) and then translates it along the bone's own +Y axis by `bone.length`, i.e. the
+    parent origin is the bone's TAIL, not its head:
+
+        parent_matrix = bone.matrix_local @ Matrix.Translation((0.0, bone.length, 0.0))
+
+    An Object's `matrix_local` is relative to exactly this matrix (`matrix_world == parent_matrix @ matrix_local`
+    for a bone-parented child of an unmoved Armature), so any code that computes a bone-relative `matrix_local`
+    by hand -- or reads one back -- must use this function rather than `bone.matrix_local`.
+
+    Note that `bone.matrix_local` here is the bone's Blender rest matrix, which for FLVER Armatures INCLUDES the
+    X-forward `BONE_CoB_4x4` change of basis. The CoB must NOT be undone for this purpose (unlike for FLVER-space
+    bone math), because Blender parents to the bone exactly as Blender sees it.
+
+    `Bone.use_relative_parent` (never set by Soulstruct) would make Blender use the bone's basis/channel matrix
+    instead; it is ignored here.
+    """
+    return bone.matrix_local @ Matrix.Translation((0.0, bone.length, 0.0))
 
 
 def game_forward_up_vectors_to_bl_euler(forward: Vector3, up: Vector3) -> Euler:
