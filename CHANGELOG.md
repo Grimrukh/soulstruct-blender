@@ -7,6 +7,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [3.1.1] - 2026-09-20
+
+### Fixed
+- Fixed Oodle DLL loading for Sekiro/Elden Ring.
+- Fixed Elden Ring texture loading.
+
+### Changed
+- pyrelink updated to 0.3.3 (fixes Elden Ring texture loading).
+
 ## [3.1.0] - 2026-09-13
 
 ### Added

@@ -54,6 +54,7 @@ class BlenderGameConfig:
     supports_cutscenes: bool = False  # `RemoBND` support
 
     # MISC CONFIG
+    requires_oodle: bool = False  # DCX/BND compression uses Oodle Kraken, which needs `oo2core_*.dll` loaded
     # Redirect files that do and do not use the latest version of map files (e.g. to handle Darkroot Garden in DS1).
     new_to_old_map: dict[str, str] = field(default_factory=dict)
     old_to_new_map: dict[str, str] = field(default_factory=dict)
@@ -220,6 +221,7 @@ BLENDER_GAME_CONFIG = {
         skeleton_hkx_class=hk_fromsoft.sekiro.SkeletonHKX,
         animation_hkx_class=hk_fromsoft.sekiro.AnimationHKX,
         supports_collision_model=False,
+        requires_oodle=True,
     ),
     ELDEN_RING: BlenderGameConfig(
         flver_default_version=FLVERVersion.Sekiro_EldenRing,
@@ -233,5 +235,6 @@ BLENDER_GAME_CONFIG = {
         skeleton_hkx_class=hk_fromsoft.eldenring.SkeletonHKX,
         animation_hkx_class=hk_fromsoft.eldenring.AnimationHKX,
         supports_collision_model=False,
+        requires_oodle=True,
     ),
 }

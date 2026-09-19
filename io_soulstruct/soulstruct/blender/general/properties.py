@@ -7,6 +7,7 @@ from __future__ import annotations
 
 __all__ = [
     "SoulstructSettings",
+    "try_load_oodle_dll_for_all_scenes",
 ]
 
 import logging
@@ -60,6 +61,28 @@ def _update_log_level(self: SoulstructSettings, context: bpy.types.Context):
         handler.setLevel(logging.DEBUG if self.enable_debug_logging else logging.INFO)
 
 
+# noinspection PyUnusedLocal
+def _update_oodle_dll(self, context: bpy.types.Context):
+    """Try to (re)locate the Oodle DLL whenever the active game, game root, or project root changes.
+
+    `self` may be `SoulstructSettings` (from `game_enum`) or a nested `SoulstructGameSettings` (from
+    `game_root_str`/`project_root_str`), so we always go through `context.scene` to reach the real settings.
+    """
+    context.scene.soulstruct_settings.try_load_oodle_dll()
+
+
+@bpy.app.handlers.persistent
+def try_load_oodle_dll_for_all_scenes(_dummy=None):
+    """Call `SoulstructSettings.try_load_oodle_dll()` for every open scene.
+
+    Used both as a `bpy.app.handlers.load_post` handler (hence the ignored `_dummy` argument, and the `persistent`
+    decorator so it survives opening a new `.blend`) and as a direct call at add-on registration, since `load_post`
+    never fires for the `.blend` that is already open when Blender starts.
+    """
+    for scene in bpy.data.scenes:
+        scene.soulstruct_settings.try_load_oodle_dll()
+
+
 @io_soulstruct_properties
 class SoulstructGameSettings(bpy.types.PropertyGroup):
     """Game-specific settings. `SoulstructSettings` retrieves settings from active game's instance of this."""
@@ -70,6 +93,7 @@ class SoulstructGameSettings(bpy.types.PropertyGroup):
                     "and optionally export to if 'Also Export to Game' is enabled",
         default="",
         subtype="DIR_PATH",
+        update=_update_oodle_dll,
     )
 
     project_root_str: bpy.props.StringProperty(
@@ -78,6 +102,7 @@ class SoulstructGameSettings(bpy.types.PropertyGroup):
                     "for exporting new entries will also be sourced here first if they exist",
         default="",
         subtype="DIR_PATH",
+        update=_update_oodle_dll,
     )
 
     map_stem: bpy.props.StringProperty(
@@ -175,6 +200,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
             for game in SUPPORTED_GAMES
         ],
         default=DARK_SOULS_DSR.variable_name,
+        update=_update_oodle_dll,
     )
 
     # region Game-Specific Settings
@@ -323,6 +349,26 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
                 return pyre_core.GameType.EldenRing
             case _:
                 raise ValueError(f"Unsupported game for pyrelink: {self.game.name}")
+
+    def try_load_oodle_dll(self) -> bool:
+        """Load the Oodle (Kraken) compression DLL from the game or project directory, if the active game needs it.
+
+        No-ops if the active game doesn't use Oodle compression (only Sekiro and Elden Ring currently do), or if a
+        DLL has already been loaded: the same DLL works for every Oodle-using game, so once any game's directory has
+        provided it, later games never need to look again. The game directory is checked before the project
+        directory, since users have no reason to copy the DLL into a project directory themselves.
+
+        Returns `True` if Oodle is available (whether just loaded or already loaded), `False` otherwise.
+        """
+        if not self.game_config.requires_oodle:
+            return False
+        if pyre_core.is_oodle_available():
+            return True
+        for root_path in (self.game_root_path, self.project_root_path):
+            if root_path and root_path.is_dir() and pyre_core.load_oodle_dll(str(root_path)):
+                _LOGGER.info(f"Loaded Oodle DLL from: {root_path}")
+                return True
+        return False
 
     @property
     def game_root_path(self) -> Path | None:

@@ -1,7 +1,5 @@
 # Soulstruct Extension for Blender
 
-**Get it here: (TODO)**
-
 This Blender Extension add-on enables you to import a large number of different FromSoftware file formats,
 manipulate their data in Blender, and export them back to game files.
 
@@ -73,8 +71,9 @@ success using Havok tools contained in the game executable to regenerate navmesh
 
 # Installation
 
-As of version 3.0.0, Soulstruct for Blender is an official Blender Extension add-on that is available in the Blender
-Extensions marketplace. Previous versions were "legacy add-ons" that users had to download and install manually from disk.
+As of version 3.0.0, Soulstruct for Blender is a modern Blender Extension add-on that fully bundles its own
+dependencies. However, because it includes a C++ extension library (of my own making), it cannot be listed in
+the Blender Extensions marketplace, so you'll still need to get it from the GitHub repository Releases page.
 
 The difference between Blender Extensions and legacy add-ons is how the Python environment is managed. Legacy add-ons
 were installed under `scripts/addons` and were left to their own devices in terms of dependencies, which created a "wild
@@ -84,8 +83,8 @@ This solves the dependency conflict issues, but does place extra restrictions on
 imports within the add-on (as it is never actually added to `sys.path`).
 
 1. Ensure you have **Blender 5.1 or later**.
-2. Open Blender and go to `Edit > Preferences > Extensions`.
-3. TODO
+2. Open Blender and go to `Edit > Preferences > Add-ons`.
+3. Click the drop-down arrow in the top-right and choose `Install from Disk`, pointing to the release `.zip`.
 
 If you want to install a development version of the extension, you will need to clone the GitHub repository and build
 the extension from source. To do this, follow these steps:

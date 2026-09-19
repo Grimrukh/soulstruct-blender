@@ -54,6 +54,7 @@ for module_name in list(sys.modules.keys()):
 
 
 from .soulstruct.blender.base.register import register_io_soulstruct, unregister_io_soulstruct
+from .soulstruct.blender.general.properties import try_load_oodle_dll_for_all_scenes
 
 from .soulstruct.blender.misc import *
 
@@ -121,8 +122,12 @@ def register():
     bpy.types.TOPBAR_MT_file_import.append(havok_menu_func_import)
     bpy.types.TOPBAR_MT_file_export.append(havok_menu_func_export)
 
+    bpy.app.handlers.load_post.append(try_load_oodle_dll_for_all_scenes)
+
 
 def unregister():
+
+    bpy.app.handlers.load_post.remove(try_load_oodle_dll_for_all_scenes)
 
     unregister_io_soulstruct()
 

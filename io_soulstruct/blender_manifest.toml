@@ -33,7 +33,7 @@ wheels = [
   "./wheels/mdurl-0.1.2-py3-none-any.whl",
   "./wheels/numpy-2.5.3-cp313-cp313-win_amd64.whl",
   "./wheels/pygments-2.21.0-py3-none-any.whl",
-  "./wheels/pyrelink-0.3.2-cp313-cp313-win_amd64.whl",  # TOP-LEVEL
+  "./wheels/pyrelink-0.3.3-cp313-cp313-win_amd64.whl",  # TOP-LEVEL
   "./wheels/rich-15.0.0-py3-none-any.whl",
   "./wheels/scipy-1.18.1-cp313-cp313-win_amd64.whl",
   "./wheels/shellingham-1.5.4-py2.py3-none-any.whl",
