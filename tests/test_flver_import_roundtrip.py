@@ -109,6 +109,24 @@ FLVER_TEST_CASES: list[FLVERImportCase] = [
         # TODO: Bug: exporter tries to write >28 bones in one Mesh.
     ),
     FLVERImportCase(
+        name="DES / Character / c2030 (Fat Official)",
+        game_enum="DEMONS_SOULS",
+        directory=Config.DES_PATH / "chr/c2030",
+        filename="c2030.chrbnd.dcx",
+        expect_armature=True,
+        expect_per_submesh_props=True,  # mixed `is_dynamic` meshes
+        tags=["character", "mixed_dynamic"],
+    ),
+    FLVERImportCase(
+        name="DES / Character / c2100 (Vanguard)",
+        game_enum="DEMONS_SOULS",
+        directory=Config.DES_PATH / "chr/c2100",
+        filename="c2100.chrbnd.dcx",
+        expect_armature=True,
+        expect_per_submesh_props=True,  # mixed `is_dynamic` meshes
+        tags=["character", "mixed_dynamic"],
+    ),
+    FLVERImportCase(
         name="DES / Object / o0100",
         game_enum="DEMONS_SOULS",
         directory=Config.DES_PATH / "obj",
@@ -221,6 +239,15 @@ FLVER_TEST_CASES: list[FLVERImportCase] = [
         directory=Config.DSR_PATH / "obj",
         filename="o1290.objbnd.dcx",  # Sunlight Altar destructible parapets
         tags=["object"],
+    ),
+    FLVERImportCase(
+        name="DSR / Object / o0150 (mixed static/dynamic meshes)",
+        game_enum="DARK_SOULS_DSR",
+        directory=Config.DSR_PATH / "obj",
+        filename="o0150.objbnd.dcx",
+        expect_armature=True,
+        expect_per_submesh_props=True,  # mixed `is_dynamic` meshes
+        tags=["object", "mixed_dynamic"],
     ),
     FLVERImportCase(
         name="DSR / Equipment / WP_A_0100",

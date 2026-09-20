@@ -21,6 +21,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 - Internal game-specific config dicts now key on `GameType` enum, not `Game` objects.
+- FLVERs with a mix of dynamic/static meshes use EditBone mode (dynamic) and handle the static meshes by
+  baking the bone-to-armature transform into their vertices (unbaking on export).
+  - No change for fully-static meshes like Map Pieces, which still use CUSTOM bone mode (direct-to-pose).
 
 ### Added
 - New `tests/test_flver_dummy_transforms.py` suite: asserts that imported Dummies land at their FLVER-defined world
@@ -29,6 +32,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   (`pose_bone.matrix @ Bone.matrix_local^-1`) matches the game's (`hkx_arma_transform @ flver_bind_transform^-1`).
   Like the Dummy suite, this catches errors applied symmetrically on import and export, which a round-trip passes, and
   it works for games whose animation export is unimplemented (Demon's Souls).
+- New `tests/test_flver_static_mesh_bake.py` suite: asserts that FLVERs with a mix of dynamic and static meshes
+  use EditBones and bake the static meshes into the armature transform, and that the bake is undone on export.
 
 ---
 

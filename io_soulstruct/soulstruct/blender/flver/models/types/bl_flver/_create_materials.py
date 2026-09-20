@@ -97,9 +97,13 @@ def create_materials(
     # UV layer names used by each Blender material index (NOT each FLVER mesh).
     bl_material_uv_layer_names = []  # type: list[tuple[str, ...]]
 
-    # Map FLVER material hashes to the index of the Blender material sourced from them.
-    # If the hash matches AND backface culling matches, this material can be shared across submeshes.
-    flver_material_hash_first_mat = {}  # type: dict[int, int]
+    # Map (FLVER material hash, backface culling, is_dynamic) to the index of the Blender material sourced from them.
+    # All three must match for a Blender material to be shared across meshes: backface culling is stored on the
+    # Blender material itself, and `is_dynamic` is stored in the per-material `FLVERSubmeshProps` written by
+    # `_set_submesh_props()`, so a single Blender material cannot represent both values of either property.
+    flver_material_variants = {}  # type: dict[tuple[int, bool, bool], int]
+    # Index assigned to each unique FLVER material hash, purely for Blender material naming.
+    flver_material_hash_indices = {}  # type: dict[int, int]
 
     # Map FLVER material hashes to their generated `MatDef` instances.
     flver_matdefs = {}  # type: dict[int, MatDef | None]
@@ -134,96 +138,84 @@ def create_materials(
 
         flver_matdefs[material_hash] = matdef
 
+    # Pre-scan which FLVER materials are used by meshes with differing backface culling and/or `is_dynamic`, so that
+    # the extra Blender materials created for those variants can be named informatively (the unvarying property is
+    # left out of the name, as it would just be noise on every single material).
+    hash_varies_backface_culling = _get_varying_material_hashes(flver, lambda mesh: mesh.use_backface_culling)
+    hash_varies_is_dynamic = _get_varying_material_hashes(flver, lambda mesh: mesh.is_dynamic)
+
     new_materials = []
 
     for mesh, mesh_textures in zip(flver.meshes, all_mesh_texture_stems, strict=True):
         material = mesh.material
         material_hash = hash_material(material)  # NOTE: if there are duplicate FLVER materials, this will combine them
+        variant_key = (material_hash, mesh.use_backface_culling, mesh.is_dynamic)
+
+        if variant_key in flver_material_variants:
+            # Identical FLVER material AND mesh properties. Blender material can be shared with an earlier mesh.
+            mesh_bl_material_indices.append(flver_material_variants[variant_key])
+            continue
+
         vertex_color_count = mesh.vertex_color_count
         mat_def_path = Path(material.mat_def_path)
+        matdef = flver_matdefs[material_hash]
 
-        if material_hash not in flver_material_hash_first_mat:
-            # First time this FLVER material has been encountered. Create it in Blender now.
-            # NOTE: Vanilla material names are unused and essentially worthless. They can also be the same for
-            #  materials that actually use different lightmaps, EVEN INSIDE the same FLVER model.
-            flver_material_index = len(flver_material_hash_first_mat)
-            bl_material_index = len(new_materials)
-            matdef = flver_matdefs[material_hash]
+        is_first_variant = material_hash not in flver_material_hash_indices
+        if is_first_variant:
+            flver_material_hash_indices[material_hash] = len(flver_material_hash_indices)
 
-            # Create a relatively informative material name. We use material index, mat def, and model name as a
-            # suffix to maximize the chances of a unique Blender name.
-            bl_material_name = (
-                f"{material.name} [{flver_material_index} | {mat_def_path.stem} | {model_name}]"
-            )
-
-            bl_material = BlenderFLVERMaterial.new_from_flver_material(
-                operator,
-                context,
-                material,
-                flver_sampler_texture_stems=mesh_textures,
-                material_name=bl_material_name,
-                matdef=matdef,
-                mesh=mesh,
-                vertex_color_count=vertex_color_count,
-                blend_mode=material_blend_mode,
-                warn_missing_textures=image_import_manager is not None,
-                bl_materials_by_matdef_name=bl_materials_by_matdef_name,
-            )
-
-            mesh_bl_material_indices.append(bl_material_index)
-            flver_material_hash_first_mat[material_hash] = bl_material_index
-
-            new_materials.append(bl_material)
-            if matdef:
-                uv_slot_tuple = matdef.get_uv_slot_tuple()
-                bl_material_uv_layer_names.append(tuple(layer.name for layer in uv_slot_tuple))
-            else:
-                # UV layer names not known for this material. `MergedMesh` will just use index, which may cause
-                # conflicting types of UV data to occupy the same Blender UV slot.
-                bl_material_uv_layer_names.append(())
-            continue
-
-        # Check if material can be re-used (backface culling matches).
-        existing_bl_material_index = flver_material_hash_first_mat[material_hash]
-        existing_bl_material = new_materials[existing_bl_material_index]
-        if existing_bl_material.use_backface_culling == mesh.use_backface_culling:
-            # Backface culling matches. This material can be shared across submeshes, even if other properties differ.
-            mesh_bl_material_indices.append(existing_bl_material_index)
-            continue
-
-        if mesh.use_backface_culling:
-            # Retroactively mark the existing material as backface-culling variant.
-            variant_name = existing_bl_material.name
-            existing_bl_material.name += " <BC>"
-        else:
-            variant_name = existing_bl_material.name + " <BC>"
+        # Create a relatively informative material name. We use material index, mat def, and model name as a
+        # suffix to maximize the chances of a unique Blender name.
+        # NOTE: Vanilla material names are unused and essentially worthless. They can also be the same for
+        #  materials that actually use different lightmaps, EVEN INSIDE the same FLVER model.
+        bl_material_name = (
+            f"{material.name} [{flver_material_hash_indices[material_hash]} | {mat_def_path.stem} | {model_name}]"
+        )
+        # Only tag the properties that actually vary between this FLVER material's meshes.
+        if material_hash in hash_varies_backface_culling and mesh.use_backface_culling:
+            bl_material_name += " <BC>"
+        if material_hash in hash_varies_is_dynamic and not mesh.is_dynamic:
+            bl_material_name += " <STATIC>"
 
         bl_material = BlenderFLVERMaterial.new_from_flver_material(
             operator,
             context,
             material,
-            mesh_textures,
-            material_name=variant_name,
-            matdef=flver_matdefs[material_hash],
+            flver_sampler_texture_stems=mesh_textures,
+            material_name=bl_material_name,
+            matdef=matdef,
             mesh=mesh,
             vertex_color_count=vertex_color_count,
             blend_mode=material_blend_mode,
+            # Only warn once per FLVER material, not again for each of its variants.
+            warn_missing_textures=is_first_variant and image_import_manager is not None,
             bl_materials_by_matdef_name=bl_materials_by_matdef_name,
         )
 
-        new_bl_material_index = len(new_materials)
-        mesh_bl_material_indices.append(new_bl_material_index)
+        bl_material_index = len(new_materials)
         new_materials.append(bl_material)
-        if flver_matdefs[material_hash] is not None:
-            bl_material_uv_layer_names.append(
-                tuple(layer.name for layer in flver_matdefs[material_hash].get_uv_slot_tuple())
-            )
+        mesh_bl_material_indices.append(bl_material_index)
+        flver_material_variants[variant_key] = bl_material_index
+
+        if matdef:
+            uv_slot_tuple = matdef.get_uv_slot_tuple()
+            bl_material_uv_layer_names.append(tuple(layer.name for layer in uv_slot_tuple))
         else:
+            # UV layer names not known for this material. `MergedMesh` will just use index, which may cause
+            # conflicting types of UV data to occupy the same Blender UV slot.
             bl_material_uv_layer_names.append(())
 
     return CreatedFLVERMaterials(
         tuple(new_materials), tuple(mesh_bl_material_indices), tuple(bl_material_uv_layer_names)
     )
+
+
+def _get_varying_material_hashes(flver: FLVER, get_mesh_property: tp.Callable[[tp.Any], tp.Any]) -> set[int]:
+    """Find the hashes of FLVER materials whose meshes do not all agree on `get_mesh_property(mesh)`."""
+    hash_values = {}  # type: dict[int, set]
+    for mesh in flver.meshes:
+        hash_values.setdefault(hash_material(mesh.material), set()).add(get_mesh_property(mesh))
+    return {material_hash for material_hash, values in hash_values.items() if len(values) > 1}
 
 
 def _get_mesh_flver_textures(

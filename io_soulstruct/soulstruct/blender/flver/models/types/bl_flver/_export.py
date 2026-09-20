@@ -16,6 +16,7 @@ import numpy as np
 
 from soulstruct.flver import *
 from soulstruct.flver.bone_tools import BoneTree
+from soulstruct.flver.utilities import hash_material
 from soulstruct.base.models.shaders import MatDef
 from soulstruct.games import GameType
 from soulstruct.utilities.maths import Vector3, SINGLE_MIN, SINGLE_MAX
@@ -316,7 +317,8 @@ def _create_flver_meshes(
     # 1. Create per-mesh info. Note that every Blender material index is guaranteed to be mapped to AT LEAST ONE
     #    split `FLVERMesh` in the exported FLVER (more if mesh bone maximum is exceeded). This allows the user to
     #    also split their meshes manually in Blender, if they wish.
-    split_mesh_defs = []  # type: list[SplitMeshDef | pyre_flver.SplitMeshDef]
+    # Built as soulstruct `SplitMeshDef`s, then converted to pyrelink defs below if needed.
+    split_mesh_defs = []  # type: list[SplitMeshDef]
 
     bl_materials = command.bl_flver.get_materials()
     if len(matdefs) != len(bl_materials):
@@ -377,10 +379,12 @@ def _create_flver_meshes(
             get_texture_path_prefix=get_texture_path_prefix,
             **split_mesh_def_kw,  # passthrough
         )
-        if is_pyre_flver:
-            split_mesh_defs.append(split_mesh_def_to_pyrelink(split_mesh_def))
-        else:
-            split_mesh_defs.append(split_mesh_def)
+        split_mesh_defs.append(split_mesh_def)
+
+    _unify_flver0_material_layouts(command, split_mesh_defs)
+
+    if is_pyre_flver:
+        split_mesh_defs = [split_mesh_def_to_pyrelink(smd) for smd in split_mesh_defs]
 
     # 2. Validate UV layers: ensure all required material UV layer names are present, and warn if any unexpected
     #    Blender UV layers are present.
@@ -624,6 +628,22 @@ def _create_flver_meshes(
     for uv_layer_name in loop_uv_array_dict:
         loop_uv_array_dict[uv_layer_name][:, 1] = 1.0 - loop_uv_array_dict[uv_layer_name][:, 1]
 
+    # Reverse the import-time bake of static (non-dynamic) mesh vertices into armature space. Modifies
+    # `vertex_positions`, `vertex_bone_weights`, `vertex_bone_indices`, and the loop direction arrays in place.
+    _unbake_static_vertices_to_bone_space(
+        command,
+        bl_bone_data_type=bl_bone_data_type,
+        split_mesh_def_kwargs=split_mesh_def_kwargs,
+        faces=faces,
+        loop_vertex_indices=loop_vertex_indices,
+        vertex_positions=vertex_positions,
+        vertex_bone_weights=vertex_bone_weights,
+        vertex_bone_indices=vertex_bone_indices,
+        loop_normals=loop_normals,
+        loop_tangent_arrays=loop_tangent_arrays,
+        loop_bitangents=loop_bitangents,
+    )
+
     if is_pyre_flver:
         merged_mesh = pyre_flver.MergedMesh()
         # Vertex data
@@ -716,6 +736,125 @@ def _create_flver_meshes(
             f"Split Blender mesh into {len(command.flver.meshes)} FLVER meshes in {time.perf_counter() - p} s "
             f"(with Python)."
         )
+
+
+def _unify_flver0_material_layouts(command: _CreateFLVERCommand, split_mesh_defs: list[SplitMeshDef]) -> None:
+    """Give every `SplitMeshDef` that shares a FLVER material the same vertex array layout, for FLVER0 games only.
+
+    FLVER0 (Demon's Souls) stores vertex array layouts *inside* each material, and every vanilla FLVER0 material has
+    exactly one. `MatDef.get_vertex_array_layout()` normally derives the layout from `is_dynamic`, which would give a
+    material used by both static and dynamic meshes (e.g. c2030's body, whose cloak mesh is static) two layouts once
+    the FLVER0 packer merges the identical materials -- a structure no vanilla FLVER0 has, and which Soulstruct
+    cannot read back. Vanilla instead gives such a material the dynamic layout and simply writes zero bone weights
+    for its static meshes, which is what we reproduce here.
+
+    Later FLVER2 games store layouts at FLVER level and freely use two for one material (e.g. DS1 object o0150), so
+    they are left alone.
+    """
+    if int(command.flver.version) > 0xFFFF:
+        return  # FLVER2: layouts are FLVER-wide, so one material may freely use several
+
+    dynamic_layouts = {}  # type: dict[int, VertexArrayLayout]
+    for split_mesh_def in split_mesh_defs:
+        if split_mesh_def.is_dynamic:
+            dynamic_layouts.setdefault(hash_material(split_mesh_def.material), split_mesh_def.layout)
+
+    for i, split_mesh_def in enumerate(split_mesh_defs):
+        if split_mesh_def.is_dynamic:
+            continue
+        dynamic_layout = dynamic_layouts.get(hash_material(split_mesh_def.material))
+        if dynamic_layout is not None and dynamic_layout != split_mesh_def.layout:
+            command.operator.debug(
+                f"Using dynamic vertex array layout for static FLVER0 mesh with material "
+                f"'{split_mesh_def.material.name}', which is also used by a dynamic mesh."
+            )
+            split_mesh_defs[i] = split_mesh_def._replace(layout=dynamic_layout)
+
+
+def _unbake_static_vertices_to_bone_space(
+    command: _CreateFLVERCommand,
+    bl_bone_data_type: FLVERBoneDataType,
+    split_mesh_def_kwargs: list[dict[str, tp.Any]],
+    faces: np.ndarray,
+    loop_vertex_indices: np.ndarray,
+    vertex_positions: np.ndarray,
+    vertex_bone_weights: np.ndarray,
+    vertex_bone_indices: np.ndarray,
+    loop_normals: np.ndarray | None,
+    loop_tangent_arrays: list[np.ndarray],
+    loop_bitangents: np.ndarray | None,
+) -> None:
+    """Transform vertices destined for static (non-dynamic) FLVER meshes from armature space back into the local
+    space of the single bone they are weighted to, and restore vanilla static vertex bone data (no weights, with the
+    single bone index repeated across all four slots).
+
+    This is the exact inverse of FLVER import's `_bake_static_vertices_to_armature_space()`: `EDIT` bone data means
+    the entire Blender mesh is in armature space, but FLVER meshes with `is_dynamic = False` must be written in
+    bone-local space. All given arrays are modified in place (all already in FromSoft coordinates).
+
+    Does nothing for `CUSTOM` bone data (map pieces, whose Blender vertices are already bone-local and posed by
+    PoseBones instead), for `OMITTED` bone data, or for FLVERs with no static materials at all.
+    """
+    if bl_bone_data_type != FLVERBoneDataType.EDIT:
+        return
+    static_material_indices = [i for i, kwargs in enumerate(split_mesh_def_kwargs) if not kwargs["is_dynamic"]]
+    if not static_material_indices:
+        return
+
+    static_face_mask = np.isin(faces[:, 3], static_material_indices)
+    if not np.any(static_face_mask):
+        return
+
+    static_vertex_mask = np.zeros(len(vertex_positions), dtype=bool)
+    static_vertex_mask[loop_vertex_indices[faces[static_face_mask][:, :3].ravel()]] = True
+
+    dynamic_vertex_mask = np.zeros(len(vertex_positions), dtype=bool)
+    dynamic_vertex_mask[loop_vertex_indices[faces[~static_face_mask][:, :3].ravel()]] = True
+    shared_vertex_indices = np.flatnonzero(static_vertex_mask & dynamic_vertex_mask)
+    if shared_vertex_indices.size > 0:
+        raise FLVERExportError(
+            f"{shared_vertex_indices.size} vertices in FLVER mesh '{command.mesh.name}' are used by faces with both "
+            f"static and dynamic materials, which cannot be exported (static and dynamic FLVER meshes store their "
+            f"vertices in different spaces). First offending Blender vertex indices: "
+            f"{shared_vertex_indices[:10].tolist()}"
+        )
+
+    multi_bone_vertex_indices = np.flatnonzero(
+        static_vertex_mask & (np.sum(vertex_bone_indices >= 0, axis=1) > 1)
+    )
+    if multi_bone_vertex_indices.size > 0:
+        raise FLVERExportError(
+            f"{multi_bone_vertex_indices.size} vertices in static (non-dynamic) FLVER meshes are weighted to more "
+            f"than one bone, which is not supported. First offending Blender vertex indices: "
+            f"{multi_bone_vertex_indices[:10].tolist()}"
+        )
+
+    bone_arma_transforms = BoneTree(command.flver).get_bone_armature_space_transforms()
+    static_bone_indices = vertex_bone_indices[:, 0]
+
+    for bone_index in np.unique(static_bone_indices[static_vertex_mask]):
+        translate, rotate, scale = bone_arma_transforms[int(bone_index)]
+        vertex_mask = static_vertex_mask & (static_bone_indices == bone_index)
+        # Inverse of `(scale * position) @ rotate.T + translate` (rotation matrix is orthonormal, so `R^-1 == R.T`).
+        vertex_positions[vertex_mask] = (
+            (vertex_positions[vertex_mask] - translate.data) @ rotate.data
+        ) / scale.data
+        loop_mask = vertex_mask[loop_vertex_indices]
+        if loop_normals is not None:
+            loop_normals[loop_mask] = loop_normals[loop_mask] @ rotate.data
+        for loop_tangents in loop_tangent_arrays:
+            # Fourth tangent component is a handedness sign, not a direction.
+            loop_tangents[loop_mask, :3] = loop_tangents[loop_mask, :3] @ rotate.data
+        if loop_bitangents is not None:
+            loop_bitangents[loop_mask, :3] = loop_bitangents[loop_mask, :3] @ rotate.data
+
+    # Match vanilla static mesh vertex data: no bone weights, with the single bone index repeated in all four slots.
+    vertex_bone_weights[static_vertex_mask] = 0.0
+    vertex_bone_indices[static_vertex_mask] = vertex_bone_indices[static_vertex_mask][:, 0:1]
+
+    command.operator.debug(
+        f"Un-baked {int(np.sum(static_vertex_mask))} static FLVER mesh vertices from armature into bone-local space."
+    )
 
 
 def _refresh_pyrelink_bounding_boxes(

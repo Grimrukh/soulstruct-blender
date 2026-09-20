@@ -17,7 +17,7 @@ from soulstruct.base.models.shaders import MatDefError
 from soulstruct.flver import *
 from soulstruct.flver.bone_tools import BoneTree
 from soulstruct.flver.version import FLVERVersion
-from soulstruct.utilities.maths import EulerRad
+from soulstruct.utilities.maths import EulerRad, Matrix3, Vector3
 
 import pyrelink.flver as pyre_flver
 
@@ -141,7 +141,9 @@ def create_bl_flver_from_flver(
     armature, bl_bone_data_type, bl_bone_names = _create_armature_if_needed(command)
 
     p = time.perf_counter()
-    mesh, bl_materials, mesh_bl_material_indices = _create_bl_mesh(command, armature, bl_bone_names, mesh_data)
+    mesh, bl_materials, mesh_bl_material_indices = _create_bl_mesh(
+        command, armature, bl_bone_names, mesh_data, bl_bone_data_type
+    )
     _LOGGER.info(f"Created Blender mesh for FLVER {command.name} in {time.perf_counter() - p:.3f} s.")
 
     command.collection.objects.link(mesh)
@@ -294,11 +296,19 @@ def _create_bl_mesh(
     armature: ArmatureObject | None,
     bl_bone_names: list[str],
     mesh_data: bpy.types.Mesh,
+    bl_bone_data_type: FLVERBoneDataType,
 ) -> tuple[MeshObject, list[BlenderFLVERMaterial], list[int]]:
     """Create Blender Mesh from FLVER sub-meshes.
 
     This is the main workhorse function of FLVER import in Blender.
     """
+    # Armature-space bone transforms needed to bake static (bone-local) mesh vertices into armature space, or `None`
+    # if this FLVER needs no such baking. See `_bake_static_vertices_to_armature_space()`.
+    if bl_bone_data_type == FLVERBoneDataType.EDIT and any(not mesh.is_dynamic for mesh in command.flver.meshes):
+        static_bake_transforms = command.bone_tree.get_bone_armature_space_transforms()
+    else:
+        static_bake_transforms = None
+
     if not command.flver.meshes:
         # FLVER has no meshes (e.g. c0000). Leave empty.
         mesh = new_mesh_object(f"{command.name} <EMPTY>", mesh_data, SoulstructType.FLVER)
@@ -312,7 +322,11 @@ def _create_bl_mesh(
     if command.existing_merged_mesh:
         # Merged mesh already given. Implies that Blender materials are handled manually as well.
         _create_bl_mesh_from_merged_mesh(
-            command.operator, mesh_data, command.existing_merged_mesh
+            command.operator,
+            mesh_data,
+            command.existing_merged_mesh,
+            static_bake_transforms,
+            _get_static_bl_material_indices(command, command.existing_mesh_bl_material_indices),
         )
         mesh = new_mesh_object(command.name, mesh_data, SoulstructType.FLVER)
         if armature:
@@ -366,7 +380,13 @@ def _create_bl_mesh(
                 f"Merging reduced {total_vertices} vertices to {total_merged_vertices} "
                 f"({100 - 100 * total_merged_vertices / total_vertices:.2f}% reduction)"
             )
-    _create_bl_mesh_from_merged_mesh(command.operator, mesh_data, merged_mesh)
+    _create_bl_mesh_from_merged_mesh(
+        command.operator,
+        mesh_data,
+        merged_mesh,
+        static_bake_transforms,
+        _get_static_bl_material_indices(command, mesh_bl_material_indices),
+    )
     mesh = new_mesh_object(command.name, mesh_data, SoulstructType.FLVER)
     if armature:
         _create_bone_vertex_groups(mesh, bl_bone_names, merged_mesh.bone_weights, merged_mesh.bone_indices)
@@ -428,6 +448,8 @@ def _create_bl_mesh_from_merged_mesh(
     operator: LoggingOperator,
     mesh_data: bpy.types.Mesh,
     merged_mesh: MergedMesh,
+    static_bake_transforms: list[tuple[Vector3, Matrix3, Vector3]] | None = None,
+    static_bl_material_indices: tp.Sequence[int] = (),
 ) -> None:
     """Create Blender Mesh with plenty of efficient `foreach_set()` calls to raveled `MergedMesh` arrays.
 
@@ -435,8 +457,12 @@ def _create_bl_mesh_from_merged_mesh(
     """
     p = time.perf_counter()
 
+    game_positions, game_loop_normals = _bake_static_vertices_to_armature_space(
+        operator, merged_mesh, static_bake_transforms, static_bl_material_indices
+    )
+
     # TODO: Not importing tangents/bitangents currently, but this may need to change (e.g. Elden Ring cloth).
-    bl_positions = merged_mesh.positions[:, [0, 2, 1]]
+    bl_positions = game_positions[:, [0, 2, 1]]
 
     mesh_data.vertices.add(merged_mesh.vertex_count)
     # TODO: Is array copy here necessary?
@@ -521,11 +547,94 @@ def _create_bl_mesh_from_merged_mesh(
     # NOTE: `Mesh.create_normals_split()` was removed in Blender 4.1. New versions of Blender automatically create the
     # `mesh.corner_normals` collection. We also don't need to enable `use_auto_smooth` or call `calc_normals_split()`.
 
-    if merged_mesh.loop_normals is not None:
-        bl_normals = merged_mesh.loop_normals[:, [0, 2, 1]]  # swap YZ
+    if game_loop_normals is not None:
+        bl_normals = game_loop_normals[:, [0, 2, 1]]  # swap YZ
         bl_normals = bl_normals[valid_face_loop_indices]  # valid only; NOT raveled
         mesh_data.normals_split_custom_set(bl_normals)  # one normal per loop
         mesh_data.update()
+
+
+def _get_static_bl_material_indices(
+    command: _CreateBlenderFLVERCommand, mesh_bl_material_indices: tp.Sequence[int]
+) -> list[int]:
+    """Blender material indices used by static (non-dynamic) FLVER meshes.
+
+    Blender materials are split by `is_dynamic` (see `create_materials()`), so no index appears in both this list and
+    a dynamic mesh's materials.
+    """
+    return sorted({
+        bl_material_index
+        for mesh, bl_material_index in zip(command.flver.meshes, mesh_bl_material_indices)
+        if not mesh.is_dynamic
+    })
+
+
+def _bake_static_vertices_to_armature_space(
+    operator: LoggingOperator,
+    merged_mesh: MergedMesh,
+    static_bake_transforms: list[tuple[Vector3, Matrix3, Vector3]] | None,
+    static_bl_material_indices: tp.Sequence[int],
+) -> tuple[np.ndarray, np.ndarray | None]:
+    """Transform any static (non-dynamic) mesh vertices in `merged_mesh` from bone-local into armature space.
+
+    FLVER meshes with `is_dynamic = False` store their vertex positions and normals in the local space of the single
+    bone each vertex is attached to (with no bone weights), whereas dynamic meshes store them in armature space. A
+    FLVER that mixes both kinds (e.g. Demon's Souls c2030, whose eyes/cloak/weapons are static while its body is
+    dynamic) therefore cannot be represented faithfully by one Blender Armature, since Blender rest bones can only
+    match one of the two conventions. We resolve this by baking the static vertices into armature space here, so the
+    whole Blender mesh lives in armature space (matching the `EDIT` rest bones) and the static vertices still follow
+    their bone when the Armature is posed or animated. `_export.py` reverses this on export.
+
+    `static_bake_transforms` is the FLVER's armature-space bone transforms, or `None` if no baking is needed (i.e.
+    all-dynamic FLVERs, and all-static FLVERs that use `CUSTOM` bone data and pose their bone-local vertices with
+    PoseBones instead). New arrays are always returned; `merged_mesh` is never modified, as it may be cached and
+    reused by other importers.
+    """
+    positions = merged_mesh.positions
+    loop_normals = merged_mesh.loop_normals
+    if static_bake_transforms is None or len(static_bl_material_indices) == 0:
+        return positions, loop_normals
+
+    # Static vertices are identified by the Blender material of the faces that use them, NOT by their bone weights:
+    # some vanilla dynamic meshes (e.g. c2101's mesh 8) also have all-zero weights. Since Blender materials are split
+    # by `is_dynamic` (see `create_materials()`), every face of a static material is a static face.
+    faces = np.asarray(merged_mesh.faces)
+    static_face_mask = np.isin(faces[:, 3], static_bl_material_indices)
+    if not np.any(static_face_mask):
+        return positions, loop_normals
+
+    # `MergedMesh` marks loops that no surviving face uses with an out-of-range sentinel vertex index (e.g. DS1
+    # object o0150), so those loops must be excluded from every lookup below.
+    loop_vertex_indices = np.asarray(merged_mesh.loop_vertex_indices)
+    valid_loop_mask = loop_vertex_indices < merged_mesh.vertex_count
+    safe_loop_vertex_indices = np.where(valid_loop_mask, loop_vertex_indices, 0)
+
+    static_loop_indices = faces[static_face_mask][:, :3].ravel()
+    static_loop_indices = static_loop_indices[valid_loop_mask[static_loop_indices]]
+    static_mask = np.zeros(merged_mesh.vertex_count, dtype=bool)
+    static_mask[loop_vertex_indices[static_loop_indices]] = True
+    if not np.any(static_mask):
+        return positions, loop_normals
+
+    bone_indices = np.asarray(merged_mesh.bone_indices, dtype=np.int32)
+    positions = np.array(positions)  # copy
+    if loop_normals is not None:
+        loop_normals = np.array(loop_normals)  # copy
+
+    for bone_index in np.unique(bone_indices[static_mask, 0]):
+        translate, rotate, scale = static_bake_transforms[int(bone_index)]
+        vertex_mask = static_mask & (bone_indices[:, 0] == bone_index)
+        positions[vertex_mask] = (scale.data * positions[vertex_mask]) @ rotate.data.T + translate.data
+        if loop_normals is not None:
+            # Normals are just rotated (bone scale is effectively always uniform; see `_check_scale()`).
+            loop_mask = vertex_mask[safe_loop_vertex_indices] & valid_loop_mask
+            loop_normals[loop_mask] = loop_normals[loop_mask] @ rotate.data.T
+
+    operator.debug(
+        f"Baked {int(np.sum(static_mask))} static FLVER mesh vertices from bone-local into armature space."
+    )
+
+    return positions, loop_normals
 
 
 def _create_bone_vertex_groups(
@@ -610,19 +719,11 @@ def _create_bl_bones(
         # Empty mesh is ONLY good for dynamic usage (animations).
         bl_bone_data_type = FLVERBoneDataType.EDIT
     elif any(mesh.is_dynamic for mesh in flver.meshes):
-        if not all(mesh.is_dynamic for mesh in flver.meshes):
-            # Happens for rare objects (e.g. o0150 in DS1). In these cases, my observation is that the meshes do want
-            # to be statically posed in Blender for viewing.
-            # TODO: Could theoretically handle this per-Bone IFF no Bone is used by both dynamic/static meshes.
-            command.operator.warning(
-                f"Some meshes in FLVER '{command.name}' are dynamic and some are not. Cannot currently handle "
-                f"this properly in Blender. Will store bone data in custom Bone properties ('Custom' mode). FLVER may "
-                f"not appear correct when static and/or animated, but FLVER export should be unaffected."
-            )
-            bl_bone_data_type = FLVERBoneDataType.CUSTOM
-        else:
-            # Only used if ALL FLVER meshes are dynamic.
-            bl_bone_data_type = FLVERBoneDataType.EDIT
+        # At least one dynamic mesh, whose vertices are in armature space, so we must use EDIT bone data. Any static
+        # meshes mixed in (rare, e.g. DeS c2030 eyes/cloak/weapons and DS1 object o0150) store their vertices in the
+        # local space of their single weighted bone, so those vertices are baked into armature space on import by
+        # `_bake_static_vertices_to_armature_space()` and un-baked again on export.
+        bl_bone_data_type = FLVERBoneDataType.EDIT
     else:
         # All static meshes.
         bl_bone_data_type = FLVERBoneDataType.CUSTOM
