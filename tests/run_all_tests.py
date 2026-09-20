@@ -27,6 +27,7 @@ TEST_SCRIPTS = [
     "test_nvm_import_roundtrip.py",
     "test_msb_import_roundtrip.py",
     "test_hkx_animation_import_roundtrip.py",
+    "test_hkx_animation_pose_fidelity.py",
 ]
 
 overall_pass = True

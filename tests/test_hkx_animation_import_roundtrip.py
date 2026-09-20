@@ -241,6 +241,8 @@ HKX_ANIMATION_TEST_CASES: list[HKXAnimationImportCase] = [
 # ---------------------------------------------------------------------------
 
 SKELETON_ENTRY_RE = re.compile(r"skeleton\.hkx(\.dcx)?", re.IGNORECASE)
+# Demon's Souls ANIBNDs are inconsistent about `.hkx` vs `.HKX` (e.g. c1000 uses uppercase).
+ANIMATION_ENTRY_RE = re.compile(r"a.*\.hkx(\.dcx)?", re.IGNORECASE)
 
 # Tolerance for the uncompressed (interleaved) export stage. The only expected loss here is
 # float32 storage of `hkQsTransform` members and matrix decompose/recompose round-tripping, both
@@ -487,7 +489,7 @@ def _import_animation_headless(
         return None
 
     # --- Find animation entry ---
-    anim_entries = anibnd.find_entries_by_name_regex(r"a.*\.hkx(\.dcx)?")
+    anim_entries = anibnd.find_entries_by_name_regex(ANIMATION_ENTRY_RE)
     if not anim_entries:
         T.fail(case.name, "No animation entries (a*.hkx) found in ANIBND")
         return None

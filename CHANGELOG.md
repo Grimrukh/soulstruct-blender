@@ -12,6 +12,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   'In Space of Bone' set (FLVER `parent_bone_index == -1`). `BlenderFLVERDummy.parent_bone` now returns `None`.
 - Fixed false positive warning for partial-export binders existing in Project but not Game (handle DCX properly).
 - Fixed c0000 sub-ANIBND import in Demon's Souls (path formatting issue).
+- HKX animations no longer apply FLVER rest bone scale twice.
+  - `EditBone` cannot store scale, so the stored rest scale must be manually taken out (e.g. DeS Tower Knight).
+- HKX animations no longer flip bone chains upside down when a FLVER bone's parent is not animated.
+  - Un-keyframed bones cancel the parent's rest matrix (e.g. DeS Plague Baby).
+- HKX animations now bind to the correct bone when a FLVER contains two bones with the same name.
+- Animation Binder entries are now matched case-insensitively: '.hkx' or '.HKX'.
 
 ### Changed
 - Internal game-specific config dicts now key on `GameType` enum, not `Game` objects.
@@ -19,6 +25,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Added
 - New `tests/test_flver_dummy_transforms.py` suite: asserts that imported Dummies land at their FLVER-defined world
   transform (not merely that import/export round-trip each other, which a symmetric error passes).
+- New `tests/test_hkx_animation_pose_fidelity.py` suite: asserts that an imported animation's per-bone deform matrix
+  (`pose_bone.matrix @ Bone.matrix_local^-1`) matches the game's (`hkx_arma_transform @ flver_bind_transform^-1`).
+  Like the Dummy suite, this catches errors applied symmetrically on import and export, which a round-trip passes, and
+  it works for games whose animation export is unimplemented (Demon's Souls).
 
 ---
 

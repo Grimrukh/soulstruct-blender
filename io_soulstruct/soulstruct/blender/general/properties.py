@@ -464,7 +464,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
 
     @property
     def game_config(self) -> BlenderGameConfig:
-        return BLENDER_GAME_CONFIG[self.game]
+        return BLENDER_GAME_CONFIG[self.game_type]
 
     def auto_set_game(self):
         """Determine `game` enum value from `game_directory`."""
@@ -578,7 +578,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
             map_stem = self.map_stem
         if not map_stem or not self.smart_map_version_handling or not self.game:
             return map_stem
-        return BLENDER_GAME_CONFIG[self.game].new_to_old_map.get(map_stem, map_stem)
+        return BLENDER_GAME_CONFIG[self.game_type].new_to_old_map.get(map_stem, map_stem)
 
     def get_latest_map_stem_version(self, map_stem: str | None = None) -> str:
         """Check if `smart_map_version_handling` is enabled and return the latest version of the map stem if so."""
@@ -586,7 +586,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
             map_stem = self.map_stem
         if not map_stem or not self.smart_map_version_handling or not self.game:
             return map_stem
-        return BLENDER_GAME_CONFIG[self.game].old_to_new_map.get(map_stem, map_stem)
+        return BLENDER_GAME_CONFIG[self.game_type].old_to_new_map.get(map_stem, map_stem)
 
     def get_import_file_path(self, *parts: str | Path, dcx_type: DCXType | None = None) -> Path:
         """Try to get file path relative to project or game directory first, depending on `prefer_import_from_project`,
@@ -1058,7 +1058,7 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
         if not self.smart_map_version_handling:
             # Nothing to process.
             return map_stem
-        return BLENDER_GAME_CONFIG[self.game].process_file_map_stem_version(map_stem, file_name)
+        return BLENDER_GAME_CONFIG[self.game_type].process_file_map_stem_version(map_stem, file_name)
 
     @tp.overload
     def get_relative_msb_path(self, map_stem: str) -> Path:
