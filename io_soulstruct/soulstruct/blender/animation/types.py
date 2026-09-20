@@ -221,6 +221,19 @@ class SoulstructAnimation:
         root_motion = get_root_motion(interleaved_animation_hkx)
         operator.debug(f"Constructed armature animation frames in {time.perf_counter() - p:.3f} s.")
 
+        # A FLVER may contain two bones with the same game name, in which case FLVER import renamed all but the first
+        # to '{name} <DUPE>'. The HKX skeleton has no such collision, so we must work out which Blender bone each
+        # animated name really refers to (by rest position) rather than blindly taking the first (e.g. DeS c6041).
+        bone_renames = resolve_duplicate_animated_bone_names(
+            operator, armature_obj, skeleton_hkx, set(track_bone_names)
+        )
+        if bone_renames:
+            track_bone_names = [bone_renames.get(n, n) for n in track_bone_names]
+            for frame in arma_frames:
+                for old_name, new_name in bone_renames.items():
+                    if old_name in frame:
+                        frame[new_name] = frame.pop(old_name)
+
         # Note that it's common for the HKX animation to not animate all bones in the FLVER, but we do warn if there
         # are any bones in the HKX animation that are not in the FLVER.
         for bone_name in track_bone_names:
@@ -342,6 +355,7 @@ class SoulstructAnimation:
                     get_armature_rest_trs(armature_obj),
                     bl_frames_per_game_frame,
                     bone_data_type,
+                    flver_rest_scales=get_flver_bone_rest_scales(armature_obj, bone_data_type),
                 )
             else:
                 bone_basis_samples = {}
@@ -384,6 +398,7 @@ class SoulstructAnimation:
         bl_frames_per_game_frame: float,
         bone_data_type: FLVERBoneDataType,
         assert_root_bone_names: tp.Container[str] = (),
+        flver_rest_scales: dict[str, Vector] | None = None,
     ) -> dict[str, np.ndarray]:
         """Convert a list of Armature-space frames, where each frame is a `dict[bone_name: str, TRSTransform]`, to an
         outer dictionary that maps bone names to an array of 11 bone basis-space keyframe values:
@@ -395,7 +410,14 @@ class SoulstructAnimation:
         discard; Havok's own bone hierarchy composition never produces such shear in the first place, so neither
         should ours. Likewise, the game -> Blender coordinate conversion and the X-forward bone CoB are applied at TRS
         level, never via `Matrix.decompose()`, so negative bone scale (which Havok animations do use) survives exactly.
+
+        `flver_rest_scales` (see `get_flver_bone_rest_scales()`) maps bone names to FLVER local bone scale that the
+        Blender rest pose could not store, in Blender bone space. Each such bone's armature-space pose scale is divided
+        by it, since the game's bind pose carries that scale and cancels it out when skinning, while Blender's does
+        not. Without this, e.g. DeS c5010's pauldron bones (FLVER scale 3.1285) are scaled up 3.13x by every animation.
         """
+
+        flver_rest_scales = flver_rest_scales or {}
 
         # We negate double-cover quaternions to improve interpolation between adjacent frames.
         last_frame_rotations = {}  # type: dict[str, BLQuaternion]
@@ -406,8 +428,6 @@ class SoulstructAnimation:
             for bone_name in arma_frames[0].keys()
         }  # type: dict[str, np.ndarray]
 
-        identity_trs = (Vector((0.0, 0.0, 0.0)), BLQuaternion(), Vector((1.0, 1.0, 1.0)))
-
         keyframe_t = 0.0
         for frame_i, frame in enumerate(arma_frames):
             # `frame_i` is used to index array rows (created above).
@@ -416,10 +436,20 @@ class SoulstructAnimation:
             for bone_name, trs in frame.items():
                 if bone_data_type == FLVERBoneDataType.EDIT:
                     # Account for EditBone change of basis (at TRS level, so scale signs are preserved exactly).
-                    bl_pose_trs[bone_name] = game_trs_to_bl_bone_trs(trs)
+                    t, r, bone_scale = game_trs_to_bl_bone_trs(trs)
                 else:
                     # Standard conversion, no CoB in edit bones to account for.
-                    bl_pose_trs[bone_name] = game_trs_to_bl_trs(trs)
+                    t, r, bone_scale = game_trs_to_bl_trs(trs)
+                rest_scale = flver_rest_scales.get(bone_name)
+                if rest_scale is not None:
+                    # Remove the FLVER rest bone scale that Blender's rest pose cannot store (but the game's bind
+                    # pose does carry and cancel out). Component-wise, so scale signs are preserved exactly.
+                    bone_scale = Vector((
+                        bone_scale.x / rest_scale.x,
+                        bone_scale.y / rest_scale.y,
+                        bone_scale.z / rest_scale.z,
+                    ))
+                bl_pose_trs[bone_name] = (t, r, bone_scale)
 
             for bone_name, pose_trs in bl_pose_trs.items():
                 basis_samples = bone_basis_samples[bone_name]
@@ -431,8 +461,14 @@ class SoulstructAnimation:
                     parent_bone_name = bl_edit_bone.parent.name
                     parent_rest_trs = rest_trs_by_bone_name[parent_bone_name]
                     # As FLVER and HKX skeleton hierarchies may be different, the FLVER (Blender Armature) parent
-                    # bone may not even be animated in this frame's data, in which case we assume an identity pose.
-                    parent_pose_trs = bl_pose_trs.get(parent_bone_name, identity_trs)
+                    # bone may not even be animated in this frame's data. Such a bone keeps an IDENTITY BASIS, which
+                    # leaves it posed at its REST transform -- NOT at the identity transform. Defaulting to identity
+                    # here made Blender's forward kinematics apply the parent's full rest transform on top of the
+                    # target, which (since every EditBone rest matrix bakes in the X-forward bone CoB, a 180-degree
+                    # rotation about the Y+Z diagonal) flipped the whole bone chain upside down. DeS c2075 hits this
+                    # via its extra un-animated FLVER root `Ctl_master`, and c6041 via a duplicate bone name (its real
+                    # skeleton root is renamed `c6041 <DUPE>`, so the animation's `c6041` track binds elsewhere).
+                    parent_pose_trs = bl_pose_trs.get(parent_bone_name, parent_rest_trs)
                 else:
                     # Consider this bone as a root bone when calculating basis.
                     parent_rest_trs = None
@@ -516,6 +552,8 @@ class SoulstructAnimation:
 
         # Rest pose is static, so compute it once. FLVER rest bones never carry scale, so this is exact.
         rest_trs_by_bone_name = get_armature_rest_trs(armature)
+        # FLVER local bone scale that the rest pose could not store, which import divided out of the pose scale.
+        flver_rest_scales = get_flver_bone_rest_scales(armature, bone_data_type)
 
         def _get_pose_trs(bone_name: str, cache: dict[str, TRS]) -> TRS:
             """Recursively reconstruct `bone_name`'s armature-space (translation, rotation, scale) target from its
@@ -576,6 +614,13 @@ class SoulstructAnimation:
                     armature_space_transform = TRSTransform.identity()
                 else:
                     pose_trs_bone = _get_pose_trs(bone.name, pose_trs_cache)
+                    rest_scale = flver_rest_scales.get(bone.name)
+                    if rest_scale is not None:
+                        # Restore the FLVER rest bone scale that import divided out (see `get_flver_bone_rest_scales`).
+                        pose_t, pose_r, pose_s = pose_trs_bone
+                        pose_trs_bone = (pose_t, pose_r, Vector((
+                            pose_s.x * rest_scale.x, pose_s.y * rest_scale.y, pose_s.z * rest_scale.z,
+                        )))
                     if bone_data_type == FLVERBoneDataType.EDIT:
                         # Undo bone CoB (at TRS level, so scale signs are preserved exactly) and convert to game space.
                         armature_space_transform = bl_bone_trs_to_game_trs(*pose_trs_bone)

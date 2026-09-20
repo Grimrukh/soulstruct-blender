@@ -14,11 +14,14 @@ __all__ = [
     "create_action_slot_channelbag",
     "TRS",
     "get_armature_rest_trs",
+    "get_flver_bone_rest_scales",
+    "resolve_duplicate_animated_bone_names",
     "get_basis_trs",
     "get_pose_trs_from_basis",
     "add_keyframes_batch",
 ]
 
+import re
 import typing as tp
 from pathlib import Path
 
@@ -35,10 +38,14 @@ from soulstruct.containers import BinderEntry
 
 from ..exceptions import UnsupportedGameError, SoulstructTypeError
 from ..flver.models.types import BlenderFLVER, FLVERBoneDataType
+from ..flver.utilities import game_trs_to_bl_bone_trs, permute_scale_for_cob
 from ..msb.properties.parts import BlenderMSBPartSubtype
 from ..msb.types.base.parts import BaseBlenderMSBPart
 from ..types import ArmatureObject, MeshObject
 from ..utilities import get_model_name
+
+if tp.TYPE_CHECKING:
+    from ..base.operators import LoggingOperator
 
 ANIMATION_TYPING = tp.Union[
     BaseAnimationHKX,
@@ -264,6 +271,103 @@ def get_armature_rest_trs(armature: ArmatureObject) -> dict[str, TRS]:
         bone.name: bone.matrix_local.decompose()
         for bone in armature.data.bones
     }
+
+
+_DUPE_BONE_NAME_RE = re.compile(r"^(.*?)(?: <DUPE>)*(?:\.\d+)?$")
+
+
+def resolve_duplicate_animated_bone_names(
+    operator: LoggingOperator,
+    armature: ArmatureObject,
+    skeleton_hkx: BaseSkeletonHKX,
+    animated_bone_names: tp.Iterable[str],
+) -> dict[str, str]:
+    """Map HKX skeleton bone names to the Blender bone they should actually animate, for FLVERs that contain more than
+    one bone with the same game name.
+
+    FLVER import cannot use a game bone name twice, so `_create_bl_bones()` renames every repeat to `{name} <DUPE>`
+    (and Blender may further append `.001`). The HKX skeleton has no such collision, so a name-only lookup silently
+    binds the animation to whichever duplicate happened to come FIRST in the FLVER -- which is usually the wrong one.
+    DeS c6041 (Plague Baby) is the only vanilla DeS character affected: its FLVER has two bones named `c6041`, an
+    origin stub at index 0 and the real skeleton root at index 1, so every animation drove the stub and left the real
+    root (plus the entire body hanging off it) unposed.
+
+    Disambiguation uses the armature-space rest translation: the correct Blender bone is the one sitting where the HKX
+    skeleton's reference pose puts it. Returns only the names that need remapping (usually empty).
+    """
+    candidates = {}  # type: dict[str, list[bpy.types.Bone]]
+    for bl_bone in armature.data.bones:
+        match = _DUPE_BONE_NAME_RE.match(bl_bone.name)
+        game_name = match.group(1) if match else bl_bone.name
+        candidates.setdefault(game_name, []).append(bl_bone)
+
+    renames = {}  # type: dict[str, str]
+    arma_ref_poses = None  # only computed if actually needed (rare)
+
+    for bone_name in animated_bone_names:
+        bl_bones = candidates.get(bone_name)
+        if not bl_bones or len(bl_bones) == 1:
+            continue  # no ambiguity (overwhelmingly common)
+        if arma_ref_poses is None:
+            arma_ref_poses = skeleton_hkx.skeleton.get_arma_space_reference_poses()
+        try:
+            ref_pose = arma_ref_poses[bone_name]
+        except KeyError:
+            continue  # not in HKX skeleton; leave alone
+        hkx_arma_translate = game_trs_to_bl_bone_trs(ref_pose)[0]
+        best = min(bl_bones, key=lambda b: (b.matrix_local.to_translation() - hkx_arma_translate).length)
+        if best.name != bone_name:
+            renames[bone_name] = best.name
+            operator.warning(
+                f"FLVER Armature has {len(bl_bones)} bones named '{bone_name}'. Binding this animation's "
+                f"'{bone_name}' track to '{best.name}', whose rest position matches the HKX skeleton."
+            )
+
+    return renames
+
+
+def get_flver_bone_rest_scales(
+    armature: ArmatureObject,
+    bone_data_type: FLVERBoneDataType,
+) -> dict[str, Vector]:
+    """Return a dict mapping Blender bone names to the FLVER *local* bone scale that their rest pose does NOT carry,
+    expressed in the same space as the bone's animation pose scale (i.e. permuted for the X-forward bone CoB when
+    bone data is stored in `EditBones`). Bones with (near-)identity scale are omitted.
+
+    EditBones cannot store scale, so `write_flver_rest_pose_to_edit_bones()` builds each rest matrix with scale forced
+    to 1 and stashes the real FLVER local scale on `Bone.FLVER_BONE.flver_scale` instead. The game, however, DOES bake
+    that scale into the bind pose it inverts out when skinning, and every HKX animation reproduces it in the bone's
+    armature-space scale. Writing that armature-space scale straight into a Blender pose channel therefore applies it
+    a second time, on top of mesh geometry that already reflects it -- e.g. DeS c5010 (Tower Knight) has
+    `L_Shoulderpad`/`R_Shoulderpad` scale 3.1285 in both its FLVER and its HKX skeleton, so its pauldrons ballooned to
+    3.13x their size in every imported animation (c5020 Penetrator, 1.26x, is the same bug more subtly).
+
+    Import divides each bone's armature-space pose scale by this value and export multiplies it back, which makes the
+    Blender deformation `pose_arma @ rest_arma^-1` match the game's `anim_arma @ bind_arma^-1` exactly. Note that this
+    is a purely per-bone correction: it does not touch translation or rotation, and (unlike putting the scale back into
+    the rest pose) it cannot disturb child bone rest offsets, which FLVER deliberately leaves unscaled by their parent.
+
+    Only applies to `EDIT` bone data. `CUSTOM` (static map piece) armatures write FLVER bone TRS to their PoseBones
+    for display, so their rest pose is not missing anything, and they are never animated by HKX anyway.
+    """
+    if bone_data_type != FLVERBoneDataType.EDIT:
+        return {}
+
+    rest_scales = {}  # type: dict[str, Vector]
+    for bone in armature.data.bones:
+        try:
+            flver_scale = Vector(bone.FLVER_BONE.flver_scale)
+        except AttributeError:
+            continue  # not a Soulstruct FLVER bone
+        if all(abs(c - 1.0) < 1e-4 for c in flver_scale):
+            continue  # identity scale (overwhelmingly common)
+        if any(abs(c) < 1e-6 for c in flver_scale):
+            continue  # degenerate; refuse to divide by ~zero
+        # `flver_scale` is stored with the standard game -> Blender axis swap only, so we must apply the same CoB
+        # scale permutation that `game_trs_to_bl_bone_trs()` applies to animation pose scale.
+        rest_scales[bone.name] = permute_scale_for_cob(flver_scale)
+
+    return rest_scales
 
 
 def _trs_compose(t1: Vector, r1: Quaternion, s1: Vector, t2: Vector, r2: Quaternion, s2: Vector) -> TRS:

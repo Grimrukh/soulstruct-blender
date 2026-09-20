@@ -35,6 +35,8 @@ c0000_ANIBND_RE = re.compile(r"^c0000_.*\.anibnd(\.dcx)?$")
 OBJBND_RE = re.compile(r"^.*?\.objbnd(\.dcx)?$")
 GEOMBND_RE = re.compile(r"^.*?\.geombnd(\.dcx)?$")
 SKELETON_ENTRY_RE = re.compile(r"skeleton\.hkx(\.dcx)?", flags=re.IGNORECASE)
+# NOTE: Case-insensitive. Demon's Souls ANIBNDs are inconsistent: some (e.g. c1000, c1020) use uppercase `.HKX`.
+ANIMATION_ENTRY_RE = re.compile(r"a.*\.hkx(\.dcx)?", flags=re.IGNORECASE)
 
 
 class _BaseImportHKXAnimation(LoggingOperator):
@@ -105,7 +107,7 @@ class ImportHKXAnimationWithBinderChoice(_BaseImportHKXAnimation, BinderEntrySel
     @classmethod
     def filter_binder_entry(cls, context, entry: BinderEntry) -> bool:
         """Only show HKX animation entries."""
-        return re.match(r"a.*\.hkx(\.dcx)?", entry.name) is not None
+        return ANIMATION_ENTRY_RE.match(entry.name) is not None
 
     def _import_entry(self, context, entry: BinderEntry):
         """Import the chosen HKX animation entry."""
@@ -227,7 +229,7 @@ class ImportAnyHKXAnimation(_BaseImportHKXAnimation, LoggingImportOperator):
         skeleton_hkx = self.read_skeleton(skeleton_anibnd, compendium)
 
         # Don't bother calling sub-operator if there are no HKX entries to offer.
-        if not anibnd.find_entries_by_name_regex(r"a.*\.hkx(\.dcx)?"):
+        if not anibnd.find_entries_by_name_regex(ANIMATION_ENTRY_RE):
             return self.error(f"Cannot find any HKX animation files in binder '{binder_path.name}'.")
 
         return ImportHKXAnimationWithBinderChoice.run(
@@ -253,7 +255,7 @@ class _BaseImportTypedHKXAnimation(_BaseImportHKXAnimation):
         except Exception as ex:
             return self.error(str(ex))
 
-        anim_hkx_entries = anibnd.find_entries_by_name_regex(r"a.*\.hkx(\.dcx)?")
+        anim_hkx_entries = anibnd.find_entries_by_name_regex(ANIMATION_ENTRY_RE)
         if not anim_hkx_entries:
             raise AnimationImportError(
                 f"Cannot find any HKX animation files in '{anibnd.path_name}' for FLVER model '{model_name}'."

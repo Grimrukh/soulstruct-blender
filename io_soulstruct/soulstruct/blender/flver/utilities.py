@@ -4,6 +4,7 @@ __all__ = [
     "get_flvers_from_binder",
     "BONE_CoB_4x4",
     "BONE_CoB_QUAT",
+    "permute_scale_for_cob",
     "game_bone_transform_to_bl_bone_matrix",
     "game_trs_to_bl_bone_trs",
     "bl_bone_trs_to_game_trs",
@@ -99,7 +100,7 @@ def game_bone_transform_to_bl_bone_matrix(
     return bl_transform @ BONE_CoB_4x4
 
 
-def _permute_scale_for_cob(scale: Vector) -> Vector:
+def permute_scale_for_cob(scale: Vector) -> Vector:
     """`CoB^-1 @ diag(scale) @ CoB` for `BONE_CoB_4x4`, i.e. swap the X and Y scale components. Self-inverse."""
     return Vector((scale.y, scale.x, scale.z))
 
@@ -113,13 +114,13 @@ def game_trs_to_bl_bone_trs(transform: TRSTransform) -> tuple[Vector, Quaternion
     Inverse of `bl_bone_trs_to_game_trs()`.
     """
     bl_translate, bl_rotate, bl_scale = game_trs_to_bl_trs(transform)
-    return bl_translate, bl_rotate @ BONE_CoB_QUAT, _permute_scale_for_cob(bl_scale)
+    return bl_translate, bl_rotate @ BONE_CoB_QUAT, permute_scale_for_cob(bl_scale)
 
 
 def bl_bone_trs_to_game_trs(translation: Vector, rotation: Quaternion, scale: Vector) -> TRSTransform:
     """Inverse of `game_trs_to_bl_bone_trs()`: undo the X-forward bone CoB at TRS level and convert to a game
     `TRSTransform`, preserving scale signs exactly."""
-    return bl_trs_to_game_trs(translation, rotation @ _BONE_CoB_QUAT_INV, _permute_scale_for_cob(scale))
+    return bl_trs_to_game_trs(translation, rotation @ _BONE_CoB_QUAT_INV, permute_scale_for_cob(scale))
 
 
 def get_armature_matrix(armature: ArmatureObject, bone_name: str, basis=None) -> Matrix:

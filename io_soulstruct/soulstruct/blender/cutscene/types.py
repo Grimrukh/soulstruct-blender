@@ -250,8 +250,10 @@ class SoulstructCutsceneAnimation:
 
         if not is_root_motion_only:
             rest_trs_by_bone_name = get_armature_rest_trs(armature)
+            flver_rest_scales = get_flver_bone_rest_scales(armature, bone_data_type)
         else:
             rest_trs_by_bone_name = {}
+            flver_rest_scales = {}
 
         bone_basis_sample_arrays = {}  # type: dict[str, list[np.ndarray]]
         root_motion_rows = []  # type: list[list[float]]
@@ -273,6 +275,7 @@ class SoulstructCutsceneAnimation:
                     bl_frames_per_game_frame,
                     bone_data_type,
                     assert_root_bone_names=assert_root_bone_names,
+                    flver_rest_scales=flver_rest_scales,
                 )
 
                 for bone_name, basis_samples in cut_bone_basis_samples.items():
