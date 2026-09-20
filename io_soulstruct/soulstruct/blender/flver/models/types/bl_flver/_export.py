@@ -76,7 +76,7 @@ class _CreateFLVERCommand:
         self.settings = self.context.scene.soulstruct_settings
         self.export_settings = self.context.scene.flver_export_settings
 
-        if BLENDER_GAME_CONFIG[self.settings.game].uses_matbin:
+        if BLENDER_GAME_CONFIG[self.settings.game_type].uses_matbin:
             self.matbinbnd = get_cached_matbinbnd(self.operator, self.context)
         else:
             self.mtdbnd = get_cached_mtdbnd(self.operator, self.context)

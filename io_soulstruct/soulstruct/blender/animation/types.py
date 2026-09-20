@@ -35,31 +35,31 @@ class GameAnimationInfo(tp.NamedTuple):
 class SoulstructAnimation:
 
     GAME_ANIMATION_INFO_CHR = {
-        DEMONS_SOULS: GameAnimationInfo(
+        GameType.DemonsSouls: GameAnimationInfo(
             relative_binder_path="chr/{model_name}/{model_name}.anibnd",  # additional nested folder
             stem_template="##_####",
             hkx_entry_path="N:\\DemonsSoul\\data\\Model\\chr\\{model_name}\\hkx\\{animation_stem}.hkx",
             dcx_type=DCXType.Null,
         ),
-        DARK_SOULS_PTDE: GameAnimationInfo(
+        GameType.DarkSoulsPTDE: GameAnimationInfo(
             relative_binder_path="chr/{model_name}.anibnd",
             stem_template="##_####",
             hkx_entry_path="N:\\FRPG\\data\\Model\\chr\\{model_name}\\hkxwin32\\{animation_stem}.hkx",
             dcx_type=DCXType.Null,
         ),
-        DARK_SOULS_DSR: GameAnimationInfo(
+        GameType.DarkSoulsDSR: GameAnimationInfo(
             relative_binder_path="chr/{model_name}.anibnd",
             stem_template="##_####",
             hkx_entry_path="N:\\FRPG\\data\\Model\\chr\\{model_name}\\hkxx64\\{animation_stem}.hkx",
             dcx_type=DCXType.Null,
         ),
-        BLOODBORNE: GameAnimationInfo(
+        GameType.Bloodborne: GameAnimationInfo(
             relative_binder_path="chr/{model_name}.anibnd",
             stem_template="###_######",
             hkx_entry_path="N:\\SPRJ\\data\\INTERROOT_ps4\\chr\\{model_name}\\hkx\\{animation_stem}.hkx",
             dcx_type=DCXType.Null,
         ),
-        ELDEN_RING: GameAnimationInfo(
+        GameType.EldenRing: GameAnimationInfo(
             relative_binder_path="chr/{model_name}.anibnd",
             stem_template="###_######",
             hkx_entry_path=(  # note new variable `div_id` for DivXX ANIBNDs, which should end in '_' if non-empty
@@ -70,25 +70,25 @@ class SoulstructAnimation:
     }
 
     GAME_ANIMATION_INFO_OBJ = {
-        DEMONS_SOULS: GameAnimationInfo(
+        GameType.DemonsSouls: GameAnimationInfo(
             relative_binder_path="obj/{model_name}.objbnd",  # no additional nested folder, unlike `chr`
             stem_template="##_####",
             hkx_entry_path="N:\\DemonsSoul\\data\\Model\\obj\\{model_name}\\hkx\\{animation_stem}.hkx",
             dcx_type=DCXType.Null,
         ),
-        DARK_SOULS_PTDE: GameAnimationInfo(
+        GameType.DarkSoulsPTDE: GameAnimationInfo(
             relative_binder_path="obj/{model_name}.objbnd",
             stem_template="##_####",
             hkx_entry_path="N:\\FRPG\\data\\Model\\obj\\{model_name}\\hkxwin32\\{animation_stem}.hkx",
             dcx_type=DCXType.Null,
         ),
-        DARK_SOULS_DSR: GameAnimationInfo(
+        GameType.DarkSoulsDSR: GameAnimationInfo(
             relative_binder_path="obj/{model_name}.objbnd",
             stem_template="##_####",
             hkx_entry_path="N:\\FRPG\\data\\Model\\obj\\{model_name}\\hkxx64\\{animation_stem}.hkx",
             dcx_type=DCXType.Null,
         ),
-        BLOODBORNE: GameAnimationInfo(
+        GameType.Bloodborne: GameAnimationInfo(
             relative_binder_path="obj/{model_name}.objbnd",
             stem_template="###_######",
             hkx_entry_path="N:\\SPRJ\\data\\INTERROOT_ps4\\obj\\{model_name}\\hkx\\{animation_stem}.hkx",

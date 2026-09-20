@@ -21,6 +21,7 @@ from soulstruct.containers import Binder, BinderEntry, EntryNotFoundError
 from soulstruct.eldenring.containers import DivBinder
 from soulstruct.havok.core import HKX
 
+from soulstruct.games import GameType
 from ..base.operators import *
 from ..base.register import io_soulstruct_operator
 from ..exceptions import AnimationImportError, UnsupportedGameError
@@ -309,7 +310,7 @@ class ImportCharacterHKXAnimation(_BaseImportTypedHKXAnimation):
         # NOTE: The 'c0000_*.txt' registration of sub-ANIBNDs holds for all games I've seen so far.
         settings = self.settings(context)
         try:
-            game_anim_info = SoulstructAnimation.GAME_ANIMATION_INFO_CHR[settings.game]
+            game_anim_info = SoulstructAnimation.GAME_ANIMATION_INFO_CHR[settings.game_type]
         except KeyError:
             raise AnimationImportError(f"Game '{settings.game}' is not supported for character animation import.")
         relative_anibnd_path = Path(game_anim_info.relative_binder_path.format(model_name="c0000"))
@@ -339,7 +340,7 @@ class ImportCharacterHKXAnimation(_BaseImportTypedHKXAnimation):
         settings = self.settings(context)
 
         try:
-            game_anim_info = SoulstructAnimation.GAME_ANIMATION_INFO_CHR[settings.game]
+            game_anim_info = SoulstructAnimation.GAME_ANIMATION_INFO_CHR[settings.game_type]
         except KeyError:
             raise AnimationImportError(f"Game '{settings.game}' is not supported for character animation import.")
 
@@ -352,9 +353,13 @@ class ImportCharacterHKXAnimation(_BaseImportTypedHKXAnimation):
 
         if self.sub_c0000_binder != "None":
             # Importing from c0000 sub-ANIBND.
-            anibnd_path = settings.get_import_file_path(
-                game_anim_info.relative_binder_path.format(model_name=self.sub_c0000_binder)
-            )
+            if settings.game_type == GameType.DemonsSouls:
+                # NOTE: Careful in Demon's Souls, as the subfolder (c0000) and sub-ANIBND name now disagree.
+                anibnd_path = settings.get_import_file_path(f"chr/c0000/{self.sub_c0000_binder}.anibnd")
+            else:
+                anibnd_path = settings.get_import_file_path(
+                    game_anim_info.relative_binder_path.format(model_name=self.sub_c0000_binder)
+                )
             if not anibnd_path or not anibnd_path.is_file():
                 raise FileNotFoundError(f"Cannot find ANIBND to import for c0000 sub-ANIBND '{self.sub_c0000_binder}'.")
             # NOTE: Compendium is in sub-ANIBND in relevant games.
@@ -385,7 +390,7 @@ class ImportObjectHKXAnimation(_BaseImportTypedHKXAnimation):
         settings = self.settings(context)
 
         try:
-            game_anim_info = SoulstructAnimation.GAME_ANIMATION_INFO_OBJ[settings.game]
+            game_anim_info = SoulstructAnimation.GAME_ANIMATION_INFO_OBJ[settings.game_type]
         except KeyError:
             raise UnsupportedGameError(f"Game '{settings.game}' is not supported for object animation import.")
 

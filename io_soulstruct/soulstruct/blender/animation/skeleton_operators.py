@@ -109,7 +109,7 @@ class ExportCharacterHKXSkeleton(_BaseExportHKXSkeleton):
         settings = self.settings(context)
 
         try:
-            game_anim_info = SoulstructAnimation.GAME_ANIMATION_INFO_CHR[settings.game]
+            game_anim_info = SoulstructAnimation.GAME_ANIMATION_INFO_CHR[settings.game_type]
         except KeyError:
             return self.error(f"Automatic ANIBND export is not yet supported for game {settings.game.name}.")
 
@@ -165,7 +165,7 @@ class ExportObjectHKXSkeleton(_BaseExportHKXSkeleton):
         settings = self.settings(context)
 
         try:
-            game_anim_info = SoulstructAnimation.GAME_ANIMATION_INFO_OBJ[settings.game]
+            game_anim_info = SoulstructAnimation.GAME_ANIMATION_INFO_OBJ[settings.game_type]
         except KeyError:
             return self.error(f"Automatic OBJBND + ANIBND export is not yet supported for game {settings.game.name}.")
 

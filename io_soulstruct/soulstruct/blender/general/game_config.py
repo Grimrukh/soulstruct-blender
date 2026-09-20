@@ -14,7 +14,7 @@ from soulstruct.base.models.shaders import MatDef
 from soulstruct.base.maps.msb import MSB as BaseMSB
 from soulstruct.base.maps.navmesh import BaseNVMBND
 from soulstruct.containers.tpf import TPFPlatform
-from soulstruct.games import *
+from soulstruct.games import GameType
 
 from soulstruct import demonssouls, darksouls1ptde, darksouls1r, bloodborne, darksouls3, eldenring
 
@@ -103,7 +103,7 @@ class BlenderGameConfig:
 
 
 BLENDER_GAME_CONFIG = {
-    DEMONS_SOULS: BlenderGameConfig(
+    GameType.DemonsSouls: BlenderGameConfig(
         flver_default_version=FLVERVersion.DemonsSouls,
         swizzle_platform=TPFPlatform.PC,  # no swizzling despite being a PS3 exclusive
         matdef_class=demonssouls.models.MatDef,
@@ -125,7 +125,7 @@ BLENDER_GAME_CONFIG = {
         supports_collision_model=True,
         uses_loose_collision_files=True,
     ),
-    DARK_SOULS_PTDE: BlenderGameConfig(
+    GameType.DarkSoulsPTDE: BlenderGameConfig(
         flver_default_version=FLVERVersion.DarkSouls_A,
         matdef_class=darksouls1ptde.models.MatDef,
         _split_mesh_kwargs=dict(
@@ -155,7 +155,7 @@ BLENDER_GAME_CONFIG = {
         use_new_map=(".msb", ".nvmbnd", ".mcg", ".mcp"),
         use_old_map=(".flver", ".hkx"),
     ),
-    DARK_SOULS_DSR: BlenderGameConfig(
+    GameType.DarkSoulsDSR: BlenderGameConfig(
         flver_default_version=FLVERVersion.DarkSouls_A,
         matdef_class=darksouls1r.models.MatDef,
         _split_mesh_kwargs=dict(
@@ -184,7 +184,7 @@ BLENDER_GAME_CONFIG = {
         use_new_map=(".msb", ".nvmbnd", ".mcg", ".mcp"),
         use_old_map=(".flver", ".hkxbhd", ".hkxbdt"),
     ),
-    BLOODBORNE: BlenderGameConfig(
+    GameType.Bloodborne: BlenderGameConfig(
         flver_default_version=FLVERVersion.Bloodborne_DS3_A,
         matdef_class=bloodborne.models.MatDef,
 
@@ -198,7 +198,7 @@ BLENDER_GAME_CONFIG = {
         animation_hkx_class=hk_fromsoft.bloodborne.AnimationHKX,
         supports_collision_model=False,  # TODO: could at least read hknp meshes
     ),
-    DARK_SOULS_3: BlenderGameConfig(
+    GameType.DarkSouls3: BlenderGameConfig(
         flver_default_version=FLVERVersion.Bloodborne_DS3_A,
         matdef_class=None,  # TODO: not in Soulstruct yet
 
@@ -211,7 +211,7 @@ BLENDER_GAME_CONFIG = {
         animation_hkx_class=None,
         supports_collision_model=False,  # TODO: could at least read hknp meshes
     ),
-    SEKIRO: BlenderGameConfig(
+    GameType.Sekiro: BlenderGameConfig(
         flver_default_version=FLVERVersion.Sekiro_EldenRing,
         matdef_class=None,  # TODO: not in Soulstruct yet
 
@@ -223,7 +223,7 @@ BLENDER_GAME_CONFIG = {
         supports_collision_model=False,
         requires_oodle=True,
     ),
-    ELDEN_RING: BlenderGameConfig(
+    GameType.EldenRing: BlenderGameConfig(
         flver_default_version=FLVERVersion.Sekiro_EldenRing,
         uses_matbin=True,  # first game to use MATBIN rather than MTD
         matdef_class=eldenring.models.MatDef,

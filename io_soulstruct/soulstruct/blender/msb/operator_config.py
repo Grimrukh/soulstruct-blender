@@ -6,7 +6,7 @@ __all__ = [
     "BLENDER_MSB_EVENT_CLASSES",
 ]
 
-from soulstruct.games import *
+from soulstruct.games import GameType
 
 from ..msb.types import darksouls1ptde, darksouls1r, demonssouls
 from .properties import BlenderMSBPartSubtype, BlenderMSBRegionSubtype, BlenderMSBEventSubtype
@@ -14,7 +14,7 @@ from .types.base import BaseBlenderMSBPart, BaseBlenderMSBRegion, BaseBlenderMSB
 
 
 BLENDER_MSB_PART_CLASSES = {
-    DEMONS_SOULS: {
+    GameType.DemonsSouls: {
         BlenderMSBPartSubtype.MapPiece: demonssouls.BlenderMSBMapPiece,
         BlenderMSBPartSubtype.Object: demonssouls.BlenderMSBObject,
         BlenderMSBPartSubtype.Character: demonssouls.BlenderMSBCharacter,
@@ -24,7 +24,7 @@ BLENDER_MSB_PART_CLASSES = {
         BlenderMSBPartSubtype.Navmesh: demonssouls.BlenderMSBNavmesh,
         BlenderMSBPartSubtype.ConnectCollision: demonssouls.BlenderMSBConnectCollision,
     },
-    DARK_SOULS_PTDE: {
+    GameType.DarkSoulsPTDE: {
         BlenderMSBPartSubtype.MapPiece: darksouls1ptde.BlenderMSBMapPiece,
         BlenderMSBPartSubtype.Object: darksouls1ptde.BlenderMSBObject,
         BlenderMSBPartSubtype.Character: darksouls1ptde.BlenderMSBCharacter,
@@ -33,7 +33,7 @@ BLENDER_MSB_PART_CLASSES = {
         BlenderMSBPartSubtype.Navmesh: darksouls1ptde.BlenderMSBNavmesh,
         BlenderMSBPartSubtype.ConnectCollision: darksouls1ptde.BlenderMSBConnectCollision,
     },
-    DARK_SOULS_DSR: {
+    GameType.DarkSoulsDSR: {
         BlenderMSBPartSubtype.MapPiece: darksouls1r.BlenderMSBMapPiece,
         BlenderMSBPartSubtype.Object: darksouls1r.BlenderMSBObject,
         BlenderMSBPartSubtype.Character: darksouls1r.BlenderMSBCharacter,
@@ -42,26 +42,35 @@ BLENDER_MSB_PART_CLASSES = {
         BlenderMSBPartSubtype.Navmesh: darksouls1r.BlenderMSBNavmesh,
         BlenderMSBPartSubtype.ConnectCollision: darksouls1r.BlenderMSBConnectCollision,
     },
-}  # type: dict[Game, dict[BlenderMSBPartSubtype, type[BaseBlenderMSBPart]]]
+}  # type: dict[GameType, dict[BlenderMSBPartSubtype, type[BaseBlenderMSBPart]]]
 
 
 BLENDER_MSB_REGION_CLASSES = {
-    DARK_SOULS_PTDE: {
+    GameType.DarkSoulsPTDE: {
         # No subtypes, only shapes.
         BlenderMSBRegionSubtype.All: darksouls1ptde.BlenderMSBRegion,
     },
-    DARK_SOULS_DSR: {
-        # No subtypes, only shapes.
+    GameType.DarkSoulsDSR: {
+        # No subtypes, only shapes. (Shares PTDE class.)
         BlenderMSBRegionSubtype.All: darksouls1ptde.BlenderMSBRegion,
     },
-    DEMONS_SOULS: {
+    GameType.DemonsSouls: {
         BlenderMSBRegionSubtype.All: demonssouls.BlenderMSBRegion,
     }
-}  # type: dict[Game, dict[BlenderMSBRegionSubtype, type[BaseBlenderMSBRegion]]]
+}  # type: dict[GameType, dict[BlenderMSBRegionSubtype, type[BaseBlenderMSBRegion]]]
 
 
 BLENDER_MSB_EVENT_CLASSES = {
-    DARK_SOULS_PTDE: {
+    GameType.DemonsSouls: {
+        BlenderMSBEventSubtype.Light: demonssouls.BlenderMSBLightEvent,
+        BlenderMSBEventSubtype.Sound: demonssouls.BlenderMSBSoundEvent,
+        BlenderMSBEventSubtype.VFX: demonssouls.BlenderMSBVFXEvent,
+        BlenderMSBEventSubtype.Wind: demonssouls.BlenderMSBWindEvent,
+        BlenderMSBEventSubtype.Treasure: demonssouls.BlenderMSBTreasureEvent,
+        BlenderMSBEventSubtype.Spawner: demonssouls.BlenderMSBSpawnerEvent,
+        BlenderMSBEventSubtype.Message: demonssouls.BlenderMSBMessageEvent,
+    },
+    GameType.DarkSoulsPTDE: {
         BlenderMSBEventSubtype.Light: darksouls1ptde.BlenderMSBLightEvent,
         BlenderMSBEventSubtype.Sound: darksouls1ptde.BlenderMSBSoundEvent,
         BlenderMSBEventSubtype.VFX: darksouls1ptde.BlenderMSBVFXEvent,
@@ -76,7 +85,7 @@ BLENDER_MSB_EVENT_CLASSES = {
         BlenderMSBEventSubtype.Environment: darksouls1ptde.BlenderMSBEnvironmentEvent,
         BlenderMSBEventSubtype.NPCInvasion: darksouls1ptde.BlenderMSBNPCInvasionEvent,
     },
-    DARK_SOULS_DSR: {
+    GameType.DarkSoulsDSR: {
         BlenderMSBEventSubtype.Light: darksouls1r.BlenderMSBLightEvent,
         BlenderMSBEventSubtype.Sound: darksouls1r.BlenderMSBSoundEvent,
         BlenderMSBEventSubtype.VFX: darksouls1r.BlenderMSBVFXEvent,
@@ -91,13 +100,4 @@ BLENDER_MSB_EVENT_CLASSES = {
         BlenderMSBEventSubtype.Environment: darksouls1r.BlenderMSBEnvironmentEvent,
         BlenderMSBEventSubtype.NPCInvasion: darksouls1r.BlenderMSBNPCInvasionEvent,
     },
-    DEMONS_SOULS: {
-        BlenderMSBEventSubtype.Light: demonssouls.BlenderMSBLightEvent,
-        BlenderMSBEventSubtype.Sound: demonssouls.BlenderMSBSoundEvent,
-        BlenderMSBEventSubtype.VFX: demonssouls.BlenderMSBVFXEvent,
-        BlenderMSBEventSubtype.Wind: demonssouls.BlenderMSBWindEvent,
-        BlenderMSBEventSubtype.Treasure: demonssouls.BlenderMSBTreasureEvent,
-        BlenderMSBEventSubtype.Spawner: demonssouls.BlenderMSBSpawnerEvent,
-        BlenderMSBEventSubtype.Message: demonssouls.BlenderMSBMessageEvent,
-    },
-}  # type: dict[Game, dict[BlenderMSBEventSubtype, type[BaseBlenderMSBEvent]]]
+}  # type: dict[GameType, dict[BlenderMSBEventSubtype, type[BaseBlenderMSBEvent]]]

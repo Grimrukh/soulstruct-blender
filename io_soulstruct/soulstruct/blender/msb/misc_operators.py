@@ -842,7 +842,7 @@ class BatchSetPartGroups(LoggingOperator):
         settings = self.settings(context)
         # We already checked that all selected objects have the same MSB Part subtype.
         part_subtype = context.selected_objects[0].MSB_PART.entry_subtype
-        bl_part_class = BLENDER_MSB_PART_CLASSES[settings.game][part_subtype]  # type: type[BaseBlenderMSBPart]
+        bl_part_class = BLENDER_MSB_PART_CLASSES[settings.game_type][part_subtype]  # type: type[BaseBlenderMSBPart]
         has_navmesh_groups = part_subtype in {BlenderMSBPartSubtype.Collision, BlenderMSBPartSubtype.Navmesh}
 
         draw_groups = display_groups = navmesh_groups = None
@@ -921,7 +921,7 @@ class CopyDrawGroups(LoggingOperator):
         settings = self.settings(context)
         active_part = context.active_object
         active_part_subtype = active_part.MSB_PART.entry_subtype
-        bl_part_class = BLENDER_MSB_PART_CLASSES[settings.game][active_part_subtype]  # type: type[BaseBlenderMSBPart]
+        bl_part_class = BLENDER_MSB_PART_CLASSES[settings.game_type][active_part_subtype]  # type: type[BaseBlenderMSBPart]
         bl_active_part = bl_part_class(active_part)
         # noinspection PyUnresolvedReferences
         active_draw_groups = bl_active_part.draw_groups
@@ -931,7 +931,7 @@ class CopyDrawGroups(LoggingOperator):
             if part is active_part:
                 continue
             part_subtype = part.MSB_PART.entry_subtype
-            bl_part = BLENDER_MSB_PART_CLASSES[settings.game][part_subtype](part)
+            bl_part = BLENDER_MSB_PART_CLASSES[settings.game_type][part_subtype](part)
             bl_part.draw_groups = active_draw_groups
             count += 1
 

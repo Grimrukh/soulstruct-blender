@@ -156,7 +156,7 @@ class _SelectMapDirectory(LoggingOperator):
 
             def get_map_desc(map_stem: str):
                 try:
-                    return BLENDER_GAME_CONFIG[settings.game].map_constants.get_map(map_stem).verbose_name
+                    return BLENDER_GAME_CONFIG[settings.game_type].map_constants.get_map(map_stem).verbose_name
                 except (KeyError, AttributeError, ValueError):
                     return map_stem
 

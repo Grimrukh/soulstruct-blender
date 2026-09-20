@@ -11,6 +11,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - FLVER export no longer raises `KeyError: "Parent bone '' of Dummy not found in Armature."` for a Dummy with no
   'In Space of Bone' set (FLVER `parent_bone_index == -1`). `BlenderFLVERDummy.parent_bone` now returns `None`.
 - Fixed false positive warning for partial-export binders existing in Project but not Game (handle DCX properly).
+- Fixed c0000 sub-ANIBND import in Demon's Souls (path formatting issue).
+
+### Changed
+- Internal game-specific config dicts now key on `GameType` enum, not `Game` objects.
 
 ### Added
 - New `tests/test_flver_dummy_transforms.py` suite: asserts that imported Dummies land at their FLVER-defined world

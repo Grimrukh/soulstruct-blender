@@ -88,9 +88,9 @@ def _import_msb(
     msb_model_importers: dict[BaseMSBSubtype, BaseBlenderMSBModelImporter]
 
     # NOTE: The keys of these are the *Blender* enums that act as a union of all games' corresponding MSB subtype enums.
-    bl_region_classes = BLENDER_MSB_REGION_CLASSES[settings.game]
-    bl_part_classes = BLENDER_MSB_PART_CLASSES[settings.game]
-    bl_event_classes = BLENDER_MSB_EVENT_CLASSES[settings.game]
+    bl_region_classes = BLENDER_MSB_REGION_CLASSES[settings.game_type]
+    bl_part_classes = BLENDER_MSB_PART_CLASSES[settings.game_type]
+    bl_event_classes = BLENDER_MSB_EVENT_CLASSES[settings.game_type]
 
     msb_collection = find_or_create_collection(context.scene.collection, "MSBs", f"{msb_stem} MSB")
 

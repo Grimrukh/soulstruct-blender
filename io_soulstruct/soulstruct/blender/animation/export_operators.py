@@ -314,7 +314,7 @@ class ExportCharacterHKXAnimation(_BaseExportTypedHKXAnimation):
 
         settings = self.settings(context)
         try:
-            game_anim_info = SoulstructAnimation.GAME_ANIMATION_INFO_CHR[settings.game]
+            game_anim_info = SoulstructAnimation.GAME_ANIMATION_INFO_CHR[settings.game_type]
         except KeyError:
             return self.error(f"Automatic ANIBND export is not yet supported for game {settings.game.name}.")
 
@@ -454,7 +454,7 @@ class ExportObjectHKXAnimation(_BaseExportTypedHKXAnimation):
         model_name = bl_flver.game_name
 
         try:
-            game_anim_info = SoulstructAnimation.GAME_ANIMATION_INFO_OBJ[settings.game]
+            game_anim_info = SoulstructAnimation.GAME_ANIMATION_INFO_OBJ[settings.game_type]
         except KeyError:
             return self.error(f"Automatic OBJBND + ANIBND export is not yet supported for game {settings.game.name}.")
 

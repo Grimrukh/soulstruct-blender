@@ -123,9 +123,9 @@ def _export_msb(
         SoulstructType.MSB_EVENT: [],
     }
     for bl_entry_classes, bl_entry_objs, soulstruct_type in (
-        (BLENDER_MSB_REGION_CLASSES[settings.game], bl_region_objs, SoulstructType.MSB_REGION),
-        (BLENDER_MSB_PART_CLASSES[settings.game], bl_part_objs, SoulstructType.MSB_PART),
-        (BLENDER_MSB_EVENT_CLASSES[settings.game], bl_event_objs, SoulstructType.MSB_EVENT),
+        (BLENDER_MSB_REGION_CLASSES[settings.game_type], bl_region_objs, SoulstructType.MSB_REGION),
+        (BLENDER_MSB_PART_CLASSES[settings.game_type], bl_part_objs, SoulstructType.MSB_PART),
+        (BLENDER_MSB_EVENT_CLASSES[settings.game_type], bl_event_objs, SoulstructType.MSB_EVENT),
     ):
         bl_and_msb_entries = all_bl_and_msb_entries[soulstruct_type]
         for bl_entry_obj in bl_entry_objs:
@@ -172,7 +172,7 @@ class ExportAnyMSB(LoggingExportOperator):
     @classmethod
     def poll(cls, context):
         settings = cls.settings(context)
-        if not BLENDER_GAME_CONFIG[settings.game].msb_class:
+        if not BLENDER_GAME_CONFIG[settings.game_type].msb_class:
             return False  # unsupported
         if not context.collection:
             return False
@@ -251,7 +251,7 @@ class ExportMapMSB(LoggingOperator):
     @classmethod
     def poll(cls, context) -> bool:
         settings = cls.settings(context)
-        if not BLENDER_GAME_CONFIG[settings.game].msb_class:
+        if not BLENDER_GAME_CONFIG[settings.game_type].msb_class:
             return False  # unsupported
         if not context.collection:
             return False
@@ -318,7 +318,7 @@ class ExportMapMSB(LoggingOperator):
             self.info(f"Exported NVMDUMP file next to NVMBND: {relative_nvmdump_path.name}")
 
         if export_settings.is_bool_prop_active_and_true(context, "export_navmesh_models"):
-            bl_navmesh_class = BLENDER_MSB_PART_CLASSES[settings.game][BlenderMSBPartSubtype.Navmesh]
+            bl_navmesh_class = BLENDER_MSB_PART_CLASSES[settings.game_type][BlenderMSBPartSubtype.Navmesh]
             bl_navmesh_parts = [
                 bl_navmesh_class(obj) for obj in bl_part_objs
                 if obj.MSB_PART.entry_subtype == BlenderMSBPartSubtype.Navmesh
@@ -330,7 +330,7 @@ class ExportMapMSB(LoggingOperator):
             if not settings.game_config.supports_collision_model:
                 self.warning(f"Collision model export not supported for game '{settings.game}'.")
             else:
-                bl_collision_class = BLENDER_MSB_PART_CLASSES[settings.game][BlenderMSBPartSubtype.Collision]
+                bl_collision_class = BLENDER_MSB_PART_CLASSES[settings.game_type][BlenderMSBPartSubtype.Collision]
                 bl_collision_parts = [
                     bl_collision_class(obj) for obj in bl_part_objs
                     if obj.MSB_PART.entry_subtype == BlenderMSBPartSubtype.Collision

@@ -62,8 +62,8 @@ def create_materials(
     import_settings = context.scene.flver_import_settings
     mat_settings = context.scene.flver_material_settings
 
-    mtdbnd = get_cached_mtdbnd(operator, context) if not BLENDER_GAME_CONFIG[settings.game].uses_matbin else None
-    matbinbnd = get_cached_matbinbnd(operator, context) if BLENDER_GAME_CONFIG[settings.game].uses_matbin else None
+    mtdbnd = get_cached_mtdbnd(operator, context) if not BLENDER_GAME_CONFIG[settings.game_type].uses_matbin else None
+    matbinbnd = get_cached_matbinbnd(operator, context) if BLENDER_GAME_CONFIG[settings.game_type].uses_matbin else None
 
     # Mesh-matched list of dictionaries mapping sample/texture type to texture path (only name matters).
     all_mesh_texture_stems = _get_mesh_flver_textures(flver, matbinbnd)
@@ -114,7 +114,7 @@ def create_materials(
         if matdef_class:
             mat_def_name = Path(mesh.material.mat_def_path).name
             try:
-                if BLENDER_GAME_CONFIG[settings.game].uses_matbin:
+                if BLENDER_GAME_CONFIG[settings.game_type].uses_matbin:
                     if mat_def_name.endswith(".mtd"):
                         operator.warning(f"Elden Ring MTDs are not yet supported: {mat_def_name}")
                         matdef = None
