@@ -953,43 +953,63 @@ class SoulstructSettings(bpy.types.PropertyGroup):  # NOT a `SoulstructPropertyG
                 f"Neither project nor game directory is set. Cannot get initial Binder file: {binder_relative_path}"
             )
 
-        # We don't use `get_file_path_if_exists` so we can distinguish between non-set directories (`else None`) and
-        # missing files. (In other words, the paths returned here may not actually exist as files.)
-        game_path = game_root.get_file_path(binder_relative_path) if (game_root := self.game_root) else None
-        project_path = project_root.get_file_path(binder_relative_path) if (project_root := self.project_root) else None
+        def _resolve_existing(root: GameStructure | None) -> Path | None:
+            """Find the actual file on disk for `binder_relative_path` in `root`.
 
-        if not is_path_and_file(game_path) and not is_path_and_file(project_path):
+            We try the DCX-processed path implied by the game's default/special DCX convention for this file
+            suffix first, but that convention is only a guess: the file's *actual* DCX compression is ultimately
+            decided by the `Binder` subclass (or, once loaded, by whatever the file itself was written with), which
+            can disagree with the generic per-suffix guess. So if the guessed path doesn't exist, we also try the
+            opposite DCX variant before giving up, rather than assuming the guess was correct.
+            """
+            if root is None:
+                return None
+            guessed_path = root.get_file_path(binder_relative_path)
+            if guessed_path.is_file():
+                return guessed_path
+            flipped_path = (
+                guessed_path.with_name(guessed_path.stem) if guessed_path.suffix == ".dcx"
+                else guessed_path.with_name(guessed_path.name + ".dcx")
+            )
+            return flipped_path if flipped_path.is_file() else None
+
+        game_root = self.game_root
+        project_root = self.project_root
+        game_path = _resolve_existing(game_root)
+        project_path = _resolve_existing(project_root)
+
+        if game_path is None and project_path is None:
             # Neither directory nor file exists.
             raise FileNotFoundError(f"Binder file does not exist in project OR game directory: {binder_relative_path}")
 
-        if project_path is None:
+        if project_root is None:
             # Project directory is not set. Game path must exist, or we raise an error above.
             game_path: Path
-            if game_path.is_file():  # cannot be `None` or first check above would fail
-                return binder_class.from_path(game_path)
+            return binder_class.from_path(game_path)
 
-            # Game file does not exist and project directory is not set, which is a fail case.
-            raise FileNotFoundError(
-                f"Project directory is not set and initial Binder file does not exist in game directory: "
-                f"{binder_relative_path}"
-            )
-        else:
-            # Project directory is set, or we raise an error above.
-            project_path: Path
-            if project_path.is_file():
-                if isinstance(game_path, Path) and not game_path.is_file():
+        if project_path is not None:
+            if game_root is not None:
+                # Check for the *exact* file (i.e. with the same DCX suffix `project_path` actually has) in the
+                # game directory, rather than independently re-guessing a DCX suffix for the game directory that
+                # may not match the resolved project file. This is what actually determines whether the project
+                # file is "unusual" in only existing in the project directory.
+                exact_game_path = game_root.root / project_path.relative_to(project_root.root)
+                if not exact_game_path.is_file():
                     # Unusual: game directory is set, yet the Binder relative path we are looking for ONLY exists in the
                     # project. We warn about this case, as it may indicate a faulty project path (or, obviously, an
                     # incomplete or non-unpacked game directory).
                     operator.warning(
-                        f"Initial Binder file '{binder_relative_path}' exists in project directory and will be used, "
-                        f"but this file does not exist in the set game directory '{self.game_root}'. This is unusual."                    )
+                        f"Initial Binder file '{project_path.name}' exists in project directory and will be used, "
+                        f"but this exact file does not exist in the set game directory '{self.game_root_path}'. "
+                        f"This is unusual."
+                    )
 
-                # Open and return project version of Binder.
-                return binder_class.from_path(project_path)
+            # Open and return project version of Binder.
+            return binder_class.from_path(project_path)
 
         # Project directory is set, project file does not exist, and game file does exist, as per logic above.
         # We use the game file.
+        game_path: Path
         return binder_class.from_path(game_path)
 
     # endregion
