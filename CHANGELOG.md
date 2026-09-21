@@ -18,12 +18,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   - Un-keyframed bones cancel the parent's rest matrix (e.g. DeS Plague Baby).
 - HKX animations now bind to the correct bone when a FLVER contains two bones with the same name.
 - Animation Binder entries are now matched case-insensitively: '.hkx' or '.HKX'.
+- Cutscene camera FoV keyframes are now placed at the correct times.
+  - SIBCAM FoV keyframe `fov_t` values are on the same absolute frame axis as the camera transforms (sparse cubic Hermite keys).
+  - FoV is now evaluated from the Hermite curve and baked to one focal length keyframe per game frame.
+- Cutscene root motion quaternions are normalized on import (spline-decompressed quaternions are not exactly unit).
 
 ### Changed
+- Cutscene Actions now carry `Action.cutscene` properties (cutscene name, source RemoBND path, frame rate scale and
+  the ordered list of cuts with their frame counts), which export uses to split the concatenated timeline into cuts.
 - Internal game-specific config dicts now key on `GameType` enum, not `Game` objects.
 - FLVERs with a mix of dynamic/static meshes use EditBone mode (dynamic) and handle the static meshes by
   baking the bone-to-armature transform into their vertices (unbaking on export).
   - No change for fully-static meshes like Map Pieces, which still use CUSTOM bone mode (direct-to-pose).
+- `soulstruct 2.5.0` required
+- `soulstruct-havok 1.4.0` required
+- `Firelink 0.3.4` required
 
 ### Added
 - New `tests/test_flver_dummy_transforms.py` suite: asserts that imported Dummies land at their FLVER-defined world
@@ -34,6 +43,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
   it works for games whose animation export is unimplemented (Demon's Souls).
 - New `tests/test_flver_static_mesh_bake.py` suite: asserts that FLVERs with a mix of dynamic and static meshes
   use EditBones and bake the static meshes into the armature transform, and that the bake is undone on export.
+- **DSR cutscene export** (`Export HKX Cutscene`, Cutscene panel). Patches the cutscene's source RemoBND with the
+  Blender animation of every bound MSB Part Armature, Dummy Empty and the Camera (transform + FoV via lens), writing
+  spline-compressed cut HKX files (`CompressAnim.exe`, Windows only; an uncompressed interleaved option exists for
+  testing) and rebuilt SIBCAM files. Parts not animated in Blender (Map Pieces, Collisions) keep their source tracks.
+  Cut lengths must match the source RemoBND.
+- **DSR cutscene creation from scratch** (`Export New HKX Cutscene`, Cutscene panel). Builds a complete RemoBND with
+  no source file: every MSB Part (Characters, the Player, Objects, Map Pieces, Collisions -- from any loaded map,
+  with the vanilla 'AXXBXX_' prefix for other maps) and Dummy Empty in the `Cutscene {name}` collection appears in
+  every cut, unless render-hidden at the cut's first frame. Each cut's amalgamated cutscene skeleton is stitched
+  together from the models' ANIBND skeletons (or their FLVER bones when a model has no ANIBND), laid
+  out exactly like vanilla files; parts whose Armature is not bound to the cutscene Action hold their rest pose.
+  SIBCAMs are baked from the Camera, and a minimal cutscene TAE is generated (one event-less animation per cut),
+  optionally copying the TAE events of matching cuts from a source RemoBND. Uses `soulstruct` `RemoTAE` and 
+  `soulstruct-havok` `RemoBND.new()`/`RemoAnimationHKX.from_remo_part_tracks()`.
+- New Cutscene panel section for authoring: `Create New Cutscene` (Action + Camera + collection), an editable cut
+  list (name and game frame count) with add/remove, and `Bind Selected to Cutscene`.
+- New `tests/test_hkx_cutscene_build.py` suite: rebuilds scn100100 from scratch and checks bone hierarchies,
+  per-part armature-space animation, camera and TAE against the vanilla file (uncompressed and compressed) plus
+  re-import; and authors a new cutscene by script (create, bind, keyframe, hide a part from a cut, export without a
+  source, re-import).
+- New `tests/test_hkx_cutscene_import_roundtrip.py` suite (scn100100 and scn100110): imports the map MSB (models
+  filtered to the animated parts) and cutscene, exports uncompressed and compressed, and compares every cut's HKX
+  local-space tracks and SIBCAM camera/FoV data against the original, then re-imports and compares Blender channels.
 
 ---
 

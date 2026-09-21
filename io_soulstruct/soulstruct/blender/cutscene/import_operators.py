@@ -1,4 +1,10 @@
-"""VERY early/experimental system for importing/exporting DSR cutscene animations into Blender."""
+"""Import DSR cutscene animations (RemoBND) into Blender.
+
+The MSB Parts animated by the cutscene must already be imported (with their FLVER models) into the appropriate
+`{map} MSB` collections; the importer looks them up by game name and animates their Armatures (duplicating the model
+Armature to the Part if needed). All cuts are concatenated into ONE shared Action, whose `cutscene` properties
+record the cut boundaries for export.
+"""
 from __future__ import annotations
 
 __all__ = [
@@ -17,27 +23,17 @@ from soulstruct.havok.fromsoft.darksouls1r.remobnd import *
 
 from ..base.operators import LoggingImportOperator
 from ..base.register import io_soulstruct_operator
-from ..exceptions import CutsceneImportError, SoulstructTypeError
+from ..exceptions import CutsceneImportError
 from ..msb.properties.parts import MSBPartArmatureMode
-from ..msb.types.adapters import get_part_game_name
-from ..msb.types.darksouls1r import *
 from ..types import *
 from ..utilities import *
 from .types import CutFrames, SoulstructCutsceneAnimation
+from .utilities import BL_PART_CLASSES, find_remo_part_msb_part, get_clip_fov_values
 
 if tp.TYPE_CHECKING:
     from ..msb.types.base.parts import BaseBlenderMSBPart
 
 REMOBND_RE = re.compile(r"^.*?\.remobnd(\.dcx)?$")
-
-
-BL_PART_CLASSES = {
-    RemoPartType.Player: BlenderMSBPlayerStart,
-    RemoPartType.Character: BlenderMSBCharacter,
-    RemoPartType.Object: BlenderMSBObject,
-    RemoPartType.MapPiece: BlenderMSBMapPiece,
-    RemoPartType.Collision: BlenderMSBCollision,
-}
 
 
 @io_soulstruct_operator
@@ -69,7 +65,7 @@ class ImportHKXCutscene(LoggingImportOperator):
         """Only for DSR right now."""
         return cls.settings(context).is_game(GameType.DarkSoulsDSR) and super().poll(context)
 
-    def execute(self, context):
+    def _execute(self, context):
         remobnd_path = Path(self.filepath)
         import_settings = context.scene.cutscene_import_settings
 
@@ -83,6 +79,13 @@ class ImportHKXCutscene(LoggingImportOperator):
 
         cutscene_animation = SoulstructCutsceneAnimation.new(remobnd.cutscene_name)
         bl_frames_per_game_frame = 2.0 if import_settings.to_60_fps else 1.0
+
+        # Record cut layout on the Action so export can split the concatenated timeline back into cuts.
+        props = cutscene_animation.props
+        props.cutscene_name = remobnd.cutscene_name
+        props.source_remobnd_path = str(remobnd_path)
+        props.bl_frames_per_game_frame = bl_frames_per_game_frame
+        props.set_cuts([(cut.name, cut.sibcam.clip_frame_count) for cut in remobnd.cuts])
 
         # Create the camera FIRST. If camera import fails we only need to drop the Action,
         # leaving no dangling cutscene collections behind.
@@ -161,7 +164,7 @@ class ImportHKXCutscene(LoggingImportOperator):
         """Import and animate a single (non-Dummy) RemoPart."""
         self.debug(f"Adding RemoPart: {remo_part.name}")
 
-        bl_part = self.find_remo_part_msb_part(context, remo_part, bl_part_class)
+        bl_part = find_remo_part_msb_part(self, context, remo_part, bl_part_class)
         if bl_part is None:
             return
 
@@ -203,11 +206,6 @@ class ImportHKXCutscene(LoggingImportOperator):
 
         if not self._validate_part_bones(remo_part, bl_part, armature):
             return
-
-        # "Disable" unused high-level bones whose children are directly animated by the cutscene.
-        # This is done by setting the `PoseBone.matrix_basis` to the inverse of the bone's local rest transform.
-        # TODO: Can remove I think.
-        # cutscene_animation.cancel_remo_root_parent_rest(armature, remo_part.part_cutscene_root_bone_names)
 
         try:
             cutscene_animation.add_armature_cuts(
@@ -299,39 +297,6 @@ class ImportHKXCutscene(LoggingImportOperator):
         traceback.print_exc()
         self.error(message)
 
-    def find_remo_part_msb_part(
-        self, context: bpy.types.Context, remo_part: RemoPart, bl_part_class: type[BaseBlenderMSBPart]
-    ) -> BaseBlenderMSBPart | None:
-
-        area, block = remo_part.map_area_block
-        map_stem = f"m{area:02d}_{block:02d}_00_00"
-        msb_stem = context.scene.soulstruct_settings.get_latest_map_stem_version(map_stem)
-        collection_name = f"{msb_stem} {bl_part_class.MSB_ENTRY_SUBTYPE.get_nice_name()} Parts"
-        try:
-            # TODO: Restrict to Scene collections?
-            part_collection = bpy.data.collections[collection_name]
-        except KeyError:
-            self.error(
-                f"Could not find MSB Part collection '{collection_name}' for cutscene Part "
-                f"'{remo_part.map_part_name}' (full Remo name '{remo_part.name}')."
-            )
-            return None
-
-        for obj in part_collection.objects:  # immediate child objects only
-            # TODO: Use proper 'find object of type' utility.
-            if obj.type == "MESH" and get_part_game_name(obj.name) == remo_part.map_part_name:
-                try:
-                    return bl_part_class(obj)
-                except SoulstructTypeError:
-                    self.error(
-                        f"Found Mesh object '{obj.name}' in collection '{part_collection.name}', but it "
-                        f"is not a valid `{bl_part_class.__name__}` object."
-                    )
-                    return None
-
-        self.error(f"Could not find MSB Part '{remo_part.map_part_name}' in MSB collection '{part_collection.name}'.")
-        return None
-
     def create_camera(
         self,
         remobnd: RemoBND,
@@ -345,13 +310,13 @@ class ImportHKXCutscene(LoggingImportOperator):
         # noinspection PyTypeChecker
         camera = bpy.data.objects.new(camera_name, camera_data)  # type: CameraObject
 
-        # Add motion to camera.
+        # Add motion to camera. FoV is evaluated from each cut's sparse Hermite keyframes at every clipped frame.
         camera_transforms = [cut.sibcam.get_clipped_camera_animation() for cut in remobnd.cuts]
-        camera_fov_keyframes = [cut.sibcam.get_clip_timescaled_fov_keyframes() for cut in remobnd.cuts]
+        camera_fov_values = [get_clip_fov_values(cut.sibcam) for cut in remobnd.cuts]
 
         try:
             cutscene_animation.add_camera_cuts(
-                camera, camera_transforms, camera_fov_keyframes, bl_frames_per_game_frame
+                camera, camera_transforms, camera_fov_values, bl_frames_per_game_frame
             )
         except Exception:
             bpy.data.objects.remove(camera)

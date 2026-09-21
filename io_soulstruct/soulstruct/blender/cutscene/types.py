@@ -5,22 +5,29 @@ __all__ = [
     "SoulstructCutsceneAnimation",
 ]
 
-import math
 import typing as tp
 from dataclasses import dataclass
 
 import bpy
 import numpy as np
+from mathutils import Euler, Quaternion as BLQuaternion, Vector
 
 from soulstruct.base.animations.sibcam import *
 from soulstruct.havok.fromsoft.darksouls1r.remobnd import RemoPartAnimationFrame
+from soulstruct.havok.utilities.maths import TRSTransform
+from soulstruct.utilities.maths import EulerRad, Vector3
 
 from ..animation.types import SoulstructAnimation
 from ..animation.utilities import *
 from ..exceptions import SoulstructTypeError
 from ..flver.models.types import FLVERBoneDataType
+from ..flver.utilities import bl_bone_trs_to_game_trs
 from ..types import ArmatureObject, CameraObject, EmptyObject
-from ..utilities import to_blender
+from ..utilities import to_blender, to_game, bl_trs_to_game_trs
+from .utilities import fov_to_lens, lens_to_fov
+
+if tp.TYPE_CHECKING:
+    from .properties import CutsceneActionProps
 
 # Blender BezTriple interpolation enum -> int (for batched `foreach_set`).
 # Verify on your Blender build if interpolation ever looks wrong; revert to the
@@ -41,6 +48,45 @@ class CutFrames:
     """
     frame_count: int
     frames: list[RemoPartAnimationFrame] | None = None
+
+
+class _ChannelbagSampler:
+    """Evaluates the F-curves of one `ActionChannelbag` by `(data_path, array_index)`.
+
+    Cutscene import writes one LINEAR keyframe per game frame, so evaluating at those exact Blender frames is exact
+    and far cheaper than stepping `scene.frame_set()` through a (possibly huge) MSB scene. It also makes export
+    independent of each bone's `inherit_scale` mode, since armature-space poses are recomposed from the pose channels
+    with the same shear-free TRS maths that import used (see `get_pose_trs_from_basis()`).
+    """
+
+    def __init__(self, channelbag: bpy.types.ActionChannelbag | None):
+        self.fcurves = {}  # type: dict[tuple[str, int], bpy.types.FCurve]
+        if channelbag is not None:
+            for fcurve in channelbag.fcurves:
+                self.fcurves[fcurve.data_path, fcurve.array_index] = fcurve
+
+    def has_path(self, data_path: str) -> bool:
+        return any(path == data_path for path, _ in self.fcurves)
+
+    def evaluate(self, data_path: str, index: int, bl_frame: float, default: float) -> float:
+        fcurve = self.fcurves.get((data_path, index))
+        return float(fcurve.evaluate(bl_frame)) if fcurve is not None else default
+
+    def evaluate_vector(self, data_path: str, bl_frame: float, default: tp.Sequence[float]) -> Vector:
+        return Vector([self.evaluate(data_path, i, bl_frame, d) for i, d in enumerate(default)])
+
+    def evaluate_quaternion(self, data_path: str, bl_frame: float) -> BLQuaternion:
+        return BLQuaternion([self.evaluate(data_path, i, bl_frame, d) for i, d in enumerate((1.0, 0.0, 0.0, 0.0))])
+
+    def evaluate_rotation(self, bl_frame: float, rotation_mode: str) -> BLQuaternion:
+        """Read an Object's rotation from whichever channels are animated, honouring the object's rotation mode."""
+        if rotation_mode == "QUATERNION" or self.has_path("rotation_quaternion") and not self.has_path("rotation_euler"):
+            return self.evaluate_quaternion("rotation_quaternion", bl_frame)
+        if rotation_mode == "AXIS_ANGLE":
+            axis_angle = self.evaluate_vector("rotation_axis_angle", bl_frame, (0.0, 0.0, 1.0, 0.0))
+            return BLQuaternion(axis_angle[1:4], axis_angle[0])
+        euler = self.evaluate_vector("rotation_euler", bl_frame, (0.0, 0.0, 0.0))
+        return Euler(euler, rotation_mode if rotation_mode != "QUATERNION" else "XYZ").to_quaternion()
 
 
 class SoulstructCutsceneAnimation:
@@ -69,6 +115,16 @@ class SoulstructCutsceneAnimation:
         get_or_create_action_strip(action)
         return cls(action)
 
+    @classmethod
+    def from_animated_id(cls, animated_id: bpy.types.ID) -> SoulstructCutsceneAnimation | None:
+        """Wrap the cutscene Action assigned to `animated_id` (an Object or Camera data), or `None` if it has none."""
+        anim_data = animated_id.animation_data
+        if not anim_data or not anim_data.action:
+            return None
+        if not anim_data.action.cutscene.is_cutscene:
+            return None
+        return cls(anim_data.action)
+
     @property
     def name(self) -> str:
         return self.action.name
@@ -78,8 +134,16 @@ class SoulstructCutsceneAnimation:
         self.action.name = value
 
     @property
+    def props(self) -> CutsceneActionProps:
+        return self.action.cutscene
+
+    @property
     def strip(self) -> bpy.types.ActionKeyframeStrip:
         return get_or_create_action_strip(self.action)
+
+    @property
+    def bl_frames_per_game_frame(self) -> float:
+        return self.props.bl_frames_per_game_frame
 
     @staticmethod
     def _get_slot_id_type(animated_id: bpy.types.ID) -> tp.Literal["OBJECT", "CAMERA"]:
@@ -111,6 +175,42 @@ class SoulstructCutsceneAnimation:
 
         channelbag = self.strip.channelbag(anim_data.action_slot, ensure=True)
         return anim_data.action_slot, channelbag
+
+    def get_channelbag(self, animated_id: bpy.types.ID) -> bpy.types.ActionChannelbag | None:
+        """Get the channelbag of `animated_id`'s slot in this Action, or `None` if it is not bound to this Action."""
+        anim_data = animated_id.animation_data
+        if not anim_data or anim_data.action != self.action or not anim_data.action_slot:
+            return None
+        return self.strip.channelbag(anim_data.action_slot, ensure=False)
+
+    def is_bound(self, animated_id: bpy.types.ID) -> bool:
+        return self.get_channelbag(animated_id) is not None
+
+    def get_bound_objects(self) -> list[bpy.types.Object]:
+        """All Objects currently using this Action (Armatures, Dummy Empties, the Camera)."""
+        return [obj for obj in bpy.data.objects if self.is_bound(obj)]
+
+    def get_camera(self) -> CameraObject | None:
+        """The (first) Camera Object bound to this Action, if any."""
+        for obj in bpy.data.objects:
+            if obj.type == "CAMERA" and self.is_bound(obj):
+                # noinspection PyTypeChecker
+                return obj
+        return None
+
+    def is_object_hidden_at(self, obj: bpy.types.Object, bl_frame: float) -> bool:
+        """Whether `obj`'s `hide_render` or `hide_viewport` F-curve in this Action evaluates to hidden at `bl_frame`.
+
+        Objects that are not bound to this Action, or have no such F-curves, count as visible (their static
+        visibility is deliberately ignored, so parts can be hidden in the viewport while working).
+        """
+        sampler = _ChannelbagSampler(self.get_channelbag(obj))
+        for data_path in ("hide_render", "hide_viewport"):
+            if sampler.has_path(data_path) and sampler.evaluate(data_path, 0, bl_frame, 0.0) >= 0.5:
+                return True
+        return False
+
+    # region Import
 
     @staticmethod
     def _normalize_keyframe_t(keyframe_t: float) -> float:
@@ -173,61 +273,56 @@ class SoulstructCutsceneAnimation:
         self,
         camera: CameraObject,
         camera_transforms: list[list[CameraFrameTransform]],
-        camera_fov_keyframes: list[list[TimescaledFoVKeyframe]],
+        camera_fov_values: list[list[float]],
         bl_frames_per_game_frame: float,
     ):
+        """Animate `camera` (Object transform and Camera data lens) from per-cut lists of clipped camera frames and
+        the FoV (radians) at each of those frames.
+
+        FoV is baked to one focal length keyframe per game frame. Blender cannot animate `Camera.angle` directly,
+        and the SIBCAM FoV curve is a sparse cubic Hermite spline in FoV space that does not map onto Bezier handles
+        in (nonlinear) focal length space, so per-frame baking is the only exact representation. Export samples the
+        lens curve per frame anyway, so users are free to re-key it sparsely.
+        """
         camera.rotation_mode = "XYZ"  # Euler
         camera_data = camera.data
-        # We have to convert FoV to focal length and animate that.
-        # Blender simply cannot animate FoV ("angle"), only compute it.
         camera_data.lens_unit = "MILLIMETERS"
 
         _, object_channelbag = self.bind(camera)  # OBJECT
         _, data_channelbag = self.bind(camera_data)  # CAMERA
 
+        sensor_width = camera_data.sensor_width
+
         location_rows = []
         rotation_rows = []
+        lens_rows = []
         final_frame_t = []
 
         cutscene_frame_index = 0
-        for cut_camera_transforms in camera_transforms:
-            for cut_frame_index, camera_transform in enumerate(cut_camera_transforms):
+        for cut_camera_transforms, cut_fov_values in zip(camera_transforms, camera_fov_values, strict=True):
+            if len(cut_camera_transforms) != len(cut_fov_values):
+                raise ValueError(
+                    f"Cut has {len(cut_camera_transforms)} camera frames but {len(cut_fov_values)} FoV values."
+                )
+            for cut_frame_index, (camera_transform, fov) in enumerate(zip(cut_camera_transforms, cut_fov_values)):
                 bl_frame_index = cutscene_frame_index * bl_frames_per_game_frame
                 bl_translate = to_blender(camera_transform.position)
                 bl_euler = to_blender(camera_transform.rotation)
                 location_rows.append([bl_frame_index, bl_translate.x, bl_translate.y, bl_translate.z])
                 rotation_rows.append([bl_frame_index, bl_euler.x, bl_euler.y, bl_euler.z])
+                lens_rows.append([bl_frame_index, fov_to_lens(fov, sensor_width)])
                 if cut_frame_index == len(cut_camera_transforms) - 1:
                     final_frame_t.append(bl_frame_index)
                 cutscene_frame_index += 1
 
         location_samples = np.array(location_rows, dtype=np.float64) if location_rows else np.empty((0, 4))
         rotation_samples = np.array(rotation_rows, dtype=np.float64) if rotation_rows else np.empty((0, 4))
+        lens_samples = np.array(lens_rows, dtype=np.float64) if lens_rows else np.empty((0, 2))
         self._add_samples(object_channelbag, "location", location_samples)
         self._add_samples(object_channelbag, "rotation_euler", rotation_samples)
         self._set_keyframe_interpolation(object_channelbag, final_frame_t)
-
-        # TODO: Could create a temp FoV FCurve with tan-in/out and bake it to every-frame Focal Length.
-        #  Doesn't seem very impactful as (variable) SIBCAM cut data appears to always be 95% baked anyway.
-
-        sensor_width = camera_data.sensor_width  # should be 35 mm (just created)
-        cut_fov_t_offset = 0
-        lens_rows = []
-        lens_final_t = []
-        for cut_fov_keyframes, cut_camera_transforms in zip(camera_fov_keyframes, camera_transforms, strict=True):
-            last_bl_t = None
-            for fov_keyframe in cut_fov_keyframes:
-                lens = sensor_width / (2 * math.tan(fov_keyframe.fov / 2.0))
-                bl_t = (cut_fov_t_offset + fov_keyframe.fov_t) * bl_frames_per_game_frame
-                lens_rows.append([bl_t, lens])
-                last_bl_t = bl_t
-            if last_bl_t is not None:
-                lens_final_t.append(last_bl_t)
-            cut_fov_t_offset += len(cut_camera_transforms)
-
-        lens_samples = np.array(lens_rows, dtype=np.float64) if lens_rows else np.empty((0, 2))
         self._add_samples(data_channelbag, "lens", lens_samples)
-        self._set_keyframe_interpolation(data_channelbag, lens_final_t)
+        self._set_keyframe_interpolation(data_channelbag, final_frame_t)
 
     def add_armature_cuts(
         self,
@@ -284,8 +379,10 @@ class SoulstructCutsceneAnimation:
 
             for frame in cut.frames:
                 # Cutscene "root motion" (root bone transforms) uses a TRS, not just translate + Z-rotation.
+                # Rotation is normalized: spline-decompressed quaternions are not exactly unit length, and export
+                # (like `game_trs_to_bl_trs()`) always writes unit quaternions.
                 rm_translate = to_blender(frame.root_motion.translation)
-                rm_rotate_quat = to_blender(frame.root_motion.rotation)
+                rm_rotate_quat = to_blender(frame.root_motion.rotation).normalized()
                 rm_scale = to_blender(frame.root_motion.scale)
                 root_motion_rows.append(
                     [
@@ -327,7 +424,7 @@ class SoulstructCutsceneAnimation:
         cuts: list[CutFrames],
         bl_frames_per_game_frame: float,
     ):
-        """Bind cutscene animation data for one Armature or Dummy into this shared Action.
+        """Bind cutscene animation data for one Dummy Empty into this shared Action (root motion only).
 
         A single pass over `cuts` drives both keyframe placement (via `global_keyframe_t`)
         and cut-boundary tracking (`cut_end_keyframe_t`), so there is exactly one frame
@@ -348,9 +445,9 @@ class SoulstructCutsceneAnimation:
                 continue
 
             for frame in cut.frames:
-                # "Root motion" is full TRS data.
+                # "Root motion" is full TRS data (see normalization note in `add_armature_cuts()`).
                 rm_translate = to_blender(frame.root_motion.translation)
-                rm_rotate_quat = to_blender(frame.root_motion.rotation)
+                rm_rotate_quat = to_blender(frame.root_motion.rotation).normalized()
                 root_motion_rows.append(
                     [
                         global_keyframe_t,
@@ -382,63 +479,121 @@ class SoulstructCutsceneAnimation:
         if reset_current_frame:
             context.scene.frame_set(context.scene.frame_start)
 
-    # Export Methods
+    # endregion
 
-    @staticmethod
-    def export_fov_keyframes(
-        fcurve: bpy.types.FCurve,
-        bl_frames_per_game_frame: float,
-        cut_fov_t_offset: float,
-        cut_start_bl_t: float,
-        cut_end_bl_t: float
-    ) -> list[FoVKeyframe]:
-        """Get SIBCAM-ready FoV frame data from cutscene camera animation in Blender.
+    # region Export
 
-        Read back FOV keyframes for a single cut from a Blender `angle` fcurve and
-        reconstruct (t, fov, tan_in, tan_out) tuples in SIBCAM's native units/convention.
+    def get_cut_bl_frames(self, cut_name: str) -> list[float]:
+        """Blender timeline frames of every game frame in `cut_name`, from the cut metadata stored on the Action."""
+        first, last = self.props.get_cut_bl_frame_ranges()[cut_name]
+        step = self.bl_frames_per_game_frame
+        count = int(round((last - first) / step)) + 1
+        return [first + i * step for i in range(count)]
 
-        cut_start_bl_t / cut_end_bl_t bound the keyframes belonging to this cut on the
-        Blender timeline (matching how `bl_t` was computed on import).
+    def sample_camera(
+        self, camera: CameraObject, bl_frames: tp.Sequence[float]
+    ) -> list[tuple[Vector3, EulerRad, float]]:
+        """Sample the camera's game-space `(position, rotation, fov)` at each Blender frame.
+
+        Exact inverse of `add_camera_cuts()`: position/rotation come from the Object channels and FoV from the
+        Camera data `lens` channel (converted with the camera's current sensor width).
         """
-        n = len(fcurve.keyframe_points)
-        co = np.empty(n * 2, dtype=np.float64)
-        hl = np.empty(n * 2, dtype=np.float64)
-        hr = np.empty(n * 2, dtype=np.float64)
-        fcurve.keyframe_points.foreach_get("co", co)
-        fcurve.keyframe_points.foreach_get("handle_left", hl)
-        fcurve.keyframe_points.foreach_get("handle_right", hr)
+        object_sampler = _ChannelbagSampler(self.get_channelbag(camera))
+        data_sampler = _ChannelbagSampler(self.get_channelbag(camera.data))
+        sensor_width = camera.data.sensor_width
+        samples = []
+        for bl_frame in bl_frames:
+            bl_translate = object_sampler.evaluate_vector("location", bl_frame, camera.location)
+            bl_euler = Euler(object_sampler.evaluate_vector("rotation_euler", bl_frame, camera.rotation_euler), "XYZ")
+            lens = data_sampler.evaluate("lens", 0, bl_frame, camera.data.lens)
+            samples.append((to_game(bl_translate), to_game(bl_euler), lens_to_fov(lens, sensor_width)))
+        return samples
 
-        co = co.reshape(-1, 2)
-        hl = hl.reshape(-1, 2)
-        hr = hr.reshape(-1, 2)
+    def sample_root_motion(self, obj: bpy.types.Object, bl_frames: tp.Sequence[float]) -> list[TRSTransform]:
+        """Sample an Object's (Armature or Dummy Empty) game-space world transform at each Blender frame.
 
-        sibcam_fov_keyframes = []  # type: list[FoVKeyframe]
-        for i in range(n):
-            bl_t, fov = co[i]
-            if not (cut_start_bl_t <= bl_t <= cut_end_bl_t):
-                continue
+        Exact inverse of the root motion channels written by `add_armature_cuts()`/`add_dummy_cuts()`. Channels that
+        are not animated fall back to the Object's current transform.
+        """
+        sampler = _ChannelbagSampler(self.get_channelbag(obj))
+        transforms = []
+        for bl_frame in bl_frames:
+            bl_translate = sampler.evaluate_vector("location", bl_frame, obj.location)
+            if sampler.has_path("rotation_quaternion") or sampler.has_path("rotation_euler") or sampler.has_path(
+                "rotation_axis_angle"
+            ):
+                bl_rotate = sampler.evaluate_rotation(bl_frame, obj.rotation_mode)
+            else:
+                bl_rotate = obj.matrix_basis.to_quaternion()
+            bl_scale = sampler.evaluate_vector("scale", bl_frame, obj.scale)
+            transforms.append(bl_trs_to_game_trs(bl_translate, bl_rotate, bl_scale))
+        return transforms
 
-            hl_x, hl_y = hl[i]
-            hr_x, hr_y = hr[i]
+    def sample_armature_bones(
+        self,
+        armature: ArmatureObject,
+        bone_names: tp.Sequence[str],
+        bl_frames: tp.Sequence[float],
+        bone_data_type: FLVERBoneDataType,
+        root_bone_names: tp.Container[str] = (),
+    ) -> list[dict[str, TRSTransform]]:
+        """Sample the game armature-space transform of each bone in `bone_names` at each Blender frame.
 
-            # Recover slopes in d(fov)/d(bl_t) from the handle offsets.
-            # Guard against zero-length handles (shouldn't happen with FREE/dt-3 handles,
-            # but a user could have collapsed a handle onto the keyframe itself).
-            dt_left = bl_t - hl_x
-            dt_right = hr_x - bl_t
-            slope_in = (fov - hl_y) / dt_left if dt_left > 1e-9 else 0.0
-            slope_out = (hr_y - fov) / dt_right if dt_right > 1e-9 else 0.0
+        Exact inverse of `SoulstructAnimation.get_bone_basis_samples()` as used by `add_armature_cuts()`:
+            - pose channels are recomposed into armature-space poses with shear-free TRS maths, walking up the
+              Blender bone hierarchy;
+            - bones in `root_bone_names` (the cutscene's own root bones for this part, e.g. `Upper_Root`) are
+              treated as parentless, exactly as import did, since cutscene FK ignores their FLVER parents;
+            - a parent that is not itself in `bone_names` is taken to sit at its REST pose (the same default import
+              used), so its Blender pose channels are deliberately ignored;
+            - the FLVER rest bone scale that import divided out of `EDIT` bone poses is multiplied back in, and the
+              X-forward bone change of basis is undone at TRS level.
+        """
+        sampler = _ChannelbagSampler(self.get_channelbag(armature))
+        rest_trs_by_bone_name = get_armature_rest_trs(armature)
+        flver_rest_scales = get_flver_bone_rest_scales(armature, bone_data_type)
+        bl_bones = armature.data.bones
+        sampled_names = set(bone_names)
 
-            # Undo the time rescale applied on import, then undo the incoming-slope sign flip
-            # to match SIBCAM's tan_in/tan_out convention (tan_in == -tan_out).
-            tan_in = -(slope_in * bl_frames_per_game_frame)
-            tan_out = slope_out * bl_frames_per_game_frame
+        def _get_pose_trs(bone_name: str, bl_frame: float, cache: dict[str, TRS]) -> TRS:
+            if bone_name in cache:
+                return cache[bone_name]
+            prefix = f"pose.bones[\"{bone_name}\"]."
+            basis_trs = (
+                sampler.evaluate_vector(prefix + "location", bl_frame, (0.0, 0.0, 0.0)),
+                sampler.evaluate_quaternion(prefix + "rotation_quaternion", bl_frame),
+                sampler.evaluate_vector(prefix + "scale", bl_frame, (1.0, 1.0, 1.0)),
+            )
+            rest_trs = rest_trs_by_bone_name[bone_name]
+            bl_bone = bl_bones[bone_name]
+            if bl_bone.parent is not None and bone_name not in root_bone_names:
+                parent_name = bl_bone.parent.name
+                parent_rest_trs = rest_trs_by_bone_name[parent_name]
+                if parent_name in sampled_names:
+                    parent_pose_trs = _get_pose_trs(parent_name, bl_frame, cache)
+                else:
+                    parent_pose_trs = parent_rest_trs  # un-animated parent sits at rest (mirrors import)
+            else:
+                parent_rest_trs = None
+                parent_pose_trs = None
+            pose_trs = get_pose_trs_from_basis(rest_trs, parent_rest_trs, basis_trs, parent_pose_trs)
+            cache[bone_name] = pose_trs
+            return pose_trs
 
-            # Convert bl_t back to the cut-local game frame `t`.
-            t = round(bl_t / bl_frames_per_game_frame) - cut_fov_t_offset
-
-            sibcam_fov_keyframes.append(FoVKeyframe(fov_t=t, fov=fov, tan_in=tan_in, tan_out=tan_out))
-
-        return sibcam_fov_keyframes
+        frames = []
+        for bl_frame in bl_frames:
+            cache = {}  # type: dict[str, TRS]
+            frame = {}  # type: dict[str, TRSTransform]
+            for bone_name in bone_names:
+                pose_t, pose_r, pose_s = _get_pose_trs(bone_name, bl_frame, cache)
+                rest_scale = flver_rest_scales.get(bone_name)
+                if rest_scale is not None:
+                    pose_s = Vector((pose_s.x * rest_scale.x, pose_s.y * rest_scale.y, pose_s.z * rest_scale.z))
+                if bone_data_type == FLVERBoneDataType.EDIT:
+                    frame[bone_name] = bl_bone_trs_to_game_trs(pose_t, pose_r, pose_s)
+                else:
+                    frame[bone_name] = bl_trs_to_game_trs(pose_t, pose_r, pose_s)
+            frames.append(frame)
+        return frames
 
     # endregion

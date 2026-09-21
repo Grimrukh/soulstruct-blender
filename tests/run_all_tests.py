@@ -28,6 +28,8 @@ TEST_SCRIPTS = [
     "test_msb_import_roundtrip.py",
     "test_hkx_animation_import_roundtrip.py",
     "test_hkx_animation_pose_fidelity.py",
+    "test_hkx_cutscene_import_roundtrip.py",
+    "test_hkx_cutscene_build.py",
 ]
 
 overall_pass = True
