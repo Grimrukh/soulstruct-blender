@@ -5,6 +5,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+---
+
+## [3.2.0] - 2026-09-21
+
 ### Fixed
 - FLVER Dummies with an attach bone are no longer misplaced in Blender.
   - This was previously a two-way conversion bug, so round trips were fine, but dummies appeared wrong in Blender.
@@ -66,8 +70,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - New `tests/test_hkx_cutscene_import_roundtrip.py` suite (scn100100 and scn100110): imports the map MSB (models
   filtered to the animated parts) and cutscene, exports uncompressed and compressed, and compares every cut's HKX
   local-space tracks and SIBCAM camera/FoV data against the original, then re-imports and compares Blender channels.
-
----
 
 ## [3.1.1] - 2026-09-20
 
