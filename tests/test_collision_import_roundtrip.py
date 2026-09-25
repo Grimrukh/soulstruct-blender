@@ -8,7 +8,9 @@ Round-trip methodology per case
 1. Import hi-res ``h*.hkx`` (loose) with ``import_scene.hkx_map_collision``.
 2. Validate: at least one COLLISION-typed Mesh object was created.
 3. Export back to a temp ``h*.hkx`` via ``export_scene.hkx_map_collision``.
-4. Verify the exported file is parseable by Soulstruct (``MapCollisionModel.from_path``).
+4. Verify the exported file is parseable by Soulstruct (``MapCollisionModel.from_path``), and (for loose files)
+   that it matches the vanilla file in fields the game relies on but Soulstruct/DSMapStudio do not (e.g.
+   ``numBitsForSubpartIndex``, without which only the first material/subpart of each file has in-game collision).
 5. Re-import the exported file; compare Blender statistics (poly count, material count).
 6. Re-export to a second temp file; compare Soulstruct statistics with the first export.
 7. Clean up.
@@ -30,6 +32,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 import bpy
 import bl_test_utils as T
+from soulstruct.havok import HKX
 from soulstruct.havok.fromsoft.shared import MapCollisionModel
 
 T.enable_addon()
@@ -79,6 +82,22 @@ COLLISION_TEST_CASES: list[CollisionImportCase] = [
         game_enum="DEMONS_SOULS",
         directory=Config.DES_PATH / "map/m07_00_00_00",
         filename="h0000b0.hkx",
+        tags=["map_collision"],
+    ),
+    CollisionImportCase(
+        # Multiple hi and lo materials (GitHub issue #130).
+        name="DeS / Map m02_00_00_00 / h0003b0",  # Stonefang Tunnel
+        game_enum="DEMONS_SOULS",
+        directory=Config.DES_PATH / "map/m02_00_00_00",
+        filename="h0003b0.hkx",
+        tags=["map_collision"],
+    ),
+    CollisionImportCase(
+        # Ancient `hkpStorageMeshShape` collision with multiple lo materials (GitHub issue #89).
+        name="DeS / Map m07_01_00_00 / h0000b1",  # Northern Limits (unused)
+        game_enum="DEMONS_SOULS",
+        directory=Config.DES_PATH / "map/m07_01_00_00",
+        filename="h0000b1.hkx",
         tags=["map_collision"],
     ),
 
@@ -142,6 +161,55 @@ def _collision_scene_stats() -> dict:
         "poly_count": poly_count,
         "mat_count": len(mat_names),
     }
+
+
+# Number of high MOPP shape key bits that store the subpart index in every vanilla file (and in `mopper` output).
+NUM_BITS_FOR_SUBPART_INDEX = 12
+
+
+def _game_critical_fields(hkx: HKX) -> dict:
+    """Collect HKX fields that Soulstruct/DSMapStudio ignore but the game's Havok runtime relies on.
+
+    Fields that don't exist in a given file's shape class (e.g. ancient `hkpStorageMeshShape`) are omitted.
+    """
+    _, physics_system = MapCollisionModel.get_hkx_physics(hkx)
+    child_shape, _ = MapCollisionModel.get_child_shape(physics_system)
+    rigid_body = physics_system.rigidBodies[0]
+    fields = {
+        "physics_system.active": physics_system.active,
+        "broadPhaseHandle.objectQualityType": rigid_body.collidable.broadPhaseHandle.objectQualityType,
+    }
+    if hasattr(child_shape, "numBitsForSubpartIndex"):
+        fields["numBitsForSubpartIndex"] = child_shape.numBitsForSubpartIndex
+    return fields
+
+
+def _check_exported_fields(case: CollisionImportCase, exported_paths: list[Path]) -> bool:
+    """Compare game-critical fields of each exported loose HKX against its vanilla counterpart. Returns success."""
+    for exported_path in exported_paths:
+        exported_fields = _game_critical_fields(HKX.from_path(exported_path))
+        # Always required, even if the vanilla file used an old shape class without it.
+        if exported_fields.get("numBitsForSubpartIndex") != NUM_BITS_FOR_SUBPART_INDEX:
+            T.fail(
+                case.name,
+                f"Exported '{exported_path.name}' has `numBitsForSubpartIndex` = "
+                f"{exported_fields.get('numBitsForSubpartIndex')} (expected {NUM_BITS_FOR_SUBPART_INDEX}). "
+                f"Only the first subpart (material) of this file would have in-game collision.",
+            )
+            return False
+        vanilla_path = case.directory / exported_path.name
+        if not vanilla_path.is_file():
+            continue  # e.g. case imported from a binder
+        vanilla_fields = _game_critical_fields(HKX.from_path(vanilla_path))
+        for key, vanilla_value in vanilla_fields.items():
+            if exported_fields.get(key) != vanilla_value:
+                T.fail(
+                    case.name,
+                    f"Exported '{exported_path.name}' has {key} = {exported_fields.get(key)}, "
+                    f"but vanilla file has {vanilla_value}.",
+                )
+                return False
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -228,6 +296,8 @@ def run_case(case: CollisionImportCase):
             mc1 = MapCollisionModel.from_path(hi_files[0])
         except Exception as ex:
             T.fail(case.name, f"First exported HKX not parseable: {ex}")
+            return
+        if not _check_exported_fields(case, hi_files + lo_files):
             return
 
         # ---- 5. Re-import exported file(s) ----
