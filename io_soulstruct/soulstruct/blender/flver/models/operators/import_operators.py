@@ -591,22 +591,37 @@ class ImportArmorSetFLVERs(LoggingOperator):
         parts_dir_path = settings.get_import_dir_path("parts")
         if not parts_dir_path or not parts_dir_path.is_dir():
             raise FileNotFoundError(f"Cannot find `parts` subfolder in import directory.")
+
+        if not self.set_armor_set_id_choices(settings, parts_dir_path):
+            return self.error("No armor set IDs found in `parts` import directory.")
+
+        # Now prompt user to select an armor set ID.
+        return context.window_manager.invoke_props_dialog(self)
+
+    def find_armor_set_ids(self, parts_dir_path: Path) -> set[int]:
+        """Find the armor set ID of every armor-type PARTSBND in `parts_dir_path`."""
         armor_set_ids = set()
         for partsbnd_path in parts_dir_path.glob("*.partsbnd*"):
-            if partsbnd_path.suffix not in {".partsbnd", ".dcx"}:
+            if partsbnd_path.suffix.lower() not in {".partsbnd", ".dcx"}:
                 continue
-            if partsbnd_path.name[:2] not in {"AM", "BD", "HD", "LG"}:
+            # NOTE: DS1 names are uppercase ('AM_M_1234'), but DeS names are lowercase ('am_m_1234').
+            partsbnd_name = partsbnd_path.name.upper()
+            if partsbnd_name[:2] not in {"AM", "BD", "HD", "LG"}:
                 # Ignore WP (weapon), FC (face), HR (hair), etc.
                 continue
             try:
-                armor_set_id = int(partsbnd_path.name[5:9])  # TT_G_1234
+                armor_set_id = int(partsbnd_name[5:9])  # TT_G_1234
             except ValueError:
                 self.warning(f"Cannot parse armor set ID from PARTSBND: {partsbnd_path.name}")
                 continue
             armor_set_ids.add(armor_set_id)
+        return armor_set_ids
 
+    def set_armor_set_id_choices(self, settings: SoulstructSettings, parts_dir_path: Path) -> bool:
+        """Populate `armor_set_id` enum choices from `parts_dir_path`. Returns `False` if no armor sets were found."""
+        armor_set_ids = self.find_armor_set_ids(parts_dir_path)
         if not armor_set_ids:
-            return self.error("No armor set IDs found in `parts` import directory.")
+            return False
 
         try:
             armor_sets = getattr(settings.constants, "ARMOR_SETS")
@@ -621,9 +636,7 @@ class ImportArmorSetFLVERs(LoggingOperator):
                 (str(set_id), str(set_id), f"{set_id} <{armor_sets.get(set_id, 'Unknown')}>")
                 for set_id in sorted(armor_set_ids)
             ]
-
-        # Now prompt user to select an armor set ID.
-        return context.window_manager.invoke_props_dialog(self)
+        return True
 
     def execute(self, context):
 
@@ -641,9 +654,10 @@ class ImportArmorSetFLVERs(LoggingOperator):
         armor_set_options = {}  # type: dict[str, dict[str, dict[str, Path]]]
 
         for partsbnd_path in parts_dir_path.glob("*.partsbnd*"):
-            if partsbnd_path.suffix not in {".partsbnd", ".dcx"}:
+            if partsbnd_path.suffix.lower() not in {".partsbnd", ".dcx"}:
                 continue
-            stem = partsbnd_path.name.split(".")[0]
+            # Uppercase for parsing only: DS1 names are uppercase, but DeS names are lowercase.
+            stem = partsbnd_path.name.split(".")[0].upper()
             partsbnd_type = stem[:2]
             if partsbnd_type not in {"AM", "BD", "HD", "LG"}:
                 # Ignore WP (weapon), FC (face), HR (hair), etc.

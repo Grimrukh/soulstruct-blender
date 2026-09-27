@@ -166,6 +166,7 @@ def create_bl_flver_from_flver(
                 name=dummy_name,
                 armature=armature,
                 collection=command.collection,
+                bone_data_type=bl_bone_data_type,
             )
 
     bl_flver = cls(mesh)

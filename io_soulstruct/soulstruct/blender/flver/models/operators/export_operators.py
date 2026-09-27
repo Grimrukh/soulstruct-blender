@@ -9,6 +9,7 @@ __all__ = [
     "ExportEquipmentFLVER",
 ]
 
+import re
 import traceback
 import typing as tp
 from pathlib import Path
@@ -451,12 +452,164 @@ class BaseGameFLVERBinderExportOperator(LoggingOperator):
 
         return bl_flver.game_name, binder, flver, texture_collection
 
+    @staticmethod
+    def _get_binder_stem(model_stem: str) -> str:
+        """Get the stem of the Binder that FLVER `model_stem` belongs in. Only needs overriding for Binders that can
+        hold multiple FLVERs, whose extra FLVERs have suffixes like '_1' (e.g. `WP_A_0204_1` weapon sheath)."""
+        return model_stem
+
+    def export_flver_group_into_binder(
+        self,
+        context: bpy.types.Context,
+        settings: SoulstructSettings,
+        binder_class: type[OBJBND_TYPING | PARTSBND_TYPING],
+        flver_model_type: FLVERModelType,
+    ) -> tuple[str, OBJBND_TYPING | PARTSBND_TYPING, list[str], DDSTextureCollection]:
+        """Export the active FLVER AND any other FLVERs belonging to the same multi-FLVER Binder into that Binder.
+
+        Binders like PARTSBND and OBJBND can hold extra FLVERs, named with suffixes like '_1', which are imported as
+        separate Blender FLVERs (e.g. `WP_A_0204_1`, the sheath of weapon `WP_A_0204`). Each FLVER is written into
+        its own existing Binder entry (matched by name), or into a new entry with the next free ID, and exporting any
+        member of the group also exports its siblings (see `_get_flver_group()`) so their edits are not lost.
+
+        Returns `(binder_stem, binder, exported_model_stems, texture_collection)`.
+        """
+        bl_flver = BlenderFLVER.from_armature_or_mesh(context.active_object)
+        binder_stem = self._get_binder_stem(bl_flver.game_name)
+        bl_flvers = self._get_flver_group(context, bl_flver, binder_stem)
+        cls_name = binder_class.__name__
+
+        relative_binder_path = self._get_binder_path(settings, binder_stem)
+        try:
+            binder = settings.get_initial_binder(self, relative_binder_path, binder_class)
+        except Exception as ex:
+            raise FLVERExportError(
+                f"Cannot find {cls_name} binder for {bl_flver.name}: '{relative_binder_path}'. Error: {ex}"
+            )
+
+        self.to_object_mode(context)
+        texture_collection = DDSTextureCollection()  # shared by all FLVERs (keyed by texture stem)
+        exported_model_stems = []
+        for group_bl_flver in bl_flvers:
+            try:
+                flver = group_bl_flver.to_soulstruct_obj(
+                    self,
+                    context,
+                    texture_collection=texture_collection,
+                    flver_model_type=flver_model_type,
+                )
+            except Exception as ex:
+                traceback.print_exc()
+                raise FLVERExportError(
+                    f"Cannot create exported FLVER '{group_bl_flver.game_name}' from Mesh '{group_bl_flver.name}'. "
+                    f"Error: {ex}"
+                )
+            self._set_flver_binder_entry(binder, group_bl_flver.game_name, flver)
+            exported_model_stems.append(group_bl_flver.game_name)
+
+        if len(exported_model_stems) > 1:
+            self.info(f"Exported {len(exported_model_stems)} FLVERs into {cls_name}: {', '.join(exported_model_stems)}")
+
+        return binder_stem, binder, exported_model_stems, texture_collection
+
+    def _get_flver_group(
+        self, context: bpy.types.Context, bl_flver: BlenderFLVER, binder_stem: str
+    ) -> list[BlenderFLVER]:
+        """Get `bl_flver` (first) and every other Blender FLVER that belongs in Binder `binder_stem`, as found among
+        selected objects and objects in the same collection(s) as `bl_flver`. Selected FLVERs take priority over
+        unselected ones if multiple Blender FLVERs have the same game name.
+        """
+        group = {bl_flver.game_name.lower(): bl_flver}
+
+        def _candidates(objs) -> list[BlenderFLVER]:
+            found = {}
+            for obj in objs:
+                try:
+                    candidate = BlenderFLVER.from_armature_or_mesh(obj)
+                except SoulstructTypeError:
+                    continue
+                if self._get_binder_stem(candidate.game_name).lower() != binder_stem.lower():
+                    continue
+                found.setdefault(candidate.mesh.name, candidate)
+            return list(found.values())
+
+        selected = _candidates(context.selected_objects)
+        collection_objs = [obj for coll in bl_flver.mesh.users_collection for obj in coll.objects]
+        unselected = [c for c in _candidates(collection_objs) if c.mesh.name not in {s.mesh.name for s in selected}]
+
+        for candidates in (selected, unselected):
+            by_name = {}
+            for candidate in candidates:
+                by_name.setdefault(candidate.game_name.lower(), []).append(candidate)
+            for name, name_candidates in by_name.items():
+                if name in group:
+                    continue  # already have a (higher priority) FLVER with this name
+                if len(name_candidates) > 1:
+                    self.warning(
+                        f"Found multiple Blender FLVERs for '{name_candidates[0].game_name}' in Binder "
+                        f"'{binder_stem}': {', '.join(c.name for c in name_candidates)}. Not exporting any of them. "
+                        f"Select the one you want to export with '{bl_flver.name}'."
+                    )
+                    continue
+                group[name] = name_candidates[0]
+
+        return list(group.values())
+
+    def _set_flver_binder_entry(self, binder: Binder, model_stem: str, flver: FLVER | pyre_flver.FLVER):
+        """Write `flver` into the Binder entry named `{model_stem}.flver[.dcx]`, or create a new entry for it with the
+        next free ID after any existing FLVER entries.
+
+        We do NOT use `FLVERBinder.set_flver()` here: on write, that assigns managed FLVERs to entry IDs 200, 201, ...
+        in sorted name order, so a lone '_1' FLVER would overwrite the Binder's main FLVER in entry 200.
+        """
+        if isinstance(flver, pyre_flver.FLVER):
+            flver.dcx_type = pyre_core.DCXType.Null  # no DCX inside any Binder here
+        else:
+            flver.dcx_type = DCXType.Null  # no DCX inside any Binder here
+
+        flver_entries = binder.find_entries_by_name_regex(r".*\.flver(\.dcx)?", flags=re.IGNORECASE)
+        matching_entries = [
+            entry for entry in flver_entries
+            if re.fullmatch(rf"{re.escape(model_stem)}\.flver(\.dcx)?", entry.name, flags=re.IGNORECASE)
+        ]
+        if len(matching_entries) > 1:
+            raise FLVERExportError(f"Multiple FLVER entries named '{model_stem}' found in Binder '{binder.path}'.")
+        if matching_entries:
+            flver_entry = matching_entries[0]
+        else:
+            used_ids = {entry.entry_id for entry in binder.entries}
+            entry_id = max(
+                (entry.entry_id for entry in flver_entries), default=binder.FLVER_FIRST_ENTRY_ID - 1
+            ) + 1
+            while entry_id in used_ids:
+                entry_id += 1
+            flver_entry = BinderEntry(
+                data=b"",  # filled below
+                entry_id=entry_id,
+                path=binder.get_flver_entry_path(model_stem),
+                flags=0x2,
+            )
+            binder.add_entry(flver_entry)
+            self.info(f"Created new Binder entry {entry_id} for FLVER '{model_stem}': {flver_entry.path}")
+
+        if isinstance(flver, pyre_flver.FLVER):
+            # TODO: Still using soulstruct Binder at the moment, so convert to bytes here.
+            flver_entry.set_uncompressed_data(flver.to_bytes())
+        else:
+            flver_entry.set_from_binary_file(flver)
+
     def export_textures_to_binder_tpf(
         self,
         context,
         binder: CHRBND_TYPING | OBJBND_TYPING | PARTSBND_TYPING,
         texture_collection: DDSTextureCollection,
+        exported_model_stems: tp.Sequence[str] = (),
     ) -> TPF | None:
+        """Replace the Binder's TPF with the textures in `texture_collection`.
+
+        If `exported_model_stems` is given and the Binder contains other FLVERs that were not just exported, textures
+        in the existing TPF that are not being replaced are kept, as those other FLVERs may still use them.
+        """
         multi_tpf = texture_collection.to_multi_texture_tpf(
             self,
             context,
@@ -465,6 +618,23 @@ class BaseGameFLVERBinderExportOperator(LoggingOperator):
         )
         if multi_tpf is None:
             return None  # textures exceeded bundled CHRBND capacity; handled by caller (game-specific)
+
+        if exported_model_stems:
+            exported = {stem.lower() for stem in exported_model_stems}
+            flver_entry_stems = [
+                entry.name.split(".")[0]
+                for entry in binder.find_entries_by_name_regex(r".*\.flver(\.dcx)?", flags=re.IGNORECASE)
+            ]
+            other_flver_stems = [stem for stem in flver_entry_stems if stem.lower() not in exported]
+            if other_flver_stems and binder.tpf is not None:
+                new_stems = {texture.stem.lower() for texture in multi_tpf.textures}
+                kept = [texture for texture in binder.tpf.textures if texture.stem.lower() not in new_stems]
+                multi_tpf.textures.extend(kept)
+                if kept:
+                    self.info(
+                        f"Kept {len(kept)} existing textures in {binder.cls_name} TPF, as it also contains FLVERs "
+                        f"that were not exported: {', '.join(other_flver_stems)}"
+                    )
 
         multi_tpf.dcx_type = DCXType.Null  # never DCX inside these Binders
         binder.tpf = multi_tpf  # will replace existing TPF
@@ -733,20 +903,24 @@ class ExportCharacterFLVER(BaseGameFLVERBinderExportOperator):
 
 @io_soulstruct_operator
 class ExportObjectFLVER(BaseGameFLVERBinderExportOperator):
-    """Export a single FLVER model from a Blender mesh into same-named OBJBND in the game directory.
+    """Export a FLVER model from a Blender mesh into same-named OBJBND in the game directory.
 
     If the Blender object name has an underscore in it, the string before that underscore will be used to find the
-    OBJBND (which supports multiple FLVERs) and the string after that will be used to offset the default FLVER entry ID
-    in the Binder. For example, Blender FLVER `o0100_1` will be exported into `o0100.objbnd` as Binder entry 201 (for
-    games with standard default FLVER ID 200) with FLVER name `o0100_1.flver`.
+    OBJBND (which supports multiple FLVERs). Each FLVER is written into its own existing Binder entry (e.g. `o0100_1`
+    into the `o0100_1.flver` entry 201 of `o0100.objbnd`) or a new entry with the next free ID. All other FLVERs for the
+    same OBJBND that are selected or in the same collection are exported with it.
     """
     bl_idname = "export_scene.object_flver"
     bl_label = "Export Object"
     bl_description = "Export a FLVER model file into same-named game OBJBND (which must exist)"
 
     @staticmethod
-    def _get_binder_path(settings: SoulstructSettings, model_stem: str) -> Path:
+    def _get_binder_stem(model_stem: str) -> str:
         """We split on underscore, as OBJBNDs can contain multiple FLVERs with suffices like '_1'."""
+        return model_stem.split("_")[0]
+
+    @staticmethod
+    def _get_binder_path(settings: SoulstructSettings, model_stem: str) -> Path:
         return Path(f"obj/{model_stem.split('_')[0]}.objbnd")
 
     @classmethod
@@ -770,7 +944,8 @@ class ExportObjectFLVER(BaseGameFLVERBinderExportOperator):
             objbnd_class = settings.game.from_game_submodule_import(
                 "models.objbnd", "OBJBND"
             )  # type: type[OBJBND_TYPING]
-            model_stem, objbnd, flver, textures = self.get_binder_and_flver(
+            # NOTE: OBJBND stem ignores FLVER underscores (so `o1234_1` is found in `o1234.objbnd`).
+            model_stem, objbnd, exported_model_stems, textures = self.export_flver_group_into_binder(
                 context,
                 settings,
                 objbnd_class,
@@ -779,13 +954,10 @@ class ExportObjectFLVER(BaseGameFLVERBinderExportOperator):
         except FLVERExportError as ex:
             return self.error(str(ex))
 
-        # NOTE: OBJBND stem ignores FLVER underscores (so `o1234_1` is found in `o1234.objbnd`).
-        objbnd.set_flver(model_stem, flver)
-
         flver_export_settings = context.scene.flver_export_settings
         if flver_export_settings.export_textures:
             # TPF always added into OBJBND, never loose/separate.
-            self.export_textures_to_binder_tpf(context, objbnd, textures)
+            self.export_textures_to_binder_tpf(context, objbnd, textures, exported_model_stems)
 
         relative_objbnd_path = self._get_binder_path(settings, model_stem)
         exported_paths = settings.export_file(self, objbnd, relative_objbnd_path)
@@ -854,10 +1026,29 @@ class ExportAssetFLVER(BaseGameFLVERBinderExportOperator):
 
 @io_soulstruct_operator
 class ExportEquipmentFLVER(BaseGameFLVERBinderExportOperator):
-    """Export a single FLVER model from a Blender mesh into same-named PARTSBND in the game directory."""
+    """Export a FLVER model from a Blender mesh into same-named PARTSBND in the game directory.
+
+    PARTSBNDs can contain extra FLVERs with suffixes like '_1' (e.g. `WP_A_0204_1`, the sheath of weapon `WP_A_0204`),
+    which are exported into the PARTSBND of their main FLVER. All FLVERs for the same PARTSBND that are selected or in
+    the same collection as the active one are exported together, so exporting either the weapon or its sheath writes
+    both.
+    """
     bl_idname = "export_scene.equipment_flver"
     bl_label = "Export Equipment"
     bl_description = "Export a FLVER equipment model file into appropriate game PARTSBND"
+
+    # Standard equipment name, e.g. `WP_A_0204` or `AM_M_1000_M`, optionally followed by an extra FLVER index suffix.
+    _PARTS_NAME_RE: tp.ClassVar[re.Pattern] = re.compile(
+        r"^(?P<stem>[a-z]{2}_[a-z]_\d{4}(?:_[a-z]+)?)(?:_\d+)?$", flags=re.IGNORECASE
+    )
+
+    @classmethod
+    def _get_binder_stem(cls, model_stem: str) -> str:
+        """Strip any extra FLVER index suffix like '_1' (e.g. `WP_A_0204_1` sheath -> `WP_A_0204`). Note that the
+        standard equipment name itself contains underscores (and may end with a skin suffix like '_M')."""
+        if match := cls._PARTS_NAME_RE.match(model_stem):
+            return match.group("stem")
+        return model_stem
 
     @staticmethod
     def _get_binder_path(settings: SoulstructSettings, model_stem: str) -> Path:
@@ -884,7 +1075,7 @@ class ExportEquipmentFLVER(BaseGameFLVERBinderExportOperator):
             partsbnd_class = settings.game.from_game_submodule_import(
                 "models.partsbnd", "PARTSBND"
             )  # type: type[PARTSBND_TYPING]
-            model_stem, partsbnd, flver, textures = self.get_binder_and_flver(
+            model_stem, partsbnd, exported_model_stems, textures = self.export_flver_group_into_binder(
                 context,
                 settings,
                 partsbnd_class,
@@ -893,12 +1084,10 @@ class ExportEquipmentFLVER(BaseGameFLVERBinderExportOperator):
         except FLVERExportError as ex:
             return self.error(str(ex))
 
-        partsbnd.set_flver(model_stem, flver)
-
         flver_export_settings = context.scene.flver_export_settings
         if flver_export_settings.export_textures:
             # TPF always added into PARTSBND, never loose/separate.
-            self.export_textures_to_binder_tpf(context, partsbnd, textures)
+            self.export_textures_to_binder_tpf(context, partsbnd, textures, exported_model_stems)
 
         relative_partsbnd_path = self._get_binder_path(settings, model_stem)
 

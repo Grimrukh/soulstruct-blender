@@ -10,6 +10,8 @@ __all__ = [
     "bl_bone_trs_to_game_trs",
     "get_armature_matrix",
     "get_bone_object_parent_matrix",
+    "get_custom_bone_flver_matrix",
+    "get_bone_object_parent_matrix_from_pose",
     "game_forward_up_vectors_to_bl_euler",
     "bl_euler_to_game_forward_up_vectors",
     "bl_rotmat_to_game_forward_up_vectors",
@@ -167,12 +169,86 @@ def get_bone_object_parent_matrix(bone: bpy.types.Bone) -> Matrix:
 
     `Bone.use_relative_parent` (never set by Soulstruct) would make Blender use the bone's basis/channel matrix
     instead; it is ignored here.
+
+    This only holds when the Armature's pose is its rest pose, which is true for EDIT bone data (dynamic FLVERs).
+    CUSTOM bone data (static FLVERs, e.g. all weapons) stores the FLVER bone transforms in the POSE instead, so use
+    `get_bone_object_parent_matrix_from_pose()` for those.
     """
     return bone.matrix_local @ Matrix.Translation((0.0, bone.length, 0.0))
 
 
+def _get_pose_basis_no_scale(pose_bone: bpy.types.PoseBone) -> Matrix:
+    """Pose channel location and rotation only (FLVER bone scale is never inherited), read from the same channels
+    that CUSTOM FLVER bone export reads."""
+    if pose_bone.rotation_mode == "QUATERNION":
+        rotation = pose_bone.rotation_quaternion
+    elif pose_bone.rotation_mode == "AXIS_ANGLE":
+        angle, *axis = pose_bone.rotation_axis_angle
+        rotation = Quaternion(axis, angle)
+    else:
+        rotation = pose_bone.rotation_euler
+    return Matrix.LocRotScale(pose_bone.location, rotation, None)
+
+
+def get_custom_bone_flver_matrix(armature: ArmatureObject, bone_name: str) -> Matrix:
+    """Armature-space FLVER bone transform (in Blender coordinates, with NO X-forward CoB) of a bone in a CUSTOM bone
+    data Armature (static FLVERs: map pieces, equipment, some objects).
+
+    CUSTOM Armatures leave their EditBones as identity Y-forward stubs and store each FLVER bone's LOCAL transform in
+    its PoseBone channels, which is also where FLVER export reads them from. So `bone.matrix_local` is meaningless here
+    and the FLVER armature-space transform is the product of pose channel transforms down the bone hierarchy. As in
+    `BoneTree.get_bone_armature_space_transforms()`, bone scale is not inherited (and does not affect this space).
+    """
+    pose_bone = armature.pose.bones[bone_name]
+    matrix = _get_pose_basis_no_scale(pose_bone)
+    while pose_bone.parent:
+        pose_bone = pose_bone.parent
+        matrix = _get_pose_basis_no_scale(pose_bone) @ matrix
+    return matrix
+
+
+def get_bone_object_parent_matrix_from_pose(armature: ArmatureObject, bone_name: str) -> Matrix:
+    """Equivalent of `get_bone_object_parent_matrix()` for CUSTOM bone data Armatures, whose FLVER bone transforms live
+    in the (unanimated) pose rather than the rest pose.
+
+    Blender's `ob_parbone()` uses the bone's POSE matrix, so this recomputes that matrix from pose channels exactly as
+    `get_armature_matrix()` describes (ignoring pose scale, which FLVER does not inherit and is almost always identity
+    for bones that Dummies attach to), then moves to the bone's tail as usual. Computing it from the channels rather
+    than reading `pose_bone.matrix` avoids depending on a depsgraph update after the pose has just been written.
+    """
+    bones = armature.data.bones
+
+    def pose_matrix(bone: bpy.types.Bone) -> Matrix:
+        basis = _get_pose_basis_no_scale(armature.pose.bones[bone.name])
+        if bone.parent is None:
+            return bone.matrix_local @ basis
+        return pose_matrix(bone.parent) @ bone.parent.matrix_local.inverted() @ bone.matrix_local @ basis
+
+    bone = bones[bone_name]
+    return pose_matrix(bone) @ Matrix.Translation((0.0, bone.length, 0.0))
+
+
 def game_forward_up_vectors_to_bl_euler(forward: Vector3, up: Vector3) -> Euler:
-    """Convert `forward` and `up` vectors to Blender Euler (for FLVER dummies)."""
+    """Convert `forward` and `up` vectors to Blender Euler (for FLVER dummies).
+
+    Vanilla FLVER Dummy vectors are frequently NOT unit length (e.g. |forward| ~0.12, |up| ~0.05) and not exactly
+    perpendicular, so they must be orthonormalized before being treated as rotation matrix columns. Otherwise, Euler
+    extraction from the scaled/skewed matrix yields a garbage orientation (e.g. forward +X imported as forward +Z).
+    `forward` is kept exact (as a direction); `up` is made perpendicular to it (Gram-Schmidt).
+    """
+    f = Vector((forward.x, forward.y, forward.z))
+    u = Vector((up.x, up.y, up.z))
+    if f.length < 1e-9:
+        f = Vector((0.0, 0.0, 1.0))  # degenerate forward: assume default
+    f.normalize()
+    u -= u.dot(f) * f
+    if u.length < 1e-9:
+        # Degenerate up (zero or parallel to forward): pick any perpendicular, preferring world up.
+        fallback = Vector((0.0, 1.0, 0.0)) if abs(f.y) < 0.99 else Vector((1.0, 0.0, 0.0))
+        u = fallback - fallback.dot(f) * f
+    u.normalize()
+    forward = Vector3((f.x, f.y, f.z))
+    up = Vector3((u.x, u.y, u.z))
     right = up.cross(forward)
     rotation_matrix = Matrix3([
         [right.x, up.x, forward.x],

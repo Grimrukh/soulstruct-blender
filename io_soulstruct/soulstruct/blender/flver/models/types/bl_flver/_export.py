@@ -229,7 +229,9 @@ def _create_flver_from_bl_flver(command: _CreateFLVERCommand) -> FLVER | pyre_fl
     # empty at this point anyway).
     flver_dummies = []
     for bl_dummy in bl_dummies:
-        flver_dummy = bl_dummy.to_soulstruct_obj(command.operator, command.context, command.bl_flver.armature)
+        flver_dummy = bl_dummy.to_soulstruct_obj(
+            command.operator, command.context, command.bl_flver.armature, bl_bone_data_type
+        )
         # Mark attach/parent bones as used. TODO: Set more specific flags in later games (2 here).
         if flver_dummy.attach_bone_index >= 0:
             command.flver.bones[flver_dummy.attach_bone_index].usage_flags &= ~1

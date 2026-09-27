@@ -8,7 +8,7 @@ import re
 import typing as tp
 
 import bpy
-from mathutils import Matrix
+from mathutils import Matrix, Vector
 
 from soulstruct.flver import Dummy, ColorRGBA
 from soulstruct.utilities.maths import Vector3
@@ -19,6 +19,8 @@ from ....exceptions import *
 from ...utilities import (
     BONE_CoB_4x4,
     get_bone_object_parent_matrix,
+    get_bone_object_parent_matrix_from_pose,
+    get_custom_bone_flver_matrix,
     game_forward_up_vectors_to_bl_euler,
     bl_rotmat_to_game_forward_up_vectors,
 )
@@ -26,6 +28,43 @@ from ....types import *
 from ....utilities import *
 
 from ..properties import *
+from .enums import FLVERBoneDataType
+
+
+def _get_flver_bone_matrix(
+    armature: ArmatureObject, bone: bpy.types.Bone, bone_data_type: FLVERBoneDataType
+) -> Matrix:
+    """Armature-space FLVER transform of `bone` in Blender coordinates (no X-forward CoB), i.e. the space in which a
+    Dummy's FLVER transform is given when `bone` is its 'parent bone'."""
+    if bone_data_type == FLVERBoneDataType.CUSTOM:
+        # EditBones are identity stubs; FLVER bone transforms live in the pose. Do NOT undo the CoB here: CUSTOM bones
+        # never had it applied, so doing so would swap the Dummy's X/Y and negate its Z (e.g. every weapon Dummy).
+        return get_custom_bone_flver_matrix(armature, bone.name)
+    return bone.matrix_local @ BONE_CoB_4x4  # undo bone CoB (self-inverse)
+
+
+def _get_flver_bone_scale(
+    armature: ArmatureObject, bone: bpy.types.Bone, bone_data_type: FLVERBoneDataType
+) -> Vector:
+    """Local FLVER scale of `bone` (Blender coordinates), read from wherever FLVER bone export reads it.
+
+    The game applies a Dummy's parent bone's scale to the Dummy's local translation. Vanilla characters rely on this:
+    e.g. DeS c5010 (Tower Knight) and c1030 give their 'sfx_dummy' bone a uniform scale of 3.5 and 2.9, and all of
+    their [200] Dummies (SFX points) are only correctly placed on the model once that scale is applied.
+    """
+    if bone_data_type == FLVERBoneDataType.CUSTOM:
+        return Vector(armature.pose.bones[bone.name].scale)
+    return Vector(bone.FLVER_BONE.flver_scale)
+
+
+def _get_attach_bone_parent_matrix(
+    armature: ArmatureObject, bone: bpy.types.Bone, bone_data_type: FLVERBoneDataType
+) -> Matrix:
+    """Armature-space matrix that Blender resolves a Dummy's `matrix_local` against when it is bone-parented to `bone`
+    (its 'attach bone')."""
+    if bone_data_type == FLVERBoneDataType.CUSTOM:
+        return get_bone_object_parent_matrix_from_pose(armature, bone.name)
+    return get_bone_object_parent_matrix(bone)
 
 
 class BlenderFLVERDummy(BaseBlenderSoulstructObject[Dummy, FLVERDummyProps]):
@@ -103,11 +142,15 @@ class BlenderFLVERDummy(BaseBlenderSoulstructObject[Dummy, FLVERDummyProps]):
         name: str,
         armature: ArmatureObject | None = None,
         collection: bpy.types.Collection | None = None,
+        bone_data_type: FLVERBoneDataType = FLVERBoneDataType.EDIT,
     ) -> tp.Self:
         """Create a wrapped Blender Dummy empty object from FLVER `Dummy`.
 
         Created Dummy will be parented to `Armature` via its attach bone index, and will also record its internal parent
         bone (used to determine the space of its FLVER transform).
+
+        `bone_data_type` must be that of the FLVER owning `armature`, as it determines where the FLVER bone transforms
+        are stored (and must already be written, i.e. EditBones or PoseBones).
         """
         if armature is None:
             raise FLVERImportError("Cannot create Blender Dummy without an Armature object.")
@@ -150,7 +193,12 @@ class BlenderFLVERDummy(BaseBlenderSoulstructObject[Dummy, FLVERDummyProps]):
             # is generally a non-animated bone like 'Model_dmy' or 'Sfx'.
             bl_parent_bone = armature.data.bones[soulstruct_obj.parent_bone_index]
             bl_dummy.parent_bone = bl_parent_bone  # custom Soulstruct property
-            bl_parent_bone_matrix = bl_parent_bone.matrix_local @ BONE_CoB_4x4  # undo bone CoB (self-inverse)
+            # Parent bone scale applies to the Dummy's local translation only (never to the Empty itself).
+            bl_parent_bone_scale = _get_flver_bone_scale(armature, bl_parent_bone, bone_data_type)
+            bl_dummy_transform.translation = Vector(
+                t * s for t, s in zip(bl_dummy_transform.translation, bl_parent_bone_scale)
+            )
+            bl_parent_bone_matrix = _get_flver_bone_matrix(armature, bl_parent_bone, bone_data_type)
             bl_dummy_transform = bl_parent_bone_matrix @ bl_dummy_transform
 
         # Dummy moves with this bone during animations.
@@ -160,7 +208,7 @@ class BlenderFLVERDummy(BaseBlenderSoulstructObject[Dummy, FLVERDummyProps]):
             # NOTE: Unlike the FLVER-space 'parent bone' math above, we must NOT undo the X-forward bone CoB here,
             # and we must include the bone's tail offset: Blender resolves a bone-parented Object's `matrix_local`
             # against the bone exactly as Blender sees it. See `get_bone_object_parent_matrix()`.
-            bl_attach_bone_matrix = get_bone_object_parent_matrix(bl_attach_bone)
+            bl_attach_bone_matrix = _get_attach_bone_parent_matrix(armature, bl_attach_bone, bone_data_type)
             bl_dummy_transform = bl_attach_bone_matrix.inverted() @ bl_dummy_transform
             bl_dummy.obj.parent_bone = bl_attach_bone.name  # true Blender property (note *name*, not Bone itself)
             bl_dummy.obj.parent_type = "BONE"
@@ -184,8 +232,9 @@ class BlenderFLVERDummy(BaseBlenderSoulstructObject[Dummy, FLVERDummyProps]):
         operator: LoggingOperator,
         context: bpy.types.Context,
         armature: ArmatureObject = None,
+        bone_data_type: FLVERBoneDataType = FLVERBoneDataType.EDIT,
     ) -> Dummy:
-        """Create a new `Dummy`."""
+        """Create a new `Dummy`. `bone_data_type` must be that of the FLVER owning `armature`."""
         if not armature:
             raise ValueError("Cannot convert Blender Dummy to FLVER Dummy without an Armature object.")
 
@@ -216,7 +265,7 @@ class BlenderFLVERDummy(BaseBlenderSoulstructObject[Dummy, FLVERDummyProps]):
             bl_attach_bone = armature.data.bones[attach_bone_index]
             # Must exactly mirror the import side: Blender's bone-parent space keeps the X-forward bone CoB and is
             # rooted at the bone's TAIL. See `get_bone_object_parent_matrix()`.
-            bl_attach_bone_matrix = get_bone_object_parent_matrix(bl_attach_bone)
+            bl_attach_bone_matrix = _get_attach_bone_parent_matrix(armature, bl_attach_bone, bone_data_type)
             bl_dummy_transform = bl_attach_bone_matrix @ bl_dummy_transform
         else:
             # Dummy has no attach bone.
@@ -234,8 +283,14 @@ class BlenderFLVERDummy(BaseBlenderSoulstructObject[Dummy, FLVERDummyProps]):
             dummy.parent_bone_index = parent_bone_index
             # Make Dummy transform relative to parent bone transform:
             bl_parent_bone = armature.data.bones[parent_bone_index]
-            bl_parent_bone_matrix = bl_parent_bone.matrix_local @ BONE_CoB_4x4  # undo bone CoB (self-inverse)
+            bl_parent_bone_matrix = _get_flver_bone_matrix(armature, bl_parent_bone, bone_data_type)
             bl_dummy_transform = bl_parent_bone_matrix.inverted() @ bl_dummy_transform
+            # Undo parent bone scale, which the game applies to the Dummy's local translation (see import).
+            bl_parent_bone_scale = _get_flver_bone_scale(armature, bl_parent_bone, bone_data_type)
+            bl_dummy_transform.translation = Vector(
+                t / s if abs(s) > 1e-9 else t
+                for t, s in zip(bl_dummy_transform.translation, bl_parent_bone_scale)
+            )
         else:
             # Dummy has no parent bone. Its FLVER transform will be in the model space.
             dummy.parent_bone_index = -1

@@ -5,6 +5,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+### Added
+- Unit tests for Demon's Souls HKX collision fields (bugs fixed in `soulstruct-havok`).
+
+### Fixed
+- FLVER Dummies of fully-static FLVERs (every weapon, plus e.g. DSR c3501) are no longer misplaced in Blender.
+  - These use 'Custom' bone data (bone transforms stored in the pose), but Dummies were placed relative to the
+    identity rest bones with the X-forward bone change-of-basis wrongly 'undone', swapping X/Y and negating Z.
+  - Another two-way bug: round trips were fine, but Dummies appeared wrong in Blender.
+- FLVER Dummies now apply the scale of their 'In Space of Bone' to their position, as the game does.
+  - Fixes `[200]` Dummies of e.g. DeS Tower Knight (c5010) and c1030, whose `sfx_dummy` bones have non-unit scale.
+- FLVER Dummy orientations are now correct for the (very common) vanilla Dummies with non-unit-length or
+  non-perpendicular forward/up vectors, rather than being garbled on import.
+- Export Equipment now works for PARTSBNDs containing multiple FLVERs, e.g. a weapon and its sheath `WP_A_0204_1`.
+  - Either FLVER can be exported; its PARTSBND is found by removing the '_1' suffix.
+  - All FLVERs for the same PARTSBND that are selected or in the same collection are exported together, into their own
+    existing Binder entries (so exporting the weapon also exports the sheath).
+  - Export Object now also writes each '_1' FLVER into its own OBJBND entry instead of overwriting the main FLVER.
+  - When only some FLVERs of a Binder are exported, existing TPF textures are kept for the others.
+- Import Armor Set now works for Demon's Souls, whose PARTSBND names are lowercase.
+
 ---
 
 ## [3.2.0] - 2026-09-21
