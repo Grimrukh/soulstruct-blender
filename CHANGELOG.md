@@ -5,8 +5,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## Unreleased
 
+---
+
+## [3.2.1] - 2026-09-27
+
 ### Added
 - Unit tests for Demon's Souls HKX collision fields (bugs fixed in `soulstruct-havok`).
+
+### Changed
+- Updated `soulstruct` to 2.6.0.
+- Updated `soulstruct-havok` to 1.5.0.
 
 ### Fixed
 - FLVER Dummies of fully-static FLVERs (every weapon, plus e.g. DSR c3501) are no longer misplaced in Blender.
@@ -23,7 +31,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
     existing Binder entries (so exporting the weapon also exports the sheath).
   - Export Object now also writes each '_1' FLVER into its own OBJBND entry instead of overwriting the main FLVER.
   - When only some FLVERs of a Binder are exported, existing TPF textures are kept for the others.
-- Import Armor Set now works for Demon's Souls, whose PARTSBND names are lowercase.
+- Import Armor Set now works for Demon's Souls (find lowercase PARTSBND names).
 
 ---
 
